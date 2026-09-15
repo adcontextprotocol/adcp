@@ -47,6 +47,7 @@ import {
   upsertOrganizationMembership,
   deleteOrganizationMembership,
   consumeInvitationSeatType,
+  type ProvisioningSource,
 } from '../db/membership-db.js';
 import { boundedRawJson, type RawJsonRequest } from '../middleware/bounded-raw-json.js';
 
@@ -243,14 +244,26 @@ async function upsertMembership(
     );
     if (org.rowCount !== 1) throw new Error('Membership organization not found');
 
+    // A provider update/replay for a row already mirrored locally is not a new
+    // seat allocation. Lock and preserve that seat while still mirroring the
+    // provider role, even when the organization is currently at capacity.
+    const existing = await client.query<{ seat_type: string | null; provisioning_source: ProvisioningSource | null }>(
+      `SELECT seat_type, provisioning_source FROM organization_memberships
+        WHERE workos_organization_id = $1 AND workos_user_id = $2 FOR UPDATE`,
+      [membership.organization_id, membership.user_id],
+    );
+    const existingMembership = existing.rows[0];
+
     const consumed = await consumeInvitationSeatType(membership.organization_id, userData.email, client);
-    const hasExplicitSeatType = consumed !== null;
-    const seatType: SeatType = consumed?.seat_type === 'contributor' ? 'contributor' : 'community_only';
-    const provisioningSource = consumed?.source || 'webhook';
+    const hasExplicitSeatType = consumed !== null || existingMembership !== undefined;
+    const preservedSeat = existingMembership?.seat_type === 'contributor' ? 'contributor' : 'community_only';
+    const seatType: SeatType = consumed?.seat_type === 'contributor' ? 'contributor'
+      : consumed ? 'community_only' : preservedSeat;
+    const provisioningSource = consumed?.source || existingMembership?.provisioning_source || 'webhook';
 
     // Unstaged provider writes have no reservation, so perform the ordinary cap
     // check while holding the same organization lock used by management writes.
-    if (!hasExplicitSeatType) {
+    if (!consumed && !existingMembership) {
       const availability = await canAddSeat(membership.organization_id, seatType, client);
       if (!availability.allowed) {
         refusedSeat = { seatType, reason: availability.reason ?? 'Seat cap reached' };

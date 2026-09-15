@@ -282,6 +282,31 @@ describe('independent mounted management race and residual-state attacks', () =>
     }
   });
 
+  it('warm cookie JWT source outage returns authorization_unavailable before provider reads, writes, or audit', async () => {
+    const auth = await cookie();
+    __setJWKSForTesting(async () => { throw Object.assign(new Error('JWKS unavailable'), { code: 'ECONNRESET' }); });
+    try {
+      const response = await request(app).post(`/api/organizations/${org}/invitations`)
+        .set('Cookie', auth).send({ email: 'invitee@membership-race.example.test' });
+      expect(response.status).toBe(503);
+      expect(response.body.error).toBe('authorization_unavailable');
+      expect(state.reads).toEqual([]);
+      await noEffects();
+    } finally {
+      __setJWKSForTesting(async () => verificationKey);
+    }
+  });
+
+  it('unsupported JWT algorithm remains 401 and makes no provider or audit call', async () => {
+    const payload = Buffer.from(JSON.stringify({ sub: A, client_id: 'client_mock_id', org_id: org })).toString('base64url');
+    const bearer = `${Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url')}.${payload}.unsupported`;
+    const response = await request(app).post(`/api/organizations/${org}/invitations`)
+      .set('Authorization', `Bearer ${bearer}`).send({ email: 'invitee@membership-race.example.test' });
+    expect(response.status).toBe(401);
+    expect(state.reads).toEqual([]);
+    await noEffects();
+  });
+
   it('bearer user-source outage returns authorization_unavailable before provider reads or writes', async () => {
     const bearer = await token();
     await pool.query('ALTER TABLE users RENAME TO membership_race_users_unavailable');

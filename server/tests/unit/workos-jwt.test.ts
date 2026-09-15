@@ -3,6 +3,7 @@ import { SignJWT, generateKeyPair, exportJWK, type KeyLike } from 'jose';
 import {
   looksLikeJWT,
   verifyWorkOSJWT,
+  isInvalidWorkOSJWTError,
   __setJWKSForTesting,
 } from '../../src/auth/workos-jwt.js';
 
@@ -44,6 +45,19 @@ describe('looksLikeJWT', () => {
 
   it('rejects empty string', () => {
     expect(looksLikeJWT('')).toBe(false);
+  });
+});
+
+describe('isInvalidWorkOSJWTError', () => {
+  it.each([
+    ['JOSENotSupported', 'ERR_JOSE_NOT_SUPPORTED'],
+    ['JOSEAlgNotAllowed', 'ERR_JOSE_ALG_NOT_ALLOWED'],
+  ])('classifies unsupported token algorithm %s as an invalid credential', (name, code) => {
+    expect(isInvalidWorkOSJWTError(Object.assign(new Error('unsupported token'), { name, code }))).toBe(true);
+  });
+
+  it('does not classify a JWKS transport outage as an invalid credential', () => {
+    expect(isInvalidWorkOSJWTError(Object.assign(new Error('source unavailable'), { code: 'ECONNRESET' }))).toBe(false);
   });
 });
 

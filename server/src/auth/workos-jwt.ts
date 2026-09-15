@@ -46,10 +46,14 @@ export function isInvalidWorkOSJWTError(err: unknown): boolean {
   const code = (err as { code?: unknown }).code;
   return err.name === 'JWTExpired'
     || err.name === 'JWTClaimValidationFailed'
+    || err.name === 'JOSEAlgNotAllowed'
+    || err.name === 'JOSENotSupported'
     || err.name === 'JWSInvalid'
     || err.name === 'JWTInvalid'
     || err.name === 'JWSSignatureVerificationFailed'
     || code === 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED'
+    || code === 'ERR_JOSE_ALG_NOT_ALLOWED'
+    || code === 'ERR_JOSE_NOT_SUPPORTED'
     || code === 'ERR_WORKOS_TOKEN_APPLICATION_MISMATCH';
 }
 

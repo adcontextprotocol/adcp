@@ -37,6 +37,9 @@ type Snapshot = {
   banned: boolean;
 };
 
+type CancellationSnapshot = Pick<Snapshot,
+  'credential_exists' | 'identity_id' | 'canonical_user_id' | 'epoch' | 'binding_version' | 'banned'>;
+
 export type MutationReply = { status?: number; body: Record<string, unknown> };
 type Effect = { action: string; target: Record<string, unknown>; id?: string; outcome: 'succeeded' | 'unknown'; compensate?: () => Promise<void> };
 
@@ -293,7 +296,8 @@ export class OrganizationMembershipMutation {
       if (!req.accessToken) throw new MembershipMutationError(401, 'Invalid credential');
       try { verified = await verifyWorkOSJWT(req.accessToken); }
       catch (error) {
-        throw new MembershipMutationError(isInvalidWorkOSJWTError(error) ? 401 : 503, 'Credential verification failed');
+        const invalid = isInvalidWorkOSJWTError(error);
+        throw new MembershipMutationError(invalid ? 401 : 503, invalid ? 'Invalid credential' : 'authorization_unavailable');
       }
       if (verified.isM2M || verified.sub !== actorId) throw new MembershipMutationError(401, 'Credential principal changed');
       if (verified.orgId && verified.orgId !== orgId) mutationDenied('Organization selectors do not agree');
@@ -352,5 +356,114 @@ export class OrganizationMembershipMutation {
       }
       throw error;
     } finally { db.release(); }
+  }
+}
+
+async function readCancellationSnapshot(db: PoolClient, actorId: string, orgId: string): Promise<CancellationSnapshot> {
+  const result = await db.query<CancellationSnapshot>(
+    `SELECT EXISTS (SELECT 1 FROM users WHERE workos_user_id = $1) AS credential_exists,
+            iwu.identity_id, COALESCE(primary_iwu.workos_user_id, $1) AS canonical_user_id,
+            ae.epoch::text AS epoch, iwu.xmin::text AS binding_version,
+            EXISTS (SELECT 1 FROM bans WHERE scope = 'platform'
+                      AND (expires_at IS NULL OR expires_at > clock_timestamp())
+                      AND ((ban_type = 'user' AND entity_id = $1)
+                        OR (ban_type = 'organization' AND entity_id = $2))) AS banned
+       FROM (SELECT 1) anchor
+       LEFT JOIN identity_workos_users iwu ON iwu.workos_user_id = $1
+       LEFT JOIN identity_workos_users primary_iwu
+         ON primary_iwu.identity_id = iwu.identity_id AND primary_iwu.is_primary = TRUE
+       LEFT JOIN authorization_epochs ae ON ae.workos_user_id = $1`,
+    [actorId, orgId],
+  );
+  if (result.rows.length !== 1) throw new MembershipMutationError(503, 'authorization_unavailable');
+  return result.rows[0];
+}
+
+/** Cancel only for the immutable credential that created the request. */
+export async function cancelJoinRequestForExactCredential(req: Request, requestId: string): Promise<boolean> {
+  if (!req.user) throw new MembershipMutationError(401, 'Authentication required');
+  if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey
+    || (req as Request & { apiKey?: unknown }).apiKey) mutationDenied();
+
+  const actorId = getOrganizationAuthorizationUserId(req.user);
+  const dev = isDevModeEnabled() && Object.values(DEV_USERS).some(user => user.id === actorId);
+  let verified: Awaited<ReturnType<typeof verifyWorkOSJWT>> | undefined;
+  if (!dev) {
+    const header = req.headers.authorization;
+    if (header !== undefined) {
+      const match = /^Bearer[\t ]+([^\t ]+)[\t ]*$/i.exec(header);
+      if (!match || match[1] !== req.accessToken) throw new MembershipMutationError(401, 'Invalid credential');
+    }
+    if (!req.accessToken) throw new MembershipMutationError(401, 'Invalid credential');
+    try { verified = await verifyWorkOSJWT(req.accessToken); }
+    catch (error) {
+      const invalid = isInvalidWorkOSJWTError(error);
+      throw new MembershipMutationError(invalid ? 401 : 503, invalid ? 'Invalid credential' : 'authorization_unavailable');
+    }
+    if (verified.isM2M || verified.sub !== actorId) throw new MembershipMutationError(401, 'Credential principal changed');
+  }
+
+  const db = await getPool().connect();
+  try {
+    await db.query('BEGIN');
+    await db.query("SET LOCAL lock_timeout = '2s'");
+    await db.query("SET LOCAL statement_timeout = '5s'");
+    const request = await db.query<{ workos_user_id: string; workos_organization_id: string; status: string }>(
+      'SELECT workos_user_id, workos_organization_id, status FROM organization_join_requests WHERE id = $1 FOR UPDATE',
+      [requestId],
+    );
+    const row = request.rows[0];
+    if (!row || row.status !== 'pending' || row.workos_user_id !== actorId) {
+      await db.query('ROLLBACK');
+      return false;
+    }
+    const orgId = row.workos_organization_id;
+    if (verified?.orgId && verified.orgId !== orgId) mutationDenied('Organization selectors do not agree');
+    for (const value of [req.headers['x-organization-id'], req.headers['x-org-id'],
+      req.query.organization_id, req.query.organizationId, req.query.org_id, req.query.orgId,
+      req.body?.organization_id, req.body?.organizationId, req.body?.org_id, req.body?.orgId]) {
+      if (value !== undefined && (typeof value !== 'string' || value !== orgId)) mutationDenied('Organization selectors do not agree');
+    }
+
+    const snapshot = await readCancellationSnapshot(db, actorId, orgId);
+    if (snapshot.banned) mutationDenied('Account suspended');
+    if (!snapshot.credential_exists) throw new MembershipMutationError(401, 'Invalid credential');
+    const stamp = getOrganizationAuthenticationStamp(req.user);
+    if (!stamp) throw new MembershipMutationError(503, 'authorization_unavailable');
+    if (stamp.credentialId !== actorId || stamp.canonicalUserId !== snapshot.canonical_user_id
+      || stamp.identityId !== snapshot.identity_id || stamp.bindingVersion !== snapshot.binding_version
+      || stamp.epoch !== snapshot.epoch || req.user.id !== snapshot.canonical_user_id
+      || (req.user.identityId !== undefined && req.user.identityId !== snapshot.identity_id)) {
+      invalidateSessionsForUsers([actorId, req.user.id]);
+      mutationDenied('Authentication state changed; retry the request');
+    }
+
+    await db.query('SELECT workos_user_id FROM users WHERE workos_user_id = $1 FOR UPDATE NOWAIT', [actorId]);
+    await db.query('SELECT workos_user_id FROM authorization_epochs WHERE workos_user_id = $1 FOR UPDATE NOWAIT', [actorId]);
+    await db.query('SELECT workos_user_id FROM identity_workos_users WHERE workos_user_id = $1 FOR UPDATE NOWAIT', [actorId]);
+    await db.query('LOCK TABLE bans IN SHARE MODE NOWAIT');
+    const current = await readCancellationSnapshot(db, actorId, orgId);
+    if (current.banned) mutationDenied('Account suspended');
+    if (JSON.stringify(current) !== JSON.stringify(snapshot)) mutationDenied('Authorization changed; retry the request');
+    if (verified?.expiresAt !== undefined && verified.expiresAt <= Date.now() / 1000) {
+      throw new MembershipMutationError(401, 'Credential expired');
+    }
+    const cancelled = await db.query(
+      `UPDATE organization_join_requests SET status = 'cancelled', updated_at = NOW()
+        WHERE id = $1 AND workos_user_id = $2 AND workos_organization_id = $3 AND status = 'pending'
+        RETURNING id`,
+      [requestId, actorId, orgId],
+    );
+    if (cancelled.rowCount !== 1) throw new MembershipMutationError(409, 'Join request state changed; no change committed');
+    await db.query('COMMIT');
+    return true;
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => {});
+    if ((error as { code?: string }).code === '55P03') {
+      throw new MembershipMutationError(409, 'Authorization state is busy; retry the request');
+    }
+    throw error;
+  } finally {
+    db.release();
   }
 }

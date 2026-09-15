@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
     listUsers: vi.fn(), list: vi.fn(), getUser: vi.fn(), create: vi.fn(), update: vi.fn(),
     createOrg: vi.fn(), invoice: vi.fn(), products: vi.fn(), coupon: vi.fn(),
     slackSync: vi.fn(), slackConfigured: false,
+    jwtOutage: false,
   };
 });
 vi.mock('@workos-inc/node', () => ({ WorkOS: class {
@@ -39,7 +40,10 @@ vi.mock('../../src/auth/workos-client.js', async (original) => {
 });
 vi.mock('../../src/auth/workos-jwt.js', async (original) => ({
   ...await original<typeof import('../../src/auth/workos-jwt.js')>(),
-  verifyWorkOSJWT: async (value: string) => ({ sub: value.replace(/^test-access:/, ''), isM2M: false }),
+  verifyWorkOSJWT: async (value: string) => {
+    if (mocks.jwtOutage) throw Object.assign(new Error('JWKS unavailable'), { code: 'ECONNRESET' });
+    return { sub: value.replace(/^test-access:/, ''), isM2M: false };
+  },
 }));
 vi.mock('../../src/middleware/csrf.js', () => ({ csrfProtection: (_req: any, _res: any, next: any) => next() }));
 vi.mock('../../src/middleware/rate-limit.js', async (original) => {
@@ -150,6 +154,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   vi.clearAllMocks();
   mocks.slackConfigured = false;
+  mocks.jwtOutage = false;
   delete process.env.ADMIN_EMAILS;
   invalidateSessionsForUsers([A, B]);
   await pool.query('DELETE FROM organization_memberships WHERE workos_user_id = ANY($1)', [[A, B]]);
@@ -186,6 +191,75 @@ afterAll(async () => {
 });
 
 describe('mounted implicit onboarding containment', () => {
+  it('linked sibling cannot cancel the canonical credential request; exact cancellation is single-use', async () => {
+    const requestId = (await pool.query(`INSERT INTO organization_join_requests
+      (workos_user_id, user_email, workos_organization_id) VALUES ($1, 'a@unrelated.test', $2) RETURNING id`, [A, ORG])).rows[0].id;
+    await link(A, B);
+
+    const sibling = await request(app).delete(`/api/join-requests/${requestId}`).set('Cookie', cookie(B));
+    expect(sibling.status).toBe(404);
+    expect((await pool.query('SELECT status FROM organization_join_requests WHERE id = $1', [requestId])).rows[0].status).toBe('pending');
+
+    const exact = await request(app).delete(`/api/join-requests/${requestId}`).set('Cookie', cookie(A, true, 'a@unrelated.test'));
+    expect(exact.status, JSON.stringify(exact.body)).toBe(200);
+    const replay = await request(app).delete(`/api/join-requests/${requestId}`).set('Cookie', cookie(A, true, 'a@unrelated.test'));
+    expect(replay.status).toBe(404);
+    expect((await pool.query('SELECT status FROM organization_join_requests WHERE id = $1', [requestId])).rows[0].status).toBe('cancelled');
+    expectNoProviders();
+  });
+
+  it('warm-cookie cancellation reports authorization_unavailable before changing the request', async () => {
+    const requestId = (await pool.query(`INSERT INTO organization_join_requests
+      (workos_user_id, user_email, workos_organization_id) VALUES ($1, 'b@containment.test', $2) RETURNING id`, [B, ORG])).rows[0].id;
+    const auth = cookie(B);
+    mocks.jwtOutage = true;
+    const response = await request(app).delete(`/api/join-requests/${requestId}`).set('Cookie', auth);
+    expect(response.status).toBe(503);
+    expect(response.body.error).toBe('authorization_unavailable');
+    expect((await pool.query('SELECT status FROM organization_join_requests WHERE id = $1', [requestId])).rows[0].status).toBe('pending');
+    expectNoProviders();
+  });
+
+  it('exact cancellation holds the request row, wins deterministically, and blocks approval provider calls', async () => {
+    const advisoryKey = 6827002;
+    const blocker = await pool.connect();
+    const requestId = (await pool.query(`INSERT INTO organization_join_requests
+      (workos_user_id, user_email, workos_organization_id) VALUES ($1, 'b@containment.test', $2) RETURNING id`, [B, ORG])).rows[0].id;
+    await pool.query(`INSERT INTO organization_memberships
+      (workos_user_id, workos_organization_id, workos_membership_id, email, role, seat_type)
+      VALUES ($1, $2, 'om_cancel_admin', 'a@unrelated.test', 'admin', 'contributor')`, [A, ORG]);
+    mocks.list.mockImplementation(async ({ userId }: any) => ({ data: userId === A ? [{
+      id: 'om_cancel_admin', userId: A, organizationId: ORG, status: 'active', role: { slug: 'admin' },
+    }] : [] }));
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT pg_advisory_xact_lock($1)', [advisoryKey]);
+      await pool.query(`CREATE FUNCTION containment_cancel_barrier() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF NEW.status = 'cancelled' THEN PERFORM pg_advisory_xact_lock(${advisoryKey}); END IF; RETURN NEW; END $$`);
+      await pool.query(`CREATE TRIGGER containment_cancel_barrier BEFORE UPDATE ON organization_join_requests
+        FOR EACH ROW EXECUTE FUNCTION containment_cancel_barrier()`);
+
+      const cancellation = request(app).delete(`/api/join-requests/${requestId}`)
+        .set('Cookie', cookie(B)).then(response => response);
+      await waitForDatabaseLock('UPDATE organization_join_requests');
+      const approval = request(app).post(`/api/organizations/${ORG}/join-requests/${requestId}/approve`)
+        .set('Cookie', cookie(A, true, 'a@unrelated.test')).send({ role: 'member' }).then(response => response);
+      await waitForDatabaseLock('SELECT * FROM organization_join_requests');
+      expect(mocks.create).not.toHaveBeenCalled();
+
+      await blocker.query('COMMIT');
+      expect((await cancellation).status).toBe(200);
+      expect((await approval).status).toBe(409);
+      expect((await pool.query('SELECT status FROM organization_join_requests WHERE id = $1', [requestId])).rows[0].status).toBe('cancelled');
+      expect(mocks.create).not.toHaveBeenCalled();
+      expect((await pool.query('SELECT 1 FROM registry_audit_log WHERE resource_id = $1', [requestId])).rowCount).toBe(0);
+    } finally {
+      await blocker.query('ROLLBACK').catch(() => {});
+      blocker.release();
+      await pool.query('DROP TRIGGER IF EXISTS containment_cancel_barrier ON organization_join_requests');
+      await pool.query('DROP FUNCTION IF EXISTS containment_cancel_barrier()');
+    }
+  });
   it.each(routes)('invalid auth remains 401 on %s', async (path, body) => {
     expect((await request(app).post(path).send(body)).status).toBe(401);
     expectNoProviders();
@@ -327,6 +401,21 @@ describe('mounted implicit onboarding containment', () => {
     expect(res.status).toBe(200);
     const rows = await pool.query('SELECT workos_user_id, role FROM organization_memberships WHERE workos_organization_id = $1', [ORG]);
     expect(rows.rows).toEqual([{ workos_user_id: B, role: 'member' }]);
+    expectNoProviders();
+  });
+  it('active membership replay at capacity preserves its seat and mirrors the provider role', async () => {
+    await pool.query('UPDATE organizations SET membership_tier = NULL, subscription_status = NULL WHERE workos_organization_id = $1', [ORG]);
+    await pool.query(`INSERT INTO organization_memberships
+      (workos_user_id, workos_organization_id, workos_membership_id, email, role, seat_type, provisioning_source)
+      VALUES ($1, $2, 'om_containment', 'b@containment.test', 'member', 'community_only', 'invited')`, [B, ORG]);
+    const response = await request(app).post('/api/webhooks/workos').set('WorkOS-Signature', 'test').send({
+      id: 'evt_replay_at_capacity', event: 'organization_membership.updated', created_at: new Date().toISOString(),
+      data: { id: 'om_containment', user_id: B, organization_id: ORG, status: 'active', role: { slug: 'admin' } },
+    });
+    expect(response.status).toBe(200);
+    expect((await pool.query(`SELECT role, seat_type, provisioning_source FROM organization_memberships
+      WHERE workos_user_id = $1 AND workos_organization_id = $2`, [B, ORG])).rows)
+      .toEqual([{ role: 'admin', seat_type: 'community_only', provisioning_source: 'invited' }]);
     expectNoProviders();
   });
   it.each(['members/by-email', 'invitations', 'certification-invites'])('%s producer followed by acceptance never synthesizes owner', async (producer) => {

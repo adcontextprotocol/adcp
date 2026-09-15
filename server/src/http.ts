@@ -56,6 +56,8 @@ import { brandJsonCacheControl } from "./services/brand-resolution-cache-policy.
 import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
+import { cancelJoinRequestForExactCredential, MembershipMutationError } from "./services/organization-membership-mutation.js";
+import { getOrganizationAuthorizationUserId } from "./auth/organization-principal.js";
 import { SlackDatabase } from "./db/slack-db.js";
 import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
@@ -9154,13 +9156,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // DELETE /api/join-requests/:requestId - Cancel a pending join request
     this.app.delete('/api/join-requests/:requestId', requireAuth, async (req, res) => {
       try {
-        const user = req.user!;
         const { requestId } = req.params;
-
-        const joinRequestDb = new JoinRequestDatabase();
-
-        // Cancel the request (will only work if it belongs to this user and is pending)
-        const cancelled = await joinRequestDb.cancelRequest(requestId, user.id);
+        const actorId = getOrganizationAuthorizationUserId(req.user!);
+        const cancelled = await cancelJoinRequestForExactCredential(req, requestId);
 
         if (!cancelled) {
           return res.status(404).json({
@@ -9169,7 +9167,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           });
         }
 
-        logger.info({ userId: user.id, requestId }, 'Join request cancelled');
+        logger.info({ userId: actorId, requestId }, 'Join request cancelled');
 
         res.json({
           success: true,
@@ -9177,6 +9175,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         });
       } catch (error) {
         logger.error({ err: error }, 'Cancel join request error:');
+        if (error instanceof MembershipMutationError) {
+          return res.status(error.status).json({ error: error.message });
+        }
         res.status(500).json({
           error: 'Failed to cancel join request',
         });
