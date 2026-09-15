@@ -44,7 +44,7 @@ WITH previous AS MATERIALIZED (
   SET value = '{"enabled": true, "expires_at": null}'::jsonb,
       description = 'Collect read-only Legacy, Spec, and Sandbox comparisons from completed compliance heartbeats',
       updated_at = NOW(),
-      updated_by = 'migration:591_enable_verification_profile_comparisons'
+      updated_by = 'migration:598_enable_verification_profile_comparisons'
   WHERE key = 'verification_profile_shadow_rollout'
   RETURNING value
 )
@@ -53,6 +53,6 @@ SELECT
   'verification_profile_shadow_rollout',
   previous.value,
   updated.value,
-  'migration:591_enable_verification_profile_comparisons',
+  'migration:598_enable_verification_profile_comparisons',
   NOW()
 FROM previous CROSS JOIN updated;

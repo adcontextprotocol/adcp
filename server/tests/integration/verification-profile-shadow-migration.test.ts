@@ -14,7 +14,7 @@ const DIAGNOSTICS_MIGRATION = readFileSync(
   'utf8',
 );
 const ENABLE_COMPARISONS_MIGRATION = readFileSync(
-  resolve(__dirname, '../../src/db/migrations/591_enable_verification_profile_comparisons.sql'),
+  resolve(__dirname, '../../src/db/migrations/598_enable_verification_profile_comparisons.sql'),
   'utf8',
 );
 
@@ -102,7 +102,7 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
     );
     expect(setting.rows).toEqual([{
       value: { enabled: true, expires_at: null },
-      updated_by: 'migration:591_enable_verification_profile_comparisons',
+      updated_by: 'migration:598_enable_verification_profile_comparisons',
     }]);
 
     const audit = await client.query<{
@@ -117,7 +117,7 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
     expect(audit.rows).toEqual([{
       old_value: { enabled: false, expires_at: null },
       new_value: { enabled: true, expires_at: null },
-      changed_by: 'migration:591_enable_verification_profile_comparisons',
+      changed_by: 'migration:598_enable_verification_profile_comparisons',
     }]);
   });
 

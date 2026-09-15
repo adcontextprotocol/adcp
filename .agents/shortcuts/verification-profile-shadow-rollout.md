@@ -8,7 +8,7 @@ notifications.
 
 ## 1. Deploy read-only comparison
 
-Migration `591_enable_verification_profile_comparisons.sql` turns the existing
+Migration `598_enable_verification_profile_comparisons.sql` turns the existing
 audited switch on persistently as `{ "enabled": true, "expires_at": null }`.
 It records the old and new values in `system_settings_audit`. The worker reuses
 completed authoritative heartbeat evidence; it sends no additional request to
