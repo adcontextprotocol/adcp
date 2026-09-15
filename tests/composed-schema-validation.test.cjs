@@ -3815,6 +3815,58 @@ async function runTests() {
     },
     'sync_accounts returns canonical identity and revision while a desired transition awaits approval'
   );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-001' },
+        revision: 4,
+        name: 'Acme — Social',
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts settings-update-mode results echo account instead of requiring brand/operator'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-unreachable' },
+        action: 'failed',
+        status: 'closed',
+        errors: [{ code: 'ACCOUNT_NOT_FOUND', message: 'Account does not exist or is not accessible.' }]
+      }]
+    },
+    'sync_accounts settings-update-mode failed results are representable without a resolvable brand/operator tuple'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { brand: { domain: 'nova-athletics.example' }, operator: 'pinnacle-media.example' },
+        revision: 2,
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts settings-update-mode results accept a natural-key account reference'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account_id: 'acct-social-001',
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts results with neither account nor brand+operator are rejected — the flat legacy account_id alone does not satisfy the identity discriminator'
+  );
   await testSchemaRejection(
     '/schemas/core/account.json',
     {
