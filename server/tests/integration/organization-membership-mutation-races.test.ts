@@ -1,6 +1,4 @@
 import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import express from 'express';
-import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import type { Pool } from 'pg';
@@ -72,17 +70,58 @@ vi.mock('../../src/slack/org-group-dm.js', () => ({
   notifyMemberSeatChanged: async () => { state.notifications.push('member_seat'); },
 }));
 vi.mock('../../src/addie/mcp/admin-tools.js', () => ({ isWebUserAAOAdmin: vi.fn().mockResolvedValue(false) }));
-vi.mock('../../src/middleware/rate-limit.js', () => ({
+vi.mock('../../src/middleware/rate-limit.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/rate-limit.js')>()),
   invitationRateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
   orgCreationRateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
+vi.mock('../../src/middleware/organization-authorization-observer.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/organization-authorization-observer.js')>()),
+  observeLinkedCredentialOrganizationAuthorization: vi.fn(),
+}));
+// HTTPServer supplies the production cookie/CSRF/organization route ordering. Keep unrelated
+// route graphs inert so this focused harness does not initialize Addie indexes or agent tenants.
+vi.mock('../../src/routes/addie-admin.js', async () => {
+  const express = (await import('express')).default;
+  return { createAddieAdminRouter: () => ({ pageRouter: express.Router(), apiRouter: express.Router() }) };
+});
+vi.mock('../../src/routes/addie-chat.js', async () => {
+  const express = (await import('express')).default;
+  return { createAddieChatRouter: () => ({ pageRouter: express.Router(), apiRouter: express.Router() }), isWebChatReady: () => false };
+});
+vi.mock('../../src/routes/slack.js', async () => {
+  const express = (await import('express')).default;
+  return { createSlackRouter: () => ({ aaobotRouter: express.Router(), addieRouter: express.Router() }) };
+});
+vi.mock('../../src/routes/registry-api.js', async () => {
+  const express = (await import('express')).default;
+  return { createRegistryApiRouters: () => ({ router: express.Router(), v1AgentsRouter: express.Router(), complianceRefreshQueue: null }) };
+});
+vi.mock('../../src/training-agent/index.js', async () => {
+  const express = (await import('express')).default;
+  return { createTrainingAgentRouter: () => express.Router() };
+});
+vi.mock('../../src/creative-agent/index.js', async () => {
+  const express = (await import('express')).default;
+  return { createCreativeAgentRouter: () => express.Router() };
+});
+vi.mock('../../src/addie/index.js', () => ({
+  sendAccountLinkedMessage: vi.fn(),
+  invalidateMemberContextCache: vi.fn(),
+  isAddieBoltReady: () => false,
+}));
+vi.mock('../../src/addie/jobs/scheduler.js', () => ({
+  jobScheduler: { startAll: vi.fn(), stop: vi.fn(), stopAll: vi.fn() },
+}));
+vi.mock('../../src/addie/jobs/job-definitions.js', () => ({
+  registerAllJobs: vi.fn(),
+  JOB_NAMES: { GEO_MONITOR: 'geo-monitor', GEO_SNAPSHOT: 'geo-snapshot', GEO_CONTENT_PLANNER: 'geo-content-planner' },
+}));
 
-import { createOrganizationsRouter } from '../../src/routes/organizations.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { __setJWKSForTesting } from '../../src/auth/workos-jwt.js';
 import { stopAuthTimers } from '../../src/middleware/auth.js';
-import { csrfProtection } from '../../src/middleware/csrf.js';
 import { JoinRequestDatabase } from '../../src/db/join-request-db.js';
 
 const org = 'org_mutation_race_test';
@@ -98,11 +137,7 @@ let sequence = 0;
 let joinId: string;
 let seatId: string;
 let identityId: string;
-const app = express();
-app.use(express.json());
-app.use(cookieParser());
-app.use(csrfProtection);
-app.use('/api/organizations', createOrganizationsRouter());
+let app: Parameters<typeof request>[0];
 const CSRF_TOKEN = 'b'.repeat(64);
 
 async function token(actor = A, selected: string | undefined = org) {
@@ -174,6 +209,8 @@ function call(family: Family, authCookie: string) {
 beforeAll(async () => {
   pool = initializeDatabase({ connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:55432/adcp_mutation_race_test', maxPoolSize: 12 });
   await runMigrations();
+  const { HTTPServer } = await import('../../src/http.js');
+  app = (new HTTPServer({ backgroundServices: 'refresh-only' }) as unknown as { app: Parameters<typeof request>[0] }).app;
   const keys = await generateKeyPair('RS256');
   signingKey = keys.privateKey;
   verificationKey = keys.publicKey;

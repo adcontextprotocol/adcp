@@ -1,6 +1,5 @@
 import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import express from 'express';
-import cookieParser from 'cookie-parser';
+import express, { type Request, type Response } from 'express';
 import request from 'supertest';
 import { generateKeyPair, SignJWT } from 'jose';
 import type { Pool } from 'pg';
@@ -56,19 +55,60 @@ vi.mock('@workos-inc/node', () => {
   } };
 });
 vi.mock('../../src/addie/mcp/admin-tools.js', () => ({ isWebUserAAOAdmin: vi.fn().mockResolvedValue(false) }));
-vi.mock('../../src/middleware/rate-limit.js', () => ({
+vi.mock('../../src/middleware/rate-limit.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/rate-limit.js')>()),
   invitationRateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
   orgCreationRateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+vi.mock('../../src/middleware/organization-authorization-observer.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/middleware/organization-authorization-observer.js')>()),
+  observeLinkedCredentialOrganizationAuthorization: vi.fn(),
+}));
+// HTTPServer supplies the production cookie/CSRF/organization route ordering. Keep unrelated
+// route graphs inert so this focused harness does not initialize Addie indexes or agent tenants.
+vi.mock('../../src/routes/addie-admin.js', async () => {
+  const express = (await import('express')).default;
+  return { createAddieAdminRouter: () => ({ pageRouter: express.Router(), apiRouter: express.Router() }) };
+});
+vi.mock('../../src/routes/addie-chat.js', async () => {
+  const express = (await import('express')).default;
+  return { createAddieChatRouter: () => ({ pageRouter: express.Router(), apiRouter: express.Router() }), isWebChatReady: () => false };
+});
+vi.mock('../../src/routes/slack.js', async () => {
+  const express = (await import('express')).default;
+  return { createSlackRouter: () => ({ aaobotRouter: express.Router(), addieRouter: express.Router() }) };
+});
+vi.mock('../../src/routes/registry-api.js', async () => {
+  const express = (await import('express')).default;
+  return { createRegistryApiRouters: () => ({ router: express.Router(), v1AgentsRouter: express.Router(), complianceRefreshQueue: null }) };
+});
+vi.mock('../../src/training-agent/index.js', async () => {
+  const express = (await import('express')).default;
+  return { createTrainingAgentRouter: () => express.Router() };
+});
+vi.mock('../../src/creative-agent/index.js', async () => {
+  const express = (await import('express')).default;
+  return { createCreativeAgentRouter: () => express.Router() };
+});
+vi.mock('../../src/addie/index.js', () => ({
+  sendAccountLinkedMessage: vi.fn(),
+  invalidateMemberContextCache: vi.fn(),
+  isAddieBoltReady: () => false,
+}));
+vi.mock('../../src/addie/jobs/scheduler.js', () => ({
+  jobScheduler: { startAll: vi.fn(), stop: vi.fn(), stopAll: vi.fn() },
+}));
+vi.mock('../../src/addie/jobs/job-definitions.js', () => ({
+  registerAllJobs: vi.fn(),
+  JOB_NAMES: { GEO_MONITOR: 'geo-monitor', GEO_SNAPSHOT: 'geo-snapshot', GEO_CONTENT_PLANNER: 'geo-content-planner' },
 }));
 vi.mock('../../src/services/organization-membership-notifications.js', () => ({ notifyMembershipSeats: vi.fn(), notifyMembershipSeatRequest: vi.fn() }));
 vi.mock('../../src/slack/org-group-dm.js', () => ({ notifyMemberSeatChanged: vi.fn() }));
 
-import { createOrganizationsRouter } from '../../src/routes/organizations.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { __setJWKSForTesting } from '../../src/auth/workos-jwt.js';
 import { stopAuthTimers, invalidateBanCache, optionalAuth, requireAuth } from '../../src/middleware/auth.js';
-import { csrfProtection } from '../../src/middleware/csrf.js';
 import { MembershipMutationError, toPublicMembershipMutationError } from '../../src/services/organization-membership-mutation.js';
 import { getOrganizationAuthorizationUserId } from '../../src/auth/organization-principal.js';
 
@@ -85,17 +125,14 @@ let sequence = 0;
 let joinId: string;
 let seatId: string;
 let identityId: string;
-const app = express();
-app.use(express.json());
-app.use(cookieParser());
-app.use(csrfProtection);
-const authProbe = (req: express.Request, res: express.Response) => res.json({
+let app: Parameters<typeof request>[0];
+const authProbe = (req: Request, res: Response) => res.json({
   canonical_user_id: req.user?.id,
   credential_user_id: req.user ? getOrganizationAuthorizationUserId(req.user) : null,
 });
-app.get('/auth/optional-probe', optionalAuth, authProbe);
-app.get('/auth/required-probe', requireAuth, authProbe);
-app.use('/api/organizations', createOrganizationsRouter());
+const authProbeApp = express();
+authProbeApp.get('/auth/optional-probe', optionalAuth, authProbe);
+authProbeApp.get('/auth/required-probe', requireAuth, authProbe);
 const CSRF_TOKEN = 'a'.repeat(64);
 
 describe('membership mutation public error projection', () => {
@@ -191,6 +228,8 @@ function call(family: Family, authCookie: string) {
 beforeAll(async () => {
   pool = initializeDatabase({ connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:55432/adcp_test', maxPoolSize: 12 });
   await runMigrations();
+  const { HTTPServer } = await import('../../src/http.js');
+  app = (new HTTPServer({ backgroundServices: 'refresh-only' }) as unknown as { app: Parameters<typeof request>[0] }).app;
   const keys = await generateKeyPair('RS256');
   signingKey = keys.privateKey;
   verificationKey = keys.publicKey;
@@ -318,7 +357,7 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
       it(`${direction} bearer cache remains exact across ${order.join(' to ')} auth`, async () => {
         const bearer = await token(credential);
         for (const kind of order) {
-          const response = await request(app).get(`/auth/${kind}-probe`).set('Authorization', `Bearer ${bearer}`);
+          const response = await request(authProbeApp).get(`/auth/${kind}-probe`).set('Authorization', `Bearer ${bearer}`);
           expect(response.status, JSON.stringify(response.body)).toBe(200);
           expect(response.body).toEqual({ canonical_user_id: B, credential_user_id: credential });
         }
@@ -333,20 +372,20 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
   }
   it('optional bearer cache preserves exact credential ban enforcement', async () => {
     const bearer = await token(A);
-    expect((await request(app).get('/auth/optional-probe').set('Authorization', `Bearer ${bearer}`)).status).toBe(200);
+    expect((await request(authProbeApp).get('/auth/optional-probe').set('Authorization', `Bearer ${bearer}`)).status).toBe(200);
     await pool.query("INSERT INTO bans (ban_type,entity_id,scope,banned_by_user_id,reason) VALUES ('user',$1,'platform',$2,'test')", [A, B]);
     invalidateBanCache('user', A);
-    const response = await request(app).get('/auth/required-probe').set('Authorization', `Bearer ${bearer}`);
+    const response = await request(authProbeApp).get('/auth/required-probe').set('Authorization', `Bearer ${bearer}`);
     expect(response.status).toBe(403);
     expect(response.body.error).toBe('Account suspended');
   });
   it('epoch change invalidates an optional bearer cache hit and exposes a verification outage', async () => {
     const bearer = await token(A);
-    expect((await request(app).get('/auth/optional-probe').set('Authorization', `Bearer ${bearer}`)).status).toBe(200);
+    expect((await request(authProbeApp).get('/auth/optional-probe').set('Authorization', `Bearer ${bearer}`)).status).toBe(200);
     await pool.query('INSERT INTO authorization_epochs (workos_user_id,epoch) VALUES ($1,1) ON CONFLICT (workos_user_id) DO UPDATE SET epoch=authorization_epochs.epoch+1', [A]);
     __setJWKSForTesting(async () => { throw Object.assign(new Error('JWKS unavailable'), { code: 'ECONNRESET' }); });
     try {
-      const response = await request(app).get('/auth/required-probe')
+      const response = await request(authProbeApp).get('/auth/required-probe')
         .set('Accept', 'application/json').set('Authorization', `Bearer ${bearer}`);
       expect(response.status).toBe(503);
       expect(response.body.error).toBe('authorization_unavailable');
