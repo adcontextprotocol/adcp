@@ -6,18 +6,21 @@ const mocks = vi.hoisted(() => {
   process.env.WORKOS_WEBHOOK_SECRET = 'private-containment-test-secret';
   return {
     sessions: new Map<string, any>(),
-    sendInvitation: vi.fn(), listUsers: vi.fn(), list: vi.fn(), getUser: vi.fn(), create: vi.fn(), update: vi.fn(),
+    sendInvitation: vi.fn(), getInvitation: vi.fn(), revokeInvitation: vi.fn(),
+    listUsers: vi.fn(), list: vi.fn(), getUser: vi.fn(), create: vi.fn(), update: vi.fn(),
     createOrg: vi.fn(), invoice: vi.fn(), products: vi.fn(), coupon: vi.fn(),
     slackSync: vi.fn(), slackConfigured: false,
   };
 });
 vi.mock('@workos-inc/node', () => ({ WorkOS: class {
   userManagement = {
-    loadSealedSession: ({ sessionData }: any) => ({ authenticate: async () => ({
-      authenticated: true, user: mocks.sessions.get(sessionData), accessToken: 'test-access',
-    }) }),
+    loadSealedSession: ({ sessionData }: any) => ({ authenticate: async () => {
+      const user = mocks.sessions.get(sessionData);
+      return { authenticated: true, user, accessToken: `test-access:${user.id}` };
+    } }),
     listOrganizationMemberships: mocks.list,
-    sendInvitation: mocks.sendInvitation, listUsers: mocks.listUsers,
+    sendInvitation: mocks.sendInvitation, getInvitation: mocks.getInvitation, revokeInvitation: mocks.revokeInvitation,
+    listUsers: mocks.listUsers,
     getUser: mocks.getUser,
     createOrganizationMembership: mocks.create,
     updateOrganizationMembership: mocks.update,
@@ -28,6 +31,16 @@ vi.mock('@workos-inc/node', () => ({ WorkOS: class {
   };
   webhooks = { constructEvent: vi.fn().mockResolvedValue({}) };
 } }));
+vi.mock('../../src/auth/workos-client.js', async (original) => {
+  const actual = await original<typeof import('../../src/auth/workos-client.js')>();
+  const { WorkOS } = await import('@workos-inc/node');
+  const instance = new WorkOS();
+  return { ...actual, getWorkos: () => instance, getAuthorizationEnforcementWorkos: () => instance };
+});
+vi.mock('../../src/auth/workos-jwt.js', async (original) => ({
+  ...await original<typeof import('../../src/auth/workos-jwt.js')>(),
+  verifyWorkOSJWT: async (value: string) => ({ sub: value.replace(/^test-access:/, ''), isM2M: false }),
+}));
 vi.mock('../../src/middleware/csrf.js', () => ({ csrfProtection: (_req: any, _res: any, next: any) => next() }));
 vi.mock('../../src/middleware/rate-limit.js', async (original) => {
   const actual = await original<typeof import('../../src/middleware/rate-limit.js')>();
@@ -140,8 +153,9 @@ beforeEach(async () => {
     VALUES ($1, 'containment.test', true, true, 'workos') ON CONFLICT (domain) DO UPDATE SET verified = true`, [ORG]);
   await pool.query(`INSERT INTO membership_invites (token, workos_organization_id, lookup_key, contact_email, invited_by_user_id, expires_at)
     VALUES ($1, $2, 'test-tier', 'b@containment.test', $3, NOW() + interval '1 day')`, [TOKEN, ORG, A]);
-  mocks.sendInvitation.mockResolvedValue({ id: 'inv_containment', email: 'b@containment.test', state: 'pending',
+  mocks.sendInvitation.mockResolvedValue({ id: 'inv_containment', email: 'b@containment.test', organizationId: ORG, state: 'pending',
     expiresAt: new Date(Date.now() + 86400000).toISOString(), acceptInvitationUrl: 'https://example.test/accept' });
+  mocks.getInvitation.mockImplementation(async () => mocks.sendInvitation.mock.results.at(-1)?.value);
   mocks.listUsers.mockResolvedValue({ data: [] });
   mocks.list.mockResolvedValue({ data: [] });
   mocks.getUser.mockImplementation(async (id: string) => ({ id, email: id === B ? 'b@containment.test' : 'a@unrelated.test', emailVerified: true }));
@@ -301,8 +315,9 @@ describe('mounted implicit onboarding containment', () => {
     expectNoProviders();
   });
   it.each(['members/by-email', 'invitations', 'certification-invites'])('%s producer followed by acceptance never synthesizes owner', async (producer) => {
-    await pool.query(`INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, seat_type)
-      VALUES ($1, $2, 'a@unrelated.test', 'admin', 'contributor')`, [A, ORG]);
+    await pool.query(`INSERT INTO organization_memberships
+      (workos_user_id, workos_organization_id, workos_membership_id, email, role, seat_type)
+      VALUES ($1, $2, 'om_admin', 'a@unrelated.test', 'admin', 'contributor')`, [A, ORG]);
     mocks.list.mockImplementation(async ({ userId }: any) => ({ data: userId === A ? [{
       id: 'om_admin', userId: A, organizationId: ORG, status: 'active', role: { slug: 'admin' },
     }] : [] }));
