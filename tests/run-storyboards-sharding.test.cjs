@@ -285,7 +285,7 @@ test('creative-builder uses bounded isolated children in local and CI matrices',
 
   assert.match(
     workflow,
-    /if \[ "\$\{\{ matrix\.tenant \}\}" = "creative-builder" \]; then\n\s+bash scripts\/run-storyboards-isolated-shards\.sh/,
+    /if \[ "\$\{\{ matrix\.tenant \}\}" = "creative-builder" \] \|\| \{[^\n]+; then\n\s+bash scripts\/run-storyboards-isolated-shards\.sh/,
   );
   assert.match(workflow, /--shard-count 8 --max-parallel 4/);
   assert.match(workflow, /isolated_orchestrator_failure=0/);
@@ -352,4 +352,179 @@ test('3.0 compatibility floors are capability-resolved and mirrored locally', ()
       ),
     );
   }
+});
+
+// Exercise both unchanged graders with the real routing shell. The fixture
+// emits exact boundary counts; no network or training-agent state is involved.
+function makeCreativeGradingFixture(t) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-creative-grading-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(directory, 'scripts'));
+  fs.mkdirSync(path.join(directory, 'bin'));
+  const matrix = fs.readFileSync(MATRIX_RUNNER, 'utf8');
+  fs.writeFileSync(path.join(directory, 'scripts/run-storyboards-matrix.sh'), matrix);
+  for (const kind of ['schemas', 'compliance']) {
+    fs.mkdirSync(path.join(directory, `dist/${kind}/latest`), { recursive: true });
+    fs.writeFileSync(path.join(directory, `dist/${kind}/latest/index.json`), '{"adcp_version":"3.2.0-rc.3"}');
+    fs.writeFileSync(path.join(directory, `scripts/build-${kind}.cjs`), '');
+  }
+  const required = [...new Map([...matrix.matchAll(/^  "([^"\n]+)"$/gm)]
+    .map(match => [match[1].split(':')[0], match[1]])).values()];
+  const fixture = `#!/usr/bin/env node
+const fs = require('node:fs');
+const isolated = process.argv.includes('isolated');
+const creative = process.env.TENANT_PATH === 'creative';
+fs.appendFileSync(process.env.INVOCATIONS, JSON.stringify({
+  tenant: process.env.TENANT_PATH, isolated, args: process.argv.slice(2),
+  token: process.env.PUBLIC_TEST_AGENT_TOKEN, compliance: process.env.ADCP_COMPLIANCE_DIR,
+  schema: process.env.ADCP_SCHEMA_ROOT, candidate: process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE,
+}) + '\\n');
+for (const requirement of ${JSON.stringify(required)}) {
+  const [id, passed = '1', skipped = '0'] = requirement.split(':');
+  console.log('  ' + id + ' ✓ ' + passed + 'P / ' + skipped + 'S / 0N/A');
+}
+if (creative && process.env.OMIT_TOTALS === '1') process.exit(1);
+console.log('  storyboards: ' + (creative ? process.env.CREATIVE_CLEAN : '1000') + '/1000 clean');
+console.log('  selection: 59 applicable | 143 not applicable | 2 quarantined | 204 corpus');
+console.log('  steps: ' + (creative ? process.env.CREATIVE_PASSED : '1000') + ' passed | 1 failed | 96 skipped | 0 not applicable');
+process.exit(creative ? Number(process.env.CREATIVE_EXIT) : 0);
+`;
+  const runner = path.join(directory, 'fixture.cjs');
+  fs.writeFileSync(runner, fixture);
+  fs.writeFileSync(path.join(directory, 'scripts/run-storyboards-isolated-shards.sh'), 'exec node ./fixture.cjs isolated "$@"\n');
+  const npx = path.join(directory, 'bin/npx');
+  fs.writeFileSync(npx, '#!/usr/bin/env bash\nexec node ./fixture.cjs monolithic "$@"\n', { mode: 0o755 });
+  const env = {
+    ...process.env, PATH: `${directory}/bin:${process.env.PATH}`,
+    INVOCATIONS: path.join(directory, 'invocations.jsonl'),
+    GITHUB_OUTPUT: path.join(directory, 'outputs'), GITHUB_STEP_SUMMARY: path.join(directory, 'summary'),
+    PUBLIC_TEST_AGENT_TOKEN: 'fixture-token', ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: '1',
+    ADCP_SCHEMA_ROOT: path.join(directory, 'dist/schemas/latest'),
+    ADCP_COMPLIANCE_DIR: path.join(directory, 'dist/compliance/latest'),
+    CREATIVE_CLEAN: '49', CREATIVE_PASSED: '209', CREATIVE_EXIT: '0',
+  };
+  return { directory, env };
+}
+
+const workflowDefinition = require('yaml').parse(fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8'));
+const workflowSteps = workflowDefinition.jobs.storyboards.steps;
+function workflowScript(step, directory, tenant = 'creative', surface = 'current') {
+  return step.run.replaceAll('${{ matrix.tenant }}', tenant)
+    .replaceAll('${{ matrix.surface }}', surface)
+    .replaceAll('${{ steps.compat-bundle.outputs.version }}', '3.0.26')
+    .replaceAll('/tmp/storyboards.log', path.join(directory, 'storyboards.log'));
+}
+
+for (const target of ['matrix', 'workflow']) {
+  test(`${target} isolates current /creative and preserves exact floors, counts, environment and failures`, (t) => {
+    const { directory, env } = makeCreativeGradingFixture(t);
+    const run = overrides => spawnSync('bash', target === 'matrix'
+      ? ['scripts/run-storyboards-matrix.sh']
+      : ['-c', workflowScript(workflowSteps.find(step => step.id === 'run'), directory)], {
+      cwd: directory, encoding: 'utf8', timeout: 10000,
+      env: { ...env, TENANT_PATH: 'creative', ...overrides },
+    });
+    const success = run({});
+    assert.equal(success.status, 0, success.stderr + success.stdout);
+    const invocations = fs.readFileSync(env.INVOCATIONS, 'utf8').trim().split('\n').map(JSON.parse);
+    const creative = invocations.find(entry => entry.tenant === 'creative');
+    assert.equal(creative.isolated, true);
+    assert.deepEqual(creative.args, ['isolated', '--shard-count', '8', '--max-parallel', target === 'matrix' ? '2' : '4',
+      ...(target === 'matrix' ? ['--timeout-ms', '180000'] : [])]);
+    assert.equal(creative.token, 'fixture-token');
+    assert.equal(creative.schema, env.ADCP_SCHEMA_ROOT);
+    assert.equal(creative.compliance, env.ADCP_COMPLIANCE_DIR);
+    assert.equal(creative.candidate, '1');
+    if (target === 'matrix') {
+      assert.match(success.stdout, /\/creative: ✓ 49 clean, 209 steps/);
+      assert.equal(invocations.length, 7);
+      assert.deepEqual(invocations.filter(entry => entry.isolated).map(entry => entry.tenant), ['sales', 'creative', 'creative-builder']);
+    } else {
+      assert.equal(fs.readFileSync(env.GITHUB_OUTPUT, 'utf8'),
+        'clean=49\ntotal=1000\napplicable=59\nscope_not_applicable=143\nquarantined=2\ncorpus=204\npassed=209\nfailed=1\nskipped=96\nnot_applicable=0\n');
+    }
+    for (const overrides of [{ CREATIVE_EXIT: '1' }, { OMIT_TOTALS: '1' }]) {
+      const failed = run(overrides);
+      assert.equal(failed.status, 1, failed.stderr + failed.stdout);
+      if (target === 'matrix') assert.match(failed.stdout, /\/si: ✓/);
+    }
+    for (const [clean, passed, expected] of [['49', '209', 0], ['48', '209', 1], ['49', '208', 1]]) {
+      const graded = target === 'matrix' ? run({ CREATIVE_CLEAN: clean, CREATIVE_PASSED: passed })
+        : spawnSync('bash', ['-c', workflowScript(workflowSteps.find(step => step.name?.startsWith('Enforce non-regression')), directory)], {
+          cwd: directory, encoding: 'utf8', env: { ...env, CLEAN: clean, PASSED: passed, MIN_CLEAN: '49', MIN_PASSED: '209' },
+        });
+      assert.equal(graded.status, expected, graded.stderr + graded.stdout);
+    }
+  });
+}
+
+test('workflow preserves creative job selection, floors, required-clean checks and failure artifact', () => {
+  const job = workflowDefinition.jobs.storyboards;
+  assert.equal(job.strategy['fail-fast'], false);
+  assert.deepEqual(job.strategy.matrix.include.find(row => row.surface === 'current' && row.tenant === 'creative'),
+    { surface: 'current', tenant: 'creative', min_clean_storyboards: 49, min_passing_steps: 209 });
+  assert.equal(job.strategy.matrix.exclude.some(row => row.tenant === 'creative'), false);
+  const run = workflowSteps.find(step => step.id === 'run');
+  assert.equal(run.env.TENANT_PATH, '${{ matrix.tenant }}');
+  assert.equal(run.env.PUBLIC_TEST_AGENT_TOKEN, 'storyboard-ci-token');
+  assert.match(run.env.ADCP_COMPLIANCE_DIR, /dist\/compliance\/latest/);
+  assert.match(run.env.ADCP_SCHEMA_ROOT, /dist\/schemas\/latest/);
+  assert.match(run.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE, /matrix.surface == 'current'/);
+  const artifact = workflowSteps.find(step => step.name === 'Upload storyboards log on failure');
+  assert.equal(artifact.if, 'failure()');
+  assert.deepEqual(artifact.with, { name: 'storyboards-log-${{ matrix.surface }}-${{ matrix.tenant }}',
+    path: '/tmp/storyboards.log', 'retention-days': 14, 'if-no-files-found': 'ignore' });
+  const required = workflowSteps.find(step => step.name === 'Enforce creative required-clean storyboards');
+  assert.match(required.run, /"canonical_format_validate_input"\n\s+"creative\/billing_out_of_band"/);
+  assert.match(required.run, /exit 1/);
+});
+
+test('workflow leaves 3.0 creative monolithic and preserves creative-builder isolation on both surfaces', (t) => {
+  const { directory, env } = makeCreativeGradingFixture(t);
+  for (const [tenant, surface, isolated] of [['creative', '3.0-compat', false], ['creative-builder', 'current', true], ['creative-builder', '3.0-compat', true]]) {
+    const result = spawnSync('bash', ['-c', workflowScript(workflowSteps.find(step => step.id === 'run'), directory, tenant, surface)], {
+      cwd: directory, encoding: 'utf8', env: { ...env, TENANT_PATH: tenant },
+    });
+    assert.equal(result.status, 0, result.stderr + result.stdout);
+    const invocation = JSON.parse(fs.readFileSync(env.INVOCATIONS, 'utf8').trim().split('\n').at(-1));
+    assert.equal(invocation.isolated, isolated);
+  }
+});
+
+for (const failure of ['', 'crash', 'hang', 'malformed_result', 'inconsistent_result']) {
+  test(`creative isolated shards preserve exact child results and siblings: ${failure || 'success'}`, () => {
+    const ids = ['healthy_before', 'creative_ad_server', ...(failure ? [failure] : []), 'healthy_after'];
+    const result = spawnSync('bash', [ISOLATED_SHARDED_RUNNER, '--shard-count', '2', '--max-parallel', '2', '--timeout-ms', '1500'], {
+      cwd: REPO_ROOT, encoding: 'utf8', timeout: 15000,
+      env: { ...process.env, TENANT_PATH: 'creative', STORYBOARD_RUNNER_BIN: path.join(REPO_ROOT, 'tests/fixtures/storyboard-isolation-runner.cjs'),
+        FIXTURE_STORYBOARDS: ids.join(',') },
+    });
+    assert.equal(result.status, failure ? 1 : 0, result.stderr + result.stdout);
+    assert.match(result.stdout, new RegExp(`^  storyboards: 3/${ids.length} clean$`, 'm'));
+    assert.match(result.stdout, /^  steps: 8 passed \| 0 failed \| 0 skipped \| 0 not applicable$/m);
+    assert.match(result.stdout, /^  healthy_before\s+✓/m);
+    assert.match(result.stdout, /^  healthy_after\s+✓/m);
+    if (failure) assert.match(result.stderr, /Isolated shard .* exited 1/);
+  });
+}
+
+test('creative child task errors propagate exact failed and skipped counts through shards', () => {
+  const result = spawnSync('bash', [ISOLATED_SHARDED_RUNNER, '--shard-count', '2', '--max-parallel', '2'], {
+    cwd: REPO_ROOT, encoding: 'utf8', timeout: 15000,
+    env: { ...process.env, TENANT_PATH: 'creative', STORYBOARD_RUNNER_BIN: path.join(REPO_ROOT, 'tests/fixtures/storyboard-isolation-runner.cjs'),
+      FIXTURE_STORYBOARDS: 'healthy_before,creative_ad_server,healthy_after', FIXTURE_CREATIVE_ERROR: '1' },
+  });
+  // Task results are graded by the unchanged floors; infrastructure failures
+  // additionally fail the orchestrator even when aggregate floors are met.
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^  storyboards: 2\/3 clean$/m);
+  assert.match(result.stdout, /^  steps: 6 passed \| 1 failed \| 1 skipped \| 0 not applicable$/m);
+  assert.match(result.stdout, /^  healthy_after\s+✓/m);
+});
+
+test('registered storyboard suite runs the fail-closed operational changeset scope regressions', () => {
+  const result = spawnSync(process.execPath, [path.join(REPO_ROOT, 'tests/changeset-protocol-scope.test.cjs')], {
+    cwd: REPO_ROOT, encoding: 'utf8', timeout: 10000,
+  });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
 });
