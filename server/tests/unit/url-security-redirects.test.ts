@@ -132,6 +132,22 @@ describe('safeFetch redirects', () => {
     expect(fetchMock.mock.calls[1][0]).toBe('https://www.publisher.example/ads.txt');
     expect(fetchMock.mock.calls[2][0]).toBe('https://www.publisher.example/sites/pub/ads.txt');
   });
+
+  it('follows relative redirects under the exact-origin supply-path policy', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 302, headers: { Location: '/iab/ads.txt' } }))
+      .mockResolvedValueOnce(new Response('inventorypartnerdomain=owner.example'));
+    const response = await safeFetch('https://publisher.example/ads.txt', { redirectHostPolicy: 'same-origin', maxRedirects: 3 });
+    expect(response.status).toBe(200);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://publisher.example/iab/ads.txt');
+  });
+
+  it.each(['https://www.publisher.example/ads.txt', 'https://publisher.example:8443/ads.txt', 'http://publisher.example/ads.txt'])(
+    'refuses a changed origin without dialing it: %s', async location => {
+      fetchMock.mockResolvedValueOnce(new Response('', { status: 302, headers: { Location: location } }));
+      await expect(safeFetch('https://publisher.example/ads.txt', { redirectHostPolicy: 'same-origin', maxRedirects: 3 })).rejects.toThrow();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
 });
 
 describe('safeFetch same-registrable-domain redirects (adagents /.well-known discovery)', () => {

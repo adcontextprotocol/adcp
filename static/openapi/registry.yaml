@@ -8493,6 +8493,7 @@ paths:
                 collection_id:
                   type: string
                   minLength: 1
+                  maxLength: 256
                   description: Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals).
               required:
                 - owner_domain
@@ -8506,6 +8507,14 @@ paths:
               schema:
                 type: object
                 properties:
+                  semantics_version:
+                    type: string
+                    enum:
+                      - "1"
+                    description: Canonical supply-path evaluator semantics; pinned by the shared supply-path golden vectors.
+                  resolved_collection_id:
+                    type: string
+                    description: Concrete collection chosen for the complete path, including domain-level inquiries.
                   state:
                     type: string
                     enum:
@@ -8603,6 +8612,24 @@ paths:
                   sources:
                     type: object
                     properties:
+                      owner_fetched_at:
+                        type:
+                          - string
+                          - "null"
+                        format: date-time
+                      host_fetched_at:
+                        type:
+                          - string
+                          - "null"
+                        format: date-time
+                      owner_resolved_url:
+                        type:
+                          - string
+                          - "null"
+                      host_resolved_url:
+                        type:
+                          - string
+                          - "null"
                       owner_adagents_url:
                         type: string
                       host_adagents_url:
@@ -8611,12 +8638,17 @@ paths:
                         type: boolean
                         description: "true: manifests came from the registry's crawl cache. Re-derive from the URLs above for enforcement."
                     required:
+                      - owner_fetched_at
+                      - host_fetched_at
+                      - owner_resolved_url
+                      - host_resolved_url
                       - owner_adagents_url
                       - host_adagents_url
                       - cached
                   checked_at:
                     type: string
                 required:
+                  - semantics_version
                   - state
                   - legs
                   - owner_domain
