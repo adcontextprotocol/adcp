@@ -11,6 +11,8 @@ export interface ComplianceRunProvenance {
   timeout_ms: number | null;
   storyboard_start_offset: number | null;
   auth_type: string | null;
+  /** Redacted SDK value before heartbeat normalization; null means absent or null. */
+  reported_completeness?: unknown;
 }
 
 export function complianceRunProvenance(

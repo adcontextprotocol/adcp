@@ -22,7 +22,7 @@ import {
   type ComplianceTargetSelection,
   type ComplianceResult,
 } from '../services/compliance-testing.js';
-import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
+import { ComplianceDatabase, type LifecycleStage, type RecordComplianceRunInput } from '../../db/compliance-db.js';
 import { query, withDatabaseDeadline } from '../../db/client.js';
 import { ComplianceRefreshRequestsDatabase } from '../../db/compliance-refresh-requests-db.js';
 import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
@@ -69,6 +69,7 @@ interface HeartbeatSkipReasons {
   target_superseded: number;
   audit_only: number;
   pre_target_error: number;
+  post_run_error: number;
   agent_error: number;
 }
 
@@ -98,6 +99,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     target_superseded: 0,
     audit_only: 0,
     pre_target_error: 0,
+    post_run_error: 0,
     agent_error: 0,
   };
 
@@ -162,6 +164,8 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       confirmed: false,
       source: 'default',
     };
+    let completedRunInput: RecordComplianceRunInput | undefined;
+    let evidenceRecorded = false;
     try {
       const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
       const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `heartbeat:${agent.agent_url}` });
@@ -234,11 +238,15 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         'heartbeat',
       );
       dbInput.dry_run = false;
+      completedRunInput = dbInput;
       assertExecutionFence();
-      const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+      const { run, statusTransition, storyboardStatuses, replayedExisting } = await executionFence.withClient(
+        client => complianceDb.recordComplianceRun(dbInput, client),
+      );
+      evidenceRecorded = true;
       assertExecutionFence();
 
-      if (!isAuthoritativeComplianceRun(dbInput)) {
+      if (replayedExisting || !isAuthoritativeComplianceRun(dbInput)) {
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
         result.skipped++;
         skipReasons.audit_only++;
@@ -393,6 +401,26 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         continue;
       }
 
+      if (completedRunInput) {
+        // A failure after grading the SDK result is not an agent connectivity failure.
+        // Retain the SDK's actual completeness and evidence without publishing it.
+        // If the run already committed, a failed deferral must not duplicate it.
+        logger.error({ error, agentUrl: agent.agent_url }, 'Hosted compliance post-processing failed');
+        try {
+          assertExecutionFence();
+          if (!evidenceRecorded) {
+            const auditInput = { ...completedRunInput, is_authoritative: false };
+            await executionFence.withClient(client => complianceDb.recordComplianceRun(auditInput, client));
+          }
+          await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        } catch (recordError) {
+          logger.error({ recordError, agentUrl: agent.agent_url }, 'Could not retain or defer hosted compliance evidence');
+        }
+        result.skipped++;
+        skipReasons.post_run_error++;
+        continue;
+      }
+
       const isAgentTimeout = /timed?\s*out/i.test(errorMessage);
       const isSavedAuthConfigError = /step\.auth\.basic\.username must be a non-empty string/i.test(errorMessage);
       const capsError = classifyCapabilityResolutionError(error);
@@ -448,7 +476,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         // concurrent owner refresh invalidated the lock. Without this guard the
         // stale heartbeat failure would race with and overwrite the fresher result.
         assertExecutionFence();
-        await complianceDb.recordComplianceRun({
+        await executionFence.withClient(client => complianceDb.recordComplianceRun({
           agent_url: agent.agent_url,
           requested_compliance_target: runTarget.requested,
           adcp_version: runTarget.version,
@@ -467,7 +495,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           provenance_json: complianceRunProvenance({ adcp_version: runTarget.version, agent_profile: {} as ComplianceResult['agent_profile'] }),
           is_authoritative: false,
           replace_storyboard_statuses: true,
-        });
+        }, client));
 
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
       } catch (recordError) {
