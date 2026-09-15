@@ -20,6 +20,27 @@ export function isMembershipRole(value: unknown): value is Role {
 export class MembershipMutationError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
+
+export type PublicMembershipMutationError = {
+  status: 400 | 401 | 403 | 404 | 409 | 500 | 503;
+  body: { error: 'invalid_request' | 'invalid_credential' | 'access_denied' | 'not_found'
+    | 'membership_state_conflict' | 'authorization_unavailable' | 'internal_error' };
+};
+
+/** Project internal/provider detail onto a finite public protocol vocabulary. */
+export function toPublicMembershipMutationError(error: unknown): PublicMembershipMutationError {
+  if (error instanceof MembershipMutationError) {
+    switch (error.status) {
+      case 400: return { status: 400, body: { error: 'invalid_request' } };
+      case 401: return { status: 401, body: { error: 'invalid_credential' } };
+      case 403: return { status: 403, body: { error: 'access_denied' } };
+      case 404: return { status: 404, body: { error: 'not_found' } };
+      case 409: return { status: 409, body: { error: 'membership_state_conflict' } };
+      case 503: return { status: 503, body: { error: 'authorization_unavailable' } };
+    }
+  }
+  return { status: 500, body: { error: 'internal_error' } };
+}
 export function mutationDenied(message = 'Access denied'): never {
   throw new MembershipMutationError(403, message);
 }
@@ -96,8 +117,10 @@ export class OrganizationMembershipMutation {
   get platformAdmin(): boolean { return this.staticAdmin || (this.allowPlatformAdmin && this.snapshot.platform_admin); }
 
   private async readSnapshot(): Promise<Snapshot> {
-    const result = await this.db.query<Snapshot>(
-      `SELECT EXISTS (SELECT 1 FROM users WHERE workos_user_id = $1) AS credential_exists,
+    let rows: Snapshot[];
+    try {
+      rows = (await this.db.query<Snapshot>(
+        `SELECT EXISTS (SELECT 1 FROM users WHERE workos_user_id = $1) AS credential_exists,
               iwu.identity_id, COALESCE(primary_iwu.workos_user_id, $1) AS canonical_user_id,
               ae.epoch::text AS epoch, iwu.xmin::text AS binding_version,
               om.workos_membership_id AS membership_id, om.xmin::text AS membership_version,
@@ -117,10 +140,14 @@ export class OrganizationMembershipMutation {
          LEFT JOIN authorization_epochs ae ON ae.workos_user_id = $1
          LEFT JOIN organization_memberships om
            ON om.workos_user_id = $1 AND om.workos_organization_id = $2`,
-      [this.actorId, this.orgId],
-    );
-    if (result.rows.length !== 1) throw new MembershipMutationError(503, 'Authorization state unavailable');
-    const row = result.rows[0];
+        [this.actorId, this.orgId],
+      )).rows;
+    } catch (error) {
+      logger.error({ error, actorId: this.actorId, orgId: this.orgId }, 'Authorization snapshot read failed');
+      throw new MembershipMutationError(503, 'Authorization state unavailable');
+    }
+    if (rows.length !== 1) throw new MembershipMutationError(503, 'Authorization state unavailable');
+    const row = rows[0];
     if (row.banned) mutationDenied('Account suspended');
     if (!this.staticAdmin && !row.credential_exists) throw new MembershipMutationError(401, 'Invalid credential');
     if (!this.staticAdmin && !(this.allowPlatformAdmin && row.platform_admin)) {
@@ -366,8 +393,10 @@ export class OrganizationMembershipMutation {
 }
 
 async function readCancellationSnapshot(db: PoolClient, actorId: string, orgId: string): Promise<CancellationSnapshot> {
-  const result = await db.query<CancellationSnapshot>(
-    `SELECT EXISTS (SELECT 1 FROM users WHERE workos_user_id = $1) AS credential_exists,
+  let rows: CancellationSnapshot[];
+  try {
+    rows = (await db.query<CancellationSnapshot>(
+      `SELECT EXISTS (SELECT 1 FROM users WHERE workos_user_id = $1) AS credential_exists,
             iwu.identity_id, COALESCE(primary_iwu.workos_user_id, $1) AS canonical_user_id,
             ae.epoch::text AS epoch, iwu.xmin::text AS binding_version,
             EXISTS (SELECT 1 FROM bans WHERE scope = 'platform'
@@ -379,10 +408,14 @@ async function readCancellationSnapshot(db: PoolClient, actorId: string, orgId: 
        LEFT JOIN identity_workos_users primary_iwu
          ON primary_iwu.identity_id = iwu.identity_id AND primary_iwu.is_primary = TRUE
        LEFT JOIN authorization_epochs ae ON ae.workos_user_id = $1`,
-    [actorId, orgId],
-  );
-  if (result.rows.length !== 1) throw new MembershipMutationError(503, 'authorization_unavailable');
-  return result.rows[0];
+      [actorId, orgId],
+    )).rows;
+  } catch (error) {
+    logger.error({ error, actorId, orgId }, 'Cancellation authorization snapshot read failed');
+    throw new MembershipMutationError(503, 'authorization_unavailable');
+  }
+  if (rows.length !== 1) throw new MembershipMutationError(503, 'authorization_unavailable');
+  return rows[0];
 }
 
 /** Cancel only for the immutable credential that created the request. */

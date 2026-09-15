@@ -187,7 +187,7 @@ describe('Personal Workspace Restrictions', () => {
         .send({ email: 'test@example.com', role: 'member' })
         .expect(400);
 
-      expect(response.body.error).toContain('Personal workspaces cannot have team members');
+      expect(response.body.error).toBe('invalid_request');
       expect(sendInvitation).not.toHaveBeenCalled();
       expect((await pool.query('SELECT 1 FROM registry_audit_log WHERE workos_organization_id = $1', [TEST_PERSONAL_ORG_ID])).rowCount).toBe(0);
     });

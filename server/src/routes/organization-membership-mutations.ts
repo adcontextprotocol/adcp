@@ -8,7 +8,7 @@ import type { JoinRequest } from '../db/join-request-db.js';
 import type { SeatType, SeatUpgradeRequest } from '../db/organization-db.js';
 import {
   MembershipMutationError, OrganizationMembershipMutation as Mutation,
-  isMembershipRole, mutationDenied, type MutationReply, type Role,
+  isMembershipRole, mutationDenied, toPublicMembershipMutationError, type MutationReply, type Role,
 } from '../services/organization-membership-mutation.js';
 import { createLogger } from '../logger.js';
 import { notifyMemberSeatChanged } from '../slack/org-group-dm.js';
@@ -182,9 +182,9 @@ function handler(minimumRole: Role, allowPlatformAdmin: boolean, operation: (tx:
       const result = await Mutation.run(req, minimumRole, allowPlatformAdmin, tx => operation(tx, req));
       res.status(result.status ?? 200).json(result.body);
     } catch (error) {
-      const status = error instanceof MembershipMutationError ? error.status : 503;
-      if (!(error instanceof MembershipMutationError)) logger.error({ error }, 'Membership mutation unavailable');
-      res.status(status).json({ error: error instanceof MembershipMutationError ? error.message : 'Membership service unavailable' });
+      logger.error({ error }, 'Membership mutation rejected');
+      const publicError = toPublicMembershipMutationError(error);
+      res.status(publicError.status).json(publicError.body);
     }
   };
 }

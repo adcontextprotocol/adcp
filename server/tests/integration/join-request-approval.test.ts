@@ -245,7 +245,7 @@ describe('Join Request Approval', () => {
       .send({ role: 'member' })
       .expect(409);
 
-    expect(response.body.error).toBe('organization_membership_already_exists');
+    expect(response.body.error).toBe('membership_state_conflict');
 
     // An already-existing provider member is not proof this request was approved.
     const result = await pool.query(
@@ -267,7 +267,7 @@ describe('Join Request Approval', () => {
       .send({ role: 'member' })
       .expect(409);
 
-    expect(response.body.error).toBe('cannot_reactivate_pending_organization_membership');
+    expect(response.body.error).toBe('membership_state_conflict');
 
     // Row must stay pending — user was NOT added
     const result = await pool.query(
@@ -283,7 +283,7 @@ describe('Join Request Approval', () => {
       .send({ role: 'member' })
       .expect(404);
 
-    expect(response.body.error).toBe('Request not found');
+    expect(response.body.error).toBe('not_found');
   });
 
   it('returns 400 for invalid role', async () => {
@@ -292,7 +292,7 @@ describe('Join Request Approval', () => {
       .send({ role: 'owner' })
       .expect(400);
 
-    expect(response.body.error).toBe('Invalid role');
+    expect(response.body.error).toBe('invalid_request');
   });
 });
 

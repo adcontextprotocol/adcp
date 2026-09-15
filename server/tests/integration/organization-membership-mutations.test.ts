@@ -9,7 +9,7 @@ const state = vi.hoisted(() => {
   process.env.ADMIN_API_KEY = 'membership-test-static-key';
   return {
     members: new Map<string, any>(), invitations: new Map<string, any>(), users: new Map<string, any>(), sessions: new Map<string, any>(),
-    reads: [] as string[], writes: [] as string[],
+    reads: [] as string[], writes: [] as string[], apiKeyValidations: 0,
     beforeRead: undefined as undefined | (() => Promise<void>),
     afterWrite: undefined as undefined | (() => Promise<void>),
     rejectWrite: undefined as unknown,
@@ -30,7 +30,7 @@ vi.mock('@workos-inc/node', () => {
     return structuredClone(value);
   }
   return { WorkOS: class {
-    apiKeys = { createValidation: async () => ({ apiKey: { id: 'key_test', name: 'test', owner: { id: 'org_mutation_test' }, permissions: ['admin'] } }) };
+    apiKeys = { createValidation: async () => { state.apiKeyValidations++; return { apiKey: { id: 'key_test', name: 'test', owner: { id: 'org_mutation_test' }, permissions: ['admin'] } }; } };
     userManagement = {
       loadSealedSession: ({ sessionData }: any) => ({ authenticate: async () => state.sessions.get(sessionData) ?? { authenticated: false }, refresh: async () => ({ authenticated: false }) }),
       listOrganizationMemberships: async ({ userId, organizationId, statuses }: any) => {
@@ -67,7 +67,10 @@ import { createOrganizationsRouter } from '../../src/routes/organizations.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { __setJWKSForTesting } from '../../src/auth/workos-jwt.js';
-import { stopAuthTimers, invalidateBanCache } from '../../src/middleware/auth.js';
+import { stopAuthTimers, invalidateBanCache, optionalAuth, requireAuth } from '../../src/middleware/auth.js';
+import { csrfProtection } from '../../src/middleware/csrf.js';
+import { MembershipMutationError, toPublicMembershipMutationError } from '../../src/services/organization-membership-mutation.js';
+import { getOrganizationAuthorizationUserId } from '../../src/auth/organization-principal.js';
 
 const org = 'org_mutation_test';
 const otherOrg = 'org_mutation_other';
@@ -77,13 +80,51 @@ const target = 'user_mutation_target';
 const newcomer = 'user_mutation_new';
 let pool: Pool;
 let signingKey: Awaited<ReturnType<typeof generateKeyPair>>['privateKey'];
+let verificationKey: Awaited<ReturnType<typeof generateKeyPair>>['publicKey'];
 let sequence = 0;
 let joinId: string;
 let seatId: string;
 let identityId: string;
 const app = express();
-app.use(express.json(), cookieParser());
+app.use(express.json());
+app.use(cookieParser());
+app.use(csrfProtection);
+const authProbe = (req: express.Request, res: express.Response) => res.json({
+  canonical_user_id: req.user?.id,
+  credential_user_id: req.user ? getOrganizationAuthorizationUserId(req.user) : null,
+});
+app.get('/auth/optional-probe', optionalAuth, authProbe);
+app.get('/auth/required-probe', requireAuth, authProbe);
 app.use('/api/organizations', createOrganizationsRouter());
+const CSRF_TOKEN = 'a'.repeat(64);
+
+describe('membership mutation public error projection', () => {
+  const cases = [
+    [400, 'invalid_request'],
+    [401, 'invalid_credential'],
+    [403, 'access_denied'],
+    [404, 'not_found'],
+    [409, 'membership_state_conflict'],
+    [503, 'authorization_unavailable'],
+  ] as const;
+
+  for (const [status, code] of cases) {
+    it(`maps internal status ${status} to finite public code ${code} without detail`, () => {
+      const secret = `provider-secret-${status}`;
+      const projected = toPublicMembershipMutationError(new MembershipMutationError(status, secret));
+      expect(projected).toEqual({ status, body: { error: code } });
+      expect(JSON.stringify(projected)).not.toContain(secret);
+    });
+  }
+
+  it('maps unknown typed and untyped failures to internal_error without arbitrary detail', () => {
+    for (const error of [new MembershipMutationError(418, 'database-secret'), new Error('provider-secret')]) {
+      const projected = toPublicMembershipMutationError(error);
+      expect(projected).toEqual({ status: 500, body: { error: 'internal_error' } });
+      expect(JSON.stringify(projected)).not.toMatch(/database-secret|provider-secret/);
+    }
+  });
+});
 
 async function token(actor = A, selected: string | undefined = org) {
   return new SignJWT({ client_id: 'client_mock_id', ...(selected ? { org_id: selected } : {}) }).setProtectedHeader({ alg: 'RS256' }).setSubject(actor).setIssuedAt().setJti(String(++sequence)).setExpirationTime('5m').sign(signingKey);
@@ -91,7 +132,7 @@ async function token(actor = A, selected: string | undefined = org) {
 async function cookie(actor = A, selected: string | undefined = org) {
   const value = `session_${++sequence}`;
   state.sessions.set(value, { authenticated: true, user: state.users.get(actor), accessToken: await token(actor, selected) });
-  return `wos-session=${value}`;
+  return `wos-session=${value}; csrf-token=${CSRF_TOKEN}`;
 }
 async function member(userId: string, role = 'owner', organizationId = org) {
   const id = `om_${userId}`;
@@ -143,7 +184,8 @@ const families: Family[] = [
   { name: 'deny seat', method: 'post', path: () => `/seat-requests/${seatId}/deny` },
 ];
 function call(family: Family, authCookie: string) {
-  return request(app)[family.method](`/api/organizations/${org}${family.path()}`).set('Cookie', authCookie).send(family.body?.() ?? {});
+  return request(app)[family.method](`/api/organizations/${org}${family.path()}`)
+    .set('Cookie', authCookie).set('X-CSRF-Token', CSRF_TOKEN).send(family.body?.() ?? {});
 }
 
 beforeAll(async () => {
@@ -151,13 +193,14 @@ beforeAll(async () => {
   await runMigrations();
   const keys = await generateKeyPair('RS256');
   signingKey = keys.privateKey;
-  __setJWKSForTesting(async () => keys.publicKey);
+  verificationKey = keys.publicKey;
+  __setJWKSForTesting(async () => verificationKey);
 }, 60000);
 afterAll(async () => { stopAuthTimers(); __setJWKSForTesting(null); await closeDatabase(); });
 beforeEach(async () => {
   for (const id of [A, B, target, newcomer]) invalidateBanCache('user', id);
   invalidateBanCache('apikey', 'key_test');
-  state.members.clear(); state.invitations.clear(); state.users.clear(); state.sessions.clear(); state.reads = []; state.writes = [];
+  state.members.clear(); state.invitations.clear(); state.users.clear(); state.sessions.clear(); state.reads = []; state.writes = []; state.apiKeyValidations = 0;
   state.beforeRead = undefined; state.afterWrite = undefined; state.rejectWrite = undefined; state.outage = false;
   await pool.query('DROP TRIGGER IF EXISTS membership_test_audit ON registry_audit_log');
   await pool.query('DROP TRIGGER IF EXISTS membership_test_update ON organization_memberships');
@@ -186,6 +229,21 @@ beforeEach(async () => {
 });
 
 describe('mounted real cookie/JWT organization membership mutation fence', () => {
+  it('rejects a cookie mutation without the matching production CSRF header before auth or side effects', async () => {
+    const response = await request(app).post(`/api/organizations/${org}/invitations`)
+      .set('Cookie', await cookie()).send({ email: 'invitee@membership-mutation.example.test' });
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('CSRF validation failed');
+    expect(state.reads).toEqual([]);
+    await noEffects();
+  });
+
+  it('accepts the matching production CSRF cookie and header before the mutation fence', async () => {
+    const response = await call(families[3], await cookie());
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(state.writes).toContain('send_invitation');
+  });
+
   for (const family of families) {
     it(`${family.name}: exact nonprimary owner succeeds with credential and person audit`, async () => {
       const response = await call(family, await cookie());
@@ -255,6 +313,47 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
     }
     expect([...state.invitations.values()].filter(inv => inv.inviterUserId === A)).toHaveLength(2);
   });
+  for (const [credential, direction] of [[A, 'nonprimary-to-primary'], [B, 'primary-to-self']] as const) {
+    for (const order of [['optional', 'required'], ['required', 'optional']] as const) {
+      it(`${direction} bearer cache remains exact across ${order.join(' to ')} auth`, async () => {
+        const bearer = await token(credential);
+        for (const kind of order) {
+          const response = await request(app).get(`/auth/${kind}-probe`).set('Authorization', `Bearer ${bearer}`);
+          expect(response.status, JSON.stringify(response.body)).toBe(200);
+          expect(response.body).toEqual({ canonical_user_id: B, credential_user_id: credential });
+        }
+        if (credential === A) {
+          const mutation = await request(app).post(`/api/organizations/${org}/invitations`)
+            .set('Authorization', `Bearer ${bearer}`).send({ email: `${order[0]}@membership-mutation.example.test` });
+          expect(mutation.status, JSON.stringify(mutation.body)).toBe(200);
+          expect([...state.invitations.values()].at(-1)?.inviterUserId).toBe(A);
+        }
+      });
+    }
+  }
+  it('optional bearer cache preserves exact credential ban enforcement', async () => {
+    const bearer = await token(A);
+    expect((await request(app).get('/auth/optional-probe').set('Authorization', `Bearer ${bearer}`)).status).toBe(200);
+    await pool.query("INSERT INTO bans (ban_type,entity_id,scope,banned_by_user_id,reason) VALUES ('user',$1,'platform',$2,'test')", [A, B]);
+    invalidateBanCache('user', A);
+    const response = await request(app).get('/auth/required-probe').set('Authorization', `Bearer ${bearer}`);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('Account suspended');
+  });
+  it('epoch change invalidates an optional bearer cache hit and exposes a verification outage', async () => {
+    const bearer = await token(A);
+    expect((await request(app).get('/auth/optional-probe').set('Authorization', `Bearer ${bearer}`)).status).toBe(200);
+    await pool.query('INSERT INTO authorization_epochs (workos_user_id,epoch) VALUES ($1,1) ON CONFLICT (workos_user_id) DO UPDATE SET epoch=authorization_epochs.epoch+1', [A]);
+    __setJWKSForTesting(async () => { throw Object.assign(new Error('JWKS unavailable'), { code: 'ECONNRESET' }); });
+    try {
+      const response = await request(app).get('/auth/required-probe')
+        .set('Accept', 'application/json').set('Authorization', `Bearer ${bearer}`);
+      expect(response.status).toBe(503);
+      expect(response.body.error).toBe('authorization_unavailable');
+    } finally {
+      __setJWKSForTesting(async () => verificationKey);
+    }
+  });
   for (const change of ['epoch', 'binding-round-trip']) it(`${change} between authentication stamp and route capture fails closed`, async () => {
     const original = pool.query.bind(pool);
     let armed = true;
@@ -278,7 +377,7 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
     } finally { spy.mockRestore(); }
   });
   for (const selector of ['header','query','query-org','body','token']) it(`denies conflicting ${selector} organization`,async()=>{
-    let r=request(app).post(`/api/organizations/${org}/invitations`).set('Cookie',await cookie(A,selector==='token'?otherOrg:org));
+    let r=request(app).post(`/api/organizations/${org}/invitations`).set('Cookie',await cookie(A,selector==='token'?otherOrg:org)).set('X-CSRF-Token', CSRF_TOKEN);
     if(selector==='header')r=r.set('X-Organization-Id',otherOrg);
     if(selector==='query')r=r.query({organizationId:otherOrg});
     if(selector==='query-org')r=r.query({org:otherOrg});
@@ -286,7 +385,7 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
     expect(response.status).toBe(403); await noEffects(); expect(state.reads).toEqual([]);
   });
   it('does not infer organization from primary or sole membership when path is absent',async()=>{
-    expect((await request(app).post('/api/organizations/invitations').set('Cookie',await cookie()).send({email:'invitee@membership-mutation.example.test'})).status).toBe(404); await noEffects();
+    expect((await request(app).post('/api/organizations/invitations').set('Cookie',await cookie()).set('X-CSRF-Token', CSRF_TOKEN).send({email:'invitee@membership-mutation.example.test'})).status).toBe(404); await noEffects();
   });
   for (const bearer of ['invalid','native-sealed-session','bearer invalid']) it(`explicit ${bearer} cannot use a valid cookie`,async()=>{
     const header=bearer.startsWith('bearer ')?bearer:`Bearer ${bearer}`;
@@ -296,7 +395,10 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
     expect((await request(app).post(`/api/organizations/${org}/invitations`).set('Authorization','Bearer native-sealed-session').send({email:'invitee@membership-mutation.example.test'})).status).toBe(401); await noEffects();
   });
   it('anonymous remains 401',async()=>{
-    expect((await request(app).post(`/api/organizations/${org}/invitations`).send({email:'invitee@membership-mutation.example.test'})).status).toBe(401); await noEffects();
+    const response = await request(app).post(`/api/organizations/${org}/invitations`)
+      .set('Cookie', `csrf-token=${CSRF_TOKEN}`).set('X-CSRF-Token', CSRF_TOKEN)
+      .send({email:'invitee@membership-mutation.example.test'});
+    expect(response.status).toBe(401); await noEffects();
   });
   it('organization API key cannot become an actor membership',async()=>{
     expect((await request(app).post(`/api/organizations/${org}/invitations`).set('Authorization','Bearer sk_membership_test').send({email:'invitee@membership-mutation.example.test'})).status).toBe(403); await noEffects();
@@ -334,33 +436,35 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
     expect([...state.invitations.values()].some(inv=>inv.email==='invitee@membership-mutation.example.test'&&inv.state==='pending')).toBe(false);
   });
   for(const mode of ['exception','suppression'])for(const familyIndex of [1,3,7,9,10,11])it(`${families[familyIndex].name}: audit ${mode} aborts local success`,async()=>{
-    await pool.query(`CREATE OR REPLACE FUNCTION membership_test_audit_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN ${mode==='exception'?"RAISE EXCEPTION 'required audit failed';":'RETURN NULL;'} END $$`);
-    await pool.query('CREATE TRIGGER membership_test_audit BEFORE INSERT ON registry_audit_log FOR EACH ROW EXECUTE FUNCTION membership_test_audit_fn()');
+    const databaseSecret = 'database password=never-serialize';
+    await pool.query(`CREATE OR REPLACE FUNCTION membership_test_audit_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN ${mode==='exception'?`RAISE EXCEPTION '${databaseSecret}';`:'RETURN NULL;'} END $$`);
+    await pool.query("CREATE TRIGGER membership_test_audit BEFORE INSERT ON registry_audit_log FOR EACH ROW WHEN (NEW.workos_organization_id = 'org_mutation_test') EXECUTE FUNCTION membership_test_audit_fn()");
     const response=await call(families[familyIndex],await cookie());
     expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(response.body)).not.toContain(databaseSecret);
     expect((await pool.query('SELECT status FROM organization_join_requests WHERE id=$1',[joinId])).rows[0].status).toBe('pending');
     expect((await pool.query('SELECT status FROM seat_upgrade_requests WHERE id=$1',[seatId])).rows[0].status).toBe('pending');
     expect((await pool.query('SELECT role,seat_type FROM organization_memberships WHERE workos_user_id=$1 AND workos_organization_id=$2',[target,org])).rows[0]).toMatchObject({role:'member',seat_type:'community_only'});
   });
   it('suppressed membership UPDATE cannot report success',async()=>{
     await pool.query('CREATE OR REPLACE FUNCTION membership_test_update_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$');
-    await pool.query('CREATE TRIGGER membership_test_update BEFORE UPDATE ON organization_memberships FOR EACH ROW EXECUTE FUNCTION membership_test_update_fn()');
+    await pool.query("CREATE TRIGGER membership_test_update BEFORE UPDATE ON organization_memberships FOR EACH ROW WHEN (NEW.workos_organization_id = 'org_mutation_test') EXECUTE FUNCTION membership_test_update_fn()");
     const response=await call(families[7],await cookie());
     expect(response.status).toBe(503);expect(response.body.reconciliation_required).toBe(true);
   });
   it('two owners cannot demote each other concurrently',async()=>{
     await member(B);
     const gate=barrier();state.afterWrite=gate.hook;
-    const first=request(app).patch(`/api/organizations/${org}/members/om_${B}`).set('Cookie',await cookie(A)).send({role:'member'}).then(r=>r);
+    const first=request(app).patch(`/api/organizations/${org}/members/om_${B}`).set('Cookie',await cookie(A)).set('X-CSRF-Token', CSRF_TOKEN).send({role:'member'}).then(r=>r);
     await gate.arrived;
-    const second=request(app).patch(`/api/organizations/${org}/members/om_${A}`).set('Cookie',await cookie(B)).send({role:'member'}).then(r=>r);
+    const second=request(app).patch(`/api/organizations/${org}/members/om_${A}`).set('Cookie',await cookie(B)).set('X-CSRF-Token', CSRF_TOKEN).send({role:'member'}).then(r=>r);
     gate.release();const responses=await Promise.all([first,second]);
     expect(responses.map(r=>r.status).sort()).toEqual([200,403]);
     expect([...state.members.values()].filter(m=>m.role.slug==='owner')).toHaveLength(1);
   });
   it('admin cannot issue an owner invitation',async()=>{
     await member(A,'admin');
-    const response=await request(app).post(`/api/organizations/${org}/invitations`).set('Cookie',await cookie()).send({email:'invitee@membership-mutation.example.test',role:'owner'});
+    const response=await request(app).post(`/api/organizations/${org}/invitations`).set('Cookie',await cookie()).set('X-CSRF-Token', CSRF_TOKEN).send({email:'invitee@membership-mutation.example.test',role:'owner'});
     expect(response.status).toBe(403);await noEffects();
   });
   it('expired invitation release is provider-confirmed, exact, audited, and does not call revoke', async () => {
@@ -417,7 +521,7 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
     state.afterWrite = gate.hook;
     const resend = call(families[5], await cookie()).then(response => response);
     await gate.arrived;
-    const concurrent = request(app).post(`/api/organizations/${org}/invitations`).set('Cookie', await cookie())
+    const concurrent = request(app).post(`/api/organizations/${org}/invitations`).set('Cookie', await cookie()).set('X-CSRF-Token', CSRF_TOKEN)
       .send({ email: 'concurrent@membership-mutation.example.test', seat_type: 'community_only' }).then(response => response);
     await waitForDatabaseLock('pg_advisory_xact_lock');
     expect((await pool.query('SELECT workos_invitation_id FROM invitation_seat_types WHERE workos_organization_id=$1', [org])).rows)
@@ -426,7 +530,7 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
     expect((await resend).status).toBe(200);
     const denied = await concurrent;
     expect(denied.status).toBe(403);
-    expect(denied.body.error).toBe('Seat limit reached');
+    expect(denied.body.error).toBe('access_denied');
     expect(state.writes).toEqual(['send_invitation']);
     expect((await pool.query('SELECT COUNT(*)::int AS count FROM invitation_seat_types WHERE workos_organization_id=$1', [org])).rows[0].count).toBe(1);
   });
@@ -437,7 +541,7 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
       (workos_invitation_id,workos_organization_id,email,seat_type,source)
       VALUES ('inv_existing',$1,'existing@membership-mutation.example.test','community_only','invited')`, [org]);
     await pool.query('CREATE OR REPLACE FUNCTION membership_test_stage_delete_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$');
-    await pool.query('CREATE TRIGGER membership_test_stage_delete BEFORE DELETE ON invitation_seat_types FOR EACH ROW EXECUTE FUNCTION membership_test_stage_delete_fn()');
+    await pool.query("CREATE TRIGGER membership_test_stage_delete BEFORE DELETE ON invitation_seat_types FOR EACH ROW WHEN (OLD.workos_organization_id = 'org_mutation_test') EXECUTE FUNCTION membership_test_stage_delete_fn()");
     try {
       const response = await call(families[4], await cookie());
       expect(response.status).toBe(409);
@@ -456,7 +560,7 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
       (workos_invitation_id,workos_organization_id,email,seat_type,source)
       VALUES ('inv_existing',$1,'existing@membership-mutation.example.test','community_only','invited')`, [org]);
     await pool.query('CREATE OR REPLACE FUNCTION membership_test_audit_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$');
-    await pool.query('CREATE TRIGGER membership_test_audit BEFORE INSERT ON registry_audit_log FOR EACH ROW EXECUTE FUNCTION membership_test_audit_fn()');
+    await pool.query("CREATE TRIGGER membership_test_audit BEFORE INSERT ON registry_audit_log FOR EACH ROW WHEN (NEW.workos_organization_id = 'org_mutation_test') EXECUTE FUNCTION membership_test_audit_fn()");
     const response = await call(families[4], await cookie());
     expect(response.status).toBe(409);
     expect(state.writes).toEqual([]);

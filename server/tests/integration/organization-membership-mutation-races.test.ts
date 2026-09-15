@@ -9,7 +9,7 @@ const state = vi.hoisted(() => {
   process.env.ADMIN_API_KEY = 'membership-race-static-key';
   return {
     members: new Map<string, any>(), invitations: new Map<string, any>(), users: new Map<string, any>(), sessions: new Map<string, any>(),
-    reads: [] as string[], writes: [] as string[], notifications: [] as string[],
+    reads: [] as string[], writes: [] as string[], notifications: [] as string[], apiKeyValidations: 0,
     beforeRead: undefined as undefined | (() => Promise<void>),
     afterWrite: undefined as undefined | (() => Promise<void>),
     rejectWrite: undefined as unknown,
@@ -33,7 +33,7 @@ vi.mock('@workos-inc/node', () => {
     return structuredClone(value);
   }
   return { WorkOS: class {
-    apiKeys = { createValidation: async () => ({ apiKey: { id: 'key_test', name: 'test', owner: { id: 'org_mutation_race_test' }, permissions: ['admin'] } }) };
+    apiKeys = { createValidation: async () => { state.apiKeyValidations++; return { apiKey: { id: 'key_test', name: 'test', owner: { id: 'org_mutation_race_test' }, permissions: ['admin'] } }; } };
     userManagement = {
       loadSealedSession: ({ sessionData }: any) => ({ authenticate: async () => state.sessions.get(sessionData) ?? { authenticated: false }, refresh: async () => ({ authenticated: false }) }),
       listOrganizationMemberships: async ({ userId, organizationId, statuses }: any) => {
@@ -82,6 +82,7 @@ import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { __setJWKSForTesting } from '../../src/auth/workos-jwt.js';
 import { stopAuthTimers } from '../../src/middleware/auth.js';
+import { csrfProtection } from '../../src/middleware/csrf.js';
 import { JoinRequestDatabase } from '../../src/db/join-request-db.js';
 
 const org = 'org_mutation_race_test';
@@ -98,8 +99,11 @@ let joinId: string;
 let seatId: string;
 let identityId: string;
 const app = express();
-app.use(express.json(), cookieParser());
+app.use(express.json());
+app.use(cookieParser());
+app.use(csrfProtection);
 app.use('/api/organizations', createOrganizationsRouter());
+const CSRF_TOKEN = 'b'.repeat(64);
 
 async function token(actor = A, selected: string | undefined = org) {
   return new SignJWT({ client_id: 'client_mock_id', ...(selected ? { org_id: selected } : {}) }).setProtectedHeader({ alg: 'RS256' }).setSubject(actor).setIssuedAt().setJti(String(++sequence)).setExpirationTime('5m').sign(signingKey);
@@ -107,7 +111,7 @@ async function token(actor = A, selected: string | undefined = org) {
 async function cookie(actor = A, selected: string | undefined = org) {
   const value = `session_${++sequence}`;
   state.sessions.set(value, { authenticated: true, user: state.users.get(actor), accessToken: await token(actor, selected) });
-  return `wos-session=${value}`;
+  return `wos-session=${value}; csrf-token=${CSRF_TOKEN}`;
 }
 async function member(userId: string, role = 'owner', organizationId = org) {
   const id = `om_${userId}`;
@@ -163,7 +167,8 @@ const families: Family[] = [
   { name: 'deny seat', method: 'post', path: () => `/seat-requests/${seatId}/deny` },
 ];
 function call(family: Family, authCookie: string) {
-  return request(app)[family.method](`/api/organizations/${org}${family.path()}`).set('Cookie', authCookie).send(family.body?.() ?? {});
+  return request(app)[family.method](`/api/organizations/${org}${family.path()}`)
+    .set('Cookie', authCookie).set('X-CSRF-Token', CSRF_TOKEN).send(family.body?.() ?? {});
 }
 
 beforeAll(async () => {
@@ -176,7 +181,7 @@ beforeAll(async () => {
 }, 60000);
 afterAll(async () => { stopAuthTimers(); __setJWKSForTesting(null); await closeDatabase(); });
 beforeEach(async () => {
-  state.members.clear(); state.invitations.clear(); state.users.clear(); state.sessions.clear(); state.reads = []; state.writes = []; state.notifications = [];
+  state.members.clear(); state.invitations.clear(); state.users.clear(); state.sessions.clear(); state.reads = []; state.writes = []; state.notifications = []; state.apiKeyValidations = 0;
   state.beforeRead = undefined; state.afterWrite = undefined; state.rejectWrite = undefined; state.outage = false; state.afterTargetRead = undefined; state.rejectActions.clear();
   await pool.query('DROP TRIGGER IF EXISTS membership_race_audit ON registry_audit_log');
   await pool.query('DROP TRIGGER IF EXISTS membership_race_update ON organization_memberships');
@@ -206,7 +211,7 @@ beforeEach(async () => {
 
 async function suppressAudit() {
   await pool.query('CREATE OR REPLACE FUNCTION membership_race_audit_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$');
-  await pool.query('CREATE TRIGGER membership_race_audit BEFORE INSERT ON registry_audit_log FOR EACH ROW EXECUTE FUNCTION membership_race_audit_fn()');
+  await pool.query("CREATE TRIGGER membership_race_audit BEFORE INSERT ON registry_audit_log FOR EACH ROW WHEN (NEW.workos_organization_id = 'org_mutation_race_test') EXECUTE FUNCTION membership_race_audit_fn()");
 }
 async function localTarget() {
   return (await pool.query('SELECT role,seat_type FROM organization_memberships WHERE workos_user_id=$1 AND workos_organization_id=$2', [target, org])).rows[0];
@@ -222,6 +227,16 @@ function staticRole(userId: string, role: string) {
 // either can change after the final read. These tests do not claim provider
 // CAS/atomicity; detected post-write changes require honest reconciliation.
 describe('independent mounted management race and residual-state attacks', () => {
+  it('production CSRF middleware rejects a mismatched cookie token before any provider or audit effect', async () => {
+    const response = await request(app).post(`/api/organizations/${org}/invitations`)
+      .set('Cookie', await cookie()).set('X-CSRF-Token', 'c'.repeat(64))
+      .send({ email: 'invitee@membership-race.example.test' });
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('CSRF validation failed');
+    expect(state.reads).toEqual([]);
+    await noEffects();
+  });
+
   it('join approval holds the pending row until commit, then cancellation loses and replay makes no provider call', async () => {
     const gate = barrier();
     state.afterWrite = gate.hook;
@@ -287,7 +302,7 @@ describe('independent mounted management race and residual-state attacks', () =>
     __setJWKSForTesting(async () => { throw Object.assign(new Error('JWKS unavailable'), { code: 'ECONNRESET' }); });
     try {
       const response = await request(app).post(`/api/organizations/${org}/invitations`)
-        .set('Cookie', auth).send({ email: 'invitee@membership-race.example.test' });
+        .set('Cookie', auth).set('X-CSRF-Token', CSRF_TOKEN).send({ email: 'invitee@membership-race.example.test' });
       expect(response.status).toBe(503);
       expect(response.body.error).toBe('authorization_unavailable');
       expect(state.reads).toEqual([]);
@@ -307,11 +322,12 @@ describe('independent mounted management race and residual-state attacks', () =>
     await noEffects();
   });
 
-  it('malformed JWT protected header remains 401 and makes no provider or audit call', async () => {
+  it('malformed JWT with an API-key-like prefix remains local 401 and makes no provider or audit call', async () => {
     const response = await request(app).post(`/api/organizations/${org}/invitations`)
-      .set('Authorization', 'Bearer aaaa.bbbb.cccc').send({ email: 'invitee@membership-race.example.test' });
+      .set('Authorization', 'Bearer sk_.e30.eA').send({ email: 'invitee@membership-race.example.test' });
     expect(response.status).toBe(401);
     expect(response.body.error).not.toBe('authorization_unavailable');
+    expect(state.apiKeyValidations).toBe(0);
     expect(state.reads).toEqual([]);
     await noEffects();
   });
@@ -390,7 +406,7 @@ describe('independent mounted management race and residual-state attacks', () =>
     state.afterTargetRead = async () => { state.beforeRead = async () => { state.beforeRead = gate.hook; }; };
     const auth = await cookie();
     const pending = (familyIndex === 7
-      ? request(app).patch(`/api/organizations/${org}/members/om_${target}`).set('Cookie', auth).send({ seat_type: 'contributor' })
+      ? request(app).patch(`/api/organizations/${org}/members/om_${target}`).set('Cookie', auth).set('X-CSRF-Token', CSRF_TOKEN).send({ seat_type: 'contributor' })
       : call(families[familyIndex], auth)).then(r => r);
     await gate.arrived;
     state.members.get(`om_${target}`).status = 'inactive';
@@ -409,7 +425,7 @@ describe('independent mounted management race and residual-state attacks', () =>
     state.afterTargetRead = async () => { state.afterTargetRead = gate.hook; };
     const auth = await cookie();
     const pending = (familyIndex === 7
-      ? request(app).patch(`/api/organizations/${org}/members/om_${target}`).set('Cookie', auth).send({ seat_type: 'contributor' })
+      ? request(app).patch(`/api/organizations/${org}/members/om_${target}`).set('Cookie', auth).set('X-CSRF-Token', CSRF_TOKEN).send({ seat_type: 'contributor' })
       : call(families[familyIndex], auth)).then(r => r);
     await gate.arrived;
     state.members.delete(`om_${A}`);
@@ -436,7 +452,7 @@ describe('independent mounted management race and residual-state attacks', () =>
     };
     state.afterTargetRead = duringTargetRead;
     const pending = request(app).patch(`/api/organizations/${org}/members/om_${target}`)
-      .set('Cookie', await cookie()).send({ seat_type: 'contributor' }).then(r => r);
+      .set('Cookie', await cookie()).set('X-CSRF-Token', CSRF_TOKEN).send({ seat_type: 'contributor' }).then(r => r);
     await gate.arrived;
     state.members.delete(`om_${A}`);
     gate.release();
@@ -492,7 +508,7 @@ describe('independent mounted management race and residual-state attacks', () =>
     await otherOrgContributor(A);
     const response = await call(families[9], await cookie());
     expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Already a contributor');
+    expect(response.body.error).toBe('invalid_request');
     await noEffects();
     expect((await pool.query('SELECT id FROM seat_upgrade_requests WHERE workos_user_id=$1 AND workos_organization_id=$2', [A, org])).rowCount).toBe(0);
   });
@@ -531,9 +547,9 @@ describe('independent mounted management race and residual-state attacks', () =>
   it('conflicting role writes serialize and audit the actual preceding role', async () => {
     const gate = barrier(); state.afterWrite = gate.hook;
     const auth = await cookie();
-    const first = request(app).patch(`/api/organizations/${org}/members/om_${target}`).set('Cookie', auth).send({ role: 'admin' }).then(r => r);
+    const first = request(app).patch(`/api/organizations/${org}/members/om_${target}`).set('Cookie', auth).set('X-CSRF-Token', CSRF_TOKEN).send({ role: 'admin' }).then(r => r);
     await gate.arrived;
-    const second = request(app).patch(`/api/organizations/${org}/members/om_${target}`).set('Cookie', auth).send({ role: 'owner' }).then(r => r);
+    const second = request(app).patch(`/api/organizations/${org}/members/om_${target}`).set('Cookie', auth).set('X-CSRF-Token', CSRF_TOKEN).send({ role: 'owner' }).then(r => r);
     gate.release();
     const responses = await Promise.all([first, second]);
     expect(responses.map(r => r.status)).toEqual([200, 200]);
@@ -563,7 +579,7 @@ describe('independent mounted management race and residual-state attacks', () =>
 
   it('status input is rejected without role or provider side effects', async () => {
     const response = await request(app).patch(`/api/organizations/${org}/members/om_${target}`)
-      .set('Cookie', await cookie()).send({ role: 'admin', status: 'inactive' });
+      .set('Cookie', await cookie()).set('X-CSRF-Token', CSRF_TOKEN).send({ role: 'admin', status: 'inactive' });
     expect(response.status).toBe(400);
     await noEffects();
     expect((await localTarget()).role).toBe('member');
@@ -641,9 +657,12 @@ describe('independent mounted management race and residual-state attacks', () =>
   });
 
   for (const familyIndex of [0, 3, 4, 7, 8]) it(`${families[familyIndex].name}: definitive provider rejection reports no local success`, async () => {
-    state.rejectWrite = Object.assign(new Error('rejected'), { status: 422 });
+    const providerSecret = 'provider bearer sk_live_never_serialize';
+    state.rejectWrite = Object.assign(new Error(providerSecret), { status: 422 });
     const response = await call(families[familyIndex], await cookie());
     expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: 'membership_state_conflict' });
+    expect(JSON.stringify(response.body)).not.toContain(providerSecret);
     expect(response.body.reconciliation_required).toBeUndefined();
     expect(state.writes).toHaveLength(1);
     expect((await pool.query('SELECT id FROM registry_audit_log WHERE workos_organization_id=$1', [org])).rowCount).toBe(0);
@@ -655,6 +674,7 @@ describe('independent mounted management race and residual-state attacks', () =>
     try {
       const response = await call(families[3], auth);
       expect(response.status, JSON.stringify(response.body)).toBe(503);
+      expect(response.body).toEqual({ error: 'authorization_unavailable' });
       expect(state.reads).toEqual([]);
       await noEffects();
     } finally {

@@ -270,6 +270,11 @@ export async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKe
 
   const token = authHeader.slice(7); // Remove 'Bearer ' prefix
 
+  // A syntactically compact JWT is always handled locally by the JWT verifier,
+  // even when its first segment happens to share an API-key prefix. This keeps
+  // malformed JWTs from triggering a provider API-key validation side effect.
+  if (looksLikeJWT(token)) return null;
+
   // WorkOS API keys use 'wos_api_key_' (legacy) or 'sk_' (current) prefix
   if (!isWorkOSApiKeyFormat(token)) return null;
 
@@ -372,7 +377,6 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
   if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.slice(7);
 
-  if (isWorkOSApiKeyFormat(token)) return null; // handled by validateWorkOSApiKey
   if (ADMIN_API_KEY && token === ADMIN_API_KEY) return null; // handled by hasValidAdminApiKey
   if (!looksLikeJWT(token)) return null;
 
@@ -1979,7 +1983,9 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
   }
   if (jwtAuth) {
     logger.debug({ path: req.path, userId: jwtAuth.user.id }, 'Authenticated via OAuth user JWT (optional auth)');
-    req.user = jwtAuth.user;
+    // Canonicalization and authorization stamping mutate the request user.
+    // Never let those request-local fields poison the positive bearer cache.
+    req.user = { ...jwtAuth.user };
     req.accessToken = jwtAuth.rawToken;
 
     try {

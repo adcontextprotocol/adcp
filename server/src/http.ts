@@ -56,7 +56,7 @@ import { brandJsonCacheControl } from "./services/brand-resolution-cache-policy.
 import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
-import { cancelJoinRequestForExactCredential, MembershipMutationError } from "./services/organization-membership-mutation.js";
+import { cancelJoinRequestForExactCredential, toPublicMembershipMutationError } from "./services/organization-membership-mutation.js";
 import { getOrganizationAuthorizationUserId } from "./auth/organization-principal.js";
 import { SlackDatabase } from "./db/slack-db.js";
 import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
@@ -9175,12 +9175,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         });
       } catch (error) {
         logger.error({ err: error }, 'Cancel join request error:');
-        if (error instanceof MembershipMutationError) {
-          return res.status(error.status).json({ error: error.message });
-        }
-        res.status(500).json({
-          error: 'Failed to cancel join request',
-        });
+        const publicError = toPublicMembershipMutationError(error);
+        return res.status(publicError.status).json(publicError.body);
       }
     });
 

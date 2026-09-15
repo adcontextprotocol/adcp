@@ -315,7 +315,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ email: 'target-member@example.com', role: 'owner' })
         .expect(403);
 
-      expect(response.body.error).toMatch(/owner/i);
+      expect(response.body.error).toBe('access_denied');
     });
 
     it("admin cannot change an owner's role", async () => {
@@ -326,7 +326,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ email: 'target-owner@example.com', role: 'admin' })
         .expect(403);
 
-      expect(response.body.error).toMatch(/owner/i);
+      expect(response.body.error).toBe('access_denied');
     });
 
     it('owner can promote a member to admin', async () => {
@@ -381,7 +381,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ email: 'new-invitee@example.com', role: 'member', seat_type: 'gold_tier' })
         .expect(400);
 
-      expect(response.body.error).toBe('Invalid seat type');
+      expect(response.body.error).toBe('invalid_request');
     });
   });
 
@@ -405,7 +405,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ role: 'owner' })
         .expect(403);
 
-      expect(response.body.error).toMatch(/owner/i);
+      expect(response.body.error).toBe('access_denied');
     });
 
     it("admin cannot change an owner's role via PATCH", async () => {
@@ -416,7 +416,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ role: 'member' })
         .expect(403);
 
-      expect(response.body.error).toMatch(/owner/i);
+      expect(response.body.error).toBe('access_denied');
     });
 
     it('owner can change owner\'s role via PATCH', async () => {
@@ -438,7 +438,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ role: 'admin' })
         .expect(403);
 
-      expect(response.body.error).toBe('Access denied');
+      expect(response.body.error).toBe('access_denied');
     });
 
     it('admin can demote another admin to member', async () => {
@@ -550,7 +550,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ email: 'caller@example.com', role: 'member' })
         .expect(400);
 
-      expect(response.body.error).toBe('Cannot change own role');
+      expect(response.body.error).toBe('invalid_request');
     });
   });
 

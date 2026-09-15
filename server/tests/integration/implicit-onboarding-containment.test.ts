@@ -617,7 +617,7 @@ describe('mounted implicit onboarding containment', () => {
       expect((await acceptance).status).toBe(200);
       const denied = await concurrentInvite;
       expect(denied.status, JSON.stringify(denied.body)).toBe(403);
-      expect(denied.body.error).toBe('Seat limit reached');
+      expect(denied.body.error).toBe('access_denied');
       expect(mocks.sendInvitation).not.toHaveBeenCalled();
       expect((await pool.query('SELECT seat_type FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2', [B, ORG])).rows)
         .toEqual([{ seat_type: 'community_only' }]);
