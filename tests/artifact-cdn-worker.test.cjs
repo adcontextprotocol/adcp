@@ -273,6 +273,34 @@ async function withMockEdgeCache(cache, callback) {
 }
 
 describe('artifact CDN Worker', () => {
+  for (const version of ['3.2.0-rc.0', '3.2.0-rc.1', '3.2.0-rc.2', '3.2.0-rc.3', 'latest']) {
+    it(`serves nested JSONL with its MIME type and cache policy for ${version}`, async () => {
+      const { readFileSync } = require('node:fs');
+      const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+      const fixture = readFileSync(require('node:path').join(
+        __dirname, '../dist/compliance/3.2.0-rc.3/test-vectors/reporting-reconciliation/rows.jsonl',
+      ));
+      const key = `compliance/${version}/test-vectors/reporting-reconciliation/rows.jsonl`;
+      const testEnv = { ARTIFACTS: new MockBucket([
+        object(`compliance/${version}/index.json`, JSON.stringify({ version })),
+        // No R2 HTTP metadata: exercise the worker's MIME fallback too.
+        object(key, fixture),
+      ]) };
+      clearVersionCacheForTests();
+      for (const method of ['GET', 'HEAD']) {
+        const response = await handleRequest(new Request(`https://artifacts.example/${key}`, { method }), testEnv, {});
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get('content-type'), 'application/x-ndjson; charset=utf-8');
+        assert.equal(response.headers.get('cache-control'), version === 'latest'
+          ? 'public, no-cache, must-revalidate' : 'public, max-age=31536000, immutable');
+        assert.deepEqual(Buffer.from(await response.arrayBuffer()), method === 'HEAD' ? Buffer.alloc(0) : fixture);
+      }
+      testEnv.ARTIFACTS.entries.delete(key);
+      const missing = await handleRequest(new Request(`https://artifacts.example/${key}`), testEnv, {});
+      assert.equal(missing.status, 404, 'an existing version prefix must not hide a missing JSONL');
+    });
+  }
+
   it('rewrites major aliases to the latest matching semver directory', async () => {
     const response = await fetchPath('/schemas/v3/foo.json');
 
