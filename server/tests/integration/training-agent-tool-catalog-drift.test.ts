@@ -20,6 +20,10 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { AddressInfo } from 'node:net';
+import { readFileSync } from 'node:fs';
+import YAML from 'yaml';
+import { runStoryboard, type Storyboard } from '@adcp/sdk/testing';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
 
 vi.hoisted(() => {
   process.env.PUBLIC_TEST_AGENT_TOKEN = 'tool-catalog-drift-token';
@@ -43,7 +47,7 @@ interface ToolListResponse {
   result?: { tools?: Array<{ name: string }> };
 }
 
-async function listTools(baseUrl: string, tenantId: string): Promise<string[]> {
+async function listTools(baseUrl: string, tenantId: string, includeUtility = false): Promise<string[]> {
   const url = `${baseUrl}/api/training-agent/${tenantId}/mcp`;
   // MCP requires an `initialize` handshake before tools/list works.
   await fetch(url, {
@@ -84,7 +88,7 @@ async function listTools(baseUrl: string, tenantId: string): Promise<string[]> {
   ]);
   return (body.result?.tools ?? [])
     .map(t => t.name)
-    .filter(name => !NON_PROTOCOL_TOOLS.has(name))
+    .filter(name => includeUtility || !NON_PROTOCOL_TOOLS.has(name))
     .sort();
 }
 
@@ -140,6 +144,55 @@ describe('tool-catalog drift detection', () => {
       }
     }
   });
+
+  it.each(['brand', 'governance'])('/%s loses only controller setup passes from the two corrected validator gates', async tenant => {
+    // Query the actual router: the catalog alone cannot prove SDK registration
+    // or adapter behavior. Neither tenant implements the validator capability.
+    const tools = await listTools(baseUrl, tenant, true);
+    expect(tools).toContain('comply_test_controller');
+    expect(tools).not.toContain('validate_input');
+    expect(toolsForTenant(tenant)).not.toContain('validate_input');
+    for (const [name, seedPasses] of [
+      ['ctv-experience-validate-input', 14],
+      ['premium-display-canonical-validation', 18],
+    ] as const) {
+      const storyboard = YAML.parse(readFileSync(new URL(
+        `../../../static/compliance/source/universal/${name}.yaml`, import.meta.url,
+      ), 'utf8')) as Storyboard;
+      const options = {
+        auth: { type: 'bearer' as const, token: 'tool-catalog-drift-token' },
+        allow_http: true,
+        wireAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION,
+        agentTools: tools,
+      };
+      const url = `${baseUrl}/api/training-agent/${tenant}/mcp`;
+      // Reconstruct just the old OR gate to explain the intentional floor
+      // correction. Production source and all runtime wiring stay untouched.
+      const previous = await runStoryboard(url, {
+        ...storyboard, required_tools: ['validate_input', 'comply_test_controller'],
+      }, options);
+      expect(previous.failed_count).toBe(0);
+      expect(previous.passed_count).toBe(seedPasses);
+      const steps = previous.phases.flatMap(phase => phase.steps);
+      const passed = steps.filter(step => step.passed && !step.skipped);
+      expect(passed).toHaveLength(seedPasses);
+      expect(passed.every(step => step.task === 'comply_test_controller'
+        && step.step_id.startsWith('seed_product.'))).toBe(true);
+      const validators = steps.filter(step => step.task === 'validate_input');
+      expect(validators).toHaveLength(storyboard.phases.reduce((n, phase) => n + phase.steps.length, 0));
+      expect(validators.every(step => step.skipped && step.skip_reason === 'missing_tool')).toBe(true);
+
+      expect(storyboard.required_tools).toEqual(['validate_input']);
+      expect(storyboard.requires).toEqual(['controller']);
+      const corrected = await runStoryboard(url, storyboard, options);
+      expect(corrected.passed_count).toBe(0);
+      expect(corrected.failed_count).toBe(0);
+      expect(corrected.skipped_count).toBe(1);
+      expect(corrected.phases.flatMap(phase => phase.steps)).toEqual([
+        expect.objectContaining({ skipped: true, skip_reason: 'missing_tool' }),
+      ]);
+    }
+  }, 60_000);
 
   it('keeps AdCP 3.2 product-discovery tools out of the 3.0 compatibility catalog', () => {
     const compatibilityCatalog = toolsForTenant('sales', {
