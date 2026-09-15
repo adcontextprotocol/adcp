@@ -172,6 +172,20 @@ describe('verifyWorkOSJWT', () => {
     }
   });
 
+  it('treats a malformed protected header as invalid before consulting JWKS', async () => {
+    const resolver = vi.fn(async () => publicKey);
+    __setJWKSForTesting(resolver);
+    try {
+      let failure: unknown;
+      try { await verifyWorkOSJWT('aaaa.bbbb.cccc'); } catch (error) { failure = error; }
+      expect(isInvalidWorkOSJWTError(failure)).toBe(true);
+      expect(resolver).not.toHaveBeenCalled();
+    } finally {
+      const jwk = await exportJWK(publicKey);
+      __setJWKSForTesting(async () => ({ ...jwk, alg: 'RS256' }));
+    }
+  });
+
   it('rejects a non-string kid before consulting the JWKS source', async () => {
     const resolver = vi.fn(async () => publicKey);
     __setJWKSForTesting(resolver);

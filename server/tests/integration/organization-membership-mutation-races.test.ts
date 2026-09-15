@@ -307,6 +307,15 @@ describe('independent mounted management race and residual-state attacks', () =>
     await noEffects();
   });
 
+  it('malformed JWT protected header remains 401 and makes no provider or audit call', async () => {
+    const response = await request(app).post(`/api/organizations/${org}/invitations`)
+      .set('Authorization', 'Bearer aaaa.bbbb.cccc').send({ email: 'invitee@membership-race.example.test' });
+    expect(response.status).toBe(401);
+    expect(response.body.error).not.toBe('authorization_unavailable');
+    expect(state.reads).toEqual([]);
+    await noEffects();
+  });
+
   it('unknown kid from a healthy JWKS remains 401 and makes no provider or audit call', async () => {
     const jwk = { ...await exportJWK(verificationKey), alg: 'RS256', kid: 'known-key' };
     __setJWKSForTesting(createLocalJWKSet({ keys: [jwk] }));
