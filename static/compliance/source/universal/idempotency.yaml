@@ -113,14 +113,6 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
-  accounts:
-    - account_id: "acct_idempotency_acme_outdoor"
-      brand:
-        domain: "acmeoutdoor.example"
-      operator: "pinnacle-agency.example"
-      billing: "operator"
-      status: "active"
-      sandbox: true
   products:
     - product_id: "test-product"
       delivery_type: "non_guaranteed"
