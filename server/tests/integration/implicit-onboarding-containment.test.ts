@@ -256,7 +256,8 @@ describe('mounted implicit onboarding containment', () => {
       await pool.query(`CREATE FUNCTION containment_cancel_barrier() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN IF NEW.status = 'cancelled' THEN PERFORM pg_advisory_xact_lock(${advisoryKey}); END IF; RETURN NEW; END $$`);
       await pool.query(`CREATE TRIGGER containment_cancel_barrier BEFORE UPDATE ON organization_join_requests
-        FOR EACH ROW EXECUTE FUNCTION containment_cancel_barrier()`);
+        FOR EACH ROW WHEN (OLD.id = '${requestId}' AND OLD.workos_organization_id = '${ORG}' AND NEW.status = 'cancelled')
+        EXECUTE FUNCTION containment_cancel_barrier()`);
 
       const cancellation = request(app).delete(`/api/join-requests/${requestId}`)
         .set('Cookie', cookie(B)).then(response => response);
@@ -275,8 +276,11 @@ describe('mounted implicit onboarding containment', () => {
     } finally {
       await blocker.query('ROLLBACK').catch(() => {});
       blocker.release();
-      await pool.query('DROP TRIGGER IF EXISTS containment_cancel_barrier ON organization_join_requests');
-      await pool.query('DROP FUNCTION IF EXISTS containment_cancel_barrier()');
+      try {
+        await pool.query('DROP TRIGGER IF EXISTS containment_cancel_barrier ON organization_join_requests');
+      } finally {
+        await pool.query('DROP FUNCTION IF EXISTS containment_cancel_barrier()');
+      }
     }
   });
   it.each(routes)('invalid auth remains 401 on %s', async (path, body) => {
@@ -592,7 +596,9 @@ describe('mounted implicit onboarding containment', () => {
       await pool.query(`CREATE FUNCTION containment_acceptance_barrier() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN PERFORM pg_advisory_xact_lock(${advisoryKey}); RETURN NEW; END $$`);
       await pool.query(`CREATE TRIGGER containment_acceptance_barrier BEFORE INSERT ON organization_memberships
-        FOR EACH ROW EXECUTE FUNCTION containment_acceptance_barrier()`);
+        FOR EACH ROW WHEN (NEW.workos_organization_id = '${ORG}'
+          AND NEW.workos_user_id = '${B}' AND NEW.workos_membership_id = 'om_acceptance_member')
+        EXECUTE FUNCTION containment_acceptance_barrier()`);
 
       const acceptance = request(app).post('/api/webhooks/workos').set('WorkOS-Signature', 'test').send({
         id: 'evt_acceptance_reservation', event: 'organization_membership.created', created_at: new Date().toISOString(),
@@ -625,19 +631,28 @@ describe('mounted implicit onboarding containment', () => {
     } finally {
       await blocker.query('ROLLBACK').catch(() => {});
       blocker.release();
-      await pool.query('DROP TRIGGER IF EXISTS containment_acceptance_barrier ON organization_memberships');
-      await pool.query('DROP FUNCTION IF EXISTS containment_acceptance_barrier()');
+      try {
+        await pool.query('DROP TRIGGER IF EXISTS containment_acceptance_barrier ON organization_memberships');
+      } finally {
+        await pool.query('DROP FUNCTION IF EXISTS containment_acceptance_barrier()');
+      }
     }
   });
   it('BEFORE RETURN NULL membership trigger aborts success', async () => {
-    await pool.query(`CREATE FUNCTION containment_suppress() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$`);
-    await pool.query(`CREATE TRIGGER containment_suppress BEFORE INSERT ON organization_memberships FOR EACH ROW EXECUTE FUNCTION containment_suppress()`);
     try {
+      await pool.query(`CREATE FUNCTION containment_suppress() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$`);
+      await pool.query(`CREATE TRIGGER containment_suppress BEFORE INSERT ON organization_memberships
+        FOR EACH ROW WHEN (NEW.workos_organization_id = '${ORG}'
+          AND NEW.workos_user_id = '${B}' AND NEW.workos_membership_id = 'om_suppressed')
+        EXECUTE FUNCTION containment_suppress()`);
       await expect(upsertOrganizationMembership({ user_id: B, organization_id: ORG, membership_id: 'om_suppressed', email: 'b@containment.test',
         first_name: null, last_name: null, role: 'member', seat_type: 'community_only', has_explicit_seat_type: false })).rejects.toThrow('exactly one row');
     } finally {
-      await pool.query('DROP TRIGGER containment_suppress ON organization_memberships');
-      await pool.query('DROP FUNCTION containment_suppress()');
+      try {
+        await pool.query('DROP TRIGGER IF EXISTS containment_suppress ON organization_memberships');
+      } finally {
+        await pool.query('DROP FUNCTION IF EXISTS containment_suppress()');
+      }
     }
   });
 });
