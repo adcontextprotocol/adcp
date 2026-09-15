@@ -86,6 +86,54 @@ assert.strictEqual(
   'Normative reference docs require changesets status'
 );
 
+const storyboardWorkflow = '.github/workflows/training-agent-storyboards.yml';
+const installOnlyChange = { status: 'M', paths: [storyboardWorkflow] };
+const beforeInstall = 'jobs:\n  check:\n    steps:\n      - name: Install\n        run: npm ci\n      - name: Install again\n        run: npm ci\n';
+const afterInstall = beforeInstall.replaceAll('run: npm ci', 'run: node .github/scripts/npm-ci.mjs');
+const readBeforeInstall = readFilesStrict({ [storyboardWorkflow]: beforeInstall });
+const readAfterInstall = readFilesStrict({ [storyboardWorkflow]: afterInstall });
+assert.strictEqual(isProtocolScopedPath(storyboardWorkflow), true, 'Keep default storyboard protocol classification');
+assert.strictEqual(hasProtocolScopedChanges([installOnlyChange], readAfterInstall, readBeforeInstall), false,
+  'Exact install-only substitution does not change the protocol surface');
+assert.strictEqual(hasProtocolScopedChanges([installOnlyChange]), true, 'Missing readers fail closed');
+assert.strictEqual(hasProtocolScopedChanges([installOnlyChange], readAfterInstall, readFilesStrict({})), true,
+  'Unreadable base fails closed');
+assert.strictEqual(hasProtocolScopedChanges([installOnlyChange], readFilesStrict({}), readBeforeInstall), true,
+  'Unreadable head fails closed');
+for (const head of [
+  beforeInstall,
+  afterInstall + '    if: false\n',
+  afterInstall.replace('check:', 'changed:'),
+  afterInstall.replaceAll('npm-ci.mjs', 'npm-ci.mjs --ignore-scripts'),
+  afterInstall.replaceAll('npm-ci.mjs', 'npm-ci.mjs; true'),
+  afterInstall.replaceAll('npm-ci.mjs', 'other.mjs'),
+]) {
+  assert.strictEqual(hasProtocolScopedChanges([installOnlyChange], readFiles({ [storyboardWorkflow]: head }), readBeforeInstall), true,
+    'Any other workflow delta retains protocol classification');
+}
+for (const status of ['A', 'D', 'T', 'R100', 'C100']) {
+  assert.strictEqual(hasProtocolScopedChanges([{ status, paths: [storyboardWorkflow] }], readAfterInstall, readBeforeInstall), true,
+    `${status} is not an install-only modification`);
+}
+assert.strictEqual(hasProtocolScopedChanges([
+  { status: 'R100', paths: [storyboardWorkflow, '.github/workflows/renamed.yml'] },
+], readAfterInstall, readBeforeInstall), true, 'Workflow rename remains protocol-scoped');
+assert.strictEqual(hasProtocolScopedChanges([
+  { status: 'M', paths: ['.github/workflows/release.yml'] },
+], () => afterInstall, () => beforeInstall), true, 'Release workflow never receives the exemption');
+for (const filePath of ['static/schemas/source/core/example.json', 'docs/reference/versioning.mdx', 'scripts/run-storyboards-isolated.mjs']) {
+  assert.strictEqual(hasProtocolScopedChanges([installOnlyChange, { status: 'M', paths: [filePath] }], readAfterInstall, readBeforeInstall), true,
+    'Mixed protocol changes still require changesets status');
+}
+for (const content of [protocolChangeset, emptyChangeset]) {
+  assert.strictEqual(findChangesetProtocolScopeViolations([
+    installOnlyChange, { status: 'A', paths: ['.changeset/ci-only.md'] },
+  ], readFilesStrict({ [storyboardWorkflow]: afterInstall, '.changeset/ci-only.md': content }), readBeforeInstall).length, 1,
+  'Install-only CI changes reject both protocol and empty changesets');
+}
+assert.deepStrictEqual(findChangesetProtocolScopeViolations([installOnlyChange], readAfterInstall, readBeforeInstall), [],
+  'Install-only CI work passes scope without a changeset');
+
 assert.deepStrictEqual(
   parseNameStatus('M\tserver/src/billing/subscription-sync.ts\nA\t.changeset/billing-fix.md\n'),
   [
