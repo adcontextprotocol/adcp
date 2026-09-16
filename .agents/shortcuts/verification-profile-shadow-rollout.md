@@ -1,6 +1,6 @@
 # Verification profile shadow rollout
 
-Use this runbook before enabling the Spec/Sandbox enforcement change. Phase 1
+Use this runbook for the grading-profile rollout. Phase 1
 derives candidate outcomes from compliance results already produced by ordinary
 heartbeats. It adds a bounded database read/write after public processing, but
 does not make another agent request or change public grading, badges, or
@@ -20,7 +20,8 @@ selection remains disabled until role-scoped immutable assessments exist. A
 stale, absent, malformed, or unreadable comparison is shown as unavailable and
 never as passing.
 
-Do not deploy profile selection or enforcement during this phase.
+Phase 2 adds separate exact role/version assessments; never use these
+agent-wide rows for selection or enforcement.
 
 ## 2. Observe ordinary production health
 
@@ -71,12 +72,23 @@ Retention cleanup continues through the scheduled heartbeat maintenance seam
 while collection is disabled. Do not mutate rollout state or prune rows through
 a direct database session during an audited rollout.
 
-## 4. Phase 2 only after working-group review
+## 4. Phase 2 owner selection
 
-The enforcement change must remain a separate deployment. It is blocked until
-the working group decides the JWT grading-profile claim, Sandbox launch gate,
-and Legacy lifetime. Sandbox also requires reviewed causal-bundle evidence and
-a versioned published exception catalog. The selection data model must be keyed
-to exact `(agent_url, role, adcp_version)` identity with immutable source-run
-provenance, authenticated optimistic concurrency, and append-only audit history.
-Never infer an owner's selection from the evaluator recommendation.
+The working-group decision is recorded on issue #7540. Newly issued tokens
+carry `grading_profile: legacy|spec`; claim-less historical tokens mean Legacy.
+Owners select only Legacy or Strict Spec for an exact
+`(agent_url, role, adcp_version)` identity. Sandbox remains preview-only and is
+blocked on reviewed causal-bundle evidence plus a public versioned exception
+catalog.
+
+Selection requires current immutable source-run evidence, explicit tenant
+owner/admin authorization, idempotency, revision compare-and-swap, and an
+append-only audit. A non-passing selection requires explicit public-impact
+confirmation and uses the existing 48-hour grace period without resetting the
+failure timestamp across profile toggles. Never infer consent from an evaluator
+recommendation.
+
+The `grading_profile_rollout` setting fails closed when malformed or disabled.
+Disable `selection_enabled` to stop new owner writes; this does not rewrite
+existing selections or badges. Reversion to Legacy is an explicit owner action.
+Legacy has review and notice gates, never an automatic migration deadline.

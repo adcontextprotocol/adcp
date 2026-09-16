@@ -345,7 +345,12 @@
               "items": { "type": "string" },
               "minItems": 1
             },
-            "adcp_version": { "type": "string" }
+            "adcp_version": { "type": "string" },
+            "grading_profile": {
+              "type": "string",
+              "enum": ["legacy", "spec"],
+              "description": "Grading profile that produced the badge. Historical events emitted before profile selection may omit this field and are Legacy."
+            }
           },
           "additionalProperties": true
         }
@@ -364,7 +369,12 @@
             "agent_url": { "type": "string", "format": "uri" },
             "role": { "$ref": "#/$defs/badgeRole" },
             "reason": { "type": "string" },
-            "adcp_version": { "type": "string" }
+            "adcp_version": { "type": "string" },
+            "grading_profile": {
+              "type": "string",
+              "enum": ["legacy", "spec"],
+              "description": "Grading profile in force when the badge was lost. Historical events emitted before profile selection may omit this field and are Legacy."
+            }
           },
           "additionalProperties": true
         }

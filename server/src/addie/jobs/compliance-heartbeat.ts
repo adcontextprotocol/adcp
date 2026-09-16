@@ -40,6 +40,7 @@ import {
   deriveVerificationProfileShadowAssessment,
   VERIFICATION_PROFILE_SHADOW_POLICY_VERSION,
 } from '../../services/verification-profile-shadow.js';
+import { deriveVerificationProfileRoleAssessments } from '../../services/verification-profile-assessment.js';
 import {
   hostedComplianceTarget,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
@@ -233,6 +234,14 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         'heartbeat',
       );
       dbInput.dry_run = false;
+      if (isAuthoritativeComplianceRun(dbInput)) {
+        dbInput.grading_profile_assessments = deriveVerificationProfileRoleAssessments({
+          result: complianceResult,
+          lifecycleStage: agent.lifecycle_stage as LifecycleStage,
+          requestedComplianceTarget: dbInput.requested_compliance_target,
+          storyboardStatuses: dbInput.storyboard_statuses ?? [],
+        });
+      }
       assertExecutionFence();
       const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
       assertExecutionFence();
@@ -320,6 +329,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             complianceDb,
             agentUrl: agent.agent_url,
             supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+            sourceRunId: run.id,
           });
           assertExecutionFence();
           if (badgeResult.revoked.length > 0) {

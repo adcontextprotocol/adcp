@@ -37,6 +37,7 @@ if (
 const verificationContext = vm.createContext({
   buildNoticesSectionHtml: () => '',
   escapeHtml: (value: unknown) => String(value),
+  location: { origin: 'https://agenticadvertising.org' },
   timeAgo: () => '2h ago',
 });
 vm.runInContext(dashboardSource.slice(blockerHelperStart, blockerHelperEnd), verificationContext);
@@ -281,7 +282,7 @@ describe('dashboard grading profile comparison', () => {
   it('renders agent-wide scope, all profiles, and source provenance', () => {
     const html = renderGradingProfileComparisons({ grading_profile_comparisons: [currentComparison] });
     expect(html).toContain('Agent-wide grading preview · 3.1.20');
-    expect(html).toContain('Legacy · Current');
+    expect(html).toContain('Legacy grading · Current');
     expect(html).toContain('One bundle is incomplete.');
     expect(html).toContain('11111111-1111-4111-8111-111111111111');
     expect(html).toContain('verification-profiles-v3');
@@ -314,5 +315,113 @@ describe('dashboard grading profile comparison', () => {
     });
     expect(html).toContain('Agent-wide grading preview');
     expect(html).toContain('No current-policy comparison is available yet.');
+  });
+
+  it('uses the server-provided public effect and grace deadline for exact-role selection', () => {
+    const exact = structuredClone(currentComparison);
+    exact.scope = 'badge';
+    exact.role = 'media-buy';
+    exact.adcp_version = '3.1';
+    exact.selection_enabled = true;
+    exact.selection_revision = 4;
+    exact.profiles.spec = {
+      available: true,
+      status: 'failing',
+      observed_status: 'failing',
+      explanation: 'Strict Spec fails.',
+      selectable: true,
+      assessment_id: '22222222-2222-4222-8222-222222222222',
+      public_effect: 'degrade',
+      grace_deadline: '2026-09-17T12:00:00.000Z',
+    };
+
+    const html = renderGradingProfileComparisons({
+      agent_url: 'https://agent.example.com',
+      grading_profile_comparisons: [exact],
+    });
+
+    expect(html).toContain('media-buy · AdCP 3.1');
+    expect(html).toContain('Use Strict Spec grading');
+    expect(html).toContain('data-public-effect="degrade"');
+    expect(html).toContain('The public badge will enter its degraded grace period.');
+    expect(html).toContain('Grace deadline:');
+    expect(html).not.toContain('onclick="selectGradingProfileFromComparison(this)">Select</button>');
+  });
+
+  it('labels a change from Strict Spec back to Legacy as a rollback', () => {
+    const exact = structuredClone(currentComparison);
+    exact.scope = 'badge';
+    exact.role = 'media-buy';
+    exact.adcp_version = '3.1';
+    exact.selection_enabled = true;
+    exact.selection_revision = 5;
+    exact.selected_profile = 'spec';
+    exact.profiles.legacy = {
+      available: true,
+      status: 'passing',
+      observed_status: 'passing',
+      explanation: 'Legacy passes.',
+      selectable: true,
+      assessment_id: '33333333-3333-4333-8333-333333333333',
+      public_effect: 'restore',
+      grace_deadline: null,
+    };
+
+    const html = renderGradingProfileComparisons({
+      agent_url: 'https://agent.example.com',
+      grading_profile_comparisons: [exact],
+    });
+
+    expect(html).toContain('Revert to Legacy grading');
+    expect(html).toContain('The public badge will return to active.');
+  });
+
+  it('explains a server-provided regrade without claiming a lifecycle change', () => {
+    const exact = structuredClone(currentComparison);
+    exact.scope = 'badge';
+    exact.role = 'media-buy';
+    exact.adcp_version = '3.1';
+    exact.selection_enabled = true;
+    exact.selection_revision = 2;
+    exact.profiles.spec = {
+      available: true,
+      status: 'passing',
+      observed_status: 'passing',
+      explanation: 'Strict Spec passes.',
+      selectable: true,
+      assessment_id: '44444444-4444-4444-8444-444444444444',
+      public_effect: 'regrade',
+      grace_deadline: null,
+    };
+
+    const html = renderGradingProfileComparisons({
+      agent_url: 'https://agent.example.com',
+      grading_profile_comparisons: [exact],
+    });
+
+    expect(html).toContain('data-public-effect="regrade"');
+    expect(html).toContain('keep its lifecycle status and show the newly selected grading profile');
+  });
+});
+
+describe('dashboard badge grading profile labels', () => {
+  it.each([
+    { grading_profile: 'legacy', expected: 'Legacy grading' },
+    { grading_profile: 'spec', expected: 'Strict Spec grading' },
+  ])('keeps evidence mode separate from $expected', ({ grading_profile, expected }) => {
+    const html = renderVerificationPanel({
+      status: 'verified',
+      verified_badges: [{
+        role: 'media-buy',
+        adcp_version: '3.1',
+        verification_modes: ['spec'],
+        grading_profile,
+        verified_specialisms: ['sales-agent'],
+        badge_url: '/api/registry/agents/example/badge/media-buy.svg',
+      }],
+    }, 'https://agent.example.com', true);
+
+    expect(html).toContain(`Media Buy Agent 3.1 (Spec) · ${expected}`);
+    expect(html).toContain(`alt="AAO Verified Media Buy Agent 3.1 (Spec) · ${expected}"`);
   });
 });

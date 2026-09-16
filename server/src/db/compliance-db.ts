@@ -5,6 +5,7 @@ import { decrypt as decryptToken } from './encryption.js';
 import { logger as baseLogger } from '../logger.js';
 import { CatalogEventsDatabase } from './catalog-events-db.js';
 import { ComplianceRefreshLeaseLostError } from './compliance-refresh-requests-db.js';
+import type { VerificationProfileRoleAssessmentInput } from '../services/verification-profile-assessment.js';
 
 const logger = baseLogger.child({ module: 'compliance-db' });
 const catalogEventsDb = new CatalogEventsDatabase();
@@ -207,6 +208,14 @@ export interface AgentVerificationBadge {
   revocation_reason: string | null;
   created_at: Date;
   updated_at: Date;
+  grading_profile: 'legacy' | 'spec';
+  grading_policy_version: string | null;
+  grading_source_run_id: string | null;
+  grading_assessment_id: string | null;
+  grading_profile_revision: string;
+  degraded_at: Date | null;
+  /** Strict Spec failure episode start; null when no active Spec failure exists. */
+  first_failing_spec_at?: Date | null;
 }
 
 /**
@@ -320,6 +329,22 @@ export interface RecordComplianceRunInput {
    * See NoticeEntry and runner-output-contract.yaml.
    */
   notices_json?: NoticeEntry[] | null;
+  /**
+   * Exact role/version grading evidence precomputed from this same full run.
+   * Persisted in the run transaction so a selection can never reference a
+   * comparison whose source run did not commit.
+   */
+  grading_profile_assessments?: VerificationProfileRoleAssessmentInput[];
+}
+
+interface BadgeGradingGuard {
+  profile: 'legacy' | 'spec';
+  revision: string;
+  sourceRunId?: string | null;
+  /** Capability-wide cleanup compares against the latest run for the agent, not one release line. */
+  sourceRunScope?: 'release' | 'agent';
+  assessmentId?: string | null;
+  policyVersion?: string | null;
 }
 
 // =====================================================
@@ -598,6 +623,16 @@ export class ComplianceDatabase {
     try {
       await client.query('BEGIN');
 
+      // Profile selection and authoritative evidence publication share this
+      // lock. A selection can therefore only commit against the latest fully
+      // committed run, never race a newer run into place behind its check.
+      if (authoritative) {
+        await client.query(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          [`verification-badge:${input.agent_url}`],
+        );
+      }
+
       if (input.refresh_operation_id || input.refresh_operation_lease_token) {
         if (!input.refresh_operation_id || !input.refresh_operation_lease_token) {
           throw new ComplianceRefreshLeaseLostError();
@@ -767,6 +802,78 @@ export class ComplianceDatabase {
       if (!authoritative) {
         await client.query('COMMIT');
         return { run, statusTransition: null, storyboardStatuses, replayedExisting: false };
+      }
+
+      if (input.grading_profile_assessments?.length) {
+        const assessments = input.grading_profile_assessments;
+        await client.query(
+          `INSERT INTO verification_profile_role_assessments (
+             source_run_id, agent_url, role, adcp_version, grading_profile,
+             status, selectable, policy_version, compliance_bundle_version,
+             requested_compliance_target, lifecycle_stage, run_complete,
+             evidence, source_tested_at
+           )
+           SELECT $1, $2, role, badge_version, profile, status, selectable,
+                  policy, bundle_version, requested_target, lifecycle, complete,
+                  evidence::jsonb, $3
+           FROM unnest(
+             $4::text[], $5::text[], $6::text[], $7::text[], $8::bool[],
+             $9::text[], $10::text[], $11::text[], $12::text[], $13::bool[],
+             $14::text[]
+           ) AS a(
+             role, badge_version, profile, status, selectable, policy,
+             bundle_version, requested_target, lifecycle, complete, evidence
+           )
+           ON CONFLICT (source_run_id, role, adcp_version, grading_profile, policy_version)
+           DO NOTHING`,
+          [
+            run.id,
+            input.agent_url,
+            run.tested_at,
+            assessments.map(a => a.role),
+            assessments.map(a => a.adcp_version),
+            assessments.map(a => a.grading_profile),
+            assessments.map(a => a.status),
+            assessments.map(a => a.selectable),
+            assessments.map(a => a.policy_version),
+            assessments.map(a => a.compliance_bundle_version),
+            assessments.map(a => a.requested_compliance_target),
+            assessments.map(a => a.lifecycle_stage),
+            assessments.map(a => a.run_complete),
+            assessments.map(a => JSON.stringify(a.evidence)),
+          ],
+        );
+
+        await client.query(
+          `UPDATE agent_grading_profiles g
+           SET spec_failure_since = COALESCE(g.spec_failure_since, NOW())
+           FROM verification_profile_role_assessments a
+           WHERE a.source_run_id = $1
+             AND a.agent_url = g.agent_url
+             AND a.role = g.role
+             AND a.adcp_version = g.adcp_version
+             AND g.selected_profile = 'spec'
+             AND a.grading_profile = 'spec'
+             AND a.status IN ('partial', 'failing')`,
+          [run.id],
+        );
+
+        // A passing Strict Spec observation ends the failure episode even if
+        // the owner is temporarily using Legacy. This prevents profile
+        // toggling from resetting grace while allowing real remediation to.
+        await client.query(
+          `UPDATE agent_grading_profiles g
+           SET spec_failure_since = NULL
+           FROM verification_profile_role_assessments a
+           WHERE a.source_run_id = $1
+             AND a.agent_url = g.agent_url
+             AND a.role = g.role
+             AND a.adcp_version = g.adcp_version
+             AND a.grading_profile = 'spec'
+             AND a.status = 'passing'
+             AND g.spec_failure_since IS NOT NULL`,
+          [run.id],
+        );
       }
 
       // 2. Compute new status
@@ -1804,6 +1911,11 @@ export class ComplianceDatabase {
     expected_badge_generation?: string;
     /** True only for a full-suite attempt rebuilding a closed gate. */
     requalification_attempt?: boolean;
+    grading_profile?: 'legacy' | 'spec';
+    grading_policy_version?: string | null;
+    grading_source_run_id?: string | null;
+    grading_assessment_id?: string | null;
+    grading_profile_revision?: string;
   }): Promise<AgentVerificationBadge | null> {
     const modes = badge.verification_modes ?? ['spec'];
     const client = await getClient();
@@ -1817,9 +1929,12 @@ export class ComplianceDatabase {
         `INSERT INTO agent_verification_badges (
         agent_url, role, adcp_version, verified_specialisms, verification_modes, verified_protocol_version,
         verification_token, token_expires_at, membership_org_id,
-        status, verified_at, updated_at
+        status, verified_at, updated_at, grading_profile,
+        grading_policy_version, grading_source_run_id, grading_assessment_id,
+        grading_profile_revision, degraded_at
       )
-      SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW(), NOW()
+      SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW(), NOW(),
+             $12, $13, $14, $15, $16, NULL
       WHERE NOT EXISTS (
         SELECT 1
         FROM agent_registry_metadata
@@ -1845,17 +1960,45 @@ export class ComplianceDatabase {
             )
           )
         )
+        AND COALESCE((
+          SELECT revision FROM agent_grading_profiles
+          WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+        ), 0) = $16::bigint
+        AND COALESCE((
+          SELECT selected_profile FROM agent_grading_profiles
+          WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+        ), 'legacy') = $12
+        AND (
+          $14::uuid IS NULL
+          OR $14::uuid = (
+            SELECT latest.id FROM agent_compliance_runs latest
+            WHERE latest.agent_url = $1
+              AND latest.dry_run = FALSE
+              AND latest.is_authoritative = TRUE
+              AND latest.completeness = 'complete'
+              AND latest.adcp_version ~ '^[1-9][0-9]*\.[0-9]+(\.[0-9]+)?$'
+              AND split_part(latest.adcp_version, '.', 1) || '.' || split_part(latest.adcp_version, '.', 2) = $3
+            ORDER BY latest.tested_at DESC, latest.id DESC
+            LIMIT 1
+          )
+        )
       ON CONFLICT (agent_url, role, adcp_version) DO UPDATE SET
         verified_specialisms = $4,
         verification_modes = $5,
         verified_protocol_version = COALESCE($6, agent_verification_badges.verified_protocol_version),
-        verification_token = COALESCE($7, agent_verification_badges.verification_token),
-        token_expires_at = COALESCE($8, agent_verification_badges.token_expires_at),
+        verification_token = $7,
+        token_expires_at = $8,
         membership_org_id = COALESCE($9, agent_verification_badges.membership_org_id),
         status = 'active',
         verified_at = CASE WHEN agent_verification_badges.status = 'degraded' THEN NOW() ELSE agent_verification_badges.verified_at END,
         revoked_at = NULL,
         revocation_reason = NULL,
+        grading_profile = $12,
+        grading_policy_version = $13,
+        grading_source_run_id = $14,
+        grading_assessment_id = $15,
+        grading_profile_revision = $16,
+        degraded_at = NULL,
         updated_at = NOW()
         RETURNING *`,
         [
@@ -1870,6 +2013,11 @@ export class ComplianceDatabase {
           badge.membership_org_id ?? null,
           badge.expected_badge_generation ?? null,
           badge.requalification_attempt ?? false,
+          badge.grading_profile ?? 'legacy',
+          badge.grading_policy_version ?? null,
+          badge.grading_source_run_id ?? null,
+          badge.grading_assessment_id ?? null,
+          badge.grading_profile_revision ?? '0',
         ],
       );
       // The per-agent lock is shared with setComplianceOptOut. The metadata
@@ -1894,8 +2042,11 @@ export class ComplianceDatabase {
     // major or minor numbers. CHECK constraint guarantees both
     // segments are valid integers.
     const result = await query(
-      `SELECT b.* FROM agent_verification_badges b
+      `SELECT b.*, g.spec_failure_since AS first_failing_spec_at
+       FROM agent_verification_badges b
        LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
+       LEFT JOIN agent_grading_profiles g
+         ON g.agent_url = b.agent_url AND g.role = b.role AND g.adcp_version = b.adcp_version
        WHERE b.agent_url = $1
          AND b.status IN ('active', 'degraded')
          AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
@@ -1919,8 +2070,11 @@ export class ComplianceDatabase {
     adcpVersion: string,
   ): Promise<AgentVerificationBadge | null> {
     const result = await query(
-      `SELECT b.* FROM agent_verification_badges b
+      `SELECT b.*, g.spec_failure_since AS first_failing_spec_at
+       FROM agent_verification_badges b
        LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
+       LEFT JOIN agent_grading_profiles g
+         ON g.agent_url = b.agent_url AND g.role = b.role AND g.adcp_version = b.adcp_version
        WHERE b.agent_url = $1 AND b.role = $2 AND b.adcp_version = $3
          AND b.status IN ('active', 'degraded')
          AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
@@ -1944,8 +2098,11 @@ export class ComplianceDatabase {
   ): Promise<AgentVerificationBadge | null> {
     // Numeric sort — see getBadgesForAgent comment.
     const result = await query(
-      `SELECT b.* FROM agent_verification_badges b
+      `SELECT b.*, g.spec_failure_since AS first_failing_spec_at
+       FROM agent_verification_badges b
        LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
+       LEFT JOIN agent_grading_profiles g
+         ON g.agent_url = b.agent_url AND g.role = b.role AND g.adcp_version = b.adcp_version
        WHERE b.agent_url = $1 AND b.role = $2
          AND b.status IN ('active', 'degraded')
          AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
@@ -1964,6 +2121,7 @@ export class ComplianceDatabase {
     adcpVersion: string,
     reason: string,
     expectedGeneration?: string,
+    gradingGuard?: BadgeGradingGuard,
   ): Promise<boolean> {
     if (expectedGeneration !== undefined) {
       const client = await getClient();
@@ -1975,14 +2133,40 @@ export class ComplianceDatabase {
         );
         const result = await client.query(
           `UPDATE agent_verification_badges
-           SET status = 'revoked', revoked_at = NOW(), revocation_reason = $4, updated_at = NOW()
+           SET status = 'revoked', revoked_at = NOW(), revocation_reason = $4,
+               grading_profile = COALESCE($7, grading_profile),
+               grading_profile_revision = COALESCE($6::bigint, grading_profile_revision),
+               grading_source_run_id = COALESCE($8::uuid, grading_source_run_id),
+               grading_assessment_id = COALESCE($9::uuid, grading_assessment_id),
+               grading_policy_version = COALESCE($10, grading_policy_version),
+               verification_token = NULL, token_expires_at = NULL, updated_at = NOW()
            WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
              AND status IN ('active', 'degraded')
              AND COALESCE((
                SELECT badge_requalification_generation
                FROM agent_registry_metadata WHERE agent_url = $1
-             ), 0) = $5::bigint`,
-          [agentUrl, role, adcpVersion, reason, expectedGeneration],
+             ), 0) = $5::bigint
+             AND ($6::bigint IS NULL OR COALESCE((
+               SELECT revision FROM agent_grading_profiles
+               WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+             ), 0) = $6::bigint)
+             AND ($7::text IS NULL OR COALESCE((
+               SELECT selected_profile FROM agent_grading_profiles
+               WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+             ), 'legacy') = $7)
+             AND ($8::uuid IS NULL OR $8::uuid = (
+               SELECT latest.id FROM agent_compliance_runs latest
+               WHERE latest.agent_url = $1 AND latest.dry_run = FALSE
+                 AND latest.is_authoritative = TRUE AND latest.completeness = 'complete'
+                 AND ($11::boolean OR (
+                   latest.adcp_version ~ '^[1-9][0-9]*\.[0-9]+(\.[0-9]+)?$'
+                   AND split_part(latest.adcp_version, '.', 1) || '.' || split_part(latest.adcp_version, '.', 2) = $3
+                 ))
+               ORDER BY latest.tested_at DESC, latest.id DESC LIMIT 1
+             ))`,
+          [agentUrl, role, adcpVersion, reason, expectedGeneration, gradingGuard?.revision ?? null, gradingGuard?.profile ?? null,
+            gradingGuard?.sourceRunId ?? null, gradingGuard?.assessmentId ?? null, gradingGuard?.policyVersion ?? null,
+            gradingGuard?.sourceRunScope === 'agent'],
         );
         await client.query('COMMIT');
         return (result.rowCount ?? 0) > 0;
@@ -1995,9 +2179,35 @@ export class ComplianceDatabase {
     }
     const result = await query(
       `UPDATE agent_verification_badges
-       SET status = 'revoked', revoked_at = NOW(), revocation_reason = $4, updated_at = NOW()
-       WHERE agent_url = $1 AND role = $2 AND adcp_version = $3 AND status IN ('active', 'degraded')`,
-      [agentUrl, role, adcpVersion, reason],
+       SET status = 'revoked', revoked_at = NOW(), revocation_reason = $4,
+           grading_profile = COALESCE($6, grading_profile),
+           grading_profile_revision = COALESCE($5::bigint, grading_profile_revision),
+           grading_source_run_id = COALESCE($7::uuid, grading_source_run_id),
+           grading_assessment_id = COALESCE($8::uuid, grading_assessment_id),
+           grading_policy_version = COALESCE($9, grading_policy_version),
+           verification_token = NULL, token_expires_at = NULL, updated_at = NOW()
+       WHERE agent_url = $1 AND role = $2 AND adcp_version = $3 AND status IN ('active', 'degraded')
+         AND ($5::bigint IS NULL OR COALESCE((
+           SELECT revision FROM agent_grading_profiles
+           WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+         ), 0) = $5::bigint)
+         AND ($6::text IS NULL OR COALESCE((
+           SELECT selected_profile FROM agent_grading_profiles
+           WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+         ), 'legacy') = $6)
+         AND ($7::uuid IS NULL OR $7::uuid = (
+           SELECT latest.id FROM agent_compliance_runs latest
+           WHERE latest.agent_url = $1 AND latest.dry_run = FALSE
+             AND latest.is_authoritative = TRUE AND latest.completeness = 'complete'
+             AND ($10::boolean OR (
+               latest.adcp_version ~ '^[1-9][0-9]*\.[0-9]+(\.[0-9]+)?$'
+               AND split_part(latest.adcp_version, '.', 1) || '.' || split_part(latest.adcp_version, '.', 2) = $3
+             ))
+           ORDER BY latest.tested_at DESC, latest.id DESC LIMIT 1
+         ))`,
+      [agentUrl, role, adcpVersion, reason, gradingGuard?.revision ?? null, gradingGuard?.profile ?? null,
+        gradingGuard?.sourceRunId ?? null, gradingGuard?.assessmentId ?? null, gradingGuard?.policyVersion ?? null,
+        gradingGuard?.sourceRunScope === 'agent'],
     );
     return (result.rowCount ?? 0) > 0;
   }
@@ -2094,7 +2304,7 @@ export class ComplianceDatabase {
 
       for (const badge of issued) {
         const current = await client.query(
-          `SELECT b.role, b.adcp_version, b.verified_specialisms,
+          `SELECT b.role, b.adcp_version, b.verified_specialisms, b.grading_profile,
                   COALESCE(m.badge_requalification_generation, 0)::text AS generation
            FROM agent_verification_badges b
            LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
@@ -2119,6 +2329,7 @@ export class ComplianceDatabase {
             role: row.role,
             adcp_version: row.adcp_version,
             verified_specialisms: row.verified_specialisms,
+            grading_profile: row.grading_profile,
             badge_requalification_generation: row.generation,
           },
           actor,
@@ -2127,7 +2338,7 @@ export class ComplianceDatabase {
 
       for (const badge of revoked) {
         const current = await client.query(
-          `SELECT b.role, b.adcp_version,
+          `SELECT b.role, b.adcp_version, b.grading_profile,
                   COALESCE(m.badge_requalification_generation, 0)::text AS generation
            FROM agent_verification_badges b
            LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
@@ -2150,6 +2361,7 @@ export class ComplianceDatabase {
             role: row.role,
             adcp_version: row.adcp_version,
             reason: badge.reason,
+            grading_profile: row.grading_profile,
             badge_requalification_generation: row.generation,
           },
           actor,
@@ -2172,6 +2384,7 @@ export class ComplianceDatabase {
     role: BadgeRole,
     adcpVersion: string,
     expectedGeneration?: string,
+    gradingGuard?: BadgeGradingGuard,
   ): Promise<boolean> {
     if (expectedGeneration !== undefined) {
       const client = await getClient();
@@ -2183,14 +2396,37 @@ export class ComplianceDatabase {
         );
         const result = await client.query(
           `UPDATE agent_verification_badges
-           SET status = 'degraded', updated_at = NOW()
+           SET status = 'degraded', degraded_at = COALESCE(degraded_at, NOW()),
+               grading_profile = COALESCE($6, grading_profile),
+               grading_profile_revision = COALESCE($5::bigint, grading_profile_revision),
+               grading_source_run_id = COALESCE($7::uuid, grading_source_run_id),
+               grading_assessment_id = COALESCE($8::uuid, grading_assessment_id),
+               grading_policy_version = COALESCE($9, grading_policy_version),
+               verification_token = NULL, token_expires_at = NULL, updated_at = NOW()
            WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
              AND status = 'active'
              AND COALESCE((
                SELECT badge_requalification_generation
                FROM agent_registry_metadata WHERE agent_url = $1
-             ), 0) = $4::bigint`,
-          [agentUrl, role, adcpVersion, expectedGeneration],
+             ), 0) = $4::bigint
+             AND ($5::bigint IS NULL OR COALESCE((
+               SELECT revision FROM agent_grading_profiles
+               WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+             ), 0) = $5::bigint)
+             AND ($6::text IS NULL OR COALESCE((
+               SELECT selected_profile FROM agent_grading_profiles
+               WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+             ), 'legacy') = $6)
+             AND ($7::uuid IS NULL OR $7::uuid = (
+               SELECT latest.id FROM agent_compliance_runs latest
+               WHERE latest.agent_url = $1 AND latest.dry_run = FALSE
+                 AND latest.is_authoritative = TRUE AND latest.completeness = 'complete'
+                 AND latest.adcp_version ~ '^[1-9][0-9]*\.[0-9]+(\.[0-9]+)?$'
+                 AND split_part(latest.adcp_version, '.', 1) || '.' || split_part(latest.adcp_version, '.', 2) = $3
+               ORDER BY latest.tested_at DESC, latest.id DESC LIMIT 1
+             ))`,
+          [agentUrl, role, adcpVersion, expectedGeneration, gradingGuard?.revision ?? null, gradingGuard?.profile ?? null,
+            gradingGuard?.sourceRunId ?? null, gradingGuard?.assessmentId ?? null, gradingGuard?.policyVersion ?? null],
         );
         await client.query('COMMIT');
         return (result.rowCount ?? 0) > 0;
@@ -2203,9 +2439,32 @@ export class ComplianceDatabase {
     }
     const result = await query(
       `UPDATE agent_verification_badges
-       SET status = 'degraded', updated_at = NOW()
-       WHERE agent_url = $1 AND role = $2 AND adcp_version = $3 AND status = 'active'`,
-      [agentUrl, role, adcpVersion],
+       SET status = 'degraded', degraded_at = COALESCE(degraded_at, NOW()),
+           grading_profile = COALESCE($5, grading_profile),
+           grading_profile_revision = COALESCE($4::bigint, grading_profile_revision),
+           grading_source_run_id = COALESCE($6::uuid, grading_source_run_id),
+           grading_assessment_id = COALESCE($7::uuid, grading_assessment_id),
+           grading_policy_version = COALESCE($8, grading_policy_version),
+           verification_token = NULL, token_expires_at = NULL, updated_at = NOW()
+       WHERE agent_url = $1 AND role = $2 AND adcp_version = $3 AND status = 'active'
+         AND ($4::bigint IS NULL OR COALESCE((
+           SELECT revision FROM agent_grading_profiles
+           WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+         ), 0) = $4::bigint)
+         AND ($5::text IS NULL OR COALESCE((
+           SELECT selected_profile FROM agent_grading_profiles
+           WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+         ), 'legacy') = $5)
+         AND ($6::uuid IS NULL OR $6::uuid = (
+           SELECT latest.id FROM agent_compliance_runs latest
+           WHERE latest.agent_url = $1 AND latest.dry_run = FALSE
+             AND latest.is_authoritative = TRUE AND latest.completeness = 'complete'
+             AND latest.adcp_version ~ '^[1-9][0-9]*\.[0-9]+(\.[0-9]+)?$'
+             AND split_part(latest.adcp_version, '.', 1) || '.' || split_part(latest.adcp_version, '.', 2) = $3
+           ORDER BY latest.tested_at DESC, latest.id DESC LIMIT 1
+         ))`,
+      [agentUrl, role, adcpVersion, gradingGuard?.revision ?? null, gradingGuard?.profile ?? null,
+        gradingGuard?.sourceRunId ?? null, gradingGuard?.assessmentId ?? null, gradingGuard?.policyVersion ?? null],
     );
     return (result.rowCount ?? 0) > 0;
   }

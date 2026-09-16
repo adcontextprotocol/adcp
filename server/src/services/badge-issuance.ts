@@ -6,12 +6,13 @@
 import { ComplianceDatabase, DEFAULT_BADGE_ADCP_VERSION, type BadgeRole, type StoryboardStatus, type StoryboardStatusEntry } from '../db/compliance-db.js';
 import { deriveVerificationStatus } from '../addie/services/compliance-testing.js';
 import { signVerificationToken, isTokenSigningEnabled } from './verification-token.js';
-import { isVerificationMode, SUPPORTED_BADGE_VERSIONS, type VerificationMode } from './adcp-taxonomy.js';
+import { advertisesStableBadgeLine, isVerificationMode, SUPPORTED_BADGE_VERSIONS, type VerificationMode } from './adcp-taxonomy.js';
 import { getStoryboardIdsForVersion } from './storyboards.js';
 import { API_ACCESS_TIERS, ACTIVE_SUBSCRIPTION_STATUSES } from './membership-tiers.js';
 import { query } from '../db/client.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import { logger as baseLogger } from '../logger.js';
+import { getEffectiveGradingDecision } from '../db/verification-profile-db.js';
 
 const logger = baseLogger.child({ module: 'badge-issuance' });
 
@@ -30,19 +31,17 @@ function advertisesPublicBadgeVersion(
   adcpVersion: string,
 ): boolean {
   if (!supportedVersions?.length) return false;
-  return supportedVersions.some(version => {
-    if (version.includes('-')) return false;
-    const match = version.match(/^([1-9][0-9]*\.[0-9]+)(?:\.|$)/);
-    return match?.[1] === adcpVersion;
-  });
+  return supportedVersions.some(version => advertisesStableBadgeLine(version, adcpVersion));
 }
 
 export async function revokeUnsupportedPublicBadges(params: {
   complianceDb: ComplianceDatabase;
   agentUrl: string;
   supportedVersions: readonly string[] | undefined;
+  /** Authoritative capability snapshot whose cleanup must still be the newest agent-wide run. */
+  sourceRunId?: string | null;
 }): Promise<BadgeIssuanceResult> {
-  const { complianceDb, agentUrl, supportedVersions } = params;
+  const { complianceDb, agentUrl, supportedVersions, sourceRunId } = params;
   const result: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
   if (!supportedVersions?.length) return result;
 
@@ -56,13 +55,30 @@ export async function revokeUnsupportedPublicBadges(params: {
     if (advertisesPublicBadgeVersion(supportedVersions, badge.adcp_version)) continue;
 
     const reason = `Agent no longer advertises AdCP ${badge.adcp_version} support`;
-    const revoked = await complianceDb.revokeBadge(
-      agentUrl,
-      badge.role,
-      badge.adcp_version,
-      reason,
-      expectedBadgeGeneration,
-    );
+    const grading = sourceRunId
+      ? await getEffectiveGradingDecision({ agentUrl, role: badge.role, adcpVersion: badge.adcp_version })
+      : null;
+    const revoked = grading
+      ? await complianceDb.revokeBadge(
+          agentUrl,
+          badge.role,
+          badge.adcp_version,
+          reason,
+          expectedBadgeGeneration,
+          {
+            profile: grading.profile,
+            revision: grading.revision,
+            sourceRunId,
+            sourceRunScope: 'agent',
+          },
+        )
+      : await complianceDb.revokeBadge(
+          agentUrl,
+          badge.role,
+          badge.adcp_version,
+          reason,
+          expectedBadgeGeneration,
+        );
     if (!revoked) continue;
     result.revoked.push({ role: badge.role, reason, adcp_version: badge.adcp_version });
     logger.info(
@@ -95,6 +111,8 @@ export async function processAgentBadges(
   adcpVersion: string = DEFAULT_BADGE_ADCP_VERSION,
   expectedBadgeGeneration?: string,
   requalificationAttempt = false,
+  sourceRunId?: string | null,
+  onlyRoles?: ReadonlySet<BadgeRole>,
 ): Promise<BadgeIssuanceResult> {
   const result: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
 
@@ -102,7 +120,10 @@ export async function processAgentBadges(
     return result;
   }
 
-  const verification = deriveVerificationStatus(declaredSpecialisms, storyboardStatuses);
+  const derivedVerification = deriveVerificationStatus(declaredSpecialisms, storyboardStatuses);
+  const verification = onlyRoles
+    ? { ...derivedVerification, roles: derivedVerification.roles.filter(result => onlyRoles.has(result.role)) }
+    : derivedVerification;
   const existingAllVersions = await complianceDb.getBadgesForAgent(agentUrl);
 
   // Membership is an agent-level fact, not a version-level fact. When
@@ -113,13 +134,35 @@ export async function processAgentBadges(
   // trust mark.
   if (!membershipOrgId) {
     for (const existing of existingAllVersions) {
-      const revoked = await complianceDb.revokeBadge(
-        agentUrl,
-        existing.role,
-        existing.adcp_version,
-        'Membership lapsed',
-        expectedBadgeGeneration,
-      );
+      if (onlyRoles && (!onlyRoles.has(existing.role) || existing.adcp_version !== adcpVersion)) continue;
+      const grading = sourceRunId
+        ? await getEffectiveGradingDecision({
+            agentUrl,
+            role: existing.role,
+            adcpVersion: existing.adcp_version,
+          })
+        : null;
+      const revoked = grading
+        ? await complianceDb.revokeBadge(
+            agentUrl,
+            existing.role,
+            existing.adcp_version,
+            'Membership lapsed',
+            expectedBadgeGeneration,
+            {
+              profile: grading.profile,
+              revision: grading.revision,
+              sourceRunId,
+              sourceRunScope: onlyRoles ? 'release' : 'agent',
+            },
+          )
+        : await complianceDb.revokeBadge(
+            agentUrl,
+            existing.role,
+            existing.adcp_version,
+            'Membership lapsed',
+            expectedBadgeGeneration,
+          );
       if (!revoked) continue;
       result.revoked.push({ role: existing.role, reason: 'Membership lapsed', adcp_version: existing.adcp_version });
       logger.info({ agentUrl, role: existing.role, adcpVersion: existing.adcp_version }, 'Badge revoked — membership lapsed');
@@ -136,8 +179,36 @@ export async function processAgentBadges(
 
   for (const roleResult of verification.roles) {
     const existing = existingByRole.get(roleResult.role);
+    if (!sourceRunId && existing?.grading_profile === 'spec') {
+      result.unchanged.push({ role: roleResult.role, adcp_version: adcpVersion });
+      continue;
+    }
+    const grading = sourceRunId
+      ? await getEffectiveGradingDecision({
+          agentUrl,
+          role: roleResult.role,
+          adcpVersion,
+          sourceRunId,
+        })
+      : {
+          profile: 'legacy' as const,
+          revision: '0',
+          assessment: null,
+          spec_failure_since: null,
+        };
+    const implicitLegacy = grading.profile === 'legacy' && grading.revision === '0';
+    const gradingPasses = implicitLegacy
+      ? roleResult.verified
+      : roleResult.verified && grading.assessment?.status === 'passing';
+    const gradingGuard = {
+      profile: grading.profile,
+      revision: grading.revision,
+      sourceRunId: grading.assessment?.source_run_id ?? sourceRunId ?? null,
+      assessmentId: grading.assessment?.id ?? null,
+      policyVersion: grading.assessment?.policy_version ?? null,
+    };
 
-    if (roleResult.verified) {
+    if (gradingPasses) {
       // Spec-only issuance for now. The 'live' axis lights up later when the
       // canonical-campaign runner ships; an existing 'live' mode on a badge
       // is preserved (we only add 'spec' here, never remove 'live').
@@ -155,6 +226,8 @@ export async function processAgentBadges(
           role: roleResult.role,
           verified_specialisms: roleResult.specialisms,
           verification_modes: modes,
+          grading_profile: grading.profile,
+          first_failing_spec_at: grading.spec_failure_since?.toISOString(),
           adcp_version: adcpVersion,
         });
         if (signed) {
@@ -174,6 +247,11 @@ export async function processAgentBadges(
         membership_org_id: membershipOrgId,
         expected_badge_generation: expectedBadgeGeneration,
         requalification_attempt: requalificationAttempt,
+        grading_profile: grading.profile,
+        grading_policy_version: grading.assessment?.policy_version ?? null,
+        grading_source_run_id: grading.assessment?.source_run_id ?? sourceRunId ?? null,
+        grading_assessment_id: grading.assessment?.id ?? null,
+        grading_profile_revision: grading.revision,
       });
 
       if (!persistedBadge) {
@@ -192,17 +270,30 @@ export async function processAgentBadges(
       }
     } else if (existing) {
       if (existing.status === 'active') {
-        const degraded = await complianceDb.degradeBadge(
-          agentUrl,
-          roleResult.role,
-          adcpVersion,
-          expectedBadgeGeneration,
-        );
+        const degraded = sourceRunId
+          ? await complianceDb.degradeBadge(
+              agentUrl,
+              roleResult.role,
+              adcpVersion,
+              expectedBadgeGeneration,
+              gradingGuard,
+            )
+          : await complianceDb.degradeBadge(
+              agentUrl,
+              roleResult.role,
+              adcpVersion,
+              expectedBadgeGeneration,
+            );
         if (!degraded) continue;
         result.degraded.push({ role: roleResult.role, adcp_version: adcpVersion });
         logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing, untested: roleResult.untested }, 'Badge degraded');
       } else if (existing.status === 'degraded') {
-        const degradedAt = existing.updated_at;
+        // The Strict Spec failure clock is retained across rollback so it can
+        // resume on reselection, but it must never shorten Legacy's own grace
+        // period.
+        const degradedAt = grading.profile === 'spec'
+          ? grading.spec_failure_since ?? existing.degraded_at ?? existing.updated_at
+          : existing.degraded_at ?? existing.updated_at;
         const hoursSinceDegraded = (Date.now() - degradedAt.getTime()) / (1000 * 60 * 60);
 
         if (hoursSinceDegraded >= 48) {
@@ -210,13 +301,22 @@ export async function processAgentBadges(
             roleResult.failing.length > 0 ? `Failing specialisms: ${roleResult.failing.join(', ')}` : undefined,
             roleResult.untested.length > 0 ? `Untested specialisms: ${roleResult.untested.join(', ')}` : undefined,
           ].filter(Boolean).join('; ');
-          const revoked = await complianceDb.revokeBadge(
-            agentUrl,
-            roleResult.role,
-            adcpVersion,
-            `${reason} for 48+ hours`,
-            expectedBadgeGeneration,
-          );
+          const revoked = sourceRunId
+            ? await complianceDb.revokeBadge(
+                agentUrl,
+                roleResult.role,
+                adcpVersion,
+                `${reason} for 48+ hours`,
+                expectedBadgeGeneration,
+                gradingGuard,
+              )
+            : await complianceDb.revokeBadge(
+                agentUrl,
+                roleResult.role,
+                adcpVersion,
+                `${reason} for 48+ hours`,
+                expectedBadgeGeneration,
+              );
           if (!revoked) continue;
           result.revoked.push({ role: roleResult.role, reason, adcp_version: adcpVersion });
           logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing, untested: roleResult.untested }, 'Badge revoked after 48h grace');
@@ -230,14 +330,36 @@ export async function processAgentBadges(
   // Revoke badges on roles that are no longer declared
   const activeRoles = new Set(verification.roles.map(r => r.role));
   for (const existing of existingBadges) {
+    if (onlyRoles && !onlyRoles.has(existing.role)) continue;
     if (!activeRoles.has(existing.role)) {
-      const revoked = await complianceDb.revokeBadge(
-        agentUrl,
-        existing.role,
-        adcpVersion,
-        'Role no longer in declared specialisms',
-        expectedBadgeGeneration,
-      );
+      const grading = sourceRunId
+        ? await getEffectiveGradingDecision({
+            agentUrl,
+            role: existing.role,
+            adcpVersion,
+            sourceRunId,
+          })
+        : null;
+      const revoked = grading
+        ? await complianceDb.revokeBadge(
+            agentUrl,
+            existing.role,
+            adcpVersion,
+            'Role no longer in declared specialisms',
+            expectedBadgeGeneration,
+            {
+              profile: grading.profile,
+              revision: grading.revision,
+              sourceRunId,
+            },
+          )
+        : await complianceDb.revokeBadge(
+            agentUrl,
+            existing.role,
+            adcpVersion,
+            'Role no longer in declared specialisms',
+            expectedBadgeGeneration,
+          );
       if (!revoked) continue;
       result.revoked.push({ role: existing.role, reason: 'Role no longer declared', adcp_version: adcpVersion });
     }
@@ -270,14 +392,18 @@ export async function runBadgeFanOut(params: {
   supportedVersions?: readonly string[];
   /** Durable refresh jobs retry when any version cannot update public trust state. */
   throwOnFailure?: boolean;
+  /** Restrict reconciliation to exact roles (used by profile selection). */
+  roles?: readonly BadgeRole[];
 }): Promise<BadgeIssuanceResult> {
   const { complianceDb, agentUrl, declaredSpecialisms, runId, supportedVersions } = params;
   const adcpVersions = (params.adcpVersions === undefined ? [DEFAULT_BADGE_ADCP_VERSION] : params.adcpVersions)
     .filter((version): version is string => typeof version === 'string' && version.length > 0);
   const aggregate: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
+  const onlyRoles = params.roles ? new Set(params.roles) : undefined;
 
   const metadata = await complianceDb.getRegistryMetadata(agentUrl);
   if (metadata?.compliance_opt_out) {
+    if (onlyRoles) return aggregate;
     const revoked = await complianceDb.revokeAllBadgesIfOptedOut(
       agentUrl,
       'Compliance monitoring opted out',
@@ -375,13 +501,17 @@ export async function runBadgeFanOut(params: {
       adcpVersions[0] ?? DEFAULT_BADGE_ADCP_VERSION,
       expectedBadgeGeneration,
       requalificationGeneration !== undefined,
+      runId,
+      onlyRoles,
     );
     return result;
   }
 
   const supportedBadgeVersions = new Set<string>(SUPPORTED_BADGE_VERSIONS);
+  const selectedBadgeVersions = new Set(adcpVersions);
   const existingBadges = await complianceDb.getBadgesForAgent(agentUrl);
   for (const badge of existingBadges) {
+    if (onlyRoles && (!onlyRoles.has(badge.role) || !selectedBadgeVersions.has(badge.adcp_version))) continue;
     let reason: string | undefined;
     if (!supportedBadgeVersions.has(badge.adcp_version)) {
       reason = `AdCP ${badge.adcp_version} public badge issuance is not currently enabled`;
@@ -393,13 +523,30 @@ export async function runBadgeFanOut(params: {
     }
     if (!reason) continue;
 
-    const revoked = await complianceDb.revokeBadge(
-      agentUrl,
-      badge.role,
-      badge.adcp_version,
-      reason,
-      expectedBadgeGeneration,
-    );
+    const grading = runId
+      ? await getEffectiveGradingDecision({ agentUrl, role: badge.role, adcpVersion: badge.adcp_version })
+      : null;
+    const revoked = grading
+      ? await complianceDb.revokeBadge(
+          agentUrl,
+          badge.role,
+          badge.adcp_version,
+          reason,
+          expectedBadgeGeneration,
+          {
+            profile: grading.profile,
+            revision: grading.revision,
+            sourceRunId: runId,
+            sourceRunScope: 'agent',
+          },
+        )
+      : await complianceDb.revokeBadge(
+          agentUrl,
+          badge.role,
+          badge.adcp_version,
+          reason,
+          expectedBadgeGeneration,
+        );
     if (!revoked) continue;
     aggregate.revoked.push({ role: badge.role, reason, adcp_version: badge.adcp_version });
     logger.info(
@@ -428,6 +575,8 @@ export async function runBadgeFanOut(params: {
         adcpVersion,
         expectedBadgeGeneration,
         requalificationGeneration !== undefined,
+        runId,
+        onlyRoles,
       );
 
       for (const issued of versionResult.issued) aggregate.issued.push(issued);

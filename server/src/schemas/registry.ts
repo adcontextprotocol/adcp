@@ -821,7 +821,14 @@ export const VerificationBadgeSchema = z
     verified_specialisms: z.array(z.enum(ADCP_SPECIALISMS as [string, ...string[]]))
       .openapi({ description: "Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges." }),
     verification_modes: z.array(z.enum(VERIFICATION_MODES as readonly [string, ...string[]])).min(1)
-      .openapi({ description: "Verification axes earned. 'spec' = AdCP storyboards pass for the declared specialisms. 'live' = AAO has observed real production traffic via canonical campaigns. Always non-empty when a badge is present; an absent badge is conveyed by the parent record being omitted, not by an empty array." }),
+      .openapi({ description: "Evidence modes earned. 'spec' = AdCP storyboards were exercised; 'live' = production traffic was observed. Independent of grading_profile and always non-empty when a badge is present." }),
+    grading_profile: z.enum(['legacy', 'spec']).openapi({
+      description: "Grading profile that produced the public badge. 'spec' means Strict Spec grading; this is independent of the 'spec' evidence mode.",
+    }),
+    grading_profile_revision: z.number().int().nonnegative().optional(),
+    first_failing_spec_at: z.string().datetime().nullable().optional().openapi({
+      description: 'Start of the current Strict Spec failure episode. Null when no Strict Spec failure clock is active.',
+    }),
     verified_protocol_version: z.string().nullable(),
     badge_url: z.string().optional()
       .openapi({ description: "Legacy URL — auto-upgrades to the highest active version. For version-pinned embedding, derive `/api/registry/agents/{encoded_url}/badge/{role}/{adcp_version}.svg` where `{encoded_url}` is `encodeURIComponent(agent_url)`." }),
@@ -833,16 +840,22 @@ const GradingProfileOutcomeSchema = z.object({
   status: z.enum(['passing', 'partial', 'failing']).nullable(),
   observed_status: z.enum(['passing', 'partial', 'failing']).nullable(),
   explanation: z.string(),
+  assessment_id: z.string().uuid().optional(),
+  selectable: z.boolean().optional(),
+  public_effect: z.enum(['unchanged', 'issue', 'restore', 'regrade', 'degrade', 'revoke']).optional(),
+  grace_deadline: z.string().datetime().nullable().optional(),
 });
 
-export const GradingProfileComparisonSchema = z.object({
-  scope: z.literal('agent').openapi({
-    description: 'The current evaluator produces an agent-wide result. It must not be interpreted as an exact badge-role grade.',
-  }),
+const GradingProfileComparisonBaseSchema = z.object({
+  role: BadgeRoleSchema.optional(),
+  adcp_version: z.string().optional(),
   availability: z.enum(['current', 'stale', 'pending', 'temporarily_unavailable']),
   unavailable_reason: z.string().nullable(),
-  selected_profile: z.literal('legacy'),
-  selection_enabled: z.literal(false),
+  selected_profile: z.enum(['legacy', 'spec']),
+  selection_enabled: z.boolean(),
+  selection_revision: z.number().int().nonnegative().optional(),
+  first_failing_spec_at: z.string().datetime().nullable().optional(),
+  legacy_selection_allowed_until: z.string().datetime().nullable().optional(),
   source_run_id: z.string().uuid().optional(),
   evaluator_policy_version: z.string().optional(),
   requested_compliance_target: z.string().nullable().optional(),
@@ -857,7 +870,9 @@ export const GradingProfileComparisonSchema = z.object({
     spec: GradingProfileOutcomeSchema,
     sandbox: GradingProfileOutcomeSchema,
   }).nullable(),
-  evidence: z.object({
+});
+
+const AgentGradingEvidenceSchema = z.object({
     run_complete: z.boolean(),
     bundle_evidence_present: z.boolean(),
     selected_storyboard_count: z.number().int().nonnegative(),
@@ -866,8 +881,36 @@ export const GradingProfileComparisonSchema = z.object({
     flat_failure_count: z.number().int().nonnegative(),
     unattributed_failure_count: z.number().int().nonnegative(),
     sandbox_unresolved_bundle_count: z.number().int().nonnegative(),
-  }).optional(),
-}).openapi('GradingProfileComparison');
+});
+
+const BadgeGradingEvidenceSchema = z.object({
+  specialisms: z.array(z.string()),
+  relevant_bundle_count: z.number().int().nonnegative(),
+  relevant_bundle_ids: z.array(z.string()),
+  failing_bundle_count: z.number().int().nonnegative(),
+  incomplete_bundle_count: z.number().int().nonnegative(),
+  relevant_failure_count: z.number().int().nonnegative(),
+  missing_universal_bundle: z.boolean(),
+  missing_protocol_bundle: z.boolean(),
+  missing_specialism_bundles: z.array(z.string()),
+  evaluator: z.string(),
+});
+
+export const GradingProfileComparisonSchema = z.discriminatedUnion('scope', [
+  GradingProfileComparisonBaseSchema.extend({
+    scope: z.literal('agent'),
+    evidence: AgentGradingEvidenceSchema.optional(),
+  }),
+  GradingProfileComparisonBaseSchema.extend({
+    scope: z.literal('badge'),
+    role: BadgeRoleSchema,
+    adcp_version: z.string(),
+    source_run_id: z.string().uuid(),
+    evaluator_policy_version: z.string(),
+    compliance_bundle_version: z.string(),
+    evidence: BadgeGradingEvidenceSchema,
+  }),
+]).openapi('GradingProfileComparison');
 
 export const AgentComplianceDetailSchema = z
   .object({
@@ -876,6 +919,17 @@ export const AgentComplianceDetailSchema = z
     requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Null for legacy rows before target recording." }),
     adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12. Null for legacy rows before version recording." }),
     status: z.enum(["passing", "degraded", "failing", "unknown", "opted_out"]),
+    selected_grading_statuses: z.array(z.object({
+      role: BadgeRoleSchema,
+      adcp_version: z.string(),
+      grading_profile: z.enum(['legacy', 'spec']),
+      grading_status: z.enum(['passing', 'partial', 'failing']).nullable(),
+      availability: z.enum(['current', 'unavailable']),
+      badge_status: z.enum(['active', 'degraded', 'revoked']).nullable(),
+      revision: z.string(),
+    })).optional().openapi({
+      description: 'Public exact role/version status for every explicit grading selection. This is authoritative for the selected badge identity; the top-level status remains the agent-wide compliance summary.',
+    }),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
     compliance_opt_out: z.boolean().optional(),
     badge_requalification_required: z.boolean().optional().openapi({
@@ -936,7 +990,7 @@ export const AgentComplianceDetailSchema = z
     verified: z.boolean().optional(),
     verified_badges: z.array(VerificationBadgeSchema).optional(),
     grading_profile_comparisons: z.array(GradingProfileComparisonSchema).optional().openapi({
-      description: "Owner/admin-only read-only agent-wide comparison of Legacy, Spec, and Sandbox grading from one source run. Empty for other viewers. This is not an exact badge-role result. Legacy remains authoritative while selection_enabled is false; reading this field never contacts the agent.",
+      description: "Owner/admin-only comparisons from one source run. Exact badge-scope rows allow Legacy or Strict Spec selection; Sandbox remains preview-only. Empty for other viewers. Reading never contacts the agent.",
     }),
   })
   .openapi("AgentComplianceDetail");
