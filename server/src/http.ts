@@ -2622,6 +2622,7 @@ export class HTTPServer {
           heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)}MB`,
           heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)}MB`,
         },
+        scheduler: jobScheduler.getPoolStatus(),
         jobs: jobScheduler.getStatus().map(j => ({
           ...j,
           lastError: j.lastError ? j.lastError.substring(0, 200) : null,

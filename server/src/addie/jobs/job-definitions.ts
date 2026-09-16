@@ -499,7 +499,12 @@ export function registerAllJobs(): void {
     description: 'Agent compliance heartbeat',
     interval: { value: 1, unit: 'hours' },
     initialDelay: { value: 10, unit: 'minutes' },
-    runner: runComplianceHeartbeatJob,
+    // Ten agents can each consume the 10-minute suite budget plus two
+    // 30-second discovery budgets. Two hours bounds the documented ~115m
+    // worst case without letting a wedged batch starve the global job pool.
+    executionTimeoutMs: 2 * 60 * 60 * 1000,
+    passExecutionContext: true,
+    runner: (options, context) => runComplianceHeartbeatJob(options, context.signal),
     options: { limit: 10 },
     shouldLogResult: (r) => r.checked > 0,
   });

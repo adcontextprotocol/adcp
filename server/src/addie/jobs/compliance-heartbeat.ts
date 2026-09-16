@@ -44,7 +44,11 @@ interface HeartbeatResult {
   skipped: number;
 }
 
-export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}): Promise<HeartbeatResult> {
+export async function runComplianceHeartbeatJob(
+  options: HeartbeatOptions = {},
+  signal?: AbortSignal,
+): Promise<HeartbeatResult> {
+  signal?.throwIfAborted();
   const limit = options.limit ?? 10;
   const result: HeartbeatResult = { checked: 0, passed: 0, failed: 0, skipped: 0 };
 
@@ -75,6 +79,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   );
 
   for (const agent of agentsDue) {
+    signal?.throwIfAborted();
     const startTime = Date.now();
     let runTarget = fallbackComplianceTarget;
     let runTargetSelection: ComplianceTargetSelection = { target: fallbackComplianceTarget, confirmed: false };
@@ -87,6 +92,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
+        signal,
       };
 
       runTargetSelection = await selectComplianceTargetForAgentSelection(
@@ -199,6 +205,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         }
       }
     } catch (error) {
+      // A scheduler timeout is a batch-level cancellation, not evidence about
+      // the current agent. Let the job fail instead of recording a false agent
+      // failure and continuing with an aborted transport.
+      signal?.throwIfAborted();
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const isAgentTimeout = /timed?\s*out/i.test(errorMessage);
       const isSavedAuthConfigError = /step\.auth\.basic\.username must be a non-empty string/i.test(errorMessage);

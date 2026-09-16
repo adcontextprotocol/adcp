@@ -87,4 +87,131 @@ describe('JobScheduler', () => {
     expect(started).toContain('after-queue');
     scheduler.stopAll();
   });
+
+  it('does not overlap interval runs of the same slow job', async () => {
+    vi.useFakeTimers();
+
+    const scheduler = new JobScheduler();
+    const blocker = deferred();
+    const runner = vi.fn(async () => blocker.promise);
+    scheduler.register({
+      name: 'slow-heartbeat',
+      description: 'Slow heartbeat',
+      interval: { value: 1, unit: 'seconds' },
+      runner,
+    });
+
+    scheduler.start('slow-heartbeat');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runner).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(runner).toHaveBeenCalledOnce();
+
+    blocker.resolve();
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(runner).toHaveBeenCalledTimes(2);
+    scheduler.stopAll();
+  });
+
+  it('aborts timed-out jobs and releases their concurrency slots', async () => {
+    vi.useFakeTimers();
+
+    const scheduler = new JobScheduler();
+    let observedSignal: AbortSignal | undefined;
+    scheduler.register({
+      name: 'wedged-job',
+      description: 'Wedged job',
+      interval: { value: 1, unit: 'hours' },
+      initialDelay: { value: 1, unit: 'seconds' },
+      executionTimeoutMs: 5_000,
+      passExecutionContext: true,
+      runner: async (_options, context) => {
+        observedSignal = context.signal;
+        await new Promise<void>((resolve) => {
+          context.signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+      },
+    });
+
+    scheduler.start('wedged-job');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(scheduler.getPoolStatus()).toEqual({
+      activeJobs: 1,
+      queuedJobs: 0,
+      maxConcurrency: 5,
+    });
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(observedSignal?.aborted).toBe(true);
+    expect(scheduler.getPoolStatus()).toEqual({
+      activeJobs: 0,
+      queuedJobs: 0,
+      maxConcurrency: 5,
+    });
+    expect(scheduler.getStatus()[0]).toMatchObject({
+      executing: false,
+      executionTimeoutMs: 5_000,
+      lastError: 'Wedged job timed out after 5000ms',
+      consecutiveFailures: 1,
+    });
+    scheduler.stopAll();
+  });
+
+  it('reports jobs waiting for the shared concurrency pool', async () => {
+    vi.useFakeTimers();
+
+    const scheduler = new JobScheduler();
+    const blockers: ReturnType<typeof deferred>[] = [];
+    for (let i = 0; i < 6; i++) {
+      const blocker = deferred();
+      blockers.push(blocker);
+      scheduler.register({
+        name: `pool-job-${i}`,
+        description: `Pool job ${i}`,
+        interval: { value: 1, unit: 'hours' },
+        initialDelay: { value: 1, unit: 'seconds' },
+        runner: async () => blocker.promise,
+      });
+    }
+
+    scheduler.startAll();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(scheduler.getPoolStatus()).toEqual({
+      activeJobs: 5,
+      queuedJobs: 1,
+      maxConcurrency: 5,
+    });
+
+    for (const blocker of blockers) blocker.resolve();
+    await flushMicrotasks(10);
+    expect(scheduler.getPoolStatus()).toEqual({
+      activeJobs: 0,
+      queuedJobs: 0,
+      maxConcurrency: 5,
+    });
+    scheduler.stopAll();
+  });
+
+  it('does not pass scheduler context into legacy dependency-injection arguments', async () => {
+    vi.useFakeTimers();
+
+    const scheduler = new JobScheduler();
+    let observedDependencies: { testDependency?: boolean } | undefined;
+    scheduler.register({
+      name: 'legacy-runner',
+      description: 'Legacy runner',
+      interval: { value: 1, unit: 'hours' },
+      initialDelay: { value: 1, unit: 'seconds' },
+      runner: async (_options, dependencies?: { testDependency?: boolean }) => {
+        observedDependencies = dependencies;
+      },
+    });
+
+    scheduler.start('legacy-runner');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(observedDependencies).toBeUndefined();
+    scheduler.stopAll();
+  });
 });
