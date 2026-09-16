@@ -47,10 +47,26 @@ export interface JobConfig<TOptions = Record<string, unknown>, TResult = unknown
   initialDelay?: TimeInterval;
 
   /** The async function to execute */
-  runner: (options: TOptions) => Promise<TResult>;
+  runner:
+    | ((options: TOptions) => Promise<TResult>)
+    | ((options: TOptions, context: JobExecutionContext) => Promise<TResult>);
+
+  /**
+   * Pass the scheduler's execution context as the runner's second argument.
+   * Opt-in avoids colliding with existing runners whose second argument is a
+   * test/dependency-injection seam rather than scheduler context.
+   */
+  passExecutionContext?: boolean;
 
   /** Options to pass to the runner */
   options?: TOptions;
+
+  /**
+   * Maximum execution time before the scheduler aborts the run and releases
+   * its global concurrency slot. Jobs should pass context.signal to bounded
+   * network or model calls so timed-out work can stop cooperatively.
+   */
+  executionTimeoutMs?: number;
 
   /** Only run during these business hours (ET timezone) */
   businessHours?: BusinessHoursConstraint;
@@ -66,6 +82,10 @@ export interface JobConfig<TOptions = Record<string, unknown>, TResult = unknown
    * If not provided, always logs at debug level.
    */
   shouldLogResult?: (result: TResult) => boolean;
+}
+
+export interface JobExecutionContext {
+  signal: AbortSignal;
 }
 
 /**
@@ -135,7 +155,14 @@ export interface JobStatus {
   lastError: string | null;
   lastMemoryProfile: JobMemoryProfile | null;
   consecutiveFailures: number;
+  executionTimeoutMs: number | null;
   businessHours?: BusinessHoursConstraint;
+}
+
+export interface JobPoolStatus {
+  activeJobs: number;
+  queuedJobs: number;
+  maxConcurrency: number;
 }
 
 /**
@@ -280,8 +307,31 @@ export class JobScheduler {
       await this.acquireSlot();
       const startTime = Date.now();
       const memoryBefore = memorySnapshot();
+      const abortController = new AbortController();
+      let executionTimeoutId: NodeJS.Timeout | null = null;
       try {
-        const result = await config.runner(config.options ?? ({} as never));
+        const options = config.options ?? ({} as never);
+        const runnerPromise = config.passExecutionContext
+          ? (config.runner as (
+            options: unknown,
+            context: JobExecutionContext,
+          ) => Promise<unknown>)(options, { signal: abortController.signal })
+          : (config.runner as (options: unknown) => Promise<unknown>)(options);
+        const result = config.executionTimeoutMs === undefined
+          ? await runnerPromise
+          : await Promise.race([
+            runnerPromise,
+            new Promise<never>((_resolve, reject) => {
+              executionTimeoutId = setTimeout(() => {
+                const timeoutError = new Error(
+                  `${config.description} timed out after ${config.executionTimeoutMs}ms`,
+                );
+                abortController.abort(timeoutError);
+                reject(timeoutError);
+              }, config.executionTimeoutMs);
+              executionTimeoutId.unref();
+            }),
+          ]);
 
         // Reset consecutive failure count on success
         this.consecutiveFailures.delete(name);
@@ -314,6 +364,9 @@ export class JobScheduler {
           });
         }
       } finally {
+        if (executionTimeoutId) {
+          clearTimeout(executionTimeoutId);
+        }
         const durationMs = Date.now() - startTime;
         const profile = memoryProfile(memoryBefore, memorySnapshot());
         job.lastMemoryProfile = profile;
@@ -433,10 +486,20 @@ export class JobScheduler {
         lastError: job?.lastError ?? null,
         lastMemoryProfile: job?.lastMemoryProfile ?? null,
         consecutiveFailures: this.consecutiveFailures.get(name) ?? 0,
+        executionTimeoutMs: config.executionTimeoutMs ?? null,
         businessHours: config.businessHours,
       });
     }
     return statuses;
+  }
+
+  /** Get the shared scheduler pool state for operational diagnostics. */
+  getPoolStatus(): JobPoolStatus {
+    return {
+      activeJobs: this.activeJobs,
+      queuedJobs: this.waitQueue.length,
+      maxConcurrency: JobScheduler.MAX_CONCURRENCY,
+    };
   }
 }
 

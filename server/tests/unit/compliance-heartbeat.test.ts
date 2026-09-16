@@ -167,6 +167,18 @@ describe('runComplianceHeartbeatJob', () => {
     });
   });
 
+  it('stops before selecting agents when the scheduler has aborted the batch', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('heartbeat execution timed out'));
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    await expect(runComplianceHeartbeatJob({ limit: 1 }, controller.signal))
+      .rejects.toThrow('heartbeat execution timed out');
+
+    expect(mocks.getAgentsDueForCheck).not.toHaveBeenCalled();
+    expect(mocks.acquireAgentExecutionFence).not.toHaveBeenCalled();
+  });
+
   it('runs retention cleanup even when no agents are due', async () => {
     mocks.getAgentsDueForCheck.mockResolvedValueOnce([]);
 
