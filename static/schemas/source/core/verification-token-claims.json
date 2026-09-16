@@ -65,6 +65,7 @@
     "verification_modes": {
       "type": "array",
       "items": {
+        "title": "VerificationTokenMode",
         "type": "string",
         "enum": ["spec", "live"]
       },
@@ -72,6 +73,7 @@
       "uniqueItems": true
     },
     "grading_profile": {
+      "title": "VerificationTokenGradingProfile",
       "type": "string",
       "enum": ["legacy", "spec"],
       "description": "Grading policy that produced the badge. Absence on a historical token means Legacy; verification_modes remains an independent evidence axis."
