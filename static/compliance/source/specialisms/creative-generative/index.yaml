@@ -216,8 +216,8 @@ phases:
             path: "creative_manifest.assets"
             description: "Output manifest includes generated assets"
           - check: field_present
-            path: "creative_manifest.format_id"
-            description: "Output manifest includes format_id"
+            path: "creative_manifest.format_kind"
+            description: "Output manifest includes format_kind"
 
           - check: field_present
             path: "context"
@@ -438,8 +438,8 @@ phases:
             path: "creative_manifest.assets"
             description: "Production manifest includes assets"
           - check: field_present
-            path: "creative_manifest.format_id"
-            description: "Production manifest includes format_id"
+            path: "creative_manifest.format_kind"
+            description: "Production manifest includes format_kind"
 
           - check: field_present
             path: "context"
@@ -558,8 +558,8 @@ phases:
           - check: response_schema
             description: "Response matches build-creative-response.json schema"
           - check: field_present
-            path: "creative_manifest.format_id"
-            description: "Generated manifest includes format_id"
+            path: "creative_manifest.format_kind"
+            description: "Generated manifest includes format_kind"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
@@ -727,7 +727,7 @@ phases:
           - check: response_schema
             description: "Response matches build-creative-response.json schema"
           - check: field_present
-            path: "creative_manifest.format_id"
+            path: "creative_manifest.format_kind"
             description: "Creative manifest returned"
 
       - id: expect_substitution_safe
