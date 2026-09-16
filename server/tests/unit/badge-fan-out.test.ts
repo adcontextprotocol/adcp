@@ -278,6 +278,53 @@ describe('runBadgeFanOut', () => {
     expect(db.revokeBadge).not.toHaveBeenCalled();
   });
 
+  it('keeps exact-role reconciliation byte-scoped to the selected role', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+    const creativeBadge = badge('creative', 'active', '3.0');
+    const db = makeDb({
+      existingBadges: [creativeBadge],
+      latestStatuses: [
+        status('sales_broadcast_tv', 'passing'),
+        status('creative_ad_server', 'failing'),
+      ],
+    });
+
+    await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv', 'creative-ad-server'],
+      adcpVersions: ['3.0'],
+      roles: ['media-buy'],
+    });
+
+    expect(db.upsertBadge).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(db.upsertBadge).mock.calls[0][0].role).toBe('media-buy');
+    expect(db.degradeBadge).not.toHaveBeenCalled();
+    expect(db.revokeBadge).not.toHaveBeenCalled();
+  });
+
+  it('keeps exact-role reconciliation scoped to the selected AdCP version', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+    const db = makeDb({
+      existingBadges: [
+        badge('media-buy', 'active', '3.0'),
+        badge('media-buy', 'active', '3.1'),
+      ],
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+
+    await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      adcpVersions: ['3.1'],
+      supportedVersions: ['3.1'],
+      roles: ['media-buy'],
+    });
+
+    expect(db.revokeBadge).not.toHaveBeenCalled();
+  });
+
   it('scopes storyboard reads to runId when full-suite callers provide one', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
 
@@ -311,6 +358,31 @@ describe('runBadgeFanOut', () => {
 
     expect(result.revoked).toHaveLength(1);
     expect(result.revoked[0].reason).toBe('Membership lapsed');
+  });
+
+  it('keeps no-membership cleanup exact when a role-scoped selection refreshes', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0, command: 'SELECT', oid: 0, fields: [] } as never);
+    const db = makeDb({
+      existingBadges: [
+        badge('media-buy', 'active', '3.0'),
+        badge('creative', 'active', '3.0'),
+        badge('media-buy', 'active', '3.1'),
+      ],
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+
+    const result = await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv', 'creative-ad-server'],
+      adcpVersions: ['3.0'],
+      roles: ['media-buy'],
+    });
+
+    expect(result.revoked).toEqual([{
+      role: 'media-buy', reason: 'Membership lapsed', adcp_version: '3.0',
+    }]);
+    expect(db.revokeBadge).toHaveBeenCalledTimes(1);
   });
 
   it('revokes previously issued badges for versions no longer publicly badge-eligible', async () => {
@@ -373,6 +445,39 @@ describe('runBadgeFanOut', () => {
       '3.1',
       'Agent no longer advertises AdCP 3.1 support',
       '0',
+    );
+  });
+
+  it('guards capability-wide cleanup with the latest authoritative agent run', async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never)
+      .mockResolvedValueOnce({ rows: [{ profile: 'spec', revision: '7', spec_failure_since: null }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+    const db = makeDb({
+      existingBadges: [badge('media-buy', 'active', '3.1')],
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+
+    await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      runId: 'authoritative-run',
+      adcpVersions: ['3.0'],
+      supportedVersions: ['3.0'],
+    });
+
+    expect(db.revokeBadge).toHaveBeenCalledWith(
+      'https://example.com/mcp',
+      'media-buy',
+      '3.1',
+      'Agent no longer advertises AdCP 3.1 support',
+      '0',
+      {
+        profile: 'spec',
+        revision: '7',
+        sourceRunId: 'authoritative-run',
+        sourceRunScope: 'agent',
+      },
     );
   });
 

@@ -18,6 +18,7 @@ import {
   findOwnedAgentVisibility,
   findOwnerOrgForUser,
   isOrgOwnerOfAgent,
+  canManageAgentForOrg,
   resolveOwnerOrgForUser,
 } from "../services/agent-ownership.js";
 import { AdCPClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
@@ -66,10 +67,21 @@ import {
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from "../services/badge-issuance.js";
+import { deriveVerificationProfileRoleAssessments } from "../services/verification-profile-assessment.js";
+import {
+  getGradingProfileRollout,
+  getEffectiveGradingDecision,
+  getPublicSelectedGradingStatuses,
+  completeGradingProfileProjectionJob,
+  getRoleProfileComparisons,
+  planGradingProfilePublicEffect,
+  selectGradingProfile,
+  GradingProfileConflictError,
+} from "../db/verification-profile-db.js";
 import { notifyVerificationChange } from "../notifications/compliance.js";
 import { resolveOwnerMembership, tierLabel } from "../services/membership-tiers.js";
 import { inferDiagnosticAgentType } from "../lib/diagnostic-agent-type-inference.js";
-import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
+import { isSupportedBadgeVersion, isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
 import { buildAaoVerificationBlock } from "../services/aao-verification-enrichment.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
@@ -509,6 +521,17 @@ function summarizePlacements(
 import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
 const logger = createLogger("registry-api");
+
+const GRADING_PROFILE_CONFLICT_MESSAGES: Record<GradingProfileConflictError['reason'], string> = {
+  stale_revision: 'The grading selection changed; refresh before retrying',
+  stale_assessment: 'The selected assessment is stale or unavailable',
+  selection_disabled: 'Grading profile selection is disabled',
+  legacy_selection_expired: 'New Legacy selections are no longer available',
+  impact_confirmation_required: 'Confirm the public badge impact before selecting this grading profile',
+  authorization_changed: 'Authorization or agent ownership changed; refresh before retrying',
+  idempotency_mismatch: 'The idempotency key was already used for a different selection',
+  unsupported_version: 'This AdCP version is not enabled for public badge grading',
+};
 const PUBLISHER_LOOKUP_TIMEOUT_MS = 8_000;
 const PUBLISHER_LOOKUP_SLOW_PHASE_MS = 500;
 
@@ -3547,7 +3570,7 @@ registry.registerPath({
   operationId: "getAgentCompliance",
   summary: "Get agent compliance detail",
   description:
-    "Returns detailed compliance status for a single agent, including track-level results, storyboard counts, timestamps, and an owner-only read-only agent-wide grading-profile comparison. The comparison is not an exact badge-role grade. Reading it never contacts the agent or changes public badge state.\n\nIf the agent has opted out of compliance monitoring, returns a minimal response with `status: opted_out`.",
+    "Returns detailed compliance status for a single agent, including track-level results, storyboard counts, timestamps, and owner-only grading comparisons. Exact badge-scope rows compare Legacy and Strict Spec grading for one role/version; Sandbox remains preview-only. Reading never contacts the agent.\n\nIf the agent has opted out of compliance monitoring, returns a minimal response with `status: opted_out`.",
   tags: ["Agent Compliance"],
   request: {
     params: z.object({
@@ -3558,6 +3581,56 @@ registry.registerPath({
     200: { description: "Compliance detail", content: { "application/json": { schema: AgentComplianceDetailSchema } } },
     400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: 'put',
+  path: '/api/registry/agents/{encodedUrl}/grading-profile',
+  operationId: 'selectAgentGradingProfile',
+  summary: 'Select an exact badge grading profile',
+  description: 'Selects Legacy or Strict Spec grading for one exact agent role and AdCP version. Requires a current immutable assessment, organization owner/admin authorization, revision compare-and-swap, and an idempotency key. Sandbox is preview-only. The selection itself does not contact the agent.',
+  tags: ['Agent Compliance'],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: 'URL-encoded agent URL' }),
+    }),
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            organization_id: z.string().min(1),
+            role: BadgeRoleSchema,
+            adcp_version: z.string().regex(/^[1-9][0-9]{0,3}\.[0-9]{1,3}$/),
+            selected_profile: z.enum(['legacy', 'spec']),
+            assessment_id: z.string().uuid(),
+            expected_revision: z.number().int().nonnegative(),
+            acknowledge_public_impact: z.boolean().optional(),
+            idempotency_key: z.string().uuid(),
+            admin_override_reason: z.string().min(1).optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Selection committed and audited',
+      content: { 'application/json': { schema: z.object({
+        selected_profile: z.enum(['legacy', 'spec']),
+        revision: z.string(),
+        public_effect: z.enum(['unchanged', 'issue', 'restore', 'regrade', 'degrade', 'revoke']),
+        replayed: z.boolean(),
+        source_run_id: z.string().uuid(),
+        token_refresh: z.enum(['completed', 'scheduled']),
+      }) } },
+    },
+    400: { description: 'Invalid request', content: { 'application/json': { schema: ErrorSchema } } },
+    401: { description: 'Authentication required', content: { 'application/json': { schema: ErrorSchema } } },
+    403: { description: 'Organization owner/admin required', content: { 'application/json': { schema: ErrorSchema } } },
+    409: { description: 'Stale assessment/revision, disabled selection, or impact confirmation required', content: { 'application/json': { schema: ErrorSchema } } },
+    500: { description: 'Server error', content: { 'application/json': { schema: ErrorSchema } } },
   },
 });
 
@@ -3646,6 +3719,7 @@ registry.registerPath({
             agent_url: z.string(),
             role: BadgeRoleSchema,
             verified: z.boolean(),
+            grading_profile: z.enum(['legacy', 'spec']),
             adcp_version: z.string().optional(),
             badge_svg_url: z.string(),
             registry_url: z.string(),
@@ -3706,6 +3780,7 @@ registry.registerPath({
             agent_url: z.string(),
             role: BadgeRoleSchema,
             verified: z.boolean(),
+            grading_profile: z.enum(['legacy', 'spec']),
             adcp_version: z.string(),
             badge_svg_url: z.string(),
             registry_url: z.string(),
@@ -6835,6 +6910,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       } catch (err) {
         logger.warn({ err, agentUrl }, "Badge query failed (table may not exist yet)");
       }
+      let selectedGradingStatuses: Awaited<ReturnType<typeof getPublicSelectedGradingStatuses>> = [];
+      try {
+        selectedGradingStatuses = await getPublicSelectedGradingStatuses(agentUrl);
+      } catch (err) {
+        logger.warn({ err, agentUrl }, 'Selected grading status query failed');
+      }
 
       // Declared specialisms from the latest run — surfaces what the agent
       // told us via get_adcp_capabilities so the dashboard can answer
@@ -7071,11 +7152,111 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
       }
 
+      // Phase 2 exact-role comparisons supersede the agent-wide preview when
+      // current-policy evidence exists. All three cards come from one source
+      // run; Sandbox is deliberately rendered unavailable/non-selectable.
+      if (includeDiagnostics) {
+        try {
+          const [exactComparisons, gradingRollout] = await Promise.all([
+            getRoleProfileComparisons(agentUrl),
+            getGradingProfileRollout(),
+          ]);
+          if (exactComparisons.length > 0) {
+            gradingProfileComparisons = exactComparisons.map(comparison => {
+              const legacy = comparison.assessments.find(a => a.grading_profile === 'legacy');
+              const sameSource = comparison.assessments.filter(a => a.source_run_id === legacy?.source_run_id);
+              const byProfile = new Map(sameSource.map(a => [a.grading_profile, a]));
+              const sourceTestedAt = legacy ? new Date(legacy.source_tested_at) : null;
+              const stale = !sourceTestedAt
+                || Number.isNaN(sourceTestedAt.getTime())
+                || legacy?.source_is_fresh !== true
+                || legacy?.source_is_latest !== true;
+              const badge = badges.find(b => (
+                b.role === comparison.role && b.adcp_version === comparison.adcp_version
+              ));
+              const outcome = (profile: 'legacy' | 'spec' | 'sandbox') => {
+                const assessment = byProfile.get(profile);
+                const sandbox = profile === 'sandbox';
+                const legacyDeadline = gradingRollout.legacy_selection_allowed_until
+                  ? new Date(gradingRollout.legacy_selection_allowed_until)
+                  : null;
+                const legacySelectionOpen = profile !== 'legacy'
+                  || !legacyDeadline
+                  || legacyDeadline.getTime() > Date.now();
+                const available = !!assessment && !stale && !sandbox && assessment.status !== null;
+                const plan = available && profile !== comparison.selected_profile
+                  ? planGradingProfilePublicEffect({
+                      selectedProfile: profile as 'legacy' | 'spec',
+                      currentProfile: comparison.selected_profile,
+                      assessmentStatus: assessment!.status!,
+                      badgeStatus: badge?.status ?? null,
+                      badgeDegradedAt: badge?.degraded_at ?? null,
+                      specFailureSince: comparison.spec_failure_since,
+                    })
+                  : { publicEffect: 'unchanged' as const, graceDeadline: null };
+                return {
+                  available,
+                  status: available ? assessment!.status : null,
+                  observed_status: assessment?.status ?? null,
+                  explanation: sandbox
+                    ? 'Sandbox grading preview is unavailable until causal bundle data and a public versioned exception catalog ship.'
+                    : stale
+                      ? 'This comparison is stale. Refresh compliance evidence before selecting it.'
+                      : assessment?.status === 'passing'
+                        ? `${profile === 'legacy' ? 'Legacy' : 'Strict Spec'} grading passes for this exact role and AdCP version.`
+                        : assessment?.status === 'failing'
+                          ? `${profile === 'legacy' ? 'Legacy' : 'Strict Spec'} grading fails for this exact role and AdCP version.`
+                          : 'Required evidence is incomplete.',
+                  assessment_id: assessment?.id,
+                  selectable: assessment?.selectable === true
+                    && !stale
+                    && !sandbox
+                    && gradingRollout.selection_enabled
+                    && legacySelectionOpen,
+                  public_effect: plan.publicEffect,
+                  grace_deadline: plan.graceDeadline?.toISOString() ?? null,
+                };
+              };
+              return {
+                scope: 'badge',
+                role: comparison.role,
+                adcp_version: comparison.adcp_version,
+                availability: stale ? 'stale' : 'current',
+                unavailable_reason: stale ? 'Comparison evidence is stale.' : null,
+                selected_profile: comparison.selected_profile,
+                selection_enabled: !stale && gradingRollout.selection_enabled,
+                legacy_selection_allowed_until: gradingRollout.legacy_selection_allowed_until,
+                selection_revision: Number(comparison.revision),
+                source_run_id: legacy?.source_run_id,
+                evaluator_policy_version: legacy?.policy_version,
+                requested_compliance_target: legacy?.requested_compliance_target ?? null,
+                compliance_bundle_version: legacy?.compliance_bundle_version ?? null,
+                assessed_at: legacy?.assessed_at ? new Date(legacy.assessed_at).toISOString() : null,
+                source_tested_at: sourceTestedAt?.toISOString() ?? null,
+                stale,
+                incomplete: sameSource.some(a => a.status === 'partial' || a.status === null),
+                public_impact: 'Selecting a profile updates only this role and AdCP version. Non-passing selection requires explicit confirmation.',
+                first_failing_spec_at: comparison.spec_failure_since?.toISOString() ?? null,
+                profiles: {
+                  legacy: outcome('legacy'),
+                  spec: outcome('spec'),
+                  sandbox: outcome('sandbox'),
+                },
+                evidence: legacy?.evidence ?? {},
+              };
+            });
+          }
+        } catch (err) {
+          logger.warn({ err, agentUrl }, 'Exact grading profile comparison query failed');
+        }
+      }
+
       res.json({
         agent_url: agentUrl,
         requested_compliance_target: status.requested_compliance_target ?? null,
         adcp_version: status.adcp_version ?? null,
         status: status.status,
+        selected_grading_statuses: selectedGradingStatuses,
         lifecycle_stage: metadata?.lifecycle_stage || "production",
         compliance_opt_out: metadata?.compliance_opt_out ?? false,
         badge_requalification_required: metadata?.badge_requalification_required ?? false,
@@ -7141,6 +7322,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           verified_at: b.verified_at.toISOString(),
           verified_specialisms: b.verified_specialisms,
           verification_modes: b.verification_modes,
+          grading_profile: b.grading_profile ?? 'legacy',
+          grading_profile_revision: Number(b.grading_profile_revision ?? 0),
+          first_failing_spec_at: b.first_failing_spec_at?.toISOString() ?? null,
           verified_protocol_version: b.verified_protocol_version,
           badge_url: `/api/registry/agents/${encodedUrl}/badge/${b.role}.svg`,
         })),
@@ -7154,6 +7338,129 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       res.status(500).json({ error: "Failed to get compliance status" });
     }
   });
+
+  router.put(
+    "/registry/agents/:encodedUrl/grading-profile",
+    ...(authMiddleware ? [authMiddleware] : []),
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateExternalUrl(agentUrl)) {
+          return res.status(400).json({ error: 'Invalid agent URL' });
+        }
+        if (!req.user?.id || isStaticAdminRequest(req)) {
+          return res.status(401).json({ error: 'An authenticated user is required' });
+        }
+
+        const body = req.body ?? {};
+        const role = body.role;
+        const adcpVersion = body.adcp_version;
+        const selectedProfile = body.selected_profile;
+        const organizationId = typeof body.organization_id === 'string' ? body.organization_id.trim() : '';
+        const adminOverrideReason = typeof body.admin_override_reason === 'string'
+          ? body.admin_override_reason.trim()
+          : '';
+        if (!VALID_BADGE_ROLES.includes(role)) {
+          return res.status(400).json(invalidBadgeRoleBody(String(role)));
+        }
+        if (typeof adcpVersion !== 'string' || !VALID_ADCP_VERSION_RE.test(adcpVersion)) {
+          return res.status(400).json({ error: 'adcp_version must be MAJOR.MINOR' });
+        }
+        if (!isSupportedBadgeVersion(adcpVersion)) {
+          return res.status(400).json({ error: 'adcp_version is not enabled for public badge grading' });
+        }
+        if (selectedProfile !== 'legacy' && selectedProfile !== 'spec') {
+          return res.status(400).json({ error: 'selected_profile must be legacy or spec; Sandbox is preview-only' });
+        }
+        if (!organizationId) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!isUuid(body.assessment_id) || !isUuid(body.idempotency_key)) {
+          return res.status(400).json({ error: 'assessment_id and idempotency_key must be UUIDs' });
+        }
+        if (!Number.isSafeInteger(body.expected_revision) || body.expected_revision < 0) {
+          return res.status(400).json({ error: 'expected_revision must be a non-negative integer' });
+        }
+
+        const manager = await canManageAgentForOrg(organizationId, req.user.id, agentUrl);
+        const registryAdmin = await isRegistryAdminRequest(req);
+        let actorKind: 'organization' | 'registry_admin' = 'organization';
+        if (!manager) {
+          if (!registryAdmin || !adminOverrideReason) {
+            return res.status(403).json({
+              error: 'An owner/admin of the selected organization is required; registry admin overrides require a reason',
+            });
+          }
+          const orgOwnsAgent = await query(
+            `SELECT 1 FROM member_profiles
+             WHERE workos_organization_id = $1 AND agents @> $2::jsonb LIMIT 1`,
+            [organizationId, JSON.stringify([{ url: agentUrl }])],
+          );
+          if (orgOwnsAgent.rowCount !== 1) {
+            return res.status(403).json({ error: 'The selected organization does not own this agent' });
+          }
+          actorKind = 'registry_admin';
+        }
+
+        const selection = await selectGradingProfile({
+          agentUrl,
+          role,
+          adcpVersion,
+          selectedProfile,
+          assessmentId: body.assessment_id,
+          expectedRevision: body.expected_revision,
+          acknowledgePublicImpact: body.acknowledge_public_impact === true,
+          idempotencyKey: body.idempotency_key,
+          requestId: String(req.headers['x-request-id'] ?? randomUUID()),
+          actorUserId: req.user.id,
+          actorOrgId: organizationId,
+          actorKind,
+          adminOverrideReason: actorKind === 'registry_admin' ? adminOverrideReason : null,
+        });
+
+        let tokenRefresh: 'completed' | 'scheduled' = 'completed';
+        try {
+          const source = await complianceDb.getComplianceRun(agentUrl, selection.source_run_id);
+          const profile = source?.agent_profile_json ?? {};
+          const declaredSpecialisms = Array.isArray(profile.specialisms)
+            ? profile.specialisms.filter((value: unknown): value is string => typeof value === 'string')
+            : [];
+          const supportedVersions = Array.isArray(profile.adcp_supported_versions)
+            ? profile.adcp_supported_versions.filter((value: unknown): value is string => typeof value === 'string')
+            : [];
+          if (declaredSpecialisms.length === 0) throw new Error('Source run has no declared specialisms');
+          await runBadgeFanOut({
+            complianceDb,
+            agentUrl,
+            declaredSpecialisms,
+            runId: selection.source_run_id,
+            adcpVersions: [adcpVersion],
+            supportedVersions,
+            roles: [role],
+            throwOnFailure: true,
+          });
+          await completeGradingProfileProjectionJob({
+            agentUrl, role, adcpVersion, selectionRevision: selection.revision,
+          });
+        } catch (error) {
+          tokenRefresh = 'scheduled';
+          logger.error({ error, agentUrl, role, adcpVersion }, 'Grading selection committed; exact-role token refresh was durably scheduled');
+        }
+
+        return res.json({ ...selection, token_refresh: tokenRefresh });
+      } catch (error) {
+        if (error instanceof GradingProfileConflictError) {
+          logger.warn({ error, path: req.path, reason: error.reason }, 'Grading profile selection conflict');
+          return res.status(409).json({
+            error: GRADING_PROFILE_CONFLICT_MESSAGES[error.reason],
+            reason: error.reason,
+          });
+        }
+        logger.error({ error, path: req.path }, 'Failed to select grading profile');
+        return res.status(500).json({ error: 'Failed to select grading profile' });
+      }
+    },
+  );
 
   router.get("/registry/agents/:encodedUrl/compliance/history", agentReadRateLimiter, async (req, res) => {
     try {
@@ -7244,6 +7551,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           verified_at: b.verified_at.toISOString(),
           verified_specialisms: b.verified_specialisms,
           verification_modes: b.verification_modes,
+          grading_profile: b.grading_profile ?? 'legacy',
+          grading_profile_revision: Number(b.grading_profile_revision ?? 0),
+          first_failing_spec_at: b.first_failing_spec_at?.toISOString() ?? null,
           verified_protocol_version: b.verified_protocol_version,
           badge_url: `/api/registry/agents/${encodedUrl}/badge/${b.role}.svg`,
         })),
@@ -7296,24 +7606,28 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       // buyers freeze a specific version.
       let modes: string[] = [];
       let adcpVersion: string | undefined;
+      let gradingProfile: 'legacy' | 'spec' = 'legacy';
+      let gradingRevision = '0';
       try {
         const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
         if (badge) {
           modes = badge.verification_modes;
           adcpVersion = badge.adcp_version;
+          gradingProfile = badge.grading_profile ?? 'legacy';
+          gradingRevision = badge.grading_profile_revision ?? '0';
         }
       } catch (error) {
         return badgeStatusUnavailable(res, error, { agentUrl, role });
       }
 
-      const svg = renderBadgeSvg(role, modes, { adcpVersion });
+      const svg = renderBadgeSvg(role, modes, { adcpVersion, gradingProfile });
       // ETag-safe version: filter the DB value through the same shape
       // regex renderBadgeSvg uses. A poisoned row with control characters
       // (CR/LF, NUL) would otherwise crash the response with
       // ERR_INVALID_CHAR when Node serializes the header. Falls back to
       // 'nv' (matching the modes-empty sentinel) for missing/malformed.
       const etagVersion = adcpVersion && /^[1-9][0-9]*\.[0-9]+$/.test(adcpVersion) ? adcpVersion : 'nv';
-      const etag = `"${role}-${etagVersion}-${modes.slice().sort().join('-') || 'nv'}"`;
+      const etag = `"${role}-${etagVersion}-${modes.slice().sort().join('-') || 'nv'}-${gradingProfile}-${gradingRevision}"`;
       setBadgeSvgHeaders(res, etag);
       res.send(svg);
     } catch (error) {
@@ -7342,15 +7656,29 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
 
       let modes: string[] = [];
+      let gradingProfile: 'legacy' | 'spec' = 'legacy';
+      let gradingRevision = '0';
       try {
         const badge = await complianceDb.getActiveBadge(agentUrl, role as any, version);
-        if (badge) modes = badge.verification_modes;
+        if (badge) {
+          modes = badge.verification_modes;
+          gradingProfile = badge.grading_profile ?? 'legacy';
+          gradingRevision = badge.grading_profile_revision ?? '0';
+        } else {
+          const decision = await getEffectiveGradingDecision({
+            agentUrl,
+            role: role as any,
+            adcpVersion: version,
+          });
+          gradingProfile = decision.profile;
+          gradingRevision = decision.revision;
+        }
       } catch (error) {
         return badgeStatusUnavailable(res, error, { agentUrl, role, version });
       }
 
-      const svg = renderBadgeSvg(role, modes, { adcpVersion: version });
-      const etag = `"${role}-${version}-${modes.slice().sort().join('-') || 'nv'}"`;
+      const svg = renderBadgeSvg(role, modes, { adcpVersion: version, gradingProfile });
+      const etag = `"${role}-${version}-${modes.slice().sort().join('-') || 'nv'}-${gradingProfile}-${gradingRevision}"`;
       setBadgeSvgHeaders(res, etag);
       res.send(svg);
     } catch (error) {
@@ -7379,6 +7707,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     altText: string;
     verified: boolean;
     adcpVersion?: string;
+    gradingProfile?: 'legacy' | 'spec';
   }) {
     const baseUrl = process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org';
     const encodedUrl = encodeURIComponent(args.agentUrl);
@@ -7390,6 +7719,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       role: args.role,
       verified: args.verified,
       ...(args.adcpVersion && { adcp_version: args.adcpVersion }),
+      grading_profile: args.gradingProfile ?? 'legacy',
       badge_svg_url: args.badgeSvgUrl,
       registry_url: registryUrl,
       html,
@@ -7410,10 +7740,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       let verified = false;
       let adcpVersion: string | undefined;
+      let gradingProfile: 'legacy' | 'spec' = 'legacy';
       try {
         const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
         verified = !!badge;
         adcpVersion = badge?.adcp_version;
+        gradingProfile = badge?.grading_profile ?? 'legacy';
       } catch (error) {
         return badgeStatusUnavailable(res, error, { agentUrl, role });
       }
@@ -7425,10 +7757,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       // legacy URL auto-upgrades, so a buyer who copies this snippet
       // gets the newest version's image without changing the alt text
       // they pasted into their site.
-      const altText = `AgenticAdvertising.org Verified ${roleLabelForEmbed(role)} Agent`;
+      const altText = `AgenticAdvertising.org Verified ${roleLabelForEmbed(role)} Agent · ${gradingProfile === 'spec' ? 'Strict Spec grading' : 'Legacy grading'}`;
 
       res.setHeader("Cache-Control", "no-store");
-      res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion }));
+      res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion, gradingProfile }));
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to generate embed code");
       res.status(500).json({ error: "Failed to generate embed code" });
@@ -7455,9 +7787,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
 
       let verified = false;
+      let gradingProfile: 'legacy' | 'spec' = 'legacy';
       try {
         const badge = await complianceDb.getActiveBadge(agentUrl, role as any, version);
         verified = !!badge;
+        if (badge) {
+          gradingProfile = badge.grading_profile ?? 'legacy';
+        } else {
+          gradingProfile = (await getEffectiveGradingDecision({
+            agentUrl,
+            role: role as any,
+            adcpVersion: version,
+          })).profile;
+        }
       } catch (error) {
         return badgeStatusUnavailable(res, error, { agentUrl, role, version });
       }
@@ -7465,10 +7807,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const baseUrl = process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org';
       const encodedUrl = encodeURIComponent(agentUrl);
       const badgeSvgUrl = `${baseUrl}/api/registry/agents/${encodedUrl}/badge/${role}/${version}.svg`;
-      const altText = `AgenticAdvertising.org Verified ${roleLabelForEmbed(role)} Agent ${version}`;
+      const altText = `AgenticAdvertising.org Verified ${roleLabelForEmbed(role)} Agent ${version} · ${gradingProfile === 'spec' ? 'Strict Spec grading' : 'Legacy grading'}`;
 
       res.setHeader("Cache-Control", "no-store");
-      res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion: version }));
+      res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion: version, gradingProfile }));
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to generate version-pinned embed code");
       res.status(500).json({ error: "Failed to generate embed code" });
@@ -8156,7 +8498,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
             throwOnFailure: true,
           });
         } else {
-          await revokeUnsupportedPublicBadges({ complianceDb, agentUrl, supportedVersions });
+          await revokeUnsupportedPublicBadges({
+            complianceDb,
+            agentUrl,
+            supportedVersions,
+            sourceRunId: run.id,
+          });
         }
       }
       lease.assertValid();
@@ -8222,6 +8569,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           dbInput.triggered_org_id = request.owner_org_id;
           dbInput.refresh_operation_id = request.id;
           dbInput.refresh_operation_lease_token = request.lease_token;
+          if (isAuthoritativeComplianceRun(dbInput)) {
+            dbInput.grading_profile_assessments = deriveVerificationProfileRoleAssessments({
+              result: complyResult,
+              lifecycleStage: metadata?.lifecycle_stage || 'production',
+              requestedComplianceTarget: dbInput.requested_compliance_target,
+              storyboardStatuses: dbInput.storyboard_statuses ?? [],
+            });
+          }
           lease.assertValid();
           const { run, storyboardStatuses, replayedExisting } = await complianceDb.recordComplianceRun(dbInput);
           const passing = storyboardStatuses.filter(status => status.status === 'passing').length;
@@ -8272,6 +8627,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
                   agentUrl,
                   supportedVersions: complyResult.agent_profile?.adcp_supported_versions
                     ?? runTargetSelection.supportedVersions,
+                  sourceRunId: run.id,
                 });
               } catch {
                 throw refreshFailure('badge_update_failed', 'Badge state could not be updated');

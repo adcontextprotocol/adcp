@@ -12,6 +12,7 @@ import {
   getSpecialismStatus,
   SUPPORTED_BADGE_VERSIONS,
   isSupportedBadgeVersion,
+  advertisesStableBadgeLine,
 } from '../../src/services/adcp-taxonomy.js';
 
 function loadJsonEnum(relPath: string): string[] {
@@ -76,5 +77,15 @@ describe('SUPPORTED_BADGE_VERSIONS', () => {
     expect(isSupportedBadgeVersion(null)).toBe(false);
     expect(isSupportedBadgeVersion(undefined)).toBe(false);
     expect(isSupportedBadgeVersion('')).toBe(false);
+  });
+});
+
+describe('advertisesStableBadgeLine', () => {
+  it('accepts an exact stable line or numeric patch and rejects prefix lookalikes', () => {
+    expect(advertisesStableBadgeLine('3.1', '3.1')).toBe(true);
+    expect(advertisesStableBadgeLine('3.1.9', '3.1')).toBe(true);
+    expect(advertisesStableBadgeLine('3.1.foo', '3.1')).toBe(false);
+    expect(advertisesStableBadgeLine('3.1.', '3.1')).toBe(false);
+    expect(advertisesStableBadgeLine('3.10', '3.1')).toBe(false);
   });
 });

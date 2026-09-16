@@ -111,6 +111,7 @@ import { isOrgOwnerOfAgent } from '../../services/agent-ownership.js';
 import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
+import { deriveVerificationProfileRoleAssessments } from '../../services/verification-profile-assessment.js';
 import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
 import { AgentValidator } from '../../validator.js';
 import {
@@ -4793,6 +4794,14 @@ export function createMemberToolHandlers(
                 // See migration 490.
                 triggered_org_id: organizationId,
               };
+              if (isAuthoritativeComplianceRun(dbInput)) {
+                dbInput.grading_profile_assessments = deriveVerificationProfileRoleAssessments({
+                  result,
+                  lifecycleStage: metadata?.lifecycle_stage ?? 'production',
+                  requestedComplianceTarget: dbInput.requested_compliance_target,
+                  storyboardStatuses: dbInput.storyboard_statuses ?? [],
+                });
+              }
               const { run } = await complianceDb.recordComplianceRun(dbInput);
               // notifyComplianceChange intentionally omitted: owner test runs are
               // exploratory; compliance-change notifications fire on heartbeat
@@ -4823,6 +4832,7 @@ export function createMemberToolHandlers(
                     complianceDb,
                     agentUrl: resolved.resolvedUrl,
                     supportedVersions: result.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+                    sourceRunId: run.id,
                   });
                 } catch (badgeError) {
                   logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Unsupported public badge revocation failed after owner_test run');
@@ -4836,15 +4846,6 @@ export function createMemberToolHandlers(
           skippedCanonicalWriteReason = 'tracks';
         } else if (isAgentOwner && result.completeness !== 'timed_out') {
           skippedCanonicalWriteReason = 'target';
-          try {
-            await revokeUnsupportedPublicBadges({
-              complianceDb,
-              agentUrl: resolved.resolvedUrl,
-              supportedVersions: result.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
-            });
-          } catch (badgeError) {
-            logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Unsupported public badge revocation failed after owner_test run');
-          }
         }
 
         // Legacy write to agent_contexts + agent_test_history. Retained ONLY

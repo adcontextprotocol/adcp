@@ -490,6 +490,10 @@
           "$ref": "/schemas/core/registry-event.json",
           "description": "A cursor-ordered registry change-feed event from /api/registry/feed"
         },
+        "verification-token-claims": {
+          "$ref": "/schemas/core/verification-token-claims.json",
+          "description": "Signed AgenticAdvertising.org verification token claims, including the authoritative grading profile"
+        },
         "registry-feed-response": {
           "$ref": "/schemas/core/registry-feed-response.json",
           "description": "Response wrapper for GET /api/registry/feed"

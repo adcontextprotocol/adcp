@@ -45,6 +45,7 @@ import { runWgSlackContextJob } from './wg-slack-context.js';
 import { runSecretariatExecutorJob } from './secretariat-executor.js';
 import { runSecretariatPrShepherdJob } from './secretariat-pr-shepherd.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
+import { runVerificationProfileProjectionJob } from './verification-profile-projection.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runAddieCorrectedCaptureJob } from './shadow-corrected-capture.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
@@ -563,6 +564,16 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.checked > 0,
   });
 
+  jobScheduler.register({
+    name: 'verification-profile-projection',
+    description: 'Exact grading badge and token projection retry',
+    interval: { value: 1, unit: 'minutes' },
+    initialDelay: { value: 10, unit: 'seconds' },
+    runner: runVerificationProfileProjectionJob,
+    options: { limit: 20 },
+    shouldLogResult: (r) => r.claimed > 0,
+  });
+
   // Outbound request log cleanup - retain 30 days
   jobScheduler.register({
     name: 'outbound-log-cleanup',
@@ -1007,6 +1018,7 @@ export const JOB_NAMES = {
   SLACK_AUTO_LINK: 'slack-auto-link',
   DOMAIN_MEMBER_BACKFILL: 'domain-member-backfill',
   COMPLIANCE_HEARTBEAT: 'compliance-heartbeat',
+  VERIFICATION_PROFILE_PROJECTION: 'verification-profile-projection',
   EVENT_REMINDER: 'event-reminder',
   EVENT_RECAP_NUDGE: 'event-recap-nudge',
   MEETING_PREP_NUDGE: 'meeting-prep-nudge',

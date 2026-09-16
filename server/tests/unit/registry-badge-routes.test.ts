@@ -20,6 +20,7 @@ const complianceMocks = vi.hoisted(() => ({
   upsertRegistryMetadata: vi.fn(),
   setComplianceOptOut: vi.fn(),
   revokeAllBadges: vi.fn(),
+  getComplianceRun: vi.fn(),
 }));
 
 const notificationMocks = vi.hoisted(() => ({
@@ -31,10 +32,18 @@ const ownershipMocks = vi.hoisted(() => ({
   findOwnerOrgForUser: vi.fn(),
   isOrgOwnerOfAgent: vi.fn(),
   resolveOwnerOrgForUser: vi.fn(),
+  canManageAgentForOrg: vi.fn(),
 }));
+
+const gradingMocks = vi.hoisted(() => ({
+  selectGradingProfile: vi.fn(),
+  completeGradingProfileProjectionJob: vi.fn(),
+}));
+const badgeIssuanceMocks = vi.hoisted(() => ({ runBadgeFanOut: vi.fn() }));
 
 vi.mock('../../src/services/agent-ownership.js', () => ownershipMocks);
 vi.mock('../../src/notifications/compliance.js', () => notificationMocks);
+vi.mock('../../src/addie/admin-status-lookup.js', () => ({ isWebUserAAOAdmin: vi.fn().mockResolvedValue(false) }));
 
 vi.mock('../../src/middleware/rate-limit.js', () => {
   const pass: import('express').RequestHandler = (_req, _res, next) => next();
@@ -63,8 +72,29 @@ vi.mock('../../src/db/compliance-db.js', () => ({
     upsertRegistryMetadata = complianceMocks.upsertRegistryMetadata;
     setComplianceOptOut = complianceMocks.setComplianceOptOut;
     revokeAllBadges = complianceMocks.revokeAllBadges;
+    getComplianceRun = complianceMocks.getComplianceRun;
   },
 }));
+
+vi.mock('../../src/db/verification-profile-db.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/db/verification-profile-db.js')>();
+  return {
+    ...actual,
+    selectGradingProfile: gradingMocks.selectGradingProfile,
+    completeGradingProfileProjectionJob: gradingMocks.completeGradingProfileProjectionJob,
+    getEffectiveGradingDecision: vi.fn().mockResolvedValue({
+      profile: 'legacy',
+      revision: '0',
+      assessment: null,
+      spec_failure_since: null,
+    }),
+  };
+});
+
+vi.mock('../../src/services/badge-issuance.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/services/badge-issuance.js')>();
+  return { ...actual, runBadgeFanOut: badgeIssuanceMocks.runBadgeFanOut };
+});
 
 import { createRegistryApiRouter, type RegistryApiConfig } from '../../src/routes/registry-api.js';
 
@@ -133,6 +163,22 @@ describe('registry badge routes', () => {
     notificationMocks.notifyVerificationChange.mockResolvedValue(undefined);
     ownershipMocks.findOwnerOrgForUser.mockResolvedValue('org_badge_owner');
     ownershipMocks.findOwnedAgentVisibility.mockResolvedValue('public');
+    ownershipMocks.canManageAgentForOrg.mockResolvedValue(true);
+    gradingMocks.selectGradingProfile.mockReset();
+    gradingMocks.completeGradingProfileProjectionJob.mockReset();
+    gradingMocks.completeGradingProfileProjectionJob.mockResolvedValue(undefined);
+    gradingMocks.selectGradingProfile.mockResolvedValue({
+      selected_profile: 'spec', revision: '1', public_effect: 'regrade', replayed: false,
+      source_run_id: '33333333-3333-4333-8333-333333333333',
+    });
+    complianceMocks.getComplianceRun.mockResolvedValue({
+      agent_profile_json: {
+        specialisms: ['sales-non-guaranteed'],
+        adcp_supported_versions: ['3.1.4'],
+      },
+    });
+    badgeIssuanceMocks.runBadgeFanOut.mockReset();
+    badgeIssuanceMocks.runBadgeFanOut.mockResolvedValue({ issued: [], revoked: [], degraded: [], unchanged: [] });
   });
 
   it('reports every active version per verified role in newest-first order', async () => {
@@ -406,5 +452,75 @@ describe('registry badge routes', () => {
     expect(response.status).toBe(503);
     expect(response.headers['cache-control']).toBe('no-store');
     expect(response.body).toEqual({ error: 'Badge status temporarily unavailable' });
+  });
+
+  it('requires an authenticated user for grading-profile selection', async () => {
+    const response = await request(buildApp())
+      .put(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/grading-profile`)
+      .send({});
+
+    expect(response.status).toBe(401);
+  });
+
+  it('rejects Sandbox selection before authorization or database access', async () => {
+    const response = await request(buildApp('private', true))
+      .put(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/grading-profile`)
+      .send({
+        organization_id: 'org_badge_owner',
+        role: 'media-buy',
+        adcp_version: '3.1',
+        selected_profile: 'sandbox',
+        assessment_id: '11111111-1111-4111-8111-111111111111',
+        expected_revision: 0,
+        idempotency_key: '22222222-2222-4222-8222-222222222222',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('Sandbox is preview-only');
+  });
+
+  it('commits an owner selection and refreshes only the exact role', async () => {
+    const response = await request(buildApp('private', true))
+      .put(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/grading-profile`)
+      .send({
+        organization_id: 'org_badge_owner', role: 'media-buy', adcp_version: '3.1',
+        selected_profile: 'spec', assessment_id: '11111111-1111-4111-8111-111111111111',
+        expected_revision: 0, idempotency_key: '22222222-2222-4222-8222-222222222222',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ selected_profile: 'spec', token_refresh: 'completed' });
+    expect(badgeIssuanceMocks.runBadgeFanOut).toHaveBeenCalledWith(expect.objectContaining({
+      roles: ['media-buy'], adcpVersions: ['3.1'], throwOnFailure: true,
+    }));
+  });
+
+  it('rejects a cross-tenant selection before profile mutation', async () => {
+    ownershipMocks.canManageAgentForOrg.mockResolvedValueOnce(false);
+    const response = await request(buildApp('private', true))
+      .put(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/grading-profile`)
+      .send({
+        organization_id: 'org_other', role: 'media-buy', adcp_version: '3.1',
+        selected_profile: 'spec', assessment_id: '11111111-1111-4111-8111-111111111111',
+        expected_revision: 0, idempotency_key: '22222222-2222-4222-8222-222222222222',
+      });
+
+    expect(response.status).toBe(403);
+    expect(gradingMocks.selectGradingProfile).not.toHaveBeenCalled();
+  });
+
+  it('durably schedules convergence when post-commit token refresh fails', async () => {
+    badgeIssuanceMocks.runBadgeFanOut.mockRejectedValueOnce(new Error('signing unavailable'));
+    const response = await request(buildApp('private', true))
+      .put(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/grading-profile`)
+      .send({
+        organization_id: 'org_badge_owner', role: 'media-buy', adcp_version: '3.1',
+        selected_profile: 'spec', assessment_id: '11111111-1111-4111-8111-111111111111',
+        expected_revision: 0, idempotency_key: '22222222-2222-4222-8222-222222222222',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.token_refresh).toBe('scheduled');
+    expect(gradingMocks.completeGradingProfileProjectionJob).not.toHaveBeenCalled();
   });
 });

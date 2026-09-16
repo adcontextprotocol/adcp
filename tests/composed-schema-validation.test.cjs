@@ -5426,7 +5426,8 @@ async function runTests() {
             agent_url: 'https://ads.agency.example.com',
             role: 'media-buy',
             verified_specialisms: ['sales-catalog-driven'],
-            adcp_version: '3.1.0-beta.5'
+            adcp_version: '3.1.0-beta.5',
+            grading_profile: 'spec'
           },
           actor: 'pipeline:compliance-heartbeat',
           created_at: '2026-03-31T10:02:30.000Z'
@@ -5439,7 +5440,8 @@ async function runTests() {
           payload: {
             agent_url: 'https://ads.agency.example.com',
             role: 'media-buy',
-            reason: 'media_buy track failing'
+            reason: 'media_buy track failing',
+            grading_profile: 'spec'
           },
           actor: 'pipeline:compliance-heartbeat',
           created_at: '2026-03-31T10:02:45.000Z'

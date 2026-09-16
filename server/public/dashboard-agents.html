@@ -2273,6 +2273,11 @@
       if (comparisons.length === 0) return '';
 
       const profileNames = ['legacy', 'spec', 'sandbox'];
+      const profileLabels = {
+        legacy: 'Legacy grading',
+        spec: 'Strict Spec grading',
+        sandbox: 'Sandbox grading preview',
+      };
       return comparisons.map(comparison => {
         const version = typeof comparison.compliance_bundle_version === 'string'
           ? comparison.compliance_bundle_version
@@ -2305,11 +2310,50 @@
             : status === 'partial' ? 'Incomplete'
             : 'Unavailable';
           const selectedClass = selected === name ? ' grading-profile-card--selected' : '';
+          const assessmentId = typeof profile.assessment_id === 'string' ? profile.assessment_id : '';
+          const publicEffect = ['unchanged', 'issue', 'restore', 'regrade', 'degrade', 'revoke'].includes(profile.public_effect)
+            ? profile.public_effect
+            : '';
+          const effectLabels = {
+            unchanged: 'No immediate public badge change is expected.',
+            issue: 'The public badge will be issued if the remaining eligibility checks pass.',
+            restore: 'The public badge will return to active.',
+            regrade: 'The public badge will keep its lifecycle status and show the newly selected grading profile.',
+            degrade: 'The public badge will enter its degraded grace period.',
+            revoke: 'The public badge will be revoked immediately.',
+          };
+          const graceDeadline = typeof profile.grace_deadline === 'string' ? profile.grace_deadline : '';
+          const parsedDeadline = graceDeadline ? new Date(graceDeadline) : null;
+          const deadlineLabel = parsedDeadline && !Number.isNaN(parsedDeadline.getTime())
+            ? ` Grace deadline: ${parsedDeadline.toLocaleString()}.`
+            : '';
+          const publicEffectCopy = publicEffect
+            ? `${effectLabels[publicEffect]}${deadlineLabel}`
+            : '';
+          const canSelect = comparison.scope === 'badge'
+            && comparison.selection_enabled === true
+            && profile.selectable === true
+            && selected !== name
+            && (name === 'legacy' || name === 'spec');
+          const selectButton = canSelect ? `<button type="button" class="btn btn-secondary grading-profile-select"
+            data-agent-url="${escapeHtml(String(cs.agent_url || ''))}"
+            data-role="${escapeHtml(String(comparison.role || ''))}"
+            data-adcp-version="${escapeHtml(String(comparison.adcp_version || ''))}"
+            data-profile="${escapeHtml(name)}"
+            data-assessment-id="${escapeHtml(assessmentId)}"
+            data-revision="${escapeHtml(String(comparison.selection_revision ?? 0))}"
+            data-status="${escapeHtml(status)}"
+            data-public-effect="${escapeHtml(publicEffect)}"
+            data-public-impact="${escapeHtml(publicEffectCopy || comparison.public_impact || '')}"
+            data-grace-deadline="${escapeHtml(graceDeadline)}"
+            onclick="selectGradingProfileFromComparison(this)">${name === 'legacy' ? 'Revert to Legacy grading' : 'Use Strict Spec grading'}</button>` : '';
           return `<div class="grading-profile-card${selectedClass}">
-            <span class="grading-profile-name">${escapeHtml(name.charAt(0).toUpperCase() + name.slice(1))}${selected === name ? ' · Current' : ''}</span>
+            <span class="grading-profile-name">${escapeHtml(profileLabels[name])}${selected === name ? ' · Current' : ''}</span>
             <span class="grading-profile-status grading-profile-status--${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
             <span>${escapeHtml(profile.explanation || 'No explanation available.')}</span>
+            ${publicEffectCopy ? `<span class="grading-profile-note"><strong>Public badge effect:</strong> ${escapeHtml(publicEffectCopy)}</span>` : ''}
             ${!available && profile.observed_status ? `<span class="grading-profile-note">Historical observation: ${escapeHtml(profile.observed_status)}</span>` : ''}
+            ${selectButton}
           </div>`;
         }).join('');
         const evidence = comparison.evidence && typeof comparison.evidence === 'object' ? comparison.evidence : {};
@@ -2322,7 +2366,9 @@
           : 'Unavailable';
         return `<div class="grading-profile-comparison">
           <div class="grading-profile-comparison-header">
-            <strong>Agent-wide grading preview · ${escapeHtml(version)}</strong>
+            <strong>${comparison.scope === 'badge'
+              ? `${escapeHtml(String(comparison.role || 'Unknown role'))} · AdCP ${escapeHtml(String(comparison.adcp_version || version))}`
+              : `Agent-wide grading preview · ${escapeHtml(version)}`}</strong>
             <span>${escapeHtml(freshness)}</span>
           </div>
           <div class="grading-profile-grid">${cards}</div>
@@ -2336,9 +2382,49 @@
               <dt>Evidence</dt><dd>${escapeHtml(String(evidence.selected_storyboard_count ?? 0))} storyboards; ${escapeHtml(String(evidence.observed_failure_count ?? 0))} observed failures; ${escapeHtml(String(evidence.flat_failure_count ?? 0))} run-level failure records; ${escapeHtml(String(evidence.controller_gap_phase_count ?? 0))} controller-gap phases; ${escapeHtml(String(evidence.sandbox_unresolved_bundle_count ?? 0))} unresolved Sandbox bundles</dd>
             </dl>
           </details>
-          <div class="grading-profile-note">Agent-wide preview only—not an exact badge-role grade. Legacy still controls the public registry and badge. Comparing profiles does not contact the agent.</div>
+          <div class="grading-profile-note">${comparison.scope === 'badge'
+            ? 'Evidence modes (Spec/Live) are separate from the grading profile. Selecting a profile does not contact the agent or enqueue a compliance run; a database-backed job retries only the badge and token projection. Offline JWT copies can remain valid for up to 30 days; the registry is the real-time authority.'
+            : 'Agent-wide preview only—not an exact badge-role grade. Legacy still controls the public registry and badge. Comparing profiles does not contact the agent.'}</div>
         </div>`;
       }).join('');
+    }
+
+    async function selectGradingProfileFromComparison(button) {
+      const profile = button.dataset.profile;
+      const status = button.dataset.status;
+      const label = profile === 'spec' ? 'Strict Spec grading' : 'Legacy grading';
+      const effect = button.dataset.publicEffect;
+      const impact = button.dataset.publicImpact || (status === 'passing'
+        ? 'The current evidence passes. The server will determine the resulting public badge state.'
+        : 'The current evidence is non-passing. The server will determine the resulting public badge state.');
+      const action = profile === 'legacy' ? 'Revert to' : 'Select';
+      if (!window.confirm(`${action} ${label} for ${button.dataset.role} at AdCP ${button.dataset.adcpVersion}?\n\n${impact}\n\nThis changes only this exact role and version and does not contact the agent. Offline JWT copies can remain valid for up to 30 days; check the registry for real-time status.`)) return;
+      button.disabled = true;
+      try {
+        const response = await fetch(`/api/registry/agents/${encodeURIComponent(button.dataset.agentUrl)}/grading-profile`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            organization_id: pageState.orgId,
+            role: button.dataset.role,
+            adcp_version: button.dataset.adcpVersion,
+            selected_profile: profile,
+            assessment_id: button.dataset.assessmentId,
+            expected_revision: Number(button.dataset.revision),
+            acknowledge_public_impact: effect === 'degrade' || effect === 'revoke' || (!effect && status !== 'passing'),
+            idempotency_key: crypto.randomUUID(),
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not update grading profile');
+        if (payload.token_refresh === 'scheduled') {
+          alert('The grading profile was saved. The registry is authoritative now; refreshed offline JWTs were durably scheduled.');
+        }
+        window.location.reload();
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Could not update grading profile');
+        button.disabled = false;
+      }
     }
 
     function renderVerificationPanel(cs, agentUrl, hasAuth) {
@@ -2506,6 +2592,7 @@
       const rowsHtml = badges.map((badge, idx) => {
         const protocol = PROTOCOL_LABELS[badge.role] || badge.role;
         const qualifier = formatModes(badge.verification_modes) || 'Spec';
+        const gradingLabel = badge.grading_profile === 'spec' ? 'Strict Spec grading' : 'Legacy grading';
         const verifiedAt = badge.verified_at ? new Date(badge.verified_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
         const specialisms = (badge.verified_specialisms || []).slice().sort();
         // Defensive: the DB CHECK constraint and JWT signer regex
@@ -2545,8 +2632,8 @@
         const versionSegment = adcpVersion
           ? ` ${adcpVersion}`
           : (badge.adcp_version ? ' (unversioned)' : '');
-        const altText = `AAO Verified ${protocol} Agent${versionSegment} (${qualifier})`;
-        const labelStrong = `${protocol} Agent${versionSegment} (${qualifier})`;
+        const altText = `AAO Verified ${protocol} Agent${versionSegment} (${qualifier}) · ${gradingLabel}`;
+        const labelStrong = `${protocol} Agent${versionSegment} (${qualifier}) · ${gradingLabel}`;
         const htmlEmbed = `<a href="${registryUrl}" target="_blank" rel="noopener noreferrer"><img src="${badgeSvgUrl}" alt="${altText}" loading="lazy" height="20" /></a>`;
         const mdEmbed = `[![${altText}](${badgeSvgUrl})](${registryUrl})`;
 

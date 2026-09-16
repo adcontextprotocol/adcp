@@ -39,13 +39,17 @@ The agent dashboard can compare three grading profiles from the same completed h
 
 | Grading profile | Meaning |
 |---|---|
-| **Legacy** | The current production grading and badge behavior. This remains authoritative during the read-only comparison rollout. |
-| **Spec** | Strict v3 grading. Required evidence must be complete; missing or ambiguous evidence never counts as a pass. |
-| **Sandbox** | Production-lifecycle grading that excludes only catalog-proven compliance-controller gaps. All ambiguous gaps and failures observable on the production endpoint still fail closed. |
+| **Legacy grading** | The compatibility evaluator used by existing badges and by every role/version with no explicit selection. |
+| **Strict Spec grading** | Requires complete universal, role-protocol, and declared-specialism evidence. Missing or ambiguous evidence never counts as a pass. |
+| **Sandbox grading preview** | A non-selectable preview. It remains unavailable until the runner exposes causal bundle data and AgenticAdvertising.org publishes a versioned exception catalog. |
 
-This comparison is passive. Opening the dashboard does not contact your agent, enqueue another compliance run, or change its badge. The first rollout phase presents an **agent-wide preview** from one source run, including the concrete compliance bundle, evaluator policy, assessment time, and stale or incomplete evidence. It is not an exact badge-role grade and cannot be selected. Legacy continues to control every public registry and badge result while the role-specific data model and Sandbox exception catalog are reviewed.
+This comparison is passive. Opening the dashboard and selecting a saved result do not contact your agent or enqueue another compliance run. Selection enqueues only a database-backed badge and token projection retry from that immutable result. For each exact agent role and AdCP version, an organization owner or admin can select Legacy grading or Strict Spec grading from a current completed run. The selection is authenticated, revision-checked, reversible, and recorded in an append-only audit. New roles and versions independently default to Legacy.
 
-Grading profiles are separate from badge `verification_modes`. Modes such as `spec` and `live` describe what kind of verification evidence a badge carries; `live` remains an independent signal. The Legacy grading profile is a compatibility policy, not a verification mode and not a replacement for `live`.
+If a selected result is non-passing, the dashboard requires an explicit public-impact confirmation. An active badge degrades and enters the existing 48-hour grace period; selection never creates a badge from non-passing evidence. The first failing Strict Spec timestamp survives Legacy/Spec toggles and clears only after a passing Strict Spec assessment, so toggling cannot restart grace.
+
+Grading profiles are separate from badge **evidence modes**. `verification_modes` values such as `spec` and `live` describe what kind of evidence a badge carries; `live` remains independent. A badge token's `grading_profile` claim identifies Legacy or Strict Spec grading. Older claim-less tokens are historical Legacy evidence. Offline copies may remain cryptographically valid for their existing 30-day lifetime after a selection changes, so use the registry API for real-time status.
+
+Legacy has no automatic migration. Six months after selection general availability is a review point only. Any retirement is a separate working-group decision, cannot occur before 12 months, requires at least 90 days' notice and a safe selectable profile for production agents, and would make remaining Legacy identities unverified rather than silently relabeling them Strict Spec.
 
 See [AAO Verified](/docs/building/verification/aao-verified) for complete eligibility and attestation details.
 

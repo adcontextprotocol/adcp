@@ -172,6 +172,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     const statusRow = { rows: [{ status: 'passing', previous_status: 'passing' }] };
     const client = makeTransactionClient([
       EMPTY,                         // BEGIN
+      EMPTY,                         // per-agent advisory lock
       { rows: [makeRunRow('heartbeat')] },
       statusRow,                     // UPSERT agent_compliance_status
       EMPTY,                         // SAVEPOINT storyboard_upsert
