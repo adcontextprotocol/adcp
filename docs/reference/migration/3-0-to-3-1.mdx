@@ -11,9 +11,17 @@ description: "A focused upgrade guide for moving AdCP 3.0 integrations to the 3.
 **3.1 is released.** New 3.1 integrations should pin `"3.1"` after confirming the agent advertises it in `supported_versions`. Existing 3.0 integrations can remain pinned to `"3.0"` while they migrate.
 </Info>
 
-3.1 is a minor release over 3.0. The protocol changes are additive: existing 3.0-conformant agents can remain on `"3.0"` without changing request or response shapes. Use this guide when you are preparing an SDK, buyer, seller, creative agent, signal agent, brand agent, or compliance workflow to claim or consume 3.1.
+3.1 is a minor release over 3.0. The stable protocol changes are additive: existing 3.0-conformant agents can remain on `"3.0"` without changing request or response shapes. Experimental surfaces follow their separate stability contract; TMP operators should apply the immediate v3.1.22 guidance below. Use this guide when you are preparing an SDK, buyer, seller, creative agent, signal agent, brand agent, or compliance workflow to claim or consume 3.1.
 
 For the feature narrative, start with [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1). For the full release record, see [Release Notes](/docs/reference/release-notes#version-3-1-0).
+
+## Immediate Context Match cache action
+
+Version 3.1.22 shipped emergency privacy/security corrections for Context Match: [#7396](https://github.com/adcontextprotocol/adcp/pull/7396) restricts non-public single-user context, and [#7397](https://github.com/adcontextprotocol/adcp/pull/7397) requires request-aware response-cache partitioning. Router operators affected by unsafe caching MUST bypass or disable Context Match response caching until they implement both the v3.1.22 request-aware partition and a trusted namespace covering every result-affecting authentication, authorization, tenant, active-package, endpoint, provider-configuration, model, and targeting/rules generation.
+
+The trusted `cache_namespace` conformance contract is defined for 3.2 in main [#7446](https://github.com/adcontextprotocol/adcp/pull/7446) and becomes effective October 25, 2026. It is immediate safe-operations guidance for affected deployments, but it is not a retroactive 3.1 conformance requirement. If the router cannot establish either the complete request partition or the trusted provider-evaluation namespace, keep cache lookup, coalescing, and insertion disabled.
+
+Version 3.1.22 was an emergency security exception to the normal six-week experimental-change notice process. Its published package, tag, and versioned artifacts remain immutable; the missing #7397 changelog coverage is carried forward by an independent v3.1.23 patch changeset. See the [v3.1.22 release note](/docs/reference/release-notes#version-3-1-22) for the release record.
 
 ## Upgrade checklist
 
