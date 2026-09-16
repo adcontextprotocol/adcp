@@ -2051,9 +2051,9 @@ export class ComplianceDatabase {
          AND b.status IN ('active', 'degraded')
          AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
          AND COALESCE(m.badge_requalification_required, FALSE) = FALSE
-       ORDER BY split_part(adcp_version, '.', 1)::int DESC,
-                split_part(adcp_version, '.', 2)::int DESC,
-                role`,
+       ORDER BY split_part(b.adcp_version, '.', 1)::int DESC,
+                split_part(b.adcp_version, '.', 2)::int DESC,
+                b.role`,
       [agentUrl],
     );
     return result.rows as AgentVerificationBadge[];
@@ -2107,8 +2107,8 @@ export class ComplianceDatabase {
          AND b.status IN ('active', 'degraded')
          AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
          AND COALESCE(m.badge_requalification_required, FALSE) = FALSE
-       ORDER BY split_part(adcp_version, '.', 1)::int DESC,
-                split_part(adcp_version, '.', 2)::int DESC
+       ORDER BY split_part(b.adcp_version, '.', 1)::int DESC,
+                split_part(b.adcp_version, '.', 2)::int DESC
        LIMIT 1`,
       [agentUrl, role],
     );
