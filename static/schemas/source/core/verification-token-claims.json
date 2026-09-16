@@ -4,6 +4,16 @@
   "title": "AgenticAdvertising.org Verification Token Claims",
   "description": "Claims carried by an AgenticAdvertising.org EdDSA verification token. The registry API remains authoritative for real-time badge status. Tokens issued before grading-profile selection may omit grading_profile and are interpreted as Legacy.",
   "type": "object",
+  "definitions": {
+    "VerificationTokenMode": {
+      "type": "string",
+      "enum": ["spec", "live"]
+    },
+    "VerificationTokenGradingProfile": {
+      "type": "string",
+      "enum": ["legacy", "spec"]
+    }
+  },
   "required": [
     "iss",
     "sub",
@@ -64,18 +74,12 @@
     },
     "verification_modes": {
       "type": "array",
-      "items": {
-        "title": "VerificationTokenMode",
-        "type": "string",
-        "enum": ["spec", "live"]
-      },
+      "items": { "$ref": "#/definitions/VerificationTokenMode" },
       "minItems": 1,
       "uniqueItems": true
     },
     "grading_profile": {
-      "title": "VerificationTokenGradingProfile",
-      "type": "string",
-      "enum": ["legacy", "spec"],
+      "$ref": "#/definitions/VerificationTokenGradingProfile",
       "description": "Grading policy that produced the badge. Absence on a historical token means Legacy; verification_modes remains an independent evidence axis."
     },
     "first_failing_spec_at": {
