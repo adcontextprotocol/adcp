@@ -4,6 +4,9 @@ title: "Seller attaches conditions when governance approves with conditions"
 category: media_buy_seller
 summary: "Verifies that the seller attaches governance conditions to the buy when governance approves with conditions."
 track: media_buy
+requires:
+  - multi_agent
+default_agent: sales
 required_tools:
   - sync_governance
   - get_products
@@ -53,6 +56,7 @@ phases:
     steps:
       - id: sync_plans
         title: "Create conditional governance plan"
+        agent: governance
         task: sync_plans
         schema_ref: "governance/sync-plans-request.json"
         response_schema_ref: "governance/sync-plans-response.json"
@@ -82,6 +86,9 @@ phases:
                 - policy_id: "ugc_brand_safety"
                   enforcement: "must"
                   policy: "UGC placements require brand safety review before activation."
+        context_outputs:
+          - name: plan_id
+            path: "plans[0].plan_id"
         validations:
           - check: response_schema
             description: "Response matches sync-plans-response.json schema"
@@ -91,6 +98,7 @@ phases:
     steps:
       - id: sync_accounts
         title: "Establish account with seller"
+        agent: sales
         task: sync_accounts
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
@@ -115,6 +123,7 @@ phases:
 
       - id: sync_governance
         title: "Register governance agent with seller"
+        agent: sales
         task: sync_governance
         schema_ref: "account/sync-governance-request.json"
         response_schema_ref: "account/sync-governance-response.json"
@@ -143,6 +152,7 @@ phases:
     steps:
       - id: get_products_brief
         title: "Discover CTV products"
+        agent: sales
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
@@ -172,6 +182,7 @@ phases:
 
       - id: create_media_buy_conditions
         title: "Create CTV buy (governance approves with conditions)"
+        agent: sales
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -192,6 +203,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
+          plan_id: "$context.plan_id"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
