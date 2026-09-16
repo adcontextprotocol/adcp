@@ -88,7 +88,11 @@ async function pruneShadowLedgerBestEffort(): Promise<void> {
   }
 }
 
-export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}): Promise<HeartbeatResult> {
+export async function runComplianceHeartbeatJob(
+  options: HeartbeatOptions = {},
+  signal?: AbortSignal,
+): Promise<HeartbeatResult> {
+  signal?.throwIfAborted();
   const limit = options.limit ?? 10;
   const result: HeartbeatResult = { checked: 0, passed: 0, failed: 0, skipped: 0 };
   const skipReasons: HeartbeatSkipReasons = {
@@ -137,6 +141,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   }
 
   for (const agent of agentsDue) {
+    signal?.throwIfAborted();
     const executionFence = await complianceRefreshDb.acquireAgentExecutionFence(agent.agent_url);
     if (!executionFence) {
       await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
@@ -180,6 +185,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
         storyboard_start_offset: storyboardStartOffset,
+        signal,
       };
       const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(agent.agent_url);
 
@@ -366,6 +372,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         );
       }
     } catch (error) {
+      // A scheduler timeout is a batch-level cancellation, not evidence about
+      // the current agent. Let the job fail after the finally block releases
+      // its execution fence instead of recording a false agent failure and
+      // continuing through the rest of the batch with an aborted transport.
+      signal?.throwIfAborted();
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
       if (error && typeof error === 'object' && 'code' in error && error.code === 'execution_fence_lost') {
