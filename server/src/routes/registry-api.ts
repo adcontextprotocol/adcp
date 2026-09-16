@@ -521,6 +521,17 @@ function summarizePlacements(
 import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
 const logger = createLogger("registry-api");
+
+const GRADING_PROFILE_CONFLICT_MESSAGES: Record<GradingProfileConflictError['reason'], string> = {
+  stale_revision: 'The grading selection changed; refresh before retrying',
+  stale_assessment: 'The selected assessment is stale or unavailable',
+  selection_disabled: 'Grading profile selection is disabled',
+  legacy_selection_expired: 'New Legacy selections are no longer available',
+  impact_confirmation_required: 'Confirm the public badge impact before selecting this grading profile',
+  authorization_changed: 'Authorization or agent ownership changed; refresh before retrying',
+  idempotency_mismatch: 'The idempotency key was already used for a different selection',
+  unsupported_version: 'This AdCP version is not enabled for public badge grading',
+};
 const PUBLISHER_LOOKUP_TIMEOUT_MS = 8_000;
 const PUBLISHER_LOOKUP_SLOW_PHASE_MS = 500;
 
@@ -7439,7 +7450,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         return res.json({ ...selection, token_refresh: tokenRefresh });
       } catch (error) {
         if (error instanceof GradingProfileConflictError) {
-          return res.status(409).json({ error: error.message, reason: error.reason });
+          logger.warn({ error, path: req.path, reason: error.reason }, 'Grading profile selection conflict');
+          return res.status(409).json({
+            error: GRADING_PROFILE_CONFLICT_MESSAGES[error.reason],
+            reason: error.reason,
+          });
         }
         logger.error({ error, path: req.path }, 'Failed to select grading profile');
         return res.status(500).json({ error: 'Failed to select grading profile' });
