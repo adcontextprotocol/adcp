@@ -1,3 +1,4 @@
+import { respondToAdminAuthorizationError } from '../auth/admin-authorization-response.js';
 /**
  * Community-mirror catalog lifecycle API (#2176).
  *
@@ -17,7 +18,7 @@
  */
 
 import { Router } from 'express';
-import type { Request, RequestHandler, Response } from 'express';
+import type { Request, RequestHandler, Response, NextFunction } from 'express';
 import type { PoolClient } from 'pg';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -27,7 +28,7 @@ import { PublisherDatabase } from '../db/publisher-db.js';
 import type { CatalogEventsDatabase } from '../db/catalog-events-db.js';
 import { getClient } from '../db/client.js';
 import { isRegistryModerator } from '../services/brand-logo-auth.js';
-import { isWebUserAAOAdmin } from '../addie/admin-status-lookup.js';
+import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../addie/admin-status-lookup.js';
 import { validateAdagentsDocument } from '../services/adagents-schema-validator.js';
 import { registryReadRateLimiter, brandCreationRateLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger.js';
@@ -86,18 +87,19 @@ export interface CommunityMirrorRouterConfig {
  * Organization API keys represent an organization, not a human working-group
  * member, so they intentionally submit proposals instead of passing this gate.
  */
-async function canManageMirrors(userId: string): Promise<boolean> {
+async function canManageMirrors(user: AAOAdminPrincipal): Promise<boolean> {
+  const userId = user.authWorkosUserId ?? user.id;
   if (userId === 'admin_api_key') return true;
   if (userId.startsWith('api_key_')) return false;
   const [isOrganizationAdmin, isModerator] = await Promise.all([
-    isWebUserAAOAdmin(userId),
+    isAuthenticatedUserAAOAdmin(user),
     isRegistryModerator(userId),
   ]);
   return isOrganizationAdmin || isModerator;
 }
 
 async function resolveManager(
-  req: { user?: { id?: string } },
+  req: { user?: AAOAdminPrincipal },
   res: Response
 ): Promise<string | null> {
   const userId = req.user?.id;
@@ -105,7 +107,7 @@ async function resolveManager(
     res.status(401).json({ error: 'Authentication required' });
     return null;
   }
-  if (!(await canManageMirrors(userId))) {
+  if (!(await canManageMirrors(req.user!))) {
     res.status(403).json({
       error: 'Only registry moderators or AgenticAdvertising.org administrators can manage community mirrors',
     });
@@ -205,7 +207,7 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
     if (req.query.review_queue !== undefined && !['true', 'false'].includes(String(req.query.review_queue))) {
       return res.status(400).json({ error: 'Invalid review_queue flag' });
     }
-    const isManager = await canManageMirrors(userId);
+    const isManager = await canManageMirrors(req.user!);
     if (reviewQueue && !isManager) {
       return res.status(403).json({ error: 'Registry moderator access is required for the review queue' });
     }
@@ -241,7 +243,7 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
     try {
       const proposal = await mirrorDb.getProposalById(proposalId);
       if (!proposal) return res.status(404).json({ error: 'Community mirror proposal not found' });
-      const isManager = await canManageMirrors(userId);
+      const isManager = await canManageMirrors(req.user!);
       const organizationId = isManager ? null : await callerOrganizationId(req);
       const ownsProposal = organizationId
         ? proposal.proposed_by_organization_id === organizationId
@@ -251,6 +253,7 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
       }
       return res.json({ proposal: proposalForResponse(proposal, isManager) });
     } catch (err) {
+      if (respondToAdminAuthorizationError(err, res)) return;
       logger.error({ err, proposalId }, 'Failed to read community mirror proposal');
       return res.status(500).json({ error: 'Failed to read community mirror proposal' });
     }
@@ -454,7 +457,7 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
 
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: 'Authentication required' });
-    const isManager = await canManageMirrors(userId);
+    const isManager = await canManageMirrors(req.user!);
     const organizationId = isManager ? null : await callerOrganizationId(req);
     if (!isManager && !organizationId) {
       return res.status(403).json({ error: 'Organization context is required to propose a community mirror' });
@@ -651,6 +654,11 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
     } finally {
       client.release();
     }
+  });
+
+  router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (respondToAdminAuthorizationError(error, res)) return;
+    next(error);
   });
 
   return router;

@@ -40,10 +40,22 @@ const gradingMocks = vi.hoisted(() => ({
   completeGradingProfileProjectionJob: vi.fn(),
 }));
 const badgeIssuanceMocks = vi.hoisted(() => ({ runBadgeFanOut: vi.fn() }));
+const adminStatusMocks = vi.hoisted(() => ({
+  isWebUserAAOAdmin: vi.fn(),
+  isAuthenticatedUserAAOAdmin: vi.fn(),
+}));
+const databaseMocks = vi.hoisted(() => ({ query: vi.fn() }));
 
 vi.mock('../../src/services/agent-ownership.js', () => ownershipMocks);
 vi.mock('../../src/notifications/compliance.js', () => notificationMocks);
-vi.mock('../../src/addie/admin-status-lookup.js', () => ({ isWebUserAAOAdmin: vi.fn().mockResolvedValue(false) }));
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>(),
+  ...adminStatusMocks,
+}));
+vi.mock('../../src/db/client.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/db/client.js')>(),
+  query: databaseMocks.query,
+}));
 
 vi.mock('../../src/middleware/rate-limit.js', () => {
   const pass: import('express').RequestHandler = (_req, _res, next) => next();
@@ -109,12 +121,16 @@ const VALID_ROLES = [
 
 function buildApp(
   visibility: 'public' | 'members_only' | 'private' = 'public',
-  authenticated = false,
+  authenticated: boolean | { id: string; authWorkosUserId?: string; email?: string } = false,
 ): express.Express {
   const app = express();
   app.use(express.json());
   const passAuth: import('express').RequestHandler = (req, _res, next) => {
-    if (authenticated) req.user = { id: 'user_badge_owner' } as typeof req.user;
+    if (authenticated) {
+      req.user = (typeof authenticated === 'boolean'
+        ? { id: 'user_badge_owner' }
+        : authenticated) as typeof req.user;
+    }
     next();
   };
   const config: RegistryApiConfig = {
@@ -164,6 +180,12 @@ describe('registry badge routes', () => {
     ownershipMocks.findOwnerOrgForUser.mockResolvedValue('org_badge_owner');
     ownershipMocks.findOwnedAgentVisibility.mockResolvedValue('public');
     ownershipMocks.canManageAgentForOrg.mockResolvedValue(true);
+    adminStatusMocks.isWebUserAAOAdmin.mockReset();
+    adminStatusMocks.isWebUserAAOAdmin.mockResolvedValue(false);
+    adminStatusMocks.isAuthenticatedUserAAOAdmin.mockReset();
+    adminStatusMocks.isAuthenticatedUserAAOAdmin.mockResolvedValue(false);
+    databaseMocks.query.mockReset();
+    databaseMocks.query.mockResolvedValue({ rowCount: 1, rows: [{}] });
     gradingMocks.selectGradingProfile.mockReset();
     gradingMocks.completeGradingProfileProjectionJob.mockReset();
     gradingMocks.completeGradingProfileProjectionJob.mockResolvedValue(undefined);
@@ -503,6 +525,80 @@ describe('registry badge routes', () => {
         organization_id: 'org_other', role: 'media-buy', adcp_version: '3.1',
         selected_profile: 'spec', assessment_id: '11111111-1111-4111-8111-111111111111',
         expected_revision: 0, idempotency_key: '22222222-2222-4222-8222-222222222222',
+      });
+
+    expect(response.status).toBe(403);
+    expect(gradingMocks.selectGradingProfile).not.toHaveBeenCalled();
+  });
+
+  it('does not inherit grading-profile admin authority from a linked canonical profile', async () => {
+    ownershipMocks.canManageAgentForOrg.mockResolvedValueOnce(false);
+    adminStatusMocks.isAuthenticatedUserAAOAdmin.mockImplementation(async ({ id }) => id === 'user_badge_owner');
+
+    const response = await request(buildApp('private', {
+      id: 'user_badge_owner',
+      authWorkosUserId: 'credential_non_admin',
+      email: 'credential@example.test',
+    }))
+      .put(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/grading-profile`)
+      .send({
+        organization_id: 'org_other', role: 'media-buy', adcp_version: '3.1',
+        selected_profile: 'spec', assessment_id: '11111111-1111-4111-8111-111111111111',
+        expected_revision: 0, idempotency_key: '22222222-2222-4222-8222-222222222222',
+        admin_override_reason: 'Support request',
+      });
+
+    expect(response.status).toBe(403);
+    expect(adminStatusMocks.isAuthenticatedUserAAOAdmin).toHaveBeenCalledWith({
+      id: 'credential_non_admin',
+      email: 'credential@example.test',
+    });
+    expect(databaseMocks.query).not.toHaveBeenCalled();
+    expect(gradingMocks.selectGradingProfile).not.toHaveBeenCalled();
+  });
+
+  it('rechecks and audits exact credential authority for a registry-admin override', async () => {
+    ownershipMocks.canManageAgentForOrg.mockResolvedValueOnce(false);
+    adminStatusMocks.isAuthenticatedUserAAOAdmin.mockResolvedValue(true);
+
+    const response = await request(buildApp('private', {
+      id: 'user_linked_profile',
+      authWorkosUserId: 'credential_admin',
+      email: 'admin-credential@example.test',
+    }))
+      .put(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/grading-profile`)
+      .send({
+        organization_id: 'org_other', role: 'media-buy', adcp_version: '3.1',
+        selected_profile: 'spec', assessment_id: '11111111-1111-4111-8111-111111111111',
+        expected_revision: 0, idempotency_key: '22222222-2222-4222-8222-222222222222',
+        admin_override_reason: 'Support request',
+      });
+
+    expect(response.status).toBe(200);
+    expect(adminStatusMocks.isAuthenticatedUserAAOAdmin).toHaveBeenCalledTimes(2);
+    expect(gradingMocks.selectGradingProfile).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: 'credential_admin',
+      actorKind: 'registry_admin',
+      adminOverrideReason: 'Support request',
+    }));
+  });
+
+  it('fails closed when exact registry-admin authority is revoked before dispatch', async () => {
+    ownershipMocks.canManageAgentForOrg.mockResolvedValueOnce(false);
+    adminStatusMocks.isAuthenticatedUserAAOAdmin
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    const response = await request(buildApp('private', {
+      id: 'user_linked_profile',
+      authWorkosUserId: 'credential_revoked',
+    }))
+      .put(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/grading-profile`)
+      .send({
+        organization_id: 'org_other', role: 'media-buy', adcp_version: '3.1',
+        selected_profile: 'spec', assessment_id: '11111111-1111-4111-8111-111111111111',
+        expected_revision: 0, idempotency_key: '22222222-2222-4222-8222-222222222222',
+        admin_override_reason: 'Support request',
       });
 
     expect(response.status).toBe(403);

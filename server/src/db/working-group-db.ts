@@ -560,25 +560,33 @@ export class WorkingGroupDatabase {
    * a member of. Use this when building aggregated feeds so private subgroup
    * posts/events don't leak to non-members viewing the public parent.
    *
-   * The target group itself is always included — visibility of the target is
+   * The ordinary target group itself is always included — visibility of the target is
    * the caller's responsibility (the route guards against viewing private
    * groups you aren't in).
    *
-   * Pass `isAdmin: true` to skip the privacy filter entirely (for admin views).
+   * Pass `isAdmin: true` to skip ordinary subgroup privacy filters (for admin views).
+   * The reserved platform group always requires the caller's exact authenticated
+   * platform decision, including when historical data places it under a parent.
    */
   async getVisibleDescendantIds(
     groupId: string,
     userId: string | null,
-    options: { isAdmin?: boolean } = {},
+    options: { isAdmin?: boolean; canViewReservedAdminGroup?: boolean } = {},
   ): Promise<string[]> {
-    const result = await query<{ id: string; is_private: boolean; parent_id: string | null }>(
-      `SELECT id, is_private, parent_id FROM working_groups
+    const result = await query<{ id: string; slug: string; is_private: boolean; parent_id: string | null }>(
+      `SELECT id, slug, is_private, parent_id FROM working_groups
        WHERE id = $1 OR parent_id = $1`,
       [groupId]
     );
 
     const allowed: string[] = [];
     for (const row of result.rows) {
+      // Canonical membership and an incorrect privacy flag cannot expose
+      // reserved administrator content through an ordinary parent's feed.
+      if (row.slug === AAO_ADMIN_WORKING_GROUP_SLUG) {
+        if (options.canViewReservedAdminGroup === true) allowed.push(row.id);
+        continue;
+      }
       // Target group: always include.
       if (row.id === groupId) {
         allowed.push(row.id);

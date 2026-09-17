@@ -360,6 +360,8 @@ describe('Registry reader baseline — public endpoints', () => {
     });
 
     it('enforces non-enumerating crawl-status ownership and both admin paths', async () => {
+      const originalAdminEmails = process.env.ADMIN_EMAILS;
+      delete process.env.ADMIN_EMAILS;
       const requestId = '22222222-2222-4222-8222-222222222222';
       const missingId = '33333333-3333-4333-8333-333333333333';
       const now = new Date();
@@ -404,6 +406,13 @@ describe('Registry reader baseline — public endpoints', () => {
         expect(forbidden.body).toEqual(missing.body);
 
         setRequireAuthUser({ id: 'web-admin', email: 'admin@example.com', isAdmin: true });
+        const staleAdminFlag = await request(app)
+          .get(`/api/registry/crawl-request/${requestId}`);
+        expect(staleAdminFlag.status).toBe(404);
+
+        // A presentation flag is not authority. Supply the credential's
+        // independently configured break-glass grant for this positive case.
+        process.env.ADMIN_EMAILS = 'admin@example.com';
         const webAdmin = await request(app)
           .get(`/api/registry/crawl-request/${requestId}`);
         expect(webAdmin.status).toBe(200);
@@ -414,6 +423,8 @@ describe('Registry reader baseline — public endpoints', () => {
           .set('Authorization', 'Bearer static-admin-test');
         expect(staticAdmin.status).toBe(200);
       } finally {
+        if (originalAdminEmails === undefined) delete process.env.ADMIN_EMAILS;
+        else process.env.ADMIN_EMAILS = originalAdminEmails;
         setRequireAuthUser({
           id: DEFAULT_TEST_USER_ID,
           email: 'registry-baseline@test.com',

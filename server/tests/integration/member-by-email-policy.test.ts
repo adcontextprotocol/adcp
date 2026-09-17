@@ -209,6 +209,21 @@ vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
   isWebUserAAOAdmin: vi.fn().mockImplementation(() => Promise.resolve(mockState.isCallerAAOAdmin)),
 }));
 
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>();
+  const checkMembership = vi.fn().mockImplementation(() => Promise.resolve(mockState.isCallerAAOAdmin));
+  const resolve = async (principal: any, email?: string | null) => {
+    const id = typeof principal === 'string' ? principal : principal.authWorkosUserId ?? principal.id;
+    return actual.decideAAOAdminAccess(await checkMembership(id), typeof principal === 'string' ? email : principal.email);
+  };
+  return {
+    ...actual,
+    isWebUserAAOAdmin: checkMembership,
+    resolveWebUserAAOAdminAccess: resolve,
+    isAuthenticatedUserAAOAdmin: async (principal: any) => (await resolve(principal)).isAdmin,
+  };
+});
+
 import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';

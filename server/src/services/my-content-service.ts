@@ -14,7 +14,7 @@
  */
 
 import { getPool } from '../db/client.js';
-import { isWebUserAAOAdmin, isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../addie/admin-status-lookup.js';
+import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../addie/admin-status-lookup.js';
 import { fetchPathPageviewCounts } from './posthog-query.js';
 
 export type MyContentStatus = 'draft' | 'pending_review' | 'published' | 'archived' | 'rejected' | 'needs_revisions';
@@ -75,8 +75,8 @@ export class MyContentError<C extends MyContentErrorCode = MyContentErrorCode> e
 
 export interface ListMyContentInput {
   userId: string;
-  /** Null forbids platform and committee-leader scope; omitted retains legacy compatibility. */
-  adminPrincipal?: AAOAdminPrincipal | null;
+  /** Explicit provenance is required; null grants only the person's author/proposer view. */
+  adminPrincipal: Readonly<AAOAdminPrincipal> | null;
   /** One of MyContentStatus, the literal 'all', or undefined (returns all). */
   status?: string;
   /** Committee slug, or 'personal' (no committee), or undefined. */
@@ -99,6 +99,12 @@ export async function listMyContent({
   relationship,
   limit,
 }: ListMyContentInput): Promise<ListMyContentResult> {
+  // An omitted principal at a legacy/untyped boundary cannot inherit the
+  // canonical person's leadership. Copy before the first asynchronous read.
+  const principal = adminPrincipal ? Object.freeze({
+    id: adminPrincipal.authWorkosUserId ?? adminPrincipal.id,
+    email: adminPrincipal.email,
+  }) : null;
   if (status !== undefined && status !== 'all' && !VALID_STATUSES.includes(status as MyContentStatus)) {
     throw new MyContentError('invalid_status', `status must be one of: ${VALID_STATUSES.join(', ')}, or 'all'`, {
       provided: status,
@@ -114,11 +120,7 @@ export async function listMyContent({
 
   // Committees the user leads — feeds the "owner" relationship and the
   // SQL WHERE clause that surfaces all content for those committees.
-  const authorizationUserId = adminPrincipal === null
-    ? null
-    : adminPrincipal
-      ? adminPrincipal.authWorkosUserId ?? adminPrincipal.id
-      : userId;
+  const authorizationUserId = principal?.id ?? null;
   const leaderResult = await pool.query<{ working_group_id: string }>(
     `SELECT working_group_id FROM working_group_leaders WHERE user_id = $1`,
     [authorizationUserId],
@@ -129,11 +131,7 @@ export async function listMyContent({
   // pre-existing content with no proposer or content from committees
   // they don't lead). Relationships are still computed so the UI/chat
   // can distinguish their own contributions.
-  const userIsAdmin = adminPrincipal === null
-    ? false
-    : adminPrincipal
-      ? await isAuthenticatedUserAAOAdmin(adminPrincipal)
-      : await isWebUserAAOAdmin(userId);
+  const userIsAdmin = principal ? await isAuthenticatedUserAAOAdmin(principal) : false;
 
   let queryText = `
     SELECT DISTINCT ON (p.id)
