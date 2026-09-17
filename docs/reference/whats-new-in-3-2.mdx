@@ -409,7 +409,10 @@ anomaly limits—without silently breaking baseline 3.x compatibility. Mandatory
 signing across spend-committing operations remains a 4.0 floor.
 
 3.2 also grades OAuth discovery consistency, tightens signed-response verifier
-errors, and requires integer `error.retry_after` values from 3.2 producers.
+errors, requires `error.recovery` on every 3.2 producer error while preserving
+legacy 3.1 decoding, and requires integer `error.retry_after` values from 3.2
+producers. SDKs can pin classification and retry behavior with the versioned
+[error-recovery reference vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/error-recovery/vectors.json).
 
 ### Better convergence and accountability
 

@@ -1,0 +1,302 @@
+{
+  "contract_version": "3.2",
+  "description": "Reference decisions for version-gated recovery emission, legacy decoding, buyer-reason consistency, bounded retries, and retry_after scheduling.",
+  "vectors": [
+    {
+      "id": "known-code-with-recovery",
+      "negotiated_protocol_version": "3.2",
+      "error": {
+        "code": "RATE_LIMITED",
+        "message": "Request rate exceeded.",
+        "recovery": "transient",
+        "retry_after": 10
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": true,
+        "code_known": true,
+        "effective_recovery": "transient",
+        "action": "retry",
+        "automatic_retry": true,
+        "schedule": { "kind": "retry_after", "minimum_delay_seconds": 10 },
+        "retry_budget": { "consumed": true, "next_retries_attempted": 1 }
+      }
+    },
+    {
+      "id": "known-code-without-recovery-legacy",
+      "negotiated_protocol_version": "3.1",
+      "error": {
+        "code": "RATE_LIMITED",
+        "message": "Request rate exceeded.",
+        "retry_after": 4
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": true,
+        "code_known": true,
+        "effective_recovery": "transient",
+        "action": "retry",
+        "automatic_retry": true,
+        "schedule": { "kind": "retry_after", "minimum_delay_seconds": 4 },
+        "retry_budget": { "consumed": true, "next_retries_attempted": 1 }
+      }
+    },
+    {
+      "id": "unknown-code-with-recovery",
+      "negotiated_protocol_version": "3.2",
+      "error": {
+        "code": "X_NOVA_MANUAL_REVIEW",
+        "message": "Manual review is required.",
+        "recovery": "terminal"
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": true,
+        "code_known": false,
+        "effective_recovery": "terminal",
+        "action": "escalate",
+        "automatic_retry": false,
+        "schedule": null,
+        "retry_budget": { "consumed": false, "next_retries_attempted": 0 }
+      }
+    },
+    {
+      "id": "unknown-code-without-recovery-legacy",
+      "negotiated_protocol_version": "3.1",
+      "error": {
+        "code": "X_NOVA_TEMPORARY_CAPACITY",
+        "message": "Capacity is temporarily unavailable."
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": true,
+        "code_known": false,
+        "effective_recovery": "transient",
+        "action": "retry",
+        "automatic_retry": true,
+        "schedule": { "kind": "bounded_exponential_backoff" },
+        "retry_budget": { "consumed": true, "next_retries_attempted": 1 }
+      }
+    },
+    {
+      "id": "missing-recovery-is-3-2-producer-violation-not-decoding-failure",
+      "negotiated_protocol_version": "3.2",
+      "error": {
+        "code": "X_NOVA_TEMPORARY_CAPACITY",
+        "message": "Capacity is temporarily unavailable."
+      },
+      "retry_state": { "retries_attempted": 1, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": false,
+        "code_known": false,
+        "effective_recovery": "transient",
+        "action": "retry",
+        "automatic_retry": true,
+        "schedule": { "kind": "bounded_exponential_backoff" },
+        "retry_budget": { "consumed": true, "next_retries_attempted": 2 }
+      }
+    },
+    {
+      "id": "legacy-fractional-retry-after-rounds-up",
+      "negotiated_protocol_version": "3.1",
+      "error": {
+        "code": "SERVICE_UNAVAILABLE",
+        "message": "The service is temporarily unavailable.",
+        "recovery": "transient",
+        "retry_after": 1.25
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": true,
+        "code_known": true,
+        "effective_recovery": "transient",
+        "action": "retry",
+        "automatic_retry": true,
+        "schedule": { "kind": "retry_after", "minimum_delay_seconds": 2 },
+        "retry_budget": { "consumed": true, "next_retries_attempted": 1 }
+      }
+    },
+    {
+      "id": "correctable-delay-does-not-authorize-retry",
+      "negotiated_protocol_version": "3.2",
+      "error": {
+        "code": "BUDGET_TOO_LOW",
+        "message": "Increase the budget before resubmitting.",
+        "recovery": "correctable",
+        "retry_after": 30
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": true,
+        "code_known": true,
+        "effective_recovery": "correctable",
+        "action": "correct_request",
+        "automatic_retry": false,
+        "schedule": null,
+        "retry_budget": { "consumed": false, "next_retries_attempted": 0 }
+      }
+    },
+    {
+      "id": "terminal-delay-does-not-authorize-retry",
+      "negotiated_protocol_version": "3.2",
+      "error": {
+        "code": "CONFIGURATION_ERROR",
+        "message": "The seller deployment requires operator action.",
+        "recovery": "terminal",
+        "retry_after": 30
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": true,
+        "code_known": true,
+        "effective_recovery": "terminal",
+        "action": "escalate",
+        "automatic_retry": false,
+        "schedule": null,
+        "retry_budget": { "consumed": false, "next_retries_attempted": 0 }
+      }
+    },
+    {
+      "id": "unknown-legacy-fallback-stops-at-budget",
+      "negotiated_protocol_version": "3.1",
+      "error": {
+        "code": "X_NOVA_TEMPORARY_CAPACITY",
+        "message": "Capacity is temporarily unavailable."
+      },
+      "retry_state": { "retries_attempted": 3, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": true,
+        "code_known": false,
+        "effective_recovery": "transient",
+        "action": "stop_retrying",
+        "automatic_retry": false,
+        "schedule": null,
+        "retry_budget": { "consumed": false, "next_retries_attempted": 3 }
+      }
+    },
+    {
+      "id": "buyer-reason-classifications-agree",
+      "negotiated_protocol_version": "3.2",
+      "error": {
+        "code": "CREATIVE_REJECTED",
+        "message": "The creative could not be accepted.",
+        "recovery": "correctable",
+        "buyer_reason": {
+          "code": "CREATIVE_SIZE_MISMATCH",
+          "message": "The creative dimensions do not match an accepted size."
+        }
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": true,
+        "code_known": true,
+        "effective_recovery": "correctable",
+        "action": "correct_request",
+        "automatic_retry": false,
+        "schedule": null,
+        "retry_budget": { "consumed": false, "next_retries_attempted": 0 }
+      }
+    },
+    {
+      "id": "buyer-reason-classification-conflict",
+      "negotiated_protocol_version": "3.2",
+      "error": {
+        "code": "CREATIVE_REJECTED",
+        "message": "The creative could not be accepted.",
+        "recovery": "correctable",
+        "buyer_reason": {
+          "code": "ACCOUNT_PAYMENT_REQUIRED",
+          "message": "The account requires billing action."
+        }
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": false,
+        "code_known": true,
+        "effective_recovery": "correctable",
+        "action": "correct_request",
+        "automatic_retry": false,
+        "schedule": null,
+        "retry_budget": { "consumed": false, "next_retries_attempted": 0 }
+      }
+    },
+    {
+      "id": "known-buyer-reason-must-match-with-unknown-top-level-code",
+      "negotiated_protocol_version": "3.2",
+      "error": {
+        "code": "X_NOVA_CREATIVE_WRAPPER",
+        "message": "The creative could not be accepted.",
+        "recovery": "terminal",
+        "buyer_reason": {
+          "code": "CREATIVE_SIZE_MISMATCH",
+          "message": "The creative dimensions do not match an accepted size."
+        }
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": false,
+        "code_known": false,
+        "effective_recovery": "terminal",
+        "action": "escalate",
+        "automatic_retry": false,
+        "schedule": null,
+        "retry_budget": { "consumed": false, "next_retries_attempted": 0 }
+      }
+    },
+    {
+      "id": "buyer-reason-requires-recovery",
+      "negotiated_protocol_version": "3.2",
+      "error": {
+        "code": "CREATIVE_REJECTED",
+        "message": "The creative could not be accepted.",
+        "buyer_reason": {
+          "code": "CREATIVE_SIZE_MISMATCH",
+          "message": "The creative dimensions do not match an accepted size."
+        }
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": false,
+        "producer_conformant": false,
+        "code_known": true,
+        "effective_recovery": "correctable",
+        "action": "correct_request",
+        "automatic_retry": false,
+        "schedule": null,
+        "retry_budget": { "consumed": false, "next_retries_attempted": 0 }
+      }
+    },
+    {
+      "id": "unknown-recovery-value-fails-closed",
+      "negotiated_protocol_version": "3.2",
+      "error": {
+        "code": "X_NOVA_TEMPORARY_CAPACITY",
+        "message": "Capacity is temporarily unavailable.",
+        "recovery": "eventually_retry"
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": false,
+        "producer_conformant": false,
+        "code_known": false,
+        "effective_recovery": "terminal",
+        "action": "escalate",
+        "automatic_retry": false,
+        "schedule": null,
+        "retry_budget": { "consumed": false, "next_retries_attempted": 0 }
+      }
+    }
+  ]
+}
