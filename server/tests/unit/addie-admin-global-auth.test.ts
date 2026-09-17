@@ -13,11 +13,11 @@ const mocks = vi.hoisted(() => ({
   getAdminWorkingGroupIdBySlug: vi.fn(),
   isAdminGroupMember: vi.fn(),
   poolQuery: vi.fn(),
+  snapshotQuery: vi.fn(),
   getWebConversations: vi.fn(),
   getModelExecutionReadiness: vi.fn(),
   getRouterShadowSummary: vi.fn(),
   serveHtmlWithConfig: vi.fn(),
-  readCredentialAuthorizationLifecycle: vi.fn(),
 }));
 
 vi.hoisted(() => {
@@ -52,12 +52,9 @@ vi.mock('../../src/db/org-filters.js', () => ({
 vi.mock('../../src/db/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/db/client.js')>()),
   getPool: () => ({ query: mocks.poolQuery }),
+  queryWithTimeout: mocks.snapshotQuery,
 }));
 
-vi.mock('../../src/db/authorization-epoch-db.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/db/authorization-epoch-db.js')>()),
-  readCredentialAuthorizationLifecycle: mocks.readCredentialAuthorizationLifecycle,
-}));
 
 vi.mock('../../src/db/working-group-db.js', () => ({
   WorkingGroupDatabase: class WorkingGroupDatabase {
@@ -122,6 +119,7 @@ describe('Addie real global-admin boundary', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.snapshotQuery.mockReset().mockImplementation((...args) => mocks.poolQuery(...args));
     mocks.createValidation.mockImplementation(
       ({ value }: { value: string }) => Promise.resolve(
         validatedTenantKey(value.includes('read') ? 'admin:read' : 'admin:*'),
@@ -130,26 +128,20 @@ describe('Addie real global-admin boundary', () => {
     mocks.resolveEffectiveMembership.mockResolvedValue({ is_member: true });
     mocks.checkPlatformBanForApiKey.mockResolvedValue({ banned: false });
     mocks.checkPlatformBan.mockResolvedValue({ banned: false });
-    mocks.readCredentialAuthorizationLifecycle.mockImplementation((workosUserId: string) =>
-      Promise.resolve({
-        status: 'active',
-        snapshot: {
-          workos_user_id: workosUserId,
-          email: 'sso-admin@example.test',
-          first_name: 'SSO',
-          last_name: 'Admin',
-          identity_id: '00000000-0000-4000-8000-000000000001',
-          primary_workos_user_id: workosUserId,
-          fingerprint: '',
-        },
-      }),
-    );
     mocks.getAdminWorkingGroupIdBySlug.mockResolvedValue('wg_aao_admin');
     mocks.isAdminGroupMember.mockResolvedValue(true);
     mocks.poolQuery.mockImplementation((sql: string) => {
-      if (sql.includes('FROM users')) {
+      if (sql.includes('pg_catalog.pg_is_in_recovery()')) {
         return Promise.resolve({
-          rows: [{ first_name: 'SSO', last_name: 'Admin' }],
+          rows: [{
+            in_recovery: false, terminal_marker: false, primary_count: '1',
+            authenticated_user_id: 'user_sso_admin',
+            canonical_user_id: 'user_sso_admin',
+            identity_id: 'identity_sso_admin',
+            authorization_epoch: '0',
+            email: 'sso-admin@example.test', email_verified: true,
+            first_name: 'SSO', last_name: 'Admin', grant_id: null,
+          }],
           rowCount: 1,
         });
       }
@@ -278,18 +270,13 @@ describe('Addie real global-admin boundary', () => {
   });
 
   it.each([true, false])('keeps credential admin authority %s after lifecycle routing to a linked primary', async (credentialIsAdmin) => {
-    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue({
-      status: 'active',
-      snapshot: {
-        workos_user_id: 'user_sso_admin',
-        email: 'sso-admin@example.test',
-        first_name: 'SSO',
-        last_name: 'Admin',
-        identity_id: '00000000-0000-4000-8000-000000000001',
-        primary_workos_user_id: 'user_linked_primary',
-        fingerprint: '',
-      },
-    });
+    mocks.snapshotQuery.mockResolvedValue({ rows: [{
+      in_recovery: false, terminal_marker: false, primary_count: '1',
+      authenticated_user_id: 'user_sso_admin', canonical_user_id: 'user_linked_primary',
+      identity_id: '00000000-0000-4000-8000-000000000001', authorization_epoch: '0',
+      email: 'sso-admin@example.test', email_verified: true,
+      first_name: 'SSO', last_name: 'Admin', grant_id: null,
+    }] });
     mocks.isAdminGroupMember.mockImplementation(async (_groupId, userId) =>
       userId === 'user_sso_admin' ? credentialIsAdmin : !credentialIsAdmin,
     );
@@ -317,7 +304,13 @@ describe('Addie real global-admin boundary', () => {
       expect(warm.status).toBe(200);
       mocks.getWebConversations.mockClear();
       mocks.isAdminGroupMember.mockClear();
-      mocks.readCredentialAuthorizationLifecycle.mockResolvedValue({ status: 'terminal', reason });
+      mocks.snapshotQuery.mockResolvedValue({ rows: [{
+        in_recovery: false, authenticated_user_id: 'user_sso_admin',
+        identity_id: '00000000-0000-4000-8000-000000000001',
+        canonical_user_id: reason === 'missing_primary' ? null : 'user_sso_admin',
+        primary_count: reason === 'missing_primary' ? '0' : '1',
+        terminal_marker: reason === 'deleted_or_quarantined',
+      }] });
 
       const denied = await request(app).get('/api/admin/addie/conversations').set('Cookie', cookie);
       expect(denied.status).toBe(401);
