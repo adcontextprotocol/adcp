@@ -15,6 +15,7 @@ vi.hoisted(() => {
 // manager access; organization API keys submit and read their own proposals.
 const authState = vi.hoisted(() => ({
   userId: 'admin_api_key',
+  authWorkosUserId: undefined as string | undefined,
   email: 'mirrors@test.com',
   organizationId: null as string | null,
 }));
@@ -22,7 +23,7 @@ const authState = vi.hoisted(() => ({
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/middleware/auth.js');
   const pass = (req: { user: unknown; apiKey?: unknown }, _res: unknown, next: () => void) => {
-    req.user = { id: authState.userId, email: authState.email };
+    req.user = { id: authState.userId, authWorkosUserId: authState.authWorkosUserId, email: authState.email };
     req.apiKey = authState.organizationId ? { organizationId: authState.organizationId } : undefined;
     next();
   };
@@ -205,6 +206,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     notifyCommunityMirrorProposalReviewed.mockReset();
     notifyCommunityMirrorProposalReviewed.mockResolvedValue(undefined);
     authState.userId = 'admin_api_key';
+    authState.authWorkosUserId = undefined;
     authState.email = 'mirrors@test.com';
     authState.organizationId = null;
     await clear();
@@ -374,6 +376,18 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     const res = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect((await pool.query('SELECT 1 FROM community_mirrors WHERE platform = $1', [PLATFORM])).rows).toHaveLength(0);
+  });
+
+  it('does not let a canonical identity replace the exact mirror manager principal', async () => {
+    authState.userId = 'admin_api_key';
+    authState.authWorkosUserId = 'user_exact_non_manager';
+    isRegistryModerator.mockResolvedValue(true);
+    isWebUserAAOAdmin.mockResolvedValue(true);
+
+    const queue = await request(app).get('/api/registry/mirror-proposals?review_queue=true');
+    expect(queue.status).toBe(403);
+    const deletion = await request(app).delete(`/api/registry/mirrors/${PLATFORM}`);
+    expect(deletion.status).toBe(403);
   });
 
   it('re-publish is idempotent — updates in place, no duplicate row', async () => {

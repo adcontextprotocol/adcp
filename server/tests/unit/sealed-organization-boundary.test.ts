@@ -82,6 +82,7 @@ async function authenticate(authenticatedUserId = 'user_primary', canonicalUserI
   row.authenticated_user_id = authenticatedUserId;
   row.canonical_user_id = canonicalUserId;
   const snapshot = await loadAuthorizationSnapshot(authenticatedUserId, organizationId);
+  expect(snapshot).not.toBeNull();
   mocks.principal = {
     id: canonicalUserId,
     authWorkosUserId: authenticatedUserId,
@@ -100,7 +101,7 @@ beforeEach(() => {
   process.env.CONFORMANCE_JWT_SECRET = 'sealed-organization-test-secret';
   mocks.principal = undefined;
   row = {
-    in_recovery: false,
+    in_recovery: false, terminal_marker: false, primary_count: '1',
     authenticated_user_id: 'user_primary', canonical_user_id: 'user_linked', identity_id: 'identity_linked',
     authorization_epoch: '7', email: 'sam@pinnacle.example', email_verified: true,
     first_name: 'Sam', last_name: 'Adeyemi',
