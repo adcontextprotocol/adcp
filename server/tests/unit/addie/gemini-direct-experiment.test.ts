@@ -339,6 +339,33 @@ describe('Gemini Direct production integration', () => {
     });
   });
 
+  it('reserves final synthesis without a progress extension after the processing budget is spent', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fixture([
+        receipt([call('search_docs')], 'successful-slow-tool'),
+        receipt([{ text: 'The completed slow lookup supports this answer.' }], 'final-answer'),
+      ]);
+      f.handlers.get('search_docs')!.mockImplementationOnce(async () => {
+        vi.advanceTimersByTime(60_000);
+        return 'A verified fact.';
+      });
+
+      const result = await run(f.input, { maxIterations: 1 });
+
+      expect(f.dispatch).toHaveBeenCalledTimes(2);
+      expect(f.handlers.get('search_docs')).toHaveBeenCalledOnce();
+      expect(f.dispatch.mock.calls[1][0].config?.tools).toBeUndefined();
+      expect(result.response).toMatchObject({
+        text: 'The completed slow lookup supports this answer.',
+        flagged: false,
+        timing: { iterations: 2 },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not extend the loop when its last tool request made no successful progress', async () => {
     const f = fixture([
       receipt([call('tool_not_in_catalog')], 'blocked-tool'),
