@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { SignJWT, generateKeyPair, exportJWK, type KeyLike } from 'jose';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet, errors, type KeyLike } from 'jose';
 import {
   looksLikeJWT,
   verifyWorkOSJWT,
   __setJWKSForTesting,
+  isInvalidWorkOSJWTError,
 } from '../../src/auth/workos-jwt.js';
 
 // WORKOS_CLIENT_ID must be set before workos-jwt.ts is imported for the
@@ -55,6 +56,9 @@ describe('verifyWorkOSJWT', () => {
     const kp = await generateKeyPair('RS256');
     privateKey = kp.privateKey;
     publicKey = kp.publicKey;
+  });
+
+  beforeEach(async () => {
     const jwk = await exportJWK(publicKey);
     // Swap in a static-key resolver that matches any `alg: RS256` kid.
     __setJWKSForTesting(async () => ({ ...jwk, alg: 'RS256' }));
@@ -104,7 +108,7 @@ describe('verifyWorkOSJWT', () => {
       sub: 'user_01ABC',
       azp: 'client_01DIFFERENT_APP',
     });
-    await expect(verifyWorkOSJWT(token)).rejects.toThrow(/application id/);
+    await expect(verifyWorkOSJWT(token)).rejects.toMatchObject({ code: 'ERR_JWT_CLAIM_VALIDATION_FAILED', message: expect.stringMatching(/application id/) });
   });
 
   it('rejects a token whose client_id does not match WORKOS_CLIENT_ID', async () => {
@@ -112,26 +116,72 @@ describe('verifyWorkOSJWT', () => {
       sub: 'user_01ABC',
       client_id: 'client_01DIFFERENT_APP',
     });
-    await expect(verifyWorkOSJWT(token)).rejects.toThrow(/application id/);
+    await expect(verifyWorkOSJWT(token)).rejects.toMatchObject({ code: 'ERR_JWT_CLAIM_VALIDATION_FAILED', message: expect.stringMatching(/application id/) });
   });
 
   it('rejects a token with no azp and no client_id', async () => {
     const token = await mint({ sub: 'user_01ABC' });
-    await expect(verifyWorkOSJWT(token)).rejects.toThrow(/application id/);
+    await expect(verifyWorkOSJWT(token)).rejects.toMatchObject({ code: 'ERR_JWT_CLAIM_VALIDATION_FAILED', message: expect.stringMatching(/application id/) });
   });
 
   it('rejects an expired token', async () => {
     const token = await mint({ sub: 'user_01ABC', azp: EXPECTED_AZP }, '-1s');
-    await expect(verifyWorkOSJWT(token)).rejects.toThrow();
+    await expect(verifyWorkOSJWT(token)).rejects.toMatchObject({ code: 'ERR_JWT_EXPIRED' });
   });
 
   it('rejects a token signed by an unknown key', async () => {
     const other = await generateKeyPair('RS256');
+    const jwk = await exportJWK(publicKey);
+    __setJWKSForTesting(createLocalJWKSet({ keys: [{ ...jwk, alg: 'RS256', kid: 'known' }] }));
     const token = await new SignJWT({ sub: 'user_01ABC', azp: EXPECTED_AZP })
-      .setProtectedHeader({ alg: 'RS256' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'unknown' })
       .setExpirationTime('5m')
       .sign(other.privateKey);
-    await expect(verifyWorkOSJWT(token)).rejects.toThrow();
+    const error = await verifyWorkOSJWT(token).catch((error: unknown) => error);
+    expect(error).toMatchObject({ code: 'ERR_JWKS_NO_MATCHING_KEY' });
+    expect(isInvalidWorkOSJWTError(error)).toBe(true);
+  });
+
+  it('separates malformed provider key material from an invalid token', async () => {
+    const token = await mint({ sub: 'user_01ABC', azp: EXPECTED_AZP });
+    const jwk = await exportJWK(publicKey);
+    __setJWKSForTesting(createLocalJWKSet({ keys: [{ ...jwk, alg: 'RS256' }] }));
+    await expect(verifyWorkOSJWT(token)).resolves.toMatchObject({ sub: 'user_01ABC' });
+
+    // An RSA key without its required modulus cannot be imported by Web Crypto.
+    __setJWKSForTesting(createLocalJWKSet({ keys: [{ kty: 'RSA', e: jwk.e, alg: 'RS256' }] }));
+    await expect(verifyWorkOSJWT(token)).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('treats unsupported provider key resolver errors as unavailable', async () => {
+    const token = await mint({ sub: 'user_01ABC', azp: EXPECTED_AZP });
+    __setJWKSForTesting(async () => {
+      throw new errors.JOSENotSupported('Unsupported provider key material');
+    });
+
+    const error = await verifyWorkOSJWT(token).catch((error: unknown) => error);
+
+    expect(error).toMatchObject({ status: 503 });
+    expect(isInvalidWorkOSJWTError(error)).toBe(false);
+  });
+
+  it('still identifies unsupported token headers as invalid before key lookup', async () => {
+    const token = await mint({ sub: 'user_01ABC', azp: EXPECTED_AZP });
+    const parts = token.split('.');
+    parts[0] = Buffer.from(JSON.stringify({ alg: 'RS256', crit: ['unknown'], unknown: true })).toString('base64url');
+    const error = await verifyWorkOSJWT(parts.join('.')).catch((error: unknown) => error);
+    expect(error).toMatchObject({ code: 'ERR_JOSE_NOT_SUPPORTED' });
+    expect(isInvalidWorkOSJWTError(error)).toBe(true);
+  });
+
+  it.each(['HS256', 'unknown', 'none'])('rejects token algorithm %s before calling the key service', async (alg) => {
+    __setJWKSForTesting(async () => { throw new Error('Key service unavailable'); });
+    const token = await mint({ sub: 'user_01ABC', azp: EXPECTED_AZP });
+    const parts = token.split('.');
+    parts[0] = Buffer.from(JSON.stringify({ alg })).toString('base64url');
+    const error = await verifyWorkOSJWT(parts.join('.')).catch((error: unknown) => error);
+    expect(error).toMatchObject({ code: 'ERR_JOSE_ALG_NOT_ALLOWED' });
+    expect(isInvalidWorkOSJWTError(error)).toBe(true);
   });
 
   it('flags M2M tokens (client_credentials)', async () => {

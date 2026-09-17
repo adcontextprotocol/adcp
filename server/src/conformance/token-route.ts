@@ -10,9 +10,9 @@
  * Removed in production builds via NODE_ENV gate.
  */
 
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { resolveCallerOrgId } from '../routes/helpers/resolve-caller-org.js';
+import { resolveCallerOrgId, sendCallerOrganizationAuthError } from '../routes/helpers/resolve-caller-org.js';
 import { createLogger } from '../logger.js';
 import { issueConformanceToken } from './token.js';
 import { conformanceSessions } from './session-store.js';
@@ -86,7 +86,7 @@ export function buildConformanceTokenRouter(): Router {
     router.post('/_debug/run-storyboard', requireAuth, async (req: Request, res: Response) => {
       const isStaticAdmin = (req as Request & { isStaticAdminApiKey?: boolean })
         .isStaticAdminApiKey === true;
-      const callerOrgId = await resolveCallerOrgId(req);
+      const callerOrgId = isStaticAdmin ? null : await resolveCallerOrgId(req);
       const bodyOrgId = typeof req.body?.org_id === 'string' ? req.body.org_id : null;
 
       let targetOrgId: string;
@@ -123,6 +123,12 @@ export function buildConformanceTokenRouter(): Router {
       }
     });
   }
+
+  // Preserve typed credential failures before the application's generic 5xx
+  // handler can turn unavailable organization verification into a 500.
+  router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (!sendCallerOrganizationAuthError(error, res)) next(error);
+  });
 
   return router;
 }
