@@ -148,6 +148,7 @@ describe('working-group real global-admin boundary', () => {
             authenticated_user_id: 'user_sso_admin',
             canonical_user_id: 'user_sso_admin',
             identity_id: 'identity_sso_admin',
+            binding_version: 'binding_sso_admin',
             authorization_epoch: '0',
             email: 'sso-admin@example.test', email_verified: true,
             first_name: 'SSO', last_name: 'Admin', grant_id: null,

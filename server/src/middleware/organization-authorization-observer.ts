@@ -1,4 +1,4 @@
-import type { Request } from 'express';
+import type { Request, RequestHandler } from 'express';
 import { getAuthorizationObserverWorkos } from '../auth/workos-client.js';
 import { createLogger } from '../logger.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
@@ -7,6 +7,16 @@ import { captureEvent } from '../utils/posthog.js';
 const logger = createLogger('organization-authorization-observer');
 const MAX_CONCURRENT_COMPARISONS = 5;
 let inFlightComparisons = 0;
+
+// Exact membership mutations have their own mandatory authority checks. Do not
+// make additional canonical-credential provider reads after those requests,
+// including authentication/preflight denials. This server-only marker changes
+// observation only; it never supplies or bypasses authorization.
+const excludedRequests = new WeakSet<object>();
+export const excludeOrganizationAuthorizationObservation: RequestHandler = (req, _res, next) => {
+  excludedRequests.add(req);
+  next();
+};
 
 export type OrganizationSelectorSource =
   | 'header'
@@ -208,7 +218,7 @@ export async function observeLinkedCredentialOrganizationAuthorization(
   route: string,
   responseStatus: number,
 ): Promise<void> {
-  if (process.env.ORG_AUTHORIZATION_OBSERVER_ENABLED === 'false') return;
+  if (excludedRequests.has(req) || process.env.ORG_AUTHORIZATION_OBSERVER_ENABLED === 'false') return;
 
   const canonicalUserId = req.user?.id;
   const authenticatedUserId = req.user?.authWorkosUserId;

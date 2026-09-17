@@ -138,6 +138,7 @@ describe('Addie real global-admin boundary', () => {
             authenticated_user_id: 'user_sso_admin',
             canonical_user_id: 'user_sso_admin',
             identity_id: 'identity_sso_admin',
+            binding_version: 'binding_sso_admin',
             authorization_epoch: '0',
             email: 'sso-admin@example.test', email_verified: true,
             first_name: 'SSO', last_name: 'Admin', grant_id: null,
@@ -273,7 +274,8 @@ describe('Addie real global-admin boundary', () => {
     mocks.snapshotQuery.mockResolvedValue({ rows: [{
       in_recovery: false, terminal_marker: false, primary_count: '1',
       authenticated_user_id: 'user_sso_admin', canonical_user_id: 'user_linked_primary',
-      identity_id: '00000000-0000-4000-8000-000000000001', authorization_epoch: '0',
+      identity_id: '00000000-0000-4000-8000-000000000001', binding_version: 'binding_sso_admin',
+      authorization_epoch: '0',
       email: 'sso-admin@example.test', email_verified: true,
       first_name: 'SSO', last_name: 'Admin', grant_id: null,
     }] });

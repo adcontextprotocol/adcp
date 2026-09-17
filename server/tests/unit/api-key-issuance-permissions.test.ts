@@ -73,7 +73,7 @@ function snapshotRow(userId: string, organizationId?: string, role?: 'owner' | '
   return {
     in_recovery: false, terminal_marker: false, primary_count: '1', authenticated_user_id: userId,
     canonical_user_id: userId === 'user_linked' ? 'user_primary' : userId,
-    identity_id: 'identity_original', authorization_epoch: '1',
+    identity_id: 'identity_original', binding_version: `binding_${userId}`, authorization_epoch: '1',
     email: 'caller@example.test', email_verified: true, first_name: null, last_name: null,
     grant_id: role ? 'grant_scoped' : null, grant_organization_id: role ? organizationId : null,
     grant_role: role ?? null, grant_effective_from: role ? '2026-01-01T00:00:00.000000Z' : null,

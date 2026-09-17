@@ -7,6 +7,8 @@ export interface AuthorizationSnapshot {
   readonly authenticatedUserId: string;
   readonly canonicalUserId: string;
   readonly identityId: string | null;
+  /** PostgreSQL xmin text for the exact credential-to-identity binding row. */
+  readonly bindingVersion: string;
   readonly selectedOrganizationId: string | null;
   /** PostgreSQL bigint text: converting to a number would lose revocations above 2^53. */
   readonly authorizationEpoch: string;
@@ -42,6 +44,7 @@ interface SnapshotRow {
   authenticated_user_id: string | null;
   canonical_user_id: string | null;
   identity_id: string | null;
+  binding_version: string | null;
   authorization_epoch: string;
   email: string | null;
   email_verified: boolean;
@@ -96,7 +99,7 @@ export async function loadAuthorizationSnapshot(
       `SELECT pg_catalog.pg_is_in_recovery() AS in_recovery,
               credential.workos_user_id AS authenticated_user_id,
               primary_binding.workos_user_id AS canonical_user_id,
-              binding.identity_id,
+              binding.identity_id, binding.xmin::text AS binding_version,
               COALESCE(primary_binding.primary_count, 0)::text AS primary_count,
               EXISTS (
                 SELECT 1 FROM registry_audit_log audit
@@ -142,7 +145,7 @@ export async function loadAuthorizationSnapshot(
     // recreates a users row. Durable deletion/quarantine markers are terminal.
     // Missing or ambiguous identity routing is also terminal, never a fallback
     // to a linked credential or an implicit singleton identity.
-    if (row.terminal_marker || !row.authenticated_user_id || !row.identity_id
+    if (row.terminal_marker || !row.authenticated_user_id || !row.identity_id || !row.binding_version
         || row.primary_count !== '1' || !row.canonical_user_id) return null;
 
     const credentialGrant = row.grant_id
@@ -158,6 +161,7 @@ export async function loadAuthorizationSnapshot(
       authenticatedUserId: row.authenticated_user_id,
       canonicalUserId: row.canonical_user_id,
       identityId: row.identity_id,
+      bindingVersion: row.binding_version,
       selectedOrganizationId: organizationId,
       authorizationEpoch: row.authorization_epoch,
       credential: Object.freeze({
@@ -183,6 +187,7 @@ export function sameAuthorizationIdentity(
   return previous.authenticatedUserId === current.authenticatedUserId
     && previous.canonicalUserId === current.canonicalUserId
     && previous.identityId === current.identityId
+    && previous.bindingVersion === current.bindingVersion
     && previous.authorizationEpoch === current.authorizationEpoch
     && previous.credential.email === current.credential.email
     && previous.credential.emailVerified === current.credential.emailVerified;

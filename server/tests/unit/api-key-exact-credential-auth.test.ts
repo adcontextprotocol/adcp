@@ -100,7 +100,7 @@ beforeEach(() => {
   mocks.getRefreshedSession.mockResolvedValue(null);
   mocks.loadAuthorizationSnapshot.mockImplementation(async (id: string, org: string | null) => ({
     authenticatedUserId: id, canonicalUserId: id, identityId: 'identity_one',
-    authorizationEpoch: '1', selectedOrganizationId: org, credentialGrant: null,
+    bindingVersion: 'binding-1', authorizationEpoch: '1', selectedOrganizationId: org, credentialGrant: null,
     credential: { email: 'sam@example.test', emailVerified: true, firstName: 'Sam', lastName: 'Adeyemi' },
   }));
 });

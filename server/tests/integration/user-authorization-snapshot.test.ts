@@ -118,6 +118,7 @@ describe('primary database authorization snapshots', () => {
     expect(cold).toMatchObject({
       authenticatedUserId: PERSONAL_ID,
       canonicalUserId: PERSONAL_ID,
+      bindingVersion: expect.any(String),
       authorizationEpoch: '0',
       selectedOrganizationId: null,
       credentialGrant: null,
@@ -209,6 +210,32 @@ describe('primary database authorization snapshots', () => {
     expect(sameAuthorizationSnapshot(bumped, absent)).toBe(false);
   });
 
+  it('rejects delete-and-reinsert replay of the same identity binding', async () => {
+    const before = await snapshot(PERSONAL_ID, PERSONAL_ORG);
+    const binding = await pool.query<{ identity_id: string; is_primary: boolean }>(
+      'SELECT identity_id, is_primary FROM identity_workos_users WHERE workos_user_id = $1',
+      [PERSONAL_ID],
+    );
+    await pool.query('DELETE FROM identity_workos_users WHERE workos_user_id = $1', [PERSONAL_ID]);
+    await pool.query(
+      `INSERT INTO identity_workos_users (workos_user_id, identity_id, is_primary)
+       VALUES ($1, $2, $3)`,
+      [PERSONAL_ID, binding.rows[0].identity_id, binding.rows[0].is_primary],
+    );
+    const after = await snapshot(PERSONAL_ID, PERSONAL_ORG);
+
+    expect(after).toMatchObject({
+      authenticatedUserId: before.authenticatedUserId,
+      canonicalUserId: before.canonicalUserId,
+      identityId: before.identityId,
+      authorizationEpoch: before.authorizationEpoch,
+    });
+    expect(after.bindingVersion).not.toBe(before.bindingVersion);
+    expect(sameAuthorizationIdentity(before, after)).toBe(false);
+    expect(sameAuthorizationSnapshot(before, after)).toBe(false);
+    expect(sameAuthorizationSnapshot(after, before)).toBe(false);
+  });
+
   it('rejects replays with altered credential, identity, selection, or grant details', async () => {
     await grant(PERSONAL_ID, PERSONAL_ORG, { until: '2999-01-01T00:00:00.654321Z' });
     const current = await snapshot(PERSONAL_ID, PERSONAL_ORG);
@@ -218,6 +245,7 @@ describe('primary database authorization snapshots', () => {
       { authenticatedUserId: CORPORATE_ID },
       { canonicalUserId: CORPORATE_ID },
       { identityId: null },
+      { bindingVersion: `${current.bindingVersion}-replacement` },
       { authorizationEpoch: '1' },
       { credential: { ...current.credential, email: 'changed@example.test' } },
     ];
@@ -367,6 +395,7 @@ describe('primary database authorization snapshots', () => {
         authenticated_user_id: hasUser ? primary.authenticatedUserId : null,
         canonical_user_id: hasUser ? primary.canonicalUserId : null,
         identity_id: hasUser ? primary.identityId : null,
+        binding_version: hasUser ? primary.bindingVersion : null,
         authorization_epoch: '0',
         email: hasUser ? primary.credential.email : null,
         first_name: hasUser ? primary.credential.firstName : null,

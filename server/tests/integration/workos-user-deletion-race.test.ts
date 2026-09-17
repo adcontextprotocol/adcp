@@ -6,6 +6,7 @@ import type { Pool } from 'pg';
 const mocks = vi.hoisted(() => ({
   constructEvent: vi.fn(),
   getUser: vi.fn(),
+  listOrganizationMemberships: vi.fn(),
   listUsers: vi.fn(),
   invalidateSessionsForUsers: vi.fn(),
   notifySystemError: vi.fn(),
@@ -17,6 +18,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../src/auth/workos-client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/auth/workos-client.js')>()),
+  getAuthorizationEnforcementWorkos: () => ({
+    userManagement: {
+      getUser: mocks.getUser,
+      listOrganizationMemberships: mocks.listOrganizationMemberships,
+    },
+  }),
   getWorkos: () => ({
     webhooks: { constructEvent: mocks.constructEvent },
     userManagement: {
@@ -74,6 +81,7 @@ const {
   IDENTITY_DELETION_SNAPSHOT_POLICY,
   IDENTITY_RECOVERY_STATE,
   withActiveCredentialEventMutation,
+  withActiveCredentialEventMutationAfterSerializedPrefetch,
   withCredentialCreationEventMutation,
   upsertWorkosUserInCredentialEvent,
 } = await import('../../src/db/identity-db.js');
@@ -124,6 +132,19 @@ describe('WorkOS webhook vs sync-users deletion', () => {
     mocks.deletionWaiters.length = 0;
     mocks.coordinateDeletionCallers = false;
     mocks.tryAutoLinkWebsiteUserToSlack.mockResolvedValue({ linked: false, reason: 'no_slack_user' });
+    mocks.listOrganizationMemberships.mockImplementation(async (input: {
+      userId: string;
+      organizationId: string;
+    }) => ({
+      data: [{
+        id: 'om_race_restore',
+        userId: input.userId,
+        organizationId: input.organizationId,
+        status: 'active',
+        role: { slug: 'admin' },
+      }],
+      listMetadata: {},
+    }));
   });
 
   async function cleanup() {
@@ -962,15 +983,63 @@ describe('WorkOS webhook vs sync-users deletion', () => {
     )).rows).toEqual([]);
   });
 
-  it('does not hold the credential lock while membership provider prefetch is hung', async () => {
+  it('serializes membership provider prefetch without blocking confirmed deletion', async () => {
+    await seedIdentity();
+    let releasePrefetch!: () => void;
+    let prefetchEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { prefetchEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releasePrefetch = resolve; });
+    const first = withActiveCredentialEventMutationAfterSerializedPrefetch(
+      PRIMARY,
+      async () => {
+        prefetchEntered();
+        await release;
+      },
+      async () => {
+        throw new Error('deleted credential must not reach local mutation');
+      },
+    );
+    await entered;
+
+    let secondPrefetchRan = false;
+    const second = withActiveCredentialEventMutationAfterSerializedPrefetch(
+      PRIMARY,
+      async () => { secondPrefetchRan = true; },
+      async () => {
+        throw new Error('deleted credential must not reach local mutation');
+      },
+    );
+
+    const deletion = await within(deleteIdentityCredential(PRIMARY, 'workos_webhook'), 1_000);
+    expect(deletion.deleted).toBe(true);
+    expect(secondPrefetchRan).toBe(false);
+
+    releasePrefetch();
+    await expect(within(Promise.all([first, second]), 1_000)).resolves.toEqual([
+      { applied: false },
+      { applied: false },
+    ]);
+    expect(secondPrefetchRan).toBe(false);
+  });
+
+  it.each(['membership', 'user'] as const)(
+    'does not hold the credential lock while the %s provider prefetch is hung',
+    async (hungRead) => {
     await seedIdentity();
     mocks.constructEvent.mockResolvedValue(undefined);
     let providerEntered!: () => void;
     const entered = new Promise<void>((resolve) => { providerEntered = resolve; });
-    mocks.getUser.mockImplementation(async () => {
-      providerEntered();
-      return new Promise(() => undefined);
-    });
+    if (hungRead === 'membership') {
+      mocks.listOrganizationMemberships.mockImplementationOnce(async () => {
+        providerEntered();
+        return new Promise(() => undefined);
+      });
+    } else {
+      mocks.getUser.mockImplementation(async () => {
+        providerEntered();
+        return new Promise(() => undefined);
+      });
+    }
     const app = express();
     app.use('/api/webhooks', createWorkOSWebhooksRouter());
     const started = Date.now();
@@ -989,11 +1058,15 @@ describe('WorkOS webhook vs sync-users deletion', () => {
     const eventResponse = await within(event, 1_000);
 
     expect(deletion.deleted).toBe(true);
-    expect(eventResponse.status).toBe(500);
+    // The repaired webhook classifies a bounded provider-read timeout as
+    // temporary authority-source unavailability, matching its existing 503
+    // contract for provider membership/user reads rather than a generic 500.
+    expect(eventResponse.status).toBe(503);
     expect(Date.now() - started).toBeLessThan(1_000);
     expect((await pool.query(`SELECT 1 FROM users WHERE workos_user_id = $1`, [PRIMARY])).rows)
       .toEqual([]);
-  });
+    },
+  );
 
   it('fails a signed stale writer closed after bounded credential-lock retries', async () => {
     await seedIdentity();

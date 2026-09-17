@@ -103,6 +103,7 @@ beforeEach(() => {
   row = {
     in_recovery: false, terminal_marker: false, primary_count: '1',
     authenticated_user_id: 'user_primary', canonical_user_id: 'user_linked', identity_id: 'identity_linked',
+    binding_version: 'binding_user_primary',
     authorization_epoch: '7', email: 'sam@pinnacle.example', email_verified: true,
     first_name: 'Sam', last_name: 'Adeyemi',
     grant_id: null, grant_organization_id: null, grant_role: null,

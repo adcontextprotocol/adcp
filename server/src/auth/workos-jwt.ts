@@ -7,7 +7,14 @@
  * token issued by the MCP OAuth flow works across both surfaces.
  */
 
-import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose';
+import {
+  createRemoteJWKSet,
+  decodeProtectedHeader,
+  errors,
+  jwtVerify,
+  type JWTPayload,
+  type JWTVerifyGetKey,
+} from 'jose';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('workos-jwt');
@@ -21,6 +28,7 @@ export function isInvalidWorkOSJWTError(error: unknown): boolean {
     'ERR_JWS_INVALID', 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED',
     'ERR_JWKS_NO_MATCHING_KEY',
     'ERR_JOSE_ALG_NOT_ALLOWED', 'ERR_JOSE_NOT_SUPPORTED',
+    'ERR_WORKOS_TOKEN_INVALID_HEADER', 'ERR_WORKOS_TOKEN_INVALID_KID',
   ].includes(code);
 }
 
@@ -125,6 +133,18 @@ export function looksLikeJWT(token: string): boolean {
  * signature verification against our shared JWKS.
  */
 export async function verifyWorkOSJWT(token: string): Promise<VerifiedWorkOSToken> {
+  let protectedHeader: ReturnType<typeof decodeProtectedHeader>;
+  try {
+    protectedHeader = decodeProtectedHeader(token);
+  } catch (cause) {
+    throw Object.assign(new Error('Token protected header is malformed'), {
+      code: 'ERR_WORKOS_TOKEN_INVALID_HEADER',
+      cause,
+    });
+  }
+  if (protectedHeader.kid !== undefined && typeof protectedHeader.kid !== 'string') {
+    throw Object.assign(new Error('Token key id must be a string'), { code: 'ERR_WORKOS_TOKEN_INVALID_KID' });
+  }
   const jwksInstance = getJWKS();
 
   const { payload } = await jwtVerify(token,

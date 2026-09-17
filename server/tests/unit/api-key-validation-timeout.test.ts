@@ -115,7 +115,7 @@ describe('actual WorkOS client API-key request budget', () => {
       sessionData: bearer, cookiePassword: process.env.WORKOS_COOKIE_PASSWORD!,
     }).authenticate()).rejects.toMatchObject({ code: 'ERR_JOSE_NOT_SUPPORTED' });
     snapshotMock.mockImplementation(async (id: string, org: string | null) => ({
-      authenticatedUserId: id, canonicalUserId: id, identityId: null, authorizationEpoch: '1',
+      authenticatedUserId: id, canonicalUserId: id, identityId: null, bindingVersion: 'binding-1', authorizationEpoch: '1',
       selectedOrganizationId: org, credentialGrant: null,
       credential: { email: `${id}@example.test`, emailVerified: true, firstName: null, lastName: null },
     }));

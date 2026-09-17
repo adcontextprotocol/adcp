@@ -20,6 +20,7 @@ vi.mock('../../src/logger.js', () => ({
 
 import {
   authorizationRouteFamily,
+  excludeOrganizationAuthorizationObservation,
   classifyAuthorizationObservation,
   observeLinkedCredentialOrganizationAuthorization,
   organizationSelectorFromRequest,
@@ -63,6 +64,25 @@ describe('organization authorization rollout observer', () => {
     expect(authorizationRouteFamily('GET /api/org_secret/private')).toBe('other');
     expect(authorizationRouteFamily('GET /api/toString/private')).toBe('other');
     expect(authorizationRouteFamily('GET /api/__proto__/private')).toBe('other');
+  });
+
+  for (const status of [200, 403, 503]) it(`excluded mutation at ${status} performs no shadow reads or telemetry`, async () => {
+    const req = {
+      headers: { 'x-organization-id': 'org_selected' }, query: {}, body: {}, params: {}, method: 'POST',
+      user: { id: 'user_canonical', authWorkosUserId: 'user_authenticated' },
+    } as any;
+    const next = vi.fn();
+    excludeOrganizationAuthorizationObservation(req, {} as any, next);
+    expect(next).toHaveBeenCalledOnce();
+    await observeLinkedCredentialOrganizationAuthorization(req, 'POST /api/organizations/org_selected/invitations', status);
+    expect(listOrganizationMemberships).not.toHaveBeenCalled();
+    expect(captureEvent).not.toHaveBeenCalled();
+    expect(loggerInfo).not.toHaveBeenCalled();
+
+    // The marker is attached to this request, not an identity/org or global flag.
+    listOrganizationMemberships.mockResolvedValue({ data: [] });
+    await observeLinkedCredentialOrganizationAuthorization({ ...req }, 'GET /api/example', 200);
+    expect(listOrganizationMemberships).toHaveBeenCalledTimes(2);
   });
 
   it('compares the canonical and authenticated credentials without exposing IDs', async () => {

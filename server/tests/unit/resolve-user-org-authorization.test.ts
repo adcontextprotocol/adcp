@@ -14,7 +14,8 @@ const AUTHENTICATED_ID = 'user_authenticated';
 function snapshot(overrides: Partial<AuthorizationSnapshot> = {}): AuthorizationSnapshot {
   return {
     authenticatedUserId: AUTHENTICATED_ID, canonicalUserId: 'user_canonical',
-    identityId: 'identity_linked', selectedOrganizationId: ORGANIZATION_ID, authorizationEpoch: '1',
+    identityId: 'identity_linked', bindingVersion: 'binding-1',
+    selectedOrganizationId: ORGANIZATION_ID, authorizationEpoch: '1',
     credential: { email: 'sam@example.test', firstName: 'Sam', lastName: 'Adeyemi', emailVerified: true },
     credentialGrant: null, ...overrides,
   };
@@ -139,6 +140,7 @@ describe('resolveUserOrgAuthorization', () => {
     ['epoch moved backwards', { authorizationEpoch: '0' }],
     ['canonical identity changed', { canonicalUserId: 'user_new_primary' }],
     ['binding changed without a matching epoch', { identityId: 'identity_new' }],
+    ['binding generation changed', { bindingVersion: 'binding-2' }],
     ['credential changed', { authenticatedUserId: 'user_other' }],
   ] as const)('rejects replayed request state when %s', async (_case, change) => {
     const workos = workosWithMemberships([membership()]);
@@ -157,6 +159,7 @@ describe('resolveUserOrgAuthorization', () => {
   });
   it.each([
     ['identity binding', { canonicalUserId: 'user_new_primary', identityId: 'identity_new', authorizationEpoch: '2' }],
+    ['identity binding generation', { bindingVersion: 'binding-2' }],
     ['epoch alone', { authorizationEpoch: '2' }],
     ['grant revoked', { credentialGrant: null }],
     ['grant role', { credentialGrant: grant('member') }],

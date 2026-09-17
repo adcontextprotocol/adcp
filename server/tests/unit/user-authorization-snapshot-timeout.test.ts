@@ -22,6 +22,7 @@ function queryResult(overrides: Record<string, unknown> = {}) {
       authenticated_user_id: USER_ID,
       canonical_user_id: USER_ID,
       identity_id: 'fd3043f7-cb4f-43c7-9b81-22ac97576150',
+      binding_version: '42',
       authorization_epoch: '7',
       email: 'sam@pinnacle.example',
       email_verified: true,
@@ -54,7 +55,7 @@ describe('authorization snapshot query deadline and connection retry', () => {
 
   it.each([
     { terminal_marker: true }, { primary_count: '0' }, { primary_count: '2' },
-    { identity_id: null }, { canonical_user_id: null },
+    { identity_id: null }, { binding_version: null }, { canonical_user_id: null },
   ])('denies terminal lifecycle state without retrying: %j', async invalid => {
     boundedQuery.mockResolvedValue(queryResult(invalid));
     expect(await loadAuthorizationSnapshot(USER_ID, ORGANIZATION_ID)).toBeNull();
@@ -64,7 +65,7 @@ describe('authorization snapshot query deadline and connection retry', () => {
   it.each([
     { terminal_marker: true }, { primary_count: '0' }, { primary_count: '2' },
     { primary_count: undefined }, { authenticated_user_id: null },
-    { identity_id: null }, { canonical_user_id: null },
+    { identity_id: null }, { binding_version: null }, { canonical_user_id: null },
   ])('management denies terminal or ambiguous lifecycle state without retry: %j', async invalid => {
     boundedQuery.mockResolvedValue(queryResult(invalid));
     expect(await loadApiKeyManagementSnapshot(USER_ID, ORGANIZATION_ID)).toBeNull();
@@ -76,7 +77,7 @@ describe('authorization snapshot query deadline and connection retry', () => {
     const snapshot = await loadApiKeyManagementSnapshot(USER_ID, ORGANIZATION_ID);
     expect(snapshot).toMatchObject({
       authenticatedUserId: USER_ID, canonicalUserId: USER_ID,
-      authorizationEpoch: '9007199254740993', credentialGrant: null,
+      bindingVersion: '42', authorizationEpoch: '9007199254740993', credentialGrant: null,
     });
     expect(boundedQuery).toHaveBeenCalledOnce();
     expect(boundedQuery.mock.calls[0][0]).not.toContain('organization_credential_grants');
