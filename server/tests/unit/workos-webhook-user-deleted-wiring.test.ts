@@ -55,12 +55,22 @@ describe('user.deleted containment wiring (#6827)', () => {
   });
 
   it('guards every authority-bearing provider writer with the deletion lock seam', () => {
-    for (const eventType of [
-      'organization_membership.created',
-      'organization_membership.updated',
-      'user.created',
-      'user.updated',
-    ]) {
+    for (const eventType of ['organization_membership.created', 'organization_membership.updated']) {
+      const eventStart = webhookSource.indexOf(`case '${eventType}'`);
+      const eventEnd = webhookSource.indexOf('\n          case ', eventStart + 1);
+      const eventBlock = webhookSource.slice(eventStart, eventEnd);
+      expect(eventStart).toBeGreaterThan(-1);
+      expect(eventBlock).toContain('upsertMembership(membership)');
+    }
+    const membershipHelper = webhookSource.slice(
+      webhookSource.indexOf('export async function upsertMembership('),
+      webhookSource.indexOf('/**\n * Upsert user to local users table'),
+    );
+    expect(membershipHelper).toContain(
+      'withActiveCredentialEventMutationAfterSerializedPrefetch(',
+    );
+    expect(membershipHelper).toContain('boundedProviderPrefetch(currentProviderMembership(membership))');
+    for (const eventType of ['user.created', 'user.updated']) {
       const eventStart = webhookSource.indexOf(`case '${eventType}'`);
       const eventEnd = webhookSource.indexOf('\n          case ', eventStart + 1);
       const eventBlock = webhookSource.slice(eventStart, eventEnd);
@@ -76,8 +86,9 @@ describe('user.deleted containment wiring (#6827)', () => {
       'credentialClient ?? pool, user.id, user.first_name, user.last_name',
     );
     expect(webhookSource).toContain(
-      'canAddSeat(membership.organization_id, seatType, client)',
+      'canAddSeat(current.organizationId, seatType, client)',
     );
+    expect(webhookSource).toContain('}, client);');
   });
 
   it('uses one credential-first lock order and fails closed after bounded retries', () => {

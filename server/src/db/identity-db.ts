@@ -216,8 +216,9 @@ export const CREDENTIAL_MUTATION_ADMISSION_TIMEOUT_MS = 1_000;
 
 /**
  * Keep one connection free for confirmed deletion and bound admission wait.
- * Guard callbacks must use their supplied client and must not perform provider
- * I/O, so each admitted mutation consumes exactly one pool connection.
+ * Guard mutation callbacks must use their supplied client and must not perform
+ * provider I/O. A serialized prefetch may use the admitted connection before
+ * the credential lock is acquired, so confirmed deletion can still progress.
  */
 const credentialMutationAdmission = {
   active: 0,
@@ -427,6 +428,7 @@ async function withCredentialEventMutation<T>(
   workosUserId: string,
   mode: CredentialMutationMode,
   mutation: (client: PoolClient) => Promise<T>,
+  serializedPrefetch?: () => Promise<void>,
 ): Promise<CredentialEventMutationResult<T>> {
   const releaseCapacity = await acquireCredentialMutationPoolCapacity();
   try {
@@ -436,6 +438,45 @@ async function withCredentialEventMutation<T>(
       try {
         await client.query('BEGIN');
         await client.query(`SET LOCAL lock_timeout = '${CREDENTIAL_MUTATION_LOCK_TIMEOUT_MS}ms'`);
+        if (serializedPrefetch) {
+          // Membership provider reads can be slow, so serialize them on a
+          // distinct lock before taking the credential-revocation lock. This
+          // preserves webhook ordering without delaying a confirmed deletion.
+          await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 6828))`, [workosUserId]);
+
+          // Avoid provider reads for a credential that is already inactive.
+          // This is only an optimization: deletion can race this read, and the
+          // locked lifecycle check below remains the authority before effects.
+          const preflight = await client.query<{
+            user_exists: boolean;
+            binding_exists: boolean;
+            primary_count: string;
+          }>(
+            `SELECT EXISTS (
+                      SELECT 1 FROM users WHERE workos_user_id = $1
+                    ) AS user_exists,
+                    EXISTS (
+                      SELECT 1 FROM identity_workos_users WHERE workos_user_id = $1
+                    ) AS binding_exists,
+                    COALESCE((
+                      SELECT COUNT(*)
+                        FROM identity_workos_users actor_iwu
+                        JOIN identity_workos_users primary_iwu
+                          ON primary_iwu.identity_id = actor_iwu.identity_id
+                         AND primary_iwu.is_primary = TRUE
+                       WHERE actor_iwu.workos_user_id = $1
+                    ), 0)::text AS primary_count`,
+            [workosUserId],
+          );
+          const state = preflight.rows[0];
+          if (state?.user_exists !== true
+            || state.binding_exists !== true
+            || Number(state.primary_count) !== 1) {
+            await client.query('COMMIT');
+            return { applied: false };
+          }
+          await serializedPrefetch();
+        }
         const { identityId } = await lockCredentialThenIdentityMutation(client, workosUserId);
         if (await hasConfirmedDeletionTombstone(client, workosUserId)) {
           await client.query('COMMIT');
@@ -503,6 +544,19 @@ export async function withActiveCredentialEventMutation<T>(
   mutation: (client: PoolClient) => Promise<T>,
 ): Promise<CredentialEventMutationResult<T>> {
   return withCredentialEventMutation(workosUserId, 'active', mutation);
+}
+
+/**
+ * Serialize read-only provider state for one credential before taking the
+ * credential lifecycle lock, then recheck the locked lifecycle before local
+ * effects. The prefetch must be bounded and must not perform provider writes.
+ */
+export async function withActiveCredentialEventMutationAfterSerializedPrefetch<T>(
+  workosUserId: string,
+  prefetch: () => Promise<void>,
+  mutation: (client: PoolClient) => Promise<T>,
+): Promise<CredentialEventMutationResult<T>> {
+  return withCredentialEventMutation(workosUserId, 'active', mutation, prefetch);
 }
 
 /** Apply one atomic authority mutation to a sorted set of live credentials. */

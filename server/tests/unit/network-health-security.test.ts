@@ -209,6 +209,7 @@ describe('network-health global authorization boundary', () => {
             authenticated_user_id: userId,
             canonical_user_id: userId,
             identity_id: `identity_${userId}`,
+            binding_version: `binding_${userId}`,
             authorization_epoch: '0',
             email: isAdmin ? 'platform-admin@example.test' : 'user@example.test',
             email_verified: true,

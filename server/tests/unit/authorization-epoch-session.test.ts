@@ -58,7 +58,8 @@ let sequence = 0;
 function snapshot(overrides: Partial<AuthorizationSnapshot> = {}): AuthorizationSnapshot {
   return {
     authenticatedUserId: AUTHENTICATED_ID, canonicalUserId: AUTHENTICATED_ID,
-    identityId: 'identity_epoch', authorizationEpoch: '1', selectedOrganizationId: null,
+    identityId: 'identity_epoch', bindingVersion: 'binding-1',
+    authorizationEpoch: '1', selectedOrganizationId: null,
     credential: { email: PROVIDER_USER.email, firstName: 'Sam', lastName: 'Adeyemi', emailVerified: true },
     credentialGrant: null, ...overrides,
   };

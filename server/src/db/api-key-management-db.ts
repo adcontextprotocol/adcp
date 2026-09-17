@@ -19,6 +19,7 @@ const SNAPSHOT_SQL = `
   SELECT pg_catalog.pg_is_in_recovery() AS in_recovery,
          credential.workos_user_id AS authenticated_user_id,
          primary_binding.workos_user_id AS canonical_user_id, binding.identity_id,
+         binding.xmin::text AS binding_version,
          COALESCE(primary_binding.primary_count, 0)::text AS primary_count,
          EXISTS (
            SELECT 1 FROM registry_audit_log audit
@@ -46,6 +47,7 @@ interface SnapshotRow {
   authenticated_user_id: string | null;
   canonical_user_id: string | null;
   identity_id: string | null;
+  binding_version: string | null;
   authorization_epoch: string;
   email: string | null;
   email_verified: boolean;
@@ -57,12 +59,13 @@ function snapshotFromRow(row: SnapshotRow | undefined, organizationId: string | 
   if (!row || row.in_recovery) throw new AuthorizationSnapshotUnavailableError();
   // Grant-free management must retain the primary snapshot's terminal
   // lifecycle boundary, including stale provider recreation and bad routing.
-  if (row.terminal_marker || !row.authenticated_user_id || !row.identity_id
+  if (row.terminal_marker || !row.authenticated_user_id || !row.identity_id || !row.binding_version
       || row.primary_count !== '1' || !row.canonical_user_id) return null;
   return Object.freeze({
     authenticatedUserId: row.authenticated_user_id,
     canonicalUserId: row.canonical_user_id,
     identityId: row.identity_id,
+    bindingVersion: row.binding_version,
     selectedOrganizationId: organizationId,
     authorizationEpoch: row.authorization_epoch,
     credential: Object.freeze({
