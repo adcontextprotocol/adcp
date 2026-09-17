@@ -134,6 +134,11 @@ export interface InvocationPreparedSnapshot {
 }
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 8_192;
+// Gemini's output allowance includes hidden thinking. Keep enough room for low
+// thinking plus a useful answer while targeting roughly 8k visible characters,
+// below the shared 10k delivery cap. The local cap remains the final backstop
+// for languages and token shapes whose character ratio differs materially.
+const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 2_048;
 const SONNET_5_MAX_OUTPUT_TOKENS = 32_768;
 // The Anthropic SDK rejects non-streaming requests whose calculated timeout
 // may exceed ten minutes. Sonnet 5 at 32k crosses that guard; streaming does
@@ -842,6 +847,11 @@ function localModelExecution(
 }
 
 const MAX_ITERATIONS_FALLBACK_TEXT = "I'm having trouble completing that request. Could you try rephrasing?";
+const FINAL_ANSWER_OPPORTUNITY_INSTRUCTION = [
+  '## Final response boundary',
+  'The ordinary tool budget is exhausted. Do not request or imply another tool call.',
+  'Answer the user now from the completed results in this turn. Preserve concrete records and action receipts, state any unfinished work briefly, and keep the response under 8,000 characters.',
+].join('\n');
 
 interface TerminalAddieResponseCommon {
   userMessage: string;
@@ -1340,11 +1350,25 @@ export class AddieClaudeClient {
     };
   }
 
-  private invocationSystemBlocks(blocks: ModelSystemBlock[], tools: ModelToolDefinition[], options?: ProcessMessageOptions) {
-    if (!options?.directToolSession) return blocks;
-    const current = this.buildSystemBlocks(tools.map(tool => tool.name), options.directToolSession.selectedToolSetNames(), options.requestContext);
-    // Retain any history-trimming warning appended during initial assembly.
-    return [...current, ...blocks.slice(current.length)];
+  private invocationSystemBlocks(
+    blocks: ModelSystemBlock[],
+    tools: ModelToolDefinition[],
+    options?: ProcessMessageOptions,
+    finalAnswerOnly = false,
+  ) {
+    let invocationBlocks = blocks;
+    if (options?.directToolSession) {
+      const current = this.buildSystemBlocks(
+        tools.map(tool => tool.name),
+        options.directToolSession.selectedToolSetNames(),
+        options.requestContext,
+      );
+      // Retain any history-trimming warning appended during initial assembly.
+      invocationBlocks = [...current, ...blocks.slice(current.length)];
+    }
+    return finalAnswerOnly
+      ? [...invocationBlocks, { text: FINAL_ANSWER_OPPORTUNITY_INSTRUCTION }]
+      : invocationBlocks;
   }
 
   /** Assemble the shared prompt, tool surface, history, and attachments for either delivery mode. */
@@ -1439,7 +1463,13 @@ export class AddieClaudeClient {
       )
       : maxOutputTokens;
     const controls = this.productionGeminiDirect && effectiveModel === GOOGLE_ROUTER_MODEL
-      ? { maxOutputTokens: safeMaxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, reasoning: { effort: 'low' as const } }
+      ? {
+          maxOutputTokens: Math.min(
+            GEMINI_DIRECT_MAX_OUTPUT_TOKENS,
+            safeMaxOutputTokens ?? GEMINI_DIRECT_MAX_OUTPUT_TOKENS,
+          ),
+          reasoning: { effort: 'low' as const },
+        }
       : addieModelOutputControls(effectiveModel, safeMaxOutputTokens);
     return {
       model: effectiveModel,
@@ -1614,22 +1644,28 @@ export class AddieClaudeClient {
       modelTools,
       requestWebSearchEnabled,
     } = prepared;
+    const toolExecutorOptions = {
+      executionMode: options?.executionMode ?? 'production',
+      policy: githubIssueCreationExecutionPolicy(
+        githubIssueCreationRequested,
+        this.executionPolicy(options),
+      ),
+      reserveSideEffect: options?.reserveSideEffect,
+      notificationContext: {
+        slackUserId: options?.slackUserId,
+        userDisplayName: options?.userDisplayName,
+        threadId: options?.threadId,
+      },
+    } satisfies Parameters<typeof createAddieToolExecutor>[2];
     const executeToolCall = createAddieToolExecutor(
       [...toolsByName.values()],
       allHandlers,
-      {
-        executionMode: options?.executionMode ?? 'production',
-        policy: githubIssueCreationExecutionPolicy(
-          githubIssueCreationRequested,
-          this.executionPolicy(options),
-        ),
-        reserveSideEffect: options?.reserveSideEffect,
-        notificationContext: {
-          slackUserId: options?.slackUserId,
-          userDisplayName: options?.userDisplayName,
-          threadId: options?.threadId,
-        },
-      },
+      toolExecutorOptions,
+    );
+    const rejectFinalAnswerToolCall = createAddieToolExecutor(
+      [],
+      new Map(),
+      toolExecutorOptions,
     );
     systemPromptMs = prepared.systemPromptMs;
 
@@ -1673,6 +1709,7 @@ export class AddieClaudeClient {
     let hasExecutedCustomTool = false;
     let activeModel = effectiveModel;
     let modelFallbackReason: ModelFallbackReason | null = null;
+    let finalAnswerOnly = false;
 
     while (modelLoop.hasRemaining) {
       const activeTurn = modelLoop.beginNext();
@@ -1683,7 +1720,7 @@ export class AddieClaudeClient {
       let response!: ModelResponse;
       let reusedEmptyResponse = false;
       const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
-      const invocationTools = recoveryInvocation.toolsAllowed
+      const invocationTools = !finalAnswerOnly && recoveryInvocation.toolsAllowed
         ? modelTools.filter(tool => !options?.directToolSession
           || options.directToolSession.visibleToolNames().has(tool.name)) : [];
       let invocationAttempt = 0;
@@ -1692,7 +1729,7 @@ export class AddieClaudeClient {
         invocationAttempt++;
         const modelRequest = this.buildModelRequest(
           model,
-          this.invocationSystemBlocks(systemBlocks, invocationTools, options),
+          this.invocationSystemBlocks(systemBlocks, invocationTools, options, finalAnswerOnly),
           invocationTools,
           modelMessages,
           recoveryInvocation.toolsAllowed && requestWebSearchEnabled,
@@ -1856,6 +1893,7 @@ export class AddieClaudeClient {
         logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
       }
       const acceptedTurnText = turn.textBlocks.map((block) => block.text).join('\n\n');
+      const toolExecutionStartIndex = toolExecutions.length;
 
       let turnDecision: AddieAcceptedTurnDecision | undefined;
       for await (const event of orchestrateAcceptedAddieTurn({
@@ -1864,7 +1902,7 @@ export class AddieClaudeClient {
         executionMode: options?.executionMode ?? 'production',
         messages: modelMessages,
         ledger: executionLedger,
-        execute: executeToolCall,
+        execute: finalAnswerOnly ? rejectFinalAnswerToolCall : executeToolCall,
         emptyResponseRecovery: {
           loop: modelLoop,
           deliverableText: stripBannedRituals(acceptedTurnText.trim()),
@@ -1900,6 +1938,22 @@ export class AddieClaudeClient {
       if (!turnDecision) throw new Error('Accepted model turn produced no orchestration decision');
 
       if (turnDecision.disposition.type === 'continue') {
+        const madeSuccessfulToolProgress = toolExecutions
+          .slice(toolExecutionStartIndex)
+          .some(execution => !execution.is_error);
+        if (
+          this.productionGeminiDirect
+          && !finalAnswerOnly
+          && turnDecision.disposition.reason === 'execute_tools'
+          && madeSuccessfulToolProgress
+          && modelLoop.grantFinalAnswerOpportunity()
+        ) {
+          finalAnswerOnly = true;
+          logger.info(
+            { iteration, event: 'addie_final_answer_opportunity' },
+            'Addie: Granting one tool-disabled final response after useful tool progress',
+          );
+        }
         if (
           turnDecision.disposition.reason === 'continue'
           || turnDecision.disposition.reason === 'continue_provider_tools'
@@ -2240,7 +2294,7 @@ export class AddieClaudeClient {
       logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie Stream: Using precision model for billing/financial query');
     }
 
-    const executeToolCall = createAddieToolExecutor([...toolsByName.values()], allHandlers, {
+    const toolExecutorOptions = {
       executionMode: options?.executionMode ?? 'production',
       policy: githubIssueCreationExecutionPolicy(
         githubIssueCreationRequested,
@@ -2252,7 +2306,17 @@ export class AddieClaudeClient {
         userDisplayName: options?.userDisplayName,
         threadId: options?.threadId,
       },
-    });
+    } satisfies Parameters<typeof createAddieToolExecutor>[2];
+    const executeToolCall = createAddieToolExecutor(
+      [...toolsByName.values()],
+      allHandlers,
+      toolExecutorOptions,
+    );
+    const rejectFinalAnswerToolCall = createAddieToolExecutor(
+      [],
+      new Map(),
+      toolExecutorOptions,
+    );
 
     if (messageTurnsResult.wasTrimmed) {
       logger.info(
@@ -2269,6 +2333,7 @@ export class AddieClaudeClient {
     let lastProviderModel: string | undefined;
     let activeModel = effectiveModel;
     let modelFallbackReason: ModelFallbackReason | null = null;
+    let finalAnswerOnly = false;
 
       while (modelLoop.hasRemaining) {
         const activeTurn = modelLoop.beginNext();
@@ -2293,12 +2358,12 @@ export class AddieClaudeClient {
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
           const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
-          const invocationTools = recoveryInvocation.toolsAllowed
+          const invocationTools = !finalAnswerOnly && recoveryInvocation.toolsAllowed
             ? modelTools.filter(tool => !options?.directToolSession
               || options.directToolSession.visibleToolNames().has(tool.name)) : [];
           const modelRequest = this.buildModelRequest(
             activeModel,
-            this.invocationSystemBlocks(systemBlocks, invocationTools, options),
+            this.invocationSystemBlocks(systemBlocks, invocationTools, options, finalAnswerOnly),
             invocationTools,
             modelMessages,
             false,
@@ -2579,6 +2644,7 @@ export class AddieClaudeClient {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
         }
         const acceptedTurnText = turn.textBlocks.map((block) => block.text).join('\n\n');
+        const toolExecutionStartIndex = toolExecutions.length;
 
         let turnDecision: AddieAcceptedTurnDecision | undefined;
         for await (const event of orchestrateAcceptedAddieTurn({
@@ -2587,7 +2653,7 @@ export class AddieClaudeClient {
           executionMode: options?.executionMode ?? 'production',
           messages: modelMessages,
           ledger: executionLedger,
-          execute: executeToolCall,
+          execute: finalAnswerOnly ? rejectFinalAnswerToolCall : executeToolCall,
           emptyResponseRecovery: {
             loop: modelLoop,
             deliverableText: stripBannedRituals(acceptedTurnText),
@@ -2665,6 +2731,22 @@ export class AddieClaudeClient {
 
         const iterationText = turnDecision.text;
         if (turnDecision.disposition.type === 'continue') {
+          const madeSuccessfulToolProgress = toolExecutions
+            .slice(toolExecutionStartIndex)
+            .some(execution => !execution.is_error);
+          if (
+            this.productionGeminiDirect
+            && !finalAnswerOnly
+            && turnDecision.disposition.reason === 'execute_tools'
+            && madeSuccessfulToolProgress
+            && modelLoop.grantFinalAnswerOpportunity()
+          ) {
+            finalAnswerOnly = true;
+            logger.info(
+              { iteration, event: 'addie_final_answer_opportunity' },
+              'Addie Stream: Granting one tool-disabled final response after useful tool progress',
+            );
+          }
           if (
             turnDecision.disposition.reason === 'continue'
             || turnDecision.disposition.reason === 'continue_provider_tools'

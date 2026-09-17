@@ -42,8 +42,11 @@ new treatment conversations in eligible mode; use `MODE=off` for rollback.
 
 ## Treatment behavior
 
-- Exact model: `gemini-3.7-flash`, low thinking, 8,192 output tokens, ordinary
-  ten-step tool loop. Native Google streaming retains signed continuation parts.
+- Exact model: `gemini-3.7-flash`, low thinking, 2,048 output tokens, and ten
+  ordinary provider turns. When the tenth turn completes at least one new
+  successful custom tool, it earns exactly one tool-disabled synthesis turn.
+  Failed or duplicate tool calls do not extend the wall. Native Google
+  streaming retains signed continuation parts.
 - Documentation, schema, baseline tools, and authorized admin analytics start
   active. `load_tool_group` selects another authorized Addie domain, including
   member actions, escalation management, billing, and agent storyboards. Loading
@@ -72,6 +75,11 @@ new treatment conversations in eligible mode; use `MODE=off` for rollback.
   identifies provider-error fallback separately from the selected model.
 - Saved tool results are historical text on later Gemini turns. Current-turn
   function calls retain the adapter's opaque Google signatures.
+- The provider token allowance includes hidden thinking and targets less than
+  8,000 visible characters. The shared 10,000-character delivery cap remains a
+  backstop for unusual token-to-character ratios; if it fires, the response is
+  cut at a safe Markdown boundary and explicitly offers continuation rather
+  than appearing complete.
 
 ## Results and review
 
@@ -102,6 +110,15 @@ Investigate repeated quality/error regressions or p95 total time more than 20%
 worse than control. The regression suite covers native escalation actions, role boundaries, trusted
 teaching scope, reservation failures, duplicate suppression, checkpoint failures,
 and provider failure after an action.
+
+After this terminal-boundary change, monitor `Max tool iterations reached`,
+`Output truncated due to length`, provider `MAX_TOKENS`, provider-call count,
+and p95 total time separately. An eleventh provider call should appear only on
+turns whose tenth call produced a successful tool receipt; it is a bounded
+recovery opportunity, not a higher general-purpose tool limit. A rise in
+provider `MAX_TOKENS` means the 2,048-token allowance is too tight for low
+thinking, while continued local length flags mean the visible-character target
+is not holding. Either signal should be evaluated before changing the budget.
 
 ## Deployment
 

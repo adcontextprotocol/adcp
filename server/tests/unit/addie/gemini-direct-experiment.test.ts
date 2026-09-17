@@ -33,8 +33,8 @@ function receipt(parts: Part[], id = 'google-response'): GenerateContentResponse
     usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 10, thoughtsTokenCount: 5 },
   } as GenerateContentResponse;
 }
-const call = (name: string, args: Record<string, unknown> = {}): Part => ({
-  functionCall: { id: `call-${name}`, name, args }, thoughtSignature: 'opaque-signature',
+const call = (name: string, args: Record<string, unknown> = {}, id = `call-${name}`): Part => ({
+  functionCall: { id, name, args }, thoughtSignature: 'opaque-signature',
 });
 const answer: AddieResponse = {
   text: 'The full workflow answered.', tools_used: [], tool_executions: [],
@@ -258,12 +258,76 @@ describe('Gemini Direct production integration', () => {
     expect(f.handlers.get('search_docs')).toHaveBeenCalledOnce();
     expect(f.dispatch).toHaveBeenCalledTimes(2);
     expect(f.dispatch.mock.calls[0][0].config?.thinkingConfig?.thinkingLevel).toBe('LOW');
+    expect(f.dispatch.mock.calls[0][0].config?.maxOutputTokens).toBe(2_048);
     expect(f.getControlTools).not.toHaveBeenCalled();
     expect(f.control).not.toHaveBeenCalled();
     expect(mocks.recordCost).toHaveBeenCalledExactlyOnceWith('user-test', expect.objectContaining({ provider: 'google', usage: { inputTokens: 40, outputTokens: 30, reasoningTokens: 10 } }));
     const second = f.dispatch.mock.calls[1][0] as GenerateContentParameters;
     expect(JSON.stringify(second.contents)).toContain('opaque-signature');
     expect(JSON.stringify(second.contents)).toContain('functionResponse');
+  });
+
+  it('earns one tool-disabled final answer after ten successful tools spend the ordinary loop budget', async () => {
+    const successfulToolTurns = Array.from({ length: 10 }, (_, index) => receipt([
+      call('search_docs', { query: `term-${index}` }, `call-search-docs-${index}`),
+    ], `tool-${index}`));
+    const f = fixture([
+      ...successfulToolTurns,
+      receipt([{ text: 'The completed lookups support this answer.' }], 'final-answer'),
+    ]);
+
+    const result = await run(f.input);
+
+    expect(f.dispatch).toHaveBeenCalledTimes(11);
+    expect(f.handlers.get('search_docs')).toHaveBeenCalledTimes(10);
+    expect(result.response).toMatchObject({
+      text: 'The completed lookups support this answer.',
+      flagged: false,
+      timing: { iterations: 11 },
+    });
+    const finalRequest = f.dispatch.mock.calls[10][0];
+    expect(finalRequest.config?.tools).toBeUndefined();
+    expect(finalRequest.config?.maxOutputTokens).toBe(2_048);
+    expect(finalRequest.config?.systemInstruction).toContain('The ordinary tool budget is exhausted.');
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it('does not extend the loop when its last tool request made no successful progress', async () => {
+    const f = fixture([
+      receipt([call('tool_not_in_catalog')], 'blocked-tool'),
+    ]);
+
+    const result = await run(f.input, { maxIterations: 1 });
+
+    expect(f.dispatch).toHaveBeenCalledOnce();
+    expect(result.response).toMatchObject({
+      flagged: true,
+      flag_reason: 'Max tool iterations reached',
+      timing: { iterations: 1 },
+    });
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it('rejects a tool request returned during the earned final-answer opportunity', async () => {
+    const f = fixture([
+      receipt([call('search_docs')], 'last-ordinary-tool'),
+      receipt([call('search_docs')], 'forbidden-final-tool'),
+    ]);
+
+    const result = await run(f.input, { maxIterations: 1 });
+
+    expect(f.dispatch).toHaveBeenCalledTimes(2);
+    expect(f.handlers.get('search_docs')).toHaveBeenCalledOnce();
+    expect(f.dispatch.mock.calls[1][0].config?.tools).toBeUndefined();
+    expect(result.response).toMatchObject({
+      flagged: true,
+      flag_reason: 'Max tool iterations reached',
+      timing: { iterations: 2 },
+    });
+    expect(result.response?.tool_executions).toEqual([
+      expect.objectContaining({ tool_name: 'search_docs', is_error: false }),
+      expect.objectContaining({ tool_name: 'search_docs', is_error: true }),
+    ]);
   });
 
   it('loads authorized domains on demand without admitting an unbound admin handler', async () => {

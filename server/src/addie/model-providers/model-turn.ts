@@ -152,8 +152,16 @@ export class EmptyResponseRecoveryState {
 /** One monotonic iteration wall shared by provider-neutral model loops. */
 export class ModelLoopBudget {
   private startedIterations = 0;
+  private currentLimit: number;
+  private finalAnswerOpportunityGranted = false;
 
-  constructor(readonly limit: number) {}
+  constructor(limit: number) {
+    this.currentLimit = limit;
+  }
+
+  get limit(): number {
+    return this.currentLimit;
+  }
 
   get iteration(): number {
     return this.startedIterations;
@@ -169,6 +177,24 @@ export class ModelLoopBudget {
     }
     this.startedIterations++;
     return this.startedIterations;
+  }
+
+  /**
+   * Add exactly one terminal synthesis turn after the ordinary wall is spent.
+   * The caller owns the progress check and must disable tools for the added
+   * turn; this state object only guarantees that the allowance is bounded and
+   * cannot be granted before the configured budget is exhausted.
+   */
+  grantFinalAnswerOpportunity(): boolean {
+    if (
+      this.finalAnswerOpportunityGranted
+      || this.hasRemaining
+      || this.startedIterations === 0
+      || this.startedIterations !== this.currentLimit
+    ) return false;
+    this.finalAnswerOpportunityGranted = true;
+    this.currentLimit++;
+    return true;
   }
 }
 
@@ -200,6 +226,14 @@ export class ModelTurnLoopState {
 
   get hasRemaining(): boolean {
     return this.budget.hasRemaining;
+  }
+
+  /** Grant one caller-governed, tool-disabled turn after useful progress. */
+  grantFinalAnswerOpportunity(): boolean {
+    if (this.awaitingResponse) {
+      throw new Error('Cannot extend model loop before accepting its response');
+    }
+    return this.budget.grantFinalAnswerOpportunity();
   }
 
   get usage(): ModelUsage {
