@@ -3836,11 +3836,62 @@ async function runTests() {
       accounts: [{
         account: { account_id: 'acct-social-unreachable' },
         action: 'failed',
-        status: 'closed',
         errors: [{ code: 'ACCOUNT_NOT_FOUND', message: 'Account does not exist or is not accessible.' }]
       }]
     },
-    'sync_accounts settings-update-mode failed results are representable without a resolvable brand/operator tuple'
+    'sync_accounts settings-update-mode failed results are representable without a resolvable brand/operator tuple, and without an invented status'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        brand: { domain: 'acme-corp.com' },
+        operator: 'acme-corp.com',
+        action: 'failed',
+        status: 'rejected',
+        errors: [{ code: 'BILLING_NOT_SUPPORTED', message: 'Operator billing is not supported.' }]
+      }]
+    },
+    'sync_accounts failed results may still report status when the account was reached and its lifecycle state is known'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-unreachable' },
+        action: 'failed'
+      }]
+    },
+    'sync_accounts failed results are rejected without errors'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-001' },
+        revision: 4,
+        action: 'updated'
+      }]
+    },
+    'sync_accounts non-failed results are rejected without status'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-001' },
+        brand: { domain: 'nova-brands.com' },
+        operator: 'pinnacle-media.com',
+        revision: 4,
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts results are rejected when both account and brand/operator are present — the discriminator is mutually exclusive'
   );
   await testSchemaValidation(
     '/schemas/account/sync-accounts-response.json',
@@ -4090,7 +4141,8 @@ async function runTests() {
           blockers: ['The requested operator identity conflicts with another account']
         },
         action: 'failed',
-        status: 'active'
+        status: 'active',
+        errors: [{ code: 'ACCOUNT_IDENTITY_CONFLICT', message: 'The requested operator identity conflicts with another account.' }]
       }]
     },
     'blocked identity previews identify the blocking resource impact'

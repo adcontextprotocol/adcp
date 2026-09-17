@@ -96,7 +96,7 @@
                   "suspended",
                   "closed"
                 ],
-                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
+                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated. Required for every non-failed action; omitted on failed results where the seller could not reach or resolve the account far enough to know a lifecycle state (see errors)."
               },
               "billing": {
                 "$ref": "/schemas/enums/billing-party.json",
@@ -164,10 +164,11 @@
               },
               "errors": {
                 "type": "array",
-                "description": "Per-account errors (only present when action is 'failed')",
+                "description": "Per-account errors. Required and non-empty when action is 'failed'; absent otherwise.",
                 "items": {
                   "$ref": "/schemas/core/error.json"
-                }
+                },
+                "minItems": 1
               },
               "warnings": {
                 "type": "array",
@@ -203,8 +204,7 @@
               }
             },
             "required": [
-              "action",
-              "status"
+              "action"
             ],
             "dependencies": {
               "identity_change": [
@@ -221,15 +221,34 @@
             },
             "allOf": [
               {
-                "description": "Settings-update-mode results (echoing the request's `account` field) anchor identity on `account`; provisioning-mode results anchor identity on the buyer-declared `brand` + `operator` natural key. Mirrors the same discriminator sync_governance's response rows already use.",
+                "description": "Settings-update-mode results (echoing the request's `account` field) anchor identity on `account` alone; provisioning-mode results anchor identity on the buyer-declared `brand` + `operator` natural key instead, never both. Mirrors the same discriminator sync_governance's response rows already use.",
                 "if": {
                   "required": ["account"]
                 },
                 "then": {
-                  "required": ["account"]
+                  "required": ["account"],
+                  "not": {
+                    "anyOf": [
+                      { "required": ["brand"] },
+                      { "required": ["operator"] }
+                    ]
+                  }
                 },
                 "else": {
                   "required": ["brand", "operator"]
+                }
+              },
+              {
+                "description": "status reports the account's current lifecycle state, which requires the seller to have actually reached that account. A failed action always requires errors (non-empty); status is then optional, since some failures still know the account's lifecycle state (e.g. a rejected identity change on an otherwise-reachable account) while others do not (e.g. an inaccessible account_id) and MUST NOT invent one. Every non-failed action requires status.",
+                "if": {
+                  "properties": { "action": { "const": "failed" } },
+                  "required": ["action"]
+                },
+                "then": {
+                  "required": ["errors"]
+                },
+                "else": {
+                  "required": ["status"]
                 }
               }
             ],
@@ -501,7 +520,6 @@
               "account_id": "acct-social-unreachable"
             },
             "action": "failed",
-            "status": "closed",
             "errors": [
               {
                 "code": "ACCOUNT_NOT_FOUND",
