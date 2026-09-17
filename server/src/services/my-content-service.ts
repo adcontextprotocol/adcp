@@ -14,7 +14,7 @@
  */
 
 import { getPool } from '../db/client.js';
-import { isWebUserAAOAdmin } from '../addie/admin-status-lookup.js';
+import { isWebUserAAOAdmin, isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../addie/admin-status-lookup.js';
 import { fetchPathPageviewCounts } from './posthog-query.js';
 
 export type MyContentStatus = 'draft' | 'pending_review' | 'published' | 'archived' | 'rejected' | 'needs_revisions';
@@ -75,6 +75,8 @@ export class MyContentError<C extends MyContentErrorCode = MyContentErrorCode> e
 
 export interface ListMyContentInput {
   userId: string;
+  /** Null forbids platform and committee-leader scope; omitted retains legacy compatibility. */
+  adminPrincipal?: AAOAdminPrincipal | null;
   /** One of MyContentStatus, the literal 'all', or undefined (returns all). */
   status?: string;
   /** Committee slug, or 'personal' (no committee), or undefined. */
@@ -91,6 +93,7 @@ export interface ListMyContentResult {
 
 export async function listMyContent({
   userId,
+  adminPrincipal,
   status,
   collection,
   relationship,
@@ -111,9 +114,14 @@ export async function listMyContent({
 
   // Committees the user leads — feeds the "owner" relationship and the
   // SQL WHERE clause that surfaces all content for those committees.
+  const authorizationUserId = adminPrincipal === null
+    ? null
+    : adminPrincipal
+      ? adminPrincipal.authWorkosUserId ?? adminPrincipal.id
+      : userId;
   const leaderResult = await pool.query<{ working_group_id: string }>(
     `SELECT working_group_id FROM working_group_leaders WHERE user_id = $1`,
-    [userId],
+    [authorizationUserId],
   );
   const ledCommitteeIds = leaderResult.rows.map((r) => r.working_group_id);
 
@@ -121,7 +129,11 @@ export async function listMyContent({
   // pre-existing content with no proposer or content from committees
   // they don't lead). Relationships are still computed so the UI/chat
   // can distinguish their own contributions.
-  const userIsAdmin = await isWebUserAAOAdmin(userId);
+  const userIsAdmin = adminPrincipal === null
+    ? false
+    : adminPrincipal
+      ? await isAuthenticatedUserAAOAdmin(adminPrincipal)
+      : await isWebUserAAOAdmin(userId);
 
   let queryText = `
     SELECT DISTINCT ON (p.id)
