@@ -36,6 +36,7 @@ vi.mock('../../src/middleware/auth.js', () => {
   const requireAuthMock = (req: any, _res: any, next: any) => { setTestUser(req); next(); };
   return {
     requireAuth: requireAuthMock,
+    requireApiKeyManagementAuth: requireAuthMock,
     requireAdmin: passthrough,
     requireTenantAdminForOrganization: passthrough,
     optionalAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },

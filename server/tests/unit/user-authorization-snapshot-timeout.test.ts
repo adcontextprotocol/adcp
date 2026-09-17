@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryWithTimeout } from '../../src/db/client.js';
+import { loadApiKeyManagementSnapshot } from '../../src/db/api-key-management-db.js';
 import {
   AuthorizationSnapshotUnavailableError,
   loadAuthorizationSnapshot,
@@ -58,6 +59,37 @@ describe('authorization snapshot query deadline and connection retry', () => {
     boundedQuery.mockResolvedValue(queryResult(invalid));
     expect(await loadAuthorizationSnapshot(USER_ID, ORGANIZATION_ID)).toBeNull();
     expect(boundedQuery).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { terminal_marker: true }, { primary_count: '0' }, { primary_count: '2' },
+    { primary_count: undefined }, { authenticated_user_id: null },
+    { identity_id: null }, { canonical_user_id: null },
+  ])('management denies terminal or ambiguous lifecycle state without retry: %j', async invalid => {
+    boundedQuery.mockResolvedValue(queryResult(invalid));
+    expect(await loadApiKeyManagementSnapshot(USER_ID, ORGANIZATION_ID)).toBeNull();
+    expect(boundedQuery).toHaveBeenCalledOnce();
+  });
+
+  it('management retains exact bigint epochs and ignores grants in a valid lifecycle snapshot', async () => {
+    boundedQuery.mockResolvedValue(queryResult({ authorization_epoch: '9007199254740993', grant_role: 'owner' }));
+    const snapshot = await loadApiKeyManagementSnapshot(USER_ID, ORGANIZATION_ID);
+    expect(snapshot).toMatchObject({
+      authenticatedUserId: USER_ID, canonicalUserId: USER_ID,
+      authorizationEpoch: '9007199254740993', credentialGrant: null,
+    });
+    expect(boundedQuery).toHaveBeenCalledOnce();
+    expect(boundedQuery.mock.calls[0][0]).not.toContain('organization_credential_grants');
+  });
+
+  it('management fails unavailable on recovery or audit-read failure without retry', async () => {
+    boundedQuery.mockResolvedValueOnce(queryResult({ in_recovery: true }));
+    await expect(loadApiKeyManagementSnapshot(USER_ID, ORGANIZATION_ID))
+      .rejects.toThrow(AuthorizationSnapshotUnavailableError);
+    boundedQuery.mockRejectedValueOnce(new Error('audit store unavailable'));
+    await expect(loadApiKeyManagementSnapshot(USER_ID, ORGANIZATION_ID))
+      .rejects.toThrow(AuthorizationSnapshotUnavailableError);
+    expect(boundedQuery).toHaveBeenCalledTimes(2);
   });
 
   it('retries one transient connection failure with only the remaining absolute budget', async () => {
