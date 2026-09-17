@@ -25,6 +25,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import type { Pool } from 'pg';
+import type { WorkOSUser } from '../../src/types.js';
 
 // Set WorkOS env before vi.mock factories run — auth.ts constructs WorkOS
 // at module load and the factory's vi.importActual triggers that load.
@@ -46,7 +47,7 @@ vi.hoisted(() => {
 // matrix without rebuilding the route's dependency graph.
 const DEFAULT_TEST_USER_ID = 'user_test_registry_baseline_endpoints';
 const authState = vi.hoisted(() => ({
-  optAuthUser: null as { id: string; email: string } | null,
+  optAuthUser: null as WorkOSUser | null,
   requireAuthUser: {
     id: 'user_test_registry_baseline_endpoints',
     email: 'registry-baseline@test.com',
@@ -87,7 +88,7 @@ vi.mock('../../src/middleware/auth.js', async () => {
   };
 });
 
-function setOptAuthUser(user: { id: string; email: string } | null) {
+function setOptAuthUser(user: WorkOSUser | null) {
   authState.optAuthUser = user;
 }
 
@@ -114,9 +115,19 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   createBillingPortalSession: vi.fn().mockResolvedValue(null),
 }));
 
+// Scope fixtures use real exact-credential grants and snapshots in PostgreSQL.
+// No direct WorkOS membership is needed for those grants to authorize access.
+vi.mock('../../src/auth/workos-client.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../src/auth/workos-client.js')>(),
+  getAuthorizationEnforcementWorkos: () => ({
+    userManagement: { listOrganizationMemberships: vi.fn().mockResolvedValue({ data: [] }) },
+  }),
+}));
+
 import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
+import { loadAuthorizationSnapshot } from '../../src/db/user-authorization-snapshot-db.js';
 import { FederatedIndexDatabase } from '../../src/db/federated-index-db.js';
 import { FederatedIndexService } from '../../src/federated-index.js';
 import { CrawlerService } from '../../src/crawler.js';
@@ -1225,14 +1236,19 @@ describe('Registry reader baseline — public endpoints', () => {
          ON CONFLICT (workos_user_id) DO UPDATE SET primary_organization_id = EXCLUDED.primary_organization_id`,
         [userId, `${userId}@example.com`, orgId],
       );
-      // resolvePrimaryOrganization trusts the cached column only when a
-      // current organization_memberships row backs it.
+      // Keep legacy attribution populated; it must not supply tenant authority.
       await pool.query(
         `INSERT INTO organization_memberships
            (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
          VALUES ($1, $2, 'admin', $3, NOW(), NOW())
          ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
         [userId, orgId, `${userId}@example.com`],
+      );
+      await pool.query(
+        `INSERT INTO organization_credential_grants
+           (workos_user_id, workos_organization_id, role, granted_by_workos_user_id, reason)
+         VALUES ($1, $2, 'member', $1, 'Scope matrix exact-credential fixture')`,
+        [userId, orgId],
       );
     }
 
@@ -1304,20 +1320,30 @@ describe('Registry reader baseline — public endpoints', () => {
     });
 
     type CallerKind = 'anonymous' | 'owner' | 'other_api' | 'explorer';
-    function setCaller(kind: CallerKind) {
+    async function setCaller(kind: CallerKind, selectOrganization = true) {
       if (kind === 'anonymous') return setOptAuthUser(null);
       const id = kind === 'owner' ? SCOPE_OWNER_USER
         : kind === 'other_api' ? SCOPE_OTHER_API_USER
         : SCOPE_EXPLORER_USER;
-      setOptAuthUser({ id, email: `${id}@example.com` });
+      const organizationId = kind === 'owner' ? SCOPE_OWNER_ORG
+        : kind === 'other_api' ? SCOPE_OTHER_API_ORG
+        : SCOPE_EXPLORER_ORG;
+      const snapshot = await loadAuthorizationSnapshot(id, selectOrganization ? organizationId : null);
+      expect(snapshot).not.toBeNull();
+      const user: WorkOSUser = { id: snapshot!.canonicalUserId, authWorkosUserId: id, email: `${id}@example.com` };
+      Object.defineProperty(user, 'authorizationSnapshot', { value: snapshot });
+      setOptAuthUser(user);
     }
 
     async function fetchAgents(scope: string | null, kind: CallerKind): Promise<string[]> {
-      setCaller(kind);
+      await setCaller(kind);
       const qs = scope === null ? '' : `&scope=${encodeURIComponent(scope)}`;
-      const res = await request(app).get(
+      const pending = request(app).get(
         `/api/registry/operator?domain=${encodeURIComponent(SCOPE_DOMAIN)}${qs}`,
       );
+      const organizationId = authState.optAuthUser?.authorizationSnapshot?.selectedOrganizationId;
+      if (organizationId) pending.set('X-Organization-Id', organizationId);
+      const res = await pending;
       expect(res.status).toBe(200);
       expect(res.body.agent_visibility_summary).toEqual({ public: 1, members_only: 1 });
       return (res.body.agents as Array<{ url: string }>).map(a => a.url).sort();
@@ -1329,6 +1355,16 @@ describe('Registry reader baseline — public endpoints', () => {
     });
     it('scope omitted, explorer (no API tier) → public only', async () => {
       expect(await fetchAgents(null, 'explorer')).toEqual([PUBLIC_URL]);
+    });
+    it('does not infer owner access without an explicit organization selection', async () => {
+      await setCaller('owner', false);
+      for (const scope of ['all', 'private']) {
+        const res = await request(app).get(
+          `/api/registry/operator?domain=${encodeURIComponent(SCOPE_DOMAIN)}&scope=${scope}`,
+        );
+        expect(res.status).toBe(200);
+        expect(res.body.agents.map((agent: { url: string }) => agent.url)).toEqual(scope === 'all' ? [PUBLIC_URL] : []);
+      }
     });
     it('scope omitted, API-tier non-owner → public + members_only', async () => {
       expect(await fetchAgents(null, 'other_api')).toEqual(
@@ -1391,7 +1427,7 @@ describe('Registry reader baseline — public endpoints', () => {
 
     // ── validation ────────────────────────────────────────────────────
     it('rejects unknown scope with 400', async () => {
-      setCaller('owner');
+      await setCaller('owner');
       const res = await request(app).get(
         `/api/registry/operator?domain=${encodeURIComponent(SCOPE_DOMAIN)}&scope=membr`,
       );

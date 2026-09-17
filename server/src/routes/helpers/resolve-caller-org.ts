@@ -7,9 +7,9 @@
  *      against the WorkOS JWKS endpoint.
  *   2. WorkOS API key (sk_* / wos_api_key_* prefixes) — server-to-server
  *      integrations. Validated via the existing `validateWorkOSApiKey` helper.
- *   3. Cookie session — a web session unsealed in `optionalAuth`, producing
- *      `req.user`. With no Bearer header, the legacy read-model fallback uses
- *      `resolvePrimaryOrganization` and organization_memberships.
+ *   3. Sealed cookie session — authentication middleware supplies a fresh
+ *      authorization snapshot. Only an explicitly selected organization
+ *      authorized for the exact credential is returned; primary orgs are ignored.
  *
  * An explicit Bearer must supply its own verified organization. Opaque/native
  * session Bearers cannot use `req.user` to select an implicit primary organization.
@@ -21,10 +21,12 @@ import { getBearerToken, isWorkOSApiKeyFormat } from '../../middleware/api-key-f
 import {
   ConflictingOrganizationSelectionError,
   selectedOrganizationForAuthentication,
-  validateWorkOSApiKey,
-} from '../../middleware/auth.js';
+} from '../../auth/organization-selection.js';
+import { validateWorkOSApiKey } from '../../middleware/auth.js';
 import { isInvalidWorkOSJWTError, unavailableJWTKeyService, WorkOSJWTUnavailableError } from '../../auth/workos-jwt.js';
-import { resolvePrimaryOrganization } from '../../db/users-db.js';
+import { getAuthorizationEnforcementWorkos } from '../../auth/workos-client.js';
+import { getOrganizationAuthorizationUserId, type OrgAuthorizationPrincipal } from '../../auth/organization-principal.js';
+import { resolveUserOrgAuthorization } from '../../utils/resolve-user-org-authorization.js';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('resolve-caller-org');
@@ -49,7 +51,9 @@ function jwksForIssuer(iss: string): { jwks: JWTVerifyGetKey; clientId: string }
   return { jwks, clientId };
 }
 
-export type MinimalReq = Pick<Request, 'headers'> & { user?: { id?: string } };
+export type MinimalReq = Pick<Request, 'headers'> & Partial<Pick<Request, 'query' | 'body' | 'params'>> & {
+  user?: Partial<OrgAuthorizationPrincipal>;
+};
 
 export class CallerOrganizationAuthError extends Error {
   constructor(readonly status: 401 | 403 | 503) {
@@ -128,12 +132,33 @@ async function resolveBearerOrganization(req: MinimalReq): Promise<ResolvedBeare
   }
 }
 
-async function resolveCookieOrganization(userId: string | undefined): Promise<string | null> {
-  if (userId) {
+/** Missing, denied, stale or unavailable cookie authority is public-only.
+ * Nullable consumers must never reinterpret it as canonical-user ownership. */
+async function resolveCookieOrganization(req: MinimalReq): Promise<string | null> {
+  const user = req.user;
+  if (user?.id && user.id !== 'admin_api_key' && !user.id.startsWith('api_key_')) {
+    const principal: OrgAuthorizationPrincipal = {
+      id: user.id,
+      authWorkosUserId: user.authWorkosUserId,
+      authorizationSnapshot: user.authorizationSnapshot,
+    };
+    const snapshot = principal.authorizationSnapshot;
+    if (!snapshot || snapshot.authenticatedUserId !== getOrganizationAuthorizationUserId(principal)
+      || snapshot.canonicalUserId !== principal.id) return null;
     try {
-      return await resolvePrimaryOrganization(userId);
+      // Route params may become available only after authentication middleware.
+      // Reuse its conflict policy before consuming the persisted selection.
+      const organizationId = selectedOrganizationForAuthentication(req, snapshot.selectedOrganizationId ?? undefined);
+      if (!organizationId) return null;
+      // A snapshot selection is not a grant. This resolver rechecks exact
+      // membership/grant and brackets WorkOS reads with fresh snapshot checks.
+      const authorization = await resolveUserOrgAuthorization(
+        getAuthorizationEnforcementWorkos(), principal, organizationId,
+      );
+      return authorization.status === 'authorized' ? authorization.membership.organizationId : null;
     } catch (err) {
-      logger.warn({ err, userId }, 'caller org resolution failed — falling back to public-only');
+      logger.warn({ err }, 'Explicit caller organization authorization unavailable or conflicting');
+      return null;
     }
   }
 
@@ -147,7 +172,7 @@ async function resolveCookieOrganization(userId: string | undefined): Promise<st
  */
 export async function resolveCallerOrgId(req: MinimalReq): Promise<string | null> {
   const authorization = req.headers.authorization;
-  if (getBearerToken(authorization) === null) return resolveCookieOrganization(req.user?.id);
+  if (getBearerToken(authorization) === null) return resolveCookieOrganization(req);
 
   // Capture the credential and selection before any await. Later request
   // mutation cannot substitute another key or erase an organization conflict.

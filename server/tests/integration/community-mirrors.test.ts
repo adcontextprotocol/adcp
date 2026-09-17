@@ -11,10 +11,11 @@ vi.hoisted(() => {
   process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
 });
 
-// Mutable identity for the authenticated caller so a re-publish can come from a
-// different user (used to assert created_by_* is preserved).
+// Mock the identity produced by credential validation. Static admin keys retain
+// manager access; organization API keys submit and read their own proposals.
 const authState = vi.hoisted(() => ({
-  userId: 'user_test_mirrors',
+  userId: 'admin_api_key',
+  authWorkosUserId: undefined as string | undefined,
   email: 'mirrors@test.com',
   organizationId: null as string | null,
 }));
@@ -22,7 +23,7 @@ const authState = vi.hoisted(() => ({
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/middleware/auth.js');
   const pass = (req: { user: unknown; apiKey?: unknown }, _res: unknown, next: () => void) => {
-    req.user = { id: authState.userId, email: authState.email };
+    req.user = { id: authState.userId, authWorkosUserId: authState.authWorkosUserId, email: authState.email };
     req.apiKey = authState.organizationId ? { organizationId: authState.organizationId } : undefined;
     next();
   };
@@ -204,7 +205,8 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     notifyPendingCommunityMirrorProposal.mockResolvedValue(null);
     notifyCommunityMirrorProposalReviewed.mockReset();
     notifyCommunityMirrorProposalReviewed.mockResolvedValue(undefined);
-    authState.userId = 'user_test_mirrors';
+    authState.userId = 'admin_api_key';
+    authState.authWorkosUserId = undefined;
     authState.email = 'mirrors@test.com';
     authState.organizationId = null;
     await clear();
@@ -367,11 +369,25 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(read.body.adagents_json.authorized_agents).toEqual([]);
   });
 
-  it('allows an AAO admin who is not a registry moderator to publish', async () => {
+  it('denies human admin publishing without exact manager authorization', async () => {
+    authState.userId = 'user_human_admin';
     isRegistryModerator.mockResolvedValue(false);
     isWebUserAAOAdmin.mockResolvedValue(true);
     const res = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
+    expect((await pool.query('SELECT 1 FROM community_mirrors WHERE platform = $1', [PLATFORM])).rows).toHaveLength(0);
+  });
+
+  it('does not let a canonical identity replace the exact mirror manager principal', async () => {
+    authState.userId = 'admin_api_key';
+    authState.authWorkosUserId = 'user_exact_non_manager';
+    isRegistryModerator.mockResolvedValue(true);
+    isWebUserAAOAdmin.mockResolvedValue(true);
+
+    const queue = await request(app).get('/api/registry/mirror-proposals?review_queue=true');
+    expect(queue.status).toBe(403);
+    const deletion = await request(app).delete(`/api/registry/mirrors/${PLATFORM}`);
+    expect(deletion.status).toBe(403);
   });
 
   it('re-publish is idempotent — updates in place, no duplicate row', async () => {
@@ -471,10 +487,12 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(projectedProperties.rows.map((row) => row.publisher_domain)).toEqual([...finalDomains].sort());
   });
 
-  it('preserves created_by_* across a re-publish by a different user', async () => {
-    authState.userId = 'creator-A';
+  it('preserves legacy created_by_* when an admin key re-publishes', async () => {
     await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody({ catalog_etag: 'v1' }));
-    authState.userId = 'editor-B';
+    await pool.query(
+      'UPDATE community_mirrors SET created_by_user_id = $1 WHERE platform = $2',
+      ['creator-A', PLATFORM],
+    );
     await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody({ catalog_etag: 'v2' }));
 
     const { rows } = await pool.query(
@@ -569,7 +587,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
       .send(publishBody({ catalog_etag: 'changed-v2', formats: [{ ...MINIMAL_FORMAT, display_name: 'Changed' }] }));
     expect(changed.body.proposal_id).toBe(reviewed.body.proposal_id);
 
-    authState.userId = 'user_registry_moderator';
+    authState.userId = 'admin_api_key';
     authState.organizationId = null;
     isRegistryModerator.mockResolvedValue(true);
     const staleApproval = await request(app)
@@ -587,7 +605,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     authState.organizationId = 'org_test_mirrors';
     const submitted = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
 
-    authState.userId = 'user_registry_moderator';
+    authState.userId = 'admin_api_key';
     authState.organizationId = null;
     isRegistryModerator.mockResolvedValue(true);
     await request(app)
@@ -609,7 +627,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     authState.organizationId = 'org_test_mirrors';
     const original = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
 
-    authState.userId = 'user_registry_moderator';
+    authState.userId = 'admin_api_key';
     authState.organizationId = null;
     isRegistryModerator.mockResolvedValue(true);
     await request(app)
@@ -623,7 +641,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(rebased.body.proposal_id).toBe(original.body.proposal_id);
     expect(rebased.body.proposal_digest).not.toBe(original.body.proposal_digest);
 
-    authState.userId = 'user_registry_moderator';
+    authState.userId = 'admin_api_key';
     authState.organizationId = null;
     isRegistryModerator.mockResolvedValue(true);
     const staleApproval = await request(app)
@@ -660,7 +678,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(ownDetail.status).toBe(200);
     expect(ownDetail.body.proposal).not.toHaveProperty('proposed_by_email');
 
-    authState.userId = 'user_registry_moderator';
+    authState.userId = 'admin_api_key';
     authState.organizationId = null;
     isRegistryModerator.mockResolvedValue(true);
     const managerDetail = await request(app)
@@ -697,7 +715,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(row.rows[0]?.slack_thread_ts).toBe('1779110411.874');
   });
 
-  it('restricts the cross-organization review queue to moderators', async () => {
+  it('restricts the cross-organization review queue to a validated admin key', async () => {
     isRegistryModerator.mockResolvedValue(false);
     authState.userId = 'api_key_test_mirrors';
     authState.organizationId = 'org_test_mirrors';
@@ -707,7 +725,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
       .get('/api/registry/mirror-proposals?status=pending&review_queue=true');
     expect(denied.status).toBe(403);
 
-    authState.userId = 'user_registry_moderator';
+    authState.userId = 'admin_api_key';
     authState.organizationId = null;
     isRegistryModerator.mockResolvedValue(true);
     const queue = await request(app)
@@ -732,13 +750,13 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(oversized.status).toBe(413);
   });
 
-  it('lets a moderator approve and atomically publish a pending proposal', async () => {
+  it('lets a validated admin key approve and atomically publish a pending proposal', async () => {
     isRegistryModerator.mockResolvedValue(false);
     authState.userId = 'api_key_test_mirrors';
     authState.organizationId = 'org_test_mirrors';
     const submitted = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
 
-    authState.userId = 'user_registry_moderator';
+    authState.userId = 'admin_api_key';
     authState.organizationId = null;
     isRegistryModerator.mockResolvedValue(true);
     const approved = await request(app)
@@ -761,7 +779,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     );
     expect(proposal.rows[0]).toMatchObject({
       status: 'approved',
-      reviewed_by_user_id: 'user_registry_moderator',
+      reviewed_by_user_id: 'admin_api_key',
       published_at: expect.any(Date),
     });
     expect((await pool.query('SELECT 1 FROM community_mirrors WHERE platform = $1', [PLATFORM])).rows).toHaveLength(1);
@@ -787,13 +805,13 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect((await pool.query('SELECT 1 FROM community_mirrors WHERE platform = $1', [PLATFORM])).rows).toHaveLength(0);
   });
 
-  it('lets a moderator reject a pending proposal without publishing it', async () => {
+  it('lets a validated admin key reject a pending proposal without publishing it', async () => {
     isRegistryModerator.mockResolvedValue(false);
     authState.userId = 'api_key_test_mirrors';
     authState.organizationId = 'org_test_mirrors';
     const submitted = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
 
-    authState.userId = 'user_registry_moderator';
+    authState.userId = 'admin_api_key';
     authState.organizationId = null;
     isRegistryModerator.mockResolvedValue(true);
     const rejected = await request(app)
@@ -982,6 +1000,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     await request(app)
       .put(`/api/registry/mirrors/${PLATFORM}`)
       .send(publishBody({ superseded_by: 'https://meta.com/.well-known/adagents.json' }));
+    authState.userId = 'user_non_manager';
     isRegistryModerator.mockResolvedValue(false);
     isWebUserAAOAdmin.mockResolvedValue(false);
     const del = await request(app).delete(`/api/registry/mirrors/${PLATFORM}`);
