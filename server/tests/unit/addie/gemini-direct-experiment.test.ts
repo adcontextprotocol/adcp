@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GenerateContentParameters, GenerateContentResponse, Part } from '@google/genai';
 
-const mocks = vi.hoisted(() => ({ query: vi.fn(), recordCost: vi.fn(), checkCostCap: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  query: vi.fn(), recordCost: vi.fn(), checkCostCap: vi.fn(), notifyToolError: vi.fn(),
+}));
 vi.mock('../../../src/db/client.js', () => ({ query: mocks.query }));
 vi.mock('../../../src/db/addie-db.js', () => ({ AddieDatabase: class {} }));
-vi.mock('../../../src/addie/error-notifier.js', () => ({ notifySystemError: vi.fn(), notifyToolError: vi.fn() }));
+vi.mock('../../../src/addie/error-notifier.js', () => ({
+  notifySystemError: vi.fn(), notifyToolError: mocks.notifyToolError,
+}));
 vi.mock('../../../src/addie/config-version.js', () => ({ getCurrentConfigVersionId: vi.fn().mockResolvedValue(123) }));
 vi.mock('../../../src/addie/rules/index.js', () => ({
   loadCoreRules: () => 'You are Addie.', loadScopedRules: () => '',
@@ -88,6 +92,7 @@ beforeEach(() => {
   vi.stubEnv('GEMINI_API_KEY', 'unused');
   mocks.recordCost.mockReset().mockResolvedValue(undefined);
   mocks.checkCostCap.mockReset().mockResolvedValue({ ok: true });
+  mocks.notifyToolError.mockReset();
   const assignments = new Map<string, unknown>();
   mocks.query.mockReset().mockImplementation(async (sql: string, parameters: unknown[]) => {
     if (sql.startsWith('UPDATE addie_threads')) {
@@ -251,6 +256,27 @@ describe('Gemini Direct production integration', () => {
     ]));
   });
 
+  it('records provider output limits without classifying the experiment turn as failed', async () => {
+    const partial = receipt([{ text: 'A useful partial answer.' }], 'provider-output-limit');
+    partial.candidates![0].finishReason = 'MAX_TOKENS';
+    const f = fixture([partial]);
+
+    const result = await run(f.input);
+
+    expect(result.response).toMatchObject({
+      flagged: false,
+      flag_reason: 'Response truncated: MAX_TOKENS',
+      output_truncation: {
+        source: 'provider_output_limit',
+        provider_reason: 'MAX_TOKENS',
+      },
+    });
+    const outcome = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns'))
+      .at(-1)?.[1];
+    expect(outcome[10]).toBe(false);
+  });
+
   it('executes real shared-loop tools with production accounting and skips the router', async () => {
     const f = fixture([receipt([call('search_docs')]), receipt([{ text: 'A verified fact.' }], 'answer')]);
     const result = await run(f.input);
@@ -258,17 +284,19 @@ describe('Gemini Direct production integration', () => {
     expect(f.handlers.get('search_docs')).toHaveBeenCalledOnce();
     expect(f.dispatch).toHaveBeenCalledTimes(2);
     expect(f.dispatch.mock.calls[0][0].config?.thinkingConfig?.thinkingLevel).toBe('LOW');
-    expect(f.dispatch.mock.calls[0][0].config?.maxOutputTokens).toBe(2_048);
+    expect(f.dispatch.mock.calls[0][0].config?.maxOutputTokens).toBe(8_192);
     expect(f.getControlTools).not.toHaveBeenCalled();
     expect(f.control).not.toHaveBeenCalled();
     expect(mocks.recordCost).toHaveBeenCalledExactlyOnceWith('user-test', expect.objectContaining({ provider: 'google', usage: { inputTokens: 40, outputTokens: 30, reasoningTokens: 10 } }));
     const second = f.dispatch.mock.calls[1][0] as GenerateContentParameters;
+    expect(second.config?.systemInstruction).toBe(f.dispatch.mock.calls[0][0].config?.systemInstruction);
+    expect(second.config?.tools).toEqual(f.dispatch.mock.calls[0][0].config?.tools);
     expect(JSON.stringify(second.contents)).toContain('opaque-signature');
     expect(JSON.stringify(second.contents)).toContain('functionResponse');
   });
 
-  it('earns one tool-disabled final answer after ten successful tools spend the ordinary loop budget', async () => {
-    const successfulToolTurns = Array.from({ length: 10 }, (_, index) => receipt([
+  it('extends only while tools make progress, then reserves a final answer at the hard ceiling', async () => {
+    const successfulToolTurns = Array.from({ length: 16 }, (_, index) => receipt([
       call('search_docs', { query: `term-${index}` }, `call-search-docs-${index}`),
     ], `tool-${index}`));
     const f = fixture([
@@ -278,18 +306,37 @@ describe('Gemini Direct production integration', () => {
 
     const result = await run(f.input);
 
-    expect(f.dispatch).toHaveBeenCalledTimes(11);
-    expect(f.handlers.get('search_docs')).toHaveBeenCalledTimes(10);
+    expect(f.dispatch).toHaveBeenCalledTimes(17);
+    expect(f.handlers.get('search_docs')).toHaveBeenCalledTimes(16);
     expect(result.response).toMatchObject({
       text: 'The completed lookups support this answer.',
       flagged: false,
-      timing: { iterations: 11 },
+      timing: { iterations: 17 },
     });
-    const finalRequest = f.dispatch.mock.calls[10][0];
+    const finalRequest = f.dispatch.mock.calls[16][0];
     expect(finalRequest.config?.tools).toBeUndefined();
-    expect(finalRequest.config?.maxOutputTokens).toBe(2_048);
-    expect(finalRequest.config?.systemInstruction).toContain('The ordinary tool budget is exhausted.');
+    expect(finalRequest.config?.maxOutputTokens).toBe(8_192);
+    expect(finalRequest.config?.systemInstruction).toContain('The bounded tool budget is exhausted.');
     expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it('uses the reserved synthesis turn after progress stalls at an extended boundary', async () => {
+    const f = fixture([
+      receipt([call('search_docs')], 'successful-tool'),
+      receipt([call('tool_not_in_catalog')], 'blocked-tool'),
+      receipt([{ text: 'The first lookup succeeded; the later step could not be completed.' }], 'final-answer'),
+    ]);
+
+    const result = await run(f.input, { maxIterations: 1 });
+
+    expect(f.dispatch).toHaveBeenCalledTimes(3);
+    expect(f.handlers.get('search_docs')).toHaveBeenCalledOnce();
+    expect(f.dispatch.mock.calls[2][0].config?.tools).toBeUndefined();
+    expect(result.response).toMatchObject({
+      text: 'The first lookup succeeded; the later step could not be completed.',
+      flagged: false,
+      timing: { iterations: 3 },
+    });
   });
 
   it('does not extend the loop when its last tool request made no successful progress', async () => {
@@ -309,25 +356,31 @@ describe('Gemini Direct production integration', () => {
   });
 
   it('rejects a tool request returned during the earned final-answer opportunity', async () => {
+    const successfulToolTurns = Array.from({ length: 7 }, (_, index) => receipt([
+      call('search_docs', {}, `call-search-docs-${index}`),
+    ], `tool-${index}`));
     const f = fixture([
-      receipt([call('search_docs')], 'last-ordinary-tool'),
+      ...successfulToolTurns,
       receipt([call('search_docs')], 'forbidden-final-tool'),
     ]);
 
     const result = await run(f.input, { maxIterations: 1 });
 
-    expect(f.dispatch).toHaveBeenCalledTimes(2);
-    expect(f.handlers.get('search_docs')).toHaveBeenCalledOnce();
-    expect(f.dispatch.mock.calls[1][0].config?.tools).toBeUndefined();
+    expect(f.dispatch).toHaveBeenCalledTimes(8);
+    expect(f.handlers.get('search_docs')).toHaveBeenCalledTimes(7);
+    expect(f.dispatch.mock.calls[7][0].config?.tools).toBeUndefined();
     expect(result.response).toMatchObject({
       flagged: true,
       flag_reason: 'Max tool iterations reached',
-      timing: { iterations: 2 },
+      timing: { iterations: 8 },
     });
-    expect(result.response?.tool_executions).toEqual([
-      expect.objectContaining({ tool_name: 'search_docs', is_error: false }),
-      expect.objectContaining({ tool_name: 'search_docs', is_error: true }),
-    ]);
+    expect(result.response?.tool_executions).toHaveLength(8);
+    expect(result.response?.tool_executions.at(-1)).toMatchObject({
+      tool_name: 'search_docs',
+      is_error: true,
+      blocked_by_policy: true,
+    });
+    expect(mocks.notifyToolError).not.toHaveBeenCalled();
   });
 
   it('loads authorized domains on demand without admitting an unbound admin handler', async () => {

@@ -123,6 +123,8 @@ export interface SanitizationResult {
   sanitized: string;
   flagged: boolean;
   reason?: string;
+  /** Length shaping occurred; this is telemetry, not a safety flag. */
+  truncated?: boolean;
 }
 
 /**

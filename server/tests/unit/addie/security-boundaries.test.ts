@@ -69,7 +69,7 @@ describe('Addie long-form input and output boundaries', () => {
     const text = [
       'Here is the deck outline.',
       ...Array.from(
-        { length: 400 },
+        { length: 650 },
         (_, index) => `- Slide ${index + 1}: audience, evidence, recommendation, and next action`,
       ),
     ].join('\n');
@@ -83,8 +83,9 @@ describe('Addie long-form input and output boundaries', () => {
     expect(output).toContain(OUTPUT_TRUNCATION_SUFFIX);
     expect(result).toMatchObject({
       valid: true,
-      flagged: true,
+      flagged: false,
       reason: 'Output truncated due to length',
+      truncated: true,
     });
   });
 

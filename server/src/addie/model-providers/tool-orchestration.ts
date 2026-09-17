@@ -87,6 +87,8 @@ export interface AddieToolExecutorOptions {
   executionMode: AddieExecutionMode;
   policy?: ToolExecutionPolicy;
   notificationContext?: ToolExecutionNotificationContext;
+  /** An intentionally empty executable surface with its own rejection signal. */
+  expectedEmptySurface?: 'final_answer_boundary';
   /**
    * Persists an unknown-outcome intent immediately before a live mutation.
    * A production mutation is never dispatched if this durable handshake is
@@ -609,12 +611,18 @@ export function createAddieToolExecutor(
     const registered = registry.get(call.name);
     if (!registered?.handler) {
       const definitionPresent = Boolean(registered?.definition);
-      const invariantEvent = definitionPresent
-        ? 'addie_declared_tool_missing_handler'
-        : 'addie_undeclared_tool_call';
-      const invariantMessage = definitionPresent
-        ? 'Addie: Declared request tool is missing an executable handler'
-        : 'Addie: Model requested a tool outside the executable request surface';
+      const expectedBoundaryRejection = !definitionPresent
+        && options.expectedEmptySurface === 'final_answer_boundary';
+      const invariantEvent = expectedBoundaryRejection
+        ? 'addie_final_answer_tool_call_rejected'
+        : definitionPresent
+          ? 'addie_declared_tool_missing_handler'
+          : 'addie_undeclared_tool_call';
+      const invariantMessage = expectedBoundaryRejection
+        ? 'Addie: Model requested a tool at the tool-disabled final-answer boundary'
+        : definitionPresent
+          ? 'Addie: Declared request tool is missing an executable handler'
+          : 'Addie: Model requested a tool outside the executable request surface';
       const invariantContext = {
         event: invariantEvent,
         toolName: call.name,
@@ -630,7 +638,7 @@ export function createAddieToolExecutor(
       } else {
         logger.debug(invariantContext, invariantMessage);
       }
-      if (operationalExecution) {
+      if (operationalExecution && !expectedBoundaryRejection) {
         notifyToolError({
           // Keep provider/model-controlled tool names out of Slack rendering
           // and use a stable key so arbitrary names cannot bypass throttling.
@@ -652,6 +660,7 @@ export function createAddieToolExecutor(
         options.executionMode,
         normalized,
         Date.now() - startTime,
+        expectedBoundaryRejection,
       );
     }
 

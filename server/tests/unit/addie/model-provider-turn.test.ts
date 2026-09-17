@@ -295,6 +295,22 @@ describe('ModelLoopBudget', () => {
     expect(budget.grantFinalAnswerOpportunity()).toBe(false);
     expect(budget.hasRemaining).toBe(false);
   });
+
+  it('bounds progress extensions independently from the reserved final answer', () => {
+    const budget = new ModelLoopBudget(1);
+
+    expect(budget.initialLimit).toBe(1);
+    budget.startNext();
+    expect(budget.grantProgressOpportunity(2)).toBe(true);
+    budget.startNext();
+    expect(budget.grantProgressOpportunity(2)).toBe(true);
+    budget.startNext();
+    expect(budget.grantProgressOpportunity(2)).toBe(false);
+    expect(budget.grantFinalAnswerOpportunity()).toBe(true);
+    expect(budget.startNext()).toBe(4);
+    expect(budget.grantProgressOpportunity(2)).toBe(false);
+    expect(budget.grantFinalAnswerOpportunity()).toBe(false);
+  });
 });
 
 describe('ModelTurnLoopState', () => {

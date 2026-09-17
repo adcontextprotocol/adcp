@@ -152,11 +152,18 @@ export class EmptyResponseRecoveryState {
 /** One monotonic iteration wall shared by provider-neutral model loops. */
 export class ModelLoopBudget {
   private startedIterations = 0;
+  private readonly configuredLimit: number;
   private currentLimit: number;
+  private progressExtensionsGranted = 0;
   private finalAnswerOpportunityGranted = false;
 
   constructor(limit: number) {
+    this.configuredLimit = limit;
     this.currentLimit = limit;
+  }
+
+  get initialLimit(): number {
+    return this.configuredLimit;
   }
 
   get limit(): number {
@@ -180,7 +187,25 @@ export class ModelLoopBudget {
   }
 
   /**
-   * Add exactly one terminal synthesis turn after the ordinary wall is spent.
+   * Add one tool-capable turn after the configured wall when the caller has
+   * observed new successful work. `maximumExtensions` is a hard last-resort
+   * ceiling; the caller must separately enforce progress and time admission.
+   */
+  grantProgressOpportunity(maximumExtensions: number): boolean {
+    if (
+      this.finalAnswerOpportunityGranted
+      || this.hasRemaining
+      || this.startedIterations === 0
+      || this.startedIterations !== this.currentLimit
+      || this.progressExtensionsGranted >= maximumExtensions
+    ) return false;
+    this.progressExtensionsGranted++;
+    this.currentLimit++;
+    return true;
+  }
+
+  /**
+   * Add exactly one terminal synthesis turn after the active wall is spent.
    * The caller owns the progress check and must disable tools for the added
    * turn; this state object only guarantees that the allowance is bounded and
    * cannot be granted before the configured budget is exhausted.
@@ -220,6 +245,10 @@ export class ModelTurnLoopState {
     return this.budget.limit;
   }
 
+  get initialLimit(): number {
+    return this.budget.initialLimit;
+  }
+
   get iteration(): number {
     return this.budget.iteration;
   }
@@ -234,6 +263,14 @@ export class ModelTurnLoopState {
       throw new Error('Cannot extend model loop before accepting its response');
     }
     return this.budget.grantFinalAnswerOpportunity();
+  }
+
+  /** Grant one caller-governed tool-capable turn after new useful progress. */
+  grantProgressOpportunity(maximumExtensions: number): boolean {
+    if (this.awaitingResponse) {
+      throw new Error('Cannot extend model loop before accepting its response');
+    }
+    return this.budget.grantProgressOpportunity(maximumExtensions);
   }
 
   get usage(): ModelUsage {
