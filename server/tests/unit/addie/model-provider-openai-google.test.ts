@@ -642,6 +642,31 @@ describe('GoogleGenerateContentProvider', () => {
     expect(normalized.usage).toEqual({ inputTokens: 10, outputTokens: 8, reasoningTokens: 3 });
   });
 
+  it('records implicit cache hits as reads without inventing cache writes', async () => {
+    const generateContent = vi.fn().mockResolvedValue(googleResponse({
+      usageMetadata: {
+        promptTokenCount: 10,
+        candidatesTokenCount: 5,
+        cachedContentTokenCount: 7,
+        totalTokenCount: 15,
+      },
+    }));
+    const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent } });
+
+    const normalized = await collectModelResponse(
+      provider.respond(request(GOOGLE_ROUTER_MODEL)),
+      'google',
+    );
+
+    expect(normalized.usage).toEqual({
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadTokens: 7,
+    });
+    expect(normalized.usage).not.toHaveProperty('cacheWriteTokens');
+    expect(generateContent.mock.calls[0][0]).not.toHaveProperty('cachedContent');
+  });
+
   it('preserves the 32-token ceiling and classifies a high-thinking transport rejection once', async () => {
     const secret = 'synthetic-provider-body-secret';
     const generateContent = vi.fn(async (providerRequest: {

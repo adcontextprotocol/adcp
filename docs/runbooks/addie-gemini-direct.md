@@ -42,8 +42,17 @@ new treatment conversations in eligible mode; use `MODE=off` for rollback.
 
 ## Treatment behavior
 
-- Exact model: `gemini-3.7-flash`, low thinking, 8,192 output tokens, ordinary
-  ten-step tool loop. Native Google streaming retains signed continuation parts.
+- Exact model: `gemini-3.7-flash`, low thinking, and 8,192 output tokens. Ten
+  provider turns is a progress checkpoint rather than a terminal wall. A turn
+  at the active boundary can earn one more tool-capable turn only when it
+  completes a new successful tool and accumulated model/tool time remains
+  below 60 seconds. At most six such turns are admitted. The loop then reserves
+  one tool-disabled synthesis turn when any useful tool work exists, for a hard
+  maximum of 17 provider turns at the default setting. Failed, denied, or
+  duplicate calls do not earn tool-capable extensions. Native Google streaming
+  retains signed continuation parts. A tool request at the synthesis boundary
+  is blocked and logged as `addie_final_answer_tool_call_rejected`, separately
+  from the generic undeclared-tool operator alert.
 - Documentation, schema, baseline tools, and authorized admin analytics start
   active. `load_tool_group` selects another authorized Addie domain, including
   member actions, escalation management, billing, and agent storyboards. Loading
@@ -72,6 +81,95 @@ new treatment conversations in eligible mode; use `MODE=off` for rollback.
   identifies provider-error fallback separately from the selected model.
 - Saved tool results are historical text on later Gemini turns. Current-turn
   function calls retain the adapter's opaque Google signatures.
+- Gemini's output allowance includes hidden thinking; it is not reduced to fit
+  a character target. The shared application backstop is 32,000 characters and
+  is not a Slack or provider maximum. If it fires, the response is cut at a safe
+  Markdown boundary and explicitly offers continuation. Slack shapes delivery
+  separately: streaming switches to a follow-up near 9,000 characters, and the
+  follow-up is split into expanded 2,900-character Block Kit sections. Slack
+  documents a 4,000-character recommendation and truncation above 40,000
+  characters for top-level message text; section text is limited to 3,000
+  characters. See
+  [chat.postMessage](https://api.slack.com/methods/chat.postMessage) and the
+  [section block reference](https://docs.slack.dev/reference/block-kit/blocks/section-block).
+
+## Limit and incident diagnosis
+
+The original ten-iteration default and 10,000-character output limit both date
+to the first Addie security/client implementation (`342f20beb`, December 2025).
+The output comment said only that 10,000 supported web-search responses; it did
+not identify a Slack constraint. PR #517 (`b01deff35`) later added a 25-turn
+admin allowance after bulk admin work stopped midway, while retaining ten for
+ordinary traffic. PR #6929 (`732a79442`) moved the same value into the shared
+provider-neutral loop without changing behavior. PR #6391 (`74cc1e02a`) made
+the existing 10,000-character rule consistent across delivery paths and added
+safe Markdown truncation/continuation, but did not establish it as a platform
+ceiling.
+
+For `gemini-3.7-direct-v2`, the metadata-only production audit covered 78
+Gemini and 64 control turns. Gemini provider calls were p50 3, p95 8.3, max 10;
+successful tools were p95 6.45, max 10; total latency was p50 7.58s, p95 28.09s,
+max 50.71s. Control provider calls (including its router) were p50 3, p95 4,
+max 5; total latency was p50 10.51s, p95 26.38s, max 31.94s. Gemini estimated
+cost was p50 53,283 and p95 127,719 microdollars versus control 183,248 and
+413,338. Four Gemini turns reached ten calls; two had nine successful tools and
+two had ten. The reported terminal was therefore the local loop wall after ten
+successful provider/tool rounds, not a Google tool-call limit.
+
+The exact length incident reached six provider calls and five successful tools
+in about 46.3s. `Output truncated due to length` is emitted only by the local
+character validator. Provider exhaustion has separate `Response truncated:`
+telemetry (Google `MAX_TOKENS` normalizes to the provider-output limit), and no
+provider-limit flag appeared in the audited Gemini sample. Buffered logical
+turns are validated before persistence and delivery, so this was not transport
+or streaming loss. Length shaping now records `output_truncation.source` and a
+specific diagnostic reason without setting the broad safety/failure flag.
+
+## Gemini caching and model follow-up
+
+Gemini Direct currently uses Google's automatic implicit caching only. The
+adapter sends no explicit `cachedContent` resource and rejects portable cache
+hints; Anthropic's `cache_control: ephemeral` behavior is intentionally not
+projected onto Google. The stable core rules and stable tool reference are first
+in the system instruction. Request-specific context follows them. Tool schemas
+also remain stable across ordinary iterations, but intentionally change after
+`load_tool_group` exposes another authorized schema, so that later prefix may
+not reuse the same cache entry.
+
+Google reports an implicit hit in `usage_metadata.cached_content_token_count`.
+The adapter maps that value to `cacheReadTokens`; it does not invent a cache
+write because implicit population has no explicit cache-write receipt or
+storage lifecycle. Consequently, Gemini cache reads with zero cache writes are
+expected. In the audited sample, 63 of 78 Gemini turns reported cache reads
+(7,850,042 tokens total) and none reported writes. Explicit caching remains out
+of scope: it is a beta/v1beta resource with TTL and storage lifecycle, and would
+need separate authority and lifecycle design. Google's guidance says implicit
+caching begins above a 4,096-token prefix and recommends putting repeated common
+content first; see [context caching](https://ai.google.dev/gemini-api/docs/caching).
+
+Google lists both 3.7 Flash and 3.8 Flash at introductory prices through
+2026-12-31 of USD 0.75/M input, USD 3.75/M output, USD 0.075/M cached input, and
+USD 0.50/M tokens/hour for explicit-cache storage; see
+[Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing). Gemini 3.8
+Flash became GA on 2026-09-02. The repository has an exact, stable
+`gemini-3.8-flash` evaluation cell; the model supports a 1,048,576-token input /
+65,536-token output window. Google's guide describes its greater token use,
+smaller reasoning steps, iterative tool calls, and verification as intended
+behavior. Do not infer a silent model change from an exact endpoint without
+provider evidence. See the
+[3.8 guide](https://ai.google.dev/gemini-api/docs/latest-model),
+[model specification](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash),
+and [model version patterns](https://ai.google.dev/gemini-api/docs/models).
+
+The repository contains sealed 3.7/3.8 fixed-trace and matched-v4 comparison
+paths, but no safely discoverable persisted comparison was established during
+this incident review. Do not run a paid comparison locally. It remains a
+follow-up requiring the protected runtime-attestation workflow, an exact clean
+reviewed head, one-use admission, immutable evidence custody, and spend-capped
+provider credentials described in the
+[matched-v4 authority runbook](./addie-matched-v4-private-authority.md). The
+current repository explicitly has no provisioned paid runner, so this PR does
+not switch production to 3.8.
 
 ## Results and review
 
@@ -102,6 +200,16 @@ Investigate repeated quality/error regressions or p95 total time more than 20%
 worse than control. The regression suite covers native escalation actions, role boundaries, trusted
 teaching scope, reservation failures, duplicate suppression, checkpoint failures,
 and provider failure after an action.
+
+After this terminal-boundary change, monitor `addie_tool_progress_extension`,
+`addie_final_answer_opportunity`, `Max tool iterations reached`, local
+`Output truncated due to length`, provider `Response truncated:`, provider-call
+count, cost, and p95 total time separately by arm. Calls above ten should have a
+new successful tool receipt and remain within the bounded time/extension policy.
+Local and provider truncation are incomplete-output telemetry, not broad safety
+failures. Stop or tighten the extension policy if high-percentile latency grows
+materially; do not lower output tokens merely to suppress the local character
+metric.
 
 ## Deployment
 

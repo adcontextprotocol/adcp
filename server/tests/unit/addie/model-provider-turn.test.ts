@@ -281,6 +281,36 @@ describe('ModelLoopBudget', () => {
     expect(budget.hasRemaining).toBe(false);
     expect(budget.iteration).toBe(0);
   });
+
+  it('grants at most one final opportunity only after the ordinary wall is spent', () => {
+    const budget = new ModelLoopBudget(2);
+
+    expect(budget.grantFinalAnswerOpportunity()).toBe(false);
+    budget.startNext();
+    expect(budget.grantFinalAnswerOpportunity()).toBe(false);
+    budget.startNext();
+    expect(budget.grantFinalAnswerOpportunity()).toBe(true);
+    expect(budget.limit).toBe(3);
+    expect(budget.startNext()).toBe(3);
+    expect(budget.grantFinalAnswerOpportunity()).toBe(false);
+    expect(budget.hasRemaining).toBe(false);
+  });
+
+  it('bounds progress extensions independently from the reserved final answer', () => {
+    const budget = new ModelLoopBudget(1);
+
+    expect(budget.initialLimit).toBe(1);
+    budget.startNext();
+    expect(budget.grantProgressOpportunity(2)).toBe(true);
+    budget.startNext();
+    expect(budget.grantProgressOpportunity(2)).toBe(true);
+    budget.startNext();
+    expect(budget.grantProgressOpportunity(2)).toBe(false);
+    expect(budget.grantFinalAnswerOpportunity()).toBe(true);
+    expect(budget.startNext()).toBe(4);
+    expect(budget.grantProgressOpportunity(2)).toBe(false);
+    expect(budget.grantFinalAnswerOpportunity()).toBe(false);
+  });
 });
 
 describe('ModelTurnLoopState', () => {
