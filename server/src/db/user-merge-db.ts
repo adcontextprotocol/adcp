@@ -9,6 +9,7 @@
  */
 
 import { getPool } from './client.js';
+import { assertIdentityConsolidationAllowed } from './identity-mutation-policy.js';
 import { bumpAuthorizationEpochs } from './authorization-epoch-db.js';
 import { createLogger } from '../logger.js';
 const logger = createLogger('user-merge-db');
@@ -125,6 +126,10 @@ export interface MergeUsersOptions {
 }
 
 /**
+ * Disabled for #6827 containment; every caller is refused before database access.
+ * The legacy implementation below must not be re-enabled without preserving
+ * authority and provenance. Operator confirmation is not an exception.
+ *
  * Merge two user accounts. Moves all of the secondary user's app-state rows
  * to the primary, then binds the secondary's WorkOS user to the primary's
  * identity as a non-primary sign-in credential. The secondary WorkOS user
@@ -145,6 +150,9 @@ export async function mergeUsers(
   mergedBy: string,
   options: MergeUsersOptions = {}
 ): Promise<UserMergeSummary> {
+  // No caller may move, copy or deduplicate authority through identity linkage.
+  // Keep this before pool access, including for promotion and automatic callers.
+  assertIdentityConsolidationAllowed();
   const pool = getPool();
   const client = await pool.connect();
 

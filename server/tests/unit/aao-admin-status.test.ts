@@ -45,6 +45,13 @@ describe('site-admin access decisions', () => {
     else process.env.ADMIN_EMAILS = originalAdminEmails;
   });
 
+  it('does not cache positive membership decisions across requests', async () => {
+    mocks.isMember.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    await expect(isWebUserAAOAdmin('user_admin')).resolves.toBe(true);
+    await expect(isWebUserAAOAdmin('user_admin')).resolves.toBe(false);
+    expect(mocks.isMember).toHaveBeenCalledTimes(2);
+  });
+
   it('makes a grant immediately visible to an independent replica after its prior denial', async () => {
     mocks.isMember.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
 
