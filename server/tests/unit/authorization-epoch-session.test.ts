@@ -89,6 +89,58 @@ beforeEach(() => {
   mocks.verifyWorkOSJWT.mockResolvedValue({ sub: AUTHENTICATED_ID, email: PROVIDER_USER.email, isM2M: false });
 });
 
+describe('deletion across provider caches', () => {
+  it.each([
+    ['optional to required', optionalAuth, requireAuth],
+    ['required to optional', requireAuth, optionalAuth],
+  ] as const)('rejects epoch-zero deletion across %s authentication', async (_label, warm, check) => {
+    const token = `sealed-shared-deletion-${++sequence}`;
+    mocks.loadAuthorizationSnapshot.mockResolvedValue(snapshot({ authorizationEpoch: '0' }));
+    const warmNext = vi.fn();
+    await warm(request(token), response(), warmNext);
+    expect(warmNext).toHaveBeenCalledOnce();
+    mocks.loadAuthorizationSnapshot.mockResolvedValue(null);
+    const req = request(token);
+    const res = response();
+    const next = vi.fn();
+    await check(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(req.user).toBeUndefined();
+    expect(next).not.toHaveBeenCalled();
+    expect(mocks.authenticate).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects deleted credentials in independent replicas when only replica A receives eviction', async () => {
+    vi.resetModules();
+    const replicaA = await import('../../src/middleware/auth.js');
+    vi.resetModules();
+    const replicaB = await import('../../src/middleware/auth.js');
+    try {
+      const tokenA = `sealed-replica-a-${++sequence}`;
+      const tokenB = `sealed-replica-b-${++sequence}`;
+      mocks.loadAuthorizationSnapshot.mockResolvedValue(snapshot({ authorizationEpoch: '0' }));
+      const nextA = vi.fn();
+      const nextB = vi.fn();
+      await replicaA.requireAuth(request(tokenA), response(), nextA);
+      await replicaB.requireAuth(request(tokenB), response(), nextB);
+      expect(nextA).toHaveBeenCalledOnce();
+      expect(nextB).toHaveBeenCalledOnce();
+      replicaA.invalidateSessionsForUsers([AUTHENTICATED_ID]);
+      mocks.loadAuthorizationSnapshot.mockResolvedValue(null);
+      const req = request(tokenB);
+      const res = response();
+      await replicaB.requireAuth(req, res, nextB);
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(req.user).toBeUndefined();
+      expect(nextB).toHaveBeenCalledOnce();
+      expect(mocks.authenticate).toHaveBeenCalledTimes(2);
+    } finally {
+      replicaA.stopAuthTimers();
+      replicaB.stopAuthTimers();
+    }
+  });
+});
+
 const organizationSelectors: Array<[string, (req: Request, organizationId: string) => void]> = [
   ['header', (req, org) => { req.headers['x-organization-id'] = org; }],
   ['query org', (req, org) => { req.query.org = org; }],

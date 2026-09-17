@@ -17,7 +17,7 @@ const ORGANIZATION_ID = 'org_snapshot_timeout';
 function queryResult(overrides: Record<string, unknown> = {}) {
   return {
     rows: [{
-      in_recovery: false,
+      in_recovery: false, terminal_marker: false, primary_count: '1',
       authenticated_user_id: USER_ID,
       canonical_user_id: USER_ID,
       identity_id: 'fd3043f7-cb4f-43c7-9b81-22ac97576150',
@@ -49,6 +49,15 @@ describe('authorization snapshot query deadline and connection retry', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it.each([
+    { terminal_marker: true }, { primary_count: '0' }, { primary_count: '2' },
+    { identity_id: null }, { canonical_user_id: null },
+  ])('denies terminal lifecycle state without retrying: %j', async invalid => {
+    boundedQuery.mockResolvedValue(queryResult(invalid));
+    expect(await loadAuthorizationSnapshot(USER_ID, ORGANIZATION_ID)).toBeNull();
+    expect(boundedQuery).toHaveBeenCalledOnce();
   });
 
   it('retries one transient connection failure with only the remaining absolute budget', async () => {
@@ -122,7 +131,6 @@ describe('authorization snapshot query deadline and connection retry', () => {
 
   it.each([
     { state: 'replica', row: { in_recovery: true } },
-    { state: 'missing primary identity', row: { canonical_user_id: null } },
   ])('does not retry an unavailable $state snapshot', async ({ row }) => {
     boundedQuery.mockResolvedValue(queryResult(row));
     await expect(loadAuthorizationSnapshot(USER_ID, ORGANIZATION_ID))

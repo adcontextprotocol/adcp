@@ -157,7 +157,8 @@ describe('durable deletion fingerprint across independent replicas', () => {
     await requireAuthB(requestFor(cookieB), replicaBResponse, nextB);
 
     expect(nextB).toHaveBeenCalledTimes(1);
-    expect(mocks.authenticate).toHaveBeenCalledTimes(3);
+    // Provider authentication stays cached; fresh local authority denies reuse.
+    expect(mocks.authenticate).toHaveBeenCalledTimes(2);
     expect(replicaBResponse.status).toHaveBeenCalledWith(401);
   });
 });

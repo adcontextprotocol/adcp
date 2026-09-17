@@ -512,7 +512,7 @@ describe('db client checkout and health checks', () => {
     const freshRelease = vi.fn();
     let resolveLate!: (value: { rows: Array<Record<string, unknown>> }) => void;
     const snapshotRow = (suffix: string, epoch: string) => ({
-      in_recovery: false,
+      in_recovery: false, terminal_marker: false, primary_count: '1',
       authenticated_user_id: `user_${suffix}`,
       canonical_user_id: `canonical_${suffix}`,
       identity_id: `identity_${suffix}`,
@@ -616,7 +616,7 @@ describe('db client checkout and health checks', () => {
       if (text.includes('pg_catalog.pg_is_in_recovery')) {
         return {
           rows: [{
-            in_recovery: false,
+            in_recovery: false, terminal_marker: false, primary_count: '1',
             authenticated_user_id: 'user_retry_checkout',
             canonical_user_id: 'user_retry_checkout',
             identity_id: 'fd3043f7-cb4f-43c7-9b81-22ac97576150',

@@ -20,7 +20,6 @@ const mocks = vi.hoisted(() => ({
   upsertAlertRule: vi.fn(),
   resolveAlert: vi.fn(),
   serveHtmlWithConfig: vi.fn(),
-  readCredentialAuthorizationLifecycle: vi.fn(),
 }));
 
 vi.hoisted(() => {
@@ -58,10 +57,6 @@ vi.mock('../../src/db/client.js', async (importOriginal) => ({
   queryWithTimeout: mocks.poolQuery,
 }));
 
-vi.mock('../../src/db/authorization-epoch-db.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/db/authorization-epoch-db.js')>()),
-  readCredentialAuthorizationLifecycle: mocks.readCredentialAuthorizationLifecycle,
-}));
 
 vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
   isWebUserAAOAdmin: mocks.isWebUserAAOAdmin,
@@ -203,20 +198,6 @@ describe('network-health global authorization boundary', () => {
     mocks.resolveEffectiveMembership.mockResolvedValue({ is_member: true });
     mocks.checkPlatformBanForApiKey.mockResolvedValue({ banned: false });
     mocks.checkPlatformBan.mockResolvedValue({ banned: false });
-    mocks.readCredentialAuthorizationLifecycle.mockImplementation((workosUserId: string) =>
-      Promise.resolve({
-        status: 'active',
-        snapshot: {
-          workos_user_id: workosUserId,
-          email: 'user@example.test',
-          first_name: 'Regular',
-          last_name: 'User',
-          identity_id: '00000000-0000-4000-8000-000000000001',
-          primary_workos_user_id: workosUserId,
-          fingerprint: '',
-        },
-      }),
-    );
     mocks.isWebUserAAOAdmin.mockResolvedValue(false);
     mocks.poolQuery.mockImplementation((sql: string, params: unknown[]) => {
       if (sql.includes('pg_catalog.pg_is_in_recovery()')) {
@@ -224,7 +205,7 @@ describe('network-health global authorization boundary', () => {
         const isAdmin = userId === 'user_platform_admin';
         return Promise.resolve({
           rows: [{
-            in_recovery: false,
+            in_recovery: false, terminal_marker: false, primary_count: '1',
             authenticated_user_id: userId,
             canonical_user_id: userId,
             identity_id: `identity_${userId}`,

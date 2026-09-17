@@ -37,6 +37,8 @@ export class AuthorizationSnapshotUnavailableError extends Error {
 
 interface SnapshotRow {
   in_recovery: boolean;
+  terminal_marker: boolean;
+  primary_count: string;
   authenticated_user_id: string | null;
   canonical_user_id: string | null;
   identity_id: string | null;
@@ -95,6 +97,14 @@ export async function loadAuthorizationSnapshot(
               credential.workos_user_id AS authenticated_user_id,
               primary_binding.workos_user_id AS canonical_user_id,
               binding.identity_id,
+              COALESCE(primary_binding.primary_count, 0)::text AS primary_count,
+              EXISTS (
+                SELECT 1 FROM registry_audit_log audit
+                 WHERE audit.workos_user_id = $1
+                   AND audit.action IN (
+                     'identity_credential_deleted', 'identity_primary_deletion_quarantined'
+                   )
+              ) AS terminal_marker,
               COALESCE(epoch.epoch, 0)::text AS authorization_epoch,
               credential.email, credential.email_verified, credential.first_name, credential.last_name,
               credential_grant.id AS grant_id,
@@ -108,8 +118,11 @@ export async function loadAuthorizationSnapshot(
          LEFT JOIN users credential ON credential.workos_user_id = $1
          LEFT JOIN identity_workos_users binding
            ON binding.workos_user_id = credential.workos_user_id
-         LEFT JOIN identity_workos_users primary_binding
-           ON primary_binding.identity_id = binding.identity_id AND primary_binding.is_primary
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*) AS primary_count, MIN(candidate.workos_user_id) AS workos_user_id
+             FROM identity_workos_users candidate
+            WHERE candidate.identity_id = binding.identity_id AND candidate.is_primary
+         ) primary_binding ON TRUE
          LEFT JOIN authorization_epochs epoch
            ON epoch.workos_user_id = credential.workos_user_id
          LEFT JOIN organization_credential_grants credential_grant
@@ -125,12 +138,12 @@ export async function loadAuthorizationSnapshot(
     if (!row || row.in_recovery) {
       throw new AuthorizationSnapshotUnavailableError();
     }
-    if (!row.authenticated_user_id) return null;
-    // Migration 460 backfills bindings and creates them on every user insert.
-    // Missing attribution is an integrity failure, not a singleton fallback.
-    if (!row.identity_id || !row.canonical_user_id) {
-      throw new AuthorizationSnapshotUnavailableError();
-    }
+    // Preserve the credential lifecycle boundary even if a stale provider event
+    // recreates a users row. Durable deletion/quarantine markers are terminal.
+    // Missing or ambiguous identity routing is also terminal, never a fallback
+    // to a linked credential or an implicit singleton identity.
+    if (row.terminal_marker || !row.authenticated_user_id || !row.identity_id
+        || row.primary_count !== '1' || !row.canonical_user_id) return null;
 
     const credentialGrant = row.grant_id
       ? Object.freeze({

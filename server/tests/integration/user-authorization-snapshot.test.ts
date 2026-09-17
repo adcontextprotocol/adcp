@@ -31,6 +31,7 @@ describe('primary database authorization snapshots', () => {
   }, 60000);
 
   async function cleanup() {
+    await pool.query('DELETE FROM registry_audit_log WHERE workos_user_id = ANY($1)', [USER_IDS]);
     await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = ANY($1)', [ORG_IDS]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = ANY($1)', [ORG_IDS]);
     const identities = await pool.query<{ identity_id: string }>(
@@ -303,15 +304,48 @@ describe('primary database authorization snapshots', () => {
     expect((await snapshot(CORPORATE_ID)).canonicalUserId).toBe(cached.canonicalUserId);
   });
 
-  it.each(['binding', 'primary'])('fails unavailable for a missing identity %s', async missing => {
+  it.each(['binding', 'primary'])('returns terminal denial for a missing identity %s', async missing => {
     if (missing === 'binding') {
       await pool.query('DELETE FROM identity_workos_users WHERE workos_user_id = $1', [PERSONAL_ID]);
     } else {
       await pool.query('UPDATE identity_workos_users SET is_primary = FALSE WHERE workos_user_id = $1', [PERSONAL_ID]);
     }
-    await expect(loadAuthorizationSnapshot(PERSONAL_ID, null))
-      .rejects.toBeInstanceOf(AuthorizationSnapshotUnavailableError);
+    expect(await loadAuthorizationSnapshot(PERSONAL_ID, null)).toBeNull();
   });
+
+  it.each(['identity_credential_deleted', 'identity_primary_deletion_quarantined'])(
+    'rejects a durable %s marker even with live rows and epoch zero', async action => {
+      await link(CORPORATE_ID, PERSONAL_ID);
+      await grant(PERSONAL_ID, PERSONAL_ORG);
+      const before = await snapshot(PERSONAL_ID, PERSONAL_ORG);
+      expect(before.authorizationEpoch).toBe('0');
+      const writer = await pool.connect();
+      try {
+        await writer.query('BEGIN');
+        await writer.query(
+          `INSERT INTO registry_audit_log
+             (workos_organization_id, workos_user_id, action, resource_type, resource_id)
+           VALUES ($1, $2::text, $3, 'user', $2::text)`,
+          [PERSONAL_ORG, PERSONAL_ID, action],
+        );
+        // The uncommitted marker cannot leak into the MVCC snapshot.
+        expect(await snapshot(PERSONAL_ID, PERSONAL_ORG)).toEqual(before);
+        await writer.query('COMMIT');
+        expect(await loadAuthorizationSnapshot(PERSONAL_ID, PERSONAL_ORG)).toBeNull();
+        expect((await snapshot(CORPORATE_ID)).authenticatedUserId).toBe(CORPORATE_ID);
+        // Even a recreated user/binding/epoch cannot erase the durable marker.
+        await pool.query('DELETE FROM users WHERE workos_user_id = $1', [PERSONAL_ID]);
+        await pool.query(
+          `INSERT INTO users (workos_user_id, email, workos_created_at, workos_updated_at)
+           VALUES ($1, 'sam.personal@example.test', NOW(), NOW())`, [PERSONAL_ID],
+        );
+        expect(await loadAuthorizationSnapshot(PERSONAL_ID, PERSONAL_ORG)).toBeNull();
+      } finally {
+        await writer.query('ROLLBACK');
+        writer.release();
+      }
+    },
+  );
 
   it('fails unavailable on database errors instead of replaying a warm snapshot', async () => {
     await snapshot(PERSONAL_ID, PERSONAL_ORG);
