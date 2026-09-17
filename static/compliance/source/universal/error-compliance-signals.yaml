@@ -192,16 +192,17 @@ phases:
   - id: error_structure
     title: "Error structure compliance"
     narrative: |
-      Validates that error responses follow the AdCP error structure with required
-      and optional fields.
+      Validates that error responses follow the AdCP 3.2 error structure with
+      required code, message, and recovery fields plus optional retry metadata.
 
     steps:
       - id: validate_error_shape
         title: "Validate error response structure"
         narrative: |
           Trigger an error and inspect the response structure. The adcp_error object
-          must have code and message. Optional fields include recovery, retry_after,
-          field, and suggestion.
+          must have code, message, and recovery. Optional fields include retry_after,
+          field, and suggestion. The shared schema remains permissive for legacy input,
+          but omission of recovery is a 3.2 producer conformance failure.
         task: activate_signal
         schema_ref: "signals/activate-signal-request.json"
         response_schema_ref: "signals/activate-signal-response.json"
@@ -214,7 +215,7 @@ phases:
           Error response with:
           - code: a recognized AdCP error code
           - message: human-readable description
-          - recovery: correctable, transient, or fatal (optional)
+          - recovery: transient, correctable, or terminal (required for a 3.2 producer)
 
         sample_request:
           account:
@@ -266,7 +267,7 @@ phases:
         expected: |
           Reject with:
           - code: VERSION_UNSUPPORTED
-          - recovery: fatal
+          - recovery: correctable
           - message referencing the buyer's requested version and the agent's supported set
 
         sample_request:

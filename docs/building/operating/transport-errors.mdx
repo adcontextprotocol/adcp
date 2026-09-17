@@ -319,9 +319,9 @@ Once extracted, apply recovery based on the `recovery` field:
 
 **`retry_after` bounds and migration:** AdCP 3.2 sellers MUST return an integer from 1 through 3600 seconds. A producer converting a computed fractional delay MUST round up before clamping (`ceil(delay)`, then clamp to `[1, 3600]`) so migration never schedules a retry earlier than intended. The 3.x schema continues to accept finite fractional values for backward compatibility with earlier producers; clients that encounter one MUST apply the same ceiling-then-clamp rule. Non-finite values (`NaN`, `Infinity`) MUST be treated as absent. This prevents both aggressive retry loops and pathologically long stalls from misconfigured servers.
 
-**Retry ceiling:** Buyer agents SHOULD enforce a maximum retry count (e.g., 3 attempts) and a maximum cumulative retry duration (e.g., 300 seconds) per operation. Transient errors that persist beyond the retry budget SHOULD be escalated as terminal. Without a ceiling, a malicious or misconfigured seller returning `retry_after: 3600` on every request can stall an agent indefinitely.
+**Retry ceiling:** Buyer agents MUST enforce a bounded retry budget per operation, such as a maximum count of 3 retries and a maximum cumulative retry duration of 300 seconds. Every scheduled retry consumes that budget. Transient errors that persist beyond it are surfaced to the caller or operator without another automatic retry. Without a ceiling, a malicious or misconfigured seller returning `retry_after: 3600` on every request can stall an agent indefinitely.
 
-**When `recovery` is absent:** Fall back to code-based classification using the standard error code table. This allows [Level 1](/docs/building/by-layer/L3/error-handling#compliance-levels) servers (which return `code` + `message` only) to still get correct recovery behavior from capable clients. If the code is also unknown, treat as `terminal`.
+**When `recovery` is absent:** Fall back to code-based classification using the standard error code table. This allows legacy [Level 1](/docs/building/by-layer/L3/error-handling#compliance-levels) servers (which return `code` + `message` only) to still get correct recovery behavior from capable clients. If the code is also unknown, use the bounded `transient` fallback.
 
 For unknown `recovery` values (forward compatibility), treat as `terminal`.
 
@@ -368,16 +368,27 @@ const CODE_RECOVERY = {
 };
 
 function getRecovery(adcpError) {
-  if (adcpError.recovery) return adcpError.recovery;
-  return CODE_RECOVERY[adcpError.code] || 'terminal';
+  if (adcpError.recovery !== undefined) return adcpError.recovery;
+  return CODE_RECOVERY[adcpError.code] || 'transient';
 }
 
-function handleAdcpError(adcpError) {
+function handleAdcpError(adcpError, retryState) {
   switch (getRecovery(adcpError)) {
-    case 'transient':
+    case 'transient': {
+      if (retryState.retriesAttempted >= retryState.maxRetries) {
+        return { action: 'stop_retrying' };
+      }
       const raw = adcpError.retry_after;
       const delay = Number.isFinite(raw) ? Math.max(1, Math.min(3600, Math.ceil(raw))) : null;
-      return { action: 'retry', delaySeconds: delay };
+      return {
+        action: 'retry',
+        delaySeconds: delay,
+        nextRetryState: {
+          ...retryState,
+          retriesAttempted: retryState.retriesAttempted + 1,
+        },
+      };
+    }
 
     case 'correctable':
       return {
@@ -590,7 +601,7 @@ Sellers MAY use error codes not in the [standard vocabulary](https://adcontextpr
 - `{VENDOR}` MUST be an uppercase alphanumeric identifier (matching `/^[A-Z][A-Z0-9]{1,19}$/`) registered in the vendor error code registry
 - `{CODE}` MUST be uppercase alphanumeric with underscores (matching `/^[A-Z][A-Z0-9_]{1,39}$/`)
 - Agents MUST handle unknown codes by falling back to the `recovery` classification
-- If `recovery` is absent on an unknown code, treat as `terminal`
+- If `recovery` is absent on an unknown code, use the bounded `transient` fallback
 - Sellers SHOULD register their vendor prefix and codes in the [vendor error code registry](https://adcontextprotocol.org/schemas/v3/error-details/vendor-error-codes.json) by submitting a PR
 
 ```javascript
@@ -617,7 +628,7 @@ Client libraries (like `@adcp/sdk`) that implement this spec MUST:
 
 4. **Guard text fallback with `isError`.** Only attempt JSON-based text extraction on MCP responses where `isError` is `true`. A successful response with JSON content MUST NOT be interpreted as an error.
 
-5. **Preserve recovery metadata.** The extracted error MUST carry `recovery` and `retry_after` so callers can implement retry logic without re-parsing.
+5. **Expose recovery metadata.** The extracted error MUST expose the effective recovery classification: preserve wire `recovery` when present, otherwise use the registered class for a known code or bounded `transient` for an unknown code. Preserve `retry_after` when present so callers can schedule an eligible retry without re-parsing.
 
 6. **Handle unknown recovery values.** Treat unknown `recovery` values as `terminal`.
 

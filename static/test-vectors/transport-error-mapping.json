@@ -347,6 +347,52 @@
       "expected_action": "escalate_to_human"
     },
     {
+      "id": "null-recovery-value",
+      "description": "Explicit null recovery value should fail closed as terminal",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Invalid recovery state."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "X_VENDOR_CUSTOM",
+            "message": "Custom vendor error",
+            "recovery": null
+          }
+        }
+      },
+      "expected_error": {
+        "code": "X_VENDOR_CUSTOM",
+        "message": "Custom vendor error",
+        "recovery": null
+      },
+      "expected_action": "escalate_to_human"
+    },
+    {
+      "id": "empty-recovery-value",
+      "description": "Explicit empty recovery value should fail closed as terminal",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Invalid recovery state."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "X_VENDOR_CUSTOM",
+            "message": "Custom vendor error",
+            "recovery": ""
+          }
+        }
+      },
+      "expected_error": {
+        "code": "X_VENDOR_CUSTOM",
+        "message": "Custom vendor error",
+        "recovery": ""
+      },
+      "expected_action": "escalate_to_human"
+    },
+    {
       "id": "mcp-structured-content-no-adcp-error",
       "description": "MCP structuredContent present but without adcp_error key should not extract",
       "transport": "mcp",
@@ -486,7 +532,7 @@
     },
     {
       "id": "mcp-missing-recovery-unknown-code",
-      "description": "Missing recovery field with unknown vendor code — should default to terminal",
+      "description": "Missing recovery field with unknown vendor code — uses the bounded transient fallback",
       "transport": "mcp",
       "path": "structuredContent",
       "response": {
@@ -503,7 +549,7 @@
         "code": "X_VENDOR_UNKNOWN",
         "message": "Vendor-specific failure"
       },
-      "expected_action": "escalate_to_human"
+      "expected_action": "retry"
     },
     {
       "id": "a2a-failed-task-correctable",
