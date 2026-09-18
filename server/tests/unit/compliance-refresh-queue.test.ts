@@ -14,6 +14,8 @@ function claimedRequest(): ClaimedComplianceRefreshRequest {
     owner_org_id: 'org-test',
     requester_type: 'user',
     requested_by_user_id: 'user-test',
+    requested_by_auth_workos_user_id: 'user-test',
+    authorization_fingerprint: '',
     triggered_by: 'owner_test',
     test_session_id: 'owner-refresh-test',
     status: 'running',
@@ -63,11 +65,114 @@ describe('ComplianceRefreshQueue', () => {
       request.id,
       request.lease_token,
       'authorization_provenance_missing',
-      'Refresh requester authorization provenance is unavailable',
+      'Authenticated credential provenance is missing; submit a new refresh',
     );
     expect(requeueAfterFailure).not.toHaveBeenCalled();
     expect(markSucceeded).not.toHaveBeenCalled();
     expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('invalidates late probe continuations before awaiting failure persistence', async () => {
+    const request = claimedRequest();
+    let releaseFailure!: () => void;
+    let failureStarted!: () => void;
+    const failureBarrier = new Promise<void>(resolve => { releaseFailure = resolve; });
+    const enteredFailure = new Promise<void>(resolve => { failureStarted = resolve; });
+    let assertExecutionValid!: () => void;
+    const db = {
+      claimDue: vi.fn().mockResolvedValue({ requests: [request], terminalizedExpired: 0 }),
+      acquireExecutionFence: vi.fn().mockResolvedValue({ isValid: () => true, release: vi.fn() }),
+      markFailed: vi.fn(async () => { failureStarted(); await failureBarrier; return true; }),
+      deleteTerminalBefore: vi.fn().mockResolvedValue(0),
+    };
+    const work = new ComplianceRefreshQueue(async (_request, lease) => {
+      assertExecutionValid = lease.assertValid;
+      throw Object.assign(new Error('Probe timeout'), { code: 'probe_failed' });
+    }, db as unknown as ComplianceRefreshRequestsDatabase).processQueue();
+    await enteredFailure;
+    try {
+      expect(assertExecutionValid).toThrow(expect.objectContaining({ code: 'lease_lost' }));
+    } finally {
+      releaseFailure();
+      await work;
+    }
+    expect(assertExecutionValid).toThrow(expect.objectContaining({ code: 'lease_lost' }));
+  });
+
+  it.each([false, true])('requires an atomic completion guard (registered: %s)', async (registered) => {
+    const request = claimedRequest();
+    const guard = vi.fn().mockRejectedValue(Object.assign(new Error('revoked at the write barrier'), {
+      code: 'authorization_revoked',
+    }));
+    const db = {
+      claimDue: vi.fn().mockResolvedValue({ requests: [request], terminalizedExpired: 0 }),
+      acquireExecutionFence: vi.fn().mockResolvedValue({ isValid: () => true, release: vi.fn() }),
+      markSucceeded: vi.fn(async (_id, _token, _result, beforeWrite) => {
+        await beforeWrite({});
+        return true;
+      }),
+      requeueAfterFailure: vi.fn().mockResolvedValue(false),
+      markFailed: vi.fn().mockResolvedValue(true),
+      deleteTerminalBefore: vi.fn().mockResolvedValue(0),
+    };
+    await new ComplianceRefreshQueue(async (_request, lease) => {
+      if (registered) lease.setCompletionGuard(guard);
+      return { online: true };
+    }, db as unknown as ComplianceRefreshRequestsDatabase).processQueue();
+
+    expect(db.markFailed).toHaveBeenCalledWith(
+      request.id, request.lease_token,
+      registered ? 'authorization_revoked' : 'authorization_unavailable', expect.any(String),
+    );
+    if (registered) expect(guard).toHaveBeenCalledOnce();
+    else expect(db.markSucceeded).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('preserves unavailable authorization when retry exhaustion is %s', async (exhausted) => {
+    const request = claimedRequest();
+    request.attempts = exhausted ? request.max_attempts : 1;
+    const db = {
+      claimDue: vi.fn().mockResolvedValue({ requests: [request], terminalizedExpired: 0 }),
+      acquireExecutionFence: vi.fn().mockResolvedValue({
+        isValid: () => true,
+        release: vi.fn().mockResolvedValue(undefined),
+      }),
+      requeueAfterFailure: vi.fn().mockResolvedValue(!exhausted),
+      markSucceeded: vi.fn(),
+      markFailed: vi.fn().mockResolvedValue(true),
+      deleteTerminalBefore: vi.fn().mockResolvedValue(0),
+    };
+    const queue = new ComplianceRefreshQueue(async () => {
+      throw Object.assign(new Error('provider-private-diagnostic'), { code: 'authorization_unavailable' });
+    }, db as unknown as ComplianceRefreshRequestsDatabase);
+
+    await queue.processQueue();
+
+    const failure = [request.id, request.lease_token, 'authorization_unavailable', 'Refresh authorization is temporarily unavailable'];
+    expect(db.requeueAfterFailure).toHaveBeenCalledWith(...failure);
+    if (exhausted) expect(db.markFailed).toHaveBeenCalledWith(...failure);
+    else expect(db.markFailed).not.toHaveBeenCalled();
+    expect(db.markSucceeded).not.toHaveBeenCalled();
+  });
+
+  it.each(['authorization_provenance_missing', 'authorization_revoked'])('never retries confirmed %s', async (code) => {
+    const request = claimedRequest();
+    const db = {
+      claimDue: vi.fn().mockResolvedValue({ requests: [request], terminalizedExpired: 0 }),
+      acquireExecutionFence: vi.fn().mockResolvedValue({
+        isValid: () => true,
+        release: vi.fn().mockResolvedValue(undefined),
+      }),
+      requeueAfterFailure: vi.fn(),
+      markFailed: vi.fn().mockResolvedValue(true),
+      deleteTerminalBefore: vi.fn().mockResolvedValue(0),
+    };
+    await new ComplianceRefreshQueue(async () => {
+      throw Object.assign(new Error('private-diagnostic'), { code });
+    }, db as unknown as ComplianceRefreshRequestsDatabase).processQueue();
+    expect(db.requeueAfterFailure).not.toHaveBeenCalled();
+    expect(db.markFailed).toHaveBeenCalledWith(request.id, request.lease_token, code, expect.any(String));
+    expect(JSON.stringify(db.markFailed.mock.calls)).not.toContain('private-diagnostic');
   });
 
   it('never persists or logs arbitrary exception codes and messages', async () => {
