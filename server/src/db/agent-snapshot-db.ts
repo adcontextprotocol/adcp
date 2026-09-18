@@ -1,5 +1,4 @@
 import { query } from './client.js';
-import type { PoolClient } from 'pg';
 import { createLogger } from '../logger.js';
 import type { AgentHealth, AgentStats } from '../types.js';
 import type {
@@ -107,11 +106,9 @@ export class AgentSnapshotDatabase {
     return map;
   }
 
-  /** A supplied client belongs to a guarded transaction and must observe failures. */
-  async upsertHealth(agentUrl: string, health: AgentHealth, stats: AgentStats, client?: PoolClient): Promise<void> {
-    const executeQuery: typeof query = client ? (text, params) => client.query(text, params) : query;
+  async upsertHealth(agentUrl: string, health: AgentHealth, stats: AgentStats): Promise<void> {
     try {
-      await executeQuery(
+      await query(
         `INSERT INTO agent_health_snapshot
            (agent_url, online, response_time_ms, tools_count, resources_count, error, checked_at, stats_json, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
@@ -136,7 +133,6 @@ export class AgentSnapshotDatabase {
         ],
       );
     } catch (err) {
-      if (client) throw err;
       logger.warn({ agentUrl, err }, 'Failed to upsert agent health snapshot');
     }
   }
@@ -144,21 +140,18 @@ export class AgentSnapshotDatabase {
   async upsertCapabilities(
     profile: AgentCapabilityProfile,
     inferredType: string | null,
-    options: { trackUnknownProbe?: boolean; client?: PoolClient } = {},
+    options: { trackUnknownProbe?: boolean } = {},
   ): Promise<void> {
-    const client = options.client;
-    const executeQuery: typeof query = client ? (text, params) => client.query(text, params) : query;
     try {
       const trackUnknownProbe = options.trackUnknownProbe ?? true;
       const unknownState = inferredType === null && trackUnknownProbe
         ? await this.nextUnknownProbeState(
             profile.agent_url,
             profile.discovery_error ? 'unreachable' : 'unclassifiable',
-            options.client,
           )
         : null;
 
-      await executeQuery(
+      await query(
         `INSERT INTO agent_capabilities_snapshot
            (agent_url, protocol, discovered_tools_json, standard_operations_json,
             creative_capabilities_json, signals_capabilities_json,
@@ -230,7 +223,6 @@ export class AgentSnapshotDatabase {
         ],
       );
     } catch (err) {
-      if (options.client) throw err;
       logger.warn({ agentUrl: profile.agent_url, err }, 'Failed to upsert agent capabilities snapshot');
     }
   }
@@ -276,10 +268,8 @@ export class AgentSnapshotDatabase {
   private async nextUnknownProbeState(
     agentUrl: string,
     terminalStateOnExhaustion: UnknownProbeTerminalState,
-    client?: PoolClient,
   ): Promise<UnknownProbeState> {
-    const executeQuery: typeof query = client ? (text, params) => client.query(text, params) : query;
-    const result = await executeQuery<{ unknown_probe_attempt_count: number }>(
+    const result = await query<{ unknown_probe_attempt_count: number }>(
       `SELECT unknown_probe_attempt_count
          FROM agent_capabilities_snapshot
         WHERE agent_url = $1`,

@@ -3,6 +3,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { describe, it } = require('node:test');
+const Ajv = require('ajv');
+const addFormats = require('ajv-formats');
 const {
   evaluateBodyIntegrity,
   usesUniversalBodyIntegrity,
@@ -23,6 +25,42 @@ const capabilitiesSchemaPath = path.join(
   '../static/schemas/source/protocol/get-adcp-capabilities-response.json'
 );
 const capabilitiesSchema = JSON.parse(fs.readFileSync(capabilitiesSchemaPath, 'utf8'));
+const schemaRoot = path.join(__dirname, '../static/schemas/source');
+const legacySchemaRoot = path.join(__dirname, '../dist/schemas/3.1.1');
+
+function readSchema(uri) {
+  assert.match(uri, /^\/schemas\//);
+  const [schemaUri] = uri.split('#');
+  return JSON.parse(fs.readFileSync(path.join(schemaRoot, schemaUri.slice('/schemas/'.length)), 'utf8'));
+}
+
+async function compileRequestSchema(uri) {
+  const ajv = new Ajv({
+    allErrors: true,
+    strict: false,
+    discriminator: true,
+    loadSchema: async ref => readSchema(ref),
+  });
+  addFormats(ajv);
+  return ajv.compileAsync(readSchema(uri));
+}
+
+function readLegacySchema(uri) {
+  assert.match(uri, /^\/schemas\/3\.1\.1\//);
+  const [schemaUri] = uri.split('#');
+  return JSON.parse(fs.readFileSync(path.join(legacySchemaRoot, schemaUri.slice('/schemas/3.1.1/'.length)), 'utf8'));
+}
+
+async function compileLegacyRequestSchema(uri) {
+  const ajv = new Ajv({
+    allErrors: true,
+    strict: false,
+    discriminator: true,
+    loadSchema: async ref => readLegacySchema(ref),
+  });
+  addFormats(ajv);
+  return ajv.compileAsync(readLegacySchema(uri));
+}
 
 describe('AdCP 3.2 request-signing body-integrity policy', () => {
   it('pins the fixture to the 3.2 signing profile', () => {
@@ -91,6 +129,46 @@ describe('AdCP 3.2 request-signing body-integrity policy', () => {
     for (const file of fs.readdirSync(negativeDir).filter(name => name.endsWith('.json'))) {
       const vector = JSON.parse(fs.readFileSync(path.join(negativeDir, file), 'utf8'));
       assert.equal(vector.signing_profile_version, '3.1', file);
+    }
+  });
+
+  it('uses operation-valid bodies in every routed legacy signing vector', async () => {
+    const baseDir = path.dirname(fixturePath);
+    const targets = {
+      create_media_buy: {
+        current: await compileRequestSchema('/schemas/media-buy/create-media-buy-request.json'),
+        legacy: await compileLegacyRequestSchema('/schemas/3.1.1/media-buy/create-media-buy-request.json'),
+      },
+      sync_creatives: {
+        current: await compileRequestSchema('/schemas/creative/sync-creatives-request.json'),
+        legacy: await compileLegacyRequestSchema('/schemas/3.1.1/creative/sync-creatives-request.json'),
+      },
+      update_media_buy: {
+        current: await compileRequestSchema('/schemas/media-buy/update-media-buy-request.json'),
+        legacy: await compileLegacyRequestSchema('/schemas/3.1.1/media-buy/update-media-buy-request.json'),
+      },
+    };
+    const selectedFiles = [
+      ...fs.readdirSync(path.join(baseDir, 'negative'))
+        .filter(name => name.endsWith('.json') && !name.startsWith('028-'))
+        .map(name => path.join(baseDir, 'negative', name)),
+      ...fs.readdirSync(path.join(baseDir, 'positive'))
+        .filter(name => name.endsWith('.json') && !name.startsWith('007-') && !name.startsWith('008-'))
+        .map(name => path.join(baseDir, 'positive', name)),
+    ];
+
+    for (const file of selectedFiles) {
+      const vector = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const operation = Object.keys(targets).find(name => new URL(vector.request.url).pathname.endsWith(`/${name}`));
+      assert.ok(operation, `no request schema selected for ${path.basename(file)}`);
+      const body = JSON.parse(vector.request.body);
+      for (const [profile, validate] of Object.entries(targets[operation])) {
+        assert.equal(
+          validate(body),
+          true,
+          `${path.basename(file)} has a schema-invalid ${operation} body for ${profile}: ${JSON.stringify(validate.errors)}`,
+        );
+      }
     }
   });
 

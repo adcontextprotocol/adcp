@@ -6,11 +6,11 @@
  * insert helper. Idempotency at the row level means the caller decides what
  * counts as a "change" — we don't dedupe.
  *
- * Ordinary callers log and swallow insert failures. A caller-supplied
- * transaction propagates failure so its guarded write can roll back.
+ * On insert failure we log and swallow — the audit log is observability, not
+ * a write barrier. A failed audit write must NOT roll back the caller's
+ * primary intent (a member-profile save, a crawl probe, a backfill row).
  */
 import { query } from './client.js';
-import type { PoolClient } from 'pg';
 import { createLogger } from '../logger.js';
 import { captureEvent } from '../utils/posthog.js';
 
@@ -32,12 +32,10 @@ export interface TypeReclassificationInsert {
 }
 
 export async function insertTypeReclassification(
-  entry: TypeReclassificationInsert,
-  client?: PoolClient,
+  entry: TypeReclassificationInsert
 ): Promise<void> {
-  const executeQuery: typeof query = client ? (text, params) => client.query(text, params) : query;
   try {
-    await executeQuery(
+    await query(
       `INSERT INTO type_reclassification_log
          (agent_url, member_id, old_type, new_type, source, run_id, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -52,8 +50,6 @@ export async function insertTypeReclassification(
       ]
     );
   } catch (err) {
-    // A guarded caller owns the transaction; swallowing would hide rollback.
-    if (client) throw err;
     // PostgreSQL SQLSTATE codes are exactly 5 chars; the first 2 are the error
     // class (e.g. '23' = integrity_constraint_violation, '08' = connection_
     // exception). The class is what ops actually alerts on — the full code is

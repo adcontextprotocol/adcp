@@ -9,7 +9,6 @@ import { logger } from "./logger.js";
 import { promises as dnsPromises } from "node:dns";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
-import { isComplianceRefreshAccessFailure } from "./services/compliance-refresh-authorization.js";
 
 export interface ClassifiedProbeError {
   kind: ProbeErrorKind;
@@ -183,7 +182,7 @@ export class HealthChecker {
     this.formatsService = new FormatsService();
   }
 
-  async checkHealth(agent: Agent, auth?: SdkAuth, forceRefresh = false, checkpoint?: () => Promise<void>): Promise<AgentHealth> {
+  async checkHealth(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentHealth> {
     // Skip cache when auth is provided — manual owner-triggered refresh
     // wants fresh data. Periodic crawls (no auth) keep the cache.
     // `forceRefresh` covers the same intent for a manual refresh of an
@@ -194,8 +193,7 @@ export class HealthChecker {
       if (cached) return cached;
     }
 
-    const health = await this.performHealthCheck(agent, auth, checkpoint);
-    await checkpoint?.();
+    const health = await this.performHealthCheck(agent, auth);
     // Don't write authed probe results back to the shared cache —
     // tools_count discovered with credentials may differ from what
     // the agent exposes publicly, and the cache feeds unauthed reads.
@@ -203,14 +201,14 @@ export class HealthChecker {
     return health;
   }
 
-  private async performHealthCheck(agent: Agent, auth?: SdkAuth, checkpoint?: () => Promise<void>): Promise<AgentHealth> {
+  private async performHealthCheck(agent: Agent, auth?: SdkAuth): Promise<AgentHealth> {
     const startTime = Date.now();
     const protocol = agent.protocol || "mcp";
 
     // Only try the protocol the agent declares
     const health = protocol === "a2a"
-      ? await this.tryA2A(agent, startTime, auth, checkpoint)
-      : await this.tryMCP(agent, startTime, auth, checkpoint);
+      ? await this.tryA2A(agent, startTime, auth)
+      : await this.tryMCP(agent, startTime, auth);
 
     logOutboundRequest({
       agent_url: agent.url,
@@ -224,7 +222,7 @@ export class HealthChecker {
     return health;
   }
 
-  private async tryMCP(agent: Agent, startTime: number, auth?: SdkAuth, checkpoint?: () => Promise<void>): Promise<AgentHealth> {
+  private async tryMCP(agent: Agent, startTime: number, auth?: SdkAuth): Promise<AgentHealth> {
     try {
       // Use AdCPClient to handle MCP protocol complexity (sessions, SSE, etc.)
       const { AdCPClient } = await import("@adcp/sdk");
@@ -237,7 +235,6 @@ export class HealthChecker {
       }], withSdkSafeTransport({ userAgent: AAO_UA_HEALTH_CHECK }));
       const client = multiClient.agent("health-check");
 
-      await checkpoint?.();
       const agentInfo = await client.getAgentInfo();
       const responseTime = Date.now() - startTime;
 
@@ -249,8 +246,6 @@ export class HealthChecker {
         resources_count: (agentInfo as any).resources?.length || 0,
       };
     } catch (error: any) {
-      if (isComplianceRefreshAccessFailure(error)) throw error;
-      await checkpoint?.();
       let classified = classifyMCPError(error);
       // Disambiguate `wrong_path` vs unreachable: when the SDK swallows
       // the DNS cause, a non-resolving host looks identical to a host
@@ -263,7 +258,7 @@ export class HealthChecker {
           raw: classified.raw,
         };
       }
-      const fallback = await this.tryHealthCheckFallback(agent, startTime, classified, auth, checkpoint);
+      const fallback = await this.tryHealthCheckFallback(agent, startTime, classified, auth);
       if (fallback) return fallback;
       return {
         online: false,
@@ -290,11 +285,9 @@ export class HealthChecker {
     startTime: number,
     classified: ClassifiedProbeError,
     auth?: SdkAuth,
-    checkpoint?: () => Promise<void>,
   ): Promise<AgentHealth | null> {
     if (!agent.health_check_url) return null;
     try {
-      await checkpoint?.();
       const response = await safeFetch(agent.health_check_url, {
         method: "GET",
         headers: healthProbeHeaders(shouldSendHealthFallbackAuth(agent) ? auth : undefined),
@@ -314,7 +307,6 @@ export class HealthChecker {
         error_detail: classified.raw,
       };
     } catch (err) {
-      if (isComplianceRefreshAccessFailure(err)) throw err;
       // Don't surface fallback fetch failures to the dashboard — the MCP
       // error is the load-bearing signal. Log for debuggability.
       logger.debug({ err, agentUrl: agent.url, healthUrl: agent.health_check_url }, 'health_check_url fallback failed');
@@ -322,12 +314,11 @@ export class HealthChecker {
     }
   }
 
-  private async tryA2A(agent: Agent, startTime: number, auth?: SdkAuth, checkpoint?: () => Promise<void>): Promise<AgentHealth> {
+  private async tryA2A(agent: Agent, startTime: number, auth?: SdkAuth): Promise<AgentHealth> {
     try {
       // Check for A2A agent card at /.well-known/agent.json
       const agentCardUrl = `${agent.url.replace(/\/$/, "")}/.well-known/agent.json`;
       const headers = healthProbeHeaders(auth);
-      await checkpoint?.();
       const response = await fetch(agentCardUrl, {
         headers,
         signal: AbortSignal.timeout(5000),
@@ -358,7 +349,6 @@ export class HealthChecker {
         tools_count: toolsCount,
       };
     } catch (error) {
-      if (isComplianceRefreshAccessFailure(error)) throw error;
       return {
         online: false,
         checked_at: new Date().toISOString(),
@@ -367,19 +357,18 @@ export class HealthChecker {
     }
   }
 
-  async getStats(agent: Agent, auth?: SdkAuth, forceRefresh = false, checkpoint?: () => Promise<void>): Promise<AgentStats> {
+  async getStats(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentStats> {
     if (!auth && !forceRefresh) {
       const cached = this.statsCache.get(agent.url);
       if (cached) return cached;
     }
 
-    const stats = await this.fetchStats(agent, auth, forceRefresh, checkpoint);
-    await checkpoint?.();
+    const stats = await this.fetchStats(agent, auth, forceRefresh);
     if (!auth) this.statsCache.set(agent.url, stats);
     return stats;
   }
 
-  private async fetchStats(agent: Agent, auth?: SdkAuth, forceRefresh = false, checkpoint?: () => Promise<void>): Promise<AgentStats> {
+  private async fetchStats(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentStats> {
     const stats: AgentStats = {};
 
     try {
@@ -396,18 +385,15 @@ export class HealthChecker {
       } else if (agent.type === "creative") {
         // For creative agents, get format count from FormatsService
         try {
-          await checkpoint?.();
           const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth, forceRefresh);
           if (formatsProfile.formats && formatsProfile.formats.length > 0) {
             stats.creative_formats = formatsProfile.formats.length;
           }
-        } catch (error) {
-          if (isComplianceRefreshAccessFailure(error)) throw error;
+        } catch {
           // Creative format listing failed
         }
       }
-    } catch (error) {
-      if (isComplianceRefreshAccessFailure(error)) throw error;
+    } catch {
       // Stats are optional, failure is ok
     }
 

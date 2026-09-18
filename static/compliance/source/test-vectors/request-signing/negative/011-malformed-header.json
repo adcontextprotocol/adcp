@@ -11,7 +11,7 @@
       "Signature-Input": "this-is-not-a-valid-rfc-9421-signature-input",
       "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
     },
-    "body": "{}"
+    "body": "{\"idempotency_key\":\"request-signing-negative-011-2026\",\"account\":{\"account_id\":\"request-signing-account\"},\"creatives\":[{\"creative_id\":\"request-signing-creative\",\"name\":\"Request signing vector\",\"format_kind\":\"image\",\"assets\":{}}]}"
   },
   "verifier_capability": {
     "supported": true,
