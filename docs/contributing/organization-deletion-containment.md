@@ -6,10 +6,13 @@ description: Why direct organization deletion is unavailable, which routes are c
 # Organization deletion containment (#6827)
 
 Self-service `DELETE /api/organizations/:orgId` and administrative force-delete
-`DELETE /api/admin/accounts/:orgId` are temporarily unavailable. This is a
-containment slice, not closure of #6827 or a safe organization deletion service.
+`DELETE /api/admin/accounts/:orgId` are temporarily unavailable, and so is
+organization merge, which deleted an organization as its final step. These are
+containment slices, not closure of #6827 or a safe organization deletion service.
 
-Requests reaching either handler receive HTTP **503** with the stable body:
+Requests reaching either delete handler receive HTTP **503** with the stable body
+below. Organization merge is contained too, with its own code and behind
+administrative authentication — see the merge section further down.
 
 ```json
 {
@@ -29,6 +32,10 @@ key, tenant API key, development session, credential grant, matching email/domai
 subscription status, confirmation text, `force` parameter, or linked canonical
 sibling. Unknown IDs receive the same response. Repeated calls perform no work;
 there is no operation ID or retry schedule because no operation was accepted.
+
+Everything in this section describes the two DELETE routes. The contained merge
+route runs *after* `requireGlobalAdmin`, so none of the anonymous-reachability
+properties below apply to it.
 
 Global parsing, CSRF protection and ordinary request metrics remain in place.
 A parser or CSRF rejection may precede the 503, and the global JSON body parser
@@ -119,29 +126,122 @@ the schema. What the demonstration established about the parent tree:
   Any future lifecycle design must inventory this edge rather than assume the
   foreign-key graph cleans it up.
 
-## Deletion writers this containment does NOT cover
+## Organization merge: contained by the follow-up
 
-This slice contains two routes, not the capability. Organization deletion is
-still reachable today through organization merge, which has the same split-state
-shape this document describes as removed:
+Organization merge was the remaining organization-deletion writer. It is now
+contained too, on the same terms and with the same stable shape.
 
-- `POST /api/admin/cleanup/merge` (`server/src/routes/admin/cleanup.ts`), and
-- the Addie `merge_organizations` admin tool
-  (`server/src/addie/mcp/admin-tools.ts`), which dispatches the same work from
-  natural language with no typed-name confirmation.
+Merge deleted the secondary organization: `mergeOrganizations`
+(`server/src/db/org-merge-db.ts`) removed the local organization row inside its
+transaction, committed, and only then attempted
+`workos.organizations.deleteOrganization`, downgrading a provider failure to a
+warning while still reporting success. The Addie path attempted the provider
+delete twice — once inside `mergeOrganizations` and again at step 4 of the tool
+handler — and interleaved WorkOS membership creation in the primary organization
+between the local commit and that second attempt, so its unknown-outcome surface
+was strictly larger than the HTTP route's.
 
-Both call `mergeOrganizations` (`server/src/db/org-merge-db.ts`), which deletes
-the secondary organization's local row inside the transaction, commits, and only
-then attempts `workos.organizations.deleteOrganization`, downgrading a provider
-failure to a warning while still reporting success. That is the same live
-provider organization with deleted local state, plus a durable audit row
-asserting the merge. The Addie path attempts the provider delete twice — once
-inside `mergeOrganizations` and again at step 4 of the tool handler — and
-interleaves WorkOS membership creation in the primary organization between the
-local commit and that second attempt, so its unknown-outcome surface is strictly
-larger than the HTTP merge route's. Both entry points are admin-gated. All of
-this predates the containment and is out of its scope; closing it needs its own
-reviewed change and is tracked separately under #6827.
+Both entry points now refuse before any merge-specific effect:
+
+- `POST /api/admin/cleanup/merge` (`server/src/routes/admin/cleanup.ts`) returns
+  HTTP **503** with the stable body below. Administrative gating is deliberately
+  **unchanged** — `requireGlobalAdmin` still authenticates and authorizes, unlike
+  the contained deletion routes, because nothing here needs to run before
+  authentication. The refusal precedes body validation and every merge-specific
+  effect.
+- The Addie `merge_organizations` tool refuses execution before it reads provider
+  memberships, and no longer acquires a WorkOS client at all on that path — the
+  client is now constructed inside the read-only preview branch rather than at
+  handler entry. The refusal names the stable code, points at preview, and tells
+  the model not to improvise a manual database or WorkOS workaround.
+
+```json
+{
+  "error": "organization_merge_unavailable",
+  "message": "Organization merge is temporarily unavailable."
+}
+```
+
+`mergeOrganizations` itself refuses at the shared service boundary, throwing
+`OrganizationMergeUnavailableError` with the same stable code before `getPool()`,
+before `pool.connect()` and before `BEGIN`. That is defense in depth: an
+overlooked caller, a new caller, or a script that bypasses both entry points
+still cannot execute the sequence. The previous implementation was removed rather
+than left unreachable behind the guard, because that sequence *is* the hazard —
+re-enabling merge has to be a new reviewed implementation meeting the acceptance
+requirements below, not the deletion of a guard.
+
+After this follow-up there are **no production call sites of
+`workos.organizations.deleteOrganization` left in `server/src`**, so no server
+route, tool or service calls the provider's organization-delete operation. The
+claim is about SDK call sites; it is not a general statement about every request
+this server can construct.
+
+### Operator bypasses closed alongside the route and tool
+
+A containment that only covers routes and services is one an operator can walk
+around. Two checked-in surfaces handed them the prohibited operation:
+
+- `scripts/incidents/2026-05-cleanup-duplicate-prospect-stubs.ts` deleted
+  duplicate organization rows with direct SQL, and its own header reasoned from
+  the absence of an admin delete endpoint that a script was the sanctioned
+  route. Its destructive path is removed: it no longer imports a database
+  client, issues no writes, and `--execute` hard-refuses before any other
+  statement runs. The read-only analysis and report are preserved.
+- The `unique-org-per-email-domain` invariant emitted a ready-to-paste raw SQL
+  delete with the organization ID already filled in, and pointed at a merge
+  endpoint that does not exist. Its `remediation_hint` now routes to read-only
+  `preview-merge` inspection plus escalation, and names both containment codes.
+
+`server/tests/unit/organization-delete-statement-guard.test.ts` is the static
+guard for this: it scans the JavaScript, TypeScript and SQL files under
+`server/src`, `server/scripts` and `scripts` for a raw organization delete and
+fails on anything outside a small allowlist that records
+why each remaining occurrence is not operator-reachable. Re-introducing a bypass
+now requires a deliberate, reviewed edit to that allowlist.
+
+### Remaining honest limitations
+
+- **Merge preview stays available and is genuinely read-only.**
+  `previewMerge` and `GET /api/admin/cleanup/preview-merge` issue only SELECT and
+  COUNT statements. Preview still projects what a merge *would* move, including
+  that the secondary organization would be deleted from WorkOS. The tool's
+  WorkOS section uses conditional wording; the existing Stripe and data-movement
+  warnings are unchanged. The tool output states that execution will refuse.
+- **Three code paths still contain a raw organization delete, none of them a
+  deletion service** — all three are recorded in the static guard's allowlist.
+  `OrganizationDatabase.deleteOrganization`
+  (`server/src/db/organization-db.ts`) has no callers and predates this work.
+  Prospect creation (`server/src/services/prospect.ts`) removes the row it
+  inserted moments earlier in the same call when the domain link conflicts; it
+  never removes a pre-existing organization, but it does leave the WorkOS
+  organization it had just created behind. That orphan is a pre-existing
+  creation-rollback gap, not an organization-deletion path, and is out of scope.
+  `server/scripts/setup-sandbox.ts` seeds and tears down a local sandbox; it is
+  bounded to `org_aao_sandbox_*` IDs and refuses to run unless
+  `STRIPE_SECRET_KEY` is `sk_test_*`, so it never touches production data. It is
+  documented and allowlisted rather than changed.
+- **The `merge_organizations` tool's declared description and usage hints are
+  unchanged.** They still read "Destructive, cannot be undone" and "Preview
+  first, then execute with `preview=false`", which is now misleading. Changing
+  them is a one-line edit, but `scripts/addie-tool-surface-budget.json` pins a
+  reviewed profile-contract hash over every declared tool profile — it hashes
+  the whole profile set, including each profile's wire-schema digest, so a
+  one-word description edit invalidates it — and re-blessing that hash is its own
+  review decision rather than something to fold into a containment commit. The
+  runtime refusal is the authoritative guard in the meantime: an execution
+  attempt refuses without effect. Follow-up: update both strings, regenerate with
+  `npm run build:addie-tools`, and re-bless the contract hash under its own
+  review.
+- **Admin UI copy still offers merge.** The merge controls in
+  `admin-data-cleanup.html`, `admin-domain-health.html` and
+  `admin-account-detail.html` surface the unavailable message correctly (each
+  throws on a non-OK response and renders `message`), but the surrounding copy
+  still promises a merge. Same known follow-up as the deletion modal below.
+- **Not in scope here:** member merge and member migration, domain reassignment,
+  and every read-only inspection surface. User and identity merge
+  (`server/src/db/user-merge-db.ts`) is separately contained under
+  `identity_mutation_disabled`. None of them deletes an organization.
 
 ## Operator handling while deletion is unavailable
 
@@ -182,6 +282,8 @@ flag, migration alone, best-effort rollback, or an in-memory lock is insufficien
 | Independent qualification | Mounted cookie/JWT/API-key, selector, linked A/B and exact role tests; real disposable PostgreSQL failures/races; provider timeout/late completion tests; restart/replay tests; mandatory audit tests; independent review bound to the exact candidate tree; required repository checks. Controlled doubles alone do not prove live provider semantics. |
 
 No lifecycle journal, migration, deletion worker, compensation or reconciliation
-implementation is introduced by this containment. Historic authority repair and
-other #6827 surfaces remain separate work. Enabling deletion requires a new
-reviewed change after the complete lifecycle contract is accepted.
+implementation is introduced by this containment, and none is introduced by the
+merge follow-up. Historic authority repair and other #6827 surfaces remain
+separate work. Enabling organization deletion — whether directly or through
+merge — requires a new reviewed change after the complete lifecycle contract
+above is accepted.

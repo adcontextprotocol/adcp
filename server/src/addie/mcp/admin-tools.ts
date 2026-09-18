@@ -114,11 +114,11 @@ import {
   type MembershipInvite,
 } from "../../db/membership-invites-db.js";
 import { sendMembershipInviteEmail } from "../../notifications/email.js";
+import { previewMerge } from "../../db/org-merge-db.js";
 import {
-  mergeOrganizations,
-  previewMerge,
-  type StripeCustomerResolution,
-} from "../../db/org-merge-db.js";
+  ORGANIZATION_MERGE_UNAVAILABLE_ERROR,
+  ORGANIZATION_MERGE_UNAVAILABLE_MESSAGE,
+} from "../../db/org-merge-containment.js";
 import { getWorkos } from "../../auth/workos-client.js";
 import {
   invalidateSlackAdminStatusCache,
@@ -7194,14 +7194,12 @@ Use add_committee_leader to assign a leader.`;
 
   // Merge organizations
   handlers.set("merge_organizations", async (input) => {
-    const workos = getWorkos();
-
     const primaryOrgId = input.primary_org_id as string;
     const secondaryOrgId = input.secondary_org_id as string;
     const preview = input.preview !== false; // Default to preview mode for safety
-    const stripeCustomerResolution = input.stripe_customer_resolution as
-      | StripeCustomerResolution
-      | undefined;
+    // stripe_customer_resolution is still accepted by the tool schema but is
+    // only meaningful to merge execution, which is contained (#6827). Preview
+    // reports the conflict; nothing resolves it.
 
     if (!primaryOrgId || !secondaryOrgId) {
       return "❌ Both primary_org_id and secondary_org_id are required.";
@@ -7213,7 +7211,11 @@ Use add_committee_leader to assign a leader.`;
 
     try {
       if (preview) {
-        // Preview mode - show what would be merged
+        // Preview mode - show what would be merged.
+        // #6827: the WorkOS client is acquired here, inside the read-only
+        // branch, and not at handler entry. The contained execution path must
+        // not so much as construct or initialize a provider client.
+        const workos = getWorkos();
         const previewResult = await previewMerge(primaryOrgId, secondaryOrgId);
 
         // Also check WorkOS memberships
@@ -7259,11 +7261,11 @@ Use add_committee_leader to assign a leader.`;
         if (workosCheckFailed) {
           response += `⚠️ Could not check WorkOS memberships\n`;
         } else if (workosUserCount > 0) {
-          response += `- ${workosUserCount} user(s) will be added to the primary org in WorkOS\n`;
-          response += `- Secondary org will be deleted from WorkOS\n`;
+          response += `- ${workosUserCount} user(s) would be added to the primary org in WorkOS\n`;
+          response += `- Secondary org would be deleted from WorkOS\n`;
         } else {
           response += `- No new users to migrate in WorkOS\n`;
-          response += `- Secondary org will be deleted from WorkOS\n`;
+          response += `- Secondary org would be deleted from WorkOS\n`;
         }
 
         // Stripe customer conflict section
@@ -7296,227 +7298,44 @@ Use add_committee_leader to assign a leader.`;
         }
 
         response += `\n---\n`;
-        if (stripeConflict.requires_resolution) {
-          response += `_This is a preview. To execute the merge, call merge_organizations with preview=false and stripe_customer_resolution set._`;
-        } else {
-          response += `_This is a preview. To execute the merge, call merge_organizations again with preview=false._`;
-        }
+        // #6827: preview is read-only and stays available, but it must not
+        // instruct anyone to run the contained execution path.
+        response += `_This is a read-only preview. Merge execution is temporarily unavailable (\`${ORGANIZATION_MERGE_UNAVAILABLE_ERROR}\`, #6827), so calling with preview=false will refuse without moving data or deleting anything._`;
 
         return response;
       } else {
-        // Execute the merge
-        logger.info(
+        // #6827: merge EXECUTION is contained. Refuse before step 1's WorkOS
+        // membership reads, before the database transaction, before the
+        // provider membership writes and before the two provider organization
+        // deletes this handler used to perform. mergeOrganizations refuses
+        // again at the shared service boundary, so this early return is the
+        // honest message rather than the only guard.
+        logger.warn(
           {
             primaryOrgId,
             secondaryOrgId,
-            mergedBy: memberContext?.workos_user?.workos_user_id,
+            requestedBy: memberContext?.workos_user?.workos_user_id,
           },
-          "Admin executing org merge via Addie",
+          "Refused contained organization merge execution via Addie",
         );
 
-        // Step 1: Get users from secondary org in WorkOS before merge
-        let workosUsersToMigrate: string[] = [];
-        let workosErrors: string[] = [];
-        let secondaryRoles = new Map<string, string>();
-
-        try {
-          // Get all memberships from the secondary org in WorkOS
-          const memberships =
-            await workos.userManagement.listOrganizationMemberships({
-              organizationId: secondaryOrgId,
-              limit: 100,
-            });
-
-          // Warn if there are more than 100 members (pagination not implemented)
-          if (memberships.listMetadata?.after) {
-            workosErrors.push(
-              "Secondary org has more than 100 members - only first 100 will be migrated. Manual WorkOS cleanup may be needed.",
-            );
-          }
-
-          // Check which users are NOT already in the primary org
-          const primaryMemberships =
-            await workos.userManagement.listOrganizationMemberships({
-              organizationId: primaryOrgId,
-              limit: 100,
-            });
-          const primaryUserIds = new Set(
-            primaryMemberships.data.map((m) => m.userId),
-          );
-
-          const usersToMigrate = memberships.data.filter(
-            (m) => m.status === "active" && !primaryUserIds.has(m.userId),
-          );
-          workosUsersToMigrate = usersToMigrate.map((m) => m.userId);
-          // Preserve roles from secondary org so owners/admins keep their role
-          secondaryRoles = new Map(
-            usersToMigrate.map((m) => [m.userId, m.role?.slug || "member"]),
-          );
-
-          logger.info(
-            { count: workosUsersToMigrate.length, secondaryOrgId },
-            "Found WorkOS users to migrate",
-          );
-        } catch (err) {
-          logger.warn(
-            { error: err, secondaryOrgId },
-            "Failed to fetch WorkOS memberships (will continue with DB merge)",
-          );
-          workosErrors.push(
-            "Could not fetch WorkOS memberships - manual WorkOS cleanup may be needed",
-          );
-        }
-
-        // Step 2: Execute the database merge
-        const mergedBy =
-          memberContext?.workos_user?.workos_user_id || "addie-admin";
-        const result = await mergeOrganizations(
-          primaryOrgId,
-          secondaryOrgId,
-          mergedBy,
-          workos,
-          stripeCustomerResolution ? { stripeCustomerResolution } : undefined,
-        );
-
-        // Step 3: Add users to primary org in WorkOS
-        let workosAdded = 0;
-        let workosSkipped = 0;
-
-        for (const userId of workosUsersToMigrate) {
-          try {
-            const roleSlug = secondaryRoles.get(userId) || "member";
-            await workos.userManagement.createOrganizationMembership({
-              userId,
-              organizationId: primaryOrgId,
-              roleSlug,
-            });
-            workosAdded++;
-            logger.debug(
-              { userId, primaryOrgId },
-              "Added user to primary org in WorkOS",
-            );
-          } catch (err: any) {
-            // User might already be in org (race condition) or other error
-            if (err?.code === "organization_membership_already_exists") {
-              workosSkipped++;
-            } else {
-              logger.warn(
-                { error: err, userId },
-                "Failed to add user to primary org in WorkOS",
-              );
-              workosErrors.push(`Failed to add user ${userId} to WorkOS org`);
-            }
-          }
-        }
-
-        // Step 4: Delete the secondary org from WorkOS
-        let workosOrgDeleted = false;
-        try {
-          await workos.organizations.deleteOrganization(secondaryOrgId);
-          workosOrgDeleted = true;
-          logger.info({ secondaryOrgId }, "Deleted secondary org from WorkOS");
-        } catch (err) {
-          logger.warn(
-            { error: err, secondaryOrgId },
-            "Failed to delete secondary org from WorkOS",
-          );
-          workosErrors.push(
-            `Failed to delete secondary org from WorkOS (ID: ${secondaryOrgId}) - manual cleanup required`,
-          );
-        }
-
-        let response = `## Merge Complete ✅\n\n`;
-        response += `Successfully merged **${result.secondary_org_id}** into **${result.primary_org_id}**.\n\n`;
-
-        response += `### Data Moved\n`;
-        const totalMoved = result.tables_merged.reduce(
-          (sum, t) => sum + t.rows_moved,
-          0,
-        );
-        const totalSkipped = result.tables_merged.reduce(
-          (sum, t) => sum + (t.rows_skipped_duplicate ?? 0),
-          0,
-        );
-
-        for (const table of result.tables_merged) {
-          const skipped = table.rows_skipped_duplicate ?? 0;
-          if (table.rows_moved > 0 || skipped > 0) {
-            response += `- **${table.table_name}**: ${table.rows_moved} moved`;
-            if (skipped > 0) {
-              response += ` (${skipped} skipped as duplicates)`;
-            }
-            response += `\n`;
-          }
-        }
-
-        response += `\n**Total:** ${totalMoved} rows moved, ${totalSkipped} duplicates skipped\n`;
-
-        // WorkOS sync results
-        if (
-          workosUsersToMigrate.length > 0 ||
-          workosOrgDeleted ||
-          workosErrors.length > 0
-        ) {
-          response += `\n### WorkOS Sync\n`;
-          if (workosAdded > 0) {
-            response += `- ✅ Added ${workosAdded} user(s) to primary org in WorkOS\n`;
-          }
-          if (workosSkipped > 0) {
-            response += `- ⏭️ Skipped ${workosSkipped} user(s) (already in primary org)\n`;
-          }
-          if (workosOrgDeleted) {
-            response += `- 🗑️ Deleted secondary org from WorkOS\n`;
-          }
-        }
-
-        // Stripe customer action
-        if (
-          result.stripe_customer_action &&
-          result.stripe_customer_action !== "none"
-        ) {
-          response += `\n### Stripe\n`;
-          switch (result.stripe_customer_action) {
-            case "kept_primary":
-              response += `- ✅ Kept primary org's Stripe customer\n`;
-              break;
-            case "moved_from_secondary":
-              response += `- 🔄 Moved Stripe customer from secondary to primary org\n`;
-              break;
-            case "conflict_unresolved":
-              response += `- ⚠️ Both Stripe customers were unlinked - manual linking required\n`;
-              break;
-          }
-        }
-
-        if (result.prospect_notes_merged) {
-          response += `\n📝 Prospect notes were merged.\n`;
-        }
-
-        if (result.enrichment_data_preserved) {
-          response += `📊 Enrichment data was preserved from the secondary organization.\n`;
-        }
-
-        // Combine all warnings
-        const allWarnings = [...result.warnings, ...workosErrors];
-        if (allWarnings.length > 0) {
-          response += `\n### Warnings\n`;
-          for (const warning of allWarnings) {
-            response += `⚠️ ${warning}\n`;
-          }
-        }
-
-        response += `\nThe secondary organization has been deleted.`;
+        let response = `❌ ${ORGANIZATION_MERGE_UNAVAILABLE_MESSAGE} (\`${ORGANIZATION_MERGE_UNAVAILABLE_ERROR}\`, #6827)\n\n`;
+        response += `Merging deletes the secondary organization, and that lifecycle is unavailable until it has a durable operation journal and an exact reconciliation contract (#6827). No data was moved, no organization was deleted and nothing was left half-applied.\n\n`;
+        response += `Preview still works: call \`merge_organizations\` with \`preview=true\` to see what a merge would move.\n\n`;
+        response += `Do not substitute a manual database edit, a direct WorkOS deletion or any other workaround — each reproduces the split provider/local state this containment exists to prevent. Escalate duplicate-organization cleanup to the engineering owner of #6827 instead.`;
 
         return response;
       }
     } catch (error) {
+      // Only the read-only preview branch can throw now; the contained
+      // execution branch returns its refusal without calling anything.
       logger.error(
         { error, primaryOrgId, secondaryOrgId },
-        "Error merging organizations",
+        "Error previewing organization merge",
       );
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
-      return `❌ Failed to merge organizations: ${errorMessage}`;
+      return `❌ Failed to preview the organization merge: ${errorMessage}`;
     }
   });
 

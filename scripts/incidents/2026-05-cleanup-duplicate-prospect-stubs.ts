@@ -1,6 +1,7 @@
 /**
- * Cleanup duplicate prospect-stub org rows surfaced by the
- * `unique-org-per-email-domain` invariant.
+ * Report duplicate prospect-stub org rows surfaced by the
+ * `unique-org-per-email-domain` invariant. Reporting only — see the #6827 note
+ * below; this script used to delete them and no longer does.
  *
  * Background — May 2026 audit: the April-20 prospect import re-ran without
  * dedup, creating a second `prospect`/0-member row for ~60 companies that
@@ -8,34 +9,58 @@
  * (no stripe_customer_id, no agreement, no announcement, no subscription)
  * but clutters admin search and breaks domain-keyed automation.
  *
- * Strategy:
- *   1. Run the invariant via the admin API to get the duplicate list.
- *   2. For each pair, ONLY delete the duplicate when it's *fully empty*:
+ * #6827: THIS SCRIPT NO LONGER DELETES ANYTHING. It is read-only analysis.
+ *
+ * It previously deleted duplicate organization rows with direct SQL, reasoning
+ * from the absence of an admin delete endpoint that a script was the sanctioned
+ * route. That is exactly backwards. Organization deletion and organization merge
+ * are contained under #6827 because removing an organization locally while its
+ * WorkOS organization survives is the split provider/local state the containment
+ * exists to prevent — and a script bypasses the containment, the audit trail and
+ * the reconciliation contract all at once. An operator bypass is still a bypass.
+ *
+ * What it does now:
+ *   1. Runs the invariant via the admin API to get the duplicate list.
+ *   2. Classifies each pair and reports which duplicates are fully empty stubs
  *        - 0 organization_memberships
  *        - stripe_customer_id IS NULL
  *        - subscription_status IS NULL or 'none'
- *      i.e., a true stub. Anything richer (members, Stripe link) needs
- *      a manual merge call, not a delete — surface it and skip.
- *   3. Delete via direct SQL; there's no admin DELETE-org endpoint by
- *      design (org deletion is destructive enough that it doesn't have
- *      a normal admin surface).
+ *      versus which carry members or Stripe state.
+ *   3. Stops. It opens no database connection and issues no writes. `--execute`
+ *      hard-refuses before any connection is made.
  *
- * Defaults to --dry-run. Pass --execute to actually run the deletes.
- *
- * Usage:
+ * Usage (read-only; no DATABASE_URL needed or used):
  *   ADMIN_BASE_URL=https://agenticadvertising.org \
  *   ADMIN_API_KEY=... \
- *   DATABASE_URL=postgres://... \
  *   npx tsx scripts/incidents/2026-05-cleanup-duplicate-prospect-stubs.ts
  *
- *   # ...then with --execute once the dry-run output looks sane.
+ * Hand the report to the engineering owner of #6827. Do not delete or edit the
+ * rows by hand.
  */
 
-import { Client } from 'pg';
+// #6827 containment, before anything else runs: refuse the destructive mode
+// outright. This precedes every network call and every database connection —
+// the script no longer even imports a database client — so there is no path
+// from this flag to a mutation.
+if (process.argv.includes('--execute')) {
+  console.error(
+    'organization_deletion_unavailable: --execute is refused.\n' +
+    '\n' +
+    'This script used to delete duplicate organization rows with direct SQL.\n' +
+    'Organization deletion and organization merge are contained under #6827\n' +
+    'because deleting an organization locally while its WorkOS organization\n' +
+    'survives is the split provider/local state the containment prevents.\n' +
+    'A script bypass is still a bypass, so the destructive path was removed.\n' +
+    '\n' +
+    'Run without --execute for the read-only report, then escalate to the\n' +
+    'engineering owner of #6827. Do not delete or edit the rows by hand.\n' +
+    'See docs/contributing/organization-deletion-containment.md.',
+  );
+  process.exit(1);
+}
 
 const ADMIN_BASE_URL = process.env.ADMIN_BASE_URL?.replace(/\/+$/, '');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
-const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!ADMIN_BASE_URL) {
   console.error('ADMIN_BASE_URL not set (e.g. https://agenticadvertising.org)');
@@ -45,13 +70,6 @@ if (!ADMIN_API_KEY) {
   console.error('ADMIN_API_KEY not set');
   process.exit(1);
 }
-if (!DATABASE_URL) {
-  console.error('DATABASE_URL not set — required for direct SQL deletes');
-  process.exit(1);
-}
-
-const execute = process.argv.includes('--execute');
-const dryRun = !execute;
 
 interface Violation {
   invariant: string;
@@ -93,7 +111,7 @@ async function adminGet<T>(path: string): Promise<T> {
 }
 
 async function main(): Promise<void> {
-  console.log(`Mode: ${dryRun ? 'DRY RUN' : 'EXECUTE'}`);
+  console.log('Mode: READ-ONLY REPORT (#6827 containment; no execute mode exists)');
   console.log(`Admin: ${ADMIN_BASE_URL}\n`);
 
   console.log('Running unique-org-per-email-domain invariant...');
@@ -107,13 +125,15 @@ async function main(): Promise<void> {
   console.log(`Found ${violations.length} duplicate org row(s).\n`);
   if (violations.length === 0) return;
 
-  // Partition into deletable (truly empty) vs. needs-manual-merge.
-  const deletable: Violation[] = [];
-  const needsMerge: Violation[] = [];
+  // Partition into truly-empty stubs vs. duplicates carrying state. Neither
+  // bucket is actionable here: organization merge and deletion are both
+  // contained (#6827), so both are reported and escalated, not resolved.
+  const emptyStubs: Violation[] = [];
+  const nonEmptyDuplicates: Violation[] = [];
   for (const v of violations) {
     const dup = v.details?.duplicate;
     if (!dup) {
-      needsMerge.push(v);
+      nonEmptyDuplicates.push(v);
       continue;
     }
     const isEmpty =
@@ -121,18 +141,18 @@ async function main(): Promise<void> {
       !dup.has_stripe_customer &&
       !dup.has_active_subscription;
     if (isEmpty) {
-      deletable.push(v);
+      emptyStubs.push(v);
     } else {
-      needsMerge.push(v);
+      nonEmptyDuplicates.push(v);
     }
   }
 
-  console.log(`  Truly empty stubs (safe to delete): ${deletable.length}`);
-  console.log(`  Non-empty duplicates (need manual merge): ${needsMerge.length}\n`);
+  console.log(`  Truly empty stubs (report only): ${emptyStubs.length}`);
+  console.log(`  Non-empty duplicates (escalate, do not consolidate): ${nonEmptyDuplicates.length}\n`);
 
-  if (needsMerge.length > 0) {
-    console.log('=== Needs manual merge (NOT touched by this script) ===');
-    for (const v of needsMerge) {
+  if (nonEmptyDuplicates.length > 0) {
+    console.log('=== Non-empty duplicates (escalate to the #6827 owner) ===');
+    for (const v of nonEmptyDuplicates) {
       const d = v.details?.duplicate;
       const k = v.details?.keeper;
       console.log(
@@ -144,101 +164,28 @@ async function main(): Promise<void> {
     console.log();
   }
 
-  if (deletable.length === 0) {
-    console.log('No empty stubs to delete.');
+  if (emptyStubs.length === 0) {
+    console.log('No empty stubs found.');
     return;
   }
 
-  console.log('=== Deletable empty stubs ===');
-  for (const v of deletable) {
+  console.log('=== Empty stubs (reportable only — consolidation is contained) ===');
+  for (const v of emptyStubs) {
     const d = v.details?.duplicate;
     const k = v.details?.keeper;
     console.log(
-      `  DELETE ${d?.workos_organization_id} "${d?.name}" ` +
+      `  ${d?.workos_organization_id} "${d?.name}" ` +
       `(domain=${v.details?.email_domain}, keeper=${k?.workos_organization_id})`,
     );
   }
   console.log();
 
-  if (dryRun) {
-    console.log('Dry run — no deletes issued. Pass --execute to delete.');
-    return;
-  }
-
-  // Direct SQL delete. Uses a transaction with safety re-checks: even
-  // though the invariant said the row is empty NOW, between the read and
-  // the delete a member could have joined or Stripe could have linked.
-  // Re-verify inside the txn before deleting so a mid-flight write isn't
-  // silently dropped.
-  const client = new Client({ connectionString: DATABASE_URL });
-  await client.connect();
-  let deleted = 0;
-  let skipped = 0;
-  let failed = 0;
-  try {
-    for (const v of deletable) {
-      const orgId = v.details?.duplicate?.workos_organization_id;
-      if (!orgId) {
-        skipped++;
-        continue;
-      }
-      try {
-        await client.query('BEGIN');
-        const verifyResult = await client.query<{
-          mc: number;
-          stripe_customer_id: string | null;
-          subscription_status: string | null;
-        }>(
-          `SELECT
-             (SELECT COUNT(*)::int FROM organization_memberships om
-                WHERE om.workos_organization_id = o.workos_organization_id) AS mc,
-             o.stripe_customer_id, o.subscription_status
-           FROM organizations o
-           WHERE o.workos_organization_id = $1
-           FOR UPDATE`,
-          [orgId],
-        );
-        const r = verifyResult.rows[0];
-        if (!r) {
-          console.log(`  ~ ${orgId}: no longer exists, skipping`);
-          await client.query('ROLLBACK');
-          skipped++;
-          continue;
-        }
-        const stillEmpty =
-          r.mc === 0 &&
-          r.stripe_customer_id === null &&
-          (r.subscription_status === null || r.subscription_status === 'none');
-        if (!stillEmpty) {
-          console.log(
-            `  ~ ${orgId}: not empty anymore (mc=${r.mc}, ` +
-            `stripe=${r.stripe_customer_id}, sub=${r.subscription_status}) — skipping`,
-          );
-          await client.query('ROLLBACK');
-          skipped++;
-          continue;
-        }
-        await client.query(
-          'DELETE FROM organizations WHERE workos_organization_id = $1',
-          [orgId],
-        );
-        await client.query('COMMIT');
-        console.log(`  ✓ ${orgId} deleted`);
-        deleted++;
-      } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
-        console.log(
-          `  ✗ ${orgId} failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        failed++;
-      }
-    }
-  } finally {
-    await client.end();
-  }
-
   console.log(
-    `\nDeleted ${deleted}, skipped ${skipped}, failed ${failed}, total ${deletable.length}.`,
+    'Read-only report only — no deletes are issued and no database connection\n' +
+    'is opened. Organization deletion and organization merge are contained\n' +
+    'under #6827 (organization_deletion_unavailable / organization_merge_unavailable).\n' +
+    'Hand this list to the engineering owner of #6827; do not delete or edit the\n' +
+    'rows by hand, and do not re-add a direct SQL path here.',
   );
 }
 
