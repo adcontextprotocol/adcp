@@ -614,7 +614,7 @@ const ARTICLE_MARKDOWN_SANITIZE_CONFIG = {
   ],
   ALLOWED_ATTR: ['href', 'src', 'alt', 'title'],
   ALLOW_DATA_ATTR: false,
-  ALLOWED_URI_REGEXP: /^(?:https:|\/(?!\/)|#)/i,
+  ALLOWED_URI_REGEXP: /^(?:https?:|\/(?!\/)|#)/i,
 };
 
 function renderArticleMarkdown(markdown: string | null, cacheKey: string): string {
