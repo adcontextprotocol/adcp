@@ -4,6 +4,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
+const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 
@@ -297,6 +298,12 @@ describe('reporting.core fixture: a polling-only seller implements Core', () => 
       assert.equal(validateStatus(response), true, `${state}: ${JSON.stringify(validateStatus.errors)}`);
     }
   });
+
+  for (const { name, valid, response } of reportingSummaryCases()) {
+    it(`complete summary contract: ${name}`, () => {
+      assert.equal(validateStatus(response), valid, JSON.stringify(validateStatus.errors));
+    });
+  }
 
   it('accepts a healthy Core obligation with no destination, materialization, or receipt fields', () => {
     const coreObligation = {

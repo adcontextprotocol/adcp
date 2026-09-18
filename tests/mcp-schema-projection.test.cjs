@@ -10,6 +10,7 @@ const AjvDraft07 = require('ajv');
 const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
 const yaml = require('js-yaml');
+const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 const {
   normalizeSubstitutions,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
@@ -122,6 +123,35 @@ function createValidator(AjvClass) {
   addFormats(ajv);
   return ajv;
 }
+
+test('complete reporting summary vectors agree across canonical, bundled, and MCP profiles', async t => {
+  const schemaPath = 'media-buy/get-reporting-status-response.json';
+  const variants = [
+    [schemaPath, AjvDraft07],
+    [`bundled/${schemaPath}`, AjvDraft07],
+    [`mcp/${MCP_PROTOCOL_VERSION}/${schemaPath}`, Ajv2020],
+    [`mcp/${MCP_PROTOCOL_VERSION}/profiles/production/${schemaPath}`, Ajv2020],
+    [`mcp/${MCP_PROTOCOL_VERSION}/profiles/media-buy/${schemaPath}`, Ajv2020],
+  ];
+  for (const [relativePath, AjvClass] of variants) {
+    await t.test(relativePath, async () => {
+      const ajv = new AjvClass({
+        strict: false,
+        allErrors: true,
+        loadSchema: async uri => {
+          const prefix = 'https://adcontextprotocol.org/schemas/latest/';
+          assert.ok(uri.startsWith(prefix), `Unexpected generated reference: ${uri}`);
+          return readJson(path.join(LATEST_DIR, uri.slice(prefix.length)));
+        },
+      });
+      addFormats(ajv);
+      const validate = await ajv.compileAsync(readJson(path.join(LATEST_DIR, relativePath)));
+      for (const { name, valid, response } of reportingSummaryCases()) {
+        assert.equal(validate(response), valid, `${name}: ${JSON.stringify(validate.errors)}`);
+      }
+    });
+  }
+});
 
 function walkYamlFiles(directory) {
   const files = [];
