@@ -56,7 +56,6 @@ track: creative
 introduced_in: "3.2"
 required_tools:
   - validate_input
-  - comply_test_controller
 
 requires:
   - controller
