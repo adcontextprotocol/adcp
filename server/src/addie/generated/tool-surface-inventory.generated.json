@@ -71,7 +71,7 @@
     "server/src/addie/prompt-assembly.ts": "6c002ae5a52cdd26e13f424f6e00757dff163b3b273a1b4ab069fdb86f4f375f",
     "server/src/addie/register-baseline-tools.ts": "52893917fa19fa8904e1667857a7c4bfc2dc90bd3341e60d1ff45a40400d17aa",
     "server/src/addie/bolt-app.ts": "cb1b76808654a295064cbd8b7dc580e17b9c4a54f80e882543cff5c15086632f",
-    "server/src/routes/addie-chat.ts": "f5900c611bb712f34a3e63b4639701cb3040e2b41147255f9819cce34a6415b8",
+    "server/src/routes/addie-chat.ts": "07b2c6d84f194b2e270172499aa358eadda308f6b0a7a4265c3326f2ea77f250",
     "server/src/routes/tavus.ts": "34d86376f5a01a6710fa385ab15181f946e81f5f9baecedc588e84756cecffd1",
     "server/src/addie/email-conversation-handler.ts": "d6cf6d3c8621a85c69c6b22b86e6aa78f03b0d532ac8d5162fd40ec6c869f70c",
     "server/src/mcp/chat-tool.ts": "a6bbde38fda11337a899fc92b8cabc3617377ae7c648609f34fae098f138f87e",
