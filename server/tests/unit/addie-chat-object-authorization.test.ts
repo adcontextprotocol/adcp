@@ -243,7 +243,10 @@ import {
   resolveThreadCertificationProgress,
   prepareRequestWithMemberTools,
 } from '../../src/routes/addie-chat.js';
-import { issueAnonymousSessionCapability } from '../../src/routes/helpers/anonymous-session-capability.js';
+import {
+  issueAnonymousSessionCapability,
+  verifyAnonymousSessionCapability,
+} from '../../src/routes/helpers/anonymous-session-capability.js';
 import * as geminiExperiment from '../../src/addie/gemini-direct-experiment.js';
 import { getToolsForSets } from '../../src/addie/tool-sets.js';
 
@@ -537,6 +540,12 @@ describe('Addie chat conversation object authorization', () => {
     expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_anonymous', { limit: 100 });
     expect(mocks.addMessage).toHaveBeenCalledTimes(2);
     expect(mocks.processMessage).toHaveBeenCalledOnce();
+    const renewed = response.headers['set-cookie']?.[0]
+      ?.match(/addie-anonymous-owner=([^;]+)/)?.[1];
+    expect(renewed).toBeDefined();
+    expect(verifyAnonymousSessionCapability(
+      renewed, 'addie-web-thread-owner', ownerId,
+    )).not.toBeNull();
   });
 
   it('wires the synchronous web path through a durable mutation reservation before dispatch', async () => {
@@ -574,20 +583,30 @@ describe('Addie chat conversation object authorization', () => {
       user_id: ownerId,
     });
     const capability = issueAnonymousSessionCapability('addie-web-thread-owner', ownerId);
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn');
 
-    const response = await request(mountChatRouter())
-      .post('/')
-      .set('Cookie', `addie-anonymous-owner=${capability}`)
-      .send({
-        message: 'Continue after signing in',
-        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
-      });
+    try {
+      const response = await request(mountChatRouter())
+        .post('/')
+        .set('Cookie', `addie-anonymous-owner=${capability}`)
+        .send({
+          message: 'Continue after signing in',
+          conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+        });
 
-    expect(response.status).toBe(200);
-    expect(mocks.claimAnonymousThread).toHaveBeenCalledWith(
-      'thread_anonymous', ownerId, 'user_attacker', 'Attacker',
-    );
-    expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_anonymous', { limit: 100 });
+      expect(response.status).toBe(200);
+      expect(mocks.claimAnonymousThread).toHaveBeenCalledWith(
+        'thread_anonymous', ownerId, 'user_attacker', 'Attacker',
+      );
+      expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_anonymous', { limit: 100 });
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({
+        anonymousOwnerId: ownerId,
+        anonymousOrigin: true,
+        userId: 'user_attacker',
+      }));
+    } finally {
+      prepare.mockRestore();
+    }
   });
 
   it('denies an authenticated caller access to an anonymous thread before effects', async () => {
@@ -668,7 +687,7 @@ describe('Addie chat conversation object authorization', () => {
         requested_model: 'gemini-3.7-flash', provider: 'google' as const, model: 'gemini-3.7-flash',
         model_resolution: 'exact' as const, fallback_reason: null },
     };
-    const finish = vi.fn();
+    const markDelivery = vi.fn();
     const candidate = {
       processMessage: vi.fn().mockResolvedValue(response),
       processMessageStream: vi.fn(async function* () {
@@ -680,7 +699,7 @@ describe('Addie chat conversation object authorization', () => {
       client: candidate, model: 'gemini-3.7-flash',
       selection: { requestTools: { tools: [], handlers: new Map() }, allowedToolNames: ['search_docs'],
         selectedToolSets: ['knowledge'], unavailableHint: 'Available docs.' },
-      experiment: { finish },
+      experiment: { markDelivery },
     } as unknown as Awaited<ReturnType<typeof geminiExperiment.prepareGeminiDirectTurn>>);
     try {
       const res = await request(mountChatRouter()).post(endpoint).send({
@@ -695,8 +714,91 @@ describe('Addie chat conversation object authorization', () => {
       expect(res.text).toContain('\"selected\":\"gemini\"');
       expect(res.text).toContain('\"model\":\"gemini-3.7-flash\"');
       expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'user', model_preference: 'gemini' }));
-      expect(finish).toHaveBeenCalledWith(expect.objectContaining({ text: 'Gemini response' }), 'message_assistant');
+      expect(markDelivery).toHaveBeenCalledWith('completed', 'message_assistant');
     } finally { prepare.mockRestore(); }
+  });
+
+  it('records an interrupted Gemini SSE delivery separately from completion', async () => {
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489', user_type: 'workos', user_id: 'user_attacker',
+    });
+    mocks.getThreadMessages.mockResolvedValue([]);
+    const markDelivery = vi.fn();
+    const candidate = {
+      processMessage: vi.fn(),
+      processMessageStream: vi.fn(async function* () {
+        yield {
+          type: 'stream_error' as const,
+          reason: 'Provider continuation failed',
+          deltasBeforeError: 0,
+          tool_executions: [],
+        };
+      }),
+    };
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn').mockResolvedValue({
+      client: candidate, model: 'gemini-3.7-flash',
+      selection: { requestTools: { tools: [], handlers: new Map() }, allowedToolNames: [],
+        selectedToolSets: [], unavailableHint: '' },
+      experiment: { markDelivery },
+    } as unknown as Awaited<ReturnType<typeof geminiExperiment.prepareGeminiDirectTurn>>);
+    try {
+      const response = await request(mountChatRouter()).post('/stream').send({
+        message: 'Explain AdCP', conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      });
+      expect(response.status).toBe(200);
+      expect(response.text).toContain('event: stream_error');
+      expect(markDelivery).toHaveBeenCalledWith('interrupted', 'message_assistant');
+    } finally {
+      prepare.mockRestore();
+    }
+  });
+
+  it('does not downgrade completed Gemini delivery after a later SSE route error', async () => {
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489', user_type: 'workos', user_id: 'user_attacker',
+    });
+    mocks.getThreadMessages.mockResolvedValue([]);
+    mocks.getAttemptForUser.mockRejectedValueOnce(new Error('post-delivery certification lookup failed'));
+    const response = {
+      ...successfulModelResponse('Gemini response'),
+      tool_executions: [{
+        tool_name: 'complete_certification_exam',
+        parameters: { attempt_id: '6d5c9b76-1ee0-49b3-a4d4-c85963080430' },
+        result: { status: 'completed' },
+        duration_ms: 1,
+        is_error: false,
+      }],
+      model_execution: { source: 'provider' as const, requested_provider: 'google' as const,
+        requested_model: 'gemini-3.7-flash', provider: 'google' as const, model: 'gemini-3.7-flash',
+        model_resolution: 'exact' as const, fallback_reason: null },
+    };
+    const markDelivery = vi.fn();
+    const candidate = {
+      processMessage: vi.fn(),
+      processMessageStream: vi.fn(async function* () {
+        yield { type: 'text' as const, text: response.text };
+        yield { type: 'done' as const, response };
+      }),
+    };
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn').mockResolvedValue({
+      client: candidate, model: 'gemini-3.7-flash',
+      selection: { requestTools: { tools: [], handlers: new Map() }, allowedToolNames: [],
+        selectedToolSets: [], unavailableHint: '' },
+      experiment: { markDelivery },
+    } as unknown as Awaited<ReturnType<typeof geminiExperiment.prepareGeminiDirectTurn>>);
+    try {
+      const routeResponse = await request(mountChatRouter()).post('/stream').send({
+        message: 'Complete my assessment', conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      });
+      expect(routeResponse.status).toBe(200);
+      expect(routeResponse.text).toContain('event: stream_error');
+      expect(markDelivery).toHaveBeenCalledTimes(1);
+      expect(markDelivery).toHaveBeenCalledWith('completed', 'message_assistant');
+    } finally {
+      prepare.mockRestore();
+    }
   });
 
   it('returns the saved choice and actual provider on history and recovery', async () => {

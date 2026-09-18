@@ -1,7 +1,7 @@
 ---
-title: Gemini 3.7 Direct web pilot
-description: "Operate the Addie Gemini 3.7 Direct pilot, compare routing, latency, cost and outcomes, and roll back safely."
-"og:title": "AdCP — Gemini 3.7 Direct web pilot"
+title: Gemini 3.7 Direct web experiment
+description: "Operate the Addie Gemini 3.7 Direct web experiment, compare routing, latency, cost and outcomes, and roll back safely."
+"og:title": "AdCP — Gemini 3.7 Direct web experiment"
 ---
 
 Experiment `gemini-3.7-direct-v2` compares the existing web routing and response
@@ -9,25 +9,39 @@ stack (normally Luna → Sonnet, with quick matches) against Gemini 3.7 without
 an up-front router call. Both use the same authorized Addie custom-tool domains and
 shared action executor. This measures the model and tool-discovery architecture
 together. Version 2 reports separately from the earlier read-only pilot; the
-assignment key and user hash remain unchanged to preserve existing assignments.
+authenticated assignment key and user hash remain unchanged to preserve existing
+assignments. Slack remains outside this experiment.
 
 ## Rollout
 
-The runtime defaults to off. `fly.toml` selects the first stage, **staff**, on
-deployment. It sends new site-admin conversations to Gemini; it is a delivery pilot,
-not a randomized comparison. Existing conversations retain control. Once a
-thread has an assignment, it persists across workers, restarts, and percentage
-changes.
+The runtime defaults to off. `fly.toml` currently selects `eligible` for the web
+experiment. Existing conversations retain control. Once a thread has an
+assignment, it persists across workers, restarts, and percentage changes.
 
-After reviewing staff outcomes, enable the randomized cohort:
+Authenticated new web conversations use the established 50/50 cohort:
 
 ```sh
-fly secrets set -a adcp-docs ADDIE_GEMINI_DIRECT_MODE=eligible ADDIE_GEMINI_DIRECT_PERCENT=10
+fly secrets set -a adcp-docs ADDIE_GEMINI_DIRECT_MODE=eligible ADDIE_GEMINI_DIRECT_PERCENT=50
 ```
 
-This assigns 10% of authenticated users to treatment in new conversations using
-a stable user hash. The remaining eligible users are control. Staff-pilot and
-pre-existing conversation cohorts remain separate in the results.
+Anonymous new web conversations use a separate surface switch and initially
+assign 25% to treatment:
+
+```sh
+fly secrets set -a adcp-docs \
+  ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED=true \
+  ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT=25
+```
+
+Anonymous assignment uses a surface-scoped, versioned HMAC of the UUID from the
+verified signed owner capability. It never uses IP address, never stores the raw
+owner UUID in experiment telemetry, and is atomically persisted under a separate
+thread-context key. Existing unassigned threads stay in control. Saved
+assignments remain sticky across percentage changes. When an anonymous thread is
+claimed after sign-in, it keeps that assignment and reports under
+`identity_cohort=auth_transition`. Manual choices remain unavailable until the
+visitor signs in; manual, staff, existing, anonymous, authenticated, and
+auth-transition traffic remain separately reportable.
 
 Rollback takes precedence over saved assignments:
 
@@ -39,6 +53,17 @@ Fly applies these settings through a rolling restart. In-flight turns finish;
 subsequent requests on restarted workers use control. Set the mode back to
 `staff` or `eligible` to resume saved assignments. `PERCENT=0` stops enrolling
 new treatment conversations in eligible mode; use `MODE=off` for rollback.
+
+To stop only anonymous treatment without affecting authenticated randomization
+or erasing saved anonymous assignments:
+
+```sh
+fly secrets set -a adcp-docs ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED=false
+```
+
+With this switch off, a saved anonymous treatment assignment executes on the
+control model and records `surface_disabled`. Percentage controls enrollment;
+the boolean switch controls execution.
 
 ## Treatment behavior
 
@@ -68,6 +93,10 @@ new treatment conversations in eligible mode; use `MODE=off` for rollback.
   durable mutation reservations, duplicate suppression, and retry policy. Each
   completed tool result reaches the delivery checkpoint before another action.
   A failed checkpoint stops continuation.
+- Anonymous treatment retains the anonymous request's restricted tool surface,
+  five-iteration base policy, rate limiter, cost scope, output validation, and
+  JSON/SSE delivery behavior. Direct discovery can expose only tools already
+  present with executable handlers on that request.
 - Images and PDFs are passed to Google natively, including media returned by
   tools. Provider-managed Anthropic web search is not an Addie custom tool and
   is not exposed through Google's adapter; registered research/fetch tools are
@@ -177,7 +206,16 @@ While signed in as a site admin, open
 `https://agenticadvertising.org/api/addie/chat/experiment`.
 It reports users/turns, incomplete turns, failures, fallbacks, first visible
 response time, median/p95 total time, router time, estimated cost, tool errors,
-ratings, and marked resolutions, grouped by arm, cohort, and exclusion reason.
+ratings, and marked resolutions. Results are grouped by surface, identity
+cohort, assignment unit/version, arm, randomized/manual cohort, and exclusion
+reason. Do not pool authenticated and anonymous estimates: their permissions,
+base iteration budgets, cost scopes, and traffic mix differ.
+
+The durable turn record also contains delivery outcome, iteration count,
+progress-extension count, final-answer-opportunity count, final-boundary
+rejected-call count, and typed provider/local truncation fields. A null delivery
+outcome means the adapter did not establish completion and must not be counted
+as delivered.
 
 Timing starts at HTTP handler entry and includes context preparation, routing,
 tool discovery, tool execution, provider continuations, fallback, and reply

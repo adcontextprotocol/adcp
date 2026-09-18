@@ -63,7 +63,7 @@
     }
   },
   "registration_source_sha256": {
-    "server/src/addie/claude-client.ts": "97dab118df058bde08890c861840ca93e9c21578807d21cbf194157a46847de2",
+    "server/src/addie/claude-client.ts": "bf4238549623e2765d23ca94426f5f97bc717e776fe012aea5e0e8bf5d66f1e4",
     "server/src/addie/request-tool-assembly.ts": "cf4443d27ec69940f22aa9fcf46fdefd3f444762259c2700ac8fa01554ead4da",
     "server/src/addie/request-tool-replay-binding.ts": "3aed4c0bd18032e4418b8fff7e8deb263936b6c75b27941f9818a2a9a87287f2",
     "server/src/addie/prompts.ts": "3ec621f3e97eb9109fb561b94ff625a0639460c84506aa63aeebd57f683790f4",
@@ -71,7 +71,7 @@
     "server/src/addie/prompt-assembly.ts": "6c002ae5a52cdd26e13f424f6e00757dff163b3b273a1b4ab069fdb86f4f375f",
     "server/src/addie/register-baseline-tools.ts": "52893917fa19fa8904e1667857a7c4bfc2dc90bd3341e60d1ff45a40400d17aa",
     "server/src/addie/bolt-app.ts": "cb1b76808654a295064cbd8b7dc580e17b9c4a54f80e882543cff5c15086632f",
-    "server/src/routes/addie-chat.ts": "0f900263ca9a4e8bae25a6942286cb12a0ba539ca9de63632ddc67d3ca1bde4b",
+    "server/src/routes/addie-chat.ts": "07b2c6d84f194b2e270172499aa358eadda308f6b0a7a4265c3326f2ea77f250",
     "server/src/routes/tavus.ts": "34d86376f5a01a6710fa385ab15181f946e81f5f9baecedc588e84756cecffd1",
     "server/src/addie/email-conversation-handler.ts": "d6cf6d3c8621a85c69c6b22b86e6aa78f03b0d532ac8d5162fd40ec6c869f70c",
     "server/src/mcp/chat-tool.ts": "a6bbde38fda11337a899fc92b8cabc3617377ae7c648609f34fae098f138f87e",
