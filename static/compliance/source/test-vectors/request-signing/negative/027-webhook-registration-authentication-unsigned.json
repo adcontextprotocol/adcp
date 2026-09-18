@@ -10,7 +10,7 @@
       "Content-Type": "application/json",
       "Authorization": "Bearer test-bearer-token"
     },
-    "body": "{\"idempotency_key\":\"request-signing-negative-027-2026\",\"account\":{\"account_id\":\"request-signing-account\"},\"media_buy_id\":\"mb_001\",\"push_notification_config\":{\"url\":\"https://buyer.example.com/webhook\",\"authentication\":{\"schemes\":[\"HMAC-SHA256\"],\"credentials\":\"shared-secret-placeholder-00000000\"}}}"
+    "body": "{\"media_buy_id\":\"mb_001\",\"push_notification_config\":{\"url\":\"https://buyer.example.com/webhook\",\"authentication\":{\"scheme\":\"HMAC-SHA256\",\"credentials\":\"shared-secret-placeholder\"}}}"
   },
   "verifier_capability": {
     "supported": true,
