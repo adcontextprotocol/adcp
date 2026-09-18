@@ -169,6 +169,12 @@ export function clearCatalogEventStores(): void {
   performanceFeedbackStore.clear();
 }
 
+/** Clear catalog state for one caller session without affecting other runs. */
+export function clearCatalogEventStoresForSession(sessionKey: string): void {
+  catalogStore.delete(sessionKey);
+  eventSourceStore.delete(sessionKey);
+}
+
 // ── Shared schema fragment ───────────────────────────────────────
 
 const ACCOUNT_REF_SCHEMA = {
