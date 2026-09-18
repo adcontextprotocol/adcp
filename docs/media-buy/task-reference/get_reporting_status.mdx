@@ -142,8 +142,8 @@ explicit so adding a filter never silently changes the response type.
 
 Aggregate precedence is `action_required` before `delayed` before `healthy`.
 `waiting` applies only when nothing is due. `complete` requires
-`scope.scope_closed: true`; a current but open account scope is `healthy`, not
-`complete`.
+both `scope.scope_closed: true` and `scope.coverage_complete: true`; a current
+but open account scope is `healthy`, not `complete`.
 
 Health is evaluated over the exact `delivery_config_generations`, `feed_purposes`,
 finality, media buys, and time horizon echoed in `scope`. Buyers can query billing,
@@ -158,6 +158,40 @@ scope may be `complete`; this is distinct from naming an unknown or unauthorized
 `delivery_config_id`, which uses the indistinguishable unavailable-lookup response.
 This state is reachable after the caller intentionally sends
 `reporting_delivery_configs: []`.
+
+### Future expectation on a complete summary
+
+This correction targets the next 3.2 release candidate. The immutable RC.3
+schemas retain the earlier prohibition on this field with complete health.
+
+For `view: summary` with `health: complete`, a seller MUST populate
+`next_expected_at` when an active committed configuration generation in
+`scope.delivery_config_generations` has a future scheduled period outside the
+closed evaluated scope. Select the nearest future **period start**, strictly
+after `ledger_as_of`, across all those active generations. Omit the field when
+none has such a future period, including an account with no configurations.
+
+This timestamp comes from the configuration schedule. Its presence does not
+indicate that the evaluated scope is still open and does not represent an open
+obligation in that scope. Projecting it MUST NOT create, expose, lease, count,
+or alter an obligation whose period has not closed, or change `obligation_counts`,
+`scope`, or `coverage`. Both complete-health scope guards still apply.
+
+For example, at `ledger_as_of: 2026-08-01T04:05:00Z`, a completed evaluated
+scope `[00:00, 01:00)` may select active hourly and daily UTC configurations.
+Their next period starts are `2026-08-01T05:00:00Z` and
+`2026-08-02T00:00:00Z`, so the summary returns the former as `next_expected_at`.
+The completed obligation count and coverage remain those of `[00:00, 01:00)`.
+
+This complete-scope projection applies to the summary view; a complete periods
+response continues to omit the field. The existing open-scope value remains
+the next obligation due time. An obligation's
+`expected_at` remains `period.end + schedule.delivery_sla`, while the
+similarly named field in
+[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
+remains the next webhook notification time and is omitted for final
+notifications. Completing an evaluated reporting scope does not finalize an
+active configuration's schedule or its notification stream.
 
 ## Reliability model
 

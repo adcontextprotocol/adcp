@@ -76,6 +76,16 @@ its boundary and `next_expected_at`, but the seller cannot freeze an
 `all_media_buys` denominator yet. At the period boundary, the obligation
 becomes part of the authoritative ledger whether or not source data exists.
 
+A closed, complete summary can still have an active configuration schedule.
+The seller MUST populate `next_expected_at` with the nearest future period
+start across its active in-scope `delivery_config_generations` when such a
+period exists outside the evaluated scope, and omit it when none exists.
+This summary projection preserves both complete-health scope guards and MUST
+NOT create, expose, lease, count, or alter an open-period obligation or change
+the scope's coverage. See
+[future expectations on complete summaries](/docs/media-buy/task-reference/get_reporting_status#future-expectation-on-a-complete-summary)
+for the selection rule and its distinction from obligation and webhook deadlines.
+
 ```mermaid
 %%{init: {"sequence": {"showSequenceNumbers": true}}}%%
 sequenceDiagram

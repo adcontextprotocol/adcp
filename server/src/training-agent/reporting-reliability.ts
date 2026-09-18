@@ -2303,6 +2303,24 @@ function nextExpectedAt(configs: StoredConfig[], nowMs: number): string | undefi
   return due.length === 0 ? undefined : iso(Math.min(...due));
 }
 
+/** A complete summary projects a schedule boundary without creating a ledger record. */
+function nextScheduledPeriodStart(configs: StoredConfig[], nowMs: number): string | undefined {
+  const starts = configs.flatMap(config => {
+    const activeWindow = activeWindowAt(config, nowMs);
+    if (!activeWindow) return [];
+    const schedule = config.config.schedule;
+    const nextStart = schedule.period_duration === 'PT1H'
+      ? floorHour(nowMs) + HOUR_MS
+      : nextCivilDayStart(nowMs, schedule.alignment === 'source_timezone'
+        ? schedule.period_timezone ?? 'UTC'
+        : 'UTC');
+    // A committed cutoff at this boundary prevents the next period starting.
+    if (activeWindow.end && nextStart >= parseInstant(activeWindow.end)) return [];
+    return [nextStart];
+  });
+  return starts.length === 0 ? undefined : iso(Math.min(...starts));
+}
+
 /** Shared schedule calculation used by the deterministic conformance harness. */
 export function nextExpectedAtForSchedule(
   schedule: CoreConfig['schedule'],
@@ -3744,8 +3762,12 @@ export function getReportingStatusForAccount(
     issues,
   };
   if (params.view === 'summary') {
+    const futurePeriodStart = health === 'complete' ? nextScheduledPeriodStart(configs, nowMs) : undefined;
     rememberIssuedSnapshotId(ledger, common.ledger_snapshot_id, common.ledger_as_of);
-    return common as GetReportingStatusResponse;
+    return {
+      ...common,
+      ...(futurePeriodStart && { next_expected_at: futurePeriodStart }),
+    } as GetReportingStatusResponse;
   }
   const filtered = params.health
     ? deltaRecords.filter(record => params.health?.includes(record.obligation.health))

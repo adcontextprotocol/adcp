@@ -77,6 +77,10 @@ phases:
         context_outputs:
           - name: reporting_core_obligation_id
             path: "simulated.reporting_obligation_id"
+          - name: reporting_core_delivery_config_id
+            path: "simulated.delivery_config_id"
+          - name: reporting_core_period_start
+            path: "simulated.period.start"
           - name: reporting_core_period_end
             path: "simulated.period.end"
           - name: reporting_core_expected_at
@@ -357,6 +361,60 @@ phases:
           - check: field_present
             path: "adjustments"
             description: "Core returns the adjustment collection even when it is empty"
+
+      - id: read_complete_summary_with_future_schedule
+        title: "Project the active schedule beyond the complete evaluated scope"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          view: "summary"
+          delivery_config_ids: ["$context.reporting_core_delivery_config_id"]
+          period:
+            start: "$context.reporting_core_period_start"
+            end: "$context.reporting_core_period_end"
+          context:
+            correlation_id: "reporting_core--complete-future-schedule"
+        validations:
+          - check: response_schema
+            description: "A complete summary with a future schedule expectation is schema-valid"
+          - check: field_value
+            path: "health"
+            value: "complete"
+            description: "The closed evaluated period remains complete"
+          - check: field_value
+            path: "scope.scope_closed"
+            value: true
+            description: "Projecting a future period does not reopen the evaluated scope"
+          - check: field_value
+            path: "scope.coverage_complete"
+            value: true
+            description: "The complete-health retained-coverage guard remains true"
+          - check: field_value
+            path: "next_expected_at"
+            value: "2026-08-01T05:00:00.000Z"
+            description: "At 04:05 UTC the active hourly generation requires its nearest future period start, 05:00 UTC"
+          - check: field_value
+            path: "obligation_counts.total"
+            value: 1
+            description: "The future period creates no counted obligation in the evaluated scope"
+          - check: field_value
+            path: "obligation_counts.complete"
+            value: 1
+            description: "Only the satisfied elapsed obligation is counted as complete"
+          - check: field_value
+            path: "obligation_counts.waiting"
+            value: 0
+            description: "The projected future period is not a waiting obligation"
+          - check: field_value
+            path: "coverage.status"
+            value: "full"
+            description: "The schedule projection does not change evaluated coverage"
 
       - id: read_zero_row_content_exactly
         title: "Read the immutable zero-row revision through the Core transport"

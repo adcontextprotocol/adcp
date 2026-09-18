@@ -29,6 +29,8 @@ import {
   updateReliableReportingManagedDeliveryProbe,
 } from '../../src/training-agent/reporting-reliability.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
+import { validateProtocolSchema } from '../../src/services/protocol-schema-validator.js';
+import { reportingSummaryCases } from '../../../tests/helpers/reporting-summary-cases.cjs';
 
 /**
  * Validate the Reliable Reporting wire shape against the in-repo source
@@ -50,8 +52,120 @@ const BASE_REQUEST = {
   account: { account_id: ACCOUNT_ID },
 } as const;
 
+describe('complete reporting summaries through public runtime validators', () => {
+  it.each(reportingSummaryCases())('$name', async ({ response, valid }) => {
+    const original = structuredClone(response);
+    const sourceResult = validateSourceSchema('media-buy/get-reporting-status-response.json', response);
+    expect(sourceResult.valid, JSON.stringify(sourceResult.errors)).toBe(valid);
+    const protocolResult = await validateProtocolSchema('/schemas/media-buy/get-reporting-status-response.json', response);
+    expect(protocolResult.valid, JSON.stringify(protocolResult.errors)).toBe(valid);
+    if (valid) expect(validateReliableReportingResponse(response)).toBe(response);
+    else expect(() => validateReliableReportingResponse(response)).toThrow('Invalid Reliable Reporting response');
+    expect(response).toEqual(original);
+  });
+});
+
 describe('training-agent Core reporting reliability ledger', () => {
   beforeEach(() => clearReportingReliabilityStore());
+
+  it('projects a future period start on a complete summary without changing its ledger or coverage', () => {
+    const prepared = prepareReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    publishZeroRowReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    setReportingCoreLifecycleProbeClock('buyer:alpha', ACCOUNT_ID, '2026-08-01T04:05:00.000Z');
+    const request = { ...BASE_REQUEST, period: prepared.period };
+    const before = getReportingStatusForAccount({ ...request, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID);
+    expect(before).not.toHaveProperty('next_expected_at');
+    const summary = getReportingStatusForAccount({ ...request, view: 'summary' }, 'buyer:alpha', ACCOUNT_ID);
+
+    expect(summary).toMatchObject({
+      health: 'complete',
+      next_expected_at: '2026-08-01T05:00:00.000Z',
+      scope: { scope_closed: true, coverage_complete: true },
+      obligation_counts: { total: 1, complete: 1, waiting: 0 },
+      issues: [],
+    });
+    expect(summary.scope).toEqual(before.scope);
+    expect(summary.coverage).toEqual(before.coverage);
+    expect(summary.obligation_counts).toEqual(before.obligation_counts);
+    expect(summary.ledger_snapshot_id).toBe(before.ledger_snapshot_id);
+    expectReliableReportingWireShape(summary);
+    expect(getReportingStatusForAccount({ ...request, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID)).toEqual(before);
+    const openPeriod = getReportingStatusForAccount({
+      ...BASE_REQUEST,
+      view: 'periods',
+      period: { start: '2026-08-01T04:00:00.000Z', end: '2026-08-01T05:00:00.000Z' },
+    }, 'buyer:alpha', ACCOUNT_ID);
+    expect(openPeriod).toMatchObject({
+      periods: [], revisions: [], materializations: [], obligation_counts: { total: 0 },
+    });
+  });
+
+  it('chooses the nearest future start across selected active generations, independent of ordering and SLA', () => {
+    const prepared = prepareReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    const hourly = TRAINING_REPORTING_CORE_CONFIGURATION;
+    const daily = {
+      delivery_config_id: 'analytics-daily',
+      delivery_config_version: 1,
+      offering_id: TRAINING_REPORTING_MANAGED_OFFERING.offering_id,
+      active: true,
+      feed_purpose: TRAINING_REPORTING_MANAGED_OFFERING.feed_purpose,
+      report_definition_id: TRAINING_REPORTING_MANAGED_OFFERING.report_definition_id,
+      reporting_profile: TRAINING_REPORTING_MANAGED_OFFERING.reporting_profile.id,
+      scope: { all_media_buys: true },
+      coverage_requirement: 'full',
+      required_finality: TRAINING_REPORTING_MANAGED_OFFERING.supported_finality[0],
+      reconciliation_mode: TRAINING_REPORTING_MANAGED_OFFERING.reconciliation_mode,
+      schedule: TRAINING_REPORTING_MANAGED_OFFERING.schedule,
+      method: {
+        pattern: TRAINING_REPORTING_MANAGED_OFFERING.method.pattern,
+        transport: TRAINING_REPORTING_MANAGED_OFFERING.method.transport,
+        orchestration: TRAINING_REPORTING_MANAGED_OFFERING.method.orchestration,
+        destination: {
+          mode: 'provision',
+          provider: TRAINING_REPORTING_MANAGED_OFFERING.method.provider,
+          access_mode: TRAINING_REPORTING_MANAGED_OFFERING.method.access_mode,
+          recipient: { identity: 'acme-reporting-reader' },
+        },
+      },
+    };
+    replaceReportingConfigurations('buyer:alpha', ACCOUNT_ID, [daily, hourly], prepared.period.start);
+    publishZeroRowReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID, hourly.delivery_config_id);
+    setReportingCoreLifecycleProbeClock('buyer:alpha', ACCOUNT_ID, '2026-08-01T04:05:00.000Z');
+    const request = { ...BASE_REQUEST, view: 'summary' as const, period: prepared.period };
+    for (const configurations of [[daily, hourly], [hourly, daily]]) {
+      replaceReportingConfigurations('buyer:alpha', ACCOUNT_ID, configurations, prepared.period.start);
+      expect(getReportingStatusForAccount(request, 'buyer:alpha', ACCOUNT_ID)).toMatchObject({
+        health: 'complete', next_expected_at: '2026-08-01T05:00:00.000Z',
+      });
+    }
+    expect(getReportingStatusForAccount({ ...request, delivery_config_ids: [daily.delivery_config_id] }, 'buyer:alpha', ACCOUNT_ID))
+      .toMatchObject({ health: 'complete', next_expected_at: '2026-08-02T00:00:00.000Z' });
+    replaceReportingConfigurations('buyer:alpha', ACCOUNT_ID, [daily, { ...hourly, active: false }], '2026-08-01T04:05:00.000Z');
+    expect(getReportingStatusForAccount({ ...request, delivery_config_ids: [daily.delivery_config_id, hourly.delivery_config_id] }, 'buyer:alpha', ACCOUNT_ID))
+      .toMatchObject({ health: 'complete', next_expected_at: '2026-08-02T00:00:00.000Z' });
+  });
+
+  it('omits a complete-summary expectation when a committed cutoff prevents the next period', () => {
+    const prepared = prepareReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    publishZeroRowReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    replaceReportingConfigurations('buyer:alpha', ACCOUNT_ID, [{
+      ...TRAINING_REPORTING_CORE_CONFIGURATION,
+      active: false,
+      revocation_effective_at: '2026-08-01T02:00:00.000Z',
+    }], '2026-08-01T01:30:00.000Z');
+    const summary = getReportingStatusForAccount({ ...BASE_REQUEST, view: 'summary', period: prepared.period }, 'buyer:alpha', ACCOUNT_ID);
+    expect(summary.health).toBe('complete');
+    expect(summary).not.toHaveProperty('next_expected_at');
+    expectReliableReportingWireShape(summary);
+  });
+
+  it('selects a strictly future start when the complete summary is observed exactly at a period boundary', () => {
+    const prepared = prepareReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    publishZeroRowReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    setReportingCoreLifecycleProbeClock('buyer:alpha', ACCOUNT_ID, '2026-08-01T05:00:00.000Z');
+    expect(getReportingStatusForAccount({ ...BASE_REQUEST, view: 'summary', period: prepared.period }, 'buyer:alpha', ACCOUNT_ID))
+      .toMatchObject({ health: 'complete', next_expected_at: '2026-08-01T06:00:00.000Z' });
+  });
 
   it('makes a closed period visible before its first revision, then exposes missing-first-report health deterministically', () => {
     const prepared = prepareReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
