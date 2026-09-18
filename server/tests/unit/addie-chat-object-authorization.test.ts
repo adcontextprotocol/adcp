@@ -754,6 +754,53 @@ describe('Addie chat conversation object authorization', () => {
     }
   });
 
+  it('does not downgrade completed Gemini delivery after a later SSE route error', async () => {
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489', user_type: 'workos', user_id: 'user_attacker',
+    });
+    mocks.getThreadMessages.mockResolvedValue([]);
+    mocks.getAttemptForUser.mockRejectedValueOnce(new Error('post-delivery certification lookup failed'));
+    const response = {
+      ...successfulModelResponse('Gemini response'),
+      tool_executions: [{
+        tool_name: 'complete_certification_exam',
+        parameters: { attempt_id: '6d5c9b76-1ee0-49b3-a4d4-c85963080430' },
+        result: { status: 'completed' },
+        duration_ms: 1,
+        is_error: false,
+      }],
+      model_execution: { source: 'provider' as const, requested_provider: 'google' as const,
+        requested_model: 'gemini-3.7-flash', provider: 'google' as const, model: 'gemini-3.7-flash',
+        model_resolution: 'exact' as const, fallback_reason: null },
+    };
+    const markDelivery = vi.fn();
+    const candidate = {
+      processMessage: vi.fn(),
+      processMessageStream: vi.fn(async function* () {
+        yield { type: 'text' as const, text: response.text };
+        yield { type: 'done' as const, response };
+      }),
+    };
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn').mockResolvedValue({
+      client: candidate, model: 'gemini-3.7-flash',
+      selection: { requestTools: { tools: [], handlers: new Map() }, allowedToolNames: [],
+        selectedToolSets: [], unavailableHint: '' },
+      experiment: { markDelivery },
+    } as unknown as Awaited<ReturnType<typeof geminiExperiment.prepareGeminiDirectTurn>>);
+    try {
+      const routeResponse = await request(mountChatRouter()).post('/stream').send({
+        message: 'Complete my assessment', conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      });
+      expect(routeResponse.status).toBe(200);
+      expect(routeResponse.text).toContain('event: stream_error');
+      expect(markDelivery).toHaveBeenCalledTimes(1);
+      expect(markDelivery).toHaveBeenCalledWith('completed', 'message_assistant');
+    } finally {
+      prepare.mockRestore();
+    }
+  });
+
   it('returns the saved choice and actual provider on history and recovery', async () => {
     const id = '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489';
     mocks.getThreadByExternalId.mockResolvedValue({ thread_id: 'thread_attacker', channel: 'web',

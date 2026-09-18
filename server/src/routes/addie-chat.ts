@@ -1608,6 +1608,7 @@ export function createAddieChatRouter(options?: {
     let claimedTurn: { threadId: string; clientRequestId: string; leaseId: string } | null = null;
     let terminalResponse: AddieResponse | undefined;
     let activeExperiment: Awaited<ReturnType<typeof prepareGeminiDirectTurn>>['experiment'];
+    let experimentDeliveryCompleted = false;
     let requestedProviderForAttempt: 'anthropic' | 'google' = 'anthropic';
     let requestedModelForAttempt = req.user ? AddieModelConfig.chat : AddieModelConfig.anonymousChat;
 
@@ -2343,7 +2344,10 @@ export function createAddieChatRouter(options?: {
         client_turn_lease_id: claimedTurn?.leaseId,
         finalize_client_turn_status: claimedTurn ? 'completed' : undefined,
       });
-      await experimentTurn.experiment?.markDelivery('completed', assistantMessage.message_id);
+      if (experimentTurn.experiment) {
+        await experimentTurn.experiment.markDelivery('completed', assistantMessage.message_id);
+        experimentDeliveryCompleted = true;
+      }
       claimedTurn = null;
 
       const completionExecution = response?.tool_executions?.find(execution =>
@@ -2523,7 +2527,9 @@ export function createAddieChatRouter(options?: {
           logger.error({ statusError }, 'Failed to release interrupted chat turn lease');
         }
       }
-      await activeExperiment?.markDelivery('interrupted', interruptedMessageId);
+      if (!experimentDeliveryCompleted) {
+        await activeExperiment?.markDelivery('interrupted', interruptedMessageId);
+      }
       if (!res.headersSent) {
         if (respondToAdminAuthorizationError(error, res)) return;
         if (error instanceof ChatAttachmentValidationError) {
