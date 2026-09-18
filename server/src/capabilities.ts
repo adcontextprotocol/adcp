@@ -5,7 +5,6 @@ import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { logOutboundRequest } from "./db/outbound-log-db.js";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
-import { isComplianceRefreshAccessFailure } from "./services/compliance-refresh-authorization.js";
 import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import { readFileSync } from "node:fs";
@@ -474,7 +473,7 @@ export class CapabilityDiscovery {
 
   constructor() {}
 
-  async discoverCapabilities(agent: Agent, auth?: SdkAuth, forceRefresh = false, checkpoint?: () => Promise<void>): Promise<AgentCapabilityProfile> {
+  async discoverCapabilities(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentCapabilityProfile> {
     // Skip cache when auth is provided — manual owner-triggered refresh
     // wants fresh data and may previously have cached an unauthed
     // discovery_error result. Periodic crawls (no auth) keep the cache.
@@ -492,8 +491,7 @@ export class CapabilityDiscovery {
     const startTime = Date.now();
     try {
       const protocol = agent.protocol || "mcp";
-      const tools = await this.discoverTools(agent.url, protocol, auth, checkpoint);
-      await checkpoint?.();
+      const tools = await this.discoverTools(agent.url, protocol, auth);
 
       logOutboundRequest({
         agent_url: agent.url,
@@ -522,11 +520,11 @@ export class CapabilityDiscovery {
       // deadline can cause the probe to time out on a healthy but slow endpoint.
       const hasGetAdcpCaps = toolNames.has('get_adcp_capabilities');
       const rawAdcpCaps: Record<string, unknown> | undefined = hasGetAdcpCaps
-        ? await this.fetchRawAdcpCapabilities(agent, auth, checkpoint)
+        ? await this.fetchRawAdcpCapabilities(agent, auth)
         : undefined;
 
       if (CapabilityDiscovery.CREATIVE_TOOLS.some(t => toolNames.has(t))) {
-        const creativeResult = await this.analyzeCreativeCapabilities(agent, tools, auth, rawAdcpCaps, checkpoint);
+        const creativeResult = await this.analyzeCreativeCapabilities(agent, tools, auth, rawAdcpCaps);
         profile.creative_capabilities = creativeResult.capabilities;
         if (creativeResult.probeFailed) profile.creative_capabilities_probe_failed = true;
       }
@@ -550,12 +548,9 @@ export class CapabilityDiscovery {
       // tool list an agent advertises behind auth may differ from the
       // public-facing one, and the cache is read by unauthed periodic
       // crawls + the public registry render.
-      await checkpoint?.();
       if (!auth) this.cache.set(agent.url, profile);
       return profile;
     } catch (error: any) {
-      if (isComplianceRefreshAccessFailure(error)) throw error;
-      await checkpoint?.();
       logOutboundRequest({
         agent_url: agent.url,
         request_type: 'discovery',
@@ -583,15 +578,15 @@ export class CapabilityDiscovery {
     }
   }
 
-  private async discoverTools(url: string, protocol: "mcp" | "a2a", auth?: SdkAuth, checkpoint?: () => Promise<void>): Promise<ToolCapability[]> {
+  private async discoverTools(url: string, protocol: "mcp" | "a2a", auth?: SdkAuth): Promise<ToolCapability[]> {
     if (protocol === "a2a") {
-      return this.discoverA2ATools(url, auth, checkpoint);
+      return this.discoverA2ATools(url, auth);
     } else {
-      return this.discoverMCPTools(url, auth, checkpoint);
+      return this.discoverMCPTools(url, auth);
     }
   }
 
-  private async discoverMCPTools(url: string, auth?: SdkAuth, checkpoint?: () => Promise<void>): Promise<ToolCapability[]> {
+  private async discoverMCPTools(url: string, auth?: SdkAuth): Promise<ToolCapability[]> {
     try {
       // Use AdCPClient to connect to agent
       const { AdCPClient } = await import("@adcp/sdk");
@@ -611,7 +606,6 @@ export class CapabilityDiscovery {
       }));
       const client = multiClient.agent("discovery");
 
-      await checkpoint?.();
       const agentInfo = await client.getAgentInfo();
       logger.debug({ url, toolCount: agentInfo.tools.length }, 'MCP discovery completed');
 
@@ -622,7 +616,6 @@ export class CapabilityDiscovery {
         verified_at: new Date().toISOString(),
       }));
     } catch (error: any) {
-      if (isComplianceRefreshAccessFailure(error)) throw error;
       // Re-throw AuthenticationRequiredError to preserve OAuth metadata for callers
       if (error instanceof AuthenticationRequiredError) {
         logger.info({ url, hasOAuth: error.hasOAuth }, 'MCP agent requires OAuth authentication');
@@ -640,7 +633,7 @@ export class CapabilityDiscovery {
     }
   }
 
-  private async discoverA2ATools(url: string, auth?: SdkAuth, checkpoint?: () => Promise<void>): Promise<ToolCapability[]> {
+  private async discoverA2ATools(url: string, auth?: SdkAuth): Promise<ToolCapability[]> {
     try {
       // Use AdCPClient to connect to agent
       const { AdCPClient } = await import("@adcp/sdk");
@@ -657,7 +650,6 @@ export class CapabilityDiscovery {
       }));
       const client = multiClient.agent("discovery");
 
-      await checkpoint?.();
       const agentInfo = await client.getAgentInfo();
       logger.debug({ url, toolCount: agentInfo.tools.length }, 'A2A discovery completed');
 
@@ -668,7 +660,6 @@ export class CapabilityDiscovery {
         verified_at: new Date().toISOString(),
       }));
     } catch (error: any) {
-      if (isComplianceRefreshAccessFailure(error)) throw error;
       // Re-throw AuthenticationRequiredError to preserve OAuth metadata for callers
       if (error instanceof AuthenticationRequiredError) {
         logger.info({ url, hasOAuth: error.hasOAuth }, 'A2A agent requires OAuth authentication');
@@ -735,7 +726,6 @@ export class CapabilityDiscovery {
     tools: ToolCapability[],
     auth?: SdkAuth,
     rawAdcpCaps?: Record<string, unknown>,
-    checkpoint?: () => Promise<void>,
   ): Promise<{ capabilities: CreativeCapabilities; probeFailed: boolean }> {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
     let declared: { ok: true; capabilities?: CreativeCapabilities } | { ok: false };
@@ -753,7 +743,7 @@ export class CapabilityDiscovery {
           }
         }
       } else {
-        declared = await this.fetchCreativeCapabilities(agent, auth, checkpoint);
+        declared = await this.fetchCreativeCapabilities(agent, auth);
       }
     } else {
       declared = { ok: true, capabilities: undefined };
@@ -784,7 +774,6 @@ export class CapabilityDiscovery {
   private async fetchCreativeCapabilities(
     agent: Agent,
     auth?: SdkAuth,
-    checkpoint?: () => Promise<void>,
   ): Promise<{ ok: true; capabilities?: CreativeCapabilities } | { ok: false }> {
     try {
       const { AdCPClient } = await import("@adcp/sdk");
@@ -799,9 +788,7 @@ export class CapabilityDiscovery {
         transport: { maxResponseBytes: 1024 * 1024 },
       }));
       const client = multiClient.agent("discovery");
-      await checkpoint?.();
       const result = await client.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
-      await checkpoint?.();
       if (!result?.success) {
         logger.debug({ url: agent.url, error: result?.error }, 'Creative capability probe returned an error result');
         return { ok: false };
@@ -810,7 +797,6 @@ export class CapabilityDiscovery {
       if (creative === undefined || creative === null) return { ok: true };
       return { ok: true, capabilities: await sanitizeCreativeCapabilities(creative) };
     } catch (err: any) {
-      if (isComplianceRefreshAccessFailure(err)) throw err;
       logger.debug({ url: agent.url, err: err?.message }, 'Creative capability fetch failed');
       return { ok: false };
     }
@@ -830,7 +816,6 @@ export class CapabilityDiscovery {
   private async fetchRawAdcpCapabilities(
     agent: Agent,
     auth?: SdkAuth,
-    checkpoint?: () => Promise<void>,
   ): Promise<Record<string, unknown> | undefined> {
     try {
       const { AdCPClient } = await import("@adcp/sdk");
@@ -845,13 +830,10 @@ export class CapabilityDiscovery {
         transport: { maxResponseBytes: 1024 * 1024 },
       }));
       const client = multiClient.agent("discovery");
-      await checkpoint?.();
       const result = await client.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
-      await checkpoint?.();
       if (!result?.success) return undefined;
       return result.data as Record<string, unknown> | undefined;
     } catch (err: any) {
-      if (isComplianceRefreshAccessFailure(err)) throw err;
       logger.debug({ url: agent.url, err: err?.message }, 'get_adcp_capabilities fetch failed');
       return undefined;
     }

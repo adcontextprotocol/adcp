@@ -1,5 +1,4 @@
 import { query, queryWithTimeout } from './client.js';
-import type { PoolClient } from 'pg';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 
 /**
@@ -774,11 +773,9 @@ export class FederatedIndexDatabase {
    */
   async updateAgentMetadata(
     agentUrl: string,
-    metadata: { name?: string; agent_type?: string; protocol?: string },
-    client?: PoolClient,
+    metadata: { name?: string; agent_type?: string; protocol?: string }
   ): Promise<void> {
-    const executeQuery: typeof query = client ? (text, params) => client.query(text, params) : query;
-    await executeQuery(
+    await query(
       `UPDATE discovered_agents
        SET name = COALESCE($2, name),
            agent_type = COALESCE($3, agent_type),

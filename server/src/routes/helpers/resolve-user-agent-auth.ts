@@ -13,7 +13,6 @@
 
 import type { AgentContextDatabase } from '../../db/agent-context-db.js';
 import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
-import { isComplianceRefreshAccessFailure } from '../../services/compliance-refresh-authorization.js';
 import {
   decodeBasicCredentials,
   type ResolvedOwnerAuth,
@@ -28,7 +27,6 @@ export async function resolveUserAgentAuth(
   orgId: string,
   agentUrl: string,
   logger: WarnLogger,
-  checkpoint?: () => Promise<void>,
 ): Promise<ResolvedOwnerAuth | undefined> {
   const canonicalUrl = canonicalizeAgentUrl(agentUrl);
   if (!canonicalUrl) {
@@ -39,9 +37,7 @@ export async function resolveUserAgentAuth(
   // Static token lookup throwing falls through to the OAuth branch below —
   // the connect-form token and the OAuth token are independent paths.
   try {
-    await checkpoint?.();
     const staticAuth = await agentContextDb.getAuthInfoByOrgAndUrl(orgId, canonicalUrl);
-    await checkpoint?.();
     if (staticAuth) {
       if (staticAuth.authType === 'basic') {
         const basic = decodeBasicCredentials(staticAuth.token);
@@ -55,18 +51,15 @@ export async function resolveUserAgentAuth(
       }
     }
   } catch (err) {
-    if (isComplianceRefreshAccessFailure(err)) throw err;
     logger.warn({ err, agentUrl, orgId }, 'resolveUserAgentAuth: static token lookup failed');
   }
 
   try {
     const context = await agentContextDb.getByOrgAndUrl(orgId, canonicalUrl);
-    await checkpoint?.();
     if (!context) return undefined;
 
     if (context.has_oauth_token) {
       const tokens = await agentContextDb.getOAuthTokensByOrgAndUrl(orgId, canonicalUrl);
-      await checkpoint?.();
       if (tokens?.access_token) {
         if (!tokens.refresh_token) {
           return { type: 'bearer', token: tokens.access_token };
@@ -82,7 +75,6 @@ export async function resolveUserAgentAuth(
         };
 
         const client = await agentContextDb.getOAuthClient(context.id);
-        await checkpoint?.();
         if (client) {
           oauth.client = {
             client_id: client.client_id,
@@ -95,13 +87,11 @@ export async function resolveUserAgentAuth(
 
     if (context.has_oauth_client_credentials) {
       const creds = await agentContextDb.getOAuthClientCredentialsByOrgAndUrl(orgId, canonicalUrl);
-      await checkpoint?.();
       if (creds) return { type: 'oauth_client_credentials', credentials: creds };
     }
 
     return undefined;
   } catch (err) {
-    if (isComplianceRefreshAccessFailure(err)) throw err;
     logger.warn({ err, agentUrl, orgId }, 'resolveUserAgentAuth: OAuth token lookup failed');
     return undefined;
   }

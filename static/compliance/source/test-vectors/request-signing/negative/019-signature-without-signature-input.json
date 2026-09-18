@@ -10,7 +10,7 @@
       "Content-Type": "application/json",
       "Signature": "sig1=:qjngSQ0bgimxQbc6l0aFOmSthQRCdEgD10mOa7OGyUIEMuKwe2h_3l42oxs2Ga5qQCnVpaZHOuwhYu3qJp4HAA:"
     },
-    "body": "{\"plan_id\":\"plan_001\"}"
+    "body": "{\"idempotency_key\":\"request-signing-negative-019-2026\",\"account\":{\"account_id\":\"request-signing-account\"},\"brand\":{\"domain\":\"acme-corp.example\"},\"start_time\":\"asap\",\"end_time\":\"2026-04-30T00:00:00Z\",\"packages\":[{\"product_id\":\"request-signing-product\",\"pricing_option_id\":\"request-signing-price\",\"budget\":1000}]}"
   },
   "verifier_capability": {
     "supported": true,

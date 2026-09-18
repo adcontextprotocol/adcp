@@ -100,7 +100,6 @@ export async function findOwnerOrgForUser(
 export async function findSoleOwnerOrgForUser(
   userId: string,
   agentUrl: string,
-  options: { throwOnError?: boolean } = {},
 ): Promise<string | null> {
   try {
     const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
@@ -117,8 +116,7 @@ export async function findSoleOwnerOrgForUser(
     return result.rows.length === 1
       ? result.rows[0].workos_organization_id
       : null;
-  } catch (error) {
-    if (options.throwOnError) throw error;
+  } catch {
     return null;
   }
 }
@@ -137,7 +135,6 @@ export async function isOrgOwnerOfAgent(
   orgId: string,
   userId: string,
   agentUrl: string,
-  options: { throwOnError?: boolean } = {},
 ): Promise<boolean> {
   try {
     const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
@@ -152,8 +149,7 @@ export async function isOrgOwnerOfAgent(
       [orgId, JSON.stringify([{ url: lookupAgentUrl }]), userId],
     );
     return result.rows.length > 0;
-  } catch (error) {
-    if (options.throwOnError) throw error;
+  } catch {
     return false;
   }
 }
@@ -200,13 +196,12 @@ export async function resolveOwnerOrgForUser(
   userId: string,
   agentUrl: string,
   requestedOrgId?: string,
-  options: { throwOnError?: boolean } = {},
 ): Promise<string | null> {
   if (requestedOrgId === undefined) {
-    return findSoleOwnerOrgForUser(userId, agentUrl, options);
+    return findSoleOwnerOrgForUser(userId, agentUrl);
   }
 
-  return (await isOrgOwnerOfAgent(requestedOrgId, userId, agentUrl, options))
+  return (await isOrgOwnerOfAgent(requestedOrgId, userId, agentUrl))
     ? requestedOrgId
     : null;
 }
