@@ -1,0 +1,217 @@
+{
+  "name": "Plan exercising every optional field",
+  "spec_reference": "#plan-state-binding",
+  "description": "All optional fields populated including delegations[], custom_policies[], channels.mix_targets{}, budget.allocations{}, and ext{}.",
+  "plan_as_supplied": {
+    "plan_id": "plan_full_2026",
+    "brand": {
+      "domain": "acmecorp.com",
+      "industries": [
+        "consumer_finance"
+      ],
+      "data_subject_contestation": {
+        "url": "https://acmecorp.com/contest",
+        "email": "privacy@acmecorp.com"
+      }
+    },
+    "objectives": "Drive awareness for spring launch across premium video.",
+    "budget": {
+      "total": 500000,
+      "currency": "USD",
+      "reallocation_threshold": 25000,
+      "per_seller_max_pct": 40,
+      "allocations": {
+        "media_buy": {
+          "amount": 400000
+        },
+        "rights_license": {
+          "amount": 75000,
+          "max_pct": 20
+        },
+        "signal_activation": {
+          "amount": 25000
+        }
+      }
+    },
+    "human_review_required": true,
+    "channels": {
+      "required": [
+        "olv"
+      ],
+      "allowed": [
+        "audio",
+        "ctv",
+        "display",
+        "olv"
+      ],
+      "mix_targets": {
+        "olv": {
+          "min_pct": 40,
+          "max_pct": 70
+        },
+        "display": {
+          "min_pct": 10,
+          "max_pct": 30
+        }
+      }
+    },
+    "flight": {
+      "start": "2026-03-15T00:00:00Z",
+      "end": "2026-06-15T00:00:00Z"
+    },
+    "countries": [
+      "US"
+    ],
+    "regions": [
+      "US-CA",
+      "US-MA",
+      "US-NY"
+    ],
+    "policy_ids": [
+      "alcohol_advertising",
+      "eu_ai_act_annex_iii",
+      "us_coppa"
+    ],
+    "policy_categories": [
+      "fair_lending"
+    ],
+    "custom_policies": [
+      {
+        "policy_id": "no_competitor_adjacency",
+        "policy": "No advertising adjacent to direct competitor content.",
+        "enforcement": "must"
+      }
+    ],
+    "mode": "enforce",
+    "approved_sellers": [
+      "https://publisher-a.example",
+      "https://publisher-b.example"
+    ],
+    "delegations": [
+      {
+        "agent_url": "https://buying.agency.example",
+        "authority": "execute_only",
+        "budget_limit": {
+          "amount": 200000,
+          "currency": "USD"
+        },
+        "markets": [
+          "US"
+        ],
+        "expires_at": "2026-12-31T23:59:59Z"
+      }
+    ],
+    "ext": {
+      "trace_id": "trace_abc123"
+    }
+  },
+  "expected": {
+    "preimage": {
+      "plan_id": "plan_full_2026",
+      "brand": {
+        "domain": "acmecorp.com",
+        "industries": [
+          "consumer_finance"
+        ],
+        "data_subject_contestation": {
+          "url": "https://acmecorp.com/contest",
+          "email": "privacy@acmecorp.com"
+        }
+      },
+      "objectives": "Drive awareness for spring launch across premium video.",
+      "budget": {
+        "total": 500000,
+        "currency": "USD",
+        "reallocation_threshold": 25000,
+        "per_seller_max_pct": 40,
+        "allocations": {
+          "media_buy": {
+            "amount": 400000
+          },
+          "rights_license": {
+            "amount": 75000,
+            "max_pct": 20
+          },
+          "signal_activation": {
+            "amount": 25000
+          }
+        }
+      },
+      "human_review_required": true,
+      "channels": {
+        "required": [
+          "olv"
+        ],
+        "allowed": [
+          "audio",
+          "ctv",
+          "display",
+          "olv"
+        ],
+        "mix_targets": {
+          "olv": {
+            "min_pct": 40,
+            "max_pct": 70
+          },
+          "display": {
+            "min_pct": 10,
+            "max_pct": 30
+          }
+        }
+      },
+      "flight": {
+        "start": "2026-03-15T00:00:00Z",
+        "end": "2026-06-15T00:00:00Z"
+      },
+      "countries": [
+        "US"
+      ],
+      "regions": [
+        "US-CA",
+        "US-MA",
+        "US-NY"
+      ],
+      "policy_ids": [
+        "alcohol_advertising",
+        "eu_ai_act_annex_iii",
+        "us_coppa"
+      ],
+      "policy_categories": [
+        "fair_lending"
+      ],
+      "custom_policies": [
+        {
+          "policy_id": "no_competitor_adjacency",
+          "policy": "No advertising adjacent to direct competitor content.",
+          "enforcement": "must"
+        }
+      ],
+      "mode": "enforce",
+      "approved_sellers": [
+        "https://publisher-a.example",
+        "https://publisher-b.example"
+      ],
+      "delegations": [
+        {
+          "agent_url": "https://buying.agency.example",
+          "authority": "execute_only",
+          "budget_limit": {
+            "amount": 200000,
+            "currency": "USD"
+          },
+          "markets": [
+            "US"
+          ],
+          "expires_at": "2026-12-31T23:59:59Z"
+        }
+      ],
+      "ext": {
+        "trace_id": "trace_abc123"
+      }
+    },
+    "jcs_bytes": "{\"approved_sellers\":[\"https://publisher-a.example\",\"https://publisher-b.example\"],\"brand\":{\"data_subject_contestation\":{\"email\":\"privacy@acmecorp.com\",\"url\":\"https://acmecorp.com/contest\"},\"domain\":\"acmecorp.com\",\"industries\":[\"consumer_finance\"]},\"budget\":{\"allocations\":{\"media_buy\":{\"amount\":400000},\"rights_license\":{\"amount\":75000,\"max_pct\":20},\"signal_activation\":{\"amount\":25000}},\"currency\":\"USD\",\"per_seller_max_pct\":40,\"reallocation_threshold\":25000,\"total\":500000},\"channels\":{\"allowed\":[\"audio\",\"ctv\",\"display\",\"olv\"],\"mix_targets\":{\"display\":{\"max_pct\":30,\"min_pct\":10},\"olv\":{\"max_pct\":70,\"min_pct\":40}},\"required\":[\"olv\"]},\"countries\":[\"US\"],\"custom_policies\":[{\"enforcement\":\"must\",\"policy\":\"No advertising adjacent to direct competitor content.\",\"policy_id\":\"no_competitor_adjacency\"}],\"delegations\":[{\"agent_url\":\"https://buying.agency.example\",\"authority\":\"execute_only\",\"budget_limit\":{\"amount\":200000,\"currency\":\"USD\"},\"expires_at\":\"2026-12-31T23:59:59Z\",\"markets\":[\"US\"]}],\"ext\":{\"trace_id\":\"trace_abc123\"},\"flight\":{\"end\":\"2026-06-15T00:00:00Z\",\"start\":\"2026-03-15T00:00:00Z\"},\"human_review_required\":true,\"mode\":\"enforce\",\"objectives\":\"Drive awareness for spring launch across premium video.\",\"plan_id\":\"plan_full_2026\",\"policy_categories\":[\"fair_lending\"],\"policy_ids\":[\"alcohol_advertising\",\"eu_ai_act_annex_iii\",\"us_coppa\"],\"regions\":[\"US-CA\",\"US-MA\",\"US-NY\"]}",
+    "sha256_hex": "15ef2c87895e763dc4be0f410b0e62d943112bff5c8c27667c77a979b9907673",
+    "plan_hash": "Fe8sh4ledj3Evg9BCw5i2UMRK_9cjCdmfHepebmQdnM"
+  },
+  "$comment": "Generated by .context/generate-plan-hash-vectors.mjs. Re-run on spec changes."
+}
