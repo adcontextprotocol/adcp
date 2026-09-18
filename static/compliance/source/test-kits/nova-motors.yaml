@@ -197,6 +197,21 @@ signals:
           max_cpm: 3.00
           currency: "USD"
 
+# The ACCOUNT the storyboards that name this kit address. Every account-bearing step
+# sends `account: {brand: {domain: <brand.house.domain>}, operator: <operator>}`, and a
+# seller that does not hold a matching account answers ACCOUNT_NOT_FOUND — correctly, and
+# is then graded as having failed the tool the step names. 6 steps in 3.1.x send this pair (#7588).
+#
+# The brand half was already derivable from `brand.house.domain` above. The operator was
+# not: it appeared only inside the storyboards' own `sample_request.account`, so a seller
+# implementing this kit could not learn the account it must hold without scraping them.
+# Declaring it here completes the seeding contract — "implements the kit" now includes the
+# accounts the kit's storyboards will reference.
+#
+account:
+  operator: pinnacle-agency.example
+  sandbox: [true, false]
+
 assets:
   images:
     - id: "hero_300x250"
