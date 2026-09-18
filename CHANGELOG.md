@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.24
+
+### Patch Changes
+
+- 56f93da: Correct the 3.1 creative-generative storyboard to require `creative_manifest.format_kind` instead of the mutually exclusive legacy `format_id`, matching the canonical-formats storyboard and response schema.
+- 5f52da3: Fix `VERSION_UNSUPPORTED` recovery value in error-compliance storyboards: `fatal` → `correctable`, matching `core/error.json` `enumMetadata`. Also corrects the general error-shape narrative enum list from `correctable, transient, or fatal` to `transient, correctable, or terminal`. Affects `error-compliance.yaml` and `error-compliance-signals.yaml`. Backport of #7376 to the 3.1.x line.
+- 023d726: Route the 3.1 governance approval and conditions storyboards across their sales and governance agents, capture the synchronized governance plan ID, and include it in the governed media-buy request.
+
 ## 3.1.23
 
 ### Patch Changes

@@ -1,0 +1,580 @@
+id: media_buy_seller/vendor_metric_optimization_flow
+version: "1.0.0"
+title: "Vendor-metric optimization-goal: acceptance and rejection"
+category: media_buy_seller
+summary: "Verifies that a seller supporting vendor_metric_optimization accepts a media buy whose optimization_goal has kind 'vendor_metric' when all preconditions are met, and rejects goals that fail either the capability check or the reporting-coherence check."
+track: media_buy
+introduced_in: "3.1"
+
+# Gate: scenario runs only when the seller declares vendor-metric
+# optimization support. The product-level vendor_metric_optimization block
+# remains the authoritative per-product capability, including target-kind
+# support on the seeded product.
+requires_capability:
+  path: media_buy.vendor_metric_optimization
+  present: true
+
+required_tools:
+  - get_products
+  - create_media_buy
+  - comply_test_controller
+
+narrative: |
+  AdCP 3.1 adds optimization_goals[].kind: "vendor_metric" — a goal that steers
+  the seller's bidding stack toward a specific vendor's measurement metric (e.g.,
+  attention, emissions, brand lift). Three runtime preconditions govern
+  acceptance:
+
+    1. Capability — the (vendor, metric_id) pair MUST appear in the product's
+       vendor_metric_optimization.supported_metrics[], and the goal's target.kind
+       MUST appear in that entry's supported_targets.
+
+    2. Reporting coherence — the package's committed_metrics[] MUST include a
+       matching { scope: "vendor", vendor, metric_id } entry. Optimization without
+       committed reporting is unverifiable and is rejected at the wire level.
+
+    3. Discovery (SHOULD) — the metric_id SHOULD be discoverable in the vendor's
+       published measurement.metrics[] catalog. This check is SHOULD-level in 3.1
+       while measurement-vendor adoption of AdCP-conformant capability publication
+       catches up; it tightens to MUST at the next minor. Sellers MAY reject with
+       TERMS_REJECTED on a catalog miss; sellers that accept do not fail this
+       storyboard.
+
+  This storyboard covers:
+    - Positive path: goal accepted when all preconditions are met, including
+      the target-less maximize-within-budget form
+    - Negative path A: goal rejected when (vendor, metric_id) not in supported_metrics
+    - Negative path B: goal rejected when target.kind is not in supported_targets
+    - Negative path C: goal rejected when package committed_metrics lacks vendor-scope entry
+    - Negative path D: goal rejected when the metric is optimizable but not reportable
+
+  The existing vendor_metric_accountability storyboard (declaration → filter →
+  delivery emission) is unchanged and exercises a separate contract.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Premium publishers with attention measurement optimization"
+    - "Sustainability-focused sellers with emissions-metric steering"
+    - "Sellers integrating brand-lift vendors into their bidding stack"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller supports comply_test_controller and can seed products with
+    vendor_metric_optimization.supported_metrics[]. The seeded product must
+    appear in get_products responses. The seller enforces the three preconditions
+    for vendor_metric goals at create_media_buy time.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "display_vendor_metric_opt"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      reporting_capabilities:
+        available_metrics:
+          - impressions
+          - clicks
+          - spend
+        vendor_metrics:
+          - vendor:
+              domain: "attentionvendor.example"
+            metric_id: "attention_score"
+          - vendor:
+              domain: "attentionvendor.example"
+            metric_id: "attention_units"
+      vendor_metric_optimization:
+        supported_metrics:
+          - vendor:
+              domain: "attentionvendor.example"
+            metric_id: "attention_score"
+            supported_targets:
+              - threshold_rate
+    - product_id: "display_vendor_metric_unreportable"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      reporting_capabilities:
+        available_metrics:
+          - impressions
+          - clicks
+          - spend
+      vendor_metric_optimization:
+        supported_metrics:
+          - vendor:
+              domain: "attentionvendor.example"
+            metric_id: "attention_score"
+            supported_targets:
+              - threshold_rate
+  pricing_options:
+    - product_id: "display_vendor_metric_opt"
+      pricing_option_id: "cpm_vendor_opt"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 14.0
+    - product_id: "display_vendor_metric_unreportable"
+      pricing_option_id: "cpm_vendor_opt_unreportable"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 14.0
+
+phases:
+  - id: discover_vendor_metric_optimization
+    title: "Discover a product that declares vendor_metric_optimization"
+    narrative: |
+      The buyer looks for display inventory that can steer delivery toward an
+      attention vendor's metric. The product response includes
+      vendor_metric_optimization.supported_metrics[] listing the
+      attentionvendor.example attention_score with threshold_rate as a supported
+      target kind.
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_opt_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_vendor_metric_opt
+        title: "Discover product with vendor_metric_optimization capability"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least one product whose vendor_metric_optimization.supported_metrics[]
+          includes an entry for attentionvendor.example / attention_score. The
+          supported_targets on that entry includes threshold_rate.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display inventory with attention-score optimization from attentionvendor."
+          filters:
+            is_fixed_price: true
+            channels: ["display"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "products[0].product_id"
+            name: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            name: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "At least one product returned"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+          - check: field_present
+            path: "products[0].vendor_metric_optimization.supported_metrics"
+            description: "Product declares vendor_metric_optimization.supported_metrics[]"
+          - check: field_value
+            path: "products[0].vendor_metric_optimization.supported_metrics[0].vendor.domain"
+            value: "attentionvendor.example"
+            description: "Capability binds the optimization metric to the declared vendor"
+          - check: field_value
+            path: "products[0].vendor_metric_optimization.supported_metrics[0].metric_id"
+            value: "attention_score"
+            description: "Capability lists the attention_score metric_id"
+          - check: field_value
+            path: "products[0].vendor_metric_optimization.supported_metrics[0].supported_targets[0]"
+            value: "threshold_rate"
+            description: "Capability lists threshold_rate as a supported target kind"
+
+  - id: create_positive_path
+    title: "Accept vendor_metric goal when all preconditions are satisfied"
+    narrative: |
+      The buyer submits a create_media_buy with an optimization_goal of kind
+      vendor_metric, targeting attention_score with a threshold_rate of 70. The
+      package also includes a vendor-scope committed_metrics[] entry for the same
+      (vendor, metric_id) pair — satisfying the reporting-coherence precondition.
+      The seller accepts and returns a media_buy_id.
+    steps:
+      - id: create_media_buy_positive
+        title: "Create media buy with valid vendor_metric optimization goal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: true
+        expected: |
+          Accept the buy. The optimization goal is valid: attention_score is in
+          supported_metrics for attentionvendor.example, threshold_rate is in
+          supported_targets, and committed_metrics[] carries the vendor-scope entry.
+          Seller returns a media_buy_id.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 5000
+              optimization_goals:
+                - kind: "vendor_metric"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_score"
+                  target:
+                    kind: "threshold_rate"
+                    value: 70
+                  priority: 1
+              committed_metrics:
+                - scope: "vendor"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_score"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_opt_positive"
+        context_outputs:
+          - path: "media_buy_id"
+            name: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id — buy accepted"
+
+  - id: create_targetless_positive_path
+    title: "Accept target-less vendor_metric goal as maximize-within-budget"
+    narrative: |
+      A buyer may omit target on a vendor_metric optimization goal. In that
+      form, the seller maximizes the vendor metric within the package budget.
+      The capability precondition still applies to the (vendor, metric_id)
+      pair, and reporting coherence still requires a matching vendor-scope
+      committed_metrics[] entry.
+    steps:
+      - id: create_media_buy_targetless_positive
+        title: "Create media buy with target-less vendor_metric optimization goal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: true
+        expected: |
+          Accept the buy. The optimization goal has no target, so supported_targets
+          does not need to be consulted; attention_score is in supported_metrics
+          and committed_metrics[] carries the vendor-scope entry.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 5000
+              optimization_goals:
+                - kind: "vendor_metric"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_score"
+                  priority: 1
+              committed_metrics:
+                - scope: "vendor"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_score"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_opt_targetless_positive"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id — target-less goal accepted"
+
+  - id: reject_unsupported_capability
+    title: "Reject vendor_metric goal when (vendor, metric_id) not in supported_metrics"
+    narrative: |
+      The buyer sends a goal for attention_units from attentionvendor.example —
+      a reportable (vendor, metric_id) pair that does not appear in the product's
+      vendor_metric_optimization.supported_metrics[]. Per the spec, the seller
+      MUST reject such goals. The correct code is TERMS_REJECTED; error.field
+      should point at the offending goal's metric_id path.
+    steps:
+      - id: create_media_buy_unsupported_metric
+        title: "Submit goal with (vendor, metric_id) not in supported_metrics"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: false
+        expected: |
+          Reject with TERMS_REJECTED. The goal references attention_units for
+          attentionvendor.example, which is reportable but not in
+          vendor_metric_optimization.supported_metrics — the optimization
+          capability precondition fails. media_buy_id is not allocated.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 5000
+              optimization_goals:
+                - kind: "vendor_metric"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_units"
+                  priority: 1
+              committed_metrics:
+                - scope: "vendor"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_units"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_opt_bad_capability"
+        validations:
+          - check: error_code
+            allowed_values: ["TERMS_REJECTED"]
+            description: "Seller rejects unsupported (vendor, metric_id) with TERMS_REJECTED"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].optimization_goals[0].metric_id"
+            description: "Error.field points at the offending metric_id path"
+
+  - id: reject_unsupported_target_kind
+    title: "Reject vendor_metric goal when target.kind is not in supported_targets"
+    narrative: |
+      The buyer sends a goal for attention_score (a supported vendor metric)
+      but asks for cost_per when the product only declares threshold_rate in
+      vendor_metric_optimization.supported_metrics[].supported_targets. Per the
+      spec, the seller MUST reject such goals with TERMS_REJECTED and point at
+      the unsupported target kind.
+    steps:
+      - id: create_media_buy_unsupported_target
+        title: "Submit goal with target.kind not in supported_targets"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: false
+        expected: |
+          Reject with TERMS_REJECTED. The goal references a supported vendor
+          metric, but target.kind cost_per is not declared in supported_targets.
+          media_buy_id is not allocated.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 5000
+              optimization_goals:
+                - kind: "vendor_metric"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_score"
+                  target:
+                    kind: "cost_per"
+                    value: 0.20
+                  priority: 1
+              committed_metrics:
+                - scope: "vendor"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_score"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_opt_bad_target"
+        validations:
+          - check: error_code
+            allowed_values: ["TERMS_REJECTED"]
+            description: "Seller rejects unsupported target.kind with TERMS_REJECTED"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].optimization_goals[0].target.kind"
+            description: "Error.field points at the offending target.kind path"
+
+  - id: reject_missing_committed_metric
+    title: "Reject vendor_metric goal when package lacks vendor-scope committed_metrics entry"
+    narrative: |
+      The buyer submits a goal for attention_score (a valid capability on the
+      product) but omits the vendor-scope committed_metrics[] entry from the
+      package. Per the spec, optimization without committed reporting is
+      unverifiable and MUST be rejected with TERMS_REJECTED.
+    steps:
+      - id: create_media_buy_missing_committed
+        title: "Submit goal without matching vendor-scope committed_metrics entry"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: false
+        expected: |
+          Reject with TERMS_REJECTED. The optimization goal targets attention_score
+          but the package's committed_metrics[] has no vendor-scope entry for
+          (attentionvendor.example, attention_score). Optimizing for a metric the
+          seller will not commit to reporting is disallowed. media_buy_id is not allocated.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 5000
+              optimization_goals:
+                - kind: "vendor_metric"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_score"
+                  target:
+                    kind: "threshold_rate"
+                    value: 70
+                  priority: 1
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_opt_no_committed"
+        validations:
+          - check: error_code
+            allowed_values: ["TERMS_REJECTED"]
+            description: "Seller rejects goal missing reporting-coherence with TERMS_REJECTED"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].committed_metrics"
+            description: "Error.field points at the missing committed_metrics pairing"
+
+  - id: reject_unreportable_vendor_metric
+    title: "Reject vendor_metric goal when optimizable metric is not reportable"
+    narrative: |
+      The buyer submits a goal for attention_score on a product whose bidding
+      stack can optimize to that metric but whose reporting_capabilities do not
+      declare the same vendor metric. The seller MUST reject because the
+      committed_metrics[] entry would over-promise a metric the product does not
+      publish as reportable.
+    steps:
+      - id: create_media_buy_unreportable_metric
+        title: "Submit goal whose committed vendor metric is not reportable"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: false
+        expected: |
+          Reject with TERMS_REJECTED. The product can optimize toward
+          attention_score, but reporting_capabilities.vendor_metrics does not
+          include the same (attentionvendor.example, attention_score) pair, so
+          the seller cannot honor the requested vendor-scope committed metric.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "display_vendor_metric_unreportable"
+              pricing_option_id: "cpm_vendor_opt_unreportable"
+              budget: 5000
+              optimization_goals:
+                - kind: "vendor_metric"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_score"
+                  target:
+                    kind: "threshold_rate"
+                    value: 70
+                  priority: 1
+              committed_metrics:
+                - scope: "vendor"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_score"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_opt_unreportable"
+        validations:
+          - check: error_code
+            allowed_values: ["TERMS_REJECTED"]
+            description: "Seller rejects unreportable committed vendor metric with TERMS_REJECTED"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].committed_metrics"
+            description: "Error.field points at the unsupported committed metric"
