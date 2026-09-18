@@ -11,7 +11,7 @@
       "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
       "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
     },
-    "body": "{\"idempotency_key\":\"request-signing-negative-026-2026\",\"account\":{\"account_id\":\"request-signing-account\"},\"brand\":{\"domain\":\"acme-corp.example\"},\"start_time\":\"asap\",\"end_time\":\"2026-04-30T00:00:00Z\",\"packages\":[{\"product_id\":\"request-signing-product\",\"pricing_option_id\":\"request-signing-price\",\"budget\":1000}]}"
+    "body": "{\"plan_id\":\"plan_001\"}"
   },
   "verifier_capability": {
     "supported": true,

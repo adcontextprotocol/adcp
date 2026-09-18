@@ -8,11 +8,11 @@
     "url": "https://seller.example.com/adcp/create_media_buy",
     "headers": {
       "Content-Type": "application/json",
-      "Content-Digest": "sha-256=:a/DdLK7LxUoQNSv2oaTiI8dzmkI/a8n1ZplYbJ5o1rs=:",
+      "Content-Digest": "sha-256=:SNIVma8dgUBx/U1CBaYFQnsJep9S0/tXaNXlQQOdoxQ=:",
       "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
-      "Signature": "sig1=:TyEvDSlDhasiTxy2Q0jJbQ7KJ9sChxZFTvwilquLMqNOc-M2xsihETiWxis5V_RyrPCfzlw8GvZutSi1PaE0DA:"
+      "Signature": "sig1=:RiD5mPhxpBWhmaqUL5-vceyPX5jpjzYZhSnteuYCIYhIqdIl0Yxdh5qstCPXwkKL4AZOsPBL7-8ctbPkHunSAw:"
     },
-    "body": "{\"idempotency_key\":\"request-signing-negative-018-2026\",\"account\":{\"account_id\":\"request-signing-account\"},\"brand\":{\"domain\":\"acme-corp.example\"},\"start_time\":\"asap\",\"end_time\":\"2026-04-30T00:00:00Z\",\"packages\":[{\"product_id\":\"request-signing-product\",\"pricing_option_id\":\"request-signing-price\",\"budget\":1000}]}"
+    "body": "{\"plan_id\":\"plan_001\"}"
   },
   "verifier_capability": {
     "supported": true,

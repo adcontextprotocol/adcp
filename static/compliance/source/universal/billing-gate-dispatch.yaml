@@ -1,5 +1,5 @@
 id: billing_gate_dispatch
-version: "1.1.0"
+version: "1.1.1"
 title: "Billing contract and gate dispatch — sync_accounts capability vs per-buyer-agent gate"
 category: error_compliance
 summary: "Validates that account.supported_billing is declared and honored by sync_accounts, including out-of-set BILLING_NOT_SUPPORTED rejection, recovery-value consistency, and the distinct per-buyer-agent BILLING_NOT_PERMITTED_FOR_AGENT gate."
@@ -139,6 +139,10 @@ prerequisites:
 phases:
   - id: capability_discovery
     title: "Capability discovery"
+    optional: true
+    requires_capability:
+      path: "account"
+      present: true
     narrative: |
       Read `account.supported_billing` so subsequent phases can dispatch
       on which gate is testable for this seller.
