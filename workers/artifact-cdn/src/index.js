@@ -1,6 +1,5 @@
 const ALIAS_PATH = /^\/v(\d+)(?:\.(\d+))?(\/.*)?$/;
 const VERSION_DIR_PATH = /^\/([^/]+)\/$/;
-const SEMVER_PATH = /^\/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\/|$)/;
 const PINNED_TARBALL = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz$/;
 const PINNED_TARBALL_SIDECAR = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz\.(?:sha256|sig|crt)$/;
 const LEGACY_TMP_SCHEMA_KEY = /^schemas\/(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\/tmp\/([A-Za-z0-9._-]+\.json)$/;
@@ -104,21 +103,27 @@ async function versionedArtifactResponse(request, env, ctx, mount, pathname) {
     }
   }
 
-  // Pinned semver path whose exact version directory is absent from R2: resolve
-  // to the nearest published release on the same line (e.g. a 3.0.19 docs
-  // snapshot's links to /schemas/3.0.19/... resolve to the 3.0.18 artifacts it
-  // was built against). Mirrors the Fly schemas middleware so docs-only version
-  // bumps don't 404 when no schema directory is published for them. Tracks
-  // whether the exact directory exists so the cache policy below stays correct.
+  // Only stable schema pins have a docs-gap fallback contract. Prereleases
+  // and compliance pins require an exact published version, before any
+  // directory redirect, cache lookup, or origin fallback can run.
   let exactPinnedHit = false;
+  let requiresExactVersion = false;
   if (!isAlias) {
-    const semverMatch = requestPath.match(SEMVER_PATH);
-    if (semverMatch) {
-      const requestedVersion = semverMatch[1];
-      const versions = await getVersions(env.ARTIFACTS, mount);
+    const requestedVersion = requestPath.split("/")[1];
+    const parsed = parseArtifactVersion(requestedVersion);
+    if (parsed) {
+      requiresExactVersion = mount === "compliance" || parsed.prerelease.length > 0;
+      let versions;
+      try {
+        versions = await getVersions(env.ARTIFACTS, mount);
+      } catch (error) {
+        if (requiresExactVersion) return artifactNotFound(request);
+        throw error;
+      }
       if (versions.includes(requestedVersion)) {
         exactPinnedHit = true;
       } else {
+        if (requiresExactVersion) return artifactNotFound(request);
         const fallback = resolvePinnedFallback(versions, requestedVersion);
         if (fallback) {
           resolvedPath = `/${fallback}${requestPath.slice(requestedVersion.length + 1)}`;
@@ -127,30 +132,37 @@ async function versionedArtifactResponse(request, env, ctx, mount, pathname) {
     }
   }
 
+  // Redirects follow the same cache policy as files in the Fly middleware.
+  const cacheControl = exactPinnedHit ? IMMUTABLE_CACHE_CONTROL : REVALIDATE_CACHE_CONTROL;
   const bareVersionMatch = resolvedPath.match(/^\/([^/]+)$/);
-  if (bareVersionMatch && (bareVersionMatch[1] === "latest" || parseSemver(bareVersionMatch[1]))) {
-    return redirect(`/${mount}${resolvedPath}/`, 301);
+  if (bareVersionMatch && (bareVersionMatch[1] === "latest" || parseArtifactVersion(bareVersionMatch[1]))) {
+    return redirect(`/${mount}${resolvedPath}/`, 301, { "cache-control": cacheControl });
   }
 
   const dirMatch = resolvedPath.match(VERSION_DIR_PATH);
-  if (dirMatch && (dirMatch[1] === "latest" || parseSemver(dirMatch[1]))) {
-    return redirect(`/${mount}${resolvedPath}index.json`, 302);
+  if (dirMatch && (dirMatch[1] === "latest" || parseArtifactVersion(dirMatch[1]))) {
+    return redirect(`/${mount}${resolvedPath}index.json`, 302, { "cache-control": cacheControl });
   }
 
   // Only an exact pinned directory hit is immutable. Resolved fallbacks (like
   // aliases) revalidate, since the version they point at can shift as patches
   // land on the line.
   const isImmutableArtifact = exactPinnedHit;
-  const cacheControl = isImmutableArtifact
-    ? IMMUTABLE_CACHE_CONTROL
-    : REVALIDATE_CACHE_CONTROL;
 
   const key = `${mount}${resolvedPath}`;
   return r2ArtifactResponse(request, env, key, cacheControl, {
     edgeCache: isImmutableArtifact,
     overrideCacheControl: true,
+    requiresExactVersion,
     fallbackKey: mount === "schemas" ? legacyTmpFallbackKey(key) : undefined,
     ctx,
+  });
+}
+
+function artifactNotFound(request) {
+  return new Response(request.method === "HEAD" ? null : "Not Found", {
+    status: 404,
+    headers: corsHeaders({ "cache-control": "no-store", "content-type": "text/plain; charset=utf-8" }),
   });
 }
 
@@ -246,6 +258,7 @@ async function r2ArtifactResponse(request, env, key, fallbackCacheControl, optio
   }
 
   if (!object) {
+    if (options.requiresExactVersion) return artifactNotFound(request);
     return fallbackResponse(request, env);
   }
 
@@ -306,8 +319,8 @@ async function getVersions(bucket, mount) {
   const prefixes = await listPrefixes(bucket, prefix);
   const versions = prefixes
     .map((entry) => entry.slice(prefix.length).replace(/\/$/, ""))
-    .filter((segment) => parseSemver(segment))
-    .sort((a, b) => compareVersions(b, a));
+    .filter((segment) => parseArtifactVersion(segment))
+    .sort((a, b) => compareArtifactVersions(b, a));
 
   versionCache.set(cacheKey, { versions, timestamp: now });
   return versions;
@@ -344,7 +357,7 @@ async function listObjects(bucket, prefix) {
 export function findMatchingVersion(versions, requestedMajor, requestedMinor) {
   return versions.find((version) => {
     if (!isSelectableRelease(version)) return false;
-    const parsed = parseSemver(version);
+    const parsed = parseArtifactVersion(version);
     if (!parsed || parsed.major !== requestedMajor) return false;
     if (parsed.prerelease.length > 0) return false;
     return requestedMinor === undefined || parsed.minor === requestedMinor;
@@ -358,30 +371,27 @@ export function findMatchingVersion(versions, requestedMajor, requestedMinor) {
  * in the same major. Staying at-or-below keeps a frozen 3.0.x doc pointing at
  * 3.0.x artifacts rather than jumping forward to a newer minor.
  *
- * A stable request excludes prerelease candidates so a missing stable pin never
- * silently resolves to a release candidate; a prerelease request also accepts
- * lower prereleases (and stables) on the line. Returns undefined when nothing in
- * the same major qualifies.
+ * Only stable schema docs pins may fall back, and only to stable candidates.
+ * Prerelease requests always require their exact published version.
  */
 export function resolvePinnedFallback(versions, requested) {
-  const parsed = parseSemver(requested);
-  if (!parsed) return undefined;
+  const parsed = parseArtifactVersion(requested);
+  if (!parsed || parsed.prerelease.length > 0) return undefined;
 
-  const wantStable = parsed.prerelease.length === 0;
   const eligible = (candidate) => {
     if (!isSelectableRelease(candidate)) return false;
-    const p = parseSemver(candidate);
+    const p = parseArtifactVersion(candidate);
     if (!p || p.major !== parsed.major) return false;
-    if (wantStable && p.prerelease.length > 0) return false;
-    return compareVersions(candidate, requested) <= 0;
+    if (p.prerelease.length > 0) return false;
+    return compareArtifactVersions(candidate, requested) <= 0;
   };
 
   const sameMinor = versions
-    .filter((candidate) => eligible(candidate) && parseSemver(candidate).minor === parsed.minor)
-    .sort((a, b) => compareVersions(b, a));
+    .filter((candidate) => eligible(candidate) && parseArtifactVersion(candidate).minor === parsed.minor)
+    .sort((a, b) => compareArtifactVersions(b, a));
   if (sameMinor[0]) return sameMinor[0];
 
-  const sameMajor = versions.filter(eligible).sort((a, b) => compareVersions(b, a));
+  const sameMajor = versions.filter(eligible).sort((a, b) => compareArtifactVersions(b, a));
   return sameMajor[0];
 }
 
@@ -395,7 +405,7 @@ function buildAliases(versions, mount) {
 
   for (const version of versions) {
     if (!isSelectableRelease(version)) continue;
-    const parsed = parseSemver(version);
+    const parsed = parseArtifactVersion(version);
     if (!parsed) continue;
     if (parsed.prerelease.length > 0) continue;
     const majorKey = `${parsed.major}`;
@@ -426,7 +436,7 @@ function buildAliases(versions, mount) {
 
 function versionEntry(version, mountPath, knownVersions = []) {
   const statusMetadata = releaseStatusMetadata(version);
-  const parsed = parseSemver(version);
+  const parsed = parseArtifactVersion(version);
   const prerelease = !!parsed && parsed.prerelease.length > 0;
   const label = prerelease ? String(parsed.prerelease[0]).toLowerCase() : "";
   const stableVersion = prerelease ? version.split("-")[0] : undefined;
@@ -448,7 +458,7 @@ function versionEntry(version, mountPath, knownVersions = []) {
 function latestStableVersion(versions) {
   return versions.find((version) => {
     if (!isSelectableRelease(version)) return false;
-    const parsed = parseSemver(version);
+    const parsed = parseArtifactVersion(version);
     return parsed && parsed.prerelease.length === 0;
   }) || null;
 }
@@ -465,6 +475,25 @@ function releaseStatusMetadata(version) {
     return { deprecated: true };
   }
   return {};
+}
+
+// Schema/compliance pins preserve the full prefix, including build metadata.
+// Keep protocol parsing unchanged: its exact tarball routes have no fallback.
+function parseArtifactVersion(version) {
+  if (version.length > 256) return null;
+  // Fly's semver parser also accepts a leading v; keep the raw prefix for lookup.
+  const [core, build, ...extra] = (version.startsWith("v") ? version.slice(1) : version).split("+");
+  if (extra.length || (build !== undefined && !/^[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*$/.test(build))) return null;
+  const parsed = parseSemver(core);
+  if (!parsed) return null;
+  const numbers = core.split("-")[0].split(".");
+  if (numbers.some((part) => /^0\d/.test(part) || !Number.isSafeInteger(Number(part)))) return null;
+  if (parsed.prerelease.some((part) => !part || (/^\d+$/.test(part) && /^0\d/.test(part)))) return null;
+  return parsed;
+}
+
+function compareArtifactVersions(left, right) {
+  return compareVersions(left.replace(/^v/, "").split("+")[0], right.replace(/^v/, "").split("+")[0]);
 }
 
 function parseSemver(version) {
@@ -549,8 +578,8 @@ function normalizePath(pathname) {
   return pathname.replace(/\/{2,}/g, "/");
 }
 
-function redirect(location, status) {
-  return new Response(null, { status, headers: corsHeaders({ Location: location }) });
+function redirect(location, status, headers = {}) {
+  return new Response(null, { status, headers: corsHeaders({ ...headers, Location: location }) });
 }
 
 function jsonResponse(body, status = 200) {
