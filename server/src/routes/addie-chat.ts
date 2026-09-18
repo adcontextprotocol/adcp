@@ -22,7 +22,12 @@ import {
   type ExecutionPlan,
   type RoutingContext,
 } from "../addie/router.js";
-import { prepareGeminiDirectTurn, getGeminiDirectResults, geminiDirectAvailable } from "../addie/gemini-direct-experiment.js";
+import {
+  prepareGeminiDirectTurn,
+  getGeminiDirectResults,
+  geminiDirectAvailable,
+  hasAnonymousGeminiDirectAssignment,
+} from "../addie/gemini-direct-experiment.js";
 import { parseWebChatModelPreference, webChatModelInfo, WebChatModelPreferenceError, type WebChatModelInfo } from "../addie/web-chat-model-selection.js";
 import type { CostEvent } from "../addie/claude-cost-tracker.js";
 import { createProductionRouter } from "../addie/router-runtime.js";
@@ -197,10 +202,8 @@ function readAnonymousThreadOwner(req: Request): string | null {
 }
 
 function ensureAnonymousThreadOwner(req: Request, res: Response): string {
-  const existing = readAnonymousThreadOwner(req);
-  if (existing) return existing;
-
-  const ownerId = crypto.randomUUID();
+  // Renew the signed capability without rotating its stable owner UUID.
+  const ownerId = readAnonymousThreadOwner(req) ?? crypto.randomUUID();
   const capability = issueAnonymousSessionCapability(
     ADDIE_ANONYMOUS_OWNER_AUDIENCE,
     ownerId,
@@ -1238,11 +1241,13 @@ export function createAddieChatRouter(options?: {
 
       let thread;
       let externalId = conversation_id;
+      let anonymousOwnerId: string | undefined;
+      let anonymousOrigin = false;
 
       if (!externalId) {
         // Create new thread - generate a new UUID as external_id
         externalId = crypto.randomUUID();
-        const anonymousOwnerId = userId ? undefined : ensureAnonymousThreadOwner(req, res);
+        anonymousOwnerId = userId ? undefined : ensureAnonymousThreadOwner(req, res);
         thread = await threadService.getOrCreateThread({
           channel: 'web',
           external_id: externalId,
@@ -1272,15 +1277,19 @@ export function createAddieChatRouter(options?: {
           return res.status(404).json({ error: "Conversation not found" });
         }
         if (req.user?.id && thread.user_type === 'anonymous') {
-          const anonymousOwnerId = readAnonymousThreadOwner(req);
+          anonymousOwnerId = readAnonymousThreadOwner(req) ?? undefined;
           thread = anonymousOwnerId
             ? await threadService.claimAnonymousThread(
                 thread.thread_id, anonymousOwnerId, req.user.id, req.user.firstName ?? undefined,
               )
             : null;
           if (!thread) return res.status(404).json({ error: "Conversation not found" });
+          anonymousOrigin = true;
+        } else if (thread.user_type === 'anonymous') {
+          anonymousOwnerId = ensureAnonymousThreadOwner(req, res);
         }
       }
+      anonymousOrigin ||= hasAnonymousGeminiDirectAssignment(thread.context);
 
       // Get conversation history for context
       const threadMessages = await threadService.getThreadMessages(thread.thread_id, { limit: 100 });
@@ -1373,6 +1382,8 @@ export function createAddieChatRouter(options?: {
         baseRequestContext: requestContext,
         evaluation: options?.evaluationMode,
         modelPreference,
+        anonymousOwnerId,
+        anonymousOrigin,
         getControlTools: async () => isAuth
           ? await selectRoutedWebTools({
               message: messageToProcess,
@@ -1524,7 +1535,7 @@ export function createAddieChatRouter(options?: {
         config_version_id: response.config_version_id,
       });
 
-      await experimentTurn.experiment?.finish(response, assistantMessage.message_id);
+      await experimentTurn.experiment?.markDelivery('completed', assistantMessage.message_id);
 
       // Check for SI session started (from connect_to_si_agent tool)
       const siSession = withSiAnonymousCapability(
@@ -1596,6 +1607,7 @@ export function createAddieChatRouter(options?: {
     let heartbeat: ReturnType<typeof setInterval> | null = null;
     let claimedTurn: { threadId: string; clientRequestId: string; leaseId: string } | null = null;
     let terminalResponse: AddieResponse | undefined;
+    let activeExperiment: Awaited<ReturnType<typeof prepareGeminiDirectTurn>>['experiment'];
     let requestedProviderForAttempt: 'anthropic' | 'google' = 'anthropic';
     let requestedModelForAttempt = req.user ? AddieModelConfig.chat : AddieModelConfig.anonymousChat;
 
@@ -1704,10 +1716,12 @@ export function createAddieChatRouter(options?: {
 
       let thread;
       let externalId = conversation_id;
+      let anonymousOwnerId: string | undefined;
+      let anonymousOrigin = false;
 
       if (!externalId) {
         externalId = crypto.randomUUID();
-        const anonymousOwnerId = userId ? undefined : ensureAnonymousThreadOwner(req, res);
+        anonymousOwnerId = userId ? undefined : ensureAnonymousThreadOwner(req, res);
         thread = await threadService.getOrCreateThread({
           channel: 'web',
           external_id: externalId,
@@ -1727,15 +1741,19 @@ export function createAddieChatRouter(options?: {
           return res.status(404).json({ error: "Conversation not found" });
         }
         if (req.user?.id && thread.user_type === 'anonymous') {
-          const anonymousOwnerId = readAnonymousThreadOwner(req);
+          anonymousOwnerId = readAnonymousThreadOwner(req) ?? undefined;
           thread = anonymousOwnerId
             ? await threadService.claimAnonymousThread(
                 thread.thread_id, anonymousOwnerId, req.user.id, req.user.firstName ?? undefined,
               )
             : null;
           if (!thread) return res.status(404).json({ error: "Conversation not found" });
+          anonymousOrigin = true;
+        } else if (thread.user_type === 'anonymous') {
+          anonymousOwnerId = ensureAnonymousThreadOwner(req, res);
         }
       }
+      anonymousOrigin ||= hasAnonymousGeminiDirectAssignment(thread.context);
 
       const requestMessages = clientRequestId
         ? await threadService.getMessagesByClientRequestId(thread.thread_id, clientRequestId)
@@ -1961,6 +1979,8 @@ export function createAddieChatRouter(options?: {
         baseRequestContext: requestContext,
         evaluation: options?.evaluationMode,
         modelPreference,
+        anonymousOwnerId,
+        anonymousOrigin,
         getControlTools: async () => isAuth
           ? await selectRoutedWebTools({
               message: messageToProcess,
@@ -1981,6 +2001,7 @@ export function createAddieChatRouter(options?: {
           })
         : null,
       });
+      activeExperiment = experimentTurn.experiment;
       const routedWebTools = experimentTurn.selection;
       const { processOptions } = tieredAccess;
       const effectiveModel = experimentTurn.model ?? tieredAccess.effectiveModel;
@@ -2107,6 +2128,7 @@ export function createAddieChatRouter(options?: {
               reason: 'checkpoint_persistence_failed',
               recoverable: false,
             });
+            await experimentTurn.experiment?.markDelivery('interrupted');
             res.end();
             return;
           }
@@ -2130,7 +2152,7 @@ export function createAddieChatRouter(options?: {
           const certification = userId && moduleId
             ? await getCertificationModuleExperience(userId, moduleId)
             : null;
-          await threadService.addMessage({
+          const interruptedMessage = await threadService.addMessage({
             thread_id: thread.thread_id,
             role: 'assistant',
             content: 'Reply interrupted before completion. The learner can safely retry this turn.',
@@ -2145,6 +2167,7 @@ export function createAddieChatRouter(options?: {
             client_turn_lease_id: claimedTurn?.leaseId,
             finalize_client_turn_status: claimedTurn ? 'interrupted' : undefined,
           });
+          await experimentTurn.experiment?.markDelivery('interrupted', interruptedMessage.message_id);
           claimedTurn = null;
           if (userId && moduleId) {
             await recordCertificationExperienceEvent({
@@ -2172,8 +2195,9 @@ export function createAddieChatRouter(options?: {
           response = event.response;
           terminalResponse = event.response;
         } else if (event.type === 'error') {
+          let interruptedMessageId: string | undefined;
           if (claimedTurn) {
-            await threadService.addMessage({
+            const interruptedMessage = await threadService.addMessage({
               thread_id: claimedTurn.threadId,
               role: 'assistant',
               content: 'Reply interrupted before completion. The learner can safely retry this turn.',
@@ -2187,8 +2211,10 @@ export function createAddieChatRouter(options?: {
               client_turn_lease_id: claimedTurn.leaseId,
               finalize_client_turn_status: 'interrupted',
             });
+            interruptedMessageId = interruptedMessage.message_id;
             claimedTurn = null;
           }
+          await experimentTurn.experiment?.markDelivery('interrupted', interruptedMessageId);
           sendEvent("stream_error", { error: event.error, recoverable: true });
           res.end();
           return;
@@ -2200,7 +2226,7 @@ export function createAddieChatRouter(options?: {
         const certification = userId && moduleId
           ? await getCertificationModuleExperience(userId, moduleId)
           : null;
-        await threadService.addMessage({
+        const interruptedMessage = await threadService.addMessage({
           thread_id: thread.thread_id,
           role: 'assistant',
           content: 'Reply interrupted before completion. The learner can safely retry this turn.',
@@ -2216,6 +2242,7 @@ export function createAddieChatRouter(options?: {
           client_turn_lease_id: claimedTurn?.leaseId,
           finalize_client_turn_status: claimedTurn ? 'interrupted' : undefined,
         });
+        await experimentTurn.experiment?.markDelivery('interrupted', interruptedMessage.message_id);
         claimedTurn = null;
         if (userId && moduleId) {
           await recordCertificationExperienceEvent({
@@ -2316,7 +2343,7 @@ export function createAddieChatRouter(options?: {
         client_turn_lease_id: claimedTurn?.leaseId,
         finalize_client_turn_status: claimedTurn ? 'completed' : undefined,
       });
-      await experimentTurn.experiment?.finish(response, assistantMessage.message_id);
+      await experimentTurn.experiment?.markDelivery('completed', assistantMessage.message_id);
       claimedTurn = null;
 
       const completionExecution = response?.tool_executions?.find(execution =>
@@ -2470,9 +2497,10 @@ export function createAddieChatRouter(options?: {
         });
       }
       logger.error({ err: error }, "Addie Chat Stream: Error handling message");
+      let interruptedMessageId: string | undefined;
       if (claimedTurn) {
         try {
-          await threadService.addMessage({
+          const interruptedMessage = await threadService.addMessage({
             thread_id: claimedTurn.threadId,
             role: 'assistant',
             content: 'Reply interrupted before completion. The learner can safely retry this turn.',
@@ -2489,11 +2517,13 @@ export function createAddieChatRouter(options?: {
             client_turn_lease_id: claimedTurn.leaseId,
             finalize_client_turn_status: 'interrupted',
           });
+          interruptedMessageId = interruptedMessage.message_id;
           claimedTurn = null;
         } catch (statusError) {
           logger.error({ statusError }, 'Failed to release interrupted chat turn lease');
         }
       }
+      await activeExperiment?.markDelivery('interrupted', interruptedMessageId);
       if (!res.headersSent) {
         if (respondToAdminAuthorizationError(error, res)) return;
         if (error instanceof ChatAttachmentValidationError) {

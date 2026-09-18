@@ -7,12 +7,19 @@ import { createGeminiDirectTools, type DirectToolContext } from './gemini-direct
 import { GoogleGenerateContentProvider, GOOGLE_ROUTER_MODEL } from './model-providers/google-generate-content-provider.js';
 import { resolveModelCostPricing } from './model-cost-pricing.js';
 import type { WebChatModelPreference } from './web-chat-model-selection.js';
+import { anonymousSessionSubjectHmac } from '../routes/helpers/anonymous-session-capability.js';
 
 const logger = createLogger('addie-gemini-direct');
 export const GEMINI_DIRECT_EXPERIMENT = 'gemini-3.7-direct-v2';
-// Preserve existing assignments while reporting the expanded tool surface separately.
-const CONTEXT_KEY = 'gemini_direct_v1';
-const ASSIGNMENT_SALT = 'gemini-3.7-direct-v1';
+// Preserve authenticated assignments while giving anonymous web its own
+// surface-scoped, versioned namespace.
+const AUTHENTICATED_CONTEXT_KEY = 'gemini_direct_v1';
+const AUTHENTICATED_ASSIGNMENT_SALT = 'gemini-3.7-direct-v1';
+export const ANONYMOUS_WEB_CONTEXT_KEY = 'gemini_direct_web_anonymous_v1';
+export const ANONYMOUS_WEB_ASSIGNMENT_VERSION = 'anonymous_web_v1';
+const ANONYMOUS_WEB_ASSIGNMENT_DOMAIN = 'addie:gemini-direct:assignment:web-anonymous:v1';
+const AUTHENTICATED_ASSIGNMENT_VERSION = 'authenticated_web_v1';
+const MANUAL_ASSIGNMENT_VERSION = 'manual_web_v1';
 type Client = Pick<AddieClaudeClient, 'processMessage' | 'processMessageStream'>
   & Partial<Pick<AddieClaudeClient, 'getRegisteredTools' | 'forkForGeminiDirect'>>;
 export interface WebToolSelection {
@@ -25,6 +32,18 @@ export interface WebToolSelection {
   routerUsageComplete?: boolean;
 }
 type Assignment = { arm: 'control' | 'gemini'; cohort: 'staff' | 'eligible' | 'existing' | 'manual'; bucket: number };
+type Surface = 'web';
+type IdentityCohort = 'authenticated' | 'anonymous' | 'auth_transition';
+type AssignmentUnit = 'user' | 'anonymous_owner' | 'manual_choice';
+type DeliveryOutcome = 'completed' | 'interrupted';
+interface ExperimentIdentity {
+  surface: Surface;
+  identityCohort: IdentityCohort;
+  assignmentUnit: AssignmentUnit;
+  assignmentVersion: string;
+  contextKey: string;
+  recordedUserId: string;
+}
 const clients = new WeakMap<Client, AddieClaudeClient>();
 
 export function geminiDirectAvailable(client: Client | null | undefined): boolean {
@@ -39,12 +58,40 @@ export function geminiDirectAssignment(userId: string, staff: boolean, existing:
   if (mode === 'staff' && !staff) return null;
   const percent = Number(env.ADDIE_GEMINI_DIRECT_PERCENT ?? '10');
   if (!Number.isInteger(percent) || percent < 0 || percent > 100) return null;
-  const bucket = createHash('sha256').update(`${ASSIGNMENT_SALT}:${userId}`).digest().readUInt32BE(0) % 10_000;
+  const bucket = createHash('sha256').update(`${AUTHENTICATED_ASSIGNMENT_SALT}:${userId}`).digest().readUInt32BE(0) % 10_000;
   return {
     arm: existing ? 'control' : mode === 'staff' || bucket < percent * 100 ? 'gemini' : 'control',
     cohort: existing ? 'existing' : mode,
     bucket,
   };
+}
+
+export function geminiAnonymousWebEnabled(env = process.env): boolean {
+  return env.ADDIE_GEMINI_DIRECT_MODE === 'eligible'
+    && env.ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED === 'true';
+}
+
+/** Stable anonymous-web assignment derived from the verified owner UUID, never IP. */
+export function geminiAnonymousWebAssignment(
+  anonymousOwnerId: string,
+  existing: boolean,
+  env = process.env,
+): Assignment | null {
+  if (!geminiAnonymousWebEnabled(env)) return null;
+  const percent = Number(env.ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT ?? '25');
+  if (!Number.isInteger(percent) || percent < 0 || percent > 100) return null;
+  const digest = anonymousSessionSubjectHmac(anonymousOwnerId, ANONYMOUS_WEB_ASSIGNMENT_DOMAIN);
+  const bucket = Buffer.from(digest.slice(0, 8), 'hex').readUInt32BE(0) % 10_000;
+  return {
+    arm: existing ? 'control' : bucket < percent * 100 ? 'gemini' : 'control',
+    cohort: existing ? 'existing' : 'eligible',
+    bucket,
+  };
+}
+
+export function hasAnonymousGeminiDirectAssignment(context: unknown): boolean {
+  if (!context || typeof context !== 'object' || Array.isArray(context)) return false;
+  return validAssignment((context as Record<string, unknown>)[ANONYMOUS_WEB_CONTEXT_KEY]);
 }
 
 function validAssignment(value: unknown): value is Assignment {
@@ -64,8 +111,15 @@ class ExperimentTurn {
   fallbackReason: string | null = null;
   usageComplete = true;
   fallbackToolErrors = 0;
+  progressExtensions = 0;
+  finalAnswerOpportunities = 0;
+  finalAnswerRejectedCalls = 0;
 
-  constructor(readonly startedAt: number, readonly assignment: Assignment) {}
+  constructor(
+    readonly startedAt: number,
+    readonly assignment: Assignment,
+    readonly identity: ExperimentIdentity,
+  ) {}
 
   options(options?: ProcessMessageOptions): ProcessMessageOptions {
     return {
@@ -77,6 +131,12 @@ class ExperimentTurn {
       onUsageAccounted: event => {
         this.usage.push(event);
         options?.onUsageAccounted?.(event);
+      },
+      onTerminalBoundaryEvent: event => {
+        if (event === 'progress_extension') this.progressExtensions++;
+        else if (event === 'final_answer_opportunity') this.finalAnswerOpportunities++;
+        else if (event === 'final_answer_rejected_call') this.finalAnswerRejectedCalls++;
+        options?.onTerminalBoundaryEvent?.(event);
       },
     };
   }
@@ -105,11 +165,16 @@ class ExperimentTurn {
     }
     try {
       await query(`UPDATE addie_chat_experiment_turns SET
-        completed_at = NOW(), first_visible_ms = $2, total_ms = $3, router_ms = $4,
+        completed_at = COALESCE(completed_at, NOW()), first_visible_ms = $2, total_ms = $3, router_ms = $4,
         provider_calls = $5, estimated_cost_micros = $6, usage_complete = $7,
         fallback_reason = $8, actual_provider = $9, actual_model = $10,
         failed = $11, tool_errors = $12, usage = $13::jsonb,
-        assistant_message_id = COALESCE($14, assistant_message_id)
+        assistant_message_id = COALESCE($14, assistant_message_id),
+        iterations = $15, progress_extensions = $16,
+        final_answer_opportunities = $17, final_answer_rejected_calls = $18,
+        output_truncation_source = $19, output_truncation_provider_reason = $20,
+        output_truncation_original_length = $21,
+        output_truncation_delivered_length = $22
         WHERE id = $1`, [
         this.id, this.firstVisibleMs, Date.now() - this.startedAt, this.routerMs,
         this.providerCalls, costMicros, this.usageComplete, this.fallbackReason,
@@ -118,9 +183,26 @@ class ExperimentTurn {
         failed || !response || response.flagged === true,
         this.fallbackToolErrors + (response?.tool_executions?.filter(tool => tool.is_error).length ?? 0),
         JSON.stringify(this.usage), messageId ?? null,
+        response?.timing?.iterations ?? null,
+        this.progressExtensions, this.finalAnswerOpportunities, this.finalAnswerRejectedCalls,
+        response?.output_truncation?.source ?? null,
+        response?.output_truncation?.provider_reason ?? null,
+        response?.output_truncation?.original_length ?? null,
+        response?.output_truncation?.delivered_length ?? null,
       ]);
     } catch (error) {
       logger.error({ error, turnId: this.id }, 'Failed to save Gemini Direct outcome');
+    }
+  }
+
+  async markDelivery(outcome: DeliveryOutcome, messageId?: string) {
+    try {
+      await query(`UPDATE addie_chat_experiment_turns SET
+        delivery_outcome = $2,
+        assistant_message_id = COALESCE($3, assistant_message_id)
+        WHERE id = $1`, [this.id, outcome, messageId ?? null]);
+    } catch (error) {
+      logger.error({ error, turnId: this.id }, 'Failed to save Gemini Direct delivery outcome');
     }
   }
 }
@@ -153,6 +235,10 @@ export async function prepareGeminiDirectTurn(input: DirectToolContext & {
   /** Evaluation routes must never enroll live experiment traffic. */
   evaluation?: boolean;
   modelPreference?: WebChatModelPreference;
+  /** Verified signed-cookie subject. Never sourced from an IP or request body. */
+  anonymousOwnerId?: string;
+  /** The thread began anonymously and must retain its anonymous assignment after sign-in. */
+  anonymousOrigin?: boolean;
 }) {
   let controlTools: WebToolSelection | null | undefined;
   const getControl = async () => controlTools === undefined
@@ -161,12 +247,34 @@ export async function prepareGeminiDirectTurn(input: DirectToolContext & {
   const manual = !!input.userId && !input.evaluation
     && (input.modelPreference === 'gemini' || input.modelPreference === 'sonnet');
   const available = geminiDirectAvailable(input.client);
+  const anonymousAssignmentUnit = !manual && (!!input.anonymousOwnerId || input.anonymousOrigin === true);
+  const anonymousDigest = input.anonymousOwnerId
+    ? anonymousSessionSubjectHmac(input.anonymousOwnerId, ANONYMOUS_WEB_ASSIGNMENT_DOMAIN)
+    : null;
+  const identity: ExperimentIdentity = manual ? {
+    surface: 'web', identityCohort: input.anonymousOrigin ? 'auth_transition' : 'authenticated',
+    assignmentUnit: 'manual_choice', assignmentVersion: MANUAL_ASSIGNMENT_VERSION,
+    contextKey: AUTHENTICATED_CONTEXT_KEY, recordedUserId: input.userId!,
+  } : anonymousAssignmentUnit ? {
+    surface: 'web', identityCohort: input.userId ? 'auth_transition' : 'anonymous',
+    assignmentUnit: 'anonymous_owner', assignmentVersion: ANONYMOUS_WEB_ASSIGNMENT_VERSION,
+    contextKey: ANONYMOUS_WEB_CONTEXT_KEY,
+    recordedUserId: input.userId ?? `anonymous:${anonymousDigest}`,
+  } : {
+    surface: 'web', identityCohort: 'authenticated', assignmentUnit: 'user',
+    assignmentVersion: AUTHENTICATED_ASSIGNMENT_VERSION,
+    contextKey: AUTHENTICATED_CONTEXT_KEY, recordedUserId: input.userId ?? '',
+  };
+  const anonymousEnabled = geminiAnonymousWebEnabled();
   const proposed: Assignment | null = manual
     ? { arm: input.modelPreference === 'gemini' ? 'gemini' : 'control', cohort: 'manual', bucket: 0 }
+    : anonymousAssignmentUnit && input.anonymousOwnerId && !input.evaluation && available && anonymousEnabled
+      ? geminiAnonymousWebAssignment(input.anonymousOwnerId, input.hasPriorAssistant)
     : input.userId && !input.evaluation && available
       ? geminiDirectAssignment(input.userId, input.isAdmin, input.hasPriorAssistant) : null;
-  if (!proposed) return ordinary();
-  const exclusionReason = proposed.arm === 'gemini' && !available ? 'gemini_unavailable' : null;
+  const inspectStoredAnonymous = anonymousAssignmentUnit && !input.evaluation
+    && process.env.ADDIE_GEMINI_DIRECT_MODE === 'eligible';
+  if (!proposed && !inspectStoredAnonymous) return ordinary();
 
   let assignment: Assignment;
   let experiment: ExperimentTurn;
@@ -174,32 +282,39 @@ export async function prepareGeminiDirectTurn(input: DirectToolContext & {
     if (manual) {
       // A voluntary choice applies to this turn only. Never replace the stored
       // randomized assignment when a user switches models mid-conversation.
-      assignment = proposed;
+      assignment = proposed!;
     } else {
       // One atomic UPDATE elects the winner even when two requests start together.
       const assigned = await query<{ assignment: unknown }>(`UPDATE addie_threads SET
-        context = CASE WHEN context ? $2 THEN context ELSE
+        context = CASE WHEN context ? $2 OR $3::jsonb IS NULL THEN context ELSE
           COALESCE(context, '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb) END
         WHERE thread_id = $1 RETURNING context -> $2 AS assignment`,
-      [input.threadId, CONTEXT_KEY, JSON.stringify(proposed)]);
+      [input.threadId, identity.contextKey, proposed ? JSON.stringify(proposed) : null]);
       const stored = assigned.rows[0]?.assignment;
       if (!validAssignment(stored)) return ordinary();
       assignment = stored;
     }
-    experiment = new ExperimentTurn(input.startedAt, assignment);
+    const exclusionReason = assignment.arm === 'gemini'
+      ? !available ? 'gemini_unavailable'
+        : anonymousAssignmentUnit && !anonymousEnabled ? 'surface_disabled'
+          : null
+      : null;
+    experiment = new ExperimentTurn(input.startedAt, assignment, identity);
     if (assignment.arm === 'gemini' && exclusionReason) experiment.fallbackReason = exclusionReason;
     await query(`INSERT INTO addie_chat_experiment_turns
-      (id, experiment, thread_id, user_id, arm, cohort, exclusion_reason, started_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
-      experiment.id, GEMINI_DIRECT_EXPERIMENT, input.threadId, input.userId,
+      (id, experiment, thread_id, user_id, arm, cohort, exclusion_reason, started_at,
+       surface, identity_cohort, assignment_unit, assignment_version)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`, [
+      experiment.id, GEMINI_DIRECT_EXPERIMENT, input.threadId, identity.recordedUserId,
       assignment.arm, assignment.cohort, exclusionReason, new Date(input.startedAt),
+      identity.surface, identity.identityCohort, identity.assignmentUnit, identity.assignmentVersion,
     ]);
   } catch (error) {
     logger.error({ error }, 'Gemini Direct assignment unavailable; retaining control');
     return ordinary();
   }
 
-  const treatment = assignment.arm === 'gemini' && !exclusionReason;
+  const treatment = assignment.arm === 'gemini' && !experiment.fallbackReason;
   const direct = treatment ? createGeminiDirectTools(input.requestTools, input.client.getRegisteredTools?.() ?? [], input.isAdmin, {
     activeCertificationKind: input.activeCertificationKind,
     activeAgentRegistration: input.activeAgentRegistration,
@@ -357,14 +472,27 @@ export async function getGeminiDirectResults() {
         AND chosen.model_preference IN ('gemini', 'sonnet')
     ) THEN 'manual' ELSE e.cohort END AS reporting_cohort
     FROM addie_chat_experiment_turns e WHERE e.experiment = $1
-  ) SELECT e.arm, e.reporting_cohort AS cohort, e.exclusion_reason,
+  ) SELECT e.surface, e.identity_cohort, e.assignment_unit, e.assignment_version,
+    e.arm, e.reporting_cohort AS cohort, e.exclusion_reason,
     COUNT(*)::int AS turns, COUNT(DISTINCT e.user_id)::int AS users,
     COUNT(*) FILTER (WHERE completed_at IS NULL)::int AS incomplete,
+    COUNT(*) FILTER (WHERE delivery_outcome = 'completed')::int AS delivered,
+    COUNT(*) FILTER (WHERE delivery_outcome = 'interrupted')::int AS interrupted,
+    COUNT(*) FILTER (WHERE delivery_outcome IS NULL)::int AS delivery_unknown,
     COUNT(*) FILTER (WHERE failed)::int AS failures,
     COUNT(*) FILTER (WHERE arm = 'gemini' AND actual_provider = 'anthropic')::int AS fallbacks,
     COUNT(*) FILTER (WHERE fallback_reason = 'provider_error' AND actual_provider = 'anthropic')::int AS provider_error_fallbacks,
     COUNT(*) FILTER (WHERE fallback_reason = 'provider_error_after_action')::int AS post_action_provider_failures,
     COUNT(*) FILTER (WHERE NOT usage_complete)::int AS incomplete_usage,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY iterations) AS median_iterations,
+    percentile_cont(0.95) WITHIN GROUP (ORDER BY iterations) AS p95_iterations,
+    MAX(iterations)::int AS max_iterations,
+    COUNT(*) FILTER (WHERE iterations > 10)::int AS turns_over_ten_iterations,
+    SUM(progress_extensions)::int AS progress_extensions,
+    SUM(final_answer_opportunities)::int AS final_answer_opportunities,
+    SUM(final_answer_rejected_calls)::int AS final_answer_rejected_calls,
+    COUNT(*) FILTER (WHERE output_truncation_source = 'provider_output_limit')::int AS provider_output_truncations,
+    COUNT(*) FILTER (WHERE output_truncation_source = 'local_character_limit')::int AS local_character_truncations,
     ROUND(AVG(first_visible_ms)) AS mean_first_visible_ms,
     percentile_cont(0.5) WITHIN GROUP (ORDER BY total_ms) AS median_total_ms,
     percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS p95_total_ms,
@@ -381,6 +509,18 @@ export async function getGeminiDirectResults() {
       END AS estimated_cost_per_marked_resolution_usd
     FROM reported_turns e
     LEFT JOIN addie_thread_messages m ON m.message_id = e.assistant_message_id
-    GROUP BY e.arm, e.reporting_cohort, e.exclusion_reason ORDER BY e.reporting_cohort, e.arm`, [GEMINI_DIRECT_EXPERIMENT]);
-  return { experiment: GEMINI_DIRECT_EXPERIMENT, mode: process.env.ADDIE_GEMINI_DIRECT_MODE ?? 'off', cohorts: result.rows };
+    GROUP BY e.surface, e.identity_cohort, e.assignment_unit, e.assignment_version,
+      e.arm, e.reporting_cohort, e.exclusion_reason
+    ORDER BY e.surface, e.identity_cohort, e.reporting_cohort, e.arm`, [GEMINI_DIRECT_EXPERIMENT]);
+  return {
+    experiment: GEMINI_DIRECT_EXPERIMENT,
+    mode: process.env.ADDIE_GEMINI_DIRECT_MODE ?? 'off',
+    authenticated_web_percent: Number(process.env.ADDIE_GEMINI_DIRECT_PERCENT ?? '10'),
+    anonymous_web: {
+      enabled: geminiAnonymousWebEnabled(),
+      percent: Number(process.env.ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT ?? '25'),
+      assignment_version: ANONYMOUS_WEB_ASSIGNMENT_VERSION,
+    },
+    cohorts: result.rows,
+  };
 }

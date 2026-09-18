@@ -623,6 +623,10 @@ export interface ProcessMessageOptions {
   directToolSession?: DirectToolSession;
   /** Aggregate settled usage, including calls preceding a failed continuation. */
   onUsageAccounted?: (event: CostEvent) => void;
+  /** Content-free terminal-boundary telemetry for durable experiment accounting. */
+  onTerminalBoundaryEvent?: (
+    event: 'progress_extension' | 'final_answer_opportunity' | 'final_answer_rejected_call',
+  ) => void;
   /** Request-local execution mode. Evaluation, replay, and shadow suppress operational side effects. */
   executionMode?: AddieExecutionMode;
   /** Exclude provider-managed tools such as web search for this request only. */
@@ -1706,7 +1710,11 @@ export class AddieClaudeClient {
     const rejectFinalAnswerToolCall = createAddieToolExecutor(
       [],
       new Map(),
-      { ...toolExecutorOptions, expectedEmptySurface: 'final_answer_boundary' },
+      {
+        ...toolExecutorOptions,
+        expectedEmptySurface: 'final_answer_boundary',
+        onExpectedBoundaryRejection: () => options?.onTerminalBoundaryEvent?.('final_answer_rejected_call'),
+      },
     );
     systemPromptMs = prepared.systemPromptMs;
 
@@ -1998,11 +2006,13 @@ export class AddieClaudeClient {
         });
         if (boundaryDecision === 'final_answer') {
           finalAnswerOnly = true;
+          options?.onTerminalBoundaryEvent?.('final_answer_opportunity');
           logger.info(
             { iteration, event: 'addie_final_answer_opportunity' },
             'Addie: Granting one tool-disabled final response after useful tool progress',
           );
         } else if (boundaryDecision === 'progress') {
+          options?.onTerminalBoundaryEvent?.('progress_extension');
           logger.info(
             { iteration, event: 'addie_tool_progress_extension' },
             'Addie: Extending bounded Gemini tool loop after new useful progress',
@@ -2371,7 +2381,11 @@ export class AddieClaudeClient {
     const rejectFinalAnswerToolCall = createAddieToolExecutor(
       [],
       new Map(),
-      { ...toolExecutorOptions, expectedEmptySurface: 'final_answer_boundary' },
+      {
+        ...toolExecutorOptions,
+        expectedEmptySurface: 'final_answer_boundary',
+        onExpectedBoundaryRejection: () => options?.onTerminalBoundaryEvent?.('final_answer_rejected_call'),
+      },
     );
 
     if (messageTurnsResult.wasTrimmed) {
@@ -2806,11 +2820,13 @@ export class AddieClaudeClient {
           });
           if (boundaryDecision === 'final_answer') {
             finalAnswerOnly = true;
+            options?.onTerminalBoundaryEvent?.('final_answer_opportunity');
             logger.info(
               { iteration, event: 'addie_final_answer_opportunity' },
               'Addie Stream: Granting one tool-disabled final response after useful tool progress',
             );
           } else if (boundaryDecision === 'progress') {
+            options?.onTerminalBoundaryEvent?.('progress_extension');
             logger.info(
               { iteration, event: 'addie_tool_progress_extension' },
               'Addie Stream: Extending bounded Gemini tool loop after new useful progress',

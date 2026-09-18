@@ -25,10 +25,17 @@ import { AddieClaudeClient, type AddieResponse, type ProcessMessageOptions, type
 import { GoogleGenerateContentProvider, GOOGLE_ROUTER_MODEL } from '../../../src/addie/model-providers/google-generate-content-provider.js';
 import { collectModelResponse } from '../../../src/addie/model-providers/events.js';
 import { createGeminiDirectTools } from '../../../src/addie/gemini-direct-tools.js';
-import { geminiDirectAssignment, prepareGeminiDirectTurn } from '../../../src/addie/gemini-direct-experiment.js';
+import {
+  ANONYMOUS_WEB_ASSIGNMENT_VERSION,
+  ANONYMOUS_WEB_CONTEXT_KEY,
+  geminiAnonymousWebAssignment,
+  geminiDirectAssignment,
+  prepareGeminiDirectTurn,
+} from '../../../src/addie/gemini-direct-experiment.js';
 import { AddieModelConfig } from '../../../src/config/models.js';
 import { ADMIN_ANALYTICS_TOOL } from '../../../src/addie/mcp/admin-analytics.js';
 import { getToolsForSets, getValidToolSetNames, TOOL_SETS } from '../../../src/addie/tool-sets.js';
+import { MAX_OUTPUT_LENGTH } from '../../../src/addie/security.js';
 
 function receipt(parts: Part[], id = 'google-response'): GenerateContentResponse {
   return {
@@ -90,6 +97,7 @@ async function run(input: Parameters<typeof prepareGeminiDirectTurn>[0], overrid
 beforeEach(() => {
   vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'staff');
   vi.stubEnv('GEMINI_API_KEY', 'unused');
+  vi.stubEnv('ANONYMOUS_SESSION_CAPABILITY_SECRET', 'test-anonymous-assignment-secret-that-is-at-least-32-bytes');
   mocks.recordCost.mockReset().mockResolvedValue(undefined);
   mocks.checkCostCap.mockReset().mockResolvedValue({ ok: true });
   mocks.notifyToolError.mockReset();
@@ -97,7 +105,9 @@ beforeEach(() => {
   mocks.query.mockReset().mockImplementation(async (sql: string, parameters: unknown[]) => {
     if (sql.startsWith('UPDATE addie_threads')) {
       const thread = String(parameters[0]);
-      if (!assignments.has(thread)) assignments.set(thread, JSON.parse(String(parameters[2])));
+      if (!assignments.has(thread) && parameters[2] !== null) {
+        assignments.set(thread, JSON.parse(String(parameters[2])));
+      }
       return { rows: [{ assignment: assignments.get(thread) }] };
     }
     return { rows: [] };
@@ -275,6 +285,28 @@ describe('Gemini Direct production integration', () => {
       .filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns'))
       .at(-1)?.[1];
     expect(outcome[10]).toBe(false);
+    expect(outcome.slice(18, 22)).toEqual([
+      'provider_output_limit', 'MAX_TOKENS', 24, 58,
+    ]);
+  });
+
+  it('persists local character shaping as a distinct typed truncation', async () => {
+    const original = `${'A'.repeat(MAX_OUTPUT_LENGTH - 20)}. ${'B'.repeat(100)}.`;
+    const f = fixture([receipt([{ text: original }], 'local-output-limit')]);
+
+    const result = await run(f.input);
+
+    expect(result.response?.output_truncation).toMatchObject({
+      source: 'local_character_limit',
+      original_length: original.length,
+    });
+    const outcome = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns'))
+      .at(-1)?.[1];
+    expect(outcome[18]).toBe('local_character_limit');
+    expect(outcome[19]).toBeNull();
+    expect(outcome[20]).toBe(original.length);
+    expect(outcome[21]).toBeLessThanOrEqual(MAX_OUTPUT_LENGTH);
   });
 
   it('executes real shared-loop tools with production accounting and skips the router', async () => {
@@ -318,6 +350,10 @@ describe('Gemini Direct production integration', () => {
     expect(finalRequest.config?.maxOutputTokens).toBe(8_192);
     expect(finalRequest.config?.systemInstruction).toContain('The bounded tool budget is exhausted.');
     expect(f.control).not.toHaveBeenCalled();
+    const outcome = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns SET\n        completed_at'))
+      .at(-1)?.[1];
+    expect(outcome.slice(14, 18)).toEqual([17, 6, 1, 0]);
   });
 
   it('uses the reserved synthesis turn after progress stalls at an extended boundary', async () => {
@@ -408,6 +444,10 @@ describe('Gemini Direct production integration', () => {
       blocked_by_policy: true,
     });
     expect(mocks.notifyToolError).not.toHaveBeenCalled();
+    const outcome = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns SET\n        completed_at'))
+      .at(-1)?.[1];
+    expect(outcome.slice(14, 18)).toEqual([8, 6, 1, 1]);
   });
 
   it('loads authorized domains on demand without admitting an unbound admin handler', async () => {
@@ -703,6 +743,127 @@ describe('assignment and rollback', () => {
     expect(treated).toBeGreaterThan(60);
     expect(treated).toBeLessThan(140);
     expect(geminiDirectAssignment('user-42', false, false, env)).toEqual(assignments[42]);
+  });
+
+  it('uses a separate deterministic 25% HMAC cohort for anonymous web owners', () => {
+    const env = {
+      ADDIE_GEMINI_DIRECT_MODE: 'eligible',
+      ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED: 'true',
+      ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT: '25',
+    };
+    const assignments = Array.from({ length: 1000 }, (_, index) =>
+      geminiAnonymousWebAssignment(`00000000-0000-4000-8000-${String(index).padStart(12, '0')}`, false, env));
+    const treated = assignments.filter(value => value?.arm === 'gemini').length;
+    expect(treated).toBeGreaterThan(190);
+    expect(treated).toBeLessThan(310);
+    expect(geminiAnonymousWebAssignment('anonymous-owner', false, env))
+      .toEqual(geminiAnonymousWebAssignment('anonymous-owner', false, env));
+    expect(geminiAnonymousWebAssignment('anonymous-owner', true, env)).toMatchObject({
+      arm: 'control', cohort: 'existing',
+    });
+    expect(geminiAnonymousWebAssignment('anonymous-owner', false, {
+      ...env, ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED: 'false',
+    })).toBeNull();
+  });
+
+  it('atomically persists anonymous assignment metadata without storing the owner UUID', async () => {
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
+    const f = fixture([]);
+    const ownerId = '11111111-1111-4111-8111-111111111111';
+
+    const turn = await prepareGeminiDirectTurn({
+      ...f.input, userId: undefined, isAdmin: false, anonymousOwnerId: ownerId,
+    });
+
+    expect(turn.model).toBe(GOOGLE_ROUTER_MODEL);
+    const assignmentWrite = mocks.query.mock.calls.find(([sql]) => sql.startsWith('UPDATE addie_threads'))!;
+    expect(assignmentWrite[1][1]).toBe(ANONYMOUS_WEB_CONTEXT_KEY);
+    const insert = mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))!;
+    expect(insert[1][3]).toMatch(/^anonymous:[0-9a-f]{64}$/);
+    expect(insert[1][3]).not.toContain(ownerId);
+    expect(insert[1].slice(4, 12)).toEqual([
+      'gemini', 'eligible', null, expect.any(Date),
+      'web', 'anonymous', 'anonymous_owner', ANONYMOUS_WEB_ASSIGNMENT_VERSION,
+    ]);
+  });
+
+  it('retains concurrent anonymous assignments across percentage changes', async () => {
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
+    const f = fixture([]);
+    const input = { ...f.input, userId: undefined, isAdmin: false, anonymousOwnerId: 'anonymous-owner' };
+
+    const [first, concurrent] = await Promise.all([
+      prepareGeminiDirectTurn(input), prepareGeminiDirectTurn(input),
+    ]);
+    expect(first.model).toBe(GOOGLE_ROUTER_MODEL);
+    expect(concurrent.model).toBe(GOOGLE_ROUTER_MODEL);
+
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '0');
+    const later = await prepareGeminiDirectTurn({ ...input, hasPriorAssistant: true });
+    expect(later.model).toBe(GOOGLE_ROUTER_MODEL);
+  });
+
+  it('uses the anonymous surface kill switch without erasing a stored treatment', async () => {
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
+    const f = fixture([]);
+    const input = { ...f.input, userId: undefined, isAdmin: false, anonymousOwnerId: 'anonymous-owner' };
+    expect((await prepareGeminiDirectTurn(input)).model).toBe(GOOGLE_ROUTER_MODEL);
+
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'false');
+    const disabled = await prepareGeminiDirectTurn({ ...input, hasPriorAssistant: true });
+    expect(disabled.model).toBeUndefined();
+    const assignmentWrites = mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_threads'));
+    expect(assignmentWrites.at(-1)?.[1]).toEqual([
+      'thread-test', ANONYMOUS_WEB_CONTEXT_KEY, null,
+    ]);
+    const insert = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))
+      .at(-1)!;
+    expect(insert[1].slice(4, 7)).toEqual(['gemini', 'eligible', 'surface_disabled']);
+  });
+
+  it('preserves an anonymous assignment after sign-in and reports auth_transition', async () => {
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
+    const f = fixture([]);
+    await prepareGeminiDirectTurn({
+      ...f.input, userId: undefined, isAdmin: false, anonymousOwnerId: 'anonymous-owner',
+    });
+
+    const transitioned = await prepareGeminiDirectTurn({
+      ...f.input, userId: 'signed-in-user', isAdmin: false,
+      anonymousOrigin: true, hasPriorAssistant: true,
+    });
+
+    expect(transitioned.model).toBe(GOOGLE_ROUTER_MODEL);
+    const insert = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))
+      .at(-1)!;
+    expect(insert[1][3]).toBe('signed-in-user');
+    expect(insert[1].slice(8, 12)).toEqual([
+      'web', 'auth_transition', 'anonymous_owner', ANONYMOUS_WEB_ASSIGNMENT_VERSION,
+    ]);
+  });
+
+  it('keeps an existing unassigned anonymous thread in control', async () => {
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
+    const f = fixture([]);
+    const turn = await prepareGeminiDirectTurn({
+      ...f.input, userId: undefined, isAdmin: false,
+      anonymousOwnerId: 'anonymous-owner', hasPriorAssistant: true,
+    });
+    expect(turn.model).toBeUndefined();
+    const insert = mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))!;
+    expect(insert[1].slice(4, 6)).toEqual(['control', 'existing']);
   });
 
   it('atomically retains an existing thread assignment during concurrent requests and rollout changes', async () => {

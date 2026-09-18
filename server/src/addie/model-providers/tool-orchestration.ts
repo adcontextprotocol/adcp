@@ -89,6 +89,8 @@ export interface AddieToolExecutorOptions {
   notificationContext?: ToolExecutionNotificationContext;
   /** An intentionally empty executable surface with its own rejection signal. */
   expectedEmptySurface?: 'final_answer_boundary';
+  /** Content-free observer for a call rejected at that expected boundary. */
+  onExpectedBoundaryRejection?: () => void;
   /**
    * Persists an unknown-outcome intent immediately before a live mutation.
    * A production mutation is never dispatched if this durable handshake is
@@ -613,6 +615,7 @@ export function createAddieToolExecutor(
       const definitionPresent = Boolean(registered?.definition);
       const expectedBoundaryRejection = !definitionPresent
         && options.expectedEmptySurface === 'final_answer_boundary';
+      if (expectedBoundaryRejection) options.onExpectedBoundaryRejection?.();
       const invariantEvent = expectedBoundaryRejection
         ? 'addie_final_answer_tool_call_rejected'
         : definitionPresent
