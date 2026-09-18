@@ -90,6 +90,25 @@ brand:
 
 # Sample assets at common ad dimensions.
 # These are placeholder URLs — in production, these would point to actual hosted test images.
+# The ACCOUNT the storyboards that name this kit address. Every account-bearing step
+# sends `account: {brand: {domain: <brand.house.domain>}, operator: <operator>}`, and a
+# seller that does not hold a matching account answers ACCOUNT_NOT_FOUND — correctly, and
+# is then graded as having failed the tool the step names. 251 steps in 3.1.x send this
+# pair; one unseeded account produced 19 misattributed failures across 5 tracks (#7588).
+#
+# The brand half was already derivable from `brand.house.domain` above. The operator was
+# not: it appeared only inside the storyboards' own `sample_request.account`, so a seller
+# implementing this kit could not learn the account it must hold without scraping them.
+# Declaring it here completes the seeding contract — "implements the kit" now includes the
+# accounts the kit's storyboards will reference.
+#
+# sandbox: both spellings are addressed. AccountReference.sandbox defaults to false and
+# matches NULL-or-false, so a brand asked for both ways needs two accounts — which is why
+# this kit (sandbox) and acme-outdoor-live.yaml (live) share one brand domain.
+account:
+  operator: pinnacle-agency.example
+  sandbox: [true, false]
+
 assets:
   images:
     - id: "hero_300x250"
