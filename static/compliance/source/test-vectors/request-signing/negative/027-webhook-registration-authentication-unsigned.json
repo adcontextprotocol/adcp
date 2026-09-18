@@ -10,7 +10,7 @@
       "Content-Type": "application/json",
       "Authorization": "Bearer test-bearer-token"
     },
-    "body": "{\"media_buy_id\":\"mb_001\",\"push_notification_config\":{\"url\":\"https://buyer.example.com/webhook\",\"authentication\":{\"scheme\":\"HMAC-SHA256\",\"credentials\":\"shared-secret-placeholder\"}}}"
+    "body": "{\"account\":{\"brand\":{\"domain\":\"acmeoutdoor.example\"},\"operator\":\"pinnacle-agency.example\",\"sandbox\":false},\"media_buy_id\":\"mb_001\",\"idempotency_key\":\"vector-negative-027-webhook-registration-authentication-unsigned\",\"brand\":{\"domain\":\"brand.example\"},\"push_notification_config\":{\"url\":\"https://buyer.example.com/webhook\",\"authentication\":{\"schemes\":[\"HMAC-SHA256\"],\"credentials\":\"ssssssssssssssssssssssssssssssssssssssss\"}}}"
   },
   "verifier_capability": {
     "supported": true,
