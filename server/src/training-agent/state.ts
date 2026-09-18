@@ -1002,6 +1002,15 @@ export function findGovernancePlanAcrossSessions(planId: string): Promise<Sessio
     [...s.governancePlans.values()].some(plan => plan.planId === planId));
 }
 
+/** Delete one caller-owned session without disturbing concurrent sandboxes. */
+export async function clearSession(key: string): Promise<void> {
+  const ctx = requestCtx.getStore();
+  ctx?.sessions.delete(key);
+  ctx?.snapshots.delete(key);
+  knownSessionKeys.delete(key);
+  await getStore().delete(SESSIONS_COLLECTION, key);
+}
+
 /** Clear all sessions (tests only). */
 export async function clearSessions(): Promise<void> {
   const ctx = requestCtx.getStore();

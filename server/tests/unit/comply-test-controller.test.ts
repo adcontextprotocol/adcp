@@ -27,8 +27,10 @@ import {
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'comply-test.example.com' }, operator: 'comply-tester', sandbox: true };
+const OTHER_ACCOUNT = { brand: { domain: 'other-comply-test.example.com' }, operator: 'other-tester', sandbox: true };
 const CONTROLLER_ACCOUNT = { ...ACCOUNT, operator: ACCOUNT.brand.domain };
 const BRAND = { domain: 'comply-test.example.com', name: 'Comply Test Brand' };
+const OTHER_BRAND = { domain: 'other-comply-test.example.com', name: 'Other Comply Test Brand' };
 const RELEASED_31_SCHEMA_ROOT = join(process.cwd(), 'dist/schemas/3.1.19');
 
 async function validateReleased31Schema(data: unknown, relativePath: string): Promise<string[]> {
@@ -228,6 +230,7 @@ describe('comply_test_controller', () => {
         'seed_media_buy',
         // Local scenarios — see LOCAL_SCENARIOS in
         // server/src/training-agent/comply-test-controller.ts.
+        'reset_state',
         'force_create_media_buy_arm',
         'force_get_products_arm',
         'force_get_signals_arm',
@@ -246,7 +249,7 @@ describe('comply_test_controller', () => {
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(28);
+      expect(scenarios.length).toBe(29);
       // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
@@ -262,6 +265,123 @@ describe('comply_test_controller', () => {
       expect(result.success).toBe(true);
       expect(result.scenarios).toContain('force_get_products_arm');
       expect(result.scenarios).toContain('expire_account_change_cursor');
+    });
+  });
+
+  describe('reset_state', () => {
+    it('clears only the caller session and its seed fixture cache', async () => {
+      const first = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'reset_state_product',
+          fixture: { delivery_type: 'non_guaranteed', channels: ['display'] },
+        },
+      });
+      expect(first.result.success).toBe(true);
+
+      const other = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: OTHER_ACCOUNT,
+        brand: OTHER_BRAND,
+        params: {
+          product_id: 'reset_state_product',
+          fixture: { delivery_type: 'guaranteed', channels: ['video'] },
+        },
+      });
+      expect(other.result.success).toBe(true);
+
+      const conflict = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'reset_state_product',
+          fixture: { delivery_type: 'guaranteed', channels: ['video'] },
+        },
+      });
+      expect(conflict.result).toMatchObject({ success: false, error: 'INVALID_PARAMS' });
+
+      const reset = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'reset_state',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(reset.result).toMatchObject({ success: true });
+
+      const reseeded = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'reset_state_product',
+          fixture: { delivery_type: 'guaranteed', channels: ['video'] },
+        },
+      });
+      expect(reseeded.result.success).toBe(true);
+
+      const otherConflict = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: OTHER_ACCOUNT,
+        brand: OTHER_BRAND,
+        params: {
+          product_id: 'reset_state_product',
+          fixture: { delivery_type: 'non_guaranteed', channels: ['display'] },
+        },
+      });
+      expect(otherConflict.result).toMatchObject({ success: false, error: 'INVALID_PARAMS' });
+    });
+
+    it('clears account and catalog fixtures under their public-handler keys', async () => {
+      server = createTrainingAgentServer({ mode: 'open', principal: 'reset-key-test' });
+
+      const originalAccountFixture = {
+        brand: { domain: 'reset-account.example' },
+        operator: 'reset-operator.example',
+        billing: 'operator',
+        sandbox: true,
+        status: 'active',
+      };
+      const seededAccount = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_account',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          account_id: 'reset_account_fixture',
+          fixture: originalAccountFixture,
+        },
+      });
+      expect(seededAccount.result.success).toBe(true);
+
+      const syncedCatalog = await simulateCallTool(server, 'sync_catalogs', {
+        account: ACCOUNT,
+        catalogs: [{ catalog_id: 'reset_catalog_fixture', name: 'Before reset', items: [] }],
+      });
+      expect(syncedCatalog.result.catalogs).toEqual([
+        expect.objectContaining({ catalog_id: 'reset_catalog_fixture', action: 'created' }),
+      ]);
+
+      const reset = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'reset_state',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(reset.result).toMatchObject({ success: true });
+
+      const reseededAccount = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_account',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          account_id: 'reset_account_fixture',
+          fixture: { ...originalAccountFixture, status: 'paused' },
+        },
+      });
+      expect(reseededAccount.result.success).toBe(true);
+
+      const catalogsAfterReset = await simulateCallTool(server, 'sync_catalogs', { account: ACCOUNT });
+      expect(catalogsAfterReset.result.catalogs).toEqual([]);
     });
   });
 
