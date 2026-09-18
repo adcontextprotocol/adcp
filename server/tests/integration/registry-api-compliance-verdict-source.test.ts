@@ -310,9 +310,9 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         first_failed_step_title: options.includeDiagnostics ? 'Debug step' : null,
         first_failed_step_task: options.includeDiagnostics ? 'get_products' : null,
         first_failure_message: options.includeDiagnostics ? 'debug failure' : null,
-        first_failure_validations: options.includeDiagnostics
-          ? [{ field: 'products', message: 'must not be empty' }]
-          : [],
+        // The card endpoint never loads the separate diagnostics table. Owner
+        // callers still see the denormalized first-failure fields above.
+        first_failure_validations: [],
       }),
     ]);
     expect(body.storyboards_passing).toBe(0);
@@ -381,6 +381,9 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         },
       }),
     ]);
+    // The card summary omits the expensive step-diagnostics join even for an
+    // owner. The member-only /storyboard-status drill-down remains the source
+    // for validation details.
     expectPublicStoryboardStatus(res.body, { includeDiagnostics: true });
   });
 

@@ -31,6 +31,7 @@ function loadRefreshHelpers(overrides: Record<string, unknown> = {}) {
 
 function loadRefreshClickHandler(options: {
   responseData: Record<string, unknown>;
+  responseStatus?: number;
   reloadAgentCardAfterRefresh?: ReturnType<typeof vi.fn>;
   setTimeout?: ReturnType<typeof vi.fn>;
 }) {
@@ -54,6 +55,7 @@ function loadRefreshClickHandler(options: {
   const button = {
     dataset: { agentUrl: "https://seller.example/mcp", cardId: "agent-card" },
     textContent: "Recheck & retest",
+    title: "Recheck",
     disabled: false,
     closest: vi.fn(() => oldActionsRow),
   };
@@ -61,7 +63,8 @@ function loadRefreshClickHandler(options: {
     options.reloadAgentCardAfterRefresh ?? vi.fn().mockResolvedValue(undefined);
   const setTimeout = options.setTimeout ?? vi.fn();
   const fetch = vi.fn().mockResolvedValue({
-    status: 200,
+    status: options.responseStatus ?? 200,
+    headers: { get: vi.fn(() => null) },
     json: vi.fn().mockResolvedValue(options.responseData),
   });
   const document = {
@@ -101,6 +104,7 @@ function loadRefreshClickHandler(options: {
     reloadAgentCardAfterRefresh,
     setTimeout,
     newParent,
+    button,
   };
 }
 
@@ -230,6 +234,56 @@ describe("dashboard agent refresh", () => {
     const flash = harness.newParent.appendChild.mock.calls[0][0];
     expect(flash.style.background).toBe("var(--color-warning-bg)");
     expect(harness.setTimeout).not.toHaveBeenCalled();
+  });
+
+  it("disables recheck for the session when the platform-wide provenance fence responds", async () => {
+    const harness = loadRefreshClickHandler({
+      responseStatus: 503,
+      responseData: {
+        code: "refresh_authorization_provenance_required",
+        error:
+          "Recheck & retest is temporarily paused platform-wide. Use Requeue comply to schedule the next run.",
+      },
+    });
+
+    await harness.click();
+
+    expect(harness.button.disabled).toBe(true);
+    expect(harness.button.textContent).toBe("Recheck paused");
+    expect(harness.button.title).toContain("paused platform-wide");
+  });
+
+  it("preserves compliance targets in storyboard catalog requests", () => {
+    const helperStart = dashboardSource.indexOf(
+      "function storyboardCatalogUrl"
+    );
+    const helperEnd = dashboardSource.indexOf(
+      "// Shared: render the storyboard map into a panel",
+      helperStart
+    );
+    const context = vm.createContext({ encodeURIComponent });
+    vm.runInContext(dashboardSource.slice(helperStart, helperEnd), context);
+    const storyboardCatalogUrl = context.storyboardCatalogUrl as (
+      storyboardId: string,
+      suffix: string,
+      complianceTarget?: string
+    ) => string;
+
+    expect(storyboardCatalogUrl("media_buy_seller/example", "", "3.1")).toBe(
+      "/api/storyboards/media_buy_seller%2Fexample?compliance_target=3.1"
+    );
+    expect(
+      storyboardCatalogUrl("media_buy_seller/example", "/first-step", "3.1-rc")
+    ).toBe(
+      "/api/storyboards/media_buy_seller%2Fexample/first-step?compliance_target=3.1-rc"
+    );
+    expect(storyboardCatalogUrl("universal/example", "", "")).toBe(
+      "/api/storyboards/universal%2Fexample"
+    );
+    expect(dashboardSource.match(/data-compliance-target=/g)).toHaveLength(4);
+    expect(dashboardSource).toContain(
+      "statusInfo.requested_compliance_target || activeComplianceTarget"
+    );
   });
 
   it("does not instruct owners to select a target that has no dashboard control", () => {

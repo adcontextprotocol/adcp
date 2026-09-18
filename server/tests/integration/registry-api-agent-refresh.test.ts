@@ -661,6 +661,9 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     const res = await request(app).post(url(agentUrl)).send();
     expect(res.status).toBe(503);
     expect(res.body.code).toBe('refresh_authorization_provenance_required');
+    expect(res.body.error).toBe(
+      'Recheck & retest is temporarily paused platform-wide. Use Requeue comply to schedule the next run.',
+    );
     expect(res.headers['retry-after']).toBe('60');
     expect(res.headers['cache-control']).toBe('private, no-store');
     expect(refreshSingleAgentMock).not.toHaveBeenCalled();
