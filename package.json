@@ -124,6 +124,7 @@
     "test:release-workflow": "node tests/release-workflow-immutability.test.cjs && node tests/promote-release-candidate.test.cjs && node tests/published-compliance-versions.test.cjs",
     "promote:rc": "node scripts/promote-release-candidate.mjs",
     "test:immutable-release-artifacts": "node tests/immutable-release-artifacts.test.cjs",
+    "test:runtime-artifacts": "node --test --test-force-exit --test-timeout=30000 tests/runtime-artifact-pruning.test.cjs",
     "test:patch-3-0-compat-bundle": "node --test --test-force-exit --test-timeout=30000 tests/patch-3-0-compat-bundle.test.cjs",
     "test:error-codes": "node scripts/lint-error-codes.cjs && npm run test:seller-governance-policy-surfaces && npm run test:test-script-registration",
     "test:seller-governance-policy-surfaces": "node --test --test-force-exit tests/seller-governance-policy-surfaces.test.cjs",
