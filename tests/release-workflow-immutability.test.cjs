@@ -240,18 +240,12 @@ assert(
   'Human approval must be required whenever a commit contains release artifacts.'
 );
 
-assert(
-  approvalGate.includes('/commits/${GITHUB_SHA}/pulls') &&
-    approvalGate.includes('.base.ref == $base') &&
-    approvalGate.includes('.merged_at != null'),
-  'The approval gate must resolve the merged PR associated with the release commit and branch.'
-);
-
-assert(
-  approvalGate.includes('select(.user.type == "User")') &&
-    approvalGate.includes('map(last)') &&
-    approvalGate.includes('select(.state == "APPROVED" and .commit_id == $head)'),
-  'Only human approvals submitted against the final release PR head may authorize publication.'
+assert.strictEqual(
+  workflowConfig.jobs.release.steps.find(
+    step => step.name === 'Require human approval for committed release artifacts'
+  ).run,
+  'node scripts/check-release-state.cjs approval',
+  'Committed release publication must use the permission and merge-provenance gate.'
 );
 
 assert(
@@ -277,18 +271,20 @@ assert.deepStrictEqual(
     name: 'Create Release Pull Request or Tag Release',
     if: "steps.release-artifacts.outputs.has_release_artifacts != 'true'",
     id: 'changesets',
+    'timeout-minutes': 40,
     uses: `changesets/action@${changesetsActionSha}`,
     with: {
-      'github-token': '${{ steps.app-token.outputs.token }}',
+      'github-token': '${{ steps.changesets-token.outputs.token }}',
       'version-script': 'npm run version',
-      'publish-script': 'npx --no-install changeset git-tag',
       'commit-message': 'Version Packages',
       'pr-title': 'Version Packages',
-      'create-github-releases': true,
+      'pr-draft': 'always',
+      'create-github-releases': false,
       'push-with-git-cli': true,
     },
     env: {
       HUSKY: '0',
+      GH_TOKEN: '${{ steps.changesets-token.outputs.token }}',
     },
   },
   'Release automation must preserve the pinned Changesets v2.1.2 input contract and git-CLI push mode.'
