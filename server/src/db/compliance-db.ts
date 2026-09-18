@@ -6,6 +6,7 @@ import { logger as baseLogger } from '../logger.js';
 import { CatalogEventsDatabase } from './catalog-events-db.js';
 import { ComplianceRefreshLeaseLostError } from './compliance-refresh-requests-db.js';
 import type { VerificationProfileRoleAssessmentInput } from '../services/verification-profile-assessment.js';
+import { isComplianceRefreshAccessFailure, type ComplianceRefreshWriteGuard } from '../services/compliance-refresh-authorization.js';
 
 const logger = baseLogger.child({ module: 'compliance-db' });
 const catalogEventsDb = new CatalogEventsDatabase();
@@ -352,6 +353,7 @@ interface BadgeGradingGuard {
 // =====================================================
 
 export class ComplianceDatabase {
+  constructor(private readonly beforeCanonicalWrite?: ComplianceRefreshWriteGuard) {}
 
   // ----- Registry Metadata -----
 
@@ -506,6 +508,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, agentUrl);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${agentUrl}`],
@@ -561,6 +564,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, agentUrl);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${agentUrl}`],
@@ -622,6 +626,7 @@ export class ComplianceDatabase {
 
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, input.agent_url);
 
       // Profile selection and authoritative evidence publication share this
       // lock. A selection can therefore only commit against the latest fully
@@ -1745,8 +1750,9 @@ export class ComplianceDatabase {
    * access token as a bearer so callers surface a clear 401 from the agent
    * rather than sending no Authorization header at all.
    */
-  async resolveOwnerAuth(agentUrl: string): Promise<ResolvedOwnerAuth | undefined> {
+  async resolveOwnerAuth(agentUrl: string, checkpoint?: () => Promise<void>): Promise<ResolvedOwnerAuth | undefined> {
     try {
+      await checkpoint?.();
       const result = await query(
         `SELECT ac.organization_id,
                 ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type,
@@ -1777,6 +1783,7 @@ export class ComplianceDatabase {
         [agentUrl, JSON.stringify([{ url: agentUrl }])],
       );
 
+      await checkpoint?.();
       const row = result.rows[0];
       if (!row) return undefined;
 
@@ -1890,6 +1897,7 @@ export class ComplianceDatabase {
 
       return undefined;
     } catch (error) {
+      if (isComplianceRefreshAccessFailure(error)) throw error;
       logger.warn({ err: error, agentUrl }, 'Could not resolve owner auth');
       return undefined;
     }
@@ -1921,6 +1929,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, badge.agent_url);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${badge.agent_url}`],
@@ -2123,10 +2132,11 @@ export class ComplianceDatabase {
     expectedGeneration?: string,
     gradingGuard?: BadgeGradingGuard,
   ): Promise<boolean> {
-    if (expectedGeneration !== undefined) {
+    if (expectedGeneration !== undefined || this.beforeCanonicalWrite) {
       const client = await getClient();
       try {
         await client.query('BEGIN');
+        await this.beforeCanonicalWrite?.(client, agentUrl);
         await client.query(
           'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
           [`verification-badge:${agentUrl}`],
@@ -2142,7 +2152,7 @@ export class ComplianceDatabase {
                verification_token = NULL, token_expires_at = NULL, updated_at = NOW()
            WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
              AND status IN ('active', 'degraded')
-             AND COALESCE((
+             AND ($5::bigint IS NULL OR COALESCE((
                SELECT badge_requalification_generation
                FROM agent_registry_metadata WHERE agent_url = $1
              ), 0) = $5::bigint
@@ -2237,6 +2247,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, agentUrl);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${agentUrl}`],
@@ -2386,10 +2397,11 @@ export class ComplianceDatabase {
     expectedGeneration?: string,
     gradingGuard?: BadgeGradingGuard,
   ): Promise<boolean> {
-    if (expectedGeneration !== undefined) {
+    if (expectedGeneration !== undefined || this.beforeCanonicalWrite) {
       const client = await getClient();
       try {
         await client.query('BEGIN');
+        await this.beforeCanonicalWrite?.(client, agentUrl);
         await client.query(
           'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
           [`verification-badge:${agentUrl}`],
@@ -2405,7 +2417,7 @@ export class ComplianceDatabase {
                verification_token = NULL, token_expires_at = NULL, updated_at = NOW()
            WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
              AND status = 'active'
-             AND COALESCE((
+             AND ($4::bigint IS NULL OR COALESCE((
                SELECT badge_requalification_generation
                FROM agent_registry_metadata WHERE agent_url = $1
              ), 0) = $4::bigint
