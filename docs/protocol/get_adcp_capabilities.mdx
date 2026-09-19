@@ -495,6 +495,18 @@ See [Accounts and Agents](/docs/building/by-layer/L2/accounts-and-agents#what-se
 
 Media-buy protocol capabilities. Only present if `media_buy` is in `supported_protocols`. Sellers declaring `media_buy` should also include `account` (with `supported_billing`) and `media_buy.portfolio` — buyers need both to establish billing and understand inventory coverage. Compliance testing validates their presence.
 
+#### anonymous_discovery
+
+`media_buy.anonymous_discovery` declares whether the seller accepts product-discovery calls without caller credentials. It covers [`list_products`](/docs/media-buy/task-reference/list_products) and [`get_products`](/docs/media-buy/task-reference/get_products) in `brief` or `wholesale` mode. It does not cover proposal refinement or finalization, purchasing, account-scoped reads, or mutations; those operations follow their normative authentication requirements.
+
+- `true` means an anonymous discovery request can return a successful response. It does not promise a complete seller catalog, globally public commercial terms, or the same result an authenticated principal or selected account would receive.
+- `false` means product discovery requires an authenticated principal.
+- Absence means unspecified legacy behavior. Callers MAY probe anonymously and handle [`AUTH_MISSING`](/docs/building/verification/compliance-catalog#error-code-auth-missing); they MUST NOT infer either value.
+
+This declaration describes the minimum caller context accepted by the discovery task, not product visibility. Every response is authoritative only for the authentication and account context of that request. A seller MUST validate credentials when they are presented and MUST NOT silently downgrade invalid credentials to anonymous access.
+
+`anonymous_discovery: true` and `account.required_for_products: true` are inconsistent and fail capability validation: an anonymous caller cannot select protected account context. The inverse dimensions remain independent—a seller may require an authenticated principal without requiring an account reference.
+
 #### acceptance_policy_discovery
 
 `media_buy.acceptance_policy_discovery` advertises a structured catalog for what the seller will accept. `catalog_url` identifies an HTTPS `acceptance-policy-catalog.json` document, `catalog_digest` pins its bytes, and `default_profile_ids[]` selects seller-wide profiles. The declaration does not claim the seller evaluates buyer-supplied acceptance context during discovery; buyers compose the published profiles for advisory preflight and treat exact task responses as authoritative.
@@ -1135,6 +1147,7 @@ Signals protocol capabilities. Only present if `signals` is in `supported_protoc
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `anonymous_discovery` | boolean | Whether [`get_signals`](/docs/signals/tasks/get_signals) accepts anonymous discovery in `brief` or `wholesale` mode. `true` permits a successful anonymous response but makes no completeness or cross-account equivalence claim; `false` requires an authenticated principal; absence is unspecified legacy behavior. Presented credentials are always validated and invalid credentials never downgrade to anonymous access. |
 | `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal definitions and to verify authorization. |
 | `discovery_modes` | string[] | Discovery modes the agent supports on [`get_signals`](/docs/signals/tasks/get_signals). `"brief"` (semantic discovery via `signal_spec` / `signal_refs`, with deprecated `signal_ids` accepted for older clients) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_refs` / `signal_ids` and enumerate the full priced signals feed. Agents not declaring `"wholesale"` MAY return [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) for wholesale calls. Absent declaration is treated as `["brief"]`. |
 | `features.catalog_signals` | boolean | **Deprecated.** Legacy wire flag for structured `signal_ref` references to provider-published signal definitions in adagents.json `signals[]`. |
@@ -2035,6 +2048,7 @@ An agent can implement multiple protocols from a single endpoint. This is common
     "timezone": { "mode": "seller_fixed", "fixed_timezone": "UTC" }
   },
   "media_buy": {
+    "anonymous_discovery": true,
     "creative_approval_mode": "require_human",
     "features": {
       "inline_creative_management": true

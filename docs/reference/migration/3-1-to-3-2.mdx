@@ -158,6 +158,21 @@ omit its flat package scalar so consumers never see two sources of truth.
 
 ## Adopt by capability
 
+### Plan anonymous catalog discovery
+
+Before omitting caller credentials, read `media_buy.anonymous_discovery` for
+`list_products` and discovery-mode `get_products`, or
+`signals.anonymous_discovery` for `get_signals`. `true` means an anonymous call
+can succeed; it does not mean the response is a complete seller catalog or that
+authenticated buyers and accounts receive identical data. `false` means the
+discovery call requires an authenticated principal. Absence is the 3.1 and
+early-3.2 posture: treat the requirement as unspecified, probe if appropriate,
+and handle `AUTH_MISSING` without assuming a seller defect.
+
+Presented credentials are always validated. An invalid credential does not
+fall back to anonymous discovery. Mutations and private or account-scoped reads
+remain authenticated by protocol rule and do not use these discovery flags.
+
 ### Compact product and MediaBuy lifecycle
 
 Read `get_adcp_capabilities.media_buy.lifecycle_tools` before choosing a tool.
