@@ -427,6 +427,26 @@
         },
         "required": ["supported_protocols"]
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "anonymous_discovery": { "const": true }
+            },
+            "required": ["anonymous_discovery"]
+          },
+          "account": {
+            "properties": {
+              "required_for_products": { "const": true }
+            },
+            "required": ["required_for_products"]
+          }
+        },
+        "required": ["media_buy", "account"]
+      },
+      "then": false
     }
   ],
   "properties": {
@@ -1185,6 +1205,11 @@
       "type": "object",
       "description": "Media-buy protocol capabilities. Expected when media_buy is in supported_protocols. Sellers declaring media_buy should also include account with supported_billing.",
       "properties": {
+        "anonymous_discovery": {
+          "type": "boolean",
+          "description": "Whether this seller accepts product discovery without caller credentials. This applies to list_products and to get_products in brief or wholesale mode; it does not apply to proposal refinement or finalization, purchasing, account-scoped reads, or mutations. true means an anonymous discovery request can produce a successful response, but the response may be a public subset and may differ from results for an authenticated principal or selected account. false means these discovery calls require an authenticated principal. Absence means unspecified legacy behavior, so callers probe and handle AUTH_MISSING. A valid authenticated request is never rejected merely because credentials were supplied. true is inconsistent with account.required_for_products=true because an anonymous caller cannot select protected account context.",
+          "x-added-in": "3.2.0"
+        },
         "acceptance_policy_discovery": {
           "type": "object",
           "description": "Registry-backed seller acceptance-policy discovery. Presence means the seller publishes a versioned catalog; it does not claim that the seller evaluates acceptance_context during discovery. Discovery is advisory, exact task responses remain authoritative, and absent capability means support is unknown rather than unrestricted acceptance.",
@@ -2112,6 +2137,11 @@
       "type": "object",
       "description": "Signals protocol capabilities. Only present if signals is in supported_protocols.",
       "properties": {
+        "anonymous_discovery": {
+          "type": "boolean",
+          "description": "Whether this agent accepts get_signals discovery without caller credentials in brief or wholesale mode. true means an anonymous discovery request can produce a successful response, but the response may be a public subset and may differ from results for an authenticated principal or selected account. false means get_signals requires an authenticated principal. Absence means unspecified legacy behavior, so callers probe and handle AUTH_MISSING. A valid authenticated request is never rejected merely because credentials were supplied.",
+          "x-added-in": "3.2.0"
+        },
         "data_provider_domains": {
           "type": "array",
           "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.",
