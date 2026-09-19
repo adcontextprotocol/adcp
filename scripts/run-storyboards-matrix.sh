@@ -296,16 +296,16 @@ REQUIRED_CLEAN_CURRENT_SALES=(
   "wholesale_feed_bulk_webhooks"
 )
 REQUIRED_EXACT_CURRENT_SALES=(
-  "media_buy_seller/compact_direct_buy_lifecycle:7:0"
-  "media_buy_seller/compact_product_lifecycle:9:0"
-  "media_buy_seller/declined_proposal_refinement:6:0"
-  "media_buy_seller/declined_proposal_execution:8:0"
-  "media_buy_seller/expired_proposal_execution:8:0"
+  "media_buy_seller/compact_direct_buy_lifecycle:8:0"
+  "media_buy_seller/compact_product_lifecycle:10:0"
+  "media_buy_seller/declined_proposal_refinement:7:0"
+  "media_buy_seller/declined_proposal_execution:9:0"
+  "media_buy_seller/expired_proposal_execution:9:0"
   "media_buy_seller/change_rights_state_projection:8:0"
   "media_buy_seller/acceptance_policy_discovery:3:0"
   "media_buy_seller/governance_agent_binding_acceptance:5:0"
-  "media_buy_seller/external_audience_source_binding:8:0"
-  "media_buy_seller/get_products_async:10:0"
+  "media_buy_seller/external_audience_source_binding:9:0"
+  "media_buy_seller/get_products_async:11:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"
