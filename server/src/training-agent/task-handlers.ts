@@ -210,7 +210,25 @@ type GetProductsReadDirectives = {
   staleDirective?: { tool: string; upstreamName?: string; cacheAgeSeconds?: number; createdAt: string };
 };
 type PricingOption = Product['pricing_options'][number];
-type CompactProductPurchase = ProposalPurchase & {
+type CompactProductPurchase = Omit<
+  ProposalPurchase,
+  | 'format_option_refs'
+  | 'catalog_ids'
+  | 'budget'
+  | 'daily_budget_cap'
+  | 'min_spend_target'
+  | 'pacing'
+  | 'bidding'
+  | 'targeting_overlay'
+  | 'optimization_goals'
+  | 'audience_evidence_requirements'
+  | 'audience_evidence_pins'
+  | 'agency_estimate_number'
+  | 'measurement_terms'
+  | 'performance_standards'
+  | 'context'
+  | 'ext'
+> & {
   budget?: number;
   format_option_refs?: unknown[];
   catalog_ids?: string[];
@@ -20851,7 +20869,7 @@ function legacyPackagesFromPurchases(
 }
 
 function purchaseBindings(
-  purchases: readonly CompactProductPurchase[],
+  purchases: readonly Pick<ProposalPurchase, 'product_id'>[],
   response: Record<string, unknown>,
 ): Array<{ purchase_index: number; product_id: string; package_id: string }> {
   const packages = Array.isArray(response.packages) ? response.packages.filter(isRecord) : [];
