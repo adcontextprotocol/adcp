@@ -7,66 +7,38 @@ channels per `.agents/wg/constitution.md` §Information sources and the
 record: never quote or attribute this content in public output; Slack
 informs, GitHub decides.
 
-- Generated: 2026-09-07
+- Generated: 2026-09-19
 - Window: last 14 days
 - Channels: 22 public WG channels swept (4 private excluded)
 
 ---
 
-### 3.2 Release Readiness and Remaining Open Issues
-
+### AdCP 3.2 Release Progress and Reporting Features
 - **Status:** active
-- **Summary:** The 3.2 milestone is described as feature-complete apart from a few stragglers, including DOOH audio support and a last open issue in the broadcast/syndication track. Experimental tooling for buyer agents as stateful principals is being introduced as a first for the protocol, alongside merged reporting pipeline work marked experimental. A release-candidate build cycle across the spec and SDKs is underway, with cross-version/cross-language checks causing delays; once ready, the training agent and the Interchange environment will be bumped to 3.2 to enable live traffic testing.
-- **Related:** #5878
-- **Thread:** https://agenticads.slack.com/archives/C0ACHCU5210/p1788081427834219, https://agenticads.slack.com/archives/C09BK148CLU/p1788120684328569, https://agenticads.slack.com/archives/C09BK148CLU/p1788268365763459, https://agenticads.slack.com/archives/C09BK148CLU/p1788630892701959
+- **Summary:** AdCP 3.2.0-rc.3 has shipped, building on rc.1 with a completed and hardened reliable-reporting workflow. Key additions include `sync_reporting_status` for buyers to report per-period delivery status back to sellers, MediaBuy-level frequency caps with unified counters, structured product frequency-cap constraints, targeting inputs that distinguish "leave alone" from "clear," buyer/orchestrator storyboards, a compliance track, cursor pagination for delivery breakdowns, and sub-country coverage filters. The corresponding SDK release (@adcp/sdk 14.0.0-rc.36) includes a full seller-side Reliable Reporting kit with a source-executor contract, Postgres-backed ledger, and reporting-stat utilities. A separate update noted the training agent and Interchange environment are being bumped to 3.2 to begin live testing.
 
-### DOOH Schema Support (Broadcast/Syndication and Campaign Lifecycle)
-
+### Seller Rejection Reasons for update_media_buy
 - **Status:** active
-- **Summary:** A pull request adding DOOH-related schema changes is seeking additional review, with outreach underway to bring in more DOOH-focused participants, including contacts at a major DOOH sell-side vendor, to weigh in before the current cycle closes. Separate feedback on DOOH from a working group member has spawned follow-up PRs, one of which is still awaiting review.
-- **Related:** #5623, #7177
-- **Thread:** https://agenticads.slack.com/archives/C0ACHCU5210/p1787582147291599, https://agenticads.slack.com/archives/C0ACHCU5210/p1787687143020649, https://agenticads.slack.com/archives/C09BK148CLU/p1788398512662769
+- **Summary:** A governance discussion raised the question of how a seller agent can formally reject an `update_media_buy` budget change with a structured reason (e.g., policy violation). Analysis found that 3.1 lacks a first-class typed "decline with reason and alternative" response; the free-text `message` field and `ACTION_NOT_ALLOWED` details are the closest existing mechanisms. The proposal/refinement path planned for 3.2 may address this via a typed counter-offer, and it was suggested that a stable policy should instead be reflected by omitting the disallowed action from `available_actions[]`/`valid_actions` rather than rejecting after the fact. Formalizing a reason code was identified as requiring a spec proposal.
 
-### Delta Sharing / RFC 6540 and Reporting Pipelines
-
+### Pending Design Feedback on Issue #6700
 - **Status:** active
-- **Summary:** A contributor followed up on the delta-sharing component of RFC 6540, asking whether it remains a 3.2 milestone item and flagging that an associated PR appears unblocked with changes aligned to their recommended solution. Related work on reliable reporting pipelines, including support for delivery via Databricks, Snowflake, and cloud buckets, has an RFC and implementation PR open. A further PR proposes moving property reporting from the 3.3 milestone into 3.2, which is considered necessary and is awaiting working-group review.
-- **Related:** #6857, #6911, #6953, #6915
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1787750898081669, https://agenticads.slack.com/archives/C09BK148CLU/p1787886708854929, https://agenticads.slack.com/archives/C09BK148CLU/p1787828881454989
+- **Summary:** A contributor followed up on a stalled design issue, noting that changes were made based on prior feedback and requesting review so it can be included in an upcoming release.
+- **Related:** #6700
 
-### FAST Channel Modeling in adagents.json / Property Schema
-
+### Contextual Embeddings on segment.ext.aa Field
 - **Status:** active
-- **Summary:** A detailed governance-channel proposal distinguishes "property" (the host CTV app), "collection" (the independently owned FAST channel), and "placement" (the ad position), suggesting FAST channel owners declare canonical collection identity (including Gracenote IDs and platform distributions) in their own adagents.json, while hosts attest sales rights by authorizing the owner's agent without declaring placements. A separate detailed question raises gaps in the current schema (3.1.15): there is no property_type value for channels carried inside third-party CTV apps, no way to express industry-standard channel identifiers (e.g., Gracenote/TMS IDs, platform EPG channel IDs), and no concept of carriage to represent this distribution model.
-- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1787692753462379, https://agenticads.slack.com/archives/C09NUQS93DF/p1787665044852579
+- **Summary:** A member opened a discussion on standardizing which embedding models should be used when sending contextual embeddings via the `segment.ext.aa` RTB field, noting prior groundwork but asking whether consensus or active interest exists among implementers.
 
-### Seller Policy, Change-Right Contracts, and Governance Decision Ratification
-
+### Brand Ref Domain Validation Strictness
 - **Status:** active
-- **Summary:** A governance working group PR adding seller policy and change-right contracts requires that decision memos tied to several linked issues be formally ratified and committed to the governance decisions directory per the RFC process, noting ratification is a human act on the WG memo. Whether linked issues should be marked "Closes" versus "Refs" is left to author discretion pending confirmation that the PR's scope fully resolves each issue. A related issue and implementation PR address giving full visibility into account changes across seller-managed state.
-- **Related:** #6794, #6749, #6750, #6757, #6758, #6810, #6811
-- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1787582062993769
+- **Summary:** A builder flagged that the brand ref schema's `domain` field currently permits single-label values (e.g., "unknown," "localhost") that pass validation but are unrealistic for seller agents expecting to resolve `/.well-known/brand.json`. The question raised is whether the schema should enforce stricter two-label domain requirements or leave rejection of such values to seller-side business logic.
 
-### Contextual Embeddings in segment.ext.aa RTB Field
-
+### AdCP 3.2 Go SDK Contribution Call
 - **Status:** active
-- **Summary:** A member raised a question about which models are used or recommended when sending contextual embeddings over the `segment.ext.aa` RTB field, noting prior groundwork but asking whether any consensus or broader interest has formed as they plan to build platform support for buying partners.
-- **Thread:** https://agenticads.slack.com/archives/C09BF378H8A/p1788725186616889
+- **Summary:** A call for contributors to work on AdCP 3.2 support for the Go SDK was posted, linking to a summary tracking issue.
+- **Related:** #536
 
-### AdCP SDK (adcp-go) CI and Review Backlog
-
+### Domain Verification Blocking Seller Agent Declaration
 - **Status:** active
-- **Summary:** A contributor reported a failing GitHub Action affecting all adcp-go pull requests and requested help diagnosing it, along with reviews on a backlog of pending SDK PRs.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788480742718759
-
-### llms.txt Documentation Structure Change
-
-- **Status:** active
-- **Summary:** A structural change to docs.adcontextprotocol.org/llms.txt was flagged as likely to break tooling that assumes a flat, single-version index. The file is now a multi-version hub whose flat entries are archived 2.5.x docs, with current-release content behind per-version sub-indexes (3-1, 3-2-beta, 3-0) and no "latest" alias; the reliable way to find current docs is via stable paths that redirect to the active build. The message also notes the hub includes OpenAPI YAML links and cross-origin GitHub raw links that consumers should be aware of.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788451422017619
-
-### Docs Site Availability Issue
-
-- **Status:** parked
-- **Summary:** A member reported that the docs site (docs.adcontextprotocol.org) appeared to be down, redirecting to an unrelated auto-redirect landing page, though no resolution was recorded in the thread.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788159845297419
+- **Summary:** A builder reported being blocked from completing a seller agent declaration because a newly added domain's DNS TXT record, though propagated and confirmed via nslookup, was not yet recognized by the identity verification provider, and asked whether an alternative verification path exists.
