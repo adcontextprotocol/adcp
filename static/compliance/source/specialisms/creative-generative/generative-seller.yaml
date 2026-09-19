@@ -5,7 +5,6 @@ category: creative_generative
 summary: "Seller agent that generates creatives from briefs at buy time — no pre-built assets required."
 track: media_buy
 required_tools:
-  - sync_governance
   - get_products
   - create_media_buy
   - sync_creatives
@@ -38,12 +37,9 @@ narrative: |
   programmatic inventory but can't accept a pre-built VAST tag or display banner is incoherent.
   The generative capability is additive to standard programmatic creative acceptance.
 
-  This storyboard focuses on the generative creative delta. The account setup includes
-  governance agent registration before the buy flow; proposal refinement works identically
-  to the base media_buy_seller storyboard.
-
-context:
-  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+  This storyboard focuses on the generative creative delta. Governance-aware creation is
+  covered by the dedicated multi-agent scenario; proposal refinement works identically to
+  the base media_buy_seller storyboard.
 
 agent:
   interaction_model: media_buy_seller
@@ -171,7 +167,7 @@ phases:
           accounts:
             - brand:
                 domain: "acmeoutdoor.example"
-              operator: "pinnacle-agency.example"
+              operator: "generative-seller.pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
 
@@ -194,50 +190,6 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "creative_generative--seller--sync_accounts"
-            description: "Context correlation_id returned unchanged"
-      - id: sync_governance
-        title: "Register governance agent"
-        narrative: |
-          The buyer registers the configured governance agent on the account before
-          creating the media buy with generative creative support.
-        task: sync_governance
-        schema_ref: "account/sync-governance-request.json"
-        response_schema_ref: "account/sync-governance-response.json"
-        doc_ref: "/accounts/tasks/sync_governance"
-        stateful: true
-        expected: |
-          Acknowledge governance registration for the account:
-          - status: synced
-          - governance_agents[0].url echoes the configured governance agent
-
-        sample_request:
-          accounts:
-            - account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
-              governance_agents:
-                - url: "$context.governance_agent_url"
-                  authentication:
-                    schemes: ["Bearer"]
-                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-          idempotency_key: "$generate:uuid_v4#creative_generative_seller_account_setup_sync_governance"
-          context:
-            correlation_id: "creative_generative--seller--sync_governance"
-        validations:
-          - check: response_schema
-            description: "Response matches sync-governance-response.json schema"
-          - check: field_value
-            path: "accounts[0].status"
-            value: "synced"
-            description: "Governance agent is registered on the account"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "creative_generative--seller--sync_governance"
             description: "Context correlation_id returned unchanged"
   - id: product_discovery
     title: "Product discovery"
@@ -279,7 +231,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "generative-seller.pinnacle-agency.example"
 
           context:
             correlation_id: "creative_generative--seller--get_products_brief"
@@ -351,7 +303,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "generative-seller.pinnacle-agency.example"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -432,7 +384,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "generative-seller.pinnacle-agency.example"
           creatives:
             - creative_id: "gen_display_summer_sale"
               name: "Summer Sale - Generated Display 300x250"
@@ -528,7 +480,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "generative-seller.pinnacle-agency.example"
           creatives:
             - creative_id: "static_display_300x250"
               name: "Trail Pro 3000 - Pre-built Display 300x250"
@@ -580,7 +532,7 @@ phases:
           account:
             brand:
               domain: "nonexistent-brand-xyz.example"
-            operator: "pinnacle-agency.example"
+            operator: "generative-seller.pinnacle-agency.example"
           creatives:
             - creative_id: "gen_invalid_brand"
               name: "Invalid Brand Test"
@@ -649,7 +601,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "generative-seller.pinnacle-agency.example"
           creatives:
             - creative_id: "gen_display_summer_sale"
               name: "Summer Sale - Generated Display 300x250"
@@ -723,7 +675,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "generative-seller.pinnacle-agency.example"
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true
