@@ -1,0 +1,185 @@
+id: media_buy_seller/declined_proposal_refinement
+version: "1.0.0"
+title: "Seller rejects refinement of a declined proposal"
+category: media_buy_seller
+summary: "Verifies that decline_proposals is terminal for later refine_proposals attempts."
+track: media_buy
+introduced_in: "3.2"
+
+requires:
+  - controller
+
+requires_capability:
+  path: compliance_testing.scenarios
+  contains: compact_product_lifecycle_probe
+
+required_tools:
+  - request_proposals
+  - decline_proposals
+  - refine_proposals
+  - comply_test_controller
+
+narrative: |
+  A buyer may record terminal feedback against any immutable proposal snapshot.
+  After the seller acknowledges the decline, a new logical refinement attempt
+  against that exact proposal ID must fail with INVALID_STATE and must not mint
+  a successor proposal. The advertised compact_product_lifecycle_probe makes
+  proposal creation and decline deterministic for the seeded product.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - generates_proposals
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The seller advertises compact_product_lifecycle_probe and exposes compact proposal creation, decline, and refinement."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "decline_refinement_video"
+      delivery_type: "non_guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "decline_refinement_video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+  pricing_options:
+    - product_id: "decline_refinement_video"
+      pricing_option_id: "decline_refinement_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 16
+
+phases:
+  - id: prepare_lifecycle
+    title: "Prepare deterministic compact lifecycle behavior"
+    steps:
+      - id: prepare_decline_refinement_product
+        title: "Prepare the seeded product"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "compact_product_lifecycle_probe"
+          params:
+            operation: "prepare"
+            product_id: "decline_refinement_video"
+        validations:
+          - check: response_schema
+            description: "Controller response matches the canonical schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller prepares deterministic behavior"
+          - check: field_value
+            path: "simulated.prepared"
+            value: true
+            description: "The product is prepared for lifecycle testing"
+          - check: field_value
+            path: "simulated.product_id"
+            value: "decline_refinement_video"
+            description: "The controller prepared the seeded product"
+
+  - id: create_draft
+    title: "Create a proposal to decline"
+    depends_on: [prepare_lifecycle]
+    steps:
+      - id: request_decline_candidate
+        title: "Request a draft proposal"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#declined_proposal_refinement_request"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          brief: "Propose a premium video plan for an outdoor launch."
+          criteria:
+            product_ids: ["decline_refinement_video"]
+        context_outputs:
+          - name: declined_draft_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: response_schema
+            description: "Response matches request-proposals-response.json"
+          - check: field_value
+            path: "outcome"
+            value: "proposed"
+            description: "The seller creates a decline candidate"
+          - check: field_value
+            path: "proposals[0].proposal_status"
+            value: "draft"
+            description: "The candidate is a draft"
+
+  - id: decline_draft
+    title: "Decline the draft"
+    depends_on: [create_draft]
+    steps:
+      - id: decline_candidate
+        title: "Record terminal buyer feedback"
+        task: decline_proposals
+        schema_ref: "media-buy/decline-proposals-request.json"
+        response_schema_ref: "media-buy/decline-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/decline_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#declined_proposal_refinement_decline"
+          declines:
+            - proposal_id: "$context.declined_draft_id"
+              reason: "inventory_fit"
+              detail: "The proposed placement mix does not fit the campaign."
+        validations:
+          - check: response_schema
+            description: "Response matches decline-proposals-response.json"
+          - check: field_equals_context
+            path: "results[0].proposal_id"
+            context_key: "declined_draft_id"
+            description: "The result identifies the declined snapshot"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "declined"
+            description: "The decline is recorded"
+
+  - id: reject_later_refinement
+    title: "Enforce decline terminality"
+    depends_on: [decline_draft]
+    steps:
+      - id: refine_declined_candidate
+        title: "Reject refinement of the declined proposal"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#declined_proposal_refinement_retry"
+          refinements:
+            - proposal_id: "$context.declined_draft_id"
+              action: "revise"
+              ask: "Replace the placement mix with premium online video."
+        validations:
+          - check: error_code
+            value: "INVALID_STATE"
+            description: "A declined proposal cannot produce a successor"
