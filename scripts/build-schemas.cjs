@@ -2239,8 +2239,7 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // inner `$id` to the versioned flat-tree URI
       // (`/schemas/{version}/core/foo.json`) — the published identity
       // of the un-bundled sub-schema, which is what consumers want to
-      // resolve. The root `$id` is rewritten separately below to the
-      // bundled URI.
+      // resolve. The root `$id` is canonicalized separately below.
       versionInlineSchemaIds(dereferenced, version);
 
       // Strip $id from subtrees whose descendants contain hoisted
@@ -2255,10 +2254,9 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // the deep $id at the first occurrence of each sub-schema.
       dedupBundledSchemaIds(dereferenced);
 
-      // Update root $id to indicate this is a bundled schema
-      if (dereferenced.$id) {
-        dereferenced.$id = dereferenced.$id.replace('/schemas/', `/schemas/${version}/bundled/`);
-      }
+      // A bundled schema is an alternate representation of the canonical
+      // document, not a distinct schema resource. Keep the canonical root
+      // identity even though the artifact is retrieved through bundled/.
       canonicalizePublishedSchemaUris(dereferenced, version);
 
       // Add metadata indicating this is bundled
@@ -2722,6 +2720,7 @@ module.exports = {
   collectVendorMetricExamples,
   canonicalQualifier,
   lintVendorMetricSemanticUniqueness,
+  generateBundledSchemas,
 };
 
 if (require.main === module) {

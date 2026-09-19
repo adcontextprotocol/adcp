@@ -188,7 +188,7 @@
     "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts"
   },
   "dependencies": {
-    "@adcp/sdk": "14.0.0-rc.35",
+    "@adcp/sdk": "14.0.0-rc.40",
     "@anthropic-ai/sdk": "^0.124.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.4",
