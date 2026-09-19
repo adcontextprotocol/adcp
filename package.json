@@ -80,7 +80,7 @@
     "test:governance-runtime-attestations": "node --test --test-force-exit --test-timeout=30000 tests/governance-runtime-attestations.test.cjs",
     "test:governance-conditions-storyboard": "node --test --test-force-exit --test-timeout=30000 tests/governance-conditions-storyboard.test.cjs",
     "test:signal-governance-storyboard": "node --test --test-force-exit --test-timeout=30000 tests/signal-governance-storyboard.test.cjs",
-    "test:governance-task-slices": "node --test --test-force-exit --test-timeout=30000 tests/governance-task-slices.test.cjs tests/governance-storyboard-routing.test.cjs",
+    "test:governance-task-slices": "node --test --test-force-exit --test-timeout=30000 tests/governance-task-slices.test.cjs tests/governance-storyboard-routing.test.cjs tests/provenance-tool-gates.test.cjs",
     "test:audience-evidence": "node --test --test-force-exit --test-timeout=30000 tests/audience-evidence.test.cjs",
     "test:status-as-of-vectors": "node --test --test-force-exit --test-timeout=30000 tests/media-buy-status-as-of-vectors.test.cjs",
     "test:storyboard-scoping": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-scoping.test.cjs",
