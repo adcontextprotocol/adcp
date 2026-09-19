@@ -39,6 +39,7 @@ import { registerSharedPublicBrandPartition } from '../state.js';
 const TRAINING_PRINCIPAL_FIELD = '__training_principal';
 const TRAINING_TASK_OWNER_SCOPE_FIELD = '__training_task_owner_scope';
 const TRAINING_OPERATOR_UNIT_BRIDGE_FIELD = '__training_operator_unit';
+export const CONTROLLER_TASK_SETTLEMENT_TIMEOUT_MS = 10_000;
 
 function restoreControllerOperatorUnit(input: Record<string, unknown>): Record<string, unknown> {
   const ext = input.ext && typeof input.ext === 'object' && !Array.isArray(input.ext)
@@ -217,6 +218,32 @@ async function requireControllerTaskScope(
   return scope;
 }
 
+async function awaitControllerTaskSettlement(
+  taskRegistry: TaskRegistry,
+  taskId: string,
+  scope: TaskRegistryScope,
+): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      reject(new TestControllerError(
+        'INTERNAL_ERROR',
+        `Task ${taskId} did not settle within ${CONTROLLER_TASK_SETTLEMENT_TIMEOUT_MS}ms`,
+      ));
+    }, CONTROLLER_TASK_SETTLEMENT_TIMEOUT_MS);
+    timeout.unref();
+  });
+
+  try {
+    await Promise.race([
+      taskRegistry.awaitTask(taskId, scope),
+      deadline,
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 function controllerTaskScope(
   input: Record<string, unknown>,
 ): TaskRegistryScope | null {
@@ -304,7 +331,7 @@ function taskCompletionAdapter(
       // Wait for that background settlement instead of writing the registry
       // directly: winning the write race here makes the framework observe an
       // already-terminal task and skip its completion webhook.
-      await taskRegistry.awaitTask(taskId, scope);
+      await awaitControllerTaskSettlement(taskRegistry, taskId, scope);
     }
     return controllerResult;
   };

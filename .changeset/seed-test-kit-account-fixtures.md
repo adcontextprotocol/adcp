@@ -8,4 +8,5 @@ account state isolated. This prevents missing or leaked setup from being
 misgraded as failures of the tools those steps exercise. The reference training
 agent now accepts those account fixtures on every applicable tenant and lets
 framework task settlement emit terminal webhooks before controller completion
-returns. Refs #7588.
+returns, with a bounded wait that releases the tenant lock if settlement stalls.
+Refs #7588.
