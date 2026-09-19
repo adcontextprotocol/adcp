@@ -9,9 +9,9 @@ description: "Role-based migration checklist for adopting the AdCP 3.2 release c
 
 <Warning>
 **3.2 is in release candidate.** RC.3 is the current signed protocol
-checkpoint, and no SDK embeds it yet: TypeScript `@adcp/sdk@14.0.0-rc.35`,
-Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` all still embed
-`3.2.0-rc.1`; Python and Go higher-level coverage remains role-dependent. Keep production traffic pinned to `"3.1"` while validating an
+checkpoint. TypeScript `@adcp/sdk@14.0.0-rc.40` embeds RC.3 exactly; Python
+`adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` still embed `3.2.0-rc.1`, with
+role-dependent higher-level coverage. Keep production traffic pinned to `"3.1"` while validating an
 exact 3.2 checkpoint in staging.
 </Warning>
 
@@ -54,7 +54,7 @@ surfaces by hand.
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
 | 7 | Producers and SDK maintainers | Emit `error.recovery` on every 3.2 error; keep decoders compatible with 3.1 errors that omit it. |
 | 8 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
-| 9 | Compliance operators | Test RC.3 from its signed assets; no SDK pairing covers RC.3 yet. `@adcp/sdk@14.0.0-rc.35`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` all test RC.1. Retain the exact package and wire versions. |
+| 9 | Compliance operators | Pair `@adcp/sdk@14.0.0-rc.40` with RC.3. Python `adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` remain paired with RC.1. Retain the exact package and wire versions. |
 | 10 | Delivery-reporting implementations | Emit and consume currency at media-buy or package grain, move qualified outcomes to `by_package[].metric_values`, and stop producing new `aggregated_totals`. |
 
 ## Required to claim 3.2 behavior

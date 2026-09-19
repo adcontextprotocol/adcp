@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const Ajv = require('ajv');
 const { artifact, generate, prepare, assess, ROOT } = require('../scripts/sdk-response-conformance/lib.cjs');
-const plan = prepare('3.2.0-rc.1');
+const plan = prepare('3.2.0-rc.3');
 const art = artifact(plan.protocol.version);
 function probe(id, change = {}) {
   return { ...plan, cases: [{ ...plan.cases.find(row => row.id === id), ...change }] };
@@ -29,7 +29,7 @@ test('inventory is exactly the selected manifest; every dispatched request is sc
   assert.ok(plan.inventory.some(row => row.generation.status === 'unsupported'));
   assert.ok(plan.inventory.some(row => row.fixture.startsWith('unimplemented:')));
   for (const row of plan.cases) assert.deepEqual(art.validate(art.manifest.tools[row.tool].request_schema, row.request), [], row.id);
-  assert.equal(plan.protocol.wire_selector, '3.2-rc.1');
+  assert.equal(plan.protocol.wire_selector, '3.2-rc.3');
   assert.equal(artifact(plan.protocol.version).digest, plan.protocol.sha256);
 });
 
@@ -144,7 +144,7 @@ test('regression baseline retains findings and detects changed coverage or SDK p
 
 test('error envelopes validate version fields as well as the inner error', () => {
   const result = inspect(probe('default:RATE_LIMITED'), {
-    adcp_version: '3.2.0-rc.1',
+    adcp_version: '3.2.0-rc.3',
     adcp_error: { code: 'RATE_LIMITED', message: 'Fixture', recovery: 'transient' },
   });
   assert.equal(result.schema, 'invalid', 'full semver is not a valid wire selector');
