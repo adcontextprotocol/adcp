@@ -36,10 +36,34 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     Seller supports create_media_buy and update_media_buy with cancellation via
     the canceled field.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_7b26fe503ce1"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_019b2d83d104"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: unknown_media_buy
@@ -71,6 +95,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
           media_buy_id: "does-not-exist-invalid-transitions-v1"
           paused: true
           idempotency_key: "$generate:uuid_v4#update_unknown_media_buy"
@@ -116,6 +142,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -146,6 +174,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
           idempotency_key: "$generate:uuid_v4#invalid_transitions_create_buy"
           start_time: "asap"
           end_time: "2099-08-31T23:59:59Z"
@@ -196,6 +226,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
           media_buy_id: "$context.media_buy_id"
           idempotency_key: "$generate:uuid_v4#update_unknown_package"
           packages:
@@ -240,6 +272,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Testing NOT_CANCELLABLE on re-cancel"
@@ -271,6 +305,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Deliberate re-cancel to force NOT_CANCELLABLE"

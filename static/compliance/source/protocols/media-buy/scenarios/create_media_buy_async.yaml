@@ -86,6 +86,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_ac44d6637e8e"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_create_media_buy_as-58faf10a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "async_signed_io_q2"
       delivery_type: "guaranteed"
@@ -140,6 +151,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_create_media_buy_as-58faf10a"
             sandbox: true
           scenario: "force_create_media_buy_arm"
           params:
@@ -210,6 +223,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_create_media_buy_as-58faf10a"
             sandbox: true
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"

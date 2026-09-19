@@ -29,9 +29,33 @@ caller:
   example: "Compliance test harness"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The caller needs a brand identity for signal discovery requests.
   test_kit: "test-kits/nova-motors.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_novamotors_example_sandbox_7b09084363f1"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-schema_validation_signals-b5b138ab"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_novamotors_example_live_23e91298278a"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-schema_validation_signals-b5b138ab"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -113,6 +137,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-schema_validation_signals-b5b138ab"
 
           context:
             correlation_id: "schema_validation_signals--get_signals_schema"
@@ -161,6 +187,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-schema_validation_signals-b5b138ab"
 
           context:
             correlation_id: "schema_validation_signals--pricing_options_present"

@@ -41,6 +41,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_666b2e23b6c7"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-premium_display_canonical_validation-4784fc00"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "premium_seller_rendered_stateful_display"
       name: "Premium seller-rendered stateful display"
@@ -663,6 +674,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -693,6 +706,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -729,6 +744,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -758,6 +775,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -786,6 +805,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -813,6 +834,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -849,6 +872,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -875,6 +900,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -901,6 +928,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -928,6 +957,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -954,6 +985,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -985,6 +1018,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -1011,6 +1046,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "seller_rendered_stateful_display"
@@ -1040,6 +1077,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "coordinated_placements"
@@ -1069,6 +1108,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "coordinated_placements"
@@ -1096,6 +1137,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest: { format_kind: "coordinated_placements", assets: {}, component_assets: {} }
           targets:
@@ -1117,6 +1160,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "coordinated_placements"
@@ -1143,6 +1188,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "coordinated_placements"
@@ -1169,6 +1216,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "coordinated_placements"
@@ -1204,6 +1253,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "coordinated_placements"
@@ -1238,6 +1289,8 @@ phases:
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-premium_display_canonical_validation-4784fc00"
             sandbox: true
           manifest:
             format_kind: "coordinated_placements"

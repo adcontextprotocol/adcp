@@ -49,11 +49,35 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The buyer has a campaign brief with targeting objectives. The test kit provides
     sample signal definitions, pricing options, and destination configurations that
     match the training agent's signal providers.
   test_kit: "test-kits/nova-motors.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_novamotors_example_sandbox_e583c2cab51b"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-signal_marketplace-99c54090"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_novamotors_example_live_bfad71c39e42"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-signal_marketplace-99c54090"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -138,6 +162,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-signal_marketplace-99c54090"
           signal_spec: "In-market EV buyers with high purchase propensity, near auto dealerships"
 
           context:
@@ -197,6 +223,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-signal_marketplace-99c54090"
           signal_ids:
             - "$context.first_signal_id"
 
@@ -256,6 +284,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-signal_marketplace-99c54090"
           signal_ids:
             - "$context.first_signal_id"
 
@@ -316,6 +346,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-signal_marketplace-99c54090"
           signal_agent_segment_id: "$context.first_signal_agent_segment_id"
           pricing_option_id: "$context.first_signal_pricing_option_id"
           destinations:
@@ -403,6 +435,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-signal_marketplace-99c54090"
           signal_agent_segment_id: "$context.first_signal_agent_segment_id"
           pricing_option_id: "$context.first_signal_pricing_option_id"
           destinations:

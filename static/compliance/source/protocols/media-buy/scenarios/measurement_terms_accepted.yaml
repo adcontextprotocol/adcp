@@ -37,10 +37,34 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     Seller advertises media_buy.measurement_terms_acceptance and returns a product carrying
     default measurement_terms for a measurement-specific brief.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_221404fdb1d6"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_measurement_terms_a-8dd74fb2"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_70d9b813c7d8"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_measurement_terms_a-8dd74fb2"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: discover_products
@@ -67,6 +91,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_measurement_terms_a-8dd74fb2"
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -113,6 +139,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_measurement_terms_a-8dd74fb2"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_accepted_accept_terms_create_media_buy_supported_terms"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"

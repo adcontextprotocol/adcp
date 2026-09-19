@@ -45,7 +45,29 @@ prerequisites:
     identity (`account-overlay.example`) to elicit a `cache_scope: account`
     response and an ordinary account for the public layer.
   test_kit: "test-kits/acme-outdoor.yaml"
-  controller_seeding: false
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_e9f936de80b1"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-wholesale_feed_products_scope_isolat-bf091781"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_abd46b455d83"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-wholesale_feed_products_scope_isolat-bf091781"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: scope_isolation
@@ -70,6 +92,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-wholesale_feed_products_scope_isolat-bf091781"
           context:
             correlation_id: "wholesale_feed_products_scope--bootstrap_public"
         validations:

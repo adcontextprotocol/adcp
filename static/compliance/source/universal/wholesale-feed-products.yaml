@@ -36,7 +36,29 @@ prerequisites:
     The agent advertises `wholesale_feed_versioning.supported: true` and exposes
     `get_products`.
   test_kit: "test-kits/acme-outdoor.yaml"
-  controller_seeding: false
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_36870ab0a4b6"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-wholesale_feed_products-b447022c"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_05016500ea27"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-wholesale_feed_products-b447022c"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: conditional_fetch
@@ -61,6 +83,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-wholesale_feed_products-b447022c"
           context:
             correlation_id: "wholesale_feed_products--bootstrap"
         validations:
@@ -100,6 +124,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-wholesale_feed_products-b447022c"
           if_wholesale_feed_version: "$context.product_wholesale_feed_version"
           context:
             correlation_id: "wholesale_feed_products--unchanged"
@@ -145,6 +171,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-wholesale_feed_products-b447022c"
           if_pricing_version: "stale-pricing-token"
           context:
             correlation_id: "wholesale_feed_products--standalone_pricing"

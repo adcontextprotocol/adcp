@@ -42,6 +42,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_bc92b91c45e7"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_declined_proposal_r-b67a4d7a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "decline_refinement_video"
       delivery_type: "non_guaranteed"
@@ -74,6 +85,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_declined_proposal_r-b67a4d7a"
             sandbox: true
           scenario: "compact_product_lifecycle_probe"
           params:
@@ -112,6 +125,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_declined_proposal_r-b67a4d7a"
             sandbox: true
           brief: "Propose a premium video plan for an outdoor launch."
           criteria:

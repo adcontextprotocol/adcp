@@ -43,6 +43,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_016078627b3e"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-canonical_format_validate_input-37dd030b"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "validate_input_nondeterministic_video"
       name: "Validate Input Nondeterministic Video"
@@ -576,6 +587,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-canonical_format_validate_input-37dd030b"
             sandbox: true
           manifest:
             format_kind: "video_hosted"
@@ -614,6 +627,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-canonical_format_validate_input-37dd030b"
             sandbox: true
           manifest:
             format_kind: "video_hosted"

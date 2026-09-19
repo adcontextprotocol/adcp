@@ -86,7 +86,7 @@
     "test:storyboard-scoping": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-scoping.test.cjs",
     "test:storyboard-branch-sets": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-branch-sets.test.cjs",
     "test:storyboard-provides-state-for": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-provides-state-for.test.cjs",
-    "test:storyboard-fixture-resolution": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-fixture-resolution.test.cjs",
+    "test:storyboard-fixture-resolution": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-fixture-resolution.test.cjs tests/lint-storyboard-account-fixtures.node.mjs",
     "test:storyboard-contradictions": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-contradictions.test.cjs",
     "test:storyboard-context-entity": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-context-entity.test.cjs",
     "test:storyboard-auth-shape": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-auth-shape.test.cjs",

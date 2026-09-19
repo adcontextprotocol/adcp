@@ -57,6 +57,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_71de7ecd1f11"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_external_audience_s-1db9647d"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "external_audience_display"
       delivery_type: "non_guaranteed"
@@ -93,6 +104,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_external_audience_s-1db9647d"
             sandbox: true
           audiences:
             - audience_id: "shared_high_value_customers"
@@ -151,6 +164,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_external_audience_s-1db9647d"
             sandbox: true
           idempotency_key: "$generate:uuid_v4#external_audience_source_binding_discover"
         validations:
@@ -190,6 +205,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_external_audience_s-1db9647d"
             sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
@@ -224,6 +241,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_external_audience_s-1db9647d"
             sandbox: true
           audiences:
             - audience_id: "undeclared_platform_segment"
@@ -257,6 +276,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_external_audience_s-1db9647d"
             sandbox: true
           audiences:
             - audience_id: "fixed_inline_transport"
@@ -285,6 +306,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_external_audience_s-1db9647d"
             sandbox: true
           audiences:
             - audience_id: "fixed_inline_transport"

@@ -62,6 +62,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_33aa5f6a6689"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_cross_path_targetin-4bac177f"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "provenance_targeted_display_q2"
       delivery_type: "non_guaranteed"
@@ -109,6 +120,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_cross_path_targetin-4bac177f"
             sandbox: true
           context:
             correlation_id: "cross_path_targeting_provenance--get_products"
@@ -145,6 +158,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_cross_path_targetin-4bac177f"
             sandbox: true
           destinations:
             - type: "agent"
@@ -196,6 +211,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_cross_path_targetin-4bac177f"
             sandbox: true
           start_time: "asap"
           end_time: "2099-07-31T23:59:59Z"
@@ -243,6 +260,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_cross_path_targetin-4bac177f"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
@@ -297,6 +316,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_cross_path_targetin-4bac177f"
             sandbox: true
           audiences:
             - audience_id: "acmeoutdoor-provenance-crm"
@@ -347,6 +368,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_cross_path_targetin-4bac177f"
             sandbox: true
           start_time: "asap"
           end_time: "2099-07-31T23:59:59Z"
@@ -388,6 +411,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_cross_path_targetin-4bac177f"
             sandbox: true
           start_time: "asap"
           end_time: "2099-07-31T23:59:59Z"

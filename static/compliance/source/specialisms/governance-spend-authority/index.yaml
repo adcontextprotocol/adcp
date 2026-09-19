@@ -53,6 +53,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_40a9aed37a76"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-governance_spend_authority-6163432e"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_ca4e5b90cb00"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-governance_spend_authority-6163432e"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   products:
     - product_id: "sports_ctv_q2"
       delivery_type: "guaranteed"
@@ -260,6 +281,8 @@ phases:
               brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "compliance-governance_spend_authority-6163432e"
             brand:
               domain: "acmeoutdoor.example"
             total_budget:
@@ -341,6 +364,8 @@ phases:
               brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "compliance-governance_spend_authority-6163432e"
             brand:
               domain: "acmeoutdoor.example"
             total_budget:
@@ -413,6 +438,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-governance_spend_authority-6163432e"
           brand:
             domain: "acmeoutdoor.example"
           governance_context: "$context.governance_context"

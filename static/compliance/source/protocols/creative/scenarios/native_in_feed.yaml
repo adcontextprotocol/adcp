@@ -32,11 +32,35 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The seller platform supports at least one native_in_feed creative format with declared
     constraints: title_max_chars, body_text_max_chars, main_image_sizes, and a cta_values
     closed enum. The test kit provides sample native assets at standard native dimensions.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_1357d94eee45"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_native_in_feed-39ac3445"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_ff6c03d3c6ce"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_native_in_feed-39ac3445"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -146,6 +170,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_native_in_feed-39ac3445"
           creatives:
             - creative_id: "native_trail_pro_full_bundle"
               name: "Trail Pro 3000 — Native Content Recommendation"
@@ -253,6 +279,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_native_in_feed-39ac3445"
           creatives:
             - creative_id: "native_reject_title_long"
               name: "Reject — title too long"
@@ -304,6 +332,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_native_in_feed-39ac3445"
           creatives:
             - creative_id: "native_reject_image_size"
               name: "Reject — image wrong size"
@@ -359,6 +389,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_native_in_feed-39ac3445"
           creatives:
             - creative_id: "native_reject_cta_enum"
               name: "Reject — CTA not in enum"
@@ -412,6 +444,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_native_in_feed-39ac3445"
           creatives:
             - creative_id: "native_reject_custom_tracker"
               name: "Reject — pixel_tracker custom without name"
@@ -478,6 +512,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_native_in_feed-39ac3445"
           request_type: "single"
           creative_manifest:
             creative_id: "native_trail_pro_full_bundle"

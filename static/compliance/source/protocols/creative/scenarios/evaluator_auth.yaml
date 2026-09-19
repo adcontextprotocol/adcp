@@ -54,6 +54,7 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The creative agent advertises `creative.supports_evaluator: true`, lists
     `creative.evaluator` in `experimental_features`, exposes at least one
@@ -67,6 +68,29 @@ prerequisites:
     raw upstream-traffic attestation only proves that the accepted endpoint was
     called with a get_creative_features-shaped payload.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_e44b6d944895"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_evaluator_auth-1e409e0c"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_1c827e515112"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_evaluator_auth-1e409e0c"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -208,6 +232,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_evaluator_auth-1e409e0c"
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -271,6 +297,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_evaluator_auth-1e409e0c"
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -335,6 +363,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_evaluator_auth-1e409e0c"
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -411,6 +441,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_evaluator_auth-1e409e0c"
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -521,6 +553,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_evaluator_auth-1e409e0c"
           brand:
             domain: "acmeoutdoor.example"
           context:

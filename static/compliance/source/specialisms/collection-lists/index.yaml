@@ -48,11 +48,35 @@ caller:
   example: "Nova Motors (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The caller needs a brand identity and content-program knowledge (distribution IDs,
     publisher identifiers, or genre taxonomies). The test kit provides a sample brand
     with campaign context.
   test_kit: "test-kits/nova-motors.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_novamotors_example_sandbox_6c77ff228079"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-collection_lists-90c10f16"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_novamotors_example_live_db724d4e2f4c"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-collection_lists-90c10f16"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -133,6 +157,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-collection_lists-90c10f16"
           brand:
             domain: "novamotors.example"
           name: "Nova Motors approved programs"
@@ -200,6 +226,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-collection_lists-90c10f16"
           name_contains: "Nova Motors"
 
           context:
@@ -243,6 +271,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-collection_lists-90c10f16"
 
           context:
             correlation_id: "collection_lists--get_collection_list"
@@ -297,6 +327,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-collection_lists-90c10f16"
           base_collections:
             - selection_type: "distribution_ids"
               identifiers:
@@ -355,6 +387,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-collection_lists-90c10f16"
 
           idempotency_key: "$generate:uuid_v4#collection_lists_delete_list_delete_collection_list"
           context:

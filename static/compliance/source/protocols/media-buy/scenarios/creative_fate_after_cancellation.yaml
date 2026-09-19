@@ -50,11 +50,35 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     Seller supports create_media_buy, update_media_buy with cancellation, sync_creatives,
     and list_creatives. Catalog-driven sellers and sellers without a creative library
     grade this scenario not_applicable (creative lifecycle assumes a library surface).
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_af0bd791c648"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_b241f7c81c00"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: setup
@@ -85,6 +109,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
           context:
             correlation_id: "creative_fate--get_products"
         context_outputs:
@@ -126,6 +152,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
           idempotency_key: "$generate:uuid_v4#creative_fate_after_cancellation_create_buy"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
@@ -171,6 +199,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
           creatives:
             - creative_id: "acme_reuse_banner_001"
               name: "Acme Outdoor reuse banner"
@@ -222,6 +252,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
           filters:
             creative_ids:
               - "$context.creative_id"
@@ -262,6 +294,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Creative-fate scenario: releasing assignment to verify library persistence."
@@ -301,6 +335,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
           filters:
             creative_ids:
               - "$context.creative_id"
@@ -348,6 +384,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
           idempotency_key: "$generate:uuid_v4#creative_fate_after_cancellation_create_second_buy"
           start_time: "asap"
           end_time: "2099-10-31T23:59:59Z"
@@ -393,6 +431,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
           creatives:
             # Buyer-authoritative id set in sync_creative_with_assignment —
             # use it literally instead of round-tripping through

@@ -48,12 +48,36 @@ caller:
   example: "Scope3 (DSP)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The caller needs a brand identity (brand.json with colors, fonts, logos) and creative
     assets that match the format's requirements (images at the right dimensions, text at
     the right lengths). The test kit provides these ingredients so you can test without
     assembling them yourself.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_8583984a2dd2"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_template-1543a3c3"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_72ee88a7035b"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_template-1543a3c3"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -148,6 +172,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_template-1543a3c3"
           request_type: "single"
           creative_manifest:
             format_kind: "image"
@@ -241,6 +267,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_template-1543a3c3"
 
           idempotency_key: "$generate:uuid_v4#creative_template_build_build_creative"
           context:
@@ -305,6 +333,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_template-1543a3c3"
 
           idempotency_key: "$generate:uuid_v4#creative_template_build_build_multi_format"
           context:
@@ -382,6 +412,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_template-1543a3c3"
 
           idempotency_key: "$generate:uuid_v4#creative_template_audio_build_build_audio_creative"
           context:
