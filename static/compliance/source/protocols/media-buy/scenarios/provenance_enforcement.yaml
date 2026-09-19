@@ -153,6 +153,7 @@ phases:
       - id: sync_creatives_no_provenance
         title: "Submit creative with no provenance object"
         task: sync_creatives
+        requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
@@ -218,6 +219,7 @@ phases:
       - id: sync_creatives_no_digital_source_type
         title: "Submit creative with provenance but no digital_source_type"
         task: sync_creatives
+        requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
@@ -286,6 +288,7 @@ phases:
       - id: sync_creatives_off_list_verifier
         title: "Submit creative pointing at an off-list verifier"
         task: sync_creatives
+        requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
@@ -371,6 +374,7 @@ phases:
       - id: sync_creatives_missing_disclosure
         title: "Submit creative with provenance but no disclosure"
         task: sync_creatives
+        requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
@@ -440,6 +444,7 @@ phases:
       - id: sync_creatives_with_disclosure
         title: "Resubmit with disclosure metadata populated and an on-list verify_agent"
         task: sync_creatives
+        requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
