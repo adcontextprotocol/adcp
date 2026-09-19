@@ -8161,6 +8161,190 @@
         },
         "resolved_collection_id": "retro_news"
       }
+    },
+    {
+      "id": "host-grant-malformed-inline-property-envelope",
+      "input": {
+        "ownerDomain": "channel-owner.example",
+        "hostDomain": "hoststream.example",
+        "agentUrl": "https://sales.channel-owner.example",
+        "collectionId": "retro_news",
+        "hostInventoryPartnerDomains": null,
+        "ownerManifest": {
+          "authorized_agents": [
+            {
+              "url": "https://sales.channel-owner.example",
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
+            }
+          ],
+          "collections": [
+            {
+              "collection_id": "retro_news",
+              "name": "Retro News",
+              "kind": "channel",
+              "distribution": [
+                {
+                  "publisher_domain": "hoststream.example",
+                  "property_ids": [
+                    "hoststream_ctv"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "hostManifest": {
+          "properties": [
+            {
+              "property_id": "hoststream_ctv",
+              "name": "HostStream CTV",
+              "property_type": "ctv_app",
+              "identifiers": [
+                {
+                  "type": "roku_channel_id",
+                  "value": "123"
+                }
+              ]
+            }
+          ],
+          "authorized_agents": [
+            {
+              "url": "https://sales.channel-owner.example",
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "inline_properties",
+              "properties": [
+                {
+                  "property_type": "ctv_app",
+                  "property_id": "hoststream_ctv"
+                }
+              ],
+              "collections": [
+                {
+                  "publisher_domain": "channel-owner.example",
+                  "collection_ids": [
+                    "retro_news"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "semantics_version": "1",
+        "resolved_collection_id": "retro_news",
+        "state": "owner_attested",
+        "legs": {
+          "owner_collection_declared": {
+            "ok": true
+          },
+          "owner_distribution_carriage": {
+            "ok": true
+          },
+          "owner_agent_declared": {
+            "ok": true
+          },
+          "host_authorization": {
+            "ok": false,
+            "failure": "property_scope_mismatch"
+          },
+          "inventory_partner_domain": {
+            "ok": false,
+            "failure": "ads_txt_unavailable"
+          }
+        }
+      }
+    },
+    {
+      "id": "host-manifest-bare-property-record",
+      "input": {
+        "ownerDomain": "channel-owner.example",
+        "hostDomain": "hoststream.example",
+        "agentUrl": "https://sales.channel-owner.example",
+        "collectionId": "retro_news",
+        "hostInventoryPartnerDomains": null,
+        "ownerManifest": {
+          "authorized_agents": [
+            {
+              "url": "https://sales.channel-owner.example",
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
+            }
+          ],
+          "collections": [
+            {
+              "collection_id": "retro_news",
+              "name": "Retro News",
+              "kind": "channel",
+              "distribution": [
+                {
+                  "publisher_domain": "hoststream.example",
+                  "property_ids": [
+                    "hoststream_ctv"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "hostManifest": {
+          "properties": [
+            {
+              "property_id": "hoststream_ctv"
+            }
+          ],
+          "authorized_agents": [
+            {
+              "url": "https://sales.channel-owner.example",
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "hoststream_ctv"
+              ],
+              "collections": [
+                {
+                  "publisher_domain": "channel-owner.example",
+                  "collection_ids": [
+                    "retro_news"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "semantics_version": "1",
+        "resolved_collection_id": "retro_news",
+        "state": "owner_attested",
+        "legs": {
+          "owner_collection_declared": {
+            "ok": true
+          },
+          "owner_distribution_carriage": {
+            "ok": false,
+            "failure": "property_ids_unresolved"
+          },
+          "owner_agent_declared": {
+            "ok": true
+          },
+          "host_authorization": {
+            "ok": false,
+            "failure": "property_scope_mismatch"
+          },
+          "inventory_partner_domain": {
+            "ok": false,
+            "failure": "ads_txt_unavailable"
+          }
+        }
+      }
     }
   ],
   "ads_txt_policy_vectors": [

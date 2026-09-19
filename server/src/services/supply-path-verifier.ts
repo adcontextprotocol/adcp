@@ -111,6 +111,14 @@ function hasPropertyAuthorizationEnvelope(entry: Record<string, unknown>): boole
   return false;
 }
 
+function hasPropertyEnvelope(p: Record<string, unknown>): boolean {
+  return (
+    typeof p.property_type === 'string' && PROPERTY_TYPES.has(p.property_type) &&
+    typeof p.name === 'string' &&
+    Array.isArray(p.identifiers) && p.identifiers.length > 0
+  );
+}
+
 /** Resolve one entry at a time: separate grants are alternatives, never merged across collection scopes. */
 function propertyScope(
   entry: Record<string, unknown>,
@@ -128,7 +136,8 @@ function propertyScope(
   if (entry.authorization_type === 'publisher_properties') {
     if (!Array.isArray(entry.publisher_properties) || entry.publisher_properties.length === 0) return new Set();
     const properties = records(manifest.properties).filter(
-      p => (p.publisher_domain === undefined && !requirePublisher) || domain(p.publisher_domain) === host
+      p => hasPropertyEnvelope(p) &&
+           ((p.publisher_domain === undefined && !requirePublisher) || domain(p.publisher_domain) === host)
     );
     const ids = new Set<string>();
     try {
@@ -352,8 +361,9 @@ export function verifySupplyPath(input: SupplyPathInput): SupplyPathVerdict {
     } else {
       const properties = records(hostManifest.properties).filter(
         p =>
-          (p.publisher_domain === undefined && !input.requireExplicitHostPublisherDomain) ||
-          domain(p.publisher_domain) === host
+          hasPropertyEnvelope(p) &&
+          ((p.publisher_domain === undefined && !input.requireExplicitHostPublisherDomain) ||
+            domain(p.publisher_domain) === host)
       );
       const counts = new Map<unknown, number>();
       for (const property of properties) counts.set(property.property_id, (counts.get(property.property_id) ?? 0) + 1);
@@ -397,6 +407,7 @@ export function verifySupplyPath(input: SupplyPathInput): SupplyPathVerdict {
         collectionLeg.ok &&
         covered.find(e => {
           if (unsupportedConstraints(e).length) return false;
+          if (!hasPropertyAuthorizationEnvelope(e)) return false;
           const scope = propertyScope(e, host, hostManifest, input.requireExplicitHostPublisherDomain);
           const required = input.requiredHostPropertyIds ?? claimed;
           if (
@@ -499,6 +510,7 @@ export function supplyPathAdsTxtPolicy(input: SupplyPathInput): {
   const requested = input.requiredHostPropertyIds ? new Set(input.requiredHostPropertyIds) : collectionIds;
   const properties = records(input.hostManifest?.properties).filter(
     p =>
+      hasPropertyEnvelope(p) &&
       requested.has(String(p.property_id)) &&
       ((p.publisher_domain === undefined && !input.requireExplicitHostPublisherDomain) ||
         domain(p.publisher_domain) === domain(input.hostDomain))
