@@ -38,6 +38,27 @@ import { registerSharedPublicBrandPartition } from '../state.js';
 
 const TRAINING_PRINCIPAL_FIELD = '__training_principal';
 const TRAINING_TASK_OWNER_SCOPE_FIELD = '__training_task_owner_scope';
+const TRAINING_OPERATOR_UNIT_BRIDGE_FIELD = '__training_operator_unit';
+
+function restoreControllerOperatorUnit(input: Record<string, unknown>): Record<string, unknown> {
+  const ext = input.ext && typeof input.ext === 'object' && !Array.isArray(input.ext)
+    ? { ...input.ext as Record<string, unknown> }
+    : undefined;
+  const bridgedUnit = ext?.[TRAINING_OPERATOR_UNIT_BRIDGE_FIELD];
+  if (!bridgedUnit || typeof bridgedUnit !== 'object' || Array.isArray(bridgedUnit)) return input;
+  const account = input.account && typeof input.account === 'object' && !Array.isArray(input.account)
+    ? input.account as Record<string, unknown>
+    : undefined;
+  if (!account || account.operator_unit !== undefined) return input;
+  delete ext![TRAINING_OPERATOR_UNIT_BRIDGE_FIELD];
+  const restored: Record<string, unknown> = {
+    ...input,
+    account: { ...account, operator_unit: bridgedUnit },
+  };
+  if (Object.keys(ext!).length > 0) restored.ext = ext;
+  else delete restored.ext;
+  return restored;
+}
 
 /**
  * v5 handler return shape — wide union of seed/force/simulate response
@@ -89,7 +110,7 @@ async function dispatchV5(
   const principal = typeof input[TRAINING_PRINCIPAL_FIELD] === 'string'
     ? input[TRAINING_PRINCIPAL_FIELD]
     : 'anonymous';
-  const cleanInput = { ...input };
+  const cleanInput = restoreControllerOperatorUnit({ ...input });
   delete cleanInput[TRAINING_PRINCIPAL_FIELD];
   delete cleanInput[TRAINING_TASK_OWNER_SCOPE_FIELD];
   const assertedAccount = cleanInput.account;
@@ -205,7 +226,7 @@ function controllerTaskScope(
   if (typeof ownerScope !== 'string' || ownerScope.length === 0) return null;
 
   try {
-    const accountRef = normalizeControllerAccountRef(input.account);
+    const accountRef = normalizeControllerAccountRef(restoreControllerOperatorUnit(input).account);
     const account = canonicalizeAccountRef(accountRef);
     if (account.kind === 'account_id') {
       return { accountId: account.account_id, ownerScope };
@@ -279,9 +300,11 @@ function taskCompletionAdapter(
     );
     throwOnFailure(controllerResult);
     if (taskRegistry && scope && typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
-      // Persist synchronously so the next polling step cannot race the
-      // background handoff worker's identical idempotent completion.
-      await taskRegistry.complete(taskId, scope, result as Record<string, unknown>);
+      // The forced-completion signal resolves the framework-owned handoff.
+      // Wait for that background settlement instead of writing the registry
+      // directly: winning the write race here makes the framework observe an
+      // already-terminal task and skip its completion webhook.
+      await taskRegistry.awaitTask(taskId, scope);
     }
     return controllerResult;
   };
@@ -313,6 +336,10 @@ const SALES_COMPLY_INPUT_SCHEMA = {
     account_id: z.string().optional(),
     brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
     operator: z.string().optional(),
+    operator_unit: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1).optional(),
+    }).optional(),
     sandbox: z.literal(true),
   }).passthrough(),
   brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
@@ -332,12 +359,17 @@ const SALES_COMPLY_INPUT_SCHEMA = {
  * sales agent directly; the storyboard runner doesn't yet route per-tool
  * across tenants (separate finding).
  */
-export function buildGovernanceComplyConfig(): ComplyControllerConfig {
+export function buildGovernanceComplyConfig(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): ComplyControllerConfig {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cast = (a: AdapterShim) => a as any;
   return {
     inputSchema: SALES_COMPLY_INPUT_SCHEMA,
     seed: {
+      ...(storyboardCompat?.version === '3.0' ? {} : {
+        account: cast(seedAdapter('seed_account', storyboardCompat)),
+      }),
       plan: cast(seedAdapter('seed_plan')),
       product: cast(seedAdapter('seed_product')),
       pricing_option: cast(seedAdapter('seed_pricing_option')),
@@ -368,6 +400,9 @@ export function buildCreativeComplyConfig(
   return {
     inputSchema: SALES_COMPLY_INPUT_SCHEMA,
     seed: {
+      ...(storyboardCompat?.version === '3.0' ? {} : {
+        account: cast(seedAdapter('seed_account', storyboardCompat)),
+      }),
       creative: cast(seedAdapter('seed_creative', storyboardCompat)),
       // F14 (`bd0d4028`) added the `creative_format` slot — needed for
       // `pagination_integrity_creative_formats` storyboard which seeds
@@ -392,6 +427,11 @@ export function buildSignalsComplyConfig(
   const cast = (a: AdapterShim) => a as any;
   return {
     inputSchema: SALES_COMPLY_INPUT_SCHEMA,
+    ...(storyboardCompat?.version === '3.0' ? {} : {
+      seed: {
+        account: cast(seedAdapter('seed_account', storyboardCompat)),
+      },
+    }),
     force: {
       // The frozen 3.0 capability schema permits only the original six
       // controller scenario IDs. Keep one of those universally applicable

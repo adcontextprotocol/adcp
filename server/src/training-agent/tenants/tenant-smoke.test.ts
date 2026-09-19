@@ -3676,6 +3676,139 @@ describe('tenant routing smoke', () => {
     }
   }, 15000);
 
+  it('does not expose account fixture seeding on 3.0 tenant surfaces', async () => {
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      for (const tenant of ['signals', 'governance', 'creative', 'creative-builder']) {
+        const url = `${baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        const listedBody = await callTenantTool(url, 2, 'comply_test_controller', {
+          account: { sandbox: true },
+          scenario: 'list_scenarios',
+        }) as { result?: { structuredContent?: { scenarios?: string[] } } };
+        expect(listedBody.result?.structuredContent?.scenarios, tenant).not.toContain('seed_account');
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('advertises and dispatches account fixture seeding on every current tenant that runs account-scoped storyboards', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const tenants = ['signals', 'governance', 'creative', 'creative-builder'] as const;
+      let requestId = 1;
+      for (const tenant of tenants) {
+        const url = `${baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        const account = {
+          brand: { domain: `${tenant}.fixture.example` },
+          operator: 'pinnacle-agency.example',
+          operator_unit: { id: `fixture-${tenant}` },
+          sandbox: true,
+        };
+        const listed = await callTenantTool(url, requestId++, 'comply_test_controller', {
+          account,
+          scenario: 'list_scenarios',
+        }) as { result?: { structuredContent?: { scenarios?: string[] } } };
+        expect(listed.result?.structuredContent?.scenarios, tenant).toContain('seed_account');
+
+        const seeded = await callTenantTool(url, requestId++, 'comply_test_controller', {
+          account,
+          scenario: 'seed_account',
+          params: {
+            account_id: `acct_${tenant.replace('-', '_')}_fixture`,
+            fixture: account,
+          },
+        }) as { result?: { structuredContent?: { success?: boolean } } };
+        expect(seeded.result?.structuredContent?.success, tenant).toBe(true);
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('does not tunnel invalid or pre-3.2 operator units through the controller compatibility bridge', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      await initializeTenant(url);
+      const invalidUnit = await callTenantTool(url, 2, 'comply_test_controller', {
+        account: {
+          brand: { domain: 'invalid-unit.example' },
+          operator: 'pinnacle-agency.example',
+          operator_unit: { id: 'invalid unit' },
+          sandbox: true,
+        },
+        scenario: 'list_scenarios',
+      }) as { result?: { structuredContent?: { scenarios?: string[] } } };
+      expect(invalidUnit.result?.structuredContent?.scenarios).toBeUndefined();
+
+      for (const adcpVersion of ['3.1', '3.1-rc.15']) {
+        const legacyVersion = await callTenantTool(url, 3, 'comply_test_controller', {
+          adcp_version: adcpVersion,
+          account: {
+            brand: { domain: 'legacy-unit.example' },
+            operator: 'pinnacle-agency.example',
+            operator_unit: { id: 'not-in-3-1' },
+            sandbox: true,
+          },
+          scenario: 'list_scenarios',
+        }) as { result?: { structuredContent?: { scenarios?: string[] } } };
+        expect(legacyVersion.result?.structuredContent?.scenarios, adcpVersion).toBeUndefined();
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('preserves brand operator-unit scope from rights-grant seeding through update_rights', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/brand/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'brand-rights-unit.example' },
+        operator: 'pinnacle-agency.example',
+        operator_unit: { id: 'brand-rights-seat' },
+        sandbox: true,
+      };
+      const seeded = await callTenantTool(url, 2, 'comply_test_controller', {
+        account,
+        scenario: 'seed_rights_grant',
+        params: {
+          rights_id: 'janssen_likeness_voice',
+          fixture: {
+            brand_id: 'daan_janssen',
+            buyer_domain: 'pinnacle-agency.example',
+            pricing_option_id: 'monthly_exclusive',
+            start_date: '2099-04-01',
+            end_date: '2099-06-30',
+          },
+        },
+      }) as { result?: { structuredContent?: { success?: boolean } } };
+      expect(seeded.result?.structuredContent?.success).toBe(true);
+      const unitSession = await getSession(sessionKeyFromArgs({ account }, 'open'));
+      expect(unitSession.rightsGrants.has('janssen_likeness_voice')).toBe(true);
+
+      const updated = await callTenantTool(url, 3, 'update_rights', {
+        account,
+        rights_id: 'janssen_likeness_voice',
+        paused: true,
+        idempotency_key: 'brand-rights-unit-update',
+      }) as { result?: { structuredContent?: {
+        paused?: boolean;
+        errors?: Array<{ code?: string }>;
+        adcp_error?: { code?: string };
+      } } };
+      expect(updated.result?.structuredContent?.adcp_error).toBeUndefined();
+      expect(updated.result?.structuredContent?.errors).toBeUndefined();
+      expect(updated.result?.structuredContent?.paused).toBe(true);
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('projects post-3.0 creative format parameters out of 3.0 tenant responses', async () => {
     const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
     try {
