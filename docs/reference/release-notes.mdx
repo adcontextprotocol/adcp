@@ -91,6 +91,7 @@ Each prerelease is immutable. The `3.2-rc` documentation selector advances to th
 - 3.2 producers emit integer `error.retry_after` seconds.
 - A 3.2 verification claim requires release advertisement and response echo even though those fields remain schema-optional for 3.x compatibility.
 - Idempotency replay is required for state-mutating requests, not pure reads. Read wrappers must tolerate an optional `idempotency_key`, but may ignore it; buyers cannot infer read-response replay from `adcp.idempotency.supported: true`.
+- Product and signal agents may declare `anonymous_discovery` in their respective capability block. `true` permits an anonymous discovery response without claiming catalog completeness; `false` requires an authenticated principal; absence preserves legacy probe-and-handle behavior. Mutations and private or account-scoped reads remain authenticated by protocol rule rather than seller-variable capability.
 
 ### Compact product and MediaBuy lifecycle (#6115)
 

@@ -36,9 +36,23 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The caller has source and translated image assets prepared before sync.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_2c6524be70a8"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_native_localization-cddeaebf"
+        billing: "operator"
+        status: "active"
+        sandbox: true
 
 phases:
   - id: capability_discovery
@@ -91,6 +105,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_native_localization-cddeaebf"
             sandbox: true
           creatives:
             - creative_id: "trail_sale_localized"
@@ -165,6 +181,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_native_localization-cddeaebf"
             sandbox: true
           creatives:
             - creative_id: "trail_sale_fr_ca"
@@ -226,6 +244,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_native_localization-cddeaebf"
             sandbox: true
           creatives:
             - creative_id: "trail_sale_localized"
@@ -290,6 +310,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_native_localization-cddeaebf"
             sandbox: true
           creative_ids:
             - "trail_sale_localized"
@@ -347,6 +369,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_native_localization-cddeaebf"
             sandbox: true
           creative_ids:
             - "trail_sale_fr_ca"

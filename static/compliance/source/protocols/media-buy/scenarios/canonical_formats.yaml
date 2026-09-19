@@ -58,6 +58,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_5cf62d0533d9"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_canonical_formats-a323283f"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "canonical_formats_mrec_display"
       name: "Canonical Formats MREC Display"
@@ -363,6 +374,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_canonical_product"
@@ -464,6 +477,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_v1_only_product"
@@ -513,6 +528,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_v2_only_product"
@@ -571,6 +588,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_custom_v2_only_product"
@@ -637,6 +656,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_experimental_product"
@@ -705,6 +726,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_divergent_product"
@@ -766,6 +789,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_canonical_product_for_create_satisfaction"
@@ -803,6 +828,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -846,6 +873,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -891,6 +920,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -935,6 +966,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -982,6 +1015,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -1033,6 +1068,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -1081,6 +1118,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -1130,6 +1169,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -1177,6 +1218,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -1218,6 +1261,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"

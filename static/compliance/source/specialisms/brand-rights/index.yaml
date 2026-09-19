@@ -42,10 +42,34 @@ caller:
   example: "Pinnacle Agency (creative buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The caller needs brand context for identity discovery and campaign parameters for
     rights acquisition. The test kit provides a sample brand with visual identity assets.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_b61b40d1d94b"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-brand_rights-cb7142f1"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_9668e867dd4d"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-brand_rights-cb7142f1"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -258,6 +282,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-brand_rights-cb7142f1"
           rights_id: "$context.rights_id"
           pricing_option_id: "$context.pricing_option_id"
           buyer:
@@ -321,6 +347,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-brand_rights-cb7142f1"
           rights_id: "$context.rights_grant_id"
           paused: true
           idempotency_key: "$generate:uuid_v4#brand_rights_rights_update"
@@ -380,6 +408,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-brand_rights-cb7142f1"
           rights_id: "$context.rights_id"
           pricing_option_id: "$context.pricing_option_id"
           buyer:

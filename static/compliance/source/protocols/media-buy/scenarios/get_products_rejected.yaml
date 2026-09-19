@@ -48,6 +48,19 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_1998ef3c6d29"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_get_products_reject-5e3ba5b8"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+
 phases:
   - id: force_rejected_discovery
     title: "Register a one-shot rejected response"
@@ -72,6 +85,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_get_products_reject-5e3ba5b8"
             sandbox: true
           scenario: "force_get_products_arm"
           params:
@@ -125,6 +140,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_get_products_reject-5e3ba5b8"
             sandbox: true
           context:
             correlation_id: "get_products_rejected--request"

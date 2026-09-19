@@ -53,11 +53,35 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     Seller advertises media_buy.features.inline_creative_management: true and
     accepts package-scoped CreativeAsset objects on create_media_buy and
     update_media_buy. The seller does not need to implement sync_creatives.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_547235310e65"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_7f31cc7a1428"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -125,6 +149,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
           context:
             correlation_id: "inline_creatives_without_sync--get_products_canonical"
         context_outputs:
@@ -171,6 +197,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
           idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_create_canonical"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
@@ -239,6 +267,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
           media_buy_id: "$context.canonical_media_buy_id"
           packages:
             - package_id: "$context.canonical_package_id"
@@ -315,6 +345,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
           context:
             correlation_id: "inline_creatives_without_sync--get_products_legacy"
         context_outputs:
@@ -356,6 +388,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
           idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_create_legacy"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
@@ -421,6 +455,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
           media_buy_id: "$context.legacy_media_buy_id"
           packages:
             - package_id: "$context.legacy_package_id"
@@ -492,6 +528,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
           media_buy_ids:
             - "$context.canonical_media_buy_id"
           context:
@@ -534,6 +572,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
           media_buy_ids:
             - "$context.legacy_media_buy_id"
           context:

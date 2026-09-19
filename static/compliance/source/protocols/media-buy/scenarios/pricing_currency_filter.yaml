@@ -43,6 +43,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_90c99cadcb40"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_pricing_currency_fi-e1a4500b"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "mixed_currency_display"
       delivery_type: "non_guaranteed"
@@ -145,6 +156,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_pricing_currency_fi-e1a4500b"
             sandbox: true
           context:
             correlation_id: "pricing_currency_filter--get_products_usd_pricing"

@@ -34,10 +34,24 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The caller has two image URLs. Only the first may become the stored content
     for revision rev_launch_1.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_60f2d1ee2fba"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_creative_revision_identity-276126c7"
+        billing: "operator"
+        status: "active"
+        sandbox: true
 
 phases:
   - id: discover_revision_support
@@ -85,6 +99,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_creative_revision_identity-276126c7"
             sandbox: true
           creatives:
             - creative_id: "revision_launch_banner"

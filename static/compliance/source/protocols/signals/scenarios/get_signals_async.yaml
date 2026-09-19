@@ -52,6 +52,19 @@ prerequisites:
   test_kit: "test-kits/nova-motors.yaml"
   controller_seeding: true
 
+fixtures:
+  accounts:
+    - account_id: "acct_novamotors_example_sandbox_5fce07afccfa"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "novamotors.example"
+        operator_unit:
+          id: "compliance-signals_baseline_get_signals_async-166d8244"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+
 phases:
   - id: force_submitted_discovery
     title: "Drive next get_signals into submitted arm"
@@ -82,6 +95,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "novamotors.example"
+            operator_unit:
+              id: "compliance-signals_baseline_get_signals_async-166d8244"
             sandbox: true
           scenario: "force_get_signals_arm"
           params:
@@ -137,6 +152,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "novamotors.example"
+            operator_unit:
+              id: "compliance-signals_baseline_get_signals_async-166d8244"
             sandbox: true
           signal_spec: "In-market EV buyers near dealerships with high purchase intent"
           pagination:
@@ -180,6 +197,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "novamotors.example"
+            operator_unit:
+              id: "compliance-signals_baseline_get_signals_async-166d8244"
             sandbox: true
           filters:
             task_ids:
@@ -283,6 +302,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "novamotors.example"
+            operator_unit:
+              id: "compliance-signals_baseline_get_signals_async-166d8244"
             sandbox: true
           scenario: "force_task_completion"
           params:
@@ -371,6 +392,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "novamotors.example"
+            operator_unit:
+              id: "compliance-signals_baseline_get_signals_async-166d8244"
             sandbox: true
           context:
             correlation_id: "get_signals_async--get_task_status_completed"

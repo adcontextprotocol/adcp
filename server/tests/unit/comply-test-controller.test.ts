@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,7 +23,14 @@ import {
   buildCreativeComplyConfig,
   buildGovernanceComplyConfig,
   buildSalesComplyConfig,
+  CONTROLLER_TASK_SETTLEMENT_TIMEOUT_MS,
 } from '../../src/training-agent/tenants/comply.js';
+import type { TaskRegistry } from '@adcp/sdk/server';
+import {
+  clearForcedTaskCompletions,
+  waitForForcedTaskCompletion,
+} from '../../src/training-agent/comply-test-controller.js';
+import { taskRegistryNamespaceForTenant } from '../../src/training-agent/task-registry-scope.js';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'comply-test.example.com' }, operator: 'comply-tester', sandbox: true };
@@ -2227,6 +2234,55 @@ describe('comply_test_controller', () => {
           brand: BRAND,
         },
       })).resolves.toBeUndefined();
+    });
+
+    it('bounds the framework task-settlement wait after forced completion', async () => {
+      vi.useFakeTimers();
+      const taskId = 'v6_bounded_task_settlement';
+      const accountId = 'v6_bounded_task_settlement_account';
+      const ownerScope = 'client:v6-bounded-task-settlement-owner';
+      const completionScope = {
+        registryNamespace: taskRegistryNamespaceForTenant('sales'),
+        accountId,
+        ownerScope,
+      };
+      const forcedCompletion = waitForForcedTaskCompletion(taskId, completionScope);
+      const neverSettles = new Promise<void>(() => undefined);
+      const taskRegistry = {
+        getTask: vi.fn().mockResolvedValue({ task_id: taskId, status: 'submitted' }),
+        awaitTask: vi.fn().mockReturnValue(neverSettles),
+      } as unknown as TaskRegistry;
+
+      try {
+        const config = buildSalesComplyConfig(undefined, taskRegistry);
+        const completion = (config.force!.task_completion as any)({
+          task_id: taskId,
+          result: { media_buy_id: 'mb_v6_bounded_task_settlement' },
+        }, {
+          input: {
+            scenario: 'force_task_completion',
+            account: { account_id: accountId, sandbox: true },
+            __training_task_owner_scope: ownerScope,
+          },
+        });
+        const boundedRejection = expect(completion).rejects.toThrow(
+          `Task ${taskId} did not settle within ${CONTROLLER_TASK_SETTLEMENT_TIMEOUT_MS}ms`,
+        );
+
+        await vi.advanceTimersByTimeAsync(CONTROLLER_TASK_SETTLEMENT_TIMEOUT_MS);
+
+        await boundedRejection;
+        await expect(forcedCompletion).resolves.toEqual({
+          media_buy_id: 'mb_v6_bounded_task_settlement',
+        });
+        expect(taskRegistry.awaitTask).toHaveBeenCalledWith(taskId, {
+          accountId,
+          ownerScope,
+        });
+      } finally {
+        clearForcedTaskCompletions();
+        vi.useRealTimers();
+      }
     });
   });
 

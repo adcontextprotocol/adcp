@@ -52,6 +52,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_6285505cb5f5"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-governance_delivery_monitor-5475949b"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_3fd57c9a75b1"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-governance_delivery_monitor-5475949b"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   products:
     - product_id: "outdoor_display_q2"
       delivery_type: "guaranteed"
@@ -260,6 +281,8 @@ phases:
               brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "compliance-governance_delivery_monitor-5475949b"
             ext:
               governance_policy_acknowledgements:
                 - "drift_reevaluation"
@@ -322,6 +345,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-governance_delivery_monitor-5475949b"
           brand:
             domain: "acmeoutdoor.example"
           governance_context: "$context.governance_context"
@@ -453,6 +478,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-governance_delivery_monitor-5475949b"
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true

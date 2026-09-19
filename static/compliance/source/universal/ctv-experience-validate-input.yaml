@@ -107,6 +107,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_085aed1c16d6"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-ctv_experience_validate_input-cebd7d2a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "ctv_validate_menu_tile"
       name: "CTV Validate — Menu Tile"
@@ -567,6 +578,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "native_in_feed"
@@ -617,6 +630,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "native_in_feed"
@@ -661,6 +676,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "image"
@@ -696,6 +713,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "video_hosted"
@@ -732,6 +751,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "video_vast"
@@ -772,6 +793,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "sponsored_placement"
@@ -822,6 +845,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "video_vast"
@@ -865,6 +890,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "native_in_feed"
@@ -912,6 +939,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "video_vast"
@@ -956,6 +985,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "video_vast"
@@ -999,6 +1030,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "video_vast"
@@ -1043,6 +1076,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "image"
@@ -1086,6 +1121,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "native_in_feed"
@@ -1138,6 +1175,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-ctv_experience_validate_input-cebd7d2a"
             sandbox: true
           manifest:
             format_kind: "html5"

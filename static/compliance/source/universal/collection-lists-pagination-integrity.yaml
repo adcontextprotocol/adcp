@@ -49,7 +49,29 @@ prerequisites:
     so this storyboard uses the create-then-list pattern to keep itself
     self-contained without extending the seed taxonomy.
   test_kit: "test-kits/acme-outdoor.yaml"
-  controller_seeding: false
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_6a12933233de"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-pagination_integrity_collection_list-2726a1a2"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_f6320b4772bd"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-pagination_integrity_collection_list-2726a1a2"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -114,6 +136,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_collection_list-2726a1a2"
           name: "Primetime Drama Allowlist"
           description: "Collection of approved primetime drama programs."
           idempotency_key: "$generate:uuid_v4#pagination_integrity_collection_lists_setup_create_list_1"
@@ -144,6 +168,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_collection_list-2726a1a2"
           name: "News Programs Allowlist"
           description: "Approved national news broadcast programs."
           idempotency_key: "$generate:uuid_v4#pagination_integrity_collection_lists_setup_create_list_2"
@@ -174,6 +200,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_collection_list-2726a1a2"
           name: "Sports Programs Allowlist"
           description: "Approved live sports broadcasts."
           idempotency_key: "$generate:uuid_v4#pagination_integrity_collection_lists_setup_create_list_3"
@@ -226,6 +254,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_collection_list-2726a1a2"
           pagination:
             max_results: 2
 
@@ -276,6 +306,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_collection_list-2726a1a2"
           pagination:
             cursor: "$context.next_cursor"
             max_results: 2

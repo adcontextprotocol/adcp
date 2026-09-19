@@ -75,6 +75,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_6cb83c39ec2d"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-sales_non_guaranteed-9507883b"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_ce1790f7d29e"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-sales_non_guaranteed-9507883b"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   products:
     - product_id: "sports_display_auction"
       delivery_type: "non_guaranteed"
@@ -269,6 +290,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_non_guaranteed-9507883b"
 
           # AdCP 3.1 is the dual-wire transition release. This pilot requires
           # canonical format_options, so select that response dialect explicitly
@@ -383,6 +406,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_non_guaranteed-9507883b"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -464,6 +489,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_non_guaranteed-9507883b"
           media_buy_ids:
             - "$context.media_buy_id"
 
@@ -518,6 +545,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_non_guaranteed-9507883b"
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "$context.first_package_id"
@@ -601,6 +630,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_non_guaranteed-9507883b"
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true

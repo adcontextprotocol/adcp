@@ -42,10 +42,34 @@ caller:
   example: "Compliance test harness"
 
 prerequisites:
+  controller_seeding: true
   description: |
     No special prerequisites. The storyboard sends intentionally invalid requests
     to test error handling.
   test_kit: "test-kits/nova-motors.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_novamotors_example_sandbox_1929356d9412"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-error_compliance_signals-2d7e8fc7"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_novamotors_example_live_710a6531f35c"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-error_compliance_signals-2d7e8fc7"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -123,6 +147,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance_signals-2d7e8fc7"
           signal_agent_segment_id: "nonexistent-signal-id-xyz"
           destinations:
             - type: "agent"
@@ -170,6 +196,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance_signals-2d7e8fc7"
           destinations:
             - type: "agent"
               agent_url: "https://test-dsp.example"
@@ -222,6 +250,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance_signals-2d7e8fc7"
           signal_agent_segment_id: "nonexistent-signal-error-structure"
           destinations:
             - type: "agent"
@@ -277,6 +307,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance_signals-2d7e8fc7"
 
           context:
             correlation_id: "error_compliance_signals--unsupported_major_version"
@@ -314,6 +346,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance_signals-2d7e8fc7"
 
           context:
             correlation_id: "error_compliance_signals--supported_major_version"
@@ -359,6 +393,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance_signals-2d7e8fc7"
           signal_agent_segment_id: "nonexistent-signal-transport-test"
           destinations:
             - type: "agent"

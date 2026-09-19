@@ -49,6 +49,7 @@ caller:
   example: "Compliance test harness"
 
 prerequisites:
+  controller_seeding: true
   description: |
     No fixtures required. The agent's signal set is treated as given —
     the storyboard sends a broad query and asserts pagination shape
@@ -56,6 +57,29 @@ prerequisites:
     claiming signal-marketplace behavior SHOULD have a non-trivial signal set matching
     "audience".
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_24671228196f"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-get_signals_pagination_integrity-b7e1cb8a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_c734e5be9a22"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-get_signals_pagination_integrity-b7e1cb8a"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -139,6 +163,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-get_signals_pagination_integrity-b7e1cb8a"
           signal_spec: "audience"
           pagination:
             max_results: 1
@@ -190,6 +216,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-get_signals_pagination_integrity-b7e1cb8a"
           signal_spec: "audience"
           pagination:
             cursor: "$context.signals_next_cursor"

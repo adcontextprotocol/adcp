@@ -49,7 +49,29 @@ prerequisites:
     this storyboard uses the create-then-list pattern to keep itself
     self-contained without extending the seed taxonomy.
   test_kit: "test-kits/acme-outdoor.yaml"
-  controller_seeding: false
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_5d786ed83f89"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-pagination_integrity_property_lists-3f67a5ce"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_54ae15c9adc6"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-pagination_integrity_property_lists-3f67a5ce"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -114,6 +136,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_property_lists-3f67a5ce"
           name: "Approved News Publishers"
           description: "Inclusion list of brand-safe news publisher domains."
           idempotency_key: "$generate:uuid_v4#pagination_integrity_property_lists_setup_create_list_1"
@@ -144,6 +168,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_property_lists-3f67a5ce"
           name: "Gambling Sites Blocklist"
           description: "Exclusion list of gambling and wagering domains."
           idempotency_key: "$generate:uuid_v4#pagination_integrity_property_lists_setup_create_list_2"
@@ -175,6 +201,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_property_lists-3f67a5ce"
           name: "Premium Entertainment Properties"
           description: "Inclusion list of tier-one entertainment publisher domains."
           idempotency_key: "$generate:uuid_v4#pagination_integrity_property_lists_setup_create_list_3"
@@ -227,6 +255,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_property_lists-3f67a5ce"
           pagination:
             max_results: 2
 
@@ -277,6 +307,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_property_lists-3f67a5ce"
           pagination:
             cursor: "$context.next_cursor"
             max_results: 2

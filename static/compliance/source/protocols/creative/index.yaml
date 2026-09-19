@@ -34,10 +34,24 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The caller needs display creative assets and a brand identity. The test kit provides
     sample assets at standard ad dimensions.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_c8b926416557"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_lifecycle-671714c4"
+        billing: "operator"
+        status: "active"
+        sandbox: true
 
 phases:
   - id: capability_discovery
@@ -109,6 +123,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_lifecycle-671714c4"
             sandbox: true
           creatives:
             - creative_id: "display_trail_pro_300x250"
@@ -172,6 +188,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_lifecycle-671714c4"
             sandbox: true
 
           context:
@@ -215,6 +233,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_lifecycle-671714c4"
             sandbox: true
           filters:
             format_kinds: ["image"]
@@ -263,6 +283,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_lifecycle-671714c4"
             sandbox: true
           creative_ids:
             - "$context.synced_creative_id"
@@ -313,6 +335,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_lifecycle-671714c4"
             sandbox: true
           request_type: "single"
           creative_manifest:

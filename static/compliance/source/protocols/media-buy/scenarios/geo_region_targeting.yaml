@@ -59,6 +59,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_8a4f36d52316"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "geo_region_display_fr"
       delivery_type: "non_guaranteed"
@@ -182,6 +193,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           context:
             correlation_id: "geo_region_targeting--get_finite_inclusion_product"
@@ -254,6 +267,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           context:
             correlation_id: "geo_region_targeting--get_exact_region_product"
@@ -311,6 +326,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           context:
             correlation_id: "geo_region_targeting--get_deferred_region_product"
@@ -358,6 +375,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           context:
             correlation_id: "geo_region_targeting--reject_cross_country_requirement"
@@ -402,6 +421,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           context:
             correlation_id: "geo_region_targeting--reject_composed_route_union"
@@ -435,6 +456,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
@@ -471,6 +494,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           media_buy_ids: ["$context.exact_media_buy_id"]
           context:
@@ -500,6 +525,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
@@ -541,6 +568,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           media_buy_ids: ["$context.deferred_media_buy_id"]
           context:
@@ -571,6 +600,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           media_buy_id: "$context.deferred_media_buy_id"
           packages:
@@ -608,6 +639,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           media_buy_ids: ["$context.deferred_media_buy_id"]
           context:
@@ -641,6 +674,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           media_buy_id: "$context.deferred_media_buy_id"
           packages:
@@ -678,6 +713,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           media_buy_ids: ["$context.deferred_media_buy_id"]
           context:
@@ -711,6 +748,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           media_buy_id: "$context.deferred_media_buy_id"
           packages:
@@ -747,6 +786,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           media_buy_ids: ["$context.deferred_media_buy_id"]
           context:
@@ -786,6 +827,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_geo_region_targetin-73727d96"
             sandbox: true
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"

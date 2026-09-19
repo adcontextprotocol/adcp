@@ -6,7 +6,6 @@ category: sales_catalog_driven
 summary: "Seller that renders dynamic ads from product catalogs, tracks conversions, and optimizes delivery based on performance feedback."
 track: media_buy
 required_tools:
-  - sync_governance
   - get_products
   - create_media_buy
 requires_scenarios:
@@ -49,9 +48,6 @@ narrative: |
   The key difference from the standard media buy flow is that creatives are catalog-driven —
   the buyer doesn't build individual ads. They push a feed, and your platform renders
   the right item to the right user at the right time.
-
-context:
-  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 agent:
   interaction_model: media_buy_seller
@@ -146,7 +142,7 @@ phases:
           accounts:
             - brand:
                 domain: "amsterdam-steakhouse.example"
-              operator: "pinnacle-agency.example"
+              operator: "catalog-driven.pinnacle-agency.example"
               billing: "operator"
               sandbox: true
 
@@ -166,50 +162,6 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "sales_catalog_driven--sync_accounts"
-            description: "Context correlation_id returned unchanged"
-      - id: sync_governance
-        title: "Register governance agent"
-        narrative: |
-          The buyer registers the configured governance agent on the account before
-          catalog sync and catalog-driven media-buy creation.
-        task: sync_governance
-        schema_ref: "account/sync-governance-request.json"
-        response_schema_ref: "account/sync-governance-response.json"
-        doc_ref: "/accounts/tasks/sync_governance"
-        stateful: true
-        expected: |
-          Acknowledge governance registration for the account:
-          - status: synced
-          - governance_agents[0].url echoes the configured governance agent
-
-        sample_request:
-          accounts:
-            - account:
-                brand:
-                  domain: "amsterdam-steakhouse.example"
-                operator: "pinnacle-agency.example"
-              governance_agents:
-                - url: "$context.governance_agent_url"
-                  authentication:
-                    schemes: ["Bearer"]
-                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-          idempotency_key: "$generate:uuid_v4#sales_catalog_driven_account_setup_sync_governance"
-          context:
-            correlation_id: "sales_catalog_driven--sync_governance"
-        validations:
-          - check: response_schema
-            description: "Response matches sync-governance-response.json schema"
-          - check: field_value
-            path: "accounts[0].status"
-            value: "synced"
-            description: "Governance agent is registered on the account"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "sales_catalog_driven--sync_governance"
             description: "Context correlation_id returned unchanged"
   - id: catalog_sync
     title: "Product catalog sync"
@@ -254,7 +206,8 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "pinnacle-agency.example"
+            operator: "catalog-driven.pinnacle-agency.example"
+            sandbox: true
           catalogs:
             - catalog_id: "menu_spring_2026"
               type: "product"
@@ -355,7 +308,8 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "pinnacle-agency.example"
+            operator: "catalog-driven.pinnacle-agency.example"
+            sandbox: true
           catalogs:
             - catalog_id: "substitution_safety_probe_v1"
               type: "product"
@@ -415,7 +369,8 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "pinnacle-agency.example"
+            operator: "catalog-driven.pinnacle-agency.example"
+            sandbox: true
           quality: "draft"
           include_preview: true
 
@@ -493,7 +448,8 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "pinnacle-agency.example"
+            operator: "catalog-driven.pinnacle-agency.example"
+            sandbox: true
 
           context:
             correlation_id: "sales_catalog_driven--get_products"
@@ -548,7 +504,8 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "pinnacle-agency.example"
+            operator: "catalog-driven.pinnacle-agency.example"
+            sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -609,7 +566,8 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "pinnacle-agency.example"
+            operator: "catalog-driven.pinnacle-agency.example"
+            sandbox: true
           event_sources:
             - event_source_id: "amsterdam_website"
               name: "Amsterdam Steakhouse Website"
@@ -668,7 +626,8 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "pinnacle-agency.example"
+            operator: "catalog-driven.pinnacle-agency.example"
+            sandbox: true
           event_source_id: "amsterdam_website"
           events:
             - event_id: "evt_001"
@@ -736,7 +695,8 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "pinnacle-agency.example"
+            operator: "catalog-driven.pinnacle-agency.example"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           measurement_period:
             start: "2099-04-07T00:00:00Z"
@@ -791,7 +751,8 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "pinnacle-agency.example"
+            operator: "catalog-driven.pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true

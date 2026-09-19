@@ -64,10 +64,34 @@ caller:
   example: "Scope3 (DSP)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The caller needs an active account on the seller platform. The account_setup phase
     discovers or creates the account relationship before syncing audiences.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_324d016c2067"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-audience_sync-05028b55"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_42dfd5fccdc8"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-audience_sync-05028b55"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -187,6 +211,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-audience_sync-05028b55"
 
           idempotency_key: "$generate:uuid_v4#audience_sync_audience_sync_discover_audiences"
           context:
@@ -228,6 +254,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-audience_sync-05028b55"
           audiences:
             - audience_id: "adcp-test-audience-001"
               name: "AdCP test audience"
@@ -290,6 +318,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-audience_sync-05028b55"
           audiences:
             - audience_id: "adcp-test-audience-001"
               delete: true

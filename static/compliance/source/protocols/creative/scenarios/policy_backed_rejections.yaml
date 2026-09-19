@@ -49,6 +49,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_88d9b052c888"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_policy_backed_rejections-90067557"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "test-product-policy-backed-rejections"
       name: "Policy-Backed Creative Rejection Test Product"
@@ -95,6 +106,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_policy_backed_rejections-90067557"
             sandbox: true
           context:
             correlation_id: "creative_policy_backed_rejections--discover"
@@ -147,6 +160,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_policy_backed_rejections-90067557"
             sandbox: true
           creatives:
             - creative_id: "policy_backed_dual_violation"

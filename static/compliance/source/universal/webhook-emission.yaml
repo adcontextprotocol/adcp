@@ -104,6 +104,7 @@ caller:
   example: "AdCP Verified runner with webhook receiver capability"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The runner MUST be configured with a webhook receiver per the contract at
     `test-kits/webhook-receiver-runner.yaml`. The receiver operates in one of
@@ -126,6 +127,29 @@ prerequisites:
     directly; agents without published signing keys fail
     `webhook_signing_keys_unpublished` before the signature phase runs.
   test_kit: "test-kits/webhook-receiver-runner.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_ee4507f31e2e"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-webhook_emission-904960ed"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_55020b495426"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-webhook_emission-904960ed"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -438,6 +462,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-webhook_emission-904960ed"
           push_notification_config:
             url: "{{runner.webhook_url:sync_get_products_with_webhook_config_success}}"
             operation_id: "op_sync_get_products_no_webhook"
@@ -518,6 +544,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-webhook_emission-904960ed"
           push_notification_config:
             url: "{{runner.webhook_url:sync_get_products_with_webhook_config_reject}}"
             operation_id: "op_sync_get_products_no_webhook"

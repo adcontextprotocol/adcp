@@ -18326,6 +18326,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       },
     }),
     media_buy: {
+      anonymous_discovery: true,
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       ...(acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId) && {
         acceptance_policy_discovery: acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId),
@@ -18446,6 +18447,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     },
     ...(wholesaleProfile.signalWholesale && {
       signals: {
+        anonymous_discovery: true,
         discovery_modes: ['brief', 'wholesale'],
         features: {
           catalog_signals: true,

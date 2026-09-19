@@ -45,6 +45,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_a1087fc78a73"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_asset_type_filtering-5d902461"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   creatives:
     - creative_id: "asset_filter_published_mixed"
       name: "Published post with landing page"
@@ -155,6 +166,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_asset_type_filtering-5d902461"
             sandbox: true
           filters:
             creative_ids:
@@ -225,6 +238,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_asset_type_filtering-5d902461"
             sandbox: true
           filters:
             creative_ids:
@@ -272,6 +287,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_asset_type_filtering-5d902461"
             sandbox: true
           filters:
             creative_ids:
@@ -316,6 +333,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_asset_type_filtering-5d902461"
             sandbox: true
           filters:
             creative_ids:
@@ -364,6 +383,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_asset_type_filtering-5d902461"
             sandbox: true
           filters:
             creative_ids:

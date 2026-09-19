@@ -53,6 +53,19 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_4f5f059aef9d"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_get_products_async-e83044df"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+
 phases:
   - id: force_submitted_discovery
     title: "Drive next get_products into submitted arm"
@@ -85,6 +98,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_get_products_async-e83044df"
             sandbox: true
           scenario: "force_get_products_arm"
           params:
@@ -144,6 +159,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_get_products_async-e83044df"
             sandbox: true
           push_notification_config:
             url: "{{runner.webhook_url:get_products_submitted}}"
@@ -193,6 +210,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_get_products_async-e83044df"
             sandbox: true
           push_notification_config:
             url: "{{runner.webhook_url:get_products_submitted}}"
@@ -235,6 +254,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_get_products_async-e83044df"
             sandbox: true
           push_notification_config:
             url: "{{runner.webhook_url:get_products_submitted}}"
@@ -262,6 +283,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_get_products_async-e83044df"
             sandbox: true
           filters:
             task_ids:
@@ -365,6 +388,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_get_products_async-e83044df"
             sandbox: true
           scenario: "force_task_completion"
           params:
@@ -461,6 +486,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_get_products_async-e83044df"
             sandbox: true
           context:
             correlation_id: "get_products_async--get_task_status_completed"

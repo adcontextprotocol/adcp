@@ -67,6 +67,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_251b74ea31d3"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_product_signal_targ-68594a47"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "signal_targeted_display_q2"
       delivery_type: "non_guaranteed"
@@ -120,6 +131,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_product_signal_targ-68594a47"
             sandbox: true
           context:
             correlation_id: "product_signal_targeting--get_products_wholesale"
@@ -174,6 +187,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_product_signal_targ-68594a47"
             sandbox: true
           destinations:
             - type: "agent"
@@ -240,6 +255,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_product_signal_targ-68594a47"
             sandbox: true
           start_time: "asap"
           end_time: "2099-07-31T23:59:59Z"
@@ -304,6 +321,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_product_signal_targ-68594a47"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
@@ -354,6 +373,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_product_signal_targ-68594a47"
             sandbox: true
           start_time: "asap"
           end_time: "2099-07-31T23:59:59Z"

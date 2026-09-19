@@ -49,10 +49,34 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The caller needs a brand identity and property domain knowledge. The test kit
     provides a sample brand with campaign context.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_d60a1c68d1a4"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-property_lists-017bea48"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_7bb090c86f84"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-property_lists-017bea48"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -129,6 +153,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-property_lists-017bea48"
           brand:
             domain: "acmeoutdoor.example"
           name: "Acme Outdoor approved properties"
@@ -191,6 +217,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-property_lists-017bea48"
           name_contains: "Acme Outdoor"
 
           context:
@@ -232,6 +260,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-property_lists-017bea48"
 
           context:
             correlation_id: "property_lists--get_property_list"
@@ -278,6 +308,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-property_lists-017bea48"
           base_properties:
             - selection_type: "identifiers"
               identifiers:
@@ -334,6 +366,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-property_lists-017bea48"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
@@ -395,6 +429,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-property_lists-017bea48"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
@@ -439,6 +475,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-property_lists-017bea48"
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_random_001"
@@ -484,6 +522,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-property_lists-017bea48"
 
           idempotency_key: "$generate:uuid_v4#property_lists_delete_list_delete_property_list"
           context:

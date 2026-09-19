@@ -40,10 +40,34 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The seller must resolve PropertyListReference against its own inventory and
     report a truthful outcome when nothing matches.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_fd7549fec260"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_inventory_list_no_m-3e0f302a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_4a2e1844cd3a"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_inventory_list_no_m-3e0f302a"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: discover
@@ -71,6 +95,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inventory_list_no_m-3e0f302a"
 
           context:
             correlation_id: "inventory_list_no_match--get_products_brief"
@@ -114,6 +140,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inventory_list_no_m-3e0f302a"
           idempotency_key: "$generate:uuid_v4#inventory_list_no_match_reject_buy"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
