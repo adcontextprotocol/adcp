@@ -32,9 +32,23 @@ caller:
   example: "Pinnacle Agency (buyer/router)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The seller exposes get_adcp_capabilities and declares media_buy support.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_dbdb117bf8c3"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_portfolio_routing_s-4960aecf"
+        billing: "operator"
+        status: "active"
+        sandbox: true
 
 phases:
   - id: capability_discovery
@@ -127,6 +141,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_portfolio_routing_s-4960aecf"
             sandbox: true
           context:
             correlation_id: "portfolio_routing_scope--declared_channel"

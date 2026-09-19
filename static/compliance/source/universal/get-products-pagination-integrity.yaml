@@ -58,6 +58,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_a11d73e3b2f2"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-get_products_pagination_integrity-0f076218"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_c54d4b38d348"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-get_products_pagination_integrity-0f076218"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   products:
     - product_id: "get_products_pagination_product_1"
       name: "Get Products Pagination Test Product 1"
@@ -173,6 +194,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-get_products_pagination_integrity-0f076218"
           filters:
             format_option_refs:
               - scope: "product"
@@ -245,6 +268,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-get_products_pagination_integrity-0f076218"
           filters:
             format_option_refs:
               - scope: "product"

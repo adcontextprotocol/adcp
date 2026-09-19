@@ -36,11 +36,35 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The creative agent declares `creative.bills_through_adcp: false` in
     `get_adcp_capabilities`. Agents that declare `true` are not exercising this
     storyboard path; the rejection phase is skipped for them.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_90715adf2aa8"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_billing_out_of_band-07c4ce40"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_71a6a53c3eae"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_billing_out_of_band-07c4ce40"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -114,13 +138,15 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_billing_out_of_band-07c4ce40"
           idempotency_key: "$generate:uuid_v4#creative_billing_out_of_band_report_usage"
           reporting_period:
             start: "2099-07-01T00:00:00Z"
             end: "2099-07-31T23:59:59Z"
           usage:
             - account:
-                account_id: "acct_acme_creative"
+                account_id: "acct_acmeoutdoor_example_live_71a6a53c3eae"
               creative_id: "campaign_hero_video"
               pricing_option_id: "po_vast_30s_cpm"
               impressions: 2400000

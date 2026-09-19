@@ -43,6 +43,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_541c5c0e2d45"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_expired_proposal_ex-9f718dc5"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "proposal_expiry_video"
       delivery_type: "non_guaranteed"
@@ -75,6 +86,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_expired_proposal_ex-9f718dc5"
             sandbox: true
           scenario: "compact_product_lifecycle_probe"
           params:
@@ -113,6 +126,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_expired_proposal_ex-9f718dc5"
             sandbox: true
           brief: "Plan a $50,000 online-video campaign from January 1 through March 31, 2099."
           criteria:
@@ -180,6 +195,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_expired_proposal_ex-9f718dc5"
             sandbox: true
           scenario: "compact_product_lifecycle_probe"
           params:
@@ -223,6 +240,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_expired_proposal_ex-9f718dc5"
             sandbox: true
           proposal_id: "$context.expiring_committed_id"
           proposal_terms_digest: "$context.expiring_committed_digest"
@@ -247,6 +266,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_expired_proposal_ex-9f718dc5"
             sandbox: true
           brand:
             domain: "acmeoutdoor.example"

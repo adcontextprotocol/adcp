@@ -49,6 +49,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_318d91a983be"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_audience_activation-1e750a5a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "audience_activation_inline_dataset"
       delivery_type: "guaranteed"
@@ -145,6 +156,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_audience_activation-1e750a5a"
             sandbox: true
         validations:
           - check: response_schema
@@ -180,6 +193,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_audience_activation-1e750a5a"
             sandbox: true
         validations:
           - check: response_schema
@@ -208,6 +223,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_audience_activation-1e750a5a"
             sandbox: true
         validations:
           - check: response_schema
@@ -237,6 +254,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_audience_activation-1e750a5a"
             sandbox: true
         validations:
           - check: response_schema

@@ -33,10 +33,34 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     Seller supports measurement_terms on create_media_buy packages. Buyer knows the
     seller's declared measurement capabilities from get_adcp_capabilities.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_6eea56012b72"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_measurement_terms_r-cf1ff9e0"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_a8941aee0e2d"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_measurement_terms_r-cf1ff9e0"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: discover_products
@@ -63,6 +87,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_measurement_terms_r-cf1ff9e0"
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -109,6 +135,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_measurement_terms_r-cf1ff9e0"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_rejected_reject_terms_create_media_buy_aggressive_terms"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"

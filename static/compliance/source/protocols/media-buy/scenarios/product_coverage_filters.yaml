@@ -30,6 +30,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_e888c4116618"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_product_coverage_fi-69f0746b"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: coverage_z_matching
       delivery_type: non_guaranteed
@@ -90,6 +101,8 @@ phases:
           account: &account
             brand: {domain: acmeoutdoor.example}
             operator: pinnacle-agency.example
+            operator_unit:
+              id: "compliance-media_buy_seller_product_coverage_fi-69f0746b"
             sandbox: true
           filters: &coverage
             pricing_currencies: [USD]

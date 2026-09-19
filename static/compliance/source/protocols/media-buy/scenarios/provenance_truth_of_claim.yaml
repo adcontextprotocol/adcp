@@ -59,6 +59,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_99ae785a28ae"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_provenance_truth_of-ab5b0007"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_a3880a705ef1"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_provenance_truth_of-ab5b0007"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   products:
     - product_id: "test-product-truth-of-claim"
       name: "Provenance Truth-of-Claim Test Product"
@@ -111,6 +132,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_provenance_truth_of-ab5b0007"
           context:
             correlation_id: "provenance_truth_of_claim--get_products"
         validations:
@@ -161,6 +184,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_provenance_truth_of-ab5b0007"
           creatives:
             - creative_id: "acme_truth_of_claim_probe_001"
               name: "Acme truth-of-claim probe — contradicted"
@@ -249,6 +274,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_provenance_truth_of-ab5b0007"
           creatives:
             - creative_id: "acme_truth_of_claim_probe_002"
               name: "Acme truth-of-claim probe — consistent"

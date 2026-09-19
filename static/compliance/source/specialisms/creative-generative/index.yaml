@@ -57,11 +57,35 @@ caller:
   example: "Scope3 (DSP)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The caller needs a brand identity (brand.json at the brand's domain) for the agent
     to resolve visual identity — logos, colors, fonts, tone. The test kit provides a
     sample brand with campaign parameters.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_5b6b57ef4764"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_generative-91bf69ab"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_ae7fb2b8d4e3"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_generative-91bf69ab"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -153,6 +177,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_generative-91bf69ab"
           quality: "draft"
           include_preview: true
 
@@ -221,6 +247,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_generative-91bf69ab"
           quality: "draft"
           include_preview: true
 
@@ -296,6 +324,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_generative-91bf69ab"
           quality: "production"
 
           idempotency_key: "$generate:uuid_v4#creative_generative_multi_format_build_multi_format"
@@ -362,6 +392,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_generative-91bf69ab"
           quality: "production"
           include_preview: true
 
@@ -422,6 +454,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_generative-91bf69ab"
           catalogs:
             - catalog_id: "acme_generative_source"
               type: "product"
@@ -483,6 +517,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_generative-91bf69ab"
           quality: "draft"
           include_preview: true
 
@@ -569,6 +605,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_generative-91bf69ab"
           catalogs:
             - catalog_id: "creative_generative_substitution_probe_v1"
               type: "product"
@@ -650,6 +688,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_generative-91bf69ab"
           quality: "draft"
           include_preview: true
 

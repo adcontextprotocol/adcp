@@ -56,6 +56,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_e8bc2ee34cce"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-get_media_buys_pagination_integrity-6a8319dc"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_1f3519fa77a7"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-get_media_buys_pagination_integrity-6a8319dc"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   media_buys:
     - media_buy_id: "pagination_integrity_mb_1"
       status: "active"
@@ -141,6 +162,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-get_media_buys_pagination_integrity-6a8319dc"
 
           context:
             correlation_id: "get_media_buys_pagination_integrity--list_call"

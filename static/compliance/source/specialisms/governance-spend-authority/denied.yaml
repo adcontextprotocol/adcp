@@ -43,10 +43,34 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The caller needs a brand identity, operator credentials, and a governance agent URL.
     The governance plan must define a per-transaction threshold below the intended buy amount.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_5bb2fc1ec4fd"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-governance_spend_authority_denied-ca6b7680"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_e519df2839d4"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-governance_spend_authority_denied-ca6b7680"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -185,6 +209,8 @@ phases:
               brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "compliance-governance_spend_authority_denied-ca6b7680"
             brand:
               domain: "acmeoutdoor.example"
             start_time: "2099-01-01T00:00:00Z"

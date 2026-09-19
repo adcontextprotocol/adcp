@@ -33,11 +33,35 @@ caller:
   example: "AdCP Verified runner with webhook receiver capability"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The runner needs the Acme Outdoor identity fixture and the
     webhook_receiver_runner contract. Steps requiring the receiver grade
     not_applicable when that contract is unavailable.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_baa1a2af618d"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-governance_property_list_change_webh-10a451ce"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_86ce9159dfe7"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-governance_property_list_change_webh-10a451ce"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: property_list_change
@@ -55,6 +79,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-governance_property_list_change_webh-10a451ce"
           name: "Acme Outdoor webhook properties"
           base_properties:
             - selection_type: "identifiers"
@@ -85,6 +111,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-governance_property_list_change_webh-10a451ce"
           webhook_url: "{{runner.webhook_url:update_property_list_for_webhook}}"
           base_properties:
             - selection_type: "identifiers"

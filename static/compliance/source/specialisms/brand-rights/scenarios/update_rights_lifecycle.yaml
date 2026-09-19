@@ -25,8 +25,22 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: "A sandbox brand agent that exposes update_rights and the optional compliance controller."
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_5b5b9127613e"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-brand_rights_update_rights_lifecycle-c00b766a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
 
 phases:
   - id: seed
@@ -45,6 +59,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-brand_rights_update_rights_lifecycle-c00b766a"
             sandbox: true
           scenario: "seed_rights_grant"
           params:
@@ -81,6 +97,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-brand_rights_update_rights_lifecycle-c00b766a"
             sandbox: true
           rights_id: "janssen_likeness_voice"
           paused: true
@@ -125,6 +143,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-brand_rights_update_rights_lifecycle-c00b766a"
             sandbox: true
           rights_id: "stale_rights_grant_00000000"
           paused: true

@@ -40,11 +40,35 @@ caller:
   example: "Scope3 (DSP)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The buyer has a campaign brief with broad targeting objectives. The test
     kit provides a sample brand (Nova Motors) with a signal description that
     any signals agent should be able to interpret.
   test_kit: "test-kits/nova-motors.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_novamotors_example_sandbox_bd40cff4b239"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-signals_baseline-2778ce3f"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_novamotors_example_live_916d4b091add"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-signals_baseline-2778ce3f"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -118,6 +142,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-signals_baseline-2778ce3f"
           signal_spec: "Adults interested in electric vehicles"
           context:
             correlation_id: "signals_baseline--search_signals"

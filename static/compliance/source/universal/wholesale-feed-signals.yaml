@@ -37,7 +37,29 @@ prerequisites:
     The agent advertises `wholesale_feed_versioning.supported: true` and exposes
     `get_signals`.
   test_kit: "test-kits/acme-outdoor.yaml"
-  controller_seeding: false
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_157fcd83a0ec"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-wholesale_feed_signals-48d0c5e5"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_5c103ebe1aa3"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-wholesale_feed_signals-48d0c5e5"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: conditional_fetch
@@ -61,6 +83,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-wholesale_feed_signals-48d0c5e5"
           context:
             correlation_id: "wholesale_feed_signals--bootstrap"
         validations:
@@ -96,6 +120,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-wholesale_feed_signals-48d0c5e5"
           if_wholesale_feed_version: "$context.signal_wholesale_feed_version"
           context:
             correlation_id: "wholesale_feed_signals--unchanged"
@@ -140,6 +166,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-wholesale_feed_signals-48d0c5e5"
           if_pricing_version: "stale-pricing-token"
           context:
             correlation_id: "wholesale_feed_signals--standalone_pricing"

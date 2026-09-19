@@ -110,12 +110,36 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     Seller MUST expose comply_test_controller with force_creative_status support.
     Sellers without the controller (or without force_creative_status) grade this
     scenario not_applicable — the cross-resource exercise requires deterministic
     resource transitions the buyer can drive directly.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_9a79c8698b43"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_5e71b6130a04"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: setup
@@ -146,6 +170,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
           context:
             correlation_id: "dependency_impairment--get_products"
         context_outputs:
@@ -186,6 +212,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
           idempotency_key: "$generate:uuid_v4#dependency_impairment_create_buy"
           start_time: "asap"
           end_time: "2099-11-30T23:59:59Z"
@@ -231,6 +259,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
           creatives:
             - creative_id: "acme_dep_banner_001"
               name: "Acme Outdoor dependency-test banner"
@@ -283,6 +313,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "$context.package_id"
@@ -365,6 +397,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
           media_buy_ids:
             - "$context.media_buy_id"
           context:
@@ -460,6 +494,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
           filters:
             creative_ids:
               - "acme_dep_banner_001"
@@ -497,6 +533,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
           media_buy_ids:
             - "$context.media_buy_id"
           context:
@@ -561,6 +599,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
           creatives:
             - creative_id: "acme_dep_banner_002"
               name: "Acme Outdoor dependency-test replacement banner"
@@ -641,6 +681,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "$context.package_id"
@@ -686,6 +728,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_dependency_impairme-9d2b9b70"
           media_buy_ids:
             - "$context.media_buy_id"
           context:

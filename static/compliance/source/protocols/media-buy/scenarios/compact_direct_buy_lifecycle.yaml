@@ -53,6 +53,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_0ee6b21a309c"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_compact_direct_buy_-1756533e"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "compact_direct_buy_video"
       delivery_type: "non_guaranteed"
@@ -88,6 +99,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_compact_direct_buy_-1756533e"
             sandbox: true
           scenario: "compact_direct_buy_lifecycle_probe"
           params:
@@ -126,6 +139,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_compact_direct_buy_-1756533e"
             sandbox: true
           criteria:
             product_ids: ["compact_direct_buy_video"]
@@ -185,6 +200,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_compact_direct_buy_-1756533e"
             sandbox: true
           feed_version: "$context.direct_feed_version"
           pricing_version: "$context.direct_pricing_version"
@@ -262,6 +279,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_compact_direct_buy_-1756533e"
             sandbox: true
           media_buy_id: "$context.direct_media_buy_id"
           revision: "$context.direct_buy_revision"
@@ -308,6 +327,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_compact_direct_buy_-1756533e"
             sandbox: true
           media_buy_ids: ["$context.controlled_media_buy_id"]
           include_history: 2
