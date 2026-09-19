@@ -33,6 +33,10 @@
                 "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations when the seller's account model uses account_id references. For buyer-declared accounts, this may be echoed as the seller's internal handle, but the seller MUST continue accepting the natural-key AccountRef for subsequent calls.",
                 "x-entity": "account"
               },
+              "account": {
+                "$ref": "/schemas/core/account-ref.json",
+                "description": "Account reference, echoed from the request's settings-update-mode entry. Present only for settings-update-mode results (an account-id-namespace or previously-provisioned natural-key account targeted via the request's `account` field, per sync_accounts request schema) — not for provisioning-mode results, which use the flat `brand` + `operator` fields instead. When present, this is the row's identity anchor in place of brand/operator, including on action: \"failed\" rows where the account cannot be resolved to a brand/operator tuple at all (e.g. an unreachable account_id in an upstream-managed namespace)."
+              },
               "brand": {
                 "$ref": "/schemas/core/brand-ref.json",
                 "description": "Current canonical brand reference for the account."
@@ -92,7 +96,7 @@
                   "suspended",
                   "closed"
                 ],
-                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
+                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated. Required for every non-failed action; omitted on failed results where the seller could not reach or resolve the account far enough to know a lifecycle state (see errors)."
               },
               "billing": {
                 "$ref": "/schemas/enums/billing-party.json",
@@ -160,10 +164,11 @@
               },
               "errors": {
                 "type": "array",
-                "description": "Per-account errors (only present when action is 'failed')",
+                "description": "Per-account errors. Required and non-empty when action is 'failed'; absent otherwise.",
                 "items": {
                   "$ref": "/schemas/core/error.json"
-                }
+                },
+                "minItems": 1
               },
               "warnings": {
                 "type": "array",
@@ -199,10 +204,7 @@
               }
             },
             "required": [
-              "brand",
-              "operator",
-              "action",
-              "status"
+              "action"
             ],
             "dependencies": {
               "identity_change": [
@@ -217,6 +219,39 @@
                 "destination_billing_entity"
               ]
             },
+            "allOf": [
+              {
+                "description": "Settings-update-mode results (echoing the request's `account` field) anchor identity on `account` alone; provisioning-mode results anchor identity on the buyer-declared `brand` + `operator` natural key instead, never both. Mirrors the same discriminator sync_governance's response rows already use.",
+                "if": {
+                  "required": ["account"]
+                },
+                "then": {
+                  "required": ["account"],
+                  "not": {
+                    "anyOf": [
+                      { "required": ["brand"] },
+                      { "required": ["operator"] }
+                    ]
+                  }
+                },
+                "else": {
+                  "required": ["brand", "operator"]
+                }
+              },
+              {
+                "description": "status reports the account's current lifecycle state, which requires the seller to have actually reached that account. A failed action always requires errors (non-empty); status is then optional, since some failures still know the account's lifecycle state (e.g. a rejected identity change on an otherwise-reachable account) while others do not (e.g. an inaccessible account_id) and MUST NOT invent one. Every non-failed action requires status.",
+                "if": {
+                  "properties": { "action": { "const": "failed" } },
+                  "required": ["action"]
+                },
+                "then": {
+                  "required": ["errors"]
+                },
+                "else": {
+                  "required": ["status"]
+                }
+              }
+            ],
             "additionalProperties": true
           }
         },
@@ -460,6 +495,35 @@
               {
                 "code": "PAYMENT_TERMS_NOT_SUPPORTED",
                 "message": "Net-60 payment terms are not available. Omit payment_terms to accept this seller's default terms (net_30)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Settings-update mode — an account-id-namespace seller (e.g. an upstream-managed social ad account) with no buyer-declared brand/operator tuple updates settable state and echoes the account reference instead",
+      "data": {
+        "status": "completed",
+        "accounts": [
+          {
+            "account": {
+              "account_id": "acct-social-001"
+            },
+            "revision": 4,
+            "name": "Acme — Social",
+            "action": "updated",
+            "status": "active"
+          },
+          {
+            "account": {
+              "account_id": "acct-social-unreachable"
+            },
+            "action": "failed",
+            "errors": [
+              {
+                "code": "ACCOUNT_NOT_FOUND",
+                "message": "Account 'acct-social-unreachable' does not exist or is not accessible to the authenticated agent — no brand/operator tuple can be resolved for it."
               }
             ]
           }

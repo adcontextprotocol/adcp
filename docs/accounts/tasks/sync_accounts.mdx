@@ -204,7 +204,8 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 
 | Field | Description |
 |-------|-------------|
-| `brand` | Current canonical brand. Object with `domain`, optional `brand_id`, and optional `countries[]`. |
+| `account` | Present only on settings-update-mode results, echoed from the request's `account` field. Anchors this row's identity via `account_id` or natural key in place of `brand`/`operator` — including on `action: "failed"` results, where the account may not resolve to a brand/operator tuple at all. See [Two modes](#two-modes-provisioning-vs-settings-update). |
+| `brand` | Current canonical brand. Object with `domain`, optional `brand_id`, and optional `countries[]`. Present on provisioning-mode results. |
 | `operator` | Current canonical operator domain. While an identity change is pending or rejected, this remains the current value. |
 | `operator_unit` | Current canonical operator unit. `id` is stable identity; `name` is display metadata. |
 | `revision` | Current optimistic-concurrency revision. Return it from identity-update-capable sellers and pass it on the next settings update. |
@@ -213,7 +214,7 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 | `currency` | Fixed account currency, echoed when supplied. |
 | `name` | Seller's display name for the account. |
 | `action` | What happened: `created`, `updated`, `unchanged`, or `failed`. |
-| `status` | Current state of the account (see [Account status](#account-status)). |
+| `status` | Current state of the account (see [Account status](#account-status)). Required except when `action: "failed"`, where the seller may not know a lifecycle state to report. |
 | `billing` | Billing model applied. Matches the requested value. |
 | `billing_entity` | Current canonical business entity for the invoiced party. During a pending operator-domain handoff, this remains the current entity; the staged `destination_billing_entity` is write-only. Sellers may add verified fields, but bank details are always omitted. |
 | `account_scope` | How the seller scoped this account: `operator` (shared across brands for this operator), `brand` (shared across operators for this brand), `operator_brand` (dedicated to this operator+brand pair), or `agent` (agent-scoped account shared across declared brand/operator pairs). See [account scope](/docs/building/by-layer/L2/accounts-and-agents#account-scope). |
@@ -221,7 +222,7 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 | `rate_card` | Seller-assigned rate card identifier (when applicable). |
 | `payment_terms` | Payment terms agreed for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. When the account is active, these are the binding terms for all invoices. |
 | `credit_limit` | Maximum outstanding balance as `{amount, currency}`. |
-| `errors` | Per-account errors (only present when `action: "failed"`). |
+| `errors` | Per-account errors. Required and non-empty when `action: "failed"`; absent otherwise. |
 | `warnings` | Non-fatal notices. |
 | `sandbox` | Whether this is a sandbox account, echoed from the request. Only present for buyer-declared accounts. |
 | `notification_configs` | Optional. Current persisted account-level webhook subscribers after applying the request. Present on `created`, `updated`, and `unchanged` results when the request included `notification_configs` or the account already has persisted subscribers. Each entry carries `subscriber_id`, `url`, `event_types[]`, and `active`; `authentication.credentials` is omitted (write-only). |
@@ -263,6 +264,18 @@ Each per-account entry uses one of two key shapes, never both:
 - **Settings-update mode** — `account` (an [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references)) at the entry root, with `brand`/`operator`/`billing` absent. The seller updates the account's settable state — no provisioning side effects. Used for account-id namespaces only when the seller exposes settings updates through this task; upstream-managed accounts are discovered via [`list_accounts`](/docs/accounts/tasks/list_accounts), while seller-defined account IDs may be supplied out-of-band. Buyer-declared account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.
 
 Schema enforces the exclusivity via `oneOf` — sending both shapes on the same entry is a validation error. Sellers that don't implement settings-update mode reject `account`-keyed entries with [`UNSUPPORTED_PROVISIONING`](/docs/building/verification/compliance-catalog#error-code-unsupported-provisioning); sellers that don't provision through `sync_accounts`, including account-id namespaces, reject natural-key provisioning entries with the same code.
+
+The response result row mirrors the request's discriminator, and the two identity shapes are mutually exclusive: a settings-update-mode result echoes `account` instead of `brand`/`operator`, since an account-id-namespace seller frequently has no buyer-declared brand/operator tuple to return at all. This also makes `action: "failed"` settings-update results representable — for example, an `account_id` the seller cannot reach has no brand/operator tuple to resolve, and the row's identity is carried entirely by the echoed `account` instead. `status` is required on every non-failed result, but optional on `failed` results: some failures still know the account's lifecycle state (e.g. a rejected identity change on an otherwise-reachable account), while others — like this one — do not, and sellers MUST NOT invent a value; `errors` is required instead:
+
+```json
+{
+  "account": { "account_id": "acct-social-unreachable" },
+  "action": "failed",
+  "errors": [
+    { "code": "ACCOUNT_NOT_FOUND", "message": "Account does not exist or is not accessible to the authenticated agent." }
+  ]
+}
+```
 
 ## Account-level webhook subscriptions
 
