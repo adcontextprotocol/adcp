@@ -71,12 +71,13 @@ prerequisites:
 fixtures:
   accounts:
     - account_id: "acct_sales_broadcast_tv_nova_motors"
-      brand:
-        domain: "novamotors.example"
-      operator: "broadcast-tv.pinnacle-agency.example"
-      billing: "operator"
-      status: "active"
-      sandbox: false
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "broadcast-tv.pinnacle-agency.example"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   products:
     - product_id: "primetime_30s_mf"
       delivery_type: "guaranteed"

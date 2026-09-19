@@ -137,7 +137,7 @@ test('non-governance storyboards use isolated account natural keys', () => {
     }
 
     const provisionedAccounts = [
-      ...(storyboard.fixtures?.accounts ?? []).map((entry) => entry.fixture ?? entry),
+      ...(storyboard.fixtures?.accounts ?? []).map((entry) => entry.fixture),
       ...steps
         .filter((step) => step.task === 'sync_accounts')
         .flatMap((step) => step.sample_request?.accounts ?? []),
