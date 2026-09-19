@@ -6977,7 +6977,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       let specialismStatus: Record<string, string> = {};
       let storyboardStatuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
       try {
-        storyboardStatuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true });
+        storyboardStatuses = await complianceDb.getStoryboardStatuses(agentUrl, {
+          requireRowsForLatestRun: true,
+          includeDiagnostics: false,
+        });
       } catch (err) {
         if (!isStoryboardStatusSchemaUnavailable(err)) throw err;
         logger.warn({ err, agentUrl }, "Storyboard status query skipped because schema is unavailable");
@@ -8761,7 +8764,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         res.setHeader('Retry-After', '60');
         res.setHeader('Cache-Control', 'private, no-store');
         return res.status(503).json({
-          error: 'Refresh is temporarily unavailable for this credential. Please try again later.',
+          error: 'Recheck & retest is temporarily paused platform-wide. Use Requeue comply to schedule the next run.',
           code: 'refresh_authorization_provenance_required',
           retry_after: 60,
         });

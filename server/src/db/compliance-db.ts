@@ -1539,6 +1539,7 @@ export class ComplianceDatabase {
     runId?: string | null;
     requireRowsForRunId?: string | null;
     requireRowsForLatestRun?: boolean;
+    includeDiagnostics?: boolean;
   } = {}): Promise<Array<{
     storyboard_id: string;
     requested_compliance_target: string | null;
@@ -1558,22 +1559,12 @@ export class ComplianceDatabase {
     first_failure_validations_jsonb: unknown;
     triggered_by: string | null;
   }>> {
-    const result = await query(
-      `WITH latest_run AS (
-         SELECT id
-         FROM agent_compliance_runs
-         WHERE agent_url = $1
-           AND dry_run = false AND is_authoritative = true
-         ORDER BY tested_at DESC
-         LIMIT 1
-       )
-       SELECT storyboard_id, requested_compliance_target, adcp_version, status, last_tested_at, last_passed_at, last_failed_at,
-              steps_passed, steps_total, failure_count, skipped_count,
-              first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
-              first_failure_diag.failed_validations_jsonb AS first_failure_validations_jsonb,
-              triggered_by
-       FROM agent_storyboard_status s
-       LEFT JOIN LATERAL (
+    const diagnosticsSelect = options.includeDiagnostics === false
+      ? 'NULL::jsonb AS first_failure_validations_jsonb'
+      : 'first_failure_diag.failed_validations_jsonb AS first_failure_validations_jsonb';
+    const diagnosticsJoin = options.includeDiagnostics === false
+      ? ''
+      : `LEFT JOIN LATERAL (
          SELECT d.failed_validations_jsonb
          FROM agent_compliance_step_diagnostics d
          WHERE d.agent_url = s.agent_url
@@ -1586,7 +1577,23 @@ export class ComplianceDatabase {
            )
          ORDER BY d.captured_at DESC, d.id DESC
          LIMIT 1
-       ) first_failure_diag ON true
+       ) first_failure_diag ON true`;
+    const result = await query(
+      `WITH latest_run AS (
+         SELECT id
+         FROM agent_compliance_runs
+         WHERE agent_url = $1
+           AND dry_run = false AND is_authoritative = true
+         ORDER BY tested_at DESC
+         LIMIT 1
+       )
+       SELECT storyboard_id, requested_compliance_target, adcp_version, status, last_tested_at, last_passed_at, last_failed_at,
+              steps_passed, steps_total, failure_count, skipped_count,
+              first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
+              ${diagnosticsSelect},
+              triggered_by
+       FROM agent_storyboard_status s
+       ${diagnosticsJoin}
        WHERE s.agent_url = $1
          AND ($2::uuid IS NULL OR s.run_id = $2::uuid)
          AND (

@@ -3627,6 +3627,13 @@
           });
         } else if (effectiveStatus === 502) {
           renderFlash({ severity: 'error', text: data.error || 'Probe failed' });
+        } else if (effectiveStatus === 503 && data.code === 'refresh_authorization_provenance_required') {
+          renderFlash({
+            severity: 'warning',
+            text: data.error || 'Recheck & retest is temporarily paused platform-wide. Use Requeue comply to schedule the next run.',
+          });
+          btn.dataset.refreshPaused = 'true';
+          btn.title = 'Recheck & retest is temporarily paused platform-wide. Use Requeue comply instead.';
         } else {
           renderFlash({
             severity: 'error',
@@ -3639,8 +3646,9 @@
           text: `Recheck failed: ${err?.message || err}`,
         });
       } finally {
-        btn.disabled = false;
-        btn.textContent = originalLabel;
+        const refreshPaused = btn.dataset.refreshPaused === 'true';
+        btn.disabled = refreshPaused;
+        btn.textContent = refreshPaused ? 'Recheck paused' : originalLabel;
       }
     });
 
@@ -3955,6 +3963,14 @@
         return html;
       }
 
+      function storyboardCatalogUrl(storyboardId, suffix, complianceTarget) {
+        let url = '/api/storyboards/' + encodeURIComponent(storyboardId) + suffix;
+        if (complianceTarget) {
+          url += '?compliance_target=' + encodeURIComponent(complianceTarget);
+        }
+        return url;
+      }
+
       // Shared: render the storyboard map into a panel
       async function renderStoryboardPicker(panel, agentUrl, cardId, agentTracks) {
         panel.style.display = 'block';
@@ -3971,6 +3987,7 @@
             const bundles = Array.isArray(data.bundles) ? data.bundles : [];
             const supportedProtocols = Array.isArray(data.supported_protocols) ? data.supported_protocols : [];
             const specialisms = Array.isArray(data.specialisms) ? data.specialisms : [];
+            const activeComplianceTarget = data.requested_compliance_target || '';
             const storyboardStatusMap = await storyboardStatusMapPromise;
             let html = '';
 
@@ -4039,8 +4056,8 @@
                 html += storyboardDrilldownHtml(knownStatus);
                 html += '</div>';
                 html += '<div class="storyboard-map-actions">';
-                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Preview</button>';
-                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" title="Run step by step">Run</button>';
+                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-compliance-target="' + escapeHtml(activeComplianceTarget) + '">Preview</button>';
+                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-compliance-target="' + escapeHtml(activeComplianceTarget) + '" title="Run step by step">Run</button>';
                 html += '</div>';
                 html += '</div>';
               }
@@ -4054,6 +4071,7 @@
               html += '<div class="storyboard-track-group">';
               html += '<div class="storyboard-track-header"><span>Saved results needing attention</span><span class="storyboard-track-count">' + unmatchedStatuses.length + ' storyboard' + (unmatchedStatuses.length === 1 ? '' : 's') + '</span></div>';
               for (const statusInfo of unmatchedStatuses) {
+                const savedComplianceTarget = statusInfo.requested_compliance_target || activeComplianceTarget;
                 const status = normalizeStoryboardStatus(statusInfo.status);
                 const savedSteps = storyboardStatusSteps(statusInfo);
                 const nextStep = storyboardNextStep(statusInfo);
@@ -4069,8 +4087,8 @@
                 html += storyboardDrilldownHtml(statusInfo);
                 html += '</div>';
                 html += '<div class="storyboard-map-actions">';
-                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(statusInfo.storyboard_id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Preview</button>';
-                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(statusInfo.storyboard_id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" title="Run step by step">Run</button>';
+                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(statusInfo.storyboard_id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-compliance-target="' + escapeHtml(savedComplianceTarget) + '">Preview</button>';
+                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(statusInfo.storyboard_id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-compliance-target="' + escapeHtml(savedComplianceTarget) + '" title="Run step by step">Run</button>';
                 html += '</div>';
                 html += '</div>';
               }
@@ -4177,6 +4195,7 @@
       const pickerItem = e.target.closest('.storyboard-picker-item');
       if (pickerItem) {
         const storyboardId = pickerItem.dataset.storyboardId;
+        const complianceTarget = pickerItem.dataset.complianceTarget;
         const agentUrl = pickerItem.dataset.agentUrl;
         const cardId = pickerItem.dataset.cardId;
         const panel = document.getElementById(cardId + '-storyboard');
@@ -4185,7 +4204,7 @@
         panel.innerHTML = '<em>Loading storyboard...</em>';
 
         try {
-          const res = await fetch('/api/storyboards/' + encodeURIComponent(storyboardId), { credentials: 'include' });
+          const res = await fetch(storyboardCatalogUrl(storyboardId, '', complianceTarget), { credentials: 'include' });
           const data = await res.json();
           const sb = data.storyboard;
           if (!sb) {
@@ -4253,6 +4272,7 @@
       const stepBtn = e.target.closest('.storyboard-step-btn');
       if (stepBtn) {
         const storyboardId = stepBtn.dataset.storyboardId;
+        const complianceTarget = stepBtn.dataset.complianceTarget;
         const agentUrl = stepBtn.dataset.agentUrl;
         const cardId = stepBtn.dataset.cardId;
         const panel = document.getElementById(cardId + '-storyboard');
@@ -4261,7 +4281,7 @@
         // Fetch first step preview
         panel.innerHTML = '<em>Loading first step...</em>';
         try {
-          const res = await fetch('/api/storyboards/' + encodeURIComponent(storyboardId) + '/first-step', { credentials: 'include' });
+          const res = await fetch(storyboardCatalogUrl(storyboardId, '/first-step', complianceTarget), { credentials: 'include' });
           const data = await res.json();
           if (!res.ok) { panel.innerHTML = '<em>' + escapeHtml(data.error || 'Failed') + '</em>'; return; }
 
