@@ -1,0 +1,579 @@
+id: principal
+version: "1.0.0"
+title: "Principal configuration"
+category: schema_validation
+summary: "Validates the experimental stable-principal-scoped configuration surface: capability discovery, pre-configuration identity readback, NO_AUTH rejection, dry-run setup, applied lifecycle with readback, idempotent replay, and section clearing."
+track: core
+required_tools:
+  - sync_principal
+  - get_principal
+
+narrative: |
+  `sync_principal` synchronizes durable resources owned by the stable
+  authenticated caller's relationship with one agent, and
+  `get_principal` reads the seller-resolved caller identity and standing
+  configuration without mutation, including before configuration exists. The
+  request cannot assert its own caller identity. The principal may be a delegated
+  human user acting through an interactive client or an autonomous workload;
+  this task does not require the former to register as a buyer agent. A ready
+  reporting destination does not grant authority over an advertiser account.
+  Implementations must advertise the experimental surface, reject anonymous
+  mutation, keep dry-run free of persistence, access grants, and endpoint
+  challenges, and give applied state a consistent read/replay story: an
+  applied sync, its idempotent replay, and a subsequent read all describe the
+  same principal record, version, and destination generation.
+
+  The applied phases use a deliberately suspended (`active: false`) file
+  destination so the lifecycle is exercised without an outbound ownership
+  challenge. Multi-principal isolation, delegated-user continuity, destination
+  proof completion, key rotation, account binding, suspension-halt timing, and
+  optimistic-concurrency races require implementation-specific fixtures or a
+  future controller-backed storyboard.
+
+agent:
+  interaction_model: any
+  capabilities:
+    - "protocol.principal"
+  examples:
+    - "Any AdCP agent that advertises sync_principal"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness acting as a stable authenticated principal"
+
+prerequisites:
+  description: |
+    The agent under test exposes `sync_principal` and advertises
+    `adcp.principal.supported: true` plus the matching experimental
+    feature. The authenticated sandbox caller is registered as a durable
+    buyer-agent principal but begins with no standing AdCP configuration.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: false
+
+phases:
+  - id: capability_declaration
+    title: "Advertise the principal configuration surface"
+    narrative: |
+      Tool presence and the capability document agree on the task name and
+      supported sections. Buyers do not infer configuration support merely
+      from unrelated webhook or warehouse capabilities.
+
+    steps:
+      - id: get_capabilities_declares_principal
+        title: "Read agent configuration declaration"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        expected: |
+          Return a schema-valid response with:
+          - adcp.principal.supported: true
+          - adcp.principal.sync_task: sync_principal
+          - at least one supported section
+          - experimental_features containing protocol.principal
+
+        sample_request:
+          context:
+            correlation_id: "principal--get_capabilities"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_value
+            path: "adcp.principal.supported"
+            value: true
+            description: "Agent advertises caller-scoped configuration"
+          - check: field_value
+            path: "adcp.principal.sync_task"
+            value: "sync_principal"
+            description: "Capability points to the implemented sync task"
+          - check: field_value
+            path: "adcp.principal.read_task"
+            value: "get_principal"
+            description: "Capability points to the side-effect-free read task"
+          - check: field_contains
+            path: "experimental_features[*]"
+            value: "protocol.principal"
+            description: "Experimental feature gate is declared"
+
+  - id: preconfiguration_identity
+    title: "Read recognized identity before configuration"
+    depends_on: ["capability_declaration"]
+    narrative: |
+      The seller's authorization system already maps the registered workload
+      to a durable principal record, but no standing AdCP configuration exists.
+      The read returns that identity without creating configuration or a version.
+
+    steps:
+      - id: get_recognized_principal
+        title: "Read the durable identity without mutation"
+        task: get_principal
+        schema_ref: "protocol/get-principal-request.json"
+        response_schema_ref: "protocol/get-principal-response.json"
+        doc_ref: "/protocol/get_principal"
+        stateful: false
+        context_outputs:
+          - name: preconfiguration_principal_id
+            path: "result.principal_id"
+        expected: |
+          Return kind recognized with principal_kind buyer_agent and the
+          existing principal_id. Return no configuration or configuration_version.
+
+        sample_request:
+          context:
+            correlation_id: "principal--recognized"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-principal-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "recognized"
+            description: "The durable identity is readable before configuration"
+          - check: field_value
+            path: "result.principal_kind"
+            value: "buyer_agent"
+            description: "Seller resolves the registered workload as a buyer agent"
+          - check: field_present
+            path: "result.principal_id"
+            description: "The existing durable principal identifier is returned"
+          - check: field_absent
+            path: "result.configuration_version"
+            description: "The read does not create a configuration version"
+          - check: field_absent
+            path: "result.configuration"
+            description: "No standing configuration exists before the first mutation"
+
+  - id: unauthenticated_mutation
+    title: "Reject anonymous configuration"
+    narrative: |
+      The authenticated principal is the storage owner key. Without a stable
+      principal, the seller cannot prevent one caller from replacing or
+      probing another caller's webhooks and destinations.
+
+    steps:
+      - id: sync_principal_rejects_no_auth
+        title: "Submit a destination with no credentials"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        stateful: false
+        auth: none
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before persistence or destination probing with HTTP 401 or
+          403 and do not return principal or configuration state.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#principal_no_auth"
+          configuration:
+            reporting_destinations:
+              - pattern: file_transfer
+                destination_id: "compliance-archive"
+                active: false
+                provider:
+                  domain: "object-store.example"
+                transport: "s3"
+                location: "s3://pinnacle-reporting/compliance/"
+                accepted_formats: ["parquet"]
+                accepted_verification_profiles: ["manifest_checksums"]
+          context:
+            correlation_id: "principal--no_auth"
+
+        validations:
+          - check: http_status_in
+            allowed_values: [401, 403]
+            description: "Anonymous caller-scoped mutation is rejected"
+
+  - id: dry_run_destination
+    title: "Validate reusable destination without side effects"
+    requires_capability:
+      path: "adcp.principal.supported_sections"
+      contains: "reporting_destinations"
+    narrative: |
+      An inactive destination exercises schema and capability matching without
+      requiring an outbound ownership challenge. dry_run additionally forbids
+      persistence and provider-native grants.
+
+    steps:
+      - id: sync_principal_dry_run_destination
+        title: "Dry-run one inactive file destination"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        stateful: false
+        expected: |
+          Return a validated result with dry_run true and the would-be action.
+          No principal or destination reference, destination grant,
+          persistence, or ownership challenge occurs.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#principal_dry_run"
+          configuration:
+            reporting_destinations:
+              - pattern: file_transfer
+                destination_id: "compliance-archive"
+                active: false
+                provider:
+                  domain: "object-store.example"
+                transport: "s3"
+                location: "s3://pinnacle-reporting/compliance/"
+                accepted_formats: ["parquet"]
+                accepted_verification_profiles: ["manifest_checksums"]
+          dry_run: true
+          context:
+            correlation_id: "principal--dry_run"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-principal-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "validated"
+            description: "Dry-run validation succeeded"
+          - check: field_value
+            path: "result.dry_run"
+            value: true
+            description: "Response confirms no mutation was applied"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "principal--dry_run"
+            description: "Correlation context is echoed"
+
+  - id: applied_lifecycle
+    title: "Apply, read back, and idempotently replay a destination"
+    depends_on: ["preconfiguration_identity", "dry_run_destination"]
+    requires_capability:
+      path: "adcp.principal.supported_sections"
+      contains: "reporting_destinations"
+    narrative: |
+      A suspended destination applies without an ownership challenge. The
+      applied response, a get_principal read, and an exact
+      idempotent replay must all describe the same principal record, configuration
+      version, and immutable destination generation, and the replay must not
+      advance the version.
+
+    steps:
+      - id: apply_suspended_destination
+        title: "Apply one suspended file destination"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        stateful: true
+        context_outputs:
+          - name: principal_record_id
+            path: "result.principal_id"
+          - name: principal_version
+            path: "result.configuration_version"
+          - name: principal_destination_ref
+            path: "result.configuration.reporting_destinations[0].destination_ref"
+        expected: |
+          Persist the section and return the applied principal state: a
+          principal_id, an opaque configuration_version, and one suspended
+          destination carrying a seller-issued destination_ref with state
+          inactive.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#principal_apply"
+          configuration:
+            reporting_destinations:
+              - pattern: file_transfer
+                destination_id: "compliance-archive"
+                active: false
+                provider:
+                  domain: "object-store.example"
+                transport: "s3"
+                location: "s3://pinnacle-reporting/compliance/"
+                accepted_formats: ["parquet"]
+                accepted_verification_profiles: ["manifest_checksums"]
+          context:
+            correlation_id: "principal--apply"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-principal-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "applied"
+            description: "Non-dry-run sync persists and reports applied"
+          - check: field_value
+            path: "result.dry_run"
+            value: false
+            description: "Applied responses assert dry_run false"
+          - check: field_present
+            path: "result.principal_id"
+            description: "Applied responses carry the seller-issued principal handle"
+          - check: field_equals_context
+            path: "result.principal_id"
+            context_key: "preconfiguration_principal_id"
+            description: "The configuration write preserves the recognized principal identity"
+          - check: field_present
+            path: "result.principal_kind"
+            description: "Applied responses carry the seller-resolved party kind"
+          - check: field_present
+            path: "result.configuration_version"
+            description: "Applied responses carry the opaque configuration version"
+          - check: field_value
+            path: "result.configuration.reporting_destinations[0].destination_id"
+            value: "compliance-archive"
+            description: "Readback echoes the caller's destination_id"
+          - check: field_present
+            path: "result.configuration.reporting_destinations[0].destination_ref"
+            description: "The seller issued an immutable destination generation reference"
+          - check: field_value
+            path: "result.configuration.reporting_destinations[0].state"
+            value: "inactive"
+            description: "A destination applied with active false reads back suspended, never ready"
+
+      - id: read_back_applied_configuration
+        title: "Read the applied configuration without mutation"
+        task: get_principal
+        schema_ref: "protocol/get-principal-request.json"
+        response_schema_ref: "protocol/get-principal-response.json"
+        doc_ref: "/protocol/get_principal"
+        depends_on: ["apply_suspended_destination"]
+        stateful: true
+        expected: |
+          Return kind current with the same principal_id,
+          configuration_version, and destination_ref the applied sync
+          reported. Reading advances nothing.
+
+        sample_request:
+          context:
+            correlation_id: "principal--read_back"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-principal-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "current"
+            description: "The caller's persisted principal record is readable"
+          - check: field_value
+            path: "result.principal_kind"
+            value: "buyer_agent"
+            description: "Readback carries the seller-resolved authenticated party kind"
+          - check: field_equals_context
+            path: "result.principal_id"
+            context_key: "principal_record_id"
+            description: "Read returns the same principal record the sync created"
+          - check: field_equals_context
+            path: "result.configuration_version"
+            context_key: "principal_version"
+            description: "A side-effect-free read does not advance the version"
+          - check: field_equals_context
+            path: "result.configuration.reporting_destinations[0].destination_ref"
+            context_key: "principal_destination_ref"
+            description: "Read resolves the same immutable destination generation"
+
+      - id: replay_apply_idempotently
+        title: "Replay the applied sync with its original key and body"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        depends_on: ["read_back_applied_configuration"]
+        stateful: true
+        expected: |
+          Resolve the idempotent replay: the same applied outcome, the same
+          principal_id and configuration_version, and the same
+          destination_ref. The replay must not create a second generation or
+          advance the version.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#principal_apply"
+          configuration:
+            reporting_destinations:
+              - pattern: file_transfer
+                destination_id: "compliance-archive"
+                active: false
+                provider:
+                  domain: "object-store.example"
+                transport: "s3"
+                location: "s3://pinnacle-reporting/compliance/"
+                accepted_formats: ["parquet"]
+                accepted_verification_profiles: ["manifest_checksums"]
+          context:
+            correlation_id: "principal--replay"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-principal-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "applied"
+            description: "Replay resolves to the stored applied outcome"
+          - check: field_equals_context
+            path: "result.principal_id"
+            context_key: "principal_record_id"
+            description: "Replay reports the original principal record"
+          - check: field_equals_context
+            path: "result.configuration_version"
+            context_key: "principal_version"
+            description: "Replay does not advance the configuration version"
+          - check: field_equals_context
+            path: "result.configuration.reporting_destinations[0].destination_ref"
+            context_key: "principal_destination_ref"
+            description: "Exact replay preserves the destination generation"
+
+  - id: clear_section
+    title: "Clear the section and observe revocation in readback"
+    depends_on: ["applied_lifecycle"]
+    requires_capability:
+      path: "adcp.principal.supported_sections"
+      contains: "reporting_destinations"
+    narrative: |
+      Submitting an empty reporting_destinations array revokes every
+      destination in the section. The applied response reports cleared and a
+      subsequent read shows no current destinations.
+
+    steps:
+      - id: clear_reporting_destinations
+        title: "Submit [] to revoke all reporting destinations"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        stateful: true
+        expected: |
+          Apply the empty section atomically, report action cleared, and
+          return zero current reporting destinations.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#principal_clear"
+          configuration:
+            reporting_destinations: []
+          context:
+            correlation_id: "principal--clear"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-principal-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "applied"
+            description: "Clearing is a persisted mutation"
+          - check: field_value
+            path: "result.action"
+            value: "cleared"
+            description: "Every submitted section was [], so the action is cleared"
+          - check: array_length
+            path: "result.configuration.reporting_destinations"
+            value: 0
+            description: "No current destinations remain after revocation"
+
+      - id: read_after_clear
+        title: "Read back the cleared section"
+        task: get_principal
+        schema_ref: "protocol/get-principal-request.json"
+        response_schema_ref: "protocol/get-principal-response.json"
+        doc_ref: "/protocol/get_principal"
+        depends_on: ["clear_reporting_destinations"]
+        stateful: true
+        expected: |
+          Return kind current with zero current reporting destinations. The
+          principal record itself persists.
+
+        sample_request:
+          context:
+            correlation_id: "principal--read_after_clear"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-principal-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "current"
+            description: "The principal record persists after the section is cleared"
+          - check: field_equals_context
+            path: "result.principal_id"
+            context_key: "principal_record_id"
+            description: "Clearing a section does not recreate the principal record"
+          - check: array_length
+            path: "result.configuration.reporting_destinations"
+            value: 0
+            description: "Readback confirms the section is empty"
+
+  - id: declarations_lifecycle
+    title: "Declare consumption facts and read the accepted intersection"
+    requires_capability:
+      path: "adcp.principal.supported_sections"
+      contains: "declarations"
+    narrative: |
+      The declarations section is the buyer-declared half of capability
+      negotiation: bounded consumption facts replaced wholesale, with a
+      seller-computed accepted intersection that governs asynchronous payload
+      versions and webhook signing. The declared set echoes verbatim and the
+      intersection is present on both the applied response and a later read.
+
+    steps:
+      - id: apply_declarations
+        title: "Replace the declared consumption facts"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        stateful: true
+        expected: |
+          Apply the declarations section, echo the declared set verbatim, and
+          return the seller-computed accepted intersection.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#principal_declarations"
+          configuration:
+            declarations:
+              async_adcp_versions: ["3.2"]
+              webhook_signing_algorithms: ["ed25519", "ecdsa-p256-sha256"]
+          context:
+            correlation_id: "principal--declarations"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-principal-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "applied"
+            description: "Declarations replacement is a persisted mutation"
+          - check: field_value
+            path: "result.configuration.declarations.declared.async_adcp_versions[0]"
+            value: "3.2"
+            description: "The declared set echoes verbatim"
+          - check: field_present
+            path: "result.configuration.declarations.accepted"
+            description: "The seller returns its computed accepted intersection"
+
+      - id: read_declarations
+        title: "Read the declarations back without mutation"
+        task: get_principal
+        schema_ref: "protocol/get-principal-request.json"
+        response_schema_ref: "protocol/get-principal-response.json"
+        doc_ref: "/protocol/get_principal"
+        depends_on: ["apply_declarations"]
+        stateful: true
+        expected: |
+          Return kind current with the same declared set and an accepted
+          intersection. Reading advances nothing.
+
+        sample_request:
+          context:
+            correlation_id: "principal--read_declarations"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-principal-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "current"
+            description: "The caller's persisted principal record is readable"
+          - check: field_value
+            path: "result.configuration.declarations.declared.async_adcp_versions[0]"
+            value: "3.2"
+            description: "Readback preserves the declared set"
+          - check: field_present
+            path: "result.configuration.declarations.accepted"
+            description: "The accepted intersection is readable"
