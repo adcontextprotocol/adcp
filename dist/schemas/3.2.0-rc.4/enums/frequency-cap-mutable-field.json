@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/enums/frequency-cap-mutable-field.json",
+  "title": "Frequency Cap Mutable Field",
+  "description": "A logical frequency-cap field that a product implementation can change after creation. suppress covers the effective cooldown whether represented by suppress or the deprecated suppress_minutes alias.",
+  "type": "string",
+  "enum": [
+    "max_impressions",
+    "per",
+    "window",
+    "suppress"
+  ]
+}
