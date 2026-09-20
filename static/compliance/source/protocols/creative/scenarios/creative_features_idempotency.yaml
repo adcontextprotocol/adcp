@@ -49,13 +49,23 @@ prerequisites:
 
 fixtures:
   accounts:
-    - account_id: "acct_acmeoutdoor_example_sandbox_7604"
+    - account_id: "acct_acmeoutdoor_example_sandbox_2c11d1c2ebb8"
       fixture:
         brand:
           domain: "acmeoutdoor.example"
         operator: "pinnacle-agency.example"
         operator_unit:
-          id: "compliance-creative_features_idempotency-7604"
+          id: "compliance-creative_get_creative_features_idemp-07021f6f"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_sandbox_111924ce6ccf"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "creative-features-changed-account-7604"
         billing: "operator"
         status: "active"
         sandbox: true
@@ -115,7 +125,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-7604"
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
             sandbox: true
           scenario: "force_get_creative_features_arm"
           params:
@@ -161,7 +171,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-7604"
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
             sandbox: true
           creative_manifest:
             format_kind: "display_tag"
@@ -219,7 +229,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-7604"
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
             sandbox: true
           creative_manifest:
             format_kind: "display_tag"
@@ -285,7 +295,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-7604"
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
             sandbox: true
           creative_manifest:
             format_kind: "display_tag"
@@ -319,7 +329,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-changed-account-7604"
+              id: "creative-features-changed-account-7604"
             sandbox: true
           creative_manifest:
             format_kind: "display_tag"
@@ -353,7 +363,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-7604"
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
             sandbox: true
           creative_manifest:
             format_kind: "display_tag"
@@ -394,7 +404,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-7604"
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
             sandbox: true
           creative_manifest:
             format_kind: "display_tag"
@@ -432,7 +442,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-7604"
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
             sandbox: true
           scenario: "force_get_creative_features_arm"
           params:
@@ -473,7 +483,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-7604"
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
             sandbox: true
           creative_manifest:
             format_kind: "display_tag"
@@ -522,7 +532,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-7604"
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
             sandbox: true
           creative_manifest:
             format_kind: "display_tag"
@@ -567,7 +577,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-7604"
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
             sandbox: true
           scenario: "force_task_completion"
           params:
@@ -614,7 +624,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
-              id: "compliance-creative_features_idempotency-7604"
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
             sandbox: true
           context:
             correlation_id: "creative_features_idempotency--poll_terminal"
