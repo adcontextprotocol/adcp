@@ -53,13 +53,24 @@ const fallbackComplianceTarget = hostedComplianceTarget();
 
 interface HeartbeatOptions {
   limit?: number;
+  /** Include the bounded admin status snapshot used by the scheduled worker. */
+  includeOperationalDiagnostics?: boolean;
 }
 
-interface HeartbeatResult {
+export interface HeartbeatResult {
   checked: number;
   passed: number;
   failed: number;
   skipped: number;
+  diagnostics?: {
+    eligibleBacklog: number;
+    selectedAgents: string[];
+    runsRecorded: number;
+    skipReasons: HeartbeatSkipReasons;
+    requestedComplianceTarget: string;
+    complianceBundleVersion: string;
+    sdkVersion: string;
+  };
 }
 
 interface HeartbeatSkipReasons {
@@ -116,6 +127,7 @@ export async function runComplianceHeartbeatJob(
   );
   const batchStartedAt = Date.now();
   const pendingShadowAssessments: PendingShadowAssessment[] = [];
+  let runsRecorded = 0;
 
   // Mark agents as in-progress to prevent concurrent pickup by overlapping runs.
   // Agents are processed serially, so the lock must outlive the worst-case batch
@@ -250,6 +262,7 @@ export async function runComplianceHeartbeatJob(
       }
       assertExecutionFence();
       const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+      runsRecorded++;
       assertExecutionFence();
 
       if (!isAuthoritativeComplianceRun(dbInput)) {
@@ -488,6 +501,7 @@ export async function runComplianceHeartbeatJob(
           is_authoritative: false,
           replace_storyboard_statuses: true,
         });
+        runsRecorded++;
 
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
       } catch (recordError) {
@@ -587,6 +601,18 @@ export async function runComplianceHeartbeatJob(
     'Compliance heartbeat shadow flush completed after public processing',
   );
   await pruneShadowLedgerBestEffort();
+
+  if (options.includeOperationalDiagnostics) {
+    result.diagnostics = {
+      eligibleBacklog,
+      selectedAgents: urls,
+      runsRecorded,
+      skipReasons: { ...skipReasons },
+      requestedComplianceTarget: fallbackComplianceTarget.requested,
+      complianceBundleVersion: fallbackComplianceTarget.version,
+      sdkVersion: LIBRARY_VERSION,
+    };
+  }
 
   return result;
 }

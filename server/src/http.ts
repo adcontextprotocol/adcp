@@ -29,6 +29,8 @@ import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { renderLegalMarkdown } from "./legal-markdown.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
+import { ComplianceDatabase } from "./db/compliance-db.js";
+import { ComplianceRefreshRequestsDatabase } from "./db/compliance-refresh-requests-db.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
 import { sdkSafeFetch, withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { jsonBodyLimitForPath } from './utils/json-body-limit.js';
@@ -3149,8 +3151,24 @@ export class HTTPServer {
     });
 
     // Build job status response for the local machine
-    const getJobStatusPayload = () => {
+    const operationalComplianceDb = new ComplianceDatabase();
+    const operationalRefreshDb = new ComplianceRefreshRequestsDatabase();
+    const getJobStatusPayload = async () => {
       const mem = process.memoryUsage();
+      let complianceOperations: Record<string, unknown>;
+      try {
+        const [refreshRequests, recentRuns] = await Promise.all([
+          operationalRefreshDb.getOperationalSnapshot(),
+          operationalComplianceDb.getRecentOperationalRuns(),
+        ]);
+        complianceOperations = { refreshRequests, recentRuns };
+      } catch (error) {
+        logger.warn({ err: error }, 'Compliance operational snapshot unavailable');
+        complianceOperations = {
+          unavailable: true,
+          error: error instanceof Error ? error.message.substring(0, 200) : String(error).substring(0, 200),
+        };
+      }
       return {
         processRole,
         uptime: Math.round(process.uptime()),
@@ -3164,24 +3182,25 @@ export class HTTPServer {
           ...j,
           lastError: j.lastError ? j.lastError.substring(0, 200) : null,
         })),
+        complianceOperations,
       };
     };
 
     // Internal endpoint — no auth, only served on worker machines.
     // The worker's port is not publicly routable (no http_service).
     // Web machines proxy to this over Fly's private WireGuard network.
-    this.app.get("/internal/jobs", (_req, res) => {
+    this.app.get("/internal/jobs", async (_req, res) => {
       if (processRole === 'web') {
         return res.status(404).json({ error: 'Not found' });
       }
-      res.json(getJobStatusPayload());
+      res.json(await getJobStatusPayload());
     });
 
     // Public admin endpoint — requires auth. On web machines, proxies to the
     // worker over Fly's internal DNS so admins always see worker data.
     this.app.get("/api/admin/jobs", requireAuth, requireAdmin, async (_req, res) => {
       if (processRole !== 'web') {
-        return res.json(getJobStatusPayload());
+        return res.json(await getJobStatusPayload());
       }
 
       // Web machine: proxy to worker over Fly internal network
@@ -3201,7 +3220,7 @@ export class HTTPServer {
         }
         return res.json(JSON.parse(text));
       } catch {
-        return res.json({ ...getJobStatusPayload(), jobs: [], workerUnreachable: true });
+        return res.json({ ...await getJobStatusPayload(), jobs: [], workerUnreachable: true });
       }
     });
 

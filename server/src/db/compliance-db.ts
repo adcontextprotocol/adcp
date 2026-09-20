@@ -1,6 +1,6 @@
 import type { ComplianceRunProvenance } from '../compliance/run-provenance.js';
 import { isAuthoritativeComplianceRun, type RunCompleteness } from '../compliance/run-publication.js';
-import { query, getClient } from './client.js';
+import { query, getClient, withDatabaseDeadline } from './client.js';
 import { decrypt as decryptToken } from './encryption.js';
 import { logger as baseLogger } from '../logger.js';
 import { CatalogEventsDatabase } from './catalog-events-db.js';
@@ -9,6 +9,7 @@ import type { VerificationProfileRoleAssessmentInput } from '../services/verific
 
 const logger = baseLogger.child({ module: 'compliance-db' });
 const catalogEventsDb = new CatalogEventsDatabase();
+const OPERATIONAL_DIAGNOSTIC_DEADLINE_MS = 2_000;
 
 // =====================================================
 // TYPES
@@ -1236,6 +1237,35 @@ export class ComplianceDatabase {
       [agentUrl, runId ?? null],
     );
     return result.rows[0] ?? null;
+  }
+
+  /** Bounded operator snapshot, including audit-only heartbeat evidence. */
+  async getRecentOperationalRuns(limit: number = 25): Promise<Array<{
+    id: string;
+    agent_url: string;
+    tested_at: Date;
+    triggered_by: string;
+    completeness: string;
+    is_authoritative: boolean;
+    requested_compliance_target: string | null;
+    adcp_version: string | null;
+    overall_status: string;
+    headline: string | null;
+    provenance_json: unknown;
+  }>> {
+    return withDatabaseDeadline(Date.now() + OPERATIONAL_DIAGNOSTIC_DEADLINE_MS, async () => {
+      const result = await query(
+        `SELECT id, agent_url, tested_at, triggered_by, completeness,
+                is_authoritative, requested_compliance_target, adcp_version,
+                overall_status, LEFT(headline, 200) AS headline, provenance_json
+           FROM agent_compliance_runs
+          WHERE dry_run = FALSE
+          ORDER BY tested_at DESC
+          LIMIT $1`,
+        [Math.max(1, Math.min(limit, 100))],
+      );
+      return result.rows;
+    });
   }
 
   /**
