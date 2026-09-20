@@ -94,12 +94,12 @@
     "not_declared_to_router_scope": "Modern routed Slack Bolt profiles only"
   },
   "prompt": {
-    "rules_bytes": 153852,
+    "rules_bytes": 154069,
     "tool_reference_bytes": 40469,
     "complete_offline_tool_reference_bytes": 42517,
     "response_style_bytes": 9513,
-    "system_prompt_bytes": 203848,
-    "system_prompt_sha256": "72bc22893f4188dda8c70078711a572f74e28d621d16c2167d94e93cc4379004"
+    "system_prompt_bytes": 204065,
+    "system_prompt_sha256": "63d209f894cdf47fdc799b924c1a886998fbe9ebf79fd716e55528c309d4097a"
   },
   "catalog": {
     "missing_runtime_tool_count": 0,
@@ -39526,7 +39526,7 @@
       "prompt_catalog_tools_missing_runtime": -2,
       "always_available_tools": -13,
       "tool_reference_bytes": -3324,
-      "system_prompt_bytes": 1817,
+      "system_prompt_bytes": 2034,
       "maximum_slack_member_tools": -115,
       "maximum_slack_admin_tools": -182,
       "maximum_slack_public_tools": -4,

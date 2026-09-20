@@ -281,6 +281,54 @@ describe('docs-indexer', () => {
       expect(detail).toContain('ACCOUNT_REQUIRED');
     });
 
+    it('pages documents longer than 4000 characters without losing later content', async () => {
+      const getDoc = createKnowledgeToolHandlers().get('get_doc');
+      const document = getDocById('doc:3.1:brand-protocol/brand-json');
+      expect(getDoc).toBeDefined();
+      expect(document).not.toBeNull();
+      expect(document!.content.length).toBeGreaterThan(4000);
+
+      let nextDocId: string | undefined;
+      let expectedOffset = 0;
+      let pageCount = 0;
+      let sawFieldTables = false;
+
+      do {
+        const page = await getDoc!({ doc_id: nextDocId ?? document!.id });
+        const range = page.match(/\*\*Content range:\*\* (\d+)-(\d+) of (\d+) characters/);
+        expect(range).not.toBeNull();
+
+        const start = Number(range![1]);
+        const end = Number(range![2]);
+        const total = Number(range![3]);
+        expect(start).toBe(expectedOffset);
+        expect(end - start).toBeLessThanOrEqual(4000);
+        expect(total).toBe(document!.content.length);
+        expect(page).toContain(document!.content.slice(start, end));
+        sawFieldTables ||= page.includes('## House definition');
+
+        expectedOffset = end;
+        pageCount += 1;
+        const continuation = page.match(/\*\*next_doc_id:\*\* `([^`]+)`/);
+        nextDocId = continuation?.[1];
+      } while (nextDocId);
+
+      expect(pageCount).toBeGreaterThan(1);
+      expect(expectedOffset).toBe(document!.content.length);
+      expect(document!.content.indexOf('## House definition')).toBeGreaterThan(4000);
+      expect(sawFieldTables).toBe(true);
+    });
+
+    it('rejects a malformed continuation document ID', async () => {
+      const getDoc = createKnowledgeToolHandlers().get('get_doc');
+      const first = await getDoc!({ doc_id: 'doc:3.1:brand-protocol/brand-json' });
+      const nextDocId = first.match(/\*\*next_doc_id:\*\* `([^`]+)`/)?.[1];
+      expect(nextDocId).toBeDefined();
+
+      const malformed = await getDoc!({ doc_id: `${nextDocId!.slice(0, -1)}!` });
+      expect(malformed).toContain('Invalid or stale documentation continuation');
+    });
+
     it('clamps search_docs limits to integer results between one and five', async () => {
       const search = createKnowledgeToolHandlers().get('search_docs');
       expect(search).toBeDefined();
