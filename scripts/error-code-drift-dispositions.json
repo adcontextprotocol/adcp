@@ -366,6 +366,11 @@
       "target_version": "3.2",
       "note": "VAST validation contract: wrapper-chain resolution exceeded max_wrapper_depth, looped, or timed out, for sellers declaring creative_specs.vast_validation: wrapper. New VAST-validation surface; wire change, held for 3.2."
     },
+    "COMMITTED_RESOURCE_PURGED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Committed-then-purged mutation outcome and deletion-independent idempotency ledger contract (#7575). New terminal wire code prevents transient retry from duplicating a write that already committed; held for 3.2."
+    },
     "SOURCE_ACCESS_FAILED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",

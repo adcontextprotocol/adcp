@@ -23,6 +23,13 @@
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "\\S",
+      "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. When supplied, the seller MUST persist it and echo it unchanged on the commitment success response and subsequent get_media_buys reads. The name is operational metadata outside accepted_proposal and is not covered by terms_digest. This display label is not an identifier or financial reference."
+    },
     "account": {
       "allOf": [{ "$ref": "/schemas/core/canonical-account-ref.json" }],
       "description": "Execution account. A natural-key account is the single brand source and MUST NOT be combined with top-level brand."
