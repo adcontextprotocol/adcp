@@ -62,8 +62,9 @@ test('webhook triggers bind product and pricing IDs from preceding, tool-gated d
   assert.equal(discovery.requires_tool, 'get_products');
   assert.equal(discovery.sample_request.filters?.is_fixed_price, undefined);
   assert.deepEqual(discovery.context_outputs, [
-    { path: 'products[0].product_id', key: 'product_id' },
-    { path: 'products[0].pricing_options[0].pricing_option_id', key: 'pricing_option_id' },
+    { path: 'task_completion.products', key: 'products' },
+    { path: 'task_completion.products[0].product_id', key: 'product_id' },
+    { path: 'task_completion.products[0].pricing_options[0].pricing_option_id', key: 'pricing_option_id' },
   ]);
   for (const id of triggerIds) {
     const trigger = steps.find(step => step.id === id);
@@ -117,7 +118,7 @@ function catalogProduct(productId = 'outdoornet-webhook-product', pricingId = 'o
 // Exercise the actual source steps through the published SDK. Receiver/JWKS
 // assertions are covered separately; this slice isolates the catalog-to-trigger
 // contract without waiting for outbound deliveries or accessing a remote agent.
-async function runTriggers(source, products, tools = ['get_adcp_capabilities', 'get_products', 'create_media_buy']) {
+async function runTriggers(source, products, tools = ['get_adcp_capabilities', 'get_products', 'create_media_buy'], discovery = {}) {
   const calls = [];
   const storyboard = {
     ...source,
@@ -133,12 +134,25 @@ async function runTriggers(source, products, tools = ['get_adcp_capabilities', '
     agentTools: tools,
     webhook_receiver: { mode: 'loopback_mock' },
     _client: {
+      agent: { id: 'catalog-seller', agent_uri: 'https://agent.example/mcp' },
+      executor: {
+        async pollTaskCompletion(_agent, taskId) {
+          calls.push({ task: 'poll_task_completion', taskId });
+          return discovery.completion ?? {
+            success: true,
+            data: { status: 'completed', products, cache_scope: 'account' },
+          };
+        },
+      },
       resetContext() {},
       async getAdcpCapabilities() {
         return { success: true, data: { supported_protocols: ['media_buy'] } };
       },
       async getProducts(request) {
         calls.push({ task: 'get_products', request });
+        if (discovery.status) {
+          return { success: true, data: { status: discovery.status, task_id: 'catalog-discovery-task' } };
+        }
         return { success: true, data: { products, cache_scope: 'account' } };
       },
       async createMediaBuy(request) {
@@ -192,6 +206,57 @@ test('SDK dispatches all six triggers with discovered IDs and schema-valid reque
     assert.deepEqual(initial.packages, replay.packages);
     assert.deepEqual(initial.push_notification_config, replay.push_notification_config);
     assert.equal(new Set([calls[0].request.idempotency_key, ...buys.map(call => call.request.idempotency_key)]).size, 6);
+  }
+});
+
+test('asynchronous discovery is completed before any webhook buy is dispatched', async () => {
+  for (const status of ['submitted', 'working']) {
+    const product = catalogProduct(`async-product-${status}`, `async-price-${status}`);
+    if (status === 'working') {
+      delete product.pricing_options[0].fixed_price;
+      product.pricing_options[0].floor_price = 9;
+    }
+    const { result, calls } = await runTriggers(loadStoryboard(), [product], undefined, { status });
+    assert.equal(result.overall_passed, true, JSON.stringify(result.phases.flatMap(phase => phase.steps)
+      .filter(step => !step.passed).map(step => ({ id: step.step_id, error: step.error, validations: step.validations }))));
+    assert.equal(result.skipped_count, 0);
+    assert.deepEqual(calls.slice(0, 2).map(call => call.task), ['get_products', 'poll_task_completion']);
+    assert.equal(calls[1].taskId, 'catalog-discovery-task');
+    const buys = calls.filter(call => call.task === 'create_media_buy');
+    assert.equal(buys.length, triggerIds.length);
+    for (const { request } of buys) {
+      assert.equal(request.packages[0].product_id, product.product_id);
+      assert.equal(request.packages[0].pricing_option_id, product.pricing_options[0].pricing_option_id);
+      if (status === 'working') assert.ok(request.packages[0].bid_price >= 9);
+    }
+  }
+});
+
+test('unprefixed captures reproduce the async discovery failure without polling', async () => {
+  const source = loadStoryboard();
+  const discovery = allSteps(source).find(step => step.id === 'get_products_discovery');
+  for (const output of discovery.context_outputs) output.path = output.path.replace(/^task_completion\./, '');
+  const { result, calls } = await runTriggers(source, [catalogProduct()], undefined, { status: 'submitted' });
+  assert.equal(result.overall_passed, false);
+  assert.deepEqual(calls.map(call => call.task), ['get_products']);
+  const step = result.phases.flatMap(phase => phase.steps).find(step => step.step_id === discovery.id);
+  assert.ok(step.validations.some(validation => validation.check === 'capture_path_not_resolvable'));
+});
+
+test('failed or empty async completion never dispatches webhook buys', async () => {
+  for (const completion of [
+    { success: false, error: 'Discovery task failed' },
+    { success: true, data: { status: 'completed', products: [], cache_scope: 'account' } },
+    { success: true, data: { status: 'completed', products: [{ ...catalogProduct(), pricing_options: [] }], cache_scope: 'account' } },
+  ]) {
+    const { result, calls } = await runTriggers(loadStoryboard(), [catalogProduct()], undefined,
+      { status: 'submitted', completion });
+    assert.equal(result.overall_passed, false);
+    assert.deepEqual(calls.map(call => call.task), ['get_products', 'poll_task_completion']);
+    const step = result.phases.flatMap(phase => phase.steps).find(step => step.step_id === 'get_products_discovery');
+    assert.equal(step.passed, false);
+    const expected = completion.success ? 'capture_path_not_resolvable' : 'capture_task_failed';
+    assert.ok(step.validations.some(validation => validation.check === expected), JSON.stringify(step.validations));
   }
 });
 

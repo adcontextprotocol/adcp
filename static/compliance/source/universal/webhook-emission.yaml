@@ -193,6 +193,10 @@ phases:
           Sales-agent triggers need a real catalog product and its pricing option.
           Capture both before create_media_buy; an empty catalog or missing
           pricing option fails setup instead of sending placeholder identifiers.
+          Brief discovery may complete inline or asynchronously. The
+          task_completion captures wait for a submitted/working task to finish
+          before binding IDs, and also accept an inline completed response.
+          Retain product metadata so request enrichment can honor auction floors.
           Agents without get_products skip this sales-specific setup step.
         task: get_products
         requires_tool: get_products
@@ -211,16 +215,19 @@ phases:
             operator_unit:
               id: "compliance-webhook_emission-904960ed"
         context_outputs:
-          - path: "products[0].product_id"
+          - path: "task_completion.products"
+            key: "products"
+          - path: "task_completion.products[0].product_id"
             key: "product_id"
-          - path: "products[0].pricing_options[0].pricing_option_id"
+          - path: "task_completion.products[0].pricing_options[0].pricing_option_id"
             key: "pricing_option_id"
         validations:
           - check: response_schema
             description: "Discovery response matches get-products-response.json"
         expected: |
-          Return at least one product with a pricing option. All sales-agent
-          webhook triggers use the captured product and pricing option IDs.
+          Complete discovery with at least one product and pricing option.
+          All sales-agent webhook triggers use the captured product and pricing
+          option IDs only after discovery reaches a successful result.
 
   - id: idempotency_key_presence
     title: "Every webhook payload carries idempotency_key"
