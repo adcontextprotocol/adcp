@@ -13,10 +13,11 @@ required_tools:
 
 narrative: |
   get_creative_features accepts provider work even when the caller-facing price
-  is zero. The operation therefore requires the same durable replay protection
-  as other economically consequential tasks. One accepted request creates one
-  provider evaluation identity, one result, and at most one consumption or cost
-  record.
+  is zero. AdCP 3.x keeps idempotency_key and evaluation_id optional for wire
+  compatibility, while clients and providers SHOULD use both; AdCP 4.0 will
+  require them. This scenario exercises that recommended keyed and identified
+  profile. One accepted request creates one provider evaluation identity, one
+  result, and at most one consumption or cost record.
 
   This scenario proves six parts of that contract: exact synchronous replay;
   exact asynchronous replay; conflict on changed manifests or feature filters;

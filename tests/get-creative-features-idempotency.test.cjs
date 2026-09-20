@@ -41,16 +41,18 @@ const creativeManifest = {
 describe('get_creative_features retry and reconciliation contract', () => {
   it('classifies provider evaluation as replay-protected consequential work', () => {
     assert.equal(request['x-mutates-state'], true);
-    assert.ok(request.required.includes('idempotency_key'));
+    assert.equal(request['x-idempotency-key-required'], false);
+    assert.equal(request.required.includes('idempotency_key'), false);
     assert.equal(request.properties.idempotency_key.minLength, 16);
     assert.match(request.properties.idempotency_key.description, /at least 24 hours/);
+    assert.match(request.properties.idempotency_key.description, /required in AdCP 4\.0/);
     assert.equal(
       request.properties.push_notification_config.$ref,
       '/schemas/core/push-notification-config.json'
     );
   });
 
-  it('requires a valid idempotency key on every request', async () => {
+  it('accepts unkeyed 3.x requests while validating supplied keys', async () => {
     const validate = await compile('/schemas/creative/get-creative-features-request.json');
     const validRequest = {
       idempotency_key: '550e8400-e29b-41d4-a716-446655440760',
@@ -59,11 +61,15 @@ describe('get_creative_features retry and reconciliation contract', () => {
     };
 
     assert.equal(validate(validRequest), true, JSON.stringify(validate.errors));
-    assert.equal(validate({ creative_manifest: creativeManifest }), false);
+    assert.equal(
+      validate({ creative_manifest: creativeManifest }),
+      true,
+      JSON.stringify(validate.errors)
+    );
     assert.equal(validate({ ...validRequest, idempotency_key: 'too-short' }), false);
   });
 
-  it('requires evaluation_id on terminal success', async () => {
+  it('accepts terminal success without the optional 3.x evaluation_id', async () => {
     const validate = await compile('/schemas/creative/get-creative-features-response.json');
     const success = {
       status: 'completed',
@@ -76,10 +82,12 @@ describe('get_creative_features retry and reconciliation contract', () => {
 
     assert.equal(validate(success), true, JSON.stringify(validate.errors));
     const { evaluation_id, ...missingIdentity } = success;
-    assert.equal(validate(missingIdentity), false);
+    assert.equal(validate(missingIdentity), true, JSON.stringify(validate.errors));
+    const terminal = readSchema('creative/get-creative-features-terminal-success.json');
+    assert.deepEqual(terminal.required, ['results']);
   });
 
-  it('admits only a bounded submitted acknowledgement with both identities', async () => {
+  it('requires task identity but accepts submitted acknowledgement without 3.x evaluation_id', async () => {
     const validate = await compile('/schemas/creative/get-creative-features-response.json');
     const submitted = {
       status: 'submitted',
@@ -90,13 +98,13 @@ describe('get_creative_features retry and reconciliation contract', () => {
     assert.equal(validate(submitted), true, JSON.stringify(validate.errors));
     const { evaluation_id, ...withoutEvaluationId } = submitted;
     const { task_id, ...withoutTaskId } = submitted;
-    assert.equal(validate(withoutEvaluationId), false);
+    assert.equal(validate(withoutEvaluationId), true, JSON.stringify(validate.errors));
     assert.equal(validate(withoutTaskId), false);
     assert.equal(validate({ ...submitted, results: [] }), false);
     assert.equal(validate({ ...submitted, vendor_cost: 0.025 }), false);
 
     const submittedVariant = readSchema('creative/get-creative-features-async-response-submitted.json');
-    assert.deepEqual(submittedVariant.required, ['status', 'task_id', 'evaluation_id']);
+    assert.deepEqual(submittedVariant.required, ['status', 'task_id']);
   });
 
   it('keeps success, error, and submitted arms mutually exclusive', () => {

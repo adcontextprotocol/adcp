@@ -38,7 +38,7 @@ Evaluates a creative manifest and returns feature values from a creative governa
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `idempotency_key` | string | Yes | Client-generated UUID for this logical evaluation. Exact retries reuse the same key and canonical payload. |
+| `idempotency_key` | string | No (SHOULD in 3.x; required in 4.0) | Client-generated UUID for this logical evaluation. Exact retries reuse the same key and canonical payload. |
 | `creative_manifest` | object | Yes | Canonical creative manifest with `format_kind`, optional `format_option_ref`, and typed `assets` |
 | `feature_ids` | string[] | No | Filter to specific features. If omitted, evaluates all features the agent supports. |
 | `account` | object | Conditional | Account used to scope the evaluation and any provider billing. Required when the provider charges per evaluation. |
@@ -46,15 +46,15 @@ Evaluates a creative manifest and returns feature values from a creative governa
 
 ### Retry and reconciliation contract
 
-`get_creative_features` is replay-protected even when the provider includes the evaluation at no customer charge. Accepting a request can allocate provider compute, an evaluation record, consumption, and cost metadata. Every request therefore MUST carry `idempotency_key`, and providers MUST retain its replay record for at least 24 hours.
+`get_creative_features` can allocate provider compute, an evaluation record, consumption, and cost metadata even when the caller-facing price is zero. To preserve 3.x wire compatibility, `idempotency_key` is optional until AdCP 4.0, but clients SHOULD send one for every logical evaluation. When a key is supplied to a provider that advertises replay support, the provider MUST retain its replay record for at least 24 hours. An unkeyed 3.x request remains valid, but cannot be retried safely after an ambiguous result.
 
-- Same key and the same RFC 8785 canonical payload returns the cached initial response with `replayed: true`. The provider performs no second evaluation and records no second consumption or charge.
-- Same key with a different `creative_manifest`, `account`, or `feature_ids` payload returns [`IDEMPOTENCY_CONFLICT`](/docs/building/by-layer/L3/error-handling#idempotency-errors). Array order remains significant; `feature_ids` does not receive set-like canonicalization.
-- `context` is opaque echo data: it is excluded from the canonical replay hash and MUST NOT be used as a replay fence. Changing only `context` does not authorize a new evaluation.
-- An in-flight duplicate follows the provider's declared wait-and-replay policy or returns [`IDEMPOTENCY_IN_FLIGHT`](/docs/building/by-layer/L3/error-handling#idempotency-errors). Callers retry with the same key after `error.retry_after`; they MUST NOT mint a new key.
-- Replaying an async request returns the original submitted acknowledgement with the same `task_id` and `evaluation_id`. Poll `task_id` for current state.
+- With a supplied key, the same key and the same RFC 8785 canonical payload returns the cached initial response with `replayed: true`. The provider performs no second evaluation and records no second consumption or charge.
+- Reusing a supplied key with a different `creative_manifest`, `account`, or `feature_ids` payload returns [`IDEMPOTENCY_CONFLICT`](/docs/building/by-layer/L3/error-handling#idempotency-errors). Array order remains significant; `feature_ids` does not receive set-like canonicalization.
+- For a keyed request, `context` is opaque echo data: it is excluded from the canonical replay hash and MUST NOT be used as a replay fence. Changing only `context` does not authorize a new evaluation.
+- An in-flight keyed duplicate follows the provider's declared wait-and-replay policy or returns [`IDEMPOTENCY_IN_FLIGHT`](/docs/building/by-layer/L3/error-handling#idempotency-errors). Callers retry with the same key after `error.retry_after`; they MUST NOT mint a new key.
+- Replaying a keyed async request returns the original submitted acknowledgement with the same `task_id` and, when present, the same `evaluation_id`. Poll `task_id` for current state.
 
-Providers advertise replay support through `adcp.idempotency` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). A client MUST treat `supported: false` or a replay window below 24 hours as unsafe for automatic `get_creative_features` retry. After an ambiguous timeout it must fail closed and reconcile out of band rather than minting a new key.
+Providers advertise replay support through `adcp.idempotency` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). A client MUST treat an omitted key, `supported: false`, or a replay window below 24 hours as unsafe for automatic `get_creative_features` retry. After an ambiguous timeout it must fail closed and reconcile out of band rather than minting a new key.
 
 ### Authentication when used as a build evaluator
 
@@ -169,7 +169,7 @@ When this call was initiated by [`build_creative`](/docs/creative/task-reference
 
 | Field | Description |
 |-------|-------------|
-| `evaluation_id` | Provider-generated evaluation identity. Required when the request is accepted, including both submitted acknowledgements and terminal successes. Stable across exact replays and async completion. |
+| `evaluation_id` | Provider-generated evaluation identity. Optional in 3.x (providers SHOULD emit it) and required in 4.0. When present, stable across exact replays and async completion. |
 | `task_id` | AdCP task identity on a submitted acknowledgement. Use it to poll current state; it is distinct from `evaluation_id`. |
 | `results` | Array of feature evaluation results |
 | `results[].feature_id` | Which feature was evaluated |
@@ -207,9 +207,9 @@ When this call was initiated by [`build_creative`](/docs/creative/task-reference
 
 ## Async evaluation
 
-Some evaluations (for example, sandboxed malware scanning) take time. After accepting the work, the provider returns `status: "submitted"`, a pollable `task_id`, and the provider-generated `evaluation_id`. The caller can always poll [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json); when the request included `push_notification_config`, the provider also delivers at least the terminal completion or failure notification. The terminal success artifact MUST repeat the acknowledgement's `evaluation_id`, and any `pricing_option_id`, `vendor_cost`, `currency`, and `consumption` values are part of that terminal artifact. `detail_url` is optional and is not an evaluation identity or reconciliation key.
+Some evaluations (for example, sandboxed malware scanning) take time. After accepting the work, the provider returns `status: "submitted"` and a pollable `task_id`. In 3.x, providers SHOULD also include the provider-generated `evaluation_id`; it becomes required in 4.0. The caller can always poll [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json); when the request included `push_notification_config`, the provider also delivers at least the terminal completion or failure notification. When the acknowledgement includes `evaluation_id`, the terminal success artifact MUST repeat it. Any `pricing_option_id`, `vendor_cost`, `currency`, and `consumption` values are part of that terminal artifact. `detail_url` is optional and is not an evaluation identity or reconciliation key.
 
-An exact replay while the evaluation remains async returns the original submitted acknowledgement with `replayed: true`, the same `task_id`, and the same `evaluation_id`; it does not return current task state. Poll the task for current state. This uses the standard [async task pattern](/docs/building/by-layer/L3/async-operations).
+An exact keyed replay while the evaluation remains async returns the original submitted acknowledgement with `replayed: true`, the same `task_id`, and, when present, the same `evaluation_id`; it does not return current task state. Poll the task for current state. This uses the standard [async task pattern](/docs/building/by-layer/L3/async-operations).
 
 ## Orchestrator logic
 
@@ -227,7 +227,8 @@ if (result.errors) {
 }
 
 if (result.status === 'submitted') {
-  console.log(`Evaluation ${result.evaluation_id} queued as task ${result.task_id}`);
+  const evaluation = result.evaluation_id ?? 'provider did not return an evaluation ID';
+  console.log(`Evaluation ${evaluation} queued as task ${result.task_id}`);
   return;
 }
 

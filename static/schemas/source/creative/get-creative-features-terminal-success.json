@@ -3,12 +3,12 @@
   "$id": "/schemas/creative/get-creative-features-terminal-success.json",
   "title": "GetCreativeFeaturesSuccess",
   "type": "object",
-  "description": "Terminal success response. evaluation_id is the provider-side reconciliation identity allocated when the evaluation was accepted and remains stable across exact replays and asynchronous completion.",
+  "description": "Terminal success response. In AdCP 3.x evaluation_id is an optional migration field that providers SHOULD emit; it becomes required in AdCP 4.0. When present, it is the provider-side reconciliation identity allocated when the evaluation was accepted and remains stable across exact replays and asynchronous completion.",
   "properties": {
     "evaluation_id": {
       "type": "string",
       "minLength": 1,
-      "description": "Provider-generated identity for this evaluation. Stable across exact response replays and, for async work, identical to the evaluation_id returned on the submitted acknowledgement. Used for result provenance, consumption and provider-cost reconciliation, and support; it is not an idempotency key or task identity.",
+      "description": "Provider-generated identity for this evaluation. Optional in AdCP 3.x and required in AdCP 4.0. Providers SHOULD emit it in 3.x. When present, it MUST be stable across exact response replays and, for async work whose submitted acknowledgement included evaluation_id, MUST be identical to that value. Used for result provenance, consumption and provider-cost reconciliation, and support; it is not an idempotency key or task identity.",
       "x-entity": "creative_evaluation"
     },
     "results": {
@@ -57,7 +57,6 @@
     }
   },
   "required": [
-    "evaluation_id",
     "results"
   ],
   "additionalProperties": true,

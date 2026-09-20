@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/get-creative-features-response.json",
   "title": "Get Creative Features Response",
-  "description": "Response payload for the get_creative_features task. Exactly one shape is returned: terminal success with results and a provider evaluation identity, terminal error, or a submitted acknowledgement carrying both the pollable task identity and the provider evaluation identity.",
+  "description": "Response payload for the get_creative_features task. Exactly one shape is returned: terminal success with results, terminal error, or a submitted acknowledgement carrying the pollable task identity. In AdCP 3.x providers SHOULD also include a stable evaluation_id on accepted work; it becomes required in AdCP 4.0.",
   "type": "object",
   "allOf": [
     {
@@ -57,7 +57,7 @@
     {
       "title": "GetCreativeFeaturesSubmitted",
       "type": "object",
-      "description": "Async acknowledgement returned after the provider accepts an evaluation but cannot complete it within the response window. Exact request replays return this original acknowledgement with replayed: true, the same task_id, and the same evaluation_id. The caller polls get_task_status using task_id; terminal results carry the same evaluation_id.",
+      "description": "Async acknowledgement returned after the provider accepts an evaluation but cannot complete it within the response window. Exact keyed request replays return this original acknowledgement with replayed: true and the same task_id. In AdCP 3.x providers SHOULD also return evaluation_id; it becomes required in AdCP 4.0. When present, exact replays and terminal results preserve it. The caller polls get_task_status using task_id.",
       "properties": {
         "status": {
           "type": "string",
@@ -73,7 +73,7 @@
         "evaluation_id": {
           "type": "string",
           "minLength": 1,
-          "description": "Provider-generated identity allocated when the evaluation is accepted. The terminal result MUST carry this same value. Distinct from task_id and idempotency_key.",
+          "description": "Provider-generated identity allocated when the evaluation is accepted. Optional in AdCP 3.x and required in AdCP 4.0. Providers SHOULD emit it in 3.x; when present, exact replays and the terminal result MUST carry this same value. Distinct from task_id and idempotency_key.",
           "x-entity": "creative_evaluation"
         },
         "message": {
@@ -90,8 +90,7 @@
       },
       "required": [
         "status",
-        "task_id",
-        "evaluation_id"
+        "task_id"
       ],
       "additionalProperties": true,
       "not": {
