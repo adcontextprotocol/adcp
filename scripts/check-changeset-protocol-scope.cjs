@@ -38,6 +38,7 @@ const CHANGESET_POLICY_CODE_PATHS = new Set([
 
 const CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS = new Set([
   ...CHANGESET_POLICY_CODE_PATHS,
+  '.github/workflows/release.yml',
   '.agents/playbook.md',
   '.agents/routines/context-refresh-prompt.md',
   '.agents/routines/triage-prompt.md',
@@ -48,6 +49,7 @@ const CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS = new Set([
   '.agents/shortcuts/prep-for-pr.md',
   'docs/reference/changelog.mdx',
   'docs/spec-guidelines.md',
+  'tests/release-workflow-immutability.test.cjs',
 ]);
 
 function normalizePath(filePath) {
