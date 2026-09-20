@@ -327,6 +327,56 @@
       "if": {
         "properties": {
           "scenario": {
+            "const": "force_get_creative_features_arm"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "oneOf": [
+              {
+                "properties": {
+                  "arm": {
+                    "const": "submitted"
+                  }
+                },
+                "required": [
+                  "arm",
+                  "task_id",
+                  "evaluation_id"
+                ]
+              },
+              {
+                "properties": {
+                  "arm": {
+                    "const": "completed"
+                  },
+                  "result": {
+                    "type": "object",
+                    "required": [
+                      "evaluation_id",
+                      "results"
+                    ]
+                  }
+                },
+                "required": [
+                  "arm",
+                  "result"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
             "const": "force_task_completion"
           }
         }
@@ -1222,10 +1272,11 @@
           "type": "string",
           "enum": [
             "submitted",
+            "completed",
             "input-required",
             "rejected"
           ],
-          "description": "Response arm for the next forced operation call. Used by force_create_media_buy_arm, force_get_products_arm, and force_get_signals_arm. 'submitted' is supported for all three operations; create_media_buy also supports 'input-required'; get_products also supports 'rejected'. 'completed' is covered by force_task_completion after a submitted task exists; 'working' is an out-of-band progress signal, not an initial response arm."
+          "description": "Response arm for the next forced operation call. Used by force_create_media_buy_arm, force_get_products_arm, force_get_signals_arm, and force_get_creative_features_arm. 'submitted' is supported for all four operations; get_creative_features also supports 'completed' with a deterministic result; create_media_buy also supports 'input-required'; get_products also supports 'rejected'. Async completion after a submitted task is covered by force_task_completion; 'working' is an out-of-band progress signal, not an initial response arm."
         },
         "task_id": {
           "type": "string",
@@ -1233,10 +1284,17 @@
           "description": "Deterministic task handle the seller MUST emit verbatim on the next forced operation response when arm is 'submitted'. The seller MUST accept this exact value on subsequent tasks/get or get_task_status calls within the same authenticated sandbox account + principal pair and MUST return REFERENCE_NOT_FOUND for the same task_id under any other account or principal. Sandbox task_ids are caller-opaque strings - the seller's production task-id format rules do not apply.",
           "x-entity": "task"
         },
+        "evaluation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Deterministic provider evaluation identity the seller MUST emit on the next forced get_creative_features submitted acknowledgement and preserve on its terminal completion result.",
+          "x-entity": "creative_evaluation"
+        },
         "message": {
           "type": "string",
           "maxLength": 2000,
-          "description": "Optional human-readable explanation surfaced on the next forced operation response. Used by force_create_media_buy_arm, force_get_products_arm, and force_get_signals_arm for the submitted arm. Plain text only."
+          "description": "Optional human-readable explanation surfaced on the next forced operation response. Used by force_create_media_buy_arm, force_get_products_arm, force_get_signals_arm, and force_get_creative_features_arm for the submitted arm. Plain text only."
         },
         "reason": {
           "type": "string",
@@ -1298,7 +1356,7 @@
         },
         "result": {
           "$ref": "/schemas/compliance/task-completion-data.json",
-          "description": "Completion payload to record against the task. force_task_completion supports the bounded get_products, get_signals, and create_media_buy completion union; polling and production SDKs resolve all task results through the originating task's manifest response mapping instead of embedding a global result union. The seller MUST deliver this verbatim to the buyer's push_notification_config.url, preserving caller-supplied fields. Sellers MUST emit INVALID_PARAMS when the payload does not match the original task response branch and MAY reject payloads exceeding 256 KB."
+          "description": "Deterministic result payload. force_get_creative_features_arm uses it when arm is completed and returns it on the next matching operation call. force_task_completion records it against an existing task and supports the bounded get_products, get_signals, create_media_buy, and get_creative_features completion union; polling and production SDKs resolve all task results through the originating task's manifest response mapping instead of embedding a global result union. The seller MUST preserve caller-supplied fields. Sellers MUST emit INVALID_PARAMS when the payload does not match the required response branch and MAY reject payloads exceeding 256 KB."
         }
       },
       "additionalProperties": true

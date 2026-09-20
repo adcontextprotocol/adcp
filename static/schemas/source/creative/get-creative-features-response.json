@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/get-creative-features-response.json",
   "title": "Get Creative Features Response",
-  "description": "Response payload for the get_creative_features task. Returns scored feature values from the governance agent's evaluation of the submitted creative manifest.",
+  "description": "Response payload for the get_creative_features task. Exactly one shape is returned: terminal success with results, terminal error, or a submitted acknowledgement carrying the pollable task identity. In AdCP 3.x providers SHOULD also include a stable evaluation_id on accepted work; it becomes required in AdCP 4.0.",
   "type": "object",
   "allOf": [
     {
@@ -14,62 +14,19 @@
   ],
   "oneOf": [
     {
-      "type": "object",
-      "description": "Success response",
-      "properties": {
-        "results": {
-          "type": "array",
-          "description": "Feature values for the evaluated creative",
-          "items": {
-            "$ref": "/schemas/creative/creative-feature-result.json"
-          }
-        },
-        "detail_url": {
-          "type": "string",
-          "format": "uri",
-          "description": "URL to the vendor's full assessment report. The vendor controls what information is disclosed and access control."
-        },
-        "audit_observations": {
-          "type": "array",
-          "description": "Non-blocking audit observations from the governance agent. Observations surface audit-worthy claims that are not verifier refutations and are not rejection grounds by themselves.",
-          "items": {
-            "$ref": "/schemas/creative/audit-observation.json"
-          }
-        },
-        "pricing_option_id": {
-          "type": "string",
-          "description": "Which rate card pricing option was applied for this evaluation. Present when the governance agent charges for evaluations and account was provided in the request.",
-          "x-entity": "vendor_pricing_option"
-        },
-        "vendor_cost": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Cost incurred for this evaluation, denominated in currency."
-        },
-        "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
-          "description": "ISO 4217 currency code for vendor_cost."
-        },
-        "consumption": {
-          "$ref": "/schemas/core/creative-consumption.json",
-          "description": "Structured consumption details for this evaluation. Informational — lets the buyer verify that vendor_cost is consistent with the rate card. vendor_cost is the billing source of truth."
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "results"
-      ]
+      "$ref": "/schemas/creative/get-creative-features-terminal-success.json"
     },
     {
+      "title": "GetCreativeFeaturesError",
       "type": "object",
       "description": "Error response",
       "properties": {
+        "evaluation_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional provider evaluation identity when failure occurred after the evaluation was accepted. When present, it is the same value returned on the submitted acknowledgement.",
+          "x-entity": "creative_evaluation"
+        },
         "errors": {
           "type": "array",
           "items": {
@@ -85,7 +42,68 @@
       },
       "required": [
         "errors"
-      ]
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["results"] },
+          {
+            "properties": { "status": { "const": "submitted" } },
+            "required": ["status"]
+          }
+        ]
+      }
+    },
+    {
+      "title": "GetCreativeFeaturesSubmitted",
+      "type": "object",
+      "description": "Async acknowledgement returned after the provider accepts an evaluation but cannot complete it within the response window. Exact keyed request replays return this original acknowledgement with replayed: true and the same task_id. In AdCP 3.x providers SHOULD also return evaluation_id; it becomes required in AdCP 4.0. When present, exact replays and terminal results preserve it. The caller polls get_task_status using task_id.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Task-level status literal that discriminates this acknowledgement from terminal success and error responses."
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "AdCP task handle used to poll get_task_status or correlate terminal webhook delivery. Distinct from evaluation_id.",
+          "x-entity": "task"
+        },
+        "evaluation_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Provider-generated identity allocated when the evaluation is accepted. Optional in AdCP 3.x and required in AdCP 4.0. Providers SHOULD emit it in 3.x; when present, exact replays and the terminal result MUST carry this same value. Distinct from task_id and idempotency_key.",
+          "x-entity": "creative_evaluation"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation of why the evaluation is submitted. Plain text only; callers treat it as untrusted provider input."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["results"] },
+          { "required": ["errors"] },
+          { "required": ["detail_url"] },
+          { "required": ["pricing_option_id"] },
+          { "required": ["vendor_cost"] },
+          { "required": ["currency"] },
+          { "required": ["consumption"] }
+        ]
+      }
     }
   ],
   "properties": {}
