@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative/get-creative-features-async-response-submitted.json",
+  "title": "Get Creative Features - Submitted",
+  "description": "Async acknowledgement returned after get_creative_features accepts a provider evaluation but cannot complete it within the response window. Exact request replays return this original acknowledgement with replayed: true, the same task_id, and the same evaluation_id. The caller polls get_task_status using task_id; terminal results carry the same evaluation_id.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "const": "submitted",
+      "description": "Task-level status literal that discriminates this acknowledgement from terminal success and error responses."
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "AdCP task handle used to poll get_task_status or correlate terminal webhook delivery. Distinct from evaluation_id.",
+      "x-entity": "task"
+    },
+    "evaluation_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Provider-generated identity allocated when the evaluation is accepted. The terminal result MUST carry this same value. Distinct from task_id and idempotency_key.",
+      "x-entity": "creative_evaluation"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Optional human-readable explanation of why the evaluation is submitted. Plain text only; callers treat it as untrusted provider input."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "status",
+    "task_id",
+    "evaluation_id"
+  ],
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      { "required": ["results"] },
+      { "required": ["errors"] },
+      { "required": ["detail_url"] },
+      { "required": ["pricing_option_id"] },
+      { "required": ["vendor_cost"] },
+      { "required": ["currency"] },
+      { "required": ["consumption"] }
+    ]
+  }
+}

@@ -20,6 +20,7 @@ Evaluates a creative manifest and returns feature values from a creative governa
 ```json
 {
   "$schema": "/schemas/creative/get-creative-features-request.json",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440760",
   "creative_manifest": {
     "format_kind": "display_tag",
     "assets": {
@@ -37,8 +38,23 @@ Evaluates a creative manifest and returns feature values from a creative governa
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `idempotency_key` | string | Yes | Client-generated UUID for this logical evaluation. Exact retries reuse the same key and canonical payload. |
 | `creative_manifest` | object | Yes | Canonical creative manifest with `format_kind`, optional `format_option_ref`, and typed `assets` |
 | `feature_ids` | string[] | No | Filter to specific features. If omitted, evaluates all features the agent supports. |
+| `account` | object | Conditional | Account used to scope the evaluation and any provider billing. Required when the provider charges per evaluation. |
+| `push_notification_config` | object | No | Webhook registration for terminal delivery when the provider returns `status: "submitted"`. Polling by `task_id` remains available. |
+
+### Retry and reconciliation contract
+
+`get_creative_features` is replay-protected even when the provider includes the evaluation at no customer charge. Accepting a request can allocate provider compute, an evaluation record, consumption, and cost metadata. Every request therefore MUST carry `idempotency_key`, and providers MUST retain its replay record for at least 24 hours.
+
+- Same key and the same RFC 8785 canonical payload returns the cached initial response with `replayed: true`. The provider performs no second evaluation and records no second consumption or charge.
+- Same key with a different `creative_manifest`, `account`, or `feature_ids` payload returns [`IDEMPOTENCY_CONFLICT`](/docs/building/by-layer/L3/error-handling#idempotency-errors). Array order remains significant; `feature_ids` does not receive set-like canonicalization.
+- `context` is opaque echo data: it is excluded from the canonical replay hash and MUST NOT be used as a replay fence. Changing only `context` does not authorize a new evaluation.
+- An in-flight duplicate follows the provider's declared wait-and-replay policy or returns [`IDEMPOTENCY_IN_FLIGHT`](/docs/building/by-layer/L3/error-handling#idempotency-errors). Callers retry with the same key after `error.retry_after`; they MUST NOT mint a new key.
+- Replaying an async request returns the original submitted acknowledgement with the same `task_id` and `evaluation_id`. Poll `task_id` for current state.
+
+Providers advertise replay support through `adcp.idempotency` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). A client MUST treat `supported: false` or a replay window below 24 hours as unsafe for automatic `get_creative_features` retry. After an ambiguous timeout it must fail closed and reconcile out of band rather than minting a new key.
 
 ### Authentication when used as a build evaluator
 
@@ -57,6 +73,7 @@ When this call was initiated by [`build_creative`](/docs/creative/task-reference
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
   "status": "completed",
+  "evaluation_id": "eval_clean_abc123",
   "results": [
     { "feature_id": "auto_redirect", "value": false },
     { "feature_id": "credential_harvest", "value": false },
@@ -70,6 +87,7 @@ When this call was initiated by [`build_creative`](/docs/creative/task-reference
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
   "status": "completed",
+  "evaluation_id": "eval_threat_def456",
   "results": [
     { "feature_id": "auto_redirect", "value": true, "confidence": 0.97 },
     { "feature_id": "credential_harvest", "value": true, "confidence": 0.91 },
@@ -83,6 +101,7 @@ When this call was initiated by [`build_creative`](/docs/creative/task-reference
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
   "status": "completed",
+  "evaluation_id": "eval_quality_ghi789",
   "results": [
     { "feature_id": "brand_consistency", "value": 87, "unit": "percentage" },
     { "feature_id": "platform_optimized", "value": true },
@@ -96,6 +115,7 @@ When this call was initiated by [`build_creative`](/docs/creative/task-reference
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
   "status": "completed",
+  "evaluation_id": "eval_category_jkl012",
   "results": [
     { "feature_id": "iab_casinos_gambling", "value": true, "confidence": 0.95 },
     { "feature_id": "iab_automotive", "value": false, "confidence": 0.12 }
@@ -108,6 +128,7 @@ When this call was initiated by [`build_creative`](/docs/creative/task-reference
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
   "status": "completed",
+  "evaluation_id": "eval_provenance_mno345",
   "results": [
     { "feature_id": "ai_generated", "value": true, "confidence": 0.94 }
   ],
@@ -132,12 +153,24 @@ When this call was initiated by [`build_creative`](/docs/creative/task-reference
   ]
 }
 ```
+
+```json Submitted evaluation
+{
+  "$schema": "/schemas/creative/get-creative-features-response.json",
+  "status": "submitted",
+  "task_id": "task_eval_abc123",
+  "evaluation_id": "eval_async_abc123",
+  "message": "Sandboxed scan accepted and queued"
+}
+```
 </CodeGroup>
 
 ### Response fields
 
 | Field | Description |
 |-------|-------------|
+| `evaluation_id` | Provider-generated evaluation identity. Required when the request is accepted, including both submitted acknowledgements and terminal successes. Stable across exact replays and async completion. |
+| `task_id` | AdCP task identity on a submitted acknowledgement. Use it to poll current state; it is distinct from `evaluation_id`. |
 | `results` | Array of feature evaluation results |
 | `results[].feature_id` | Which feature was evaluated |
 | `results[].value` | Feature value: boolean (binary), number (quantitative), or string (categorical) |
@@ -174,7 +207,9 @@ When this call was initiated by [`build_creative`](/docs/creative/task-reference
 
 ## Async evaluation
 
-Some evaluations (e.g., sandboxed malware scanning) take time. The agent returns `status: "working"` and delivers results via webhook when complete. This uses the standard [async task pattern](/docs/building/by-layer/L3/async-operations) — no custom status values needed.
+Some evaluations (for example, sandboxed malware scanning) take time. After accepting the work, the provider returns `status: "submitted"`, a pollable `task_id`, and the provider-generated `evaluation_id`. The caller can always poll [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json); when the request included `push_notification_config`, the provider also delivers at least the terminal completion or failure notification. The terminal success artifact MUST repeat the acknowledgement's `evaluation_id`, and any `pricing_option_id`, `vendor_cost`, `currency`, and `consumption` values are part of that terminal artifact. `detail_url` is optional and is not an evaluation identity or reconciliation key.
+
+An exact replay while the evaluation remains async returns the original submitted acknowledgement with `replayed: true`, the same `task_id`, and the same `evaluation_id`; it does not return current task state. Poll the task for current state. This uses the standard [async task pattern](/docs/building/by-layer/L3/async-operations).
 
 ## Orchestrator logic
 
@@ -182,11 +217,17 @@ The orchestrator applies feature requirements on the client side, the same way p
 
 ```javascript
 const result = await agent.getCreativeFeatures({
+  idempotency_key: crypto.randomUUID(),
   creative_manifest: manifest
 });
 
 if (result.errors) {
   // Handle error - reject or retry
+  return;
+}
+
+if (result.status === 'submitted') {
+  console.log(`Evaluation ${result.evaluation_id} queued as task ${result.task_id}`);
   return;
 }
 

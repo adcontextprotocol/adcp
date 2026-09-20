@@ -231,6 +231,7 @@
               "type": "string",
               "enum": [
                 "submitted",
+                "completed",
                 "input-required",
                 "rejected"
               ],
@@ -241,6 +242,13 @@
               "maxLength": 128,
               "description": "Echo of the registered task_id. Present only when arm is 'submitted' (the arm that emits a task envelope).",
               "x-entity": "task"
+            },
+            "evaluation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Echo of the provider evaluation identity registered by force_get_creative_features_arm.",
+              "x-entity": "creative_evaluation"
             },
             "reason": {
               "type": "string",

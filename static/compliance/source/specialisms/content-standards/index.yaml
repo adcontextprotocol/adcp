@@ -639,7 +639,8 @@ phases:
     title: "Optional creative feature extraction"
     narrative: |
       Governance agents that implement `get_creative_features` can evaluate a
-      concrete creative manifest and return schema-valid scored features.
+      concrete creative manifest and return either schema-valid scored features
+      or a submitted acknowledgement for later polling.
 
     steps:
       - id: get_creative_features
@@ -650,10 +651,12 @@ phases:
         doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_feature_extraction
         requires_tool: get_creative_features
-        stateful: false
+        stateful: true
         expected: |
-          Return a schema-valid results array for the submitted manifest.
+          Accept the evaluation with a stable provider evaluation identity. The
+          response may contain terminal results or a submitted task handle.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#content_standards_creative_feature_extraction_get_creative_features"
           creative_manifest:
             creative_id: "content_standards_feature_test"
             format_id:
@@ -674,8 +677,8 @@ phases:
           - check: response_schema
             description: "Response matches get-creative-features-response.json schema"
           - check: field_present
-            path: "results"
-            description: "Response includes evaluated feature results"
+            path: "evaluation_id"
+            description: "Response identifies the accepted provider evaluation"
           - check: field_value
             path: "context.correlation_id"
             value: "content_standards--get_creative_features"

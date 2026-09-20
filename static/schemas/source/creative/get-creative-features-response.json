@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/get-creative-features-response.json",
   "title": "Get Creative Features Response",
-  "description": "Response payload for the get_creative_features task. Returns scored feature values from the governance agent's evaluation of the submitted creative manifest.",
+  "description": "Response payload for the get_creative_features task. Exactly one shape is returned: terminal success with results and a provider evaluation identity, terminal error, or a submitted acknowledgement carrying both the pollable task identity and the provider evaluation identity.",
   "type": "object",
   "allOf": [
     {
@@ -14,9 +14,16 @@
   ],
   "oneOf": [
     {
+      "title": "GetCreativeFeaturesSuccess",
       "type": "object",
-      "description": "Success response",
+      "description": "Terminal success response. evaluation_id is the provider-side reconciliation identity allocated when the evaluation was accepted and remains stable across exact replays and asynchronous completion.",
       "properties": {
+        "evaluation_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Provider-generated identity for this evaluation. Stable across exact response replays and, for async work, identical to the evaluation_id returned on the submitted acknowledgement. Used for result provenance, consumption and provider-cost reconciliation, and support; it is not an idempotency key or task identity.",
+          "x-entity": "creative_evaluation"
+        },
         "results": {
           "type": "array",
           "description": "Feature values for the evaluated creative",
@@ -63,13 +70,31 @@
         }
       },
       "required": [
+        "evaluation_id",
         "results"
-      ]
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["errors"] },
+          {
+            "properties": { "status": { "const": "submitted" } },
+            "required": ["status"]
+          }
+        ]
+      }
     },
     {
+      "title": "GetCreativeFeaturesError",
       "type": "object",
       "description": "Error response",
       "properties": {
+        "evaluation_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional provider evaluation identity when failure occurred after the evaluation was accepted. When present, it is the same value returned on the submitted acknowledgement.",
+          "x-entity": "creative_evaluation"
+        },
         "errors": {
           "type": "array",
           "items": {
@@ -85,7 +110,69 @@
       },
       "required": [
         "errors"
-      ]
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["results"] },
+          {
+            "properties": { "status": { "const": "submitted" } },
+            "required": ["status"]
+          }
+        ]
+      }
+    },
+    {
+      "title": "GetCreativeFeaturesSubmitted",
+      "type": "object",
+      "description": "Async acknowledgement returned after the provider accepts an evaluation but cannot complete it within the response window. Exact request replays return this original acknowledgement with replayed: true, the same task_id, and the same evaluation_id. The caller polls get_task_status using task_id; terminal results carry the same evaluation_id.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Task-level status literal that discriminates this acknowledgement from terminal success and error responses."
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "AdCP task handle used to poll get_task_status or correlate terminal webhook delivery. Distinct from evaluation_id.",
+          "x-entity": "task"
+        },
+        "evaluation_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Provider-generated identity allocated when the evaluation is accepted. The terminal result MUST carry this same value. Distinct from task_id and idempotency_key.",
+          "x-entity": "creative_evaluation"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation of why the evaluation is submitted. Plain text only; callers treat it as untrusted provider input."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "status",
+        "task_id",
+        "evaluation_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["results"] },
+          { "required": ["errors"] },
+          { "required": ["detail_url"] },
+          { "required": ["pricing_option_id"] },
+          { "required": ["vendor_cost"] },
+          { "required": ["currency"] },
+          { "required": ["consumption"] }
+        ]
+      }
     }
   ],
   "properties": {}
