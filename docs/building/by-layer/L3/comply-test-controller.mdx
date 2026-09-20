@@ -71,6 +71,7 @@ Sellers that implement compliance test controller MUST:
           "force_creative_purge",
           "force_account_status",
           "force_media_buy_status",
+          "force_media_buy_purge",
           "compact_product_lifecycle_probe",
           "compact_direct_buy_lifecycle_probe",
           "reporting_core_lifecycle_probe",
@@ -98,7 +99,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. reporting_core_lifecycle_probe: {operation: prepare | publish_zero_row | publish_nonempty | restate_snapshot | omit_obligation | advance_past_status_deadline | advance_past_escalation}, {operation: advance_time, target_health: delayed | action_required}, or {operation: restate_after_received, received_reporting_revision_id, advance_to?: within_grace | past_grace}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_media_buy_purge: {media_buy_id}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. reporting_core_lifecycle_probe: {operation: prepare | publish_zero_row | publish_nonempty | restate_snapshot | omit_obligation | advance_past_status_deadline | advance_past_escalation}, {operation: advance_time, target_health: delayed | action_required}, or {operation: restate_after_received, received_reporting_revision_id, advance_to?: within_grace | past_grace}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -184,6 +185,35 @@ Transitions a media buy to the specified status. The seller MUST enforce the med
     "media_buy_id": "mb-789",
     "status": "rejected",
     "rejection_reason": "Policy violation"
+  }
+}
+```
+
+### `force_media_buy_purge`
+
+Physically removes the named sandbox MediaBuy while leaving the seller's
+idempotency ledger untouched. This scenario exists to test replay after resource
+deletion; it MUST NOT delete, shorten, or rewrite an idempotency entry. Repeating
+the controller call is naturally idempotent. A successful purge uses the
+`StateTransitionSuccess` response shape and reports both `previous_state` and
+`current_state: "purged"`.
+Sellers advertise this scenario only when they can guarantee it never reaches
+production data.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `media_buy_id` | string | Yes | Sandbox MediaBuy to purge without touching its idempotency ledger |
+
+```json
+{
+  "scenario": "force_media_buy_purge",
+  "params": {
+    "media_buy_id": "mb-789"
+  },
+  "account": {
+    "sandbox": true
   }
 }
 ```
@@ -1254,7 +1284,8 @@ A seller may implement the test controller without supporting every scenario. Th
   "scenarios": [
     "force_creative_status",
     "force_account_status",
-    "force_media_buy_status"
+    "force_media_buy_status",
+    "force_media_buy_purge"
   ]
 }
 ```

@@ -4432,6 +4432,7 @@ async function runTests() {
     idempotency_key: 'buy-products-clean-0001',
     account: { account_id: 'account-clean-1' },
     brand: { domain: 'buyer.example' },
+    name: 'Acme direct display buy',
     feed_version: 'feed-version-1',
     pricing_version: 'pricing-version-1',
     purchases: [{
@@ -4465,7 +4466,8 @@ async function runTests() {
       idempotency_key: 'accept-proposal-0001',
       account: { account_id: 'account-clean-1' },
       proposal_id: 'proposal-committed-1',
-      proposal_terms_digest: `sha256:${'A'.repeat(43)}`
+      proposal_terms_digest: `sha256:${'A'.repeat(43)}`,
+      name: 'Acme accepted proposal buy'
     },
     'accept_proposal needs only the committed proposal and execution identity'
   );
@@ -4543,6 +4545,7 @@ async function runTests() {
     {
       status: 'completed',
       media_buy_id: 'media-buy-1',
+      name: 'Acme direct display buy',
       revision: 1,
       accepted_proposal: {
         proposal_id: 'accepted-proposal-1',

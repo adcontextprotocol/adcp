@@ -132,6 +132,27 @@
       "if": {
         "properties": {
           "scenario": {
+            "const": "force_media_buy_purge"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "media_buy_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
             "const": "force_create_media_buy_arm"
           }
         }
@@ -881,7 +902,7 @@
         },
         "media_buy_id": {
           "type": "string",
-          "description": "Media buy to transition (force_media_buy_status, simulate_delivery, simulate_budget_spend) or seed (seed_media_buy).",
+          "description": "Media buy to transition or purge (force_media_buy_status, force_media_buy_purge), simulate (simulate_delivery, simulate_budget_spend), or seed (seed_media_buy).",
           "x-entity": "media_buy"
         },
         "session_id": {

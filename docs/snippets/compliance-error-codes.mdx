@@ -40,6 +40,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `BUDGET_TOO_LOW` | correctable | increase budget or check capabilities.media_buy.limits |
 | `CAMPAIGN_SUSPENDED` | transient | wait for the escalation to resolve; contact the plan operator if the suspension persists |
 | `CATALOG_LIMIT_EXCEEDED` | correctable | remove unused catalogs, or contact the seller to raise the limit |
+| `COMMITTED_RESOURCE_PURGED` | terminal | do not automatically retry with the same or a fresh idempotency_key; reconcile through the resource read task and seller audit or operator records before deciding whether to initiate a new operation |
 | `COMPLIANCE_UNSATISFIED` | correctable | choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement |
 | `CONFIGURATION_ERROR` | terminal | surface to a human at the seller — the buyer cannot resolve a seller-side deployment misconfiguration and MUST NOT auto-retry |
 | `CONFLICT` | transient | re-read the resource and retry with current state |
@@ -387,6 +388,15 @@ Campaign governance has been suspended pending human review; the governance agen
 The account has reached its maximum catalog count. Recovery: correctable (remove unused catalogs, or contact the seller to raise the limit).
 
 </Accordion>
+<a id="error-code-committed-resource-purged"></a>
+
+<Accordion title="COMMITTED_RESOURCE_PURGED — terminal">
+
+**Suggested action:** do not automatically retry with the same or a fresh idempotency_key; reconcile through the resource read task and seller audit or operator records before deciding whether to initiate a new operation
+
+The requested mutation committed, but the affected resource was independently deleted or purged for a reason outside that requested mutation before the seller could durably record the canonical success response. The write stands even though the resource no longer exists; this code does not describe the successful outcome of a requested delete operation. Sellers MUST retain the idempotency key record and canonical request hash independently of the resource until at least committed_at + replay_ttl_seconds, and exact replays MUST return this terminal outcome with replayed: true without re-executing the mutation. If the canonical success response was already durably recorded, sellers return that historical response under the normal replay rule instead. Distinct from CONFLICT (a transient concurrent modification before a stable result) and MEDIA_BUY_NOT_FOUND (a request targeting a resource that was already absent). Recovery: terminal (do not automatically retry with the same or a fresh idempotency_key; first reconcile through the resource read task and seller audit or operator records, then initiate a new operation only when reconciliation confirms that is intended).
+
+</Accordion>
 <a id="error-code-compliance-unsatisfied"></a>
 
 <Accordion title="COMPLIANCE_UNSATISFIED — correctable">
@@ -411,7 +421,7 @@ The seller's deployment is misconfigured in a way that prevents handling the req
 
 **Suggested action:** re-read the resource and retry with current state
 
-Concurrent modification detected. The resource was modified by another request between read and write. Recovery: transient (re-read the resource and retry with current state).
+Concurrent modification detected. The resource was modified by another request between read and write. This code does not cover a resource that was committed and then independently deleted or purged before the seller could durably record the canonical success response; use COMMITTED_RESOURCE_PURGED for that terminal outcome. Recovery: transient (re-read the resource and retry with current state).
 
 </Accordion>
 <a id="error-code-conflicting-selectors"></a>
@@ -723,7 +733,7 @@ The idempotency_key was seen previously but its cached response has been evicted
 
 **Suggested action:** wait top-level error.retry_after seconds and retry with the SAME idempotency_key — MUST NOT mint a fresh key (turns a safe retry into a double-execution race)
 
-A prior request with the same <code>{"idempotency_key"}</code> is still being processed and has not yet produced a cached response. The second request arrived before the first completed. Sellers MAY return this code instead of blocking the second caller until the first finishes — useful when the first call invokes a slow downstream system (SSP, ad server, payment provider). Distinct from IDEMPOTENCY_CONFLICT (different canonical payload — a client bug) and from CONFLICT (concurrent modification of a different resource) — IDEMPOTENCY_IN_FLIGHT is the seller telling the buyer 'your retry was correct but your previous attempt is still running, come back shortly.' Sellers SHOULD populate top-level <code>{"error.retry_after"}</code> with an integer-second wait hint based on the first request's elapsed time and expected completion. Buyers MUST treat this as transient and MUST NOT mint a fresh <code>{"idempotency_key"}</code> — minting a new key turns a safe retry into a double-execution race. Recovery: transient (wait <code>{"error.retry_after"}</code> seconds and retry with the same <code>{"idempotency_key"}</code>; the second attempt will either replay the now-cached response or, if still in flight, return IDEMPOTENCY_IN_FLIGHT again).
+A prior request with the same <code>{"idempotency_key"}</code> is either actively executing or has an unresolved outcome under fail-closed reconciliation, and has not yet produced a cached response or committed-outcome tombstone. Sellers MAY return this code instead of blocking the second caller while active execution or reconciliation finishes — useful when the first call invokes a slow or ambiguously responding downstream system (SSP, ad server, payment provider). Distinct from IDEMPOTENCY_CONFLICT (different canonical payload — a client bug) and from CONFLICT (concurrent modification of a different resource) — IDEMPOTENCY_IN_FLIGHT tells the buyer that its retry is correct but the prior attempt's outcome is not yet available. Sellers SHOULD populate top-level <code>{"error.retry_after"}</code> with an integer-second wait hint based on expected execution or reconciliation progress. Buyers MUST treat this as transient and MUST NOT mint a fresh <code>{"idempotency_key"}</code> — minting a new key turns a safe retry into a double-execution race. Recovery: transient (wait <code>{"error.retry_after"}</code> seconds and retry with the same <code>{"idempotency_key"}</code>; the next attempt will replay the resolved outcome, continue reconciliation, or return IDEMPOTENCY_IN_FLIGHT again).
 
 </Accordion>
 <a id="error-code-invalid-feed-format"></a>

@@ -40,6 +40,16 @@ const surfaces = [
     obligation: /SHOULD echo the prior unchanged value/,
   },
   {
+    label: "buy_products request",
+    field: load("media-buy/buy-products-request.json").properties.name,
+    obligation: /MUST persist it and echo it unchanged/,
+  },
+  {
+    label: "accept_proposal request",
+    field: load("media-buy/accept-proposal-request.json").properties.name,
+    obligation: /MUST persist it and echo it unchanged/,
+  },
+  {
     label: "create success",
     field: successProperties(
       "media-buy/create-media-buy-response.json",
@@ -54,6 +64,14 @@ const surfaces = [
       "UpdateMediaBuySuccess"
     ).name,
     obligation: /MUST return the stored value/,
+  },
+  {
+    label: "compact commitment success",
+    field: successProperties(
+      "media-buy/media-buy-commitment-response.json",
+      "Committed Media Buy"
+    ).name,
+    obligation: /MUST echo a buyer-supplied request name unchanged/,
   },
   {
     label: "get_media_buys item",
@@ -107,5 +125,24 @@ describe("media-buy name contract", () => {
         `${label} must distinguish the display label from identity and finance fields`
       );
     }
+  });
+
+  it("keeps compact names outside accepted commercial terms with explicit precedence", () => {
+    const buyProductsName = load("media-buy/buy-products-request.json").properties.name;
+    const acceptProposalName = load("media-buy/accept-proposal-request.json").properties.name;
+    const commitmentName = successProperties(
+      "media-buy/media-buy-commitment-response.json",
+      "Committed Media Buy"
+    ).name;
+
+    assert.match(buyProductsName.description, /outside accepted_proposal/);
+    assert.match(buyProductsName.description, /not covered by terms_digest/);
+    assert.match(acceptProposalName.description, /supplied, this value wins over proposal\.name/);
+    assert.match(acceptProposalName.description, /not covered by proposal_terms_digest or terms_digest/);
+    assert.match(acceptProposalName.description, /MAY seed the MediaBuy name from proposal\.name/);
+    assert.match(acceptProposalName.description, /MUST NOT silently truncate or otherwise rewrite it/);
+    assert.match(acceptProposalName.description, /seeded value counts as a name created through AdCP/);
+    assert.match(commitmentName.description, /outside accepted_proposal/);
+    assert.match(commitmentName.description, /not covered by terms_digest/);
   });
 });

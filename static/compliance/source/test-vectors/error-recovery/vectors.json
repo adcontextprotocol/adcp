@@ -1,6 +1,6 @@
 {
   "contract_version": "3.2",
-  "description": "Reference decisions for version-gated recovery emission, legacy decoding, buyer-reason consistency, bounded retries, and retry_after scheduling.",
+  "description": "Reference decisions for version-gated recovery emission, committed-outcome terminal handling, legacy decoding, buyer-reason consistency, bounded retries, and retry_after scheduling.",
   "vectors": [
     {
       "id": "known-code-with-recovery",
@@ -21,6 +21,26 @@
         "automatic_retry": true,
         "schedule": { "kind": "retry_after", "minimum_delay_seconds": 10 },
         "retry_budget": { "consumed": true, "next_retries_attempted": 1 }
+      }
+    },
+    {
+      "id": "committed-resource-purged-is-never-retried",
+      "negotiated_protocol_version": "3.2",
+      "error": {
+        "code": "COMMITTED_RESOURCE_PURGED",
+        "message": "The mutation committed, but the affected resource was purged before its canonical success response was recorded.",
+        "recovery": "terminal"
+      },
+      "retry_state": { "retries_attempted": 0, "max_retries": 3 },
+      "expected": {
+        "schema_valid": true,
+        "producer_conformant": true,
+        "code_known": true,
+        "effective_recovery": "terminal",
+        "action": "escalate",
+        "automatic_retry": false,
+        "schedule": null,
+        "retry_budget": { "consumed": false, "next_retries_attempted": 0 }
       }
     },
     {

@@ -24,6 +24,18 @@ const complianceStoryboards = [
   'static/compliance/source/universal/error-compliance.yaml',
   'static/compliance/source/universal/error-compliance-signals.yaml',
 ].map(relativePath => fs.readFileSync(path.join(ROOT, relativePath), 'utf8'));
+const securityGuide = fs.readFileSync(
+  path.join(ROOT, 'docs/building/by-layer/L1/security.mdx'),
+  'utf8',
+);
+const idempotencyStoryboard = fs.readFileSync(
+  path.join(ROOT, 'static/compliance/source/universal/idempotency.yaml'),
+  'utf8',
+);
+const controllerGuide = fs.readFileSync(
+  path.join(ROOT, 'docs/building/by-layer/L3/comply-test-controller.mdx'),
+  'utf8',
+);
 
 function is32(version) {
   return /^3\.2(?:$|[.-])/.test(version);
@@ -120,6 +132,36 @@ test('current 3.2 error-compliance storyboards require the canonical recovery vo
   }
 });
 
+test('committed resource purge is terminal and cannot free the idempotency key', () => {
+  assert.ok(errorCodes.enum.includes('COMMITTED_RESOURCE_PURGED'));
+  assert.equal(errorCodes.enumMetadata.COMMITTED_RESOURCE_PURGED.recovery, 'terminal');
+  assert.match(errorCodes.enumDescriptions.COMMITTED_RESOURCE_PURGED, /write stands/i);
+  assert.match(errorCodes.enumDescriptions.COMMITTED_RESOURCE_PURGED, /exact replays MUST return this terminal outcome/i);
+  assert.match(errorCodes.enumDescriptions.COMMITTED_RESOURCE_PURGED, /outside that requested mutation/i);
+  assert.match(securityGuide, /Resource deletion does not end the replay window/);
+  assert.match(securityGuide, /UNIQUE.*idempotency_key.*resource row alone does not satisfy/is);
+  assert.match(securityGuide, /unknown outcome is not proof of failure/);
+  assert.match(securityGuide, /MUST retain the durable claim/);
+  assert.match(securityGuide, /Lease expiry changes the claim to reconciliation-required; it never releases or evicts the claim/);
+  assert.doesNotMatch(securityGuide, /MUST release the row.*even if the downstream has not yet responded/);
+  assert.match(securityGuide, /MUST NOT use `CONFLICT` for this case/);
+  assert.match(idempotencyStoryboard, /scenario: force_media_buy_purge/);
+  assert.match(idempotencyStoryboard, /check: field_present\s+path: "previous_state"/);
+  assert.match(idempotencyStoryboard, /Replay after purge returns the historical success/);
+  assert.ok(
+    idempotencyStoryboard.indexOf('id: verify_media_buy_count')
+      < idempotencyStoryboard.indexOf('id: replay_after_resource_purge'),
+    'resource-count verification must run before the initial MediaBuy is purged',
+  );
+  assert.match(controllerGuide, /StateTransitionSuccess[^]*previous_state[^]*current_state: "purged"/);
+});
+
+test('in-flight recovery includes unresolved reconciliation without releasing the claim', () => {
+  assert.match(errorCodes.enumDescriptions.IDEMPOTENCY_IN_FLIGHT, /unresolved outcome under fail-closed reconciliation/);
+  assert.match(errorCodes.enumDescriptions.IDEMPOTENCY_IN_FLIGHT, /continue reconciliation/);
+  assert.match(securityGuide, /only proven pre-commit failures release their claims/);
+});
+
 test('error recovery reference vectors match the normative consumer decision table', () => {
   assert.equal(fixture.contract_version, '3.2');
   assert.ok(fixture.vectors.length >= 10);
@@ -133,6 +175,7 @@ test('vectors cover compatibility and scheduling boundaries required for 3.2 ado
   const ids = new Set(fixture.vectors.map(vector => vector.id));
   for (const id of [
     'known-code-with-recovery',
+    'committed-resource-purged-is-never-retried',
     'known-code-without-recovery-legacy',
     'unknown-code-with-recovery',
     'unknown-code-without-recovery-legacy',
