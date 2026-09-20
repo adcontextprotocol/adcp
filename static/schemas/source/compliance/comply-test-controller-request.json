@@ -356,7 +356,11 @@
                     "const": "completed"
                   },
                   "result": {
-                    "$ref": "/schemas/creative/get-creative-features-response.json#/oneOf/0"
+                    "type": "object",
+                    "required": [
+                      "evaluation_id",
+                      "results"
+                    ]
                   }
                 },
                 "required": [

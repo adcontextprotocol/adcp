@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative/get-creative-features-terminal-success.json",
+  "title": "GetCreativeFeaturesSuccess",
+  "type": "object",
+  "description": "Terminal success response. evaluation_id is the provider-side reconciliation identity allocated when the evaluation was accepted and remains stable across exact replays and asynchronous completion.",
+  "properties": {
+    "evaluation_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Provider-generated identity for this evaluation. Stable across exact response replays and, for async work, identical to the evaluation_id returned on the submitted acknowledgement. Used for result provenance, consumption and provider-cost reconciliation, and support; it is not an idempotency key or task identity.",
+      "x-entity": "creative_evaluation"
+    },
+    "results": {
+      "type": "array",
+      "description": "Feature values for the evaluated creative",
+      "items": {
+        "$ref": "/schemas/creative/creative-feature-result.json"
+      }
+    },
+    "detail_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the vendor's full assessment report. The vendor controls what information is disclosed and access control."
+    },
+    "audit_observations": {
+      "type": "array",
+      "description": "Non-blocking audit observations from the governance agent. Observations surface audit-worthy claims that are not verifier refutations and are not rejection grounds by themselves.",
+      "items": {
+        "$ref": "/schemas/creative/audit-observation.json"
+      }
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Which rate card pricing option was applied for this evaluation. Present when the governance agent charges for evaluations and account was provided in the request.",
+      "x-entity": "vendor_pricing_option"
+    },
+    "vendor_cost": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Cost incurred for this evaluation, denominated in currency."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency code for vendor_cost."
+    },
+    "consumption": {
+      "$ref": "/schemas/core/creative-consumption.json",
+      "description": "Structured consumption details for this evaluation. Informational — lets the buyer verify that vendor_cost is consistent with the rate card. vendor_cost is the billing source of truth."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "evaluation_id",
+    "results"
+  ],
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      { "required": ["errors"] },
+      {
+        "properties": { "status": { "const": "submitted" } },
+        "required": ["status"]
+      }
+    ]
+  }
+}

@@ -18,7 +18,7 @@
     },
     {
       "title": "GetCreativeFeaturesCompletion",
-      "$ref": "/schemas/creative/get-creative-features-response.json#/oneOf/0"
+      "$ref": "/schemas/compliance/get-creative-features-completion.json"
     }
   ]
 }

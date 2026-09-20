@@ -100,18 +100,24 @@ describe('get_creative_features retry and reconciliation contract', () => {
   });
 
   it('keeps success, error, and submitted arms mutually exclusive', () => {
-    assert.deepEqual(
-      response.oneOf.map((arm) => arm.title),
-      ['GetCreativeFeaturesSuccess', 'GetCreativeFeaturesError', 'GetCreativeFeaturesSubmitted']
+    const terminalSuccess = readSchema('creative/get-creative-features-terminal-success.json');
+    assert.equal(
+      response.oneOf[0].$ref,
+      '/schemas/creative/get-creative-features-terminal-success.json'
     );
-    assert.ok(response.oneOf.every((arm) => arm.not));
+    assert.deepEqual(
+      response.oneOf.slice(1).map((arm) => arm.title),
+      ['GetCreativeFeaturesError', 'GetCreativeFeaturesSubmitted']
+    );
+    assert.ok(terminalSuccess.not);
+    assert.ok(response.oneOf.slice(1).every((arm) => arm.not));
   });
 
   it('allows deterministic synchronous and asynchronous creative-feature results', () => {
     const completion = readSchema('compliance/task-completion-data.json');
     assert.ok(completion.anyOf.some((arm) => (
       arm.title === 'GetCreativeFeaturesCompletion'
-      && arm.$ref === '/schemas/creative/get-creative-features-response.json#/oneOf/0'
+      && arm.$ref === '/schemas/compliance/get-creative-features-completion.json'
     )));
 
     const controller = readSchema('compliance/comply-test-controller-request.json');
@@ -128,9 +134,9 @@ describe('get_creative_features retry and reconciliation contract', () => {
       'arm',
       'result'
     ]);
-    assert.equal(
-      forcedArm.then.properties.params.oneOf[1].properties.result.$ref,
-      '/schemas/creative/get-creative-features-response.json#/oneOf/0'
+    assert.deepEqual(
+      forcedArm.then.properties.params.oneOf[1].properties.result.required,
+      ['evaluation_id', 'results']
     );
 
     const asyncData = readSchema('core/async-response-data.json');
