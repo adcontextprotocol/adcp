@@ -159,7 +159,7 @@ describe.each([
     expect(mocks.loadSealedSession).not.toHaveBeenCalled();
   });
 
-  it('rejects a user-owned key without inferring organization authority', async () => {
+  it('uses the exact organization scope WorkOS returns for a user-owned key', async () => {
     const owner = { type: 'user', id: 'user_linked', organizationId: 'org_a' };
     mocks.createValidation.mockResolvedValue({ apiKey: { ...tenantKey().apiKey, owner } });
     const req = makeRequest();
@@ -168,9 +168,11 @@ describe.each([
 
     await authenticate(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
-    expect(mocks.resolveEffectiveMembership).not.toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.apiKey).toMatchObject({ id: 'key_a', organizationId: 'org_a' });
+    expect(req.user?.id).toBe('api_key_key_a');
+    expect(mocks.resolveEffectiveMembership).toHaveBeenCalledWith('org_a');
   });
 
   it.each([
@@ -201,6 +203,7 @@ describe.each([
     { owner: { id: 'org_a' } },
     { owner: null },
     { owner: { type: 'organization', id: '' } },
+    { owner: { type: 'user', id: 'user_linked', organizationId: '' } },
     { id: '' },
     { permissions: undefined },
     { permissions: ['admin:*', null] },

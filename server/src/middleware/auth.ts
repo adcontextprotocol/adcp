@@ -282,7 +282,7 @@ class ApiKeyAuthorizationUnavailableError extends Error {
 
 /**
  * Validate a WorkOS API key from the Authorization header
- * Returns an organization-owned key or null if invalid/unsupported.
+ * Returns a key with an exact WorkOS organization scope or null if invalid.
  * Provider failures throw: unavailable validation is not evidence of invalidity.
  * Deliberately uncached so revoke/rotation is checked for every request.
  */
@@ -302,13 +302,16 @@ export async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKe
   if (result.apiKey === null) return null;
 
   const apiKey = result.apiKey;
-  // Only organization-owned keys are issued by this application. User-owned
-  // keys require their own exact-credential authorization policy.
-  if (apiKey?.owner?.type === 'user') return null;
+  const organizationId = apiKey?.owner?.type === 'organization'
+    ? apiKey.owner.id
+    : apiKey?.owner?.type === 'user'
+      ? apiKey.owner.organizationId
+      : null;
   if (
-    !apiKey?.owner || apiKey.owner.type !== 'organization' ||
+    !apiKey?.owner || !['organization', 'user'].includes(apiKey.owner.type) ||
     typeof apiKey.id !== 'string' || !apiKey.id ||
     typeof apiKey.owner.id !== 'string' || !apiKey.owner.id ||
+    typeof organizationId !== 'string' || !organizationId ||
     typeof apiKey.name !== 'string' ||
     !Array.isArray(apiKey.permissions) ||
     !apiKey.permissions.every((permission) => typeof permission === 'string')
@@ -318,7 +321,7 @@ export async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKe
 
   return {
     id: apiKey.id,
-    organizationId: apiKey.owner.id,
+    organizationId,
     name: apiKey.name,
     permissions: [...apiKey.permissions],
   };

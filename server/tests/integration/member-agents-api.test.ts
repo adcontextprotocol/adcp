@@ -82,6 +82,15 @@ describe('Per-agent REST API (/api/me/agents)', () => {
         firstName: 'Test',
         lastName: 'User',
       };
+      const apiKeyOrg = req.get('x-test-api-key-org');
+      if (apiKeyOrg) {
+        (req as any).apiKey = {
+          id: 'key_registry_automation',
+          organizationId: apiKeyOrg,
+          name: 'Registry Automation',
+          permissions: [],
+        };
+      }
       next();
     });
 
@@ -273,6 +282,42 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     expect(res.body.agents[0].url).toBe('https://existing.example.test/mcp');
   });
 
+  it('GET uses the organization bound to an API key without requiring ?org=', async () => {
+    const orgId = `${TEST_PREFIX}_api_key_get`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await createProfile(orgId, 'api-key-get');
+
+    const res = await request(app)
+      .get('/api/me/agents')
+      .set('x-test-api-key-org', orgId);
+
+    expect(res.status).toBe(200);
+    expect(res.body.agents[0].url).toBe('https://existing.example.test/mcp');
+  });
+
+  it('returns a client-facing conflict when an API key organization is absent locally', async () => {
+    const res = await request(app)
+      .get('/api/me/agents')
+      .set('x-test-api-key-org', `${TEST_PREFIX}_missing`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('api_key_organization_not_provisioned');
+    expect(res.body.message).toContain('do not create another one');
+  });
+
+  it('rejects an API-key organization selector mismatch', async () => {
+    const orgId = `${TEST_PREFIX}_api_key_scope`;
+    await seedOrg(pool, orgId, 'individual_professional');
+
+    const res = await request(app)
+      .get('/api/me/agents')
+      .query({ org: `${TEST_PREFIX}_other` })
+      .set('x-test-api-key-org', orgId);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('organization_selection_conflict');
+  });
+
   it('POST creates a new agent (201) and is idempotent on url (200 update)', async () => {
     const orgId = `${TEST_PREFIX}_post`;
     const userId = `${TEST_PREFIX}_post_user`;
@@ -297,6 +342,25 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     const profile = await memberDb.getProfileByOrgId(orgId);
     const matching = profile!.agents.filter((a) => a.url === 'https://new.example.test/mcp');
     expect(matching).toHaveLength(1);
+  });
+
+  it('POST uses the API-key organization and does not attempt human membership resolution', async () => {
+    const orgId = `${TEST_PREFIX}_api_key_post`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await createProfile(orgId, 'api-key-post');
+
+    const res = await request(app)
+      .post('/api/me/agents')
+      .set('x-test-api-key-org', orgId)
+      .send({
+        url: 'https://automation.example.test/mcp',
+        name: 'Automation',
+        type: 'sales',
+        visibility: 'private',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.agent.url).toBe('https://automation.example.test/mcp');
   });
 
   it('POST returns 400 when url is missing or invalid', async () => {
