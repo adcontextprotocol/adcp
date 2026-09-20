@@ -107,6 +107,21 @@ export interface AdminModuleCompletion {
   created_at: string;
 }
 
+export interface AdminAttemptResolution {
+  id: string;
+  attempt_id: string | null;
+  workos_user_id: string;
+  module_id: string | null;
+  admin_user_id: string;
+  action: 'complete' | 'cancel';
+  status_before: 'in_progress';
+  status_after: 'passed' | 'failed';
+  score: Record<string, number | boolean | string> | null;
+  reason: string;
+  teaching_checkpoint_id: string | null;
+  created_at: string;
+}
+
 export interface CertificationAttempt {
   id: string;
   workos_user_id: string;
@@ -115,7 +130,7 @@ export interface CertificationAttempt {
   status: 'in_progress' | 'passed' | 'failed';
   started_at: string;
   completed_at: string | null;
-  scores: Record<string, number | boolean> | null;
+  scores: Record<string, number | boolean | string> | null;
   overall_score: number | null;
   passing: boolean | null;
   addie_thread_id: string | null;
@@ -721,6 +736,100 @@ export async function adminCompleteAttempt(
   }
   logger.info({ attemptId, status, overallScore, reason }, 'Administratively completed certification attempt');
   return result.rows[0];
+}
+
+/**
+ * Exactly-once attempt transition used by the audited admin route. The state
+ * change and append-only provenance row commit together under a row lock.
+ */
+export async function adminResolveAttempt(input: {
+  attemptId: string;
+  action: 'complete' | 'cancel';
+  adminUserId: string;
+  reason: string;
+  scores?: Record<string, number>;
+  overallScore?: number;
+  passing?: boolean;
+  moduleId?: string;
+  teachingCheckpointId?: string | null;
+}): Promise<{ attempt: CertificationAttempt; audit: AdminAttemptResolution }> {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const beforeResult = await client.query<CertificationAttempt>(
+      `SELECT * FROM certification_attempts WHERE id = $1 FOR UPDATE`,
+      [input.attemptId],
+    );
+    const before = beforeResult.rows[0];
+    if (!before || before.status !== 'in_progress') {
+      throw new Error(`Attempt ${input.attemptId} not found or not in_progress`);
+    }
+
+    const completed = input.action === 'complete';
+    if (completed && (!input.scores || input.overallScore === undefined || input.passing === undefined)) {
+      throw new Error('Scores, overallScore, and passing are required to complete an attempt');
+    }
+    const status = completed && input.passing ? 'passed' : 'failed';
+    const score = completed
+      ? { ...input.scores, _admin_completed: true, _reason: input.reason }
+      : { _admin_cancelled: true, _reason: input.reason };
+    const updateResult = await client.query<CertificationAttempt>(
+      `UPDATE certification_attempts
+       SET status = $2,
+           completed_at = NOW(),
+           scores = $3,
+           overall_score = $4,
+           passing = $5,
+           module_id = COALESCE(module_id, $6)
+       WHERE id = $1 AND status = 'in_progress'
+       RETURNING *`,
+      [
+        input.attemptId,
+        status,
+        JSON.stringify(score),
+        completed ? input.overallScore : null,
+        completed ? input.passing : false,
+        input.moduleId ?? null,
+      ],
+    );
+    const attempt = updateResult.rows[0];
+    if (!attempt) {
+      throw new Error(`Attempt ${input.attemptId} not found or not in_progress`);
+    }
+
+    const auditResult = await client.query<AdminAttemptResolution>(
+      `INSERT INTO admin_attempt_resolutions (
+         attempt_id, workos_user_id, module_id, admin_user_id, action,
+         status_before, status_after, score, reason, teaching_checkpoint_id
+       ) VALUES ($1, $2, $3, $4, $5, 'in_progress', $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        attempt.id,
+        attempt.workos_user_id,
+        attempt.module_id,
+        input.adminUserId,
+        input.action,
+        attempt.status,
+        JSON.stringify(score),
+        input.reason,
+        input.teachingCheckpointId ?? null,
+      ],
+    );
+    const audit = auditResult.rows[0];
+    if (!audit) throw new Error(`Failed to audit attempt resolution ${input.attemptId}`);
+
+    await client.query('COMMIT');
+    logger.info(
+      { attemptId: attempt.id, action: input.action, status, auditId: audit.id },
+      'Audited administrative certification attempt resolution',
+    );
+    return { attempt, audit };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 // =====================================================
@@ -1719,6 +1828,23 @@ export async function getLatestCheckpoint(
      WHERE workos_user_id = $1 AND module_id = $2
      ORDER BY created_at DESC LIMIT 1`,
     [userId, moduleId]
+  );
+  return result.rows[0] || null;
+}
+
+export async function getTeachingCheckpointForAttempt(input: {
+  checkpointId: string;
+  userId: string;
+  moduleId: string;
+  threadId: string;
+}): Promise<TeachingCheckpoint | null> {
+  const result = await query<TeachingCheckpoint>(
+    `SELECT * FROM teaching_checkpoints
+     WHERE id = $1
+       AND workos_user_id = $2
+       AND module_id = $3
+       AND thread_id = $4`,
+    [input.checkpointId, input.userId, input.moduleId, input.threadId],
   );
   return result.rows[0] || null;
 }

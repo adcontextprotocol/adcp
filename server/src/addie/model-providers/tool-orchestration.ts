@@ -7,7 +7,11 @@ import {
   type FileReadResult,
 } from '../mcp/url-tools.js';
 import { ToolError } from '../tool-error.js';
-import { isSideEffectTool, sideEffectReplayKey } from '../side-effect-claims.js';
+import {
+  hasDurableHandlerOutcome,
+  isSideEffectTool,
+  sideEffectReplayKey,
+} from '../side-effect-claims.js';
 import { githubIssueReceiptFromHandlerResult, type GithubIssueCreationReceipt } from '../github-issue-receipt.js';
 import {
   isToolResultError,
@@ -73,6 +77,8 @@ export interface ToolExecution {
   sequence: number;
   blocked_by_policy?: true;
   normalized_result?: ToolResultPresentation;
+  /** A normal return from an allowlisted local mutation handler settled its reservation. */
+  durable_outcome?: 'known';
   /** Present only when the application handler produced a verified GitHub receipt. */
   github_issue_receipt?: GithubIssueCreationReceipt;
 }
@@ -802,6 +808,7 @@ export function createAddieToolExecutor(
             duration_ms: durationMs,
             sequence,
             normalized_result: presentation,
+            ...(hasDurableHandlerOutcome(call.name) && { durable_outcome: 'known' as const }),
           },
         };
       }
@@ -855,6 +862,7 @@ export function createAddieToolExecutor(
           duration_ms: durationMs,
           sequence,
           normalized_result: presentation,
+          ...(hasDurableHandlerOutcome(call.name) && { durable_outcome: 'known' as const }),
           ...(githubIssueReceipt && { github_issue_receipt: githubIssueReceipt }),
         },
       };

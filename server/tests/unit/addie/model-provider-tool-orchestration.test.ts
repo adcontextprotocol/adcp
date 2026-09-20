@@ -18,6 +18,7 @@ import {
   recordProviderToolResults,
 } from '../../../src/addie/model-providers/tool-orchestration.js';
 import { githubIssueCreatedResult } from '../../../src/addie/github-issue-receipt.js';
+import { ToolError } from '../../../src/addie/tool-error.js';
 import type { AddieTool } from '../../../src/addie/types.js';
 
 const notifyToolError = vi.hoisted(() => vi.fn());
@@ -157,6 +158,50 @@ describe('createAddieToolExecutor', () => {
     expect(reserveSideEffect).toHaveBeenCalledWith({ toolName: 'create_github_issue', parameters: { id: 'abc' } });
     expect(handler).not.toHaveBeenCalled();
     expect(result.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
+  });
+
+  it('marks a normally returned certification gate rejection as a known durable outcome', async () => {
+    const certificationTool: AddieTool = { ...tool, name: 'complete_certification_module' };
+    const handler = vi.fn().mockResolvedValue(
+      'NOT COMPLETED: Module C3 — missing required demonstration evidence.',
+    );
+    const execute = createAddieToolExecutor(
+      [certificationTool],
+      new Map([['complete_certification_module', handler]]),
+      {
+        executionMode: 'production',
+        policy: () => ({ allowed: true }),
+        reserveSideEffect: vi.fn().mockResolvedValue(undefined),
+      },
+    );
+
+    const result = await execute({ ...call(), name: 'complete_certification_module' }, 1);
+
+    expect(result.execution).toMatchObject({
+      is_error: true,
+      durable_outcome: 'known',
+      normalized_result: { status: 'error' },
+    });
+  });
+
+  it('leaves a thrown certification handler outcome unknown', async () => {
+    const certificationTool: AddieTool = { ...tool, name: 'complete_certification_module' };
+    const execute = createAddieToolExecutor(
+      [certificationTool],
+      new Map([['complete_certification_module', async () => {
+        throw new ToolError('Database connection was interrupted.');
+      }]]),
+      {
+        executionMode: 'production',
+        policy: () => ({ allowed: true }),
+        reserveSideEffect: vi.fn().mockResolvedValue(undefined),
+      },
+    );
+
+    const result = await execute({ ...call(), name: 'complete_certification_module' }, 1);
+
+    expect(result.execution).toMatchObject({ is_error: true });
+    expect(result.execution.durable_outcome).toBeUndefined();
   });
 
   it('rejects structurally malformed provider input before policy or handler dispatch', async () => {

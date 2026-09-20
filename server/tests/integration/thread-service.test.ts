@@ -286,6 +286,103 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       })).rejects.toThrow('unknown prior outcome');
     });
 
+    it('settles a certification reservation after a known negative handler outcome', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-known-certification-gate`,
+        user_type: 'anonymous',
+      });
+      const parameters = { module_id: 'C3', scores: { protocol_fluency: 87 } };
+      const reservation = {
+        name: 'complete_certification_module',
+        input: parameters,
+        result: 'External action dispatch reserved; outcome unknown.',
+        is_error: true,
+      };
+
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: reservation.name, input: parameters },
+      });
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          ...reservation,
+          result: 'NOT COMPLETED: Module C3 — missing evidence.',
+          is_error: true,
+          result_status: 'error',
+          durable_outcome: 'known',
+        }],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+      });
+
+      await expect(threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: reservation.name, input: parameters },
+      })).resolves.toBeDefined();
+    });
+
+    it('does not trust a known-outcome marker for an unallowlisted mutation', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-untrusted-known-outcome`,
+        user_type: 'anonymous',
+      });
+      const parameters = { title: 'Review', attendees: ['member@example.test'] };
+      const reservation = {
+        name: 'schedule_meeting',
+        input: parameters,
+        result: 'External action dispatch reserved; outcome unknown.',
+        is_error: true,
+      };
+
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: reservation.name, input: parameters },
+      });
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          ...reservation,
+          result: 'Calendar provider unavailable',
+          result_status: 'error',
+          durable_outcome: 'known',
+        }],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+      });
+
+      await expect(threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: reservation.name, input: parameters },
+      })).rejects.toThrow('unknown prior outcome');
+    });
+
     it('does not settle a GitHub creation reservation from a receiptless ok result', async () => {
       const thread = await threadService.getOrCreateThread({
         channel: 'web',

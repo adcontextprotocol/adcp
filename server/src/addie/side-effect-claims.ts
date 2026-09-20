@@ -32,6 +32,30 @@ export const SIDE_EFFECT_TOOL_NAMES = new Set<string>([
   'resolve_escalation', 'register_event_interest',
 ]);
 
+/**
+ * Mutations whose handlers are authoritative for the whole durable outcome.
+ *
+ * These certification handlers perform their writes in the local database and
+ * return explicit gate rejections before any write. A normal handler return is
+ * therefore a definitive outcome even when the normalized result is an error
+ * such as `NOT COMPLETED`. Unexpected throws and process crashes deliberately
+ * remain unknown and require reconciliation.
+ */
+export const DURABLE_HANDLER_OUTCOME_TOOLS = [
+  'checkpoint_teaching_progress',
+  'complete_certification_exam',
+  'complete_certification_module',
+  'start_certification_exam',
+  'start_certification_module',
+  'test_out_modules',
+] as const;
+
+const DURABLE_HANDLER_OUTCOME_TOOL_NAMES = new Set<string>(DURABLE_HANDLER_OUTCOME_TOOLS);
+
+export function hasDurableHandlerOutcome(toolName: string): boolean {
+  return DURABLE_HANDLER_OUTCOME_TOOL_NAMES.has(toolName);
+}
+
 export function isSideEffectTool(toolName: string): boolean {
   // Old tool definitions are not universally annotated with replaySafety.
   // This conservative fallback protects dispatch/replay only; it never
