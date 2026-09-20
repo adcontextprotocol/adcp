@@ -38,6 +38,13 @@
           "type": ["string", "null"],
           "format": "date-time"
         },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "\\S",
+          "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. The seller MUST return the stored value: the name supplied on the request, or the proposal-seeded name when the request omitted one. Absent when the media buy was created without a name. Operational metadata outside the accepted commercial terms and terms_digest — not an identifier or financial reference."
+        },
         "accepted_proposal": {
           "allOf": [
             { "$ref": "/schemas/core/canonical-proposal.json" },

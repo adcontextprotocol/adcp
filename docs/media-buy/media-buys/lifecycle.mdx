@@ -84,6 +84,11 @@ purchase. Direct compact purchase derives reporting commitments from published
 terms; an exact set is lossless only when it is already captured by the
 proposal being accepted.
 
+The `name` display label is not in this lossy list: `buy_products` and
+`accept_proposal` both accept and persist it on the same terms as
+`create_media_buy`, and it is always readable afterward through
+`get_media_buys`.
+
 ## State machine
 
 ### Media buy states

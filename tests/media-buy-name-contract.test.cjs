@@ -61,6 +61,24 @@ const surfaces = [
       .items.properties.name,
     obligation: /MUST include name/,
   },
+  {
+    label: "buy_products request",
+    field: load("media-buy/buy-products-request.json").properties.name,
+    obligation: /MUST persist it and echo it unchanged/,
+  },
+  {
+    label: "accept_proposal request",
+    field: load("media-buy/accept-proposal-request.json").properties.name,
+    obligation: /MUST persist it and echo it unchanged/,
+  },
+  {
+    label: "media buy commitment response",
+    field: successProperties(
+      "media-buy/media-buy-commitment-response.json",
+      "Committed Media Buy"
+    ).name,
+    obligation: /MUST return the stored value/,
+  },
 ];
 
 describe("media-buy name contract", () => {
@@ -107,5 +125,20 @@ describe("media-buy name contract", () => {
         `${label} must distinguish the display label from identity and finance fields`
       );
     }
+  });
+
+  it("scopes accept_proposal's name outside the terms digest and states proposal-seeding precedence", () => {
+    const field = load("media-buy/accept-proposal-request.json").properties
+      .name;
+    assert.match(
+      field.description,
+      /not a covered component of proposal_terms_digest/,
+      "accept_proposal name must be explicitly excluded from the terms digest"
+    );
+    assert.match(
+      field.description,
+      /sellers MAY seed the MediaBuy name from the accepted proposal's own name/,
+      "accept_proposal name must state the proposal-seeded fallback"
+    );
   });
 });

@@ -72,6 +72,13 @@
       "required": ["io_id", "accepted_at", "signatory"],
       "additionalProperties": false
     },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "\\S",
+      "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication; not a covered component of proposal_terms_digest. When supplied, this request value wins and the seller MUST persist it and echo it unchanged on the response and subsequent get_media_buys reads. When absent, sellers MAY seed the MediaBuy name from the accepted proposal's own name (bounded to this field's 255-character limit) and MUST then report it on read surfaces like any persisted name. This display label is not an identifier or financial reference."
+    },
     "purchase_order_ref": {
       "type": "string",
       "minLength": 1,
