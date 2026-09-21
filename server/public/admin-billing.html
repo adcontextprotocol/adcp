@@ -338,6 +338,45 @@
       padding: var(--space-1) var(--space-2);
       font-size: var(--text-xs);
     }
+    .customer-search-controls {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) minmax(190px, auto) auto auto;
+      gap: var(--space-2);
+      align-items: center;
+      margin-bottom: var(--space-3);
+    }
+    .customer-search-controls input,
+    .customer-search-controls select {
+      min-height: 38px;
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-surface);
+      color: var(--color-text);
+    }
+    .customer-pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-3);
+      margin-top: var(--space-3);
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+    }
+    .customer-pagination-actions {
+      display: flex;
+      gap: var(--space-2);
+    }
+    .customer-empty {
+      padding: var(--space-5);
+      text-align: center;
+      color: var(--color-text-muted);
+    }
+    @media (max-width: 760px) {
+      .customer-search-controls {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -352,19 +391,19 @@
 
     <div class="stats-row" id="stats-row">
       <div class="stat-card">
-        <div class="stat-label">Total Customers</div>
+        <div class="stat-label">Customers on page</div>
         <div class="stat-value" id="stat-total">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Linked</div>
+        <div class="stat-label">Linked on Page</div>
         <div class="stat-value success" id="stat-linked">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Unlinked</div>
+        <div class="stat-label">Unlinked on Page</div>
         <div class="stat-value" id="stat-unlinked">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Unlinked with Payments</div>
+        <div class="stat-label">Unlinked with Payments on Page</div>
         <div class="stat-value warning" id="stat-unlinked-payments">-</div>
       </div>
       <div class="stat-card" id="conflicts-stat-card" style="display: none;">
@@ -434,11 +473,31 @@
         <button class="btn btn-secondary" onclick="loadCustomers()">Refresh</button>
       </div>
 
-      <div class="filter-toggle">
-        <button class="filter-btn active" data-filter="all" onclick="setFilter('all', this)">All</button>
-        <button class="filter-btn" data-filter="unlinked" onclick="setFilter('unlinked', this)">Unlinked Only</button>
-        <button class="filter-btn" data-filter="unlinked-payments" onclick="setFilter('unlinked-payments', this)">Unlinked with Payments</button>
-      </div>
+      <form class="customer-search-controls" id="customer-search-form">
+        <label class="sr-only" for="customer-search">Search customers</label>
+        <input id="customer-search" type="search" maxlength="100"
+               placeholder="Organization, contact email, or cus_…" autocomplete="off" />
+        <label class="sr-only" for="customer-status">Billing or subscription status</label>
+        <select id="customer-status">
+          <option value="all">All statuses</option>
+          <option value="linked">Linked</option>
+          <option value="unlinked">Unlinked</option>
+          <option value="unlinked-payments">Unlinked with payments</option>
+          <option value="paid">Has paid invoices</option>
+          <option value="open">Has open invoices</option>
+          <option value="active">Active subscription</option>
+          <option value="trialing">Trialing subscription</option>
+          <option value="past_due">Past-due subscription</option>
+          <option value="canceled">Canceled subscription</option>
+          <option value="unpaid">Unpaid subscription</option>
+          <option value="paused">Paused subscription</option>
+          <option value="incomplete">Incomplete subscription</option>
+          <option value="incomplete_expired">Expired incomplete subscription</option>
+          <option value="none">No subscription</option>
+        </select>
+        <button class="btn btn-primary" type="submit">Search</button>
+        <button class="btn btn-secondary" type="button" id="customer-search-clear">Clear</button>
+      </form>
 
       <div id="loading" class="loading">
         <div class="loading-spinner"></div>
@@ -459,6 +518,16 @@
         <tbody id="customers-body">
         </tbody>
       </table>
+      <div class="customer-empty" id="customers-empty" style="display: none;">
+        No Stripe customers match these filters.
+      </div>
+      <div class="customer-pagination" id="customer-pagination" style="display: none;">
+        <span id="customer-page-summary" aria-live="polite"></span>
+        <div class="customer-pagination-actions">
+          <button class="btn btn-secondary" type="button" id="customer-page-previous">Previous</button>
+          <button class="btn btn-secondary" type="button" id="customer-page-next">Next</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -466,7 +535,13 @@
     let allCustomers = [];
     let allConflicts = [];
     let allMismatches = [];
-    let currentFilter = 'all';
+    const initialCustomerParams = new URLSearchParams(window.location.search);
+    let customerQuery = initialCustomerParams.get('q') || '';
+    let currentFilter = initialCustomerParams.get('status') || 'all';
+    let currentCustomerCursor = null;
+    let nextCustomerCursor = null;
+    let customerCursorHistory = [];
+    let customerPage = { count: 0, total: null, has_more: false, next_cursor: null };
 
     const formatCurrency = (cents) => {
       return new Intl.NumberFormat('en-US', {
@@ -506,24 +581,26 @@
     function setFilter(filter, btn) {
       currentFilter = filter;
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderCustomers();
+      if (btn) btn.classList.add('active');
+      document.getElementById('customer-status').value = filter;
+      resetCustomerPaging();
+      loadCustomers();
     }
 
     function getFilteredCustomers() {
-      switch (currentFilter) {
-        case 'unlinked':
-          return allCustomers.filter(c => !c.linked_org);
-        case 'unlinked-payments':
-          return allCustomers.filter(c => !c.linked_org && c.total_paid > 0);
-        default:
-          return allCustomers;
-      }
+      return allCustomers;
     }
 
     function renderCustomers() {
       const tbody = document.getElementById('customers-body');
       const customers = getFilteredCustomers();
+      const empty = document.getElementById('customers-empty');
+
+      empty.textContent = customerPage.has_more
+        ? 'No matching Stripe customers on this page. Try the next page or adjust the filters.'
+        : 'No Stripe customers match these filters.';
+      empty.style.display = customers.length === 0 ? 'block' : 'none';
+      document.getElementById('customers-table').style.display = customers.length === 0 ? 'none' : 'table';
 
       tbody.innerHTML = customers.map(customer => {
         const isLinked = !!customer.linked_org;
@@ -764,12 +841,11 @@
     }
 
     function updateStats() {
-      const total = allCustomers.length;
       const linked = allCustomers.filter(c => c.linked_org).length;
-      const unlinked = total - linked;
+      const unlinked = allCustomers.length - linked;
       const unlinkedWithPayments = allCustomers.filter(c => !c.linked_org && c.total_paid > 0).length;
 
-      document.getElementById('stat-total').textContent = total;
+      document.getElementById('stat-total').textContent = customerPage.count;
       document.getElementById('stat-linked').textContent = linked;
       document.getElementById('stat-unlinked').textContent = unlinked;
       document.getElementById('stat-unlinked-payments').textContent = unlinkedWithPayments;
@@ -1192,12 +1268,49 @@
       }
     }
 
+    function resetCustomerPaging() {
+      currentCustomerCursor = null;
+      nextCustomerCursor = null;
+      customerCursorHistory = [];
+    }
+
+    function syncCustomerFiltersToUrl() {
+      const url = new URL(window.location.href);
+      if (customerQuery) url.searchParams.set('q', customerQuery);
+      else url.searchParams.delete('q');
+      if (currentFilter !== 'all') url.searchParams.set('status', currentFilter);
+      else url.searchParams.delete('status');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+
+    function renderCustomerPagination() {
+      const pagination = document.getElementById('customer-pagination');
+      const summary = document.getElementById('customer-page-summary');
+      const previous = document.getElementById('customer-page-previous');
+      const next = document.getElementById('customer-page-next');
+      const totalText = customerPage.total === null ? '' : ` of ${customerPage.total}`;
+
+      summary.textContent = `Showing ${customerPage.count}${totalText} customer${customerPage.count === 1 ? '' : 's'}`;
+      previous.disabled = customerCursorHistory.length === 0;
+      next.disabled = !customerPage.has_more || !nextCustomerCursor;
+      pagination.style.display = 'flex';
+    }
+
     async function loadCustomers() {
-      document.getElementById('loading').style.display = 'block';
+      const loading = document.getElementById('loading');
+      loading.innerHTML = '<div class="loading-spinner"></div><p>Loading Stripe customers...</p>';
+      loading.style.display = 'block';
       document.getElementById('customers-table').style.display = 'none';
+      document.getElementById('customers-empty').style.display = 'none';
+      document.getElementById('customer-pagination').style.display = 'none';
+
+      syncCustomerFiltersToUrl();
+      const params = new URLSearchParams({ limit: '25', status: currentFilter });
+      if (customerQuery) params.set('q', customerQuery);
+      if (currentCustomerCursor) params.set('cursor', currentCustomerCursor);
 
       try {
-        const response = await fetch('/api/admin/stripe-customers');
+        const response = await fetch(`/api/admin/stripe-customers?${params}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -1205,15 +1318,60 @@
         }
 
         allCustomers = data.customers;
+        customerPage = data.pagination;
+        nextCustomerCursor = data.pagination.next_cursor;
         updateStats();
         renderCustomers();
+        renderCustomerPagination();
 
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('customers-table').style.display = 'table';
+        loading.style.display = 'none';
       } catch (err) {
-        document.getElementById('loading').innerHTML = `<p style="color: var(--color-error-600);">Error: ${err.message}</p>`;
+        loading.innerHTML = `<p style="color: var(--color-error-600);">Error: ${escapeHtml(err.message)}</p>`;
       }
     }
+
+    const customerStatus = document.getElementById('customer-status');
+    if (![...customerStatus.options].some(option => option.value === currentFilter)) {
+      currentFilter = 'all';
+    }
+    document.getElementById('customer-search').value = customerQuery;
+    customerStatus.value = currentFilter;
+
+    document.getElementById('customer-search-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      customerQuery = document.getElementById('customer-search').value.trim();
+      currentFilter = customerStatus.value;
+      resetCustomerPaging();
+      loadCustomers();
+    });
+
+    customerStatus.addEventListener('change', () => {
+      currentFilter = customerStatus.value;
+      resetCustomerPaging();
+      loadCustomers();
+    });
+
+    document.getElementById('customer-search-clear').addEventListener('click', () => {
+      customerQuery = '';
+      currentFilter = 'all';
+      document.getElementById('customer-search').value = '';
+      customerStatus.value = 'all';
+      resetCustomerPaging();
+      loadCustomers();
+    });
+
+    document.getElementById('customer-page-previous').addEventListener('click', () => {
+      if (customerCursorHistory.length === 0) return;
+      currentCustomerCursor = customerCursorHistory.pop() || null;
+      loadCustomers();
+    });
+
+    document.getElementById('customer-page-next').addEventListener('click', () => {
+      if (!nextCustomerCursor) return;
+      customerCursorHistory.push(currentCustomerCursor);
+      currentCustomerCursor = nextCustomerCursor;
+      loadCustomers();
+    });
 
     // Close dropdowns when clicking outside
     document.addEventListener('click', (e) => {
