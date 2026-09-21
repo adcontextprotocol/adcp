@@ -37,9 +37,6 @@ narrative: |
   required scenarios that run alongside this storyboard. See requires_scenarios for the
   full set of seller behaviors validated.
 
-context:
-  governance_agent_url: "https://test-agent.adcontextprotocol.org"
-
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -178,7 +175,8 @@ phases:
           accounts:
             - brand:
                 domain: "acmeoutdoor.example"
-              operator: "pinnacle-agency.example"
+              operator: "media-buy-lifecycle.pinnacle-agency.example"
+              sandbox: true
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_account_setup_sync_accounts"
@@ -202,57 +200,6 @@ phases:
             value: "media_buy_seller--sync_accounts"
             description: "Context correlation_id returned unchanged"
 
-  - id: governance_setup
-    title: "Governance agent registration"
-    narrative: |
-      The buyer registers their governance agent with your platform. This tells your
-      platform where to call check_governance before confirming media buys.
-
-    steps:
-      - id: sync_governance
-        title: "Register governance agents"
-        narrative: |
-          The buyer tells your platform: "Before you confirm any media buy for this
-          account, call this governance agent to validate it."
-        task: sync_governance
-        schema_ref: "account/sync-governance-request.json"
-        response_schema_ref: "account/sync-governance-response.json"
-        doc_ref: "/accounts/tasks/sync_governance"
-        requires_tool: sync_governance
-        stateful: true
-        expected: |
-          Acknowledge the governance agents. Your platform should:
-          - Store the governance agent URLs for the specified accounts
-          - Return confirmation that agents were registered
-
-        sample_request:
-          accounts:
-            - account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
-              governance_agents:
-                - url: "$context.governance_agent_url"
-                  authentication:
-                    schemes: ["Bearer"]
-                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_setup_sync_governance"
-          context:
-            correlation_id: "media_buy_seller--sync_governance"
-          ext:
-            test_platform:
-              governance_tier: "standard"
-
-        validations:
-          - check: response_schema
-            description: "Response matches sync-governance-response.json schema"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "media_buy_seller--sync_governance"
-            description: "Context correlation_id returned unchanged"
 
   - id: product_discovery
     title: "Product discovery"
@@ -307,7 +254,8 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            sandbox: true
           context:
             correlation_id: "media_buy_seller--get_products_brief"
 
@@ -427,10 +375,10 @@ phases:
       is no "pending_approval" media buy status — IO review is modelled at the task
       layer, not as a MediaBuy.status value.
 
-      If the buyer registered governance agents in Phase 2, your platform calls
-      check_governance before confirming the buy. The governance agent validates budget
-      authority, brand safety, and compliance. If governance denies the buy, return the
-      denial — don't override it.
+      Governance-aware creation is covered by the dedicated, capability-gated
+      governance scenarios. The base lifecycle leaves the test account ungoverned so
+      every media-buy seller can exercise this universal flow without an undeclared
+      governance_context commitment.
 
     steps:
       - id: create_media_buy
@@ -487,7 +435,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "media-buy-lifecycle.pinnacle-agency.example"
             sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
@@ -557,7 +505,8 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
           context:
@@ -703,7 +652,8 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            sandbox: true
           creatives:
             - creative_id: "video_30s_trail_pro"
               name: "Trail Pro 3000 - 30s CTV Spot"
@@ -784,7 +734,8 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true
