@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
-  "description": "Compliance bundles available from a published @adcp/sdk npm package. Hosted grading must use published_versions; package_only_versions are SDK opt-in surfaces that are not hosted protocol releases.",
+  "description": "Released compliance bundles approved for hosted grading. Stable aliases advance only through this manifest; package_only_versions remain SDK opt-in surfaces and are not hosted protocol releases.",
+  "hosted_advancement_policy": "Register a version only after its immutable dist/compliance and dist/schemas artifacts exist, release provenance is available, and the pinned hosted @adcp/sdk can load the bundle. Alias advancement is independent of scheduler health; exact version targets remain pinned.",
   "npm_tags": [
     "adcp-3.0",
     "latest",
@@ -46,6 +47,8 @@
     "3.1.13",
     "3.1.18",
     "3.1.20",
+    "3.1.22",
+    "3.1.23",
     "3.2.0-beta.6",
     "3.2.0-rc.0",
     "3.2.0-rc.1",
