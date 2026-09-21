@@ -20,10 +20,7 @@ import {
   validateGetProductsParams,
 } from '../../../src/addie/mcp/adcp-tools.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../../src/training-agent/types.js';
-import {
-  ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
-  AddieTransientTransportError,
-} from '../../../src/utils/sdk-safe-fetch.js';
+import { AddieTransientTransportError } from '../../../src/utils/sdk-safe-fetch.js';
 
 function modelContext(result: unknown): string {
   return typeof result === 'string'
