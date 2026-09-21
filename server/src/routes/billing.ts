@@ -60,6 +60,16 @@ const CUSTOMER_FILTERS = new Set([
   "incomplete_expired",
   "none",
 ]);
+const SUBSCRIPTION_STATUS_FILTERS = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "canceled",
+  "unpaid",
+  "paused",
+  "incomplete",
+  "incomplete_expired",
+]);
 
 function escapeStripeSearchValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
@@ -70,7 +80,8 @@ function customerMatchesFilter(
   filter: string,
   linked: boolean,
   totalPaid: number,
-  openInvoiceCount: number
+  openInvoiceCount: number,
+  hasMatchingSubscription: boolean
 ): boolean {
   if (filter === "all") return true;
   if (filter === "linked") return linked;
@@ -81,7 +92,7 @@ function customerMatchesFilter(
 
   const subscriptions = customer.subscriptions?.data ?? [];
   if (filter === "none") return subscriptions.length === 0;
-  return subscriptions.some((subscription) => subscription.status === filter);
+  return hasMatchingSubscription;
 }
 
 /**
@@ -726,9 +737,17 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       for (const customer of stripeCustomers) {
         // Invoice summaries are deliberately bounded to the first 100 invoices
         // of each status for customers on the current page.
-        const [paidInvoices, openInvoices] = await Promise.all([
+        // Query subscription filters directly because Stripe's embedded customer
+        // list omits terminal subscriptions and is capped at ten entries.
+        const subscriptionStatus = SUBSCRIPTION_STATUS_FILTERS.has(filter)
+          ? filter as Stripe.SubscriptionListParams.Status
+          : null;
+        const [paidInvoices, openInvoices, matchingSubscriptions] = await Promise.all([
           stripe.invoices.list({ customer: customer.id, status: "paid", limit: 100 }),
           stripe.invoices.list({ customer: customer.id, status: "open", limit: 100 }),
+          subscriptionStatus
+            ? stripe.subscriptions.list({ customer: customer.id, status: subscriptionStatus, limit: 1 })
+            : Promise.resolve(null),
         ]);
         const totalPaid = paidInvoices.data.reduce((sum, invoice) => sum + invoice.amount_paid, 0);
         const invoiceCount = paidInvoices.data.length;
@@ -740,7 +759,14 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
           customer.subscriptions?.data.filter((s) => s.status === "active" || s.status === "trialing").length ?? 0;
 
         const linkedOrg = customerToOrg.get(customer.id) ?? null;
-        if (!customerMatchesFilter(customer, filter, !!linkedOrg, totalPaid, openInvoiceCount)) continue;
+        if (!customerMatchesFilter(
+          customer,
+          filter,
+          !!linkedOrg,
+          totalPaid,
+          openInvoiceCount,
+          (matchingSubscriptions?.data.length ?? 0) > 0
+        )) continue;
 
         customers.push({
           id: customer.id,

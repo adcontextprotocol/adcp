@@ -11,6 +11,7 @@ const {
   mockCustomersRetrieve,
   mockCustomersUpdate,
   mockInvoicesList,
+  mockSubscriptionsList,
   stripeMockState,
 } = vi.hoisted(() => ({
   mockPoolQuery: vi.fn<any>(),
@@ -19,6 +20,7 @@ const {
   mockCustomersRetrieve: vi.fn<any>(),
   mockCustomersUpdate: vi.fn<any>(),
   mockInvoicesList: vi.fn<any>(),
+  mockSubscriptionsList: vi.fn<any>(),
   stripeMockState: { configured: true } as { configured: boolean },
 }));
 
@@ -56,6 +58,9 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
       },
       invoices: {
         list: (...args: unknown[]) => mockInvoicesList(...args),
+      },
+      subscriptions: {
+        list: (...args: unknown[]) => mockSubscriptionsList(...args),
       },
     };
   },
@@ -101,6 +106,7 @@ describe('GET /api/admin/stripe-customers', () => {
     mockCustomersRetrieve.mockReset();
     mockCustomersUpdate.mockReset();
     mockInvoicesList.mockReset();
+    mockSubscriptionsList.mockReset();
     stripeMockState.configured = true;
 
     mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
@@ -112,6 +118,7 @@ describe('GET /api/admin/stripe-customers', () => {
       total_count: 0,
     });
     mockInvoicesList.mockResolvedValue({ data: [], has_more: false });
+    mockSubscriptionsList.mockResolvedValue({ data: [], has_more: false });
   });
 
   it('loads one bounded customer page and resolves only those organization links', async () => {
@@ -232,6 +239,11 @@ describe('GET /api/admin/stripe-customers', () => {
         ? [{ amount_paid: 12500 }]
         : [],
     }));
+    mockSubscriptionsList.mockImplementation(async (params: { customer: string; status: string }) => ({
+      data: params.customer === 'cus_linked' && params.status === 'active'
+        ? [{ status: 'active' }]
+        : [],
+    }));
 
     const unlinked = await request(await buildApp())
       .get('/api/admin/stripe-customers?status=unlinked-payments');
@@ -243,6 +255,21 @@ describe('GET /api/admin/stripe-customers', () => {
       .get('/api/admin/stripe-customers?status=active');
     expect(active.status).toBe(200);
     expect(active.body.customers.map((customer: any) => customer.id)).toEqual(['cus_linked']);
+
+    mockSubscriptionsList.mockImplementation(async (params: { customer: string; status: string }) => ({
+      data: params.customer === 'cus_unlinked' && params.status === 'canceled'
+        ? [{ status: 'canceled' }]
+        : [],
+    }));
+    const canceled = await request(await buildApp())
+      .get('/api/admin/stripe-customers?status=canceled');
+    expect(canceled.status).toBe(200);
+    expect(canceled.body.customers.map((customer: any) => customer.id)).toEqual(['cus_unlinked']);
+    expect(mockSubscriptionsList).toHaveBeenCalledWith({
+      customer: 'cus_unlinked',
+      status: 'canceled',
+      limit: 1,
+    });
 
     mockInvoicesList.mockImplementation(async (params: { customer: string; status: string }) => ({
       data: params.customer === 'cus_linked' && params.status === 'open'
