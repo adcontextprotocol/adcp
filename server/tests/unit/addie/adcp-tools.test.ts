@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { extractAdcpErrorInfo } from '@adcp/sdk';
 
 const executeTrainingAgentTool = vi.hoisted(() => vi.fn());
 
@@ -19,7 +20,10 @@ import {
   validateGetProductsParams,
 } from '../../../src/addie/mcp/adcp-tools.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../../src/training-agent/types.js';
-import { ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE } from '../../../src/utils/sdk-safe-fetch.js';
+import {
+  ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
+  AddieTransientTransportError,
+} from '../../../src/utils/sdk-safe-fetch.js';
 
 function modelContext(result: unknown): string {
   return typeof result === 'string'
@@ -291,16 +295,18 @@ describe('call_adcp_task tool reference', () => {
 
 describe('bounded AdCP transport retry', () => {
   const transient = Object.assign(new Error('socket reset'), { code: 'ECONNRESET' });
-  const sdkTransportFailure = (retryAfterMs?: number) => ({
-    success: false,
-    status: 'failed',
-    error: 'Transient outbound AdCP transport failure',
-    adcpError: {
-      code: ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
-      recovery: 'transient',
-      ...(retryAfterMs !== undefined && { retryAfterMs }),
-    },
-  });
+  const sdkTransportFailure = (retryAfterMs?: number) => {
+    const error = new AddieTransientTransportError(
+      retryAfterMs === undefined ? {} : { retryAfterMs },
+    );
+    return {
+      success: false,
+      status: 'failed',
+      error: error.message,
+      // This is the exact projection used by @adcp/sdk's TaskExecutor.createErrorResult.
+      adcpError: extractAdcpErrorInfo(error.data),
+    };
+  };
 
   it('retries a read exactly once after a typed transient failure', async () => {
     const execute = vi.fn()

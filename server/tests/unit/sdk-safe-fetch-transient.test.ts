@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { extractAdcpErrorInfo } from '@adcp/sdk';
 import {
   ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
   AddieTransientTransportError,
@@ -38,6 +39,12 @@ describe('SDK safe fetch transient failure marker', () => {
     expect(caught).toMatchObject({
       data: { adcp_error: { retry_after: 0.5 } },
       metadata: { status: 503, retryAfterMs: 500 },
+    });
+    expect(extractAdcpErrorInfo(caught.data)).toMatchObject({
+      code: ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
+      recovery: 'transient',
+      retry_after: 0.5,
+      retryAfterMs: 500,
     });
   });
 
