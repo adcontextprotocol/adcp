@@ -282,6 +282,14 @@ async function getClientBeforeDeadline(
   throw databaseDeadlineExceededError();
 }
 
+/** Checkout a transactional client within a bounded pool-wait budget. */
+export function getClientWithDeadline(timeoutMs: number): Promise<PoolClient> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error('Client checkout timeout must be positive');
+  }
+  return getClientBeforeDeadline(Date.now() + timeoutMs, true);
+}
+
 /**
  * Execute one query with deadline-bounded pool checkout plus server-enforced
  * statement and lock deadlines.

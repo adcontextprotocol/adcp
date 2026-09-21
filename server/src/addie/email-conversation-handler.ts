@@ -16,7 +16,7 @@ import {
   validateOutput,
 } from './security.js';
 import { getThreadService } from './thread-service.js';
-import { reserveToolIntentCheckpoint } from './stream-tool-checkpoints.js';
+import { reserveToolIntentCheckpoint, storedToolCall } from './stream-tool-checkpoints.js';
 import type { Thread } from './thread-service.js';
 import { sanitizeSpeakerName } from './prompts.js';
 import { sendEmailReply, type EmailThreadContext } from '../notifications/email.js';
@@ -275,15 +275,7 @@ export async function handleEmailConversation(
       content: outputValidation.sanitized,
       tools_used: response.tools_used.length > 0 ? response.tools_used : undefined,
       tool_calls: response.tool_executions.length > 0
-        ? response.tool_executions.map(exec => ({
-            name: exec.tool_name,
-            input: exec.parameters,
-            result: exec.result,
-            duration_ms: exec.duration_ms,
-            is_error: exec.is_error,
-            result_status: exec.normalized_result?.status,
-            ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
-          }))
+        ? response.tool_executions.map(storedToolCall)
         : undefined,
       model: effectiveModel,
         model_execution: response.model_execution,

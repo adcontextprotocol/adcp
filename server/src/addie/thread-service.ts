@@ -120,7 +120,7 @@ interface CreateMessageInputBase {
   content: string;
   content_sanitized?: string;
   tools_used?: string[];
-  tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; durable_outcome?: 'known'; github_issue_receipt?: unknown }>;
+  tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; operation?: string; error_code?: string; error_category?: string; retryable?: boolean; retry_after_ms?: number; attempts?: number; recovered_by_later_success?: boolean; durable_outcome?: 'known'; github_issue_receipt?: unknown }>;
   knowledge_ids?: number[];
   model?: string;
   model_preference?: WebChatModelPreference;

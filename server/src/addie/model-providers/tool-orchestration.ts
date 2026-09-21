@@ -9,7 +9,7 @@ import {
 import { ToolError } from '../tool-error.js';
 import {
   hasDurableHandlerOutcome,
-  isSideEffectTool,
+  isSideEffectToolCall,
   sideEffectReplayKey,
 } from '../side-effect-claims.js';
 import { githubIssueReceiptFromHandlerResult, type GithubIssueCreationReceipt } from '../github-issue-receipt.js';
@@ -259,8 +259,48 @@ export class AddieToolExecutionLedger {
     }
     turnResults.push(event.executed.result);
     this.completedExecutions.push(event.executed.execution);
+    this.markRecoveredErrors(event.executed.execution);
     this.pendingCustomSequence = null;
   }
+
+  private markRecoveredErrors(latest: ToolExecution): void {
+    const recoveryIdentity = toolRecoveryIdentity(latest);
+    if (latest.is_error || !recoveryIdentity) return;
+    for (const prior of this.completedExecutions) {
+      if (
+        prior === latest
+        || !prior.is_error
+        || !prior.normalized_result
+        || toolRecoveryIdentity(prior) !== recoveryIdentity
+      ) continue;
+      prior.normalized_result.telemetry = {
+        ...prior.normalized_result.telemetry,
+        recovered_by_later_success: true,
+      };
+    }
+  }
+}
+
+/**
+ * Correlate a correction with the exact AdCP target rather than merely the
+ * task name. Generic calls keep the idempotency key under `params`, while the
+ * typed get_products wrapper exposes it at the top level; the tuple keeps both
+ * surfaces interoperable without allowing one agent's success to mask another
+ * agent's failure.
+ */
+function toolRecoveryIdentity(execution: ToolExecution): string | null {
+  const operation = execution.normalized_result?.telemetry?.operation;
+  if (!operation) return null;
+  const parameters = execution.parameters;
+  const nestedParams = parameters.params;
+  const nested = nestedParams && typeof nestedParams === 'object' && !Array.isArray(nestedParams)
+    ? nestedParams as Record<string, unknown>
+    : undefined;
+  const agentUrl = typeof parameters.agent_url === 'string' ? parameters.agent_url : null;
+  const idempotencyKey = typeof parameters.idempotency_key === 'string'
+    ? parameters.idempotency_key
+    : typeof nested?.idempotency_key === 'string' ? nested.idempotency_key : null;
+  return JSON.stringify([operation, agentUrl, idempotencyKey]);
 }
 
 /**
@@ -696,7 +736,7 @@ export function createAddieToolExecutor(
     // A provider continuation or recovery must never submit an identical
     // mutation twice. Record before dispatch so an ambiguous transport error
     // is also fail-closed rather than silently retried.
-    const sideEffectKey = (isSideEffectTool(call.name) || registered.definition.replaySafety === 'mutation')
+    const sideEffectKey = (isSideEffectToolCall(call.name, call.input) || registered.definition.replaySafety === 'mutation')
       ? sideEffectReplayKey(call.name, call.input)
       : null;
     if (sideEffectKey && dispatchedSideEffects.has(sideEffectKey)) {

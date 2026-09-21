@@ -30,6 +30,7 @@ import {
   ANONYMOUS_WEB_CONTEXT_KEY,
   geminiAnonymousWebAssignment,
   geminiDirectAssignment,
+  getGeminiDirectResults,
   prepareGeminiDirectTurn,
 } from '../../../src/addie/gemini-direct-experiment.js';
 import { AddieModelConfig } from '../../../src/config/models.js';
@@ -85,8 +86,13 @@ function fixture(responses: (GenerateContentResponse | GenerateContentResponse[]
   return { client, fork, provider, dispatch, handlers, control, input, getControlTools };
 }
 
-async function run(input: Parameters<typeof prepareGeminiDirectTurn>[0], overrides: ProcessMessageOptions = {}) {
+async function run(
+  input: Parameters<typeof prepareGeminiDirectTurn>[0],
+  overrides: ProcessMessageOptions = {},
+  stages?: { relationshipAnalyticsScheduleMs?: number; memberContextMs: number; workosContextMs?: number; experimentRoutingMs: number; preProviderMs: number },
+) {
   const turn = await prepareGeminiDirectTurn(input);
+  if (stages) turn.experiment?.recordPreProviderStages(stages);
   const events: StreamEvent[] = [];
   for await (const event of turn.client.processMessageStream('Help with AdCP.', [], turn.selection?.requestTools, {
     ...options, allowedToolNames: turn.selection?.allowedToolNames, selectedToolSetNames: turn.selection?.selectedToolSets, ...overrides,
@@ -116,6 +122,28 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Gemini Direct production integration', () => {
+  it('reports preparation and recovered versus unrecovered tool errors to staff', async () => {
+    await getGeminiDirectResults();
+    const sql = String(mocks.query.mock.calls.at(-1)?.[0]);
+    expect(sql).toContain('median_pre_provider_ms');
+    expect(sql).toContain('p95_provider_ms');
+    expect(sql).toContain('relationship_analytics_pending');
+    expect(sql).toContain('recovered_tool_errors');
+    expect(sql).toContain('unrecovered_tool_errors');
+  });
+
+  it('persists preparation, provider, tool, and relationship stage timing separately', async () => {
+    const f = fixture([receipt([{ text: 'Prepared response.' }])]);
+    const stages = { relationshipAnalyticsScheduleMs: 2, memberContextMs: 91, workosContextMs: 55, experimentRoutingMs: 13, preProviderMs: 140 };
+    const result = await run(f.input, {}, stages);
+    await result.turn.experiment?.recordRelationshipAnalytics({ outcome: 'completed', processingMs: 109_000 });
+
+    const finish = mocks.query.mock.calls.find(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns SET\n        completed_at'))!;
+    expect(finish[1].slice(22, 29)).toEqual([2, 91, 55, 13, 140, expect.any(Number), expect.any(Number)]);
+    const relationship = mocks.query.mock.calls.find(([sql]) => sql.includes('relationship_analytics_processing_ms'))!;
+    expect(relationship[1]).toEqual([expect.any(String), 109_000, 'completed']);
+  });
+
   it('keeps registration available after loading a different tool group during intake', async () => {
     const f = fixture([
       receipt([call('load_tool_group', { group: 'industry_research' })]),

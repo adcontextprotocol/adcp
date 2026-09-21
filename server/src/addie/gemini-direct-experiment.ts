@@ -44,6 +44,14 @@ interface ExperimentIdentity {
   contextKey: string;
   recordedUserId: string;
 }
+
+export interface ExperimentPreProviderStages {
+  relationshipAnalyticsScheduleMs?: number;
+  memberContextMs: number;
+  workosContextMs?: number;
+  experimentRoutingMs: number;
+  preProviderMs: number;
+}
 const clients = new WeakMap<Client, AddieClaudeClient>();
 
 export function geminiDirectAvailable(client: Client | null | undefined): boolean {
@@ -114,6 +122,7 @@ class ExperimentTurn {
   progressExtensions = 0;
   finalAnswerOpportunities = 0;
   finalAnswerRejectedCalls = 0;
+  private stages: ExperimentPreProviderStages | null = null;
 
   constructor(
     readonly startedAt: number,
@@ -150,6 +159,21 @@ class ExperimentTurn {
     if (selection?.routerUsageComplete === false) this.usageComplete = false;
   }
 
+  recordPreProviderStages(stages: ExperimentPreProviderStages): void {
+    this.stages = { ...stages };
+  }
+
+  async recordRelationshipAnalytics(result: { outcome: 'completed' | 'failed'; processingMs: number }): Promise<void> {
+    try {
+      await query(`UPDATE addie_chat_experiment_turns SET
+        relationship_analytics_processing_ms = $2,
+        relationship_analytics_outcome = $3
+        WHERE id = $1`, [this.id, result.processingMs, result.outcome]);
+    } catch (error) {
+      logger.warn({ error, turnId: this.id }, 'Failed to save deferred relationship analytics timing');
+    }
+  }
+
   visible() {
     this.firstVisibleMs ??= Date.now() - this.startedAt;
   }
@@ -163,6 +187,20 @@ class ExperimentTurn {
       if (pricing) costMicros += pricing.estimateCostMicros(event.usage);
       else this.usageComplete = false;
     }
+    const recoveredToolErrors = response?.tool_executions.filter(tool => (
+      tool.is_error && tool.normalized_result?.telemetry?.recovered_by_later_success === true
+    )).length ?? 0;
+    const totalToolErrors = this.fallbackToolErrors
+      + (response?.tool_executions.filter(tool => tool.is_error).length ?? 0);
+    const unrecoveredToolErrors = Math.max(0, totalToolErrors - recoveredToolErrors);
+    logger.info({
+      event: 'addie_response_stage',
+      stage: 'provider_and_tools',
+      turnId: this.id,
+      provider_ms: response?.timing?.total_llm_ms,
+      tool_ms: response?.timing?.total_tool_execution_ms,
+      provider_calls: this.providerCalls,
+    }, 'Addie provider and tool stages completed');
     try {
       await query(`UPDATE addie_chat_experiment_turns SET
         completed_at = COALESCE(completed_at, NOW()), first_visible_ms = $2, total_ms = $3, router_ms = $4,
@@ -174,14 +212,19 @@ class ExperimentTurn {
         final_answer_opportunities = $17, final_answer_rejected_calls = $18,
         output_truncation_source = $19, output_truncation_provider_reason = $20,
         output_truncation_original_length = $21,
-        output_truncation_delivered_length = $22
+        output_truncation_delivered_length = $22,
+        relationship_analytics_schedule_ms = $23,
+        member_context_ms = $24, workos_context_ms = $25,
+        experiment_routing_ms = $26, pre_provider_ms = $27,
+        provider_ms = $28, tool_ms = $29,
+        recovered_tool_errors = $30, unrecovered_tool_errors = $31
         WHERE id = $1`, [
         this.id, this.firstVisibleMs, Date.now() - this.startedAt, this.routerMs,
         this.providerCalls, costMicros, this.usageComplete, this.fallbackReason,
         execution?.source === 'provider' ? execution.provider : null,
         execution?.source === 'provider' ? execution.model : null,
         failed || !response || response.flagged === true,
-        this.fallbackToolErrors + (response?.tool_executions?.filter(tool => tool.is_error).length ?? 0),
+        totalToolErrors,
         JSON.stringify(this.usage), messageId ?? null,
         response?.timing?.iterations ?? null,
         this.progressExtensions, this.finalAnswerOpportunities, this.finalAnswerRejectedCalls,
@@ -189,18 +232,38 @@ class ExperimentTurn {
         response?.output_truncation?.provider_reason ?? null,
         response?.output_truncation?.original_length ?? null,
         response?.output_truncation?.delivered_length ?? null,
+        this.stages?.relationshipAnalyticsScheduleMs ?? null,
+        this.stages?.memberContextMs ?? null,
+        this.stages?.workosContextMs ?? null,
+        this.stages?.experimentRoutingMs ?? null,
+        this.stages?.preProviderMs ?? null,
+        response?.timing?.total_llm_ms ?? null,
+        response?.timing?.total_tool_execution_ms ?? null,
+        recoveredToolErrors,
+        unrecoveredToolErrors,
       ]);
     } catch (error) {
       logger.error({ error, turnId: this.id }, 'Failed to save Gemini Direct outcome');
     }
   }
 
-  async markDelivery(outcome: DeliveryOutcome, messageId?: string) {
+  async markDelivery(outcome: DeliveryOutcome, messageId?: string, persistenceStartedAt?: number) {
+    const persistenceDeliveryMs = persistenceStartedAt === undefined
+      ? null
+      : Math.max(0, Date.now() - persistenceStartedAt);
+    logger.info({
+      event: 'addie_response_stage', stage: 'persistence_delivery', turnId: this.id,
+      outcome, persistence_delivery_ms: persistenceDeliveryMs,
+    }, 'Addie persistence and delivery stage completed');
     try {
       await query(`UPDATE addie_chat_experiment_turns SET
         delivery_outcome = $2,
-        assistant_message_id = COALESCE($3, assistant_message_id)
-        WHERE id = $1`, [this.id, outcome, messageId ?? null]);
+        assistant_message_id = COALESCE($3, assistant_message_id),
+        persistence_delivery_ms = COALESCE($4, persistence_delivery_ms)
+        WHERE id = $1`, [
+        this.id, outcome, messageId ?? null,
+        persistenceDeliveryMs,
+      ]);
     } catch (error) {
       logger.error({ error, turnId: this.id }, 'Failed to save Gemini Direct delivery outcome');
     }
@@ -484,6 +547,21 @@ export async function getGeminiDirectResults() {
     COUNT(*) FILTER (WHERE fallback_reason = 'provider_error' AND actual_provider = 'anthropic')::int AS provider_error_fallbacks,
     COUNT(*) FILTER (WHERE fallback_reason = 'provider_error_after_action')::int AS post_action_provider_failures,
     COUNT(*) FILTER (WHERE NOT usage_complete)::int AS incomplete_usage,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY pre_provider_ms) AS median_pre_provider_ms,
+    percentile_cont(0.95) WITHIN GROUP (ORDER BY pre_provider_ms) AS p95_pre_provider_ms,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY provider_ms) AS median_provider_ms,
+    percentile_cont(0.95) WITHIN GROUP (ORDER BY provider_ms) AS p95_provider_ms,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY tool_ms) AS median_tool_ms,
+    percentile_cont(0.95) WITHIN GROUP (ORDER BY tool_ms) AS p95_tool_ms,
+    ROUND(AVG(member_context_ms)) AS mean_member_context_ms,
+    ROUND(AVG(workos_context_ms)) AS mean_workos_context_ms,
+    ROUND(AVG(experiment_routing_ms)) AS mean_experiment_routing_ms,
+    ROUND(AVG(persistence_delivery_ms)) AS mean_persistence_delivery_ms,
+    ROUND(AVG(relationship_analytics_schedule_ms)) AS mean_relationship_analytics_schedule_ms,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY relationship_analytics_processing_ms) AS median_relationship_analytics_processing_ms,
+    COUNT(*) FILTER (WHERE relationship_analytics_outcome = 'completed')::int AS relationship_analytics_completed,
+    COUNT(*) FILTER (WHERE relationship_analytics_outcome = 'failed')::int AS relationship_analytics_failed,
+    COUNT(*) FILTER (WHERE relationship_analytics_outcome IS NULL AND relationship_analytics_schedule_ms IS NOT NULL)::int AS relationship_analytics_pending,
     percentile_cont(0.5) WITHIN GROUP (ORDER BY iterations) AS median_iterations,
     percentile_cont(0.95) WITHIN GROUP (ORDER BY iterations) AS p95_iterations,
     MAX(iterations)::int AS max_iterations,
@@ -501,6 +579,8 @@ export async function getGeminiDirectResults() {
     CASE WHEN bool_and(usage_complete AND completed_at IS NOT NULL)
       THEN SUM(estimated_cost_micros) / 1000000.0 END AS estimated_cost_usd,
     SUM(tool_errors)::int AS tool_errors,
+    SUM(recovered_tool_errors)::int AS recovered_tool_errors,
+    SUM(unrecovered_tool_errors)::int AS unrecovered_tool_errors,
     COUNT(m.rating)::int AS rated_turns, ROUND(AVG(m.rating), 2) AS mean_rating,
     COUNT(*) FILTER (WHERE m.outcome = 'resolved')::int AS resolved_turns,
     CASE WHEN bool_and(usage_complete AND completed_at IS NOT NULL)

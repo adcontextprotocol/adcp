@@ -4,7 +4,7 @@ import type {
   ToolExecution,
   ToolExecutionPolicy,
 } from './model-providers/tool-orchestration.js';
-import { isSideEffectTool, sideEffectReplayKey } from './side-effect-claims.js';
+import { isSideEffectToolCall, sideEffectReplayKey } from './side-effect-claims.js';
 
 export interface StoredToolCall {
   name: string;
@@ -13,6 +13,13 @@ export interface StoredToolCall {
   duration_ms?: number;
   is_error?: boolean;
   result_status?: string;
+  operation?: string;
+  error_code?: string;
+  error_category?: string;
+  retryable?: boolean;
+  retry_after_ms?: number;
+  attempts?: number;
+  recovered_by_later_success?: boolean;
   durable_outcome?: 'known';
   github_issue_receipt?: unknown;
 }
@@ -31,6 +38,7 @@ function replayKey(toolName: string, input: unknown): string {
 }
 
 export function storedToolCall(execution: ToolExecution): StoredToolCall {
+  const telemetry = execution.normalized_result?.telemetry;
   return {
     name: execution.tool_name,
     input: execution.parameters,
@@ -38,6 +46,15 @@ export function storedToolCall(execution: ToolExecution): StoredToolCall {
     duration_ms: execution.duration_ms,
     is_error: execution.is_error,
     ...(execution.normalized_result && { result_status: execution.normalized_result.status }),
+    ...(telemetry?.operation && { operation: telemetry.operation }),
+    ...(telemetry?.error_code && { error_code: telemetry.error_code }),
+    ...(telemetry?.error_category && { error_category: telemetry.error_category }),
+    ...(telemetry?.retryable !== undefined && { retryable: telemetry.retryable }),
+    ...(telemetry?.retry_after_ms !== undefined && { retry_after_ms: telemetry.retry_after_ms }),
+    ...(telemetry?.attempts !== undefined && { attempts: telemetry.attempts }),
+    ...(telemetry?.recovered_by_later_success !== undefined && {
+      recovered_by_later_success: telemetry.recovered_by_later_success,
+    }),
     ...(execution.durable_outcome && { durable_outcome: execution.durable_outcome }),
     ...(execution.github_issue_receipt && { github_issue_receipt: execution.github_issue_receipt }),
   };
@@ -151,14 +168,14 @@ export function blockCheckpointedToolReplays(
       // Failed reads and known negative local mutation outcomes may be
       // retried. An unmarked mutation error remains ambiguous and blocked.
       .filter((call) => call.is_error !== true
-        || (isSideEffectTool(call.name) && call.durable_outcome !== 'known'))
-      .map((call) => isSideEffectTool(call.name)
+        || (isSideEffectToolCall(call.name, call.input) && call.durable_outcome !== 'known'))
+      .map((call) => isSideEffectToolCall(call.name, call.input)
         ? sideEffectReplayKey(call.name, call.input)
         : replayKey(call.name, call.input)),
   );
   if (completed.size === 0) return delegate;
   return async (request) => {
-    const key = isSideEffectTool(request.toolName)
+    const key = isSideEffectToolCall(request.toolName, request.input)
       ? sideEffectReplayKey(request.toolName, request.input)
       : replayKey(request.toolName, request.input);
     if (completed.has(key)) return { allowed: false };

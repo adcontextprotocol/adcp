@@ -82,6 +82,32 @@ describe('stream tool checkpoints', () => {
     expect(checkpoint.tool_calls).toEqual([expect.objectContaining({ result_status: 'ok' })]);
   });
 
+  it('persists safe structured AdCP classification and recovery metadata', () => {
+    const checkpoint = buildToolResultCheckpoint({
+      threadId: 'thread-1',
+      execution: {
+        ...execution,
+        tool_name: 'call_adcp_task',
+        is_error: true,
+        normalized_result: {
+          status: 'recoverable_error',
+          user_summary: 'Temporarily unavailable.',
+          source: 'structured',
+          telemetry: {
+            operation: 'get_products', error_code: 'ECONNRESET', error_category: 'transport',
+            retryable: true, retry_after_ms: 250, attempts: 2, recovered_by_later_success: false,
+          },
+        },
+      },
+      requestedModel: 'gemini-3.8-flash',
+      requestedProvider: 'google',
+    });
+    expect(checkpoint.tool_calls).toEqual([expect.objectContaining({
+      operation: 'get_products', error_code: 'ECONNRESET', error_category: 'transport',
+      retryable: true, retry_after_ms: 250, attempts: 2, recovered_by_later_success: false,
+    })]);
+  });
+
   it('persists a known local handler outcome alongside an error result', () => {
     const checkpoint = buildToolResultCheckpoint({
       threadId: 'thread-1',

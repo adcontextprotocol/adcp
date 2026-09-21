@@ -76,6 +76,32 @@ describe('Addie tool result contract', () => {
     );
   });
 
+  it('retains only allowlisted structured operational telemetry', () => {
+    const normalized = normalizeToolResult('call_adcp_task', {
+      status: 'recoverable_error',
+      model_context: 'Retry later with the same key.',
+      user_summary: 'The agent is temporarily unavailable.',
+      telemetry: {
+        operation: 'get_products',
+        error_code: 'ECONNRESET',
+        error_category: 'transport',
+        retryable: true,
+        retry_after_ms: 250,
+        attempts: 2,
+        credential: 'must-not-survive',
+      },
+    });
+
+    expect(normalized.presentation.telemetry).toEqual({
+      operation: 'get_products',
+      error_code: 'ECONNRESET',
+      error_category: 'transport',
+      retryable: true,
+      retry_after_ms: 250,
+      attempts: 2,
+    });
+  });
+
   it('exposes machine fields only through explicit audience allowlists', () => {
     const normalized = normalizeToolResult('typed_tool', {
       status: 'ok',

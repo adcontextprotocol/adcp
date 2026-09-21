@@ -202,6 +202,35 @@ not switch production to 3.8.
 
 ## Results and review
 
+The response-stage columns separate `pre_provider_ms` from provider and tool
+time. Preparation is further split into member/context work (including WorkOS),
+experiment/tool routing, relationship-analytics scheduling, and persistence /
+delivery. Relationship sentiment and engagement writes run as shutdown-tracked
+best-effort work after model admission has advanced; their processing time and
+completed/failed outcome arrive asynchronously. Transaction-local pool, lock,
+statement, and idle-in-transaction deadlines prevent identity merges from
+holding a worker indefinitely. Authorization-bearing member and tool access
+checks remain synchronous and fail closed. SSE clients receive a content-free
+`status: {stage:"preparing_context"}` event when preparation exceeds 1.5s.
+
+`call_adcp_task` failures now carry structured status, safe code/category,
+retryability, operation, attempt count, and same-turn recovery state through
+tool checkpoints. `recovered_tool_errors` and `unrecovered_tool_errors` should
+be compared separately; do not parse Markdown result prefixes. A typed
+`call_adcp_get_products` read surface makes the adapter's stable
+idempotency-key and buying-mode contract machine-checkable without acquiring a
+mutation reservation. One automatic retry is allowed only for typed transient
+transport failures: reads (including `get_products`) may retry, while actual
+mutations require both the exact existing valid idempotency key and their
+durable pre-dispatch reservation. Validation, auth, protocol, application,
+ambiguous unkeyed, and excessive Retry-After failures are never retried
+automatically.
+
+These code changes do not alter rollout configuration. Production's separately
+managed 100% authenticated / 100% anonymous web setting remains in effect until
+operators change it; saved/preexisting assignment and Slack semantics remain as
+documented above.
+
 While signed in as a site admin, open
 `https://agenticadvertising.org/api/addie/chat/experiment`.
 It reports users/turns, incomplete turns, failures, fallbacks, first visible
@@ -213,7 +242,8 @@ base iteration budgets, cost scopes, and traffic mix differ.
 
 The durable turn record also contains delivery outcome, iteration count,
 progress-extension count, final-answer-opportunity count, final-boundary
-rejected-call count, and typed provider/local truncation fields. A null delivery
+rejected-call count, structured recovered/unrecovered AdCP tool-error counts,
+response-stage timing, and typed provider/local truncation fields. A null delivery
 outcome means the adapter did not establish completion and must not be counted
 as delivered.
 

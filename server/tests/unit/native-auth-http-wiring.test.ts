@@ -118,10 +118,17 @@ vi.mock('../../src/db/addie-account-link-correlation-db.js', async (importOrigin
 
 vi.mock('../../src/db/relationship-db.js', () => ({
   resolvePersonId: vi.fn().mockResolvedValue('person-1'),
+  recordPersonMessage: vi.fn().mockResolvedValue(undefined),
+  deriveSentiment: vi.fn().mockResolvedValue({
+    engagementDelta: 0,
+    sentimentDelta: 0,
+  }),
+  evaluateStageTransitions: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../src/db/person-events-db.js', () => ({
   recordEvent: vi.fn().mockResolvedValue(undefined),
+  buildMessageReceivedData: vi.fn().mockReturnValue({}),
 }));
 
 vi.mock('../../src/addie/index.js', async (importOriginal) => {

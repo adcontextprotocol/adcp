@@ -714,7 +714,7 @@ describe('Addie chat conversation object authorization', () => {
       expect(res.text).toContain('\"selected\":\"gemini\"');
       expect(res.text).toContain('\"model\":\"gemini-3.7-flash\"');
       expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'user', model_preference: 'gemini' }));
-      expect(markDelivery).toHaveBeenCalledWith('completed', 'message_assistant');
+      expect(markDelivery).toHaveBeenCalledWith('completed', 'message_assistant', expect.any(Number));
     } finally { prepare.mockRestore(); }
   });
 
@@ -795,7 +795,7 @@ describe('Addie chat conversation object authorization', () => {
       expect(routeResponse.status).toBe(200);
       expect(routeResponse.text).toContain('event: stream_error');
       expect(markDelivery).toHaveBeenCalledTimes(1);
-      expect(markDelivery).toHaveBeenCalledWith('completed', 'message_assistant');
+      expect(markDelivery).toHaveBeenCalledWith('completed', 'message_assistant', expect.any(Number));
     } finally {
       prepare.mockRestore();
     }

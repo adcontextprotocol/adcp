@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { extractAdcpErrorInfo } from '@adcp/sdk';
 
 const executeTrainingAgentTool = vi.hoisted(() => vi.fn());
 
@@ -13,9 +14,19 @@ import {
   LEGACY_ADCP_TASK_NAMES,
   adcpExecutionMode,
   createAdcpToolHandlers,
+  executeWithTransientAdcpRetry,
+  typedSdkTransientTransportResult,
   validateAccountRefParam,
+  validateGetProductsParams,
 } from '../../../src/addie/mcp/adcp-tools.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../../src/training-agent/types.js';
+import { AddieTransientTransportError } from '../../../src/utils/sdk-safe-fetch.js';
+
+function modelContext(result: unknown): string {
+  return typeof result === 'string'
+    ? result
+    : String((result as { model_context?: unknown } | undefined)?.model_context ?? '');
+}
 
 describe('AdCP SDK execution boundaries', () => {
   it('classifies every registered task in exactly one explicit SDK boundary', () => {
@@ -259,13 +270,144 @@ describe('call_adcp_task tool reference', () => {
     expect(params?.description).toContain('operator: "operator.example"');
     expect(params?.description).toContain('proposal_id + total_budget');
   });
+
+  it('publishes a typed get_products surface with the enforced stable key', () => {
+    const tool = ADCP_TOOLS.find((candidate) => candidate.name === 'call_adcp_get_products');
+    expect(tool?.input_schema.required).toEqual(['agent_url', 'idempotency_key', 'buying_mode']);
+    expect(tool?.input_schema.additionalProperties).toBe(false);
+    expect(tool?.input_schema.properties.idempotency_key).toMatchObject({
+      type: 'string', minLength: 16,
+    });
+    expect(tool?.input_schema.properties.refine).toMatchObject({ type: 'array', minItems: 1 });
+  });
+
+  it('enforces get_products mode-specific requirements without JSON Schema conditionals', () => {
+    const key = 'stable-products-request-key';
+    expect(validateGetProductsParams({ idempotency_key: key, buying_mode: 'brief' })).toContain('brief is required');
+    expect(validateGetProductsParams({ idempotency_key: key, buying_mode: 'brief', brief: 'Launch plan' })).toBeNull();
+    expect(validateGetProductsParams({ idempotency_key: key, buying_mode: 'wholesale', brief: 'not allowed' })).toContain('not allowed');
+    expect(validateGetProductsParams({ idempotency_key: key, buying_mode: 'refine', refine: [{ scope: 'product', product_id: 'p1', action: 'include' }] })).toBeNull();
+  });
+});
+
+describe('bounded AdCP transport retry', () => {
+  const transient = Object.assign(new Error('socket reset'), { code: 'ECONNRESET' });
+  const sdkTransportFailure = (retryAfterMs?: number) => {
+    const error = new AddieTransientTransportError(
+      retryAfterMs === undefined ? {} : { retryAfterMs },
+    );
+    return {
+      success: false,
+      status: 'failed',
+      error: error.message,
+      // This is the exact projection used by @adcp/sdk's TaskExecutor.createErrorResult.
+      adcpError: extractAdcpErrorInfo(error.data),
+    };
+  };
+
+  it('retries a read exactly once after a typed transient failure', async () => {
+    const execute = vi.fn()
+      .mockRejectedValueOnce(transient)
+      .mockResolvedValueOnce('ok');
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await expect(executeWithTransientAdcpRetry({ task: 'list_products', params: {}, execute, sleep }))
+      .resolves.toEqual({ value: 'ok', attempts: 2 });
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(250);
+  });
+
+  it('does not retry validation/application errors or unkeyed mutations', async () => {
+    const validation = vi.fn().mockRejectedValue(new Error('invalid request'));
+    await expect(executeWithTransientAdcpRetry({ task: 'list_products', params: {}, execute: validation }))
+      .rejects.toThrow('invalid request');
+    expect(validation).toHaveBeenCalledTimes(1);
+
+    const mutation = vi.fn().mockRejectedValue(transient);
+    await expect(executeWithTransientAdcpRetry({ task: 'create_media_buy', params: {}, execute: mutation }))
+      .rejects.toBe(transient);
+    expect(mutation).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries get_products as a read while preserving its adapter-required key and request object', async () => {
+    const params = { idempotency_key: 'same-logical-operation-key', buying_mode: 'wholesale' };
+    const seen: Record<string, unknown>[] = [];
+    const execute = vi.fn(async () => {
+      seen.push(params);
+      if (seen.length === 1) throw transient;
+      return 'ok';
+    });
+    await executeWithTransientAdcpRetry({ task: 'get_products', params, execute, sleep: async () => undefined });
+    expect(seen).toEqual([params, params]);
+  });
+
+  it('retries a true mutation only with its exact valid idempotency key', async () => {
+    const params = { idempotency_key: 'same-mutating-operation-key' };
+    const seen: Record<string, unknown>[] = [];
+    const execute = vi.fn(async () => {
+      seen.push(params);
+      if (seen.length === 1) throw transient;
+      return 'ok';
+    });
+    await executeWithTransientAdcpRetry({ task: 'create_media_buy', params, execute, sleep: async () => undefined });
+    expect(seen).toEqual([params, params]);
+  });
+
+  it('honors only bounded retry-after delays', async () => {
+    const failure = Object.assign(new Error('busy'), { status: 503, retryAfterMs: 2_001 });
+    const execute = vi.fn().mockRejectedValue(failure);
+    await expect(executeWithTransientAdcpRetry({ task: 'list_products', params: {}, execute }))
+      .rejects.toBe(failure);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries an SDK-converted typed transport result exactly once', async () => {
+    const failure = sdkTransportFailure(125);
+    expect(typedSdkTransientTransportResult(failure)).toEqual({ retryAfterMs: 125 });
+    const execute = vi.fn()
+      .mockResolvedValueOnce(failure)
+      .mockResolvedValueOnce({ success: true, status: 'completed', data: { products: [] } });
+    const sleep = vi.fn().mockResolvedValue(undefined);
+
+    await expect(executeWithTransientAdcpRetry({ task: 'get_products', params: {}, execute, sleep }))
+      .resolves.toMatchObject({ attempts: 2, value: { success: true } });
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(125);
+  });
+
+  it('does not retry seller protocol results or unfenced mutations', async () => {
+    const protocolFailure = {
+      success: false,
+      status: 'failed',
+      error: 'Seller is temporarily unavailable',
+      adcpError: { code: 'SERVICE_UNAVAILABLE', recovery: 'transient', retryAfterMs: 100 },
+    };
+    const protocolExecute = vi.fn().mockResolvedValue(protocolFailure);
+    await expect(executeWithTransientAdcpRetry({ task: 'get_products', params: {}, execute: protocolExecute }))
+      .resolves.toEqual({ value: protocolFailure, attempts: 1 });
+    expect(protocolExecute).toHaveBeenCalledTimes(1);
+
+    const mutationExecute = vi.fn().mockResolvedValue(sdkTransportFailure());
+    await expect(executeWithTransientAdcpRetry({ task: 'create_media_buy', params: {}, execute: mutationExecute }))
+      .resolves.toMatchObject({ attempts: 1 });
+    expect(mutationExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not exceed two attempts when an SDK-style retry throws', async () => {
+    const retryFailure = Object.assign(new Error('socket reset again'), { code: 'ECONNRESET' });
+    const execute = vi.fn()
+      .mockResolvedValueOnce(sdkTransportFailure())
+      .mockRejectedValueOnce(retryFailure);
+    await expect(executeWithTransientAdcpRetry({ task: 'get_products', params: {}, execute, sleep: async () => undefined }))
+      .rejects.toMatchObject({ name: 'AdcpTransientRetryExhaustedError', attempts: 2 });
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('call_adcp_task handler validation boundary', () => {
   const callAdcpTask = createAdcpToolHandlers(null).get('call_adcp_task');
 
   it('does not reject proposal-mode create_media_buy as missing packages', async () => {
-    await expect(callAdcpTask?.({
+    expect(modelContext(await callAdcpTask?.({
       agent_url: 'not-a-url',
       task: 'create_media_buy',
       params: {
@@ -277,11 +419,11 @@ describe('call_adcp_task handler validation boundary', () => {
         start_time: 'asap',
         end_time: '2099-07-31T23:59:59Z',
       },
-    })).resolves.toContain('Invalid agent URL format');
+    }))).toContain('Invalid agent URL format');
   });
 
   it('rejects mixed package and proposal create_media_buy modes before URL validation', async () => {
-    await expect(callAdcpTask?.({
+    expect(modelContext(await callAdcpTask?.({
       agent_url: 'http://example.com',
       task: 'create_media_buy',
       params: {
@@ -294,11 +436,11 @@ describe('call_adcp_task handler validation boundary', () => {
         start_time: 'asap',
         end_time: '2099-07-31T23:59:59Z',
       },
-    })).resolves.toContain('Use either packages array or proposal_id + total_budget, not both');
+    }))).toContain('Use either packages array or proposal_id + total_budget, not both');
   });
 
   it('rejects create_media_buy before URL validation when idempotency_key is missing', async () => {
-    await expect(callAdcpTask?.({
+    expect(modelContext(await callAdcpTask?.({
       agent_url: 'http://example.com',
       task: 'create_media_buy',
       params: {
@@ -308,33 +450,33 @@ describe('call_adcp_task handler validation boundary', () => {
         start_time: 'asap',
         end_time: '2099-07-31T23:59:59Z',
       },
-    })).resolves.toContain('idempotency_key is required');
+    }))).toContain('idempotency_key is required');
   });
 
   it('rejects get_products before URL validation when idempotency_key is missing', async () => {
-    await expect(callAdcpTask?.({
+    expect(modelContext(await callAdcpTask?.({
       agent_url: 'http://example.com',
       task: 'get_products',
       params: {
         buying_mode: 'wholesale',
         account: { account_id: 'acct_123' },
       },
-    })).resolves.toContain('idempotency_key is required');
+    }))).toContain('idempotency_key is required');
   });
 
   it('rejects update_media_buy before URL validation when idempotency_key is missing', async () => {
-    await expect(callAdcpTask?.({
+    expect(modelContext(await callAdcpTask?.({
       agent_url: 'http://example.com',
       task: 'update_media_buy',
       params: {
         account: { account_id: 'acct_123' },
         media_buy_id: 'mb_123',
       },
-    })).resolves.toContain('idempotency_key is required');
+    }))).toContain('idempotency_key is required');
   });
 
   it('rejects invalid update_media_buy account references before URL validation', async () => {
-    await expect(callAdcpTask?.({
+    expect(modelContext(await callAdcpTask?.({
       agent_url: 'http://example.com',
       task: 'update_media_buy',
       params: {
@@ -345,7 +487,7 @@ describe('call_adcp_task handler validation boundary', () => {
         },
         media_buy_id: 'mb_123',
       },
-    })).resolves.toContain('account.operator must be a string domain, not an array');
+    }))).toContain('account.operator must be a string domain, not an array');
   });
 });
 
@@ -358,9 +500,9 @@ describe('call_adcp_task training module isolation', () => {
     );
     const getCapabilities = handlers.get('get_adcp_capabilities');
 
-    await expect(getCapabilities?.({
+    expect(modelContext(await getCapabilities?.({
       agent_url: 'https://sales-agent.example/mcp',
-    })).resolves.toContain('anonymous demo can only call the AdCP training agent');
+    }))).toContain('anonymous demo can only call the AdCP training agent');
   });
 
   it('allows anonymous demo execution against a proposal training profile', async () => {
@@ -480,9 +622,32 @@ describe('call_adcp_task training module isolation', () => {
       },
     });
 
-    expect(output).toContain('Task failed');
-    expect(output).toContain('INVALID_OFFERING_TOKEN');
-    expect(output).not.toContain('Success (sandbox)');
+    expect(modelContext(output)).toContain('protocol error');
+    expect(modelContext(output)).toContain('INVALID_OFFERING_TOKEN');
+    expect(modelContext(output)).not.toContain('succeeded');
+    expect(output).toMatchObject({
+      status: 'error',
+      telemetry: {
+        operation: 'si_initiate_session', error_code: 'INVALID_OFFERING_TOKEN',
+        error_category: 'protocol', retryable: false, attempts: 1,
+      },
+    });
+  });
+
+  it('redacts credential-shaped protocol data from model-visible success output', async () => {
+    executeTrainingAgentTool.mockReset();
+    executeTrainingAgentTool.mockResolvedValue({
+      success: true,
+      data: { access_token: 'secret-token-value', note: 'Bearer top-secret-value' },
+    });
+    const output = await createAdcpToolHandlers(null).get('call_adcp_task')?.({
+      agent_url: 'https://test-agent.adcontextprotocol.org/sales/mcp',
+      task: 'list_products',
+      params: {},
+    });
+    expect(modelContext(output)).toContain('[redacted]');
+    expect(modelContext(output)).not.toContain('secret-token-value');
+    expect(modelContext(output)).not.toContain('top-secret-value');
   });
 
   it('uses the current prerelease when Addie discovers an unpinned proposal profile', async () => {

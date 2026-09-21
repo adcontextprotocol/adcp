@@ -5,6 +5,8 @@
  * never evidence that an external action happened; action-specific receipt
  * modules own that boundary instead.
  */
+import { isMutatingTool } from '../training-agent/idempotency.js';
+
 
 /** Every known Addie mutation is conservative replay-sensitive. */
 export const SIDE_EFFECT_TOOL_NAMES = new Set<string>([
@@ -62,6 +64,14 @@ export function isSideEffectTool(toolName: string): boolean {
   // authorizes a model-authored success message or identifier.
   return SIDE_EFFECT_TOOL_NAMES.has(toolName)
     || /^(?:add|approve|attach|ban|bookmark|cancel|checkpoint|claim|comment|complete|confirm|connect|create|delete|dispute|end|enhance|enrich|express|generate|grant|import|invite|issue|join|manage|merge|notify|offer|post|propose|publish|reject|remove|rename|request|resend|revoke|run|save|schedule|send|set|setup|start|transfer|triage|unban|update|upload|verify|withdraw)_/.test(toolName);
+}
+
+/** Resolve mutation safety for meta-tools whose operation lives in input. */
+export function isSideEffectToolCall(toolName: string, input: unknown): boolean {
+  if (isSideEffectTool(toolName)) return true;
+  if (toolName !== 'call_adcp_task' || !input || typeof input !== 'object' || Array.isArray(input)) return false;
+  const task = (input as Record<string, unknown>).task;
+  return typeof task === 'string' && isMutatingTool(task);
 }
 
 function canonicalJson(value: unknown): string {
