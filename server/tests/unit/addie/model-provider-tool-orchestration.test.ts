@@ -668,8 +668,8 @@ describe('AddieToolExecutionLedger', () => {
   it('marks a same-turn same-operation error recovered by a later success', async () => {
     const ledger = new AddieToolExecutionLedger();
     const calls = [
-      { ...call({ task: 'get_products' }), id: 'call_error', name: 'call_adcp_task' },
-      { ...call({ buying_mode: 'wholesale' }), id: 'call_success', name: 'call_adcp_get_products' },
+      { ...call({ agent_url: 'https://agent-a.example', task: 'get_products', params: { idempotency_key: 'same-products-request-key' } }), id: 'call_error', name: 'call_adcp_task' },
+      { ...call({ agent_url: 'https://agent-a.example', idempotency_key: 'same-products-request-key', buying_mode: 'wholesale' }), id: 'call_success', name: 'call_adcp_get_products' },
     ];
     let invocation = 0;
     const execute = vi.fn(async (toolCall: ModelToolCallContent, sequence: number) => {
@@ -692,6 +692,34 @@ describe('AddieToolExecutionLedger', () => {
     }
     expect(ledger.executions[0]?.normalized_result?.telemetry?.recovered_by_later_success).toBe(true);
     expect(ledger.executions[1]?.normalized_result?.telemetry?.recovered_by_later_success).toBeUndefined();
+  });
+
+  it('does not let another agent success recover a failed target with the same operation', async () => {
+    const ledger = new AddieToolExecutionLedger();
+    const calls = [
+      { ...call({ agent_url: 'https://agent-a.example', task: 'get_products', params: { idempotency_key: 'same-products-request-key' } }), id: 'call_error', name: 'call_adcp_task' },
+      { ...call({ agent_url: 'https://agent-b.example', idempotency_key: 'same-products-request-key', buying_mode: 'wholesale' }), id: 'call_success', name: 'call_adcp_get_products' },
+    ];
+    let invocation = 0;
+    const execute = vi.fn(async (toolCall: ModelToolCallContent, sequence: number) => {
+      const failed = invocation++ === 0;
+      return {
+        result: { type: 'tool_result' as const, toolCallId: toolCall.id, toolName: toolCall.name, content: failed ? 'retry' : 'ok', ...(failed && { isError: true }) },
+        execution: {
+          tool_name: toolCall.name, parameters: toolCall.input, result: failed ? 'retry' : 'ok',
+          is_error: failed, duration_ms: 1, sequence,
+          normalized_result: {
+            status: failed ? 'recoverable_error' as const : 'ok' as const,
+            user_summary: failed ? 'Retry.' : 'Completed.', source: 'structured' as const,
+            telemetry: { operation: 'get_products', ...(failed && { error_code: 'TRANSIENT_TRANSPORT_FAILURE', error_category: 'transport' as const }) },
+          },
+        },
+      };
+    });
+    for await (const _event of ledger.executeCustomCalls(calls, execute, [])) {
+      // consume
+    }
+    expect(ledger.executions[0]?.normalized_result?.telemetry?.recovered_by_later_success).toBeUndefined();
   });
 });
 

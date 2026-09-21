@@ -14,10 +14,12 @@ import {
   adcpExecutionMode,
   createAdcpToolHandlers,
   executeWithTransientAdcpRetry,
+  typedSdkTransientTransportResult,
   validateAccountRefParam,
   validateGetProductsParams,
 } from '../../../src/addie/mcp/adcp-tools.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../../src/training-agent/types.js';
+import { ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE } from '../../../src/utils/sdk-safe-fetch.js';
 
 function modelContext(result: unknown): string {
   return typeof result === 'string'
@@ -289,6 +291,16 @@ describe('call_adcp_task tool reference', () => {
 
 describe('bounded AdCP transport retry', () => {
   const transient = Object.assign(new Error('socket reset'), { code: 'ECONNRESET' });
+  const sdkTransportFailure = (retryAfterMs?: number) => ({
+    success: false,
+    status: 'failed',
+    error: 'Transient outbound AdCP transport failure',
+    adcpError: {
+      code: ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
+      recovery: 'transient',
+      ...(retryAfterMs !== undefined && { retryAfterMs }),
+    },
+  });
 
   it('retries a read exactly once after a typed transient failure', async () => {
     const execute = vi.fn()
@@ -343,6 +355,48 @@ describe('bounded AdCP transport retry', () => {
     await expect(executeWithTransientAdcpRetry({ task: 'list_products', params: {}, execute }))
       .rejects.toBe(failure);
     expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries an SDK-converted typed transport result exactly once', async () => {
+    const failure = sdkTransportFailure(125);
+    expect(typedSdkTransientTransportResult(failure)).toEqual({ retryAfterMs: 125 });
+    const execute = vi.fn()
+      .mockResolvedValueOnce(failure)
+      .mockResolvedValueOnce({ success: true, status: 'completed', data: { products: [] } });
+    const sleep = vi.fn().mockResolvedValue(undefined);
+
+    await expect(executeWithTransientAdcpRetry({ task: 'get_products', params: {}, execute, sleep }))
+      .resolves.toMatchObject({ attempts: 2, value: { success: true } });
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(125);
+  });
+
+  it('does not retry seller protocol results or unfenced mutations', async () => {
+    const protocolFailure = {
+      success: false,
+      status: 'failed',
+      error: 'Seller is temporarily unavailable',
+      adcpError: { code: 'SERVICE_UNAVAILABLE', recovery: 'transient', retryAfterMs: 100 },
+    };
+    const protocolExecute = vi.fn().mockResolvedValue(protocolFailure);
+    await expect(executeWithTransientAdcpRetry({ task: 'get_products', params: {}, execute: protocolExecute }))
+      .resolves.toEqual({ value: protocolFailure, attempts: 1 });
+    expect(protocolExecute).toHaveBeenCalledTimes(1);
+
+    const mutationExecute = vi.fn().mockResolvedValue(sdkTransportFailure());
+    await expect(executeWithTransientAdcpRetry({ task: 'create_media_buy', params: {}, execute: mutationExecute }))
+      .resolves.toMatchObject({ attempts: 1 });
+    expect(mutationExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not exceed two attempts when an SDK-style retry throws', async () => {
+    const retryFailure = Object.assign(new Error('socket reset again'), { code: 'ECONNRESET' });
+    const execute = vi.fn()
+      .mockResolvedValueOnce(sdkTransportFailure())
+      .mockRejectedValueOnce(retryFailure);
+    await expect(executeWithTransientAdcpRetry({ task: 'get_products', params: {}, execute, sleep: async () => undefined }))
+      .rejects.toMatchObject({ name: 'AdcpTransientRetryExhaustedError', attempts: 2 });
+    expect(execute).toHaveBeenCalledTimes(2);
   });
 });
 

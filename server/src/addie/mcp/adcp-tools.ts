@@ -34,7 +34,10 @@ import {
   type ProposalNegotiationProfile,
 } from '../../training-agent/types.js';
 import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
-import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
+import {
+  ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
+  withSdkSafeTransport,
+} from '../../utils/sdk-safe-fetch.js';
 import type { StructuredToolResult, ToolHandlerResult, ToolResultStatus, ToolErrorCategory } from '../tool-result-contract.js';
 import { isMutatingTool, validateKeyFormat } from '../../training-agent/idempotency.js';
 
@@ -77,8 +80,42 @@ function safeErrorMetadata(error: unknown): { code?: string; status?: number; re
 export function isTypedTransientAdcpFailure(error: unknown): boolean {
   if (error instanceof AdcpTransientRetryExhaustedError) return isTypedTransientAdcpFailure(error.failure);
   const { code, status } = safeErrorMetadata(error);
-  return (code !== undefined && TRANSIENT_CODES.has(code))
+  return code === ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE
+    || (code !== undefined && TRANSIENT_CODES.has(code))
     || status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+interface SdkTransientTransportResultMetadata {
+  retryAfterMs?: number;
+}
+
+/**
+ * @adcp/sdk converts most protocol-dispatch exceptions into failed TaskResults.
+ * Retry only the private marker installed by our safe-fetch boundary; a seller
+ * protocol error with `recovery: transient` remains model-visible and is never
+ * automatically replayed here.
+ */
+export function typedSdkTransientTransportResult(
+  result: unknown,
+): SdkTransientTransportResultMetadata | null {
+  if (!result || typeof result !== 'object') return null;
+  const candidate = result as Record<string, unknown>;
+  if (candidate.success !== false || !candidate.adcpError || typeof candidate.adcpError !== 'object') {
+    return null;
+  }
+  const adcpError = candidate.adcpError as Record<string, unknown>;
+  if (
+    adcpError.code !== ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE
+    || adcpError.recovery !== 'transient'
+  ) return null;
+  const retryAfterMs = typeof adcpError.retryAfterMs === 'number'
+    ? adcpError.retryAfterMs
+    : undefined;
+  return { ...(retryAfterMs !== undefined && { retryAfterMs }) };
+}
+
+function adcpRetryIsFenced(task: string, params: Record<string, unknown>): boolean {
+  return !isMutatingTool(task) || validateKeyFormat(params.idempotency_key);
 }
 
 export async function executeWithTransientAdcpRetry<T>(options: {
@@ -87,11 +124,11 @@ export async function executeWithTransientAdcpRetry<T>(options: {
   execute: () => Promise<T>;
   sleep?: (delayMs: number) => Promise<void>;
 }): Promise<{ value: T; attempts: number }> {
-  const mutating = isMutatingTool(options.task);
-  const safeToRetry = !mutating || validateKeyFormat(options.params.idempotency_key);
+  const safeToRetry = adcpRetryIsFenced(options.task, options.params);
   const sleep = options.sleep ?? (delayMs => new Promise(resolve => setTimeout(resolve, delayMs)));
+  let value: T;
   try {
-    return { value: await options.execute(), attempts: 1 };
+    value = await options.execute();
   } catch (error) {
     if (!safeToRetry || !isTypedTransientAdcpFailure(error)) throw error;
     const requestedDelay = safeErrorMetadata(error).retryAfterMs ?? 250;
@@ -102,6 +139,19 @@ export async function executeWithTransientAdcpRetry<T>(options: {
     } catch (retryError) {
       throw new AdcpTransientRetryExhaustedError(retryError);
     }
+  }
+
+  const resultFailure = typedSdkTransientTransportResult(value);
+  if (!safeToRetry || !resultFailure) return { value, attempts: 1 };
+  const requestedDelay = resultFailure.retryAfterMs ?? 250;
+  if (!Number.isFinite(requestedDelay) || requestedDelay < 0 || requestedDelay > MAX_TRANSIENT_RETRY_DELAY_MS) {
+    return { value, attempts: 1 };
+  }
+  await sleep(requestedDelay);
+  try {
+    return { value: await options.execute(), attempts: 2 };
+  } catch (retryError) {
+    throw new AdcpTransientRetryExhaustedError(retryError);
   }
 }
 
@@ -1323,6 +1373,19 @@ export function createAdcpToolHandlers(
 
       if (!result.success) {
         if (result.debug_logs?.length) logger.debug({ agentUrl, task, debugLogCount: result.debug_logs.length }, 'AdCP protocol debug logs captured');
+        const transportFailure = typedSdkTransientTransportResult(result);
+        if (transportFailure) {
+          const retryable = adcpRetryIsFenced(task, requestParams);
+          return structuredAdcpResult({
+            status: 'recoverable_error', operation: task,
+            code: ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE, category: 'transport', retryable,
+            retryAfterMs: transportFailure.retryAfterMs, attempts: executed.attempts,
+            modelContext: executed.attempts > 1
+              ? `Task ${task} could not reach the agent after one bounded retry. Retry later with the identical request and idempotency_key.`
+              : `Task ${task} could not reach the agent. Automatic replay was not safe; preserve the identical request and idempotency_key before retrying.`,
+            userSummary: 'The agent is temporarily unreachable.',
+          });
+        }
         const protocolError = result.error as { code?: string } | undefined;
         return structuredAdcpResult({
           status: 'error', operation: task, code: protocolError?.code ?? 'ADCP_PROTOCOL_ERROR', category: 'protocol', retryable: false, attempts: executed.attempts,
