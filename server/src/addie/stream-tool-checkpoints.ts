@@ -13,6 +13,7 @@ export interface StoredToolCall {
   duration_ms?: number;
   is_error?: boolean;
   result_status?: string;
+  durable_outcome?: 'known';
   github_issue_receipt?: unknown;
 }
 
@@ -37,6 +38,7 @@ export function storedToolCall(execution: ToolExecution): StoredToolCall {
     duration_ms: execution.duration_ms,
     is_error: execution.is_error,
     ...(execution.normalized_result && { result_status: execution.normalized_result.status }),
+    ...(execution.durable_outcome && { durable_outcome: execution.durable_outcome }),
     ...(execution.github_issue_receipt && { github_issue_receipt: execution.github_issue_receipt }),
   };
 }
@@ -140,14 +142,16 @@ export function blockCheckpointedToolReplays(
   delegate?: ToolExecutionPolicy,
 ): ToolExecutionPolicy | undefined {
   if (checkpoints.length === 0) return delegate;
-  // A failed tool result is useful model context, but it is not an irreversible
-  // action receipt. Let the normal policy decide whether a later attempt may
-  // retry it.
+  // A failed tool result is useful model context, but it is not generally an
+  // irreversible action receipt. An allowlisted local handler can explicitly
+  // prove a known negative outcome; that exact failure is safe to retry after
+  // the learner fixes prerequisite state.
   const completed = new Set(
     checkpoints
-      // Failed reads may be retried. A mutation with an error has an
-      // ambiguous external outcome, so it is never automatically replayed.
-      .filter((call) => call.is_error !== true || isSideEffectTool(call.name))
+      // Failed reads and known negative local mutation outcomes may be
+      // retried. An unmarked mutation error remains ambiguous and blocked.
+      .filter((call) => call.is_error !== true
+        || (isSideEffectTool(call.name) && call.durable_outcome !== 'known'))
       .map((call) => isSideEffectTool(call.name)
         ? sideEffectReplayKey(call.name, call.input)
         : replayKey(call.name, call.input)),

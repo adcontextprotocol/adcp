@@ -109,6 +109,7 @@ interface JsonRow {
  * without becoming part of the durable deletion snapshot.
  */
 export const USER_CASCADE_SNAPSHOT_INVENTORY = [
+  { table: 'admin_attempt_resolutions', columns: ['workos_user_id'] },
   { table: 'authorization_epochs', columns: ['workos_user_id'] },
   { table: 'certification_attempts', columns: ['workos_user_id'] },
   { table: 'certification_learner_feedback', columns: ['workos_user_id'] },
