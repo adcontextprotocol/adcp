@@ -46,8 +46,13 @@ flowchart TD
    with `control_media_buy`, and use `get_media_buy_delivery` for reporting.
 
 Commercial changes outside the accepted envelope return `REQUOTE_REQUIRED`.
-Begin an amendment from the snapshot's `accepted_proposal_id`, then revise,
-finalize, and accept the successor proposal.
+When `error.details.decline_reason` is present, use the coarse seller-policy
+dimension to inform recovery. The reason may select a typed refinement, but
+some policies still require the buyer-safe message, a free-text `ask`, or human
+negotiation. Begin the amendment from the snapshot's `accepted_proposal_id`,
+then revise, finalize, and accept the successor proposal. Sellers retain
+disclosure control and may omit `decline_reason` when even the coarse
+classification would expose private thresholds or enforcement controls.
 
 ### Compact operations form a saga
 

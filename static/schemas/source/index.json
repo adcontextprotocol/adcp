@@ -1189,6 +1189,10 @@
           "$ref": "/schemas/enums/proposal-decline-reason.json",
           "description": "Machine-readable terminal proposal feedback"
         },
+        "seller-policy-decline-reason": {
+          "$ref": "/schemas/enums/seller-policy-decline-reason.json",
+          "description": "Machine-readable seller-policy reason for declining a MediaBuy control shape"
+        },
         "proposal-refinement-reason": {
           "$ref": "/schemas/enums/proposal-refinement-reason.json",
           "description": "Machine-readable partial or unable proposal-refinement outcome"
