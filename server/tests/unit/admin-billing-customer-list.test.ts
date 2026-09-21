@@ -11,7 +11,9 @@ const {
   mockCustomersRetrieve,
   mockCustomersUpdate,
   mockInvoicesList,
+  mockInvoicesRetrieve,
   mockSubscriptionsList,
+  mockProductsRetrieve,
   stripeMockState,
 } = vi.hoisted(() => ({
   mockPoolQuery: vi.fn<any>(),
@@ -20,7 +22,9 @@ const {
   mockCustomersRetrieve: vi.fn<any>(),
   mockCustomersUpdate: vi.fn<any>(),
   mockInvoicesList: vi.fn<any>(),
+  mockInvoicesRetrieve: vi.fn<any>(),
   mockSubscriptionsList: vi.fn<any>(),
+  mockProductsRetrieve: vi.fn<any>(),
   stripeMockState: { configured: true } as { configured: boolean },
 }));
 
@@ -58,9 +62,13 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
       },
       invoices: {
         list: (...args: unknown[]) => mockInvoicesList(...args),
+        retrieve: (...args: unknown[]) => mockInvoicesRetrieve(...args),
       },
       subscriptions: {
         list: (...args: unknown[]) => mockSubscriptionsList(...args),
+      },
+      products: {
+        retrieve: (...args: unknown[]) => mockProductsRetrieve(...args),
       },
     };
   },
@@ -106,7 +114,9 @@ describe('GET /api/admin/stripe-customers', () => {
     mockCustomersRetrieve.mockReset();
     mockCustomersUpdate.mockReset();
     mockInvoicesList.mockReset();
+    mockInvoicesRetrieve.mockReset();
     mockSubscriptionsList.mockReset();
+    mockProductsRetrieve.mockReset();
     stripeMockState.configured = true;
 
     mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
@@ -119,6 +129,131 @@ describe('GET /api/admin/stripe-customers', () => {
     });
     mockInvoicesList.mockResolvedValue({ data: [], has_more: false });
     mockSubscriptionsList.mockResolvedValue({ data: [], has_more: false });
+  });
+
+  describe('GET /api/admin/stripe-reconciliation/:recordId', () => {
+    it('compares a customer with linked local subscription state and audits the lookup', async () => {
+      mockCustomersRetrieve.mockResolvedValue(makeCustomer('cus_reconcile'));
+      mockSubscriptionsList.mockResolvedValue({
+        data: [{
+          id: 'sub_membership',
+          status: 'active',
+          current_period_end: 1_800_000_000,
+          canceled_at: null,
+          items: { data: [{ price: { lookup_key: 'aao_membership_business', product: 'prod_member' } }] },
+        }],
+      });
+      mockPoolQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM organizations')) {
+          return {
+            rows: [{
+              workos_organization_id: 'org_reconcile',
+              name: 'Reconcile Org',
+              stripe_customer_id: 'cus_reconcile',
+              subscription_status: 'active',
+              stripe_subscription_id: 'sub_membership',
+            }],
+          };
+        }
+        return { rows: [], rowCount: 1 };
+      });
+
+      const response = await request(await buildApp())
+        .get('/api/admin/stripe-reconciliation/cus_reconcile');
+
+      expect(response.status).toBe(200);
+      expect(response.body.kind).toBe('customer');
+      expect(response.body.matches).toEqual({
+        customer_id: true,
+        subscription_id: true,
+        subscription_status: true,
+      });
+      expect(response.body.refresh).toEqual({
+        available: true,
+        organization_id: 'org_reconcile',
+      });
+      expect(response.body.stripe).not.toHaveProperty('email');
+      expect(mockPoolQuery).toHaveBeenCalledWith(
+        expect.stringContaining('admin_billing_reconciliation_events'),
+        expect.arrayContaining(['lookup', 'stripe_customer', 'cus_reconcile', 'org_reconcile', 'success']),
+      );
+      expect(mockPoolQuery.mock.calls.at(-1)?.[1]?.join(' ')).not.toContain('example.test');
+    });
+
+    it('compares an invoice by exact ID without returning payment URLs or customer email', async () => {
+      mockInvoicesRetrieve.mockResolvedValue({
+        id: 'in_reconcile',
+        customer: 'cus_reconcile',
+        status: 'paid',
+        amount_due: 12000,
+        amount_paid: 12000,
+        currency: 'usd',
+        created: 1_700_000_000,
+        due_date: null,
+        hosted_invoice_url: 'https://pay.example.test/secret',
+        customer_email: 'private@example.test',
+      });
+      mockPoolQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM organizations')) {
+          return { rows: [{
+            workos_organization_id: 'org_reconcile',
+            name: 'Reconcile Org',
+            stripe_customer_id: 'cus_reconcile',
+          }] };
+        }
+        if (sql.includes('FROM org_invoices')) {
+          return { rows: [{
+            stripe_invoice_id: 'in_reconcile',
+            stripe_customer_id: 'cus_reconcile',
+            workos_organization_id: 'org_reconcile',
+            status: 'open',
+            amount_due: 12000,
+            amount_paid: 0,
+            currency: 'usd',
+          }] };
+        }
+        return { rows: [], rowCount: 1 };
+      });
+
+      const response = await request(await buildApp())
+        .get('/api/admin/stripe-reconciliation/in_reconcile');
+
+      expect(response.status).toBe(200);
+      expect(response.body.kind).toBe('invoice');
+      expect(response.body.matches).toMatchObject({ status: false, amount_due: true, amount_paid: false });
+      expect(JSON.stringify(response.body)).not.toContain('pay.example.test');
+      expect(JSON.stringify(response.body)).not.toContain('private@example.test');
+      expect(mockInvoicesRetrieve).toHaveBeenCalledWith('in_reconcile');
+    });
+
+    it('rejects non-exact identifiers before Stripe or database access', async () => {
+      const response = await request(await buildApp())
+        .get('/api/admin/stripe-reconciliation/example%40test.invalid');
+
+      expect(response.status).toBe(400);
+      expect(mockCustomersRetrieve).not.toHaveBeenCalled();
+      expect(mockInvoicesRetrieve).not.toHaveBeenCalled();
+      expect(mockPoolQuery).not.toHaveBeenCalled();
+    });
+
+    it('audits a missing Stripe record without exposing provider details', async () => {
+      mockCustomersRetrieve.mockRejectedValue({
+        code: 'resource_missing',
+        statusCode: 404,
+        message: 'No such customer for private@example.test',
+      });
+
+      const response = await request(await buildApp())
+        .get('/api/admin/stripe-reconciliation/cus_missing');
+
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: 'Stripe record not found' });
+      expect(mockPoolQuery).toHaveBeenCalledWith(
+        expect.stringContaining('admin_billing_reconciliation_events'),
+        expect.arrayContaining(['lookup', 'stripe_customer', 'cus_missing', null, 'not_found']),
+      );
+      expect(JSON.stringify(response.body)).not.toContain('private@example.test');
+    });
   });
 
   it('loads one bounded customer page and resolves only those organization links', async () => {
@@ -310,5 +445,13 @@ describe('admin billing customer search UI', () => {
     expect(html).toContain('id="customer-page-next"');
     expect(html).toContain("params.set('cursor', currentCustomerCursor)");
     expect(html).toContain('window.history.replaceState');
+  });
+
+  it('provides exact Stripe/local reconciliation and a local refresh action', () => {
+    expect(html).toContain('id="reconciliation-form"');
+    expect(html).toContain('placeholder="cus_… or in_…"');
+    expect(html).toContain('/api/admin/stripe-reconciliation/');
+    expect(html).toContain('Refresh local state');
+    expect(html).toContain('/sync`');
   });
 });

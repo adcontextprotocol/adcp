@@ -36,6 +36,7 @@ import { OrganizationDatabase, TIER_PRESERVING_STATUSES, buildSubscriptionUpdate
 import { invalidateMembershipCache } from "../db/org-filters.js";
 import { pickMembershipSub } from "../billing/membership-prices.js";
 import { withOrgIntakeLock } from "../billing/org-intake-lock.js";
+import { syncInvoicesForCustomer } from "../billing/invoice-cache.js";
 
 const logger = createLogger("billing-routes");
 
@@ -70,6 +71,36 @@ const SUBSCRIPTION_STATUS_FILTERS = new Set([
   "incomplete",
   "incomplete_expired",
 ]);
+const STRIPE_RECONCILIATION_ID = /^(cus|in)_[A-Za-z0-9]{1,96}$/;
+
+type ReconciliationResourceType = "stripe_customer" | "stripe_invoice";
+type ReconciliationOutcome = "success" | "not_found" | "failed";
+
+async function recordBillingReconciliationEvent(input: {
+  actorUserId: string;
+  action: "lookup" | "refresh";
+  resourceType: ReconciliationResourceType;
+  resourceId: string;
+  workosOrganizationId: string | null;
+  outcome: ReconciliationOutcome;
+  details?: Record<string, unknown>;
+}): Promise<void> {
+  await getPool().query(
+    `INSERT INTO admin_billing_reconciliation_events
+       (actor_user_id, action, resource_type, resource_id,
+        workos_organization_id, outcome, details)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      input.actorUserId,
+      input.action,
+      input.resourceType,
+      input.resourceId,
+      input.workosOrganizationId,
+      input.outcome,
+      JSON.stringify(input.details ?? {}),
+    ],
+  );
+}
 
 function escapeStripeSearchValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
@@ -93,110 +124,6 @@ function customerMatchesFilter(
   const subscriptions = customer.subscriptions?.data ?? [];
   if (filter === "none") return subscriptions.length === 0;
   return hasMatchingSubscription;
-}
-
-/**
- * Sync all invoices for a Stripe customer to the local cache.
- * Called when manually linking a customer to an organization.
- */
-async function syncInvoicesForCustomer(
-  customerId: string,
-  workosOrgId: string
-): Promise<number> {
-  if (!stripe) {
-    logger.warn("Stripe not initialized - cannot sync invoices");
-    return 0;
-  }
-
-  const pool = getPool();
-  let syncedCount = 0;
-
-  try {
-    // Fetch all invoices for this customer
-    const invoices = await stripe.invoices.list({
-      customer: customerId,
-      limit: 100,
-    });
-
-    for (const invoice of invoices.data) {
-      // Get product name from line items if available
-      let productName: string | null = null;
-      if (invoice.lines?.data && invoice.lines.data.length > 0) {
-        const primaryLine = invoice.lines.data[0] as any;
-        const productId = primaryLine.price?.product as string;
-        if (productId) {
-          try {
-            const product = await stripe.products.retrieve(productId);
-            productName = product.name;
-          } catch {
-            productName = primaryLine.description || null;
-          }
-        }
-      }
-
-      await pool.query(
-        `INSERT INTO org_invoices (
-          stripe_invoice_id,
-          stripe_customer_id,
-          workos_organization_id,
-          status,
-          amount_due,
-          amount_paid,
-          currency,
-          invoice_number,
-          hosted_invoice_url,
-          invoice_pdf,
-          product_name,
-          customer_email,
-          created_at,
-          due_date,
-          paid_at,
-          voided_at,
-          stripe_updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
-        ON CONFLICT (stripe_invoice_id) DO UPDATE SET
-          workos_organization_id = EXCLUDED.workos_organization_id,
-          status = EXCLUDED.status,
-          amount_due = EXCLUDED.amount_due,
-          amount_paid = EXCLUDED.amount_paid,
-          invoice_number = EXCLUDED.invoice_number,
-          hosted_invoice_url = EXCLUDED.hosted_invoice_url,
-          invoice_pdf = EXCLUDED.invoice_pdf,
-          product_name = COALESCE(EXCLUDED.product_name, org_invoices.product_name),
-          customer_email = EXCLUDED.customer_email,
-          paid_at = EXCLUDED.paid_at,
-          voided_at = EXCLUDED.voided_at,
-          stripe_updated_at = NOW()`,
-        [
-          invoice.id,
-          customerId,
-          workosOrgId,
-          invoice.status,
-          invoice.amount_due,
-          invoice.amount_paid,
-          invoice.currency,
-          invoice.number || null,
-          invoice.hosted_invoice_url || null,
-          invoice.invoice_pdf || null,
-          productName,
-          typeof invoice.customer_email === 'string' ? invoice.customer_email : null,
-          new Date(invoice.created * 1000),
-          invoice.due_date ? new Date(invoice.due_date * 1000) : null,
-          invoice.status === 'paid' && invoice.status_transitions?.paid_at
-            ? new Date(invoice.status_transitions.paid_at * 1000)
-            : null,
-          invoice.status === 'void' ? new Date() : null,
-        ]
-      );
-      syncedCount++;
-    }
-
-    logger.info({ customerId, workosOrgId, syncedCount }, "Synced invoices for customer");
-    return syncedCount;
-  } catch (err) {
-    logger.error({ err, customerId, workosOrgId }, "Failed to sync invoices for customer");
-    return syncedCount;
-  }
 }
 
 /**
@@ -630,6 +557,199 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   // =========================================================================
   // STRIPE CUSTOMER MANAGEMENT API (mounted at /api/admin)
   // =========================================================================
+
+  // GET /api/admin/stripe-reconciliation/:recordId - Exact, redacted Stripe/local comparison
+  apiRouter.get("/stripe-reconciliation/:recordId", ...requireGlobalAdmin, async (req, res) => {
+    const recordId = req.params.recordId;
+    if (!STRIPE_RECONCILIATION_ID.test(recordId)) {
+      return res.status(400).json({
+        error: "Enter an exact Stripe customer (cus_) or invoice (in_) ID",
+      });
+    }
+
+    const resourceType: ReconciliationResourceType = recordId.startsWith("cus_")
+      ? "stripe_customer"
+      : "stripe_invoice";
+    let workosOrganizationId: string | null = null;
+    let outcome: ReconciliationOutcome = "failed";
+    let responseStatus = 200;
+    let responseError: string | null = null;
+    let payload: Record<string, unknown> | null = null;
+
+    if (!stripe) {
+      responseStatus = 503;
+      responseError = "Stripe not configured";
+    } else {
+      try {
+        const pool = getPool();
+
+        if (resourceType === "stripe_customer") {
+          const customerResult = await stripe.customers.retrieve(recordId);
+          const deleted = "deleted" in customerResult && customerResult.deleted;
+          const customer = customerResult as Stripe.Customer;
+          const orgResult = await pool.query(
+            `SELECT workos_organization_id, name, stripe_customer_id,
+                    subscription_status, stripe_subscription_id,
+                    subscription_amount, subscription_currency,
+                    subscription_interval, subscription_current_period_end,
+                    subscription_canceled_at, membership_tier
+               FROM organizations
+              WHERE stripe_customer_id = $1
+              LIMIT 1`,
+            [recordId],
+          );
+          const organization = orgResult.rows[0] ?? null;
+          workosOrganizationId = organization?.workos_organization_id ?? null;
+
+          const subscriptions = deleted
+            ? []
+            : (await stripe.subscriptions.list({
+                customer: recordId,
+                status: "all",
+                limit: 100,
+              })).data;
+          const stripeSubscription =
+            subscriptions.find((sub) => sub.id === organization?.stripe_subscription_id)
+            ?? pickMembershipSub(subscriptions)
+            ?? subscriptions.find((sub) => (TIER_PRESERVING_STATUSES as readonly string[]).includes(sub.status))
+            ?? subscriptions[0]
+            ?? null;
+
+          payload = {
+            kind: "customer",
+            stripe: {
+              id: recordId,
+              deleted,
+              created: deleted ? null : customer.created,
+              currency: deleted ? null : customer.currency ?? null,
+              subscription: stripeSubscription
+                ? {
+                    id: stripeSubscription.id,
+                    status: stripeSubscription.status,
+                    current_period_end: stripeSubscription.current_period_end ?? null,
+                    canceled_at: stripeSubscription.canceled_at ?? null,
+                  }
+                : null,
+            },
+            local: {
+              organization,
+            },
+            matches: organization
+              ? {
+                  customer_id: organization.stripe_customer_id === recordId,
+                  subscription_id: (organization.stripe_subscription_id ?? null) === (stripeSubscription?.id ?? null),
+                  subscription_status: (organization.subscription_status ?? null) === (stripeSubscription?.status ?? null),
+                }
+              : null,
+            refresh: {
+              available: Boolean(workosOrganizationId),
+              organization_id: workosOrganizationId,
+            },
+          };
+        } else {
+          const invoice = await stripe.invoices.retrieve(recordId);
+          const customerId = typeof invoice.customer === "string"
+            ? invoice.customer
+            : invoice.customer?.id ?? null;
+          const [orgResult, localInvoiceResult] = await Promise.all([
+            customerId
+              ? pool.query(
+                  `SELECT workos_organization_id, name, stripe_customer_id,
+                          subscription_status, stripe_subscription_id
+                     FROM organizations
+                    WHERE stripe_customer_id = $1
+                    LIMIT 1`,
+                  [customerId],
+                )
+              : Promise.resolve({ rows: [] }),
+            pool.query(
+              `SELECT stripe_invoice_id, stripe_customer_id, workos_organization_id,
+                      status, amount_due, amount_paid, currency, stripe_updated_at
+                 FROM org_invoices
+                WHERE stripe_invoice_id = $1
+                LIMIT 1`,
+              [recordId],
+            ),
+          ]);
+          const organization = orgResult.rows[0] ?? null;
+          const localInvoice = localInvoiceResult.rows[0] ?? null;
+          workosOrganizationId = organization?.workos_organization_id
+            ?? localInvoice?.workos_organization_id
+            ?? null;
+
+          payload = {
+            kind: "invoice",
+            stripe: {
+              id: invoice.id,
+              customer_id: customerId,
+              status: invoice.status,
+              amount_due: invoice.amount_due,
+              amount_paid: invoice.amount_paid,
+              currency: invoice.currency,
+              created: invoice.created,
+              due_date: invoice.due_date ?? null,
+            },
+            local: {
+              organization,
+              invoice: localInvoice,
+            },
+            matches: localInvoice
+              ? {
+                  customer_id: localInvoice.stripe_customer_id === customerId,
+                  status: localInvoice.status === invoice.status,
+                  amount_due: localInvoice.amount_due === invoice.amount_due,
+                  amount_paid: localInvoice.amount_paid === invoice.amount_paid,
+                }
+              : null,
+            refresh: {
+              available: Boolean(workosOrganizationId),
+              organization_id: workosOrganizationId,
+            },
+          };
+        }
+        outcome = "success";
+      } catch (error) {
+        const stripeError = error as { code?: string; statusCode?: number };
+        const notFound = stripeError.code === "resource_missing" || stripeError.statusCode === 404;
+        outcome = notFound ? "not_found" : "failed";
+        responseStatus = notFound ? 404 : 502;
+        responseError = notFound ? "Stripe record not found" : "Stripe lookup failed";
+        logger.warn(
+          {
+            resourceType,
+            recordId,
+            outcome,
+            stripeCode: stripeError.code,
+            stripeStatusCode: stripeError.statusCode,
+          },
+          "Admin Stripe reconciliation lookup failed",
+        );
+      }
+    }
+
+    try {
+      await recordBillingReconciliationEvent({
+        actorUserId: req.user?.id ?? "unknown",
+        action: "lookup",
+        resourceType,
+        resourceId: recordId,
+        workosOrganizationId,
+        outcome,
+        details: {
+          linked: Boolean(workosOrganizationId),
+        },
+      });
+    } catch (error) {
+      logger.error(
+        { err: error, resourceType, recordId },
+        "Failed to audit admin Stripe reconciliation lookup",
+      );
+      return res.status(503).json({ error: "Unable to audit Stripe lookup" });
+    }
+
+    if (responseError) return res.status(responseStatus).json({ error: responseError });
+    return res.json(payload);
+  });
 
   // GET /api/admin/stripe-customers - Paginated Stripe customer search with link status and payment totals
   apiRouter.get("/stripe-customers", ...requireGlobalAdmin, async (req, res) => {

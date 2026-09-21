@@ -372,8 +372,39 @@
       text-align: center;
       color: var(--color-text-muted);
     }
+    .reconciliation-controls {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) auto;
+      gap: var(--space-2);
+      align-items: center;
+    }
+    .reconciliation-controls input {
+      min-height: 38px;
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-surface);
+      color: var(--color-text);
+    }
+    .reconciliation-result {
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+      border-top: var(--border-1) solid var(--color-border);
+    }
+    .reconciliation-result table {
+      width: 100%;
+      margin: var(--space-3) 0;
+      border-collapse: collapse;
+    }
+    .reconciliation-result th,
+    .reconciliation-result td {
+      padding: var(--space-2);
+      border-bottom: var(--border-1) solid var(--color-border);
+      text-align: left;
+    }
     @media (max-width: 760px) {
-      .customer-search-controls {
+      .customer-search-controls,
+      .reconciliation-controls {
         grid-template-columns: 1fr;
       }
     }
@@ -388,6 +419,22 @@
 
     <div id="error-message" class="error-message" style="display: none;"></div>
     <div id="success-message" class="success-message" style="display: none;"></div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Stripe reconciliation</div>
+      </div>
+      <p style="color: var(--color-text-muted); margin-top: 0;">
+        Compare an exact Stripe customer or invoice with local billing state. Refresh only copies Stripe state into the local cache.
+      </p>
+      <form class="reconciliation-controls" id="reconciliation-form">
+        <label class="sr-only" for="reconciliation-id">Stripe customer or invoice ID</label>
+        <input id="reconciliation-id" type="text" maxlength="100"
+               placeholder="cus_… or in_…" autocomplete="off" required />
+        <button class="btn btn-primary" type="submit" id="reconciliation-lookup">Look up</button>
+      </form>
+      <div class="reconciliation-result" id="reconciliation-result" style="display: none;" aria-live="polite"></div>
+    </div>
 
     <div class="stats-row" id="stats-row">
       <div class="stat-card">
@@ -542,6 +589,7 @@
     let nextCustomerCursor = null;
     let customerCursorHistory = [];
     let customerPage = { count: 0, total: null, has_more: false, next_cursor: null };
+    let reconciliationRecord = null;
 
     const formatCurrency = (cents) => {
       return new Intl.NumberFormat('en-US', {
@@ -576,6 +624,125 @@
       el.textContent = message;
       el.style.display = 'block';
       setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
+
+    function formatReconciliationMoney(cents, currency) {
+      if (cents === null || cents === undefined) return '—';
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: (currency || 'usd').toUpperCase(),
+      }).format(cents / 100);
+    }
+
+    function reconciliationValue(value) {
+      return value === null || value === undefined || value === '' ? '—' : escapeHtml(String(value));
+    }
+
+    function comparisonRow(label, localValue, stripeValue, matches) {
+      const matchBadge = matches === null || matches === undefined
+        ? '<span class="badge badge-gray">No local record</span>'
+        : matches
+          ? '<span class="badge badge-success">Matches</span>'
+          : '<span class="badge badge-warning">Different</span>';
+      return `<tr>
+        <th>${escapeHtml(label)}</th>
+        <td>${reconciliationValue(localValue)}</td>
+        <td>${reconciliationValue(stripeValue)}</td>
+        <td>${matchBadge}</td>
+      </tr>`;
+    }
+
+    function renderReconciliation(record) {
+      const result = document.getElementById('reconciliation-result');
+      const organization = record.local.organization;
+      const orgLabel = organization
+        ? `${escapeHtml(organization.name)} <code>${escapeHtml(organization.workos_organization_id)}</code>`
+        : 'Not linked to a local organization';
+      let rows = '';
+
+      if (record.kind === 'customer') {
+        const local = organization || {};
+        const stripeSubscription = record.stripe.subscription || {};
+        rows += comparisonRow('Customer ID', local.stripe_customer_id, record.stripe.id, record.matches?.customer_id);
+        rows += comparisonRow('Subscription ID', local.stripe_subscription_id, stripeSubscription.id, record.matches?.subscription_id);
+        rows += comparisonRow('Subscription status', local.subscription_status, stripeSubscription.status, record.matches?.subscription_status);
+      } else {
+        const localInvoice = record.local.invoice || {};
+        rows += comparisonRow('Customer ID', localInvoice.stripe_customer_id, record.stripe.customer_id, record.matches?.customer_id);
+        rows += comparisonRow('Invoice status', localInvoice.status, record.stripe.status, record.matches?.status);
+        rows += comparisonRow(
+          'Amount due',
+          formatReconciliationMoney(localInvoice.amount_due, localInvoice.currency),
+          formatReconciliationMoney(record.stripe.amount_due, record.stripe.currency),
+          record.matches?.amount_due,
+        );
+        rows += comparisonRow(
+          'Amount paid',
+          formatReconciliationMoney(localInvoice.amount_paid, localInvoice.currency),
+          formatReconciliationMoney(record.stripe.amount_paid, record.stripe.currency),
+          record.matches?.amount_paid,
+        );
+      }
+
+      result.innerHTML = `
+        <div><strong>${record.kind === 'customer' ? 'Customer' : 'Invoice'}:</strong> <code>${escapeHtml(record.stripe.id)}</code></div>
+        <div style="margin-top: var(--space-1);"><strong>Local organization:</strong> ${orgLabel}</div>
+        <table>
+          <thead><tr><th>Field</th><th>Local</th><th>Stripe</th><th>Result</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${record.refresh.available
+          ? '<button class="btn btn-secondary" type="button" id="reconciliation-refresh">Refresh local state</button>'
+          : '<p style="color: var(--color-text-muted); margin-bottom: 0;">Link this customer to an organization before refreshing local state.</p>'}
+      `;
+      result.style.display = 'block';
+      document.getElementById('reconciliation-refresh')?.addEventListener('click', refreshReconciliation);
+    }
+
+    async function lookupReconciliation() {
+      const recordId = document.getElementById('reconciliation-id').value.trim();
+      const button = document.getElementById('reconciliation-lookup');
+      const result = document.getElementById('reconciliation-result');
+      button.disabled = true;
+      button.textContent = 'Looking up…';
+      result.style.display = 'block';
+      result.textContent = 'Loading Stripe and local state…';
+
+      try {
+        const response = await fetch(`/api/admin/stripe-reconciliation/${encodeURIComponent(recordId)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Lookup failed');
+        reconciliationRecord = data;
+        renderReconciliation(data);
+      } catch (error) {
+        reconciliationRecord = null;
+        result.textContent = error.message;
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Look up';
+      }
+    }
+
+    async function refreshReconciliation() {
+      if (!reconciliationRecord?.refresh?.organization_id) return;
+      const button = document.getElementById('reconciliation-refresh');
+      button.disabled = true;
+      button.textContent = 'Refreshing…';
+      try {
+        const response = await fetch(
+          `/api/admin/accounts/${encodeURIComponent(reconciliationRecord.refresh.organization_id)}/sync`,
+          { method: 'POST' },
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || data.message || 'Refresh failed');
+        if (!data.stripe?.success) throw new Error(data.stripe?.message || data.stripe?.error || 'Stripe refresh failed');
+        await lookupReconciliation();
+        showSuccess('Local billing state refreshed from Stripe');
+      } catch (error) {
+        showError(error.message);
+        button.disabled = false;
+        button.textContent = 'Refresh local state';
+      }
     }
 
     function setFilter(filter, btn) {
@@ -1343,6 +1510,11 @@
       currentFilter = customerStatus.value;
       resetCustomerPaging();
       loadCustomers();
+    });
+
+    document.getElementById('reconciliation-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      lookupReconciliation();
     });
 
     customerStatus.addEventListener('change', () => {
