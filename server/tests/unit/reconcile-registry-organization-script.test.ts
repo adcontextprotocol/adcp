@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseArgs } from '../../src/scripts/reconcile-registry-organization.js';
+import { dnsRecordName, parseArgs } from '../../src/scripts/reconcile-registry-organization.js';
 
 describe('reconcile-registry-organization argument parsing', () => {
   it('defaults to a dry run and captures only exact existing identifiers', () => {
@@ -33,5 +33,15 @@ describe('reconcile-registry-organization argument parsing', () => {
     ]);
     expect(parsed.apply).toBe(true);
     expect(parsed.makePrimary).toBe(true);
+  });
+});
+
+describe('reconcile-registry-organization DNS challenge lookup', () => {
+  it('uses the domain apex when WorkOS does not provide a verification prefix', () => {
+    expect(dnsRecordName('o-n-x.com', null)).toBe('o-n-x.com');
+  });
+
+  it('uses the WorkOS verification prefix when one is present', () => {
+    expect(dnsRecordName('example.com', '_workos')).toBe('_workos.example.com');
   });
 });

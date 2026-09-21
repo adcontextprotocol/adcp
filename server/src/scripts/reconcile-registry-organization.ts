@@ -63,6 +63,10 @@ export function parseArgs(argv: string[]): Args {
   };
 }
 
+export function dnsRecordName(domain: string, verificationPrefix?: string | null): string {
+  return verificationPrefix ? `${verificationPrefix}.${domain}` : domain;
+}
+
 function keyOrganizationId(key: Awaited<ReturnType<WorkOS['apiKeys']['createValidation']>>['apiKey']): string | null {
   if (!key) return null;
   return key.owner.type === 'organization' ? key.owner.id : key.owner.organizationId;
@@ -90,7 +94,7 @@ async function main() {
   const pool = getPool();
 
   try {
-    const [localOrg, localDomain, profile, workosOrg, keyInventory, txtRecords] = await Promise.all([
+    const [localOrg, localDomain, profile, workosOrg, keyInventory] = await Promise.all([
       pool.query(
         `SELECT workos_organization_id, name, email_domain, is_personal,
                 membership_tier, subscription_status
@@ -110,12 +114,13 @@ async function main() {
       ),
       workos.organizations.getOrganization(args.orgId),
       workos.apiKeys.listOrganizationApiKeys({ organizationId: args.orgId }),
-      resolveTxt(args.domain).catch(() => [] as string[][]),
     ]);
 
     if (localOrg.rowCount !== 1) throw new Error(`Local organization ${args.orgId} was not found`);
     const workosDomain = workosOrg.domains.find((entry) => entry.domain.toLowerCase() === args.domain);
     if (!workosDomain) throw new Error(`WorkOS organization ${args.orgId} does not contain ${args.domain}`);
+    const txtRecordName = dnsRecordName(args.domain, workosDomain.verificationPrefix);
+    const txtRecords = await resolveTxt(txtRecordName).catch(() => [] as string[][]);
 
     const listedKey = keyInventory.data.find((key) => key.id === args.apiKeyId);
     let validatedKey = null;
@@ -163,6 +168,7 @@ async function main() {
         state: workosDomain.state,
         verification_strategy: workosDomain.verificationStrategy,
         verification_prefix: workosDomain.verificationPrefix ?? null,
+        dns_record_name: txtRecordName,
         dns_token_matches: dnsTokenMatches,
         created_at: workosDomain.createdAt,
         updated_at: workosDomain.updatedAt,
