@@ -560,13 +560,29 @@ export function registerAllJobs(): void {
     interval: { value: 1, unit: 'hours' },
     initialDelay: { value: 10, unit: 'minutes' },
     // Ten agents can each consume the 10-minute suite budget plus two
-    // 30-second discovery budgets. Two hours bounds the documented ~115m
-    // worst case without letting a wedged batch starve the global job pool.
+    // 30-second discovery budgets. Two hours bounds admission plus the
+    // documented ~115m run, so waiting behind a wedged pool is bounded too.
     executionTimeoutMs: 2 * 60 * 60 * 1000,
     passExecutionContext: true,
     runner: (options, context) => runComplianceHeartbeatJob(options, context.signal),
-    options: { limit: 10 },
+    options: { limit: 10, includeOperationalDiagnostics: true },
     shouldLogResult: (r) => r.checked > 0,
+    statusResult: (r) => ({
+      checked: r.checked,
+      passed: r.passed,
+      failed: r.failed,
+      skipped: r.skipped,
+      ...r.diagnostics,
+    }),
+    validateResult: (r) => {
+      if (r.diagnostics && r.diagnostics.selectedAgents.length > 0 && r.checked === 0) {
+        throw new Error(
+          `Compliance heartbeat made no authoritative progress across ${r.diagnostics.selectedAgents.length} selected agents`
+          + ` (backlog=${r.diagnostics.eligibleBacklog}, runs_recorded=${r.diagnostics.runsRecorded},`
+          + ` skips=${JSON.stringify(r.diagnostics.skipReasons)})`,
+        );
+      }
+    },
   });
 
   jobScheduler.register({

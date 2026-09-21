@@ -662,9 +662,16 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     expect(res.status).toBe(503);
     expect(res.body.code).toBe('refresh_authorization_provenance_required');
     expect(res.body.error).toBe(
-      'Recheck & retest is temporarily paused platform-wide. Use Requeue comply to schedule the next run.',
+      'Recheck & retest is paused platform-wide until durable requester-authorization provenance is supported. Retrying is not expected to help until the platform changes.',
     );
-    expect(res.headers['retry-after']).toBe('60');
+    expect(res.body).toMatchObject({
+      retryable: false,
+      scope: 'platform',
+      applies_to: 'human_session',
+      alternative_action: 'monitoring_requeue',
+    });
+    expect(res.body).not.toHaveProperty('retry_after');
+    expect(res.headers).not.toHaveProperty('retry-after');
     expect(res.headers['cache-control']).toBe('private, no-store');
     expect(refreshSingleAgentMock).not.toHaveBeenCalled();
     expect(complyMock).not.toHaveBeenCalled();

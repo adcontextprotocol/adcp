@@ -935,6 +935,18 @@ export const AgentComplianceDetailSchema = z
     badge_requalification_required: z.boolean().optional().openapi({
       description: "True when monitoring is enabled but badges remain suppressed until a fresh passing full-suite run completes.",
     }),
+    refresh_availability: z.object({
+      available: z.boolean(),
+      retryable: z.boolean().openapi({ description: "Whether retrying the same human refresh request later is expected to succeed without a platform change." }),
+      scope: z.literal('platform'),
+      applies_to: z.literal('human_session'),
+      code: z.literal('refresh_authorization_provenance_required'),
+      notice: z.string(),
+      alternative_action: z.literal('monitoring_requeue'),
+      alternative_description: z.string(),
+    }).optional().openapi({
+      description: "Current human refresh admission state. Monitoring requeue is a separate scheduler operation and is not a retry or ETA for this endpoint.",
+    }),
     tracks: z.record(z.string(), z.string()).optional(),
     track_details: z.array(z.object({
       track: z.string(),

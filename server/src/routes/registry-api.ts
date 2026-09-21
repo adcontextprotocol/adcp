@@ -640,6 +640,17 @@ const complianceDb = new ComplianceDatabase();
 const agentSnapshotDb = new AgentSnapshotDatabase();
 const agentContextDb = new AgentContextDatabase();
 
+const HUMAN_REFRESH_AVAILABILITY = {
+  available: false,
+  retryable: false,
+  scope: 'platform' as const,
+  applies_to: 'human_session' as const,
+  code: 'refresh_authorization_provenance_required' as const,
+  notice: 'Recheck & retest is paused platform-wide until durable requester-authorization provenance is supported. Retrying is not expected to help until the platform changes.',
+  alternative_action: 'monitoring_requeue' as const,
+  alternative_description: 'Requeue comply only marks the agent eligible for a future scheduled heartbeat; it does not perform or retry this human refresh and has no guaranteed start time.',
+};
+
 function isStoryboardStatusSchemaUnavailable(err: unknown): boolean {
   if (typeof err !== "object" || err === null || !("code" in err)) return false;
   const code = (err as { code?: unknown }).code;
@@ -4285,11 +4296,18 @@ registry.registerPath({
     500: { description: "Refresh failed after durable execution", content: { "application/json": { schema: ErrorSchema } } },
     502: { description: "Probe failed (timeout, DNS, OAuth wall, etc.)", content: { "application/json": { schema: ErrorSchema } } },
     503: {
-      description: "Refresh queue or authorization unavailable. All human submissions are temporarily fenced with refresh_authorization_provenance_required; only static admin API key submissions are supported.",
-      headers: z.object({ "Retry-After": z.string() }),
+      description: "Refresh queue or authorization unavailable. Human submissions are fenced with refresh_authorization_provenance_required until durable authorization provenance is supported; this response is non-retryable and carries no ETA. Static admin API key submissions remain supported.",
       content: { "application/json": { schema: z.union([
         RegistryAdminAuthorizationUnavailableSchema,
-        z.object({ error: z.string(), code: z.string(), retry_after: z.number().int() }),
+        z.object({
+          error: z.string(),
+          code: z.literal('refresh_authorization_provenance_required'),
+          retryable: z.literal(false),
+          scope: z.literal('platform'),
+          applies_to: z.literal('human_session'),
+          alternative_action: z.literal('monitoring_requeue'),
+          alternative_description: z.string(),
+        }),
       ]) } },
     },
   },
@@ -6902,6 +6920,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           lifecycle_stage: metadata.lifecycle_stage || "production",
           compliance_opt_out: true,
           badge_requalification_required: true,
+          refresh_availability: HUMAN_REFRESH_AVAILABILITY,
         });
       }
 
@@ -6912,6 +6931,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           lifecycle_stage: metadata?.lifecycle_stage || "production",
           compliance_opt_out: false,
           badge_requalification_required: metadata?.badge_requalification_required ?? false,
+          refresh_availability: HUMAN_REFRESH_AVAILABILITY,
           tracks: {},
           streak_days: 0,
           last_checked_at: null,
@@ -7283,6 +7303,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         lifecycle_stage: metadata?.lifecycle_stage || "production",
         compliance_opt_out: metadata?.compliance_opt_out ?? false,
         badge_requalification_required: metadata?.badge_requalification_required ?? false,
+        refresh_availability: HUMAN_REFRESH_AVAILABILITY,
         tracks: status.tracks_summary_json || {},
         track_details: status.track_details_json || [],
         provenance: status.provenance_json ?? null,
@@ -8761,12 +8782,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       if (!isStaticAdmin) {
         logger.warn({ workosUserId: principal.user?.id, code: 'refresh_authorization_provenance_required' },
           'Refresh admission fenced until durable authorization provenance is supported');
-        res.setHeader('Retry-After', '60');
         res.setHeader('Cache-Control', 'private, no-store');
         return res.status(503).json({
-          error: 'Recheck & retest is temporarily paused platform-wide. Use Requeue comply to schedule the next run.',
-          code: 'refresh_authorization_provenance_required',
-          retry_after: 60,
+          error: HUMAN_REFRESH_AVAILABILITY.notice,
+          code: HUMAN_REFRESH_AVAILABILITY.code,
+          retryable: HUMAN_REFRESH_AVAILABILITY.retryable,
+          scope: HUMAN_REFRESH_AVAILABILITY.scope,
+          applies_to: HUMAN_REFRESH_AVAILABILITY.applies_to,
+          alternative_action: HUMAN_REFRESH_AVAILABILITY.alternative_action,
+          alternative_description: HUMAN_REFRESH_AVAILABILITY.alternative_description,
         });
       }
       try {

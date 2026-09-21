@@ -1938,6 +1938,15 @@
         const loadError = data?.loadError;
         const hasData = cs && cs.status && cs.status !== 'unknown';
         const hasAuth = authInfo?.has_auth;
+        const refreshAvailability = cs?.refresh_availability;
+        const refreshUnavailable = refreshAvailability?.available === false;
+        const refreshButtonLabel = refreshUnavailable ? 'Recheck paused' : 'Recheck &amp; retest';
+        const refreshButtonState = refreshUnavailable
+          ? ` disabled data-refresh-paused="true" title="${escapeHtml(refreshAvailability.notice)}"`
+          : '';
+        const refreshNoticeHtml = refreshUnavailable
+          ? `<div class="agent-refresh-result" style="font-size:var(--text-xs);margin-top:var(--space-2);padding:var(--space-2) var(--space-3);border-radius:6px;background:var(--color-warning-bg);color:var(--color-warning-fg);">${escapeHtml(refreshAvailability.notice)} ${escapeHtml(refreshAvailability.alternative_description)}</div>`
+          : '';
 
         const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
 
@@ -2054,11 +2063,12 @@
             <div class="agent-meta-row">
               <span></span>
               <div class="agent-meta-row-actions">
-                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-detect supported AdCP versions, refresh registry status, and run compliance now">Recheck &amp; retest</button>
+                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}"${refreshButtonState || ' title="Re-detect supported AdCP versions, refresh registry status, and run compliance now"'}>${refreshButtonLabel}</button>
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
                 <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
               </div>
             </div>
+            ${refreshNoticeHtml}
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
           </div>`;
         }
@@ -2183,12 +2193,13 @@
                 <button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">${hasAuth ? 'Update auth' : 'Connect agent'}</button>
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">History</button>
                 <button class="agent-requests-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Requests</button>
-                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-detect supported AdCP versions, refresh registry status, and rerun the full compliance suite">Recheck &amp; retest</button>
-                <button class="agent-requeue-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Queue this agent for the next scheduled compliance heartbeat (runs within ~1 hour).">Requeue comply</button>
+                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}"${refreshButtonState || ' title="Re-detect supported AdCP versions, refresh registry status, and rerun the full compliance suite"'}>${refreshButtonLabel}</button>
+                <button class="agent-requeue-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Mark this agent eligible for a future scheduled compliance heartbeat. This is not a human refresh and has no guaranteed start time.">Requeue comply</button>
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}" title="Run the full storyboard compliance suite against this agent.">Test</button>
                 <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
               </div>
             </div>
+            ${refreshNoticeHtml}
             <div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">
               ${buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}
             </div>
@@ -3630,10 +3641,10 @@
         } else if (effectiveStatus === 503 && data.code === 'refresh_authorization_provenance_required') {
           renderFlash({
             severity: 'warning',
-            text: data.error || 'Recheck & retest is temporarily paused platform-wide. Use Requeue comply to schedule the next run.',
+            text: data.error || 'Recheck & retest is paused platform-wide until durable requester-authorization provenance is supported.',
           });
           btn.dataset.refreshPaused = 'true';
-          btn.title = 'Recheck & retest is temporarily paused platform-wide. Use Requeue comply instead.';
+          btn.title = data.alternative_description || 'Requeue comply is a separate scheduled-heartbeat operation and is not a retry or ETA for this refresh.';
         } else {
           renderFlash({
             severity: 'error',
@@ -3681,7 +3692,7 @@
         if (res.status === 200) {
           flash.style.background = 'var(--color-success-bg)';
           flash.style.color = 'var(--color-success-fg)';
-          flash.textContent = 'Queued — compliance check will run on the next heartbeat cycle (within ~1 hour)';
+          flash.textContent = 'Requeued — this agent is eligible for a future scheduled heartbeat. This does not run Recheck & retest and has no guaranteed start time.';
           actionsRow.parentElement.appendChild(flash);
           setTimeout(() => flash.remove(), 10000);
         } else if (res.status === 429) {

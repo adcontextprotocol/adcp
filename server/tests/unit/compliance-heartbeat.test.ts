@@ -204,6 +204,52 @@ describe('runComplianceHeartbeatJob', () => {
     );
   });
 
+  it('returns bounded operational evidence for the scheduled worker', async () => {
+    mocks.getAgentsDueForCheck.mockResolvedValueOnce([{
+      agent_url: 'https://agent.example.com/mcp',
+      lifecycle_stage: 'testing',
+      last_checked_at: null,
+      eligible_backlog: 35,
+    }]);
+    mocks.complianceResultToDbInput.mockReturnValueOnce({
+      agent_url: 'https://agent.example.com/mcp',
+      lifecycle_stage: 'testing',
+      overall_status: 'failing',
+      headline: 'Incomplete run',
+      tracks_json: [],
+      storyboard_statuses: [],
+      dry_run: false,
+      completeness: 'timed_out',
+      is_authoritative: false,
+    });
+    mocks.comply.mockResolvedValueOnce({
+      completeness: 'timed_out',
+      agent_profile: { adcp_supported_versions: ['3.1'] },
+      summary: { headline: 'Incomplete run' },
+    });
+    mocks.recordComplianceRun.mockResolvedValueOnce({
+      run: { id: 'audit-run' },
+      statusTransition: null,
+      storyboardStatuses: [],
+    });
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1, includeOperationalDiagnostics: true });
+
+    expect(result).toMatchObject({
+      checked: 0,
+      skipped: 1,
+      diagnostics: {
+        eligibleBacklog: 35,
+        selectedAgents: ['https://agent.example.com/mcp'],
+        runsRecorded: 1,
+        requestedComplianceTarget: '3.1',
+        complianceBundleVersion: '3.1.0',
+        skipReasons: expect.objectContaining({ audit_only: 1 }),
+      },
+    });
+  });
+
   it.each([true, false])('preserves badges, notifications, and public timestamps for a timed-out run (eligible=%s)', async eligible => {
     const partialInput = {
       agent_url: 'https://agent.example.com/mcp', overall_status: 'failing',

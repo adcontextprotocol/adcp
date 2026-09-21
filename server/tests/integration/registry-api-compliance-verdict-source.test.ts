@@ -362,6 +362,14 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     expect(res.body.membership_tier).toBe('company_standard');
     expect(res.body.subscription_status).toBe('active');
     expect(res.body.is_api_access_tier).toBe(true);
+    expect(res.body.refresh_availability).toMatchObject({
+      available: false,
+      retryable: false,
+      scope: 'platform',
+      applies_to: 'human_session',
+      code: 'refresh_authorization_provenance_required',
+      alternative_action: 'monitoring_requeue',
+    });
     expect(res.body.grading_profile_comparisons).toEqual([
       expect.objectContaining({
         scope: 'agent',
