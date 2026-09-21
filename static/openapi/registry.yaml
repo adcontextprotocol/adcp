@@ -4452,6 +4452,8 @@ components:
               - untested
               - unknown
           description: Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status
+        eligibility:
+          $ref: "#/components/schemas/ComplianceEligibility"
         storyboard_statuses:
           type: array
           items:
@@ -4578,6 +4580,8 @@ components:
         is_api_access_tier:
           type: boolean
           description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive."
+        eligibility_owner:
+          $ref: "#/components/schemas/OwnerComplianceEligibility"
         verdict_source:
           type:
             - string
@@ -4604,6 +4608,68 @@ components:
         - agent_url
         - status
         - lifecycle_stage
+    ComplianceEligibility:
+      type: object
+      properties:
+        criteria_version:
+          type: string
+          description: Version of the badge eligibility criteria and blocker vocabulary.
+          example: 2026-08
+        blockers:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                enum:
+                  - no_declared_specialisms
+            required:
+              - code
+          description: Agent-level blockers. no_declared_specialisms appears when no supported, stable badge role can be derived from the declaration.
+        roles:
+          type: object
+          properties:
+            media-buy:
+              $ref: "#/components/schemas/RoleEligibility"
+            creative:
+              $ref: "#/components/schemas/RoleEligibility"
+            signals:
+              $ref: "#/components/schemas/RoleEligibility"
+            governance:
+              $ref: "#/components/schemas/RoleEligibility"
+            brand:
+              $ref: "#/components/schemas/RoleEligibility"
+            sponsored-intelligence:
+              $ref: "#/components/schemas/RoleEligibility"
+      required:
+        - criteria_version
+        - blockers
+        - roles
+      description: Public machine-readable badge eligibility by role. Contains only declared-specialism and storyboard blockers; membership tier is owner-scoped separately.
+    RoleEligibility:
+      type: object
+      properties:
+        eligible:
+          type: boolean
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleEligibilityBlocker"
+      required:
+        - eligible
+        - blockers
+    RoleEligibilityBlocker:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+            - storyboards_failing
+            - storyboards_partial
+            - storyboards_untested
+      required:
+        - code
     PublicComplianceNotice:
       type: object
       properties:
@@ -4644,6 +4710,33 @@ components:
         - code
         - message
       additionalProperties: false
+    OwnerComplianceEligibility:
+      type: object
+      properties:
+        criteria_version:
+          type: string
+        eligible:
+          type:
+            - boolean
+            - "null"
+          description: Whether the owner membership tier grants badge eligibility. Null for non-owners.
+        blockers:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                enum:
+                  - membership_tier_ineligible
+            required:
+              - code
+          description: Owner-only membership blockers. Empty for non-owners.
+      required:
+        - criteria_version
+        - eligible
+        - blockers
+      description: "Owner-scoped membership leg of badge eligibility. Non-owners receive eligible: null and an empty blocker list."
     VerificationBadge:
       type: object
       properties:

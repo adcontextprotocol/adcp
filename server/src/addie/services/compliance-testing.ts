@@ -1207,6 +1207,90 @@ const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
   'brand-rights': { protocol: 'brand', storyboard_id: 'brand_rights' },
 };
 
+/**
+ * Version of the machine-readable badge eligibility criteria exposed by the
+ * registry compliance endpoint. Bump whenever blocker vocabulary or
+ * evaluation semantics change.
+ */
+export const ELIGIBILITY_CRITERIA_VERSION = '2026-08' as const;
+
+export type PublicEligibilityBlockerCode =
+  | 'no_declared_specialisms'
+  | 'storyboards_failing'
+  | 'storyboards_partial'
+  | 'storyboards_untested';
+
+export interface PublicComplianceEligibility {
+  criteria_version: typeof ELIGIBILITY_CRITERIA_VERSION;
+  blockers: Array<{ code: 'no_declared_specialisms' }>;
+  roles: Partial<Record<BadgeRole, {
+    eligible: boolean;
+    blockers: Array<{ code: Exclude<PublicEligibilityBlockerCode, 'no_declared_specialisms'> }>;
+  }>>;
+}
+
+interface EligibilityStoryboardStatusEntry {
+  storyboard_id: string;
+  status: string;
+  steps_total: number;
+}
+
+/**
+ * Project public, remediation-oriented badge blockers from the raw latest-run
+ * storyboard rows. This is intentionally independent from
+ * deriveVerificationStatus: badge issuance keeps its existing partial/failing
+ * collapse, while this projection preserves each public blocker bucket.
+ */
+export function derivePublicComplianceEligibility(
+  declaredSpecialisms: string[],
+  storyboardStatuses: EligibilityStoryboardStatusEntry[],
+): PublicComplianceEligibility {
+  const statusMap = new Map(storyboardStatuses.map(status => [status.storyboard_id, status]));
+  const specialismsByRole = new Map<BadgeRole, string[]>();
+
+  for (const specialism of declaredSpecialisms.filter(isStableSpecialism)) {
+    const info = SPECIALISM_CATALOG[specialism];
+    if (!info) continue;
+    const roleSpecialisms = specialismsByRole.get(info.protocol) ?? [];
+    roleSpecialisms.push(specialism);
+    specialismsByRole.set(info.protocol, roleSpecialisms);
+  }
+  const blockers: PublicComplianceEligibility['blockers'] = specialismsByRole.size === 0
+    ? [{ code: 'no_declared_specialisms' }]
+    : [];
+
+  const roles: PublicComplianceEligibility['roles'] = {};
+  for (const [role, specialisms] of specialismsByRole) {
+    const roleBlockers = new Set<Exclude<PublicEligibilityBlockerCode, 'no_declared_specialisms'>>();
+    for (const specialism of specialisms) {
+      const storyboardId = SPECIALISM_CATALOG[specialism]?.storyboard_id;
+      const status = storyboardId ? statusMap.get(storyboardId) : undefined;
+      if (!status || status.steps_total === 0 || status.status === 'untested') {
+        roleBlockers.add('storyboards_untested');
+      } else if (status.status === 'partial') {
+        roleBlockers.add('storyboards_partial');
+      } else if (status.status === 'failing') {
+        roleBlockers.add('storyboards_failing');
+      } else if (status.status !== 'passing') {
+        // Fail closed if a future or malformed status reaches this projection.
+        roleBlockers.add('storyboards_untested');
+      }
+    }
+    roles[role] = {
+      eligible: roleBlockers.size === 0,
+      blockers: (['storyboards_failing', 'storyboards_partial', 'storyboards_untested'] as const)
+        .filter(code => roleBlockers.has(code))
+        .map(code => ({ code })),
+    };
+  }
+
+  return {
+    criteria_version: ELIGIBILITY_CRITERIA_VERSION,
+    blockers,
+    roles,
+  };
+}
+
 export interface VerificationResult {
   verified: boolean;
   roles: Array<{

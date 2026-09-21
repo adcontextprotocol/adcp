@@ -52,6 +52,8 @@ import {
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
   computeSpecialismStatus,
+  derivePublicComplianceEligibility,
+  ELIGIBILITY_CRITERIA_VERSION,
   badgeEligibleVersionsForTargetSelection,
   hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
@@ -7059,6 +7061,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const serializedStoryboardStatuses = storyboardStatuses.map(s =>
         serializeStoryboardStatus(s, { includeDiagnostics }),
       );
+      const eligibility = derivePublicComplianceEligibility(declaredSpecialisms, storyboardStatuses);
+      const eligibilityOwner = {
+        criteria_version: ELIGIBILITY_CRITERIA_VERSION,
+        eligible: ownerMembership.is_owner ? ownerMembership.is_api_access_tier : null,
+        blockers: ownerMembership.is_owner && !ownerMembership.is_api_access_tier
+          ? [{ code: 'membership_tier_ineligible' as const }]
+          : [],
+      };
 
       // Phase 1 of owner-selectable grading profiles is comparison-only.
       // Reuse the same heartbeat evidence and keep Legacy authoritative; no
@@ -7318,6 +7328,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         check_interval_hours: metadata?.check_interval_hours ?? 12,
         declared_specialisms: declaredSpecialisms,
         specialism_status: specialismStatus,
+        // Public machine-readable badge blockers. Membership eligibility is
+        // deliberately excluded and emitted only in eligibility_owner below.
+        eligibility,
         // Public per-storyboard verdicts and aggregate step counts explain
         // storyboards_passing/storyboards_total. First-failure details stay
         // owner-scoped; non-owner entries carry null scalar diagnostics and
@@ -7335,6 +7348,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         membership_tier_label: ownerMembership.membership_tier_label,
         subscription_status: ownerMembership.subscription_status,
         is_api_access_tier: ownerMembership.is_api_access_tier,
+        // Owner-scoped membership leg of badge eligibility. Non-owners get a
+        // null verdict and no blockers, preserving the existing tier boundary.
+        eligibility_owner: eligibilityOwner,
         // `verdict_source` is owner-scoped: operators benefit from seeing
         // whether the current verdict came from their own owner_test vs
         // the scheduled heartbeat (UX cue while iterating on a fix). Non-

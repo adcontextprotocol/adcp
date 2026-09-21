@@ -912,6 +912,42 @@ export const GradingProfileComparisonSchema = z.discriminatedUnion('scope', [
   }),
 ]).openapi('GradingProfileComparison');
 
+const RoleEligibilityBlockerSchema = z.object({
+  code: z.enum([
+    'storyboards_failing',
+    'storyboards_partial',
+    'storyboards_untested',
+  ]),
+}).openapi('RoleEligibilityBlocker');
+
+const RoleEligibilitySchema = z.object({
+  eligible: z.boolean(),
+  blockers: z.array(RoleEligibilityBlockerSchema),
+}).openapi('RoleEligibility');
+
+const ComplianceEligibilitySchema = z.object({
+  criteria_version: z.string().openapi({
+    description: 'Version of the badge eligibility criteria and blocker vocabulary.',
+    example: '2026-08',
+  }),
+  blockers: z.array(z.object({ code: z.literal('no_declared_specialisms') })).openapi({
+    description: 'Agent-level blockers. no_declared_specialisms appears when no supported, stable badge role can be derived from the declaration.',
+  }),
+  roles: z.partialRecord(BadgeRoleSchema, RoleEligibilitySchema),
+}).openapi('ComplianceEligibility');
+
+const OwnerComplianceEligibilitySchema = z.object({
+  criteria_version: z.string(),
+  eligible: z.boolean().nullable().openapi({
+    description: 'Whether the owner membership tier grants badge eligibility. Null for non-owners.',
+  }),
+  blockers: z.array(z.object({
+    code: z.literal('membership_tier_ineligible'),
+  })).openapi({
+    description: 'Owner-only membership blockers. Empty for non-owners.',
+  }),
+}).openapi('OwnerComplianceEligibility');
+
 export const AgentComplianceDetailSchema = z
   .object({
     provenance: ComplianceRunProvenanceSchema.nullable().optional(),
@@ -967,6 +1003,9 @@ export const AgentComplianceDetailSchema = z
     check_interval_hours: z.number().int().optional().openapi({ description: "How often the heartbeat re-tests this agent, in hours" }),
     declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared in get_adcp_capabilities, from the latest run" }),
     specialism_status: z.record(z.string(), z.enum(['passing', 'failing', 'untested', 'unknown'])).optional().openapi({ description: "Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status" }),
+    eligibility: ComplianceEligibilitySchema.optional().openapi({
+      description: 'Public machine-readable badge eligibility by role. Contains only declared-specialism and storyboard blockers; membership tier is owner-scoped separately.',
+    }),
     storyboard_statuses: z.array(z.object({
       storyboard_id: z.string(),
       requested_compliance_target: z.string().nullable().optional(),
@@ -997,6 +1036,9 @@ export const AgentComplianceDetailSchema = z
     membership_tier_label: z.string().nullable().optional().openapi({ description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners." }),
     subscription_status: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners." }),
     is_api_access_tier: z.boolean().optional().openapi({ description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive." }),
+    eligibility_owner: OwnerComplianceEligibilitySchema.optional().openapi({
+      description: 'Owner-scoped membership leg of badge eligibility. Non-owners receive eligible: null and an empty blocker list.',
+    }),
     verdict_source: z.enum(["heartbeat", "owner_test", "manual", "webhook"]).nullable().optional()
       .openapi({ description: "Owner-scoped: triggered_by value of the most recent non-dry-run compliance check. Null for non-owners and when no run has been recorded. Operators use this as a UX cue ('did this verdict come from my recent test or the system heartbeat?')." }),
     verified: z.boolean().optional(),
