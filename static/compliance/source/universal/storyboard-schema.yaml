@@ -139,6 +139,14 @@
 #   rule above), not a schema concern — the same storyboard runs against
 #   different topologies.)
 #
+# Applicability order: storyboard-level `requires_capability` predicates MUST
+#   be evaluated before the runner evaluates `requires`. When the capability
+#   predicate is not satisfied, the runner emits `not_applicable` and MUST NOT
+#   report a missing runtime requirement. Only an agent that selected the
+#   storyboard by satisfying its authored capability predicate can receive
+#   `requirement_unmet`. This keeps optional capability storyboards out of the
+#   coverage totals of agents that never claimed the capability.
+#
 # requires: string[] (optional — storyboard-level runtime requirement gate.
 #   Known values: controller | seeded_state | real_wire | webhook_receiver | multi_agent (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
