@@ -79,7 +79,7 @@
       "allOf": [
         {
           "if": { "properties": { "all_accessible_media_buys": { "const": false } }, "required": ["all_accessible_media_buys"] },
-          "then": { "required": ["media_buy_ids"] }
+          "then": { "required": ["media_buy_ids"], "properties": { "media_buy_ids": {} } }
         }
       ],
       "additionalProperties": false
@@ -126,21 +126,21 @@
       "title": "Summary view",
       "properties": { "view": { "type": "string", "const": "summary" } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "health", "coverage", "data_through", "obligation_counts", "issues"],
-      "not": { "anyOf": [{ "required": ["changes_checkpoint"] }, { "required": ["periods"] }, { "required": ["revisions"] }, { "required": ["adjustments"] }, { "required": ["consumer_statuses"] }, { "required": ["adjustment_receipts"] }, { "required": ["pagination"] }, { "required": ["revision"] }, { "required": ["materializations"] }, { "required": ["receipts"] }] }
+      "not": { "anyOf": [{ "required": ["changes_checkpoint"], "properties": { "changes_checkpoint": {} } }, { "required": ["periods"], "properties": { "periods": {} } }, { "required": ["revisions"], "properties": { "revisions": {} } }, { "required": ["adjustments"], "properties": { "adjustments": {} } }, { "required": ["consumer_statuses"], "properties": { "consumer_statuses": {} } }, { "required": ["adjustment_receipts"], "properties": { "adjustment_receipts": {} } }, { "required": ["pagination"], "properties": { "pagination": {} } }, { "required": ["revision"], "properties": { "revision": {} } }, { "required": ["materializations"], "properties": { "materializations": {} } }, { "required": ["receipts"], "properties": { "receipts": {} } }] }
     },
     {
       "title": "Periods view",
-      "properties": { "view": { "type": "string", "const": "periods" }, "pagination": { "required": ["has_more", "total_count"] } },
+      "properties": { "view": { "type": "string", "const": "periods" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "periods", "revisions", "materializations", "receipts", "pagination"],
       "if": { "properties": { "health": { "const": "complete" } }, "required": ["health"] },
-      "then": { "not": { "required": ["next_expected_at"] } },
-      "not": { "required": ["revision"] }
+      "then": { "not": { "required": ["next_expected_at"], "properties": { "next_expected_at": {} } } },
+      "not": { "required": ["revision"], "properties": { "revision": {} } }
     },
     {
       "title": "Revision view",
-      "properties": { "view": { "type": "string", "const": "revision" }, "pagination": { "required": ["has_more", "total_count"] } },
+      "properties": { "view": { "type": "string", "const": "revision" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "revision", "materializations", "receipts", "pagination"],
-      "not": { "anyOf": [{ "required": ["changes_checkpoint"] }, { "required": ["scope"] }, { "required": ["health"] }, { "required": ["periods"] }, { "required": ["revisions"] }] }
+      "not": { "anyOf": [{ "required": ["changes_checkpoint"], "properties": { "changes_checkpoint": {} } }, { "required": ["scope"], "properties": { "scope": {} } }, { "required": ["health"], "properties": { "health": {} } }, { "required": ["periods"], "properties": { "periods": {} } }, { "required": ["revisions"], "properties": { "revisions": {} } }] }
         }
       ]
     },
