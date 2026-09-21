@@ -43,6 +43,7 @@ import {
   blockCheckpointedToolReplays,
   buildToolResultCheckpoint,
   reserveToolIntentCheckpoint,
+  storedToolCall,
   type StoredToolCall,
 } from "../addie/stream-tool-checkpoints.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
@@ -164,8 +165,7 @@ import {
 } from "../addie/thread-service.js";
 import { UsersDatabase } from "../db/users-db.js";
 import { isRetriesExhaustedError } from "../utils/anthropic-retry.js";
-import * as relationshipDb from "../db/relationship-db.js";
-import * as personEvents from "../db/person-events-db.js";
+import { scheduleWebRelationshipAnalytics } from "../addie/services/web-relationship-analytics.js";
 import {
   ChatAttachmentValidationError,
   summarizeAttachmentsForMessage,
@@ -188,6 +188,36 @@ export const EMPTY_ASSISTANT_RESPONSE_FALLBACK =
   "I hit a response delivery issue before I could finish. Please try again in a moment.";
 
 const logger = createLogger("addie-chat-routes");
+export const PRE_PROVIDER_STATUS_DELAY_MS = 1_500;
+
+export function startPreProviderStatusTimer(
+  sendEvent: (event: string, data: unknown) => void,
+  delayMs = PRE_PROVIDER_STATUS_DELAY_MS,
+): ReturnType<typeof setTimeout> {
+  const timer = setTimeout(() => {
+    // Content-free by design: this event must never carry identity, prompt,
+    // tool, or partial model output.
+    sendEvent('status', { stage: 'preparing_context' });
+  }, delayMs);
+  timer.unref?.();
+  return timer;
+}
+
+function recordPreProviderStages(
+  experiment: Awaited<ReturnType<typeof prepareGeminiDirectTurn>>['experiment'],
+  stages: Parameters<NonNullable<Awaited<ReturnType<typeof prepareGeminiDirectTurn>>['experiment']>['recordPreProviderStages']>[0],
+): void {
+  experiment?.recordPreProviderStages?.(stages);
+  logger.info({
+    event: 'addie_response_stage',
+    stage: 'pre_provider',
+    relationship_analytics_schedule_ms: stages.relationshipAnalyticsScheduleMs,
+    member_context_ms: stages.memberContextMs,
+    workos_context_ms: stages.workosContextMs,
+    experiment_routing_ms: stages.experimentRoutingMs,
+    pre_provider_ms: stages.preProviderMs,
+  }, 'Addie response preparation completed');
+}
 
 let claudeClient: AddieClaudeClient | null = null;
 let webChatRouter: AddieRouter | null = null;
@@ -805,6 +835,7 @@ export async function prepareRequestWithMemberTools(
   threadId?: string,
   selectedOrganizationId?: string | null,
   adminPrincipal?: AAOAdminPrincipal,
+  stageObserver?: (stage: 'workos_context', durationMs: number) => void,
 ): Promise<PreparedRequest> {
   const messageToProcess = sanitizedInput;
   let memberContext: MemberContext | null = null;
@@ -814,6 +845,7 @@ export async function prepareRequestWithMemberTools(
   const [memberContextResult, siRetrievalResult] = await Promise.all([
     // Get member context
     (async () => {
+      const startedAt = Date.now();
       try {
         if (userId) {
           return await getWebMemberContext(userId, selectedOrganizationId, adminPrincipal);
@@ -823,6 +855,8 @@ export async function prepareRequestWithMemberTools(
         if (error instanceof AAOAdminLookupUnavailableError) throw error;
         logger.warn({ error, userId }, "Addie Chat: Failed to get member context");
         return null;
+      } finally {
+        stageObserver?.('workos_context', Date.now() - startedAt);
       }
     })(),
     // Retrieve relevant SI agents
@@ -1308,20 +1342,16 @@ export function createAddieChatRouter(options?: {
         message_source: messageSource,
       });
 
-      // Record inbound message in the relationship system
-      if (userId) {
-        try {
-          const personId = await relationshipDb.resolvePersonId({ workos_user_id: userId });
-          await relationshipDb.recordPersonMessage(personId, 'web');
-          await relationshipDb.deriveSentiment(personId);
-          await personEvents.recordEvent(personId, 'message_received', {
-            channel: 'web',
-            data: personEvents.buildMessageReceivedData(inputValidation.sanitized, 'web_chat'),
-          });
-        } catch {
-          // Not all web users have person_relationships records — that's OK
-        }
-      }
+      // Relationship data enriches personalization and analytics, but is not
+      // authorization-bearing. Track it durably for shutdown without holding
+      // model startup behind relationship locks or sentiment processing.
+      const relationshipAnalytics = userId
+        ? scheduleWebRelationshipAnalytics({
+            userId,
+            sanitizedMessage: inputValidation.sanitized,
+            source: 'web_chat',
+          })
+        : null;
 
       // Build context from history, passing tool calls as structured
       // data so they are reconstructed as proper tool_use/tool_result API blocks.
@@ -1342,6 +1372,8 @@ export function createAddieChatRouter(options?: {
       const isAuth = !!req.user;
 
       // Prepare message with member context and per-request tools
+      const memberContextStartedAt = Date.now();
+      let workosContextMs: number | undefined;
       const {
         messageToProcess,
         requestContext,
@@ -1359,7 +1391,11 @@ export function createAddieChatRouter(options?: {
         thread.thread_id,
         typeof organization_id === 'string' ? organization_id : null,
         req.user,
+        (stage, durationMs) => {
+          if (stage === 'workos_context') workosContextMs = durationMs;
+        },
       );
+      const memberContextMs = Date.now() - memberContextStartedAt;
       const certificationContext = resolveWebCertificationContext(
         certificationProgress, isAuth ? threadMessages : [], externalId, thread.thread_id,
       );
@@ -1367,6 +1403,7 @@ export function createAddieChatRouter(options?: {
       const activeAgentRegistration = isAuth && hasActiveAgentRegistration(messageToProcess, threadMessages);
       if (isAuth && certificationContext.moduleId) certificationModuleContext.moduleId = certificationContext.moduleId;
       const tieredAccess = buildTieredAccess(memberTools, isAuth, activeCertificationKind !== null);
+      const experimentRoutingStartedAt = Date.now();
       const experimentTurn = await prepareGeminiDirectTurn({
         client: activeChatClient,
         userId: req.user?.id,
@@ -1404,6 +1441,11 @@ export function createAddieChatRouter(options?: {
           })
         : null,
       });
+      const experimentRoutingMs = Date.now() - experimentRoutingStartedAt;
+      if (relationshipAnalytics && experimentTurn.experiment) {
+        void relationshipAnalytics.completion.then(result =>
+          experimentTurn.experiment?.recordRelationshipAnalytics?.(result));
+      }
       const routedWebTools = experimentTurn.selection;
       const { processOptions } = tieredAccess;
       const effectiveModel = experimentTurn.model ?? tieredAccess.effectiveModel;
@@ -1421,6 +1463,14 @@ export function createAddieChatRouter(options?: {
       const authedScope = req.user?.id
         ? { userId: req.user.id, tier: await resolveUserTierFromDb(req.user.id) }
         : null;
+
+      recordPreProviderStages(experimentTurn.experiment, {
+        relationshipAnalyticsScheduleMs: relationshipAnalytics?.scheduleMs,
+        memberContextMs,
+        workosContextMs,
+        experimentRoutingMs,
+        preProviderMs: Date.now() - startTime,
+      });
 
       // Process with Claude
       let response: AddieResponse;
@@ -1499,21 +1549,14 @@ export function createAddieChatRouter(options?: {
       const latencyMs = Date.now() - startTime;
 
       // Save assistant response with full execution details
+      const persistenceStartedAt = Date.now();
       const assistantMessage = await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'assistant',
         content: outputValidation.sanitized,
         tools_used: response.tools_used.length > 0 ? response.tools_used : undefined,
         tool_calls: response.tool_executions.length > 0
-          ? response.tool_executions.map((exec) => ({
-              name: exec.tool_name,
-              input: exec.parameters,
-              result: exec.result,
-              duration_ms: exec.duration_ms,
-              is_error: exec.is_error,
-              result_status: exec.normalized_result?.status,
-              ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
-            }))
+          ? response.tool_executions.map(storedToolCall)
           : undefined,
         model: effectiveModel,
         model_execution: response.model_execution,
@@ -1535,7 +1578,7 @@ export function createAddieChatRouter(options?: {
         config_version_id: response.config_version_id,
       });
 
-      await experimentTurn.experiment?.markDelivery('completed', assistantMessage.message_id);
+      await experimentTurn.experiment?.markDelivery('completed', assistantMessage.message_id, persistenceStartedAt);
 
       // Check for SI session started (from connect_to_si_agent tool)
       const siSession = withSiAnonymousCapability(
@@ -1605,6 +1648,7 @@ export function createAddieChatRouter(options?: {
     // Track connection state
     let connectionClosed = false;
     let heartbeat: ReturnType<typeof setInterval> | null = null;
+    let preProviderStatusTimer: ReturnType<typeof setTimeout> | null = null;
     let claimedTurn: { threadId: string; clientRequestId: string; leaseId: string } | null = null;
     let terminalResponse: AddieResponse | undefined;
     let activeExperiment: Awaited<ReturnType<typeof prepareGeminiDirectTurn>>['experiment'];
@@ -1855,6 +1899,7 @@ export function createAddieChatRouter(options?: {
         res.end();
         return;
       }
+      preProviderStatusTimer = startPreProviderStatusTimer(sendEvent);
 
       // Get conversation history
       const threadMessages = await threadService.getThreadMessages(thread.thread_id, { limit: 100 });
@@ -1899,23 +1944,13 @@ export function createAddieChatRouter(options?: {
         });
       }
 
-      // Record inbound message in the relationship system
-      if (userId && !existingUserMessage) {
-        try {
-          const personId = await relationshipDb.resolvePersonId({ workos_user_id: userId });
-          await relationshipDb.recordPersonMessage(personId, 'web');
-          await relationshipDb.deriveSentiment(personId);
-          await personEvents.recordEvent(personId, 'message_received', {
-            channel: 'web',
-            data: personEvents.buildMessageReceivedData(
-              inputValidation.sanitized,
-              'web_chat_stream'
-            ),
-          });
-        } catch {
-          // Not all web users have person_relationships records
-        }
-      }
+      const relationshipAnalytics = userId && !existingUserMessage
+        ? scheduleWebRelationshipAnalytics({
+            userId,
+            sanitizedMessage: inputValidation.sanitized,
+            source: 'web_chat_stream',
+          })
+        : null;
 
       // Build context messages, passing tool calls as structured data
       // Token-aware trimming in processMessageStream handles length; no hard slice here.
@@ -1939,6 +1974,8 @@ export function createAddieChatRouter(options?: {
       const messageForModel = retryRequested
         ? 'Continue the interrupted reply from the stored tool results. Do not repeat any completed action. Give the learner the result and next step.'
         : inputValidation.sanitized;
+      const memberContextStartedAt = Date.now();
+      let workosContextMs: number | undefined;
       const {
         messageToProcess,
         requestContext,
@@ -1956,7 +1993,11 @@ export function createAddieChatRouter(options?: {
         thread.thread_id,
         typeof organization_id === 'string' ? organization_id : null,
         req.user,
+        (stage, durationMs) => {
+          if (stage === 'workos_context') workosContextMs = durationMs;
+        },
       );
+      const memberContextMs = Date.now() - memberContextStartedAt;
       const certificationContext = resolveWebCertificationContext(
         certificationProgress, isAuth ? threadMessages : [], externalId, thread.thread_id,
       );
@@ -1965,6 +2006,7 @@ export function createAddieChatRouter(options?: {
       const hasThreadCertCtx = activeCertificationKind !== null;
       if (isAuth && certificationContext.moduleId) certificationModuleContext.moduleId = certificationContext.moduleId;
       const tieredAccess = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
+      const experimentRoutingStartedAt = Date.now();
       const experimentTurn = await prepareGeminiDirectTurn({
         client: activeChatClient,
         userId: req.user?.id,
@@ -2003,6 +2045,11 @@ export function createAddieChatRouter(options?: {
         : null,
       });
       activeExperiment = experimentTurn.experiment;
+      const experimentRoutingMs = Date.now() - experimentRoutingStartedAt;
+      if (relationshipAnalytics && experimentTurn.experiment) {
+        void relationshipAnalytics.completion.then(result =>
+          experimentTurn.experiment?.recordRelationshipAnalytics?.(result));
+      }
       const routedWebTools = experimentTurn.selection;
       const { processOptions } = tieredAccess;
       const effectiveModel = experimentTurn.model ?? tieredAccess.effectiveModel;
@@ -2050,6 +2097,18 @@ export function createAddieChatRouter(options?: {
       const streamAuthedScope = req.user?.id
         ? { userId: req.user.id, tier: await resolveUserTierFromDb(req.user.id) }
         : null;
+
+      if (preProviderStatusTimer) {
+        clearTimeout(preProviderStatusTimer);
+        preProviderStatusTimer = null;
+      }
+      recordPreProviderStages(experimentTurn.experiment, {
+        relationshipAnalyticsScheduleMs: relationshipAnalytics?.scheduleMs,
+        memberContextMs,
+        workosContextMs,
+        experimentRoutingMs,
+        preProviderMs: Date.now() - startTime,
+      });
 
       for await (const event of experimentTurn.client.processMessageStream(messageToProcess, contextMessages, requestTools, {
         ...processOptions,
@@ -2305,21 +2364,14 @@ export function createAddieChatRouter(options?: {
       const latencyMs = Date.now() - startTime;
 
       // Save assistant response - use tool_executions from response which has duration_ms
+      const persistenceStartedAt = Date.now();
       const assistantMessage = await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'assistant',
         content: outputValidation.sanitized,
         tools_used: toolsUsed.length > 0 ? toolsUsed : undefined,
         tool_calls: response?.tool_executions && response.tool_executions.length > 0
-          ? response.tool_executions.map((exec) => ({
-              name: exec.tool_name,
-              input: exec.parameters,
-              result: exec.result,
-              duration_ms: exec.duration_ms,
-              is_error: exec.is_error,
-              result_status: exec.normalized_result?.status,
-              ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
-            }))
+          ? response.tool_executions.map(storedToolCall)
           : undefined,
         model: effectiveModel,
         model_execution: response.model_execution,
@@ -2345,7 +2397,7 @@ export function createAddieChatRouter(options?: {
         finalize_client_turn_status: claimedTurn ? 'completed' : undefined,
       });
       if (experimentTurn.experiment) {
-        await experimentTurn.experiment.markDelivery('completed', assistantMessage.message_id);
+        await experimentTurn.experiment.markDelivery('completed', assistantMessage.message_id, persistenceStartedAt);
         experimentDeliveryCompleted = true;
       }
       claimedTurn = null;
@@ -2548,6 +2600,7 @@ export function createAddieChatRouter(options?: {
       res.end();
     } finally {
       if (heartbeat) clearInterval(heartbeat);
+      if (preProviderStatusTimer) clearTimeout(preProviderStatusTimer);
     }
     },
   );

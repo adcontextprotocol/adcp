@@ -9,7 +9,7 @@ import {
 import { ToolError } from '../tool-error.js';
 import {
   hasDurableHandlerOutcome,
-  isSideEffectTool,
+  isSideEffectToolCall,
   sideEffectReplayKey,
 } from '../side-effect-claims.js';
 import { githubIssueReceiptFromHandlerResult, type GithubIssueCreationReceipt } from '../github-issue-receipt.js';
@@ -259,7 +259,24 @@ export class AddieToolExecutionLedger {
     }
     turnResults.push(event.executed.result);
     this.completedExecutions.push(event.executed.execution);
+    this.markRecoveredErrors(event.executed.execution);
     this.pendingCustomSequence = null;
+  }
+
+  private markRecoveredErrors(latest: ToolExecution): void {
+    const operation = latest.normalized_result?.telemetry?.operation;
+    if (latest.is_error || !operation) return;
+    for (const prior of this.completedExecutions) {
+      if (
+        prior === latest
+        || !prior.is_error
+        || prior.normalized_result?.telemetry?.operation !== operation
+      ) continue;
+      prior.normalized_result.telemetry = {
+        ...prior.normalized_result.telemetry,
+        recovered_by_later_success: true,
+      };
+    }
   }
 }
 
@@ -696,7 +713,7 @@ export function createAddieToolExecutor(
     // A provider continuation or recovery must never submit an identical
     // mutation twice. Record before dispatch so an ambiguous transport error
     // is also fail-closed rather than silently retried.
-    const sideEffectKey = (isSideEffectTool(call.name) || registered.definition.replaySafety === 'mutation')
+    const sideEffectKey = (isSideEffectToolCall(call.name, call.input) || registered.definition.replaySafety === 'mutation')
       ? sideEffectReplayKey(call.name, call.input)
       : null;
     if (sideEffectKey && dispatchedSideEffects.has(sideEffectKey)) {

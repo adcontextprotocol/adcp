@@ -69,9 +69,10 @@ describe('AdCP task registry completeness', () => {
     expect(undocumented).toEqual([]);
   });
 
-  test('ADCP_TOOLS exports exactly 3 meta-tools', () => {
+  test('ADCP_TOOLS exports the generic tools and typed get_products wrapper', () => {
     expect(ADCP_TOOLS.map(t => t.name).sort()).toEqual([
       'ask_about_adcp_task',
+      'call_adcp_get_products',
       'call_adcp_task',
       'get_adcp_capabilities',
     ]);

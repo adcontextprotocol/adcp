@@ -735,6 +735,14 @@ Full buyer rules: ask_about_adcp_task with area="buyer".
 
 *Source: `server/src/addie/mcp/adcp-tools.ts`*
 
+### `call_adcp_get_products`
+
+Execute get_products with a machine-checkable request shape.
+idempotency_key is required by this adapter and must remain identical when correcting or retrying the same logical request.
+For buying_mode="brief", provide brief and omit refine. For "wholesale", omit both brief and refine. For "refine", provide refine and omit brief.
+
+*Source: `server/src/addie/mcp/adcp-tools.ts`*
+
 ### `get_adcp_capabilities`
 
 Discover an agent's AdCP protocol support and capabilities. Returns supported tasks, domains, features, and configuration.
@@ -2201,6 +2209,14 @@ Full buyer rules: ask_about_adcp_task with area="buyer".
 
 *Source: `server/src/addie/mcp/adcp-tools.ts`*
 
+### `call_adcp_get_products`
+
+Execute get_products with a machine-checkable request shape.
+idempotency_key is required by this adapter and must remain identical when correcting or retrying the same logical request.
+For buying_mode="brief", provide brief and omit refine. For "wholesale", omit both brief and refine. For "refine", provide refine and omit brief.
+
+*Source: `server/src/addie/mcp/adcp-tools.ts`*
+
 ## certification_assessment
 
 AdCP Academy placement assessments and specialist capstones — test out modules, run exams, checkpoint, and complete credentials
@@ -2265,6 +2281,14 @@ Two rules a search round-trip cannot rescue you from after a mutating call:
 • On adcp_error: read issues[].variants[] before retrying. It lists the exact valid shape — do not re-guess.
 
 Full buyer rules: ask_about_adcp_task with area="buyer".
+
+*Source: `server/src/addie/mcp/adcp-tools.ts`*
+
+### `call_adcp_get_products`
+
+Execute get_products with a machine-checkable request shape.
+idempotency_key is required by this adapter and must remain identical when correcting or retrying the same logical request.
+For buying_mode="brief", provide brief and omit refine. For "wholesale", omit both brief and refine. For "refine", provide refine and omit brief.
 
 *Source: `server/src/addie/mcp/adcp-tools.ts`*
 
