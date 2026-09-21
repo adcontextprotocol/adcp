@@ -242,7 +242,10 @@ describe("dashboard agent refresh", () => {
       responseData: {
         code: "refresh_authorization_provenance_required",
         error:
-          "Recheck & retest is temporarily paused platform-wide. Use Requeue comply to schedule the next run.",
+          "Recheck & retest is paused platform-wide until durable requester-authorization provenance is supported.",
+        retryable: false,
+        alternative_description:
+          "Requeue comply is a separate scheduled-heartbeat operation and has no guaranteed start time.",
       },
     });
 
@@ -250,7 +253,16 @@ describe("dashboard agent refresh", () => {
 
     expect(harness.button.disabled).toBe(true);
     expect(harness.button.textContent).toBe("Recheck paused");
-    expect(harness.button.title).toContain("paused platform-wide");
+    expect(harness.button.title).toContain("separate scheduled-heartbeat operation");
+    expect(harness.button.title).not.toContain('60');
+  });
+
+  it('renders the non-retryable pause before a click and keeps requeue semantically separate', () => {
+    expect(dashboardSource).toContain('cs?.refresh_availability');
+    expect(dashboardSource).toContain('data-refresh-paused="true"');
+    expect(dashboardSource).toContain('This is not a human refresh and has no guaranteed start time.');
+    expect(dashboardSource).not.toContain('runs within ~1 hour');
+    expect(dashboardSource).not.toContain('next heartbeat cycle (within ~1 hour)');
   });
 
   it("preserves compliance targets in storyboard catalog requests", () => {

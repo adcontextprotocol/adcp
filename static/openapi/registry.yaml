@@ -4342,6 +4342,44 @@ components:
         badge_requalification_required:
           type: boolean
           description: True when monitoring is enabled but badges remain suppressed until a fresh passing full-suite run completes.
+        refresh_availability:
+          type: object
+          properties:
+            available:
+              type: boolean
+            retryable:
+              type: boolean
+              description: Whether retrying the same human refresh request later is expected to succeed without a platform change.
+            scope:
+              type: string
+              enum:
+                - platform
+            applies_to:
+              type: string
+              enum:
+                - human_session
+            code:
+              type: string
+              enum:
+                - refresh_authorization_provenance_required
+            notice:
+              type: string
+            alternative_action:
+              type: string
+              enum:
+                - monitoring_requeue
+            alternative_description:
+              type: string
+          required:
+            - available
+            - retryable
+            - scope
+            - applies_to
+            - code
+            - notice
+            - alternative_action
+            - alternative_description
+          description: Current human refresh admission state. Monitoring requeue is a separate scheduler operation and is not a retry or ETA for this endpoint.
         tracks:
           type: object
           additionalProperties:
@@ -13352,12 +13390,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "503":
-          description: Refresh queue or authorization unavailable. All human submissions are temporarily fenced with refresh_authorization_provenance_required; only static admin API key submissions are supported.
-          headers:
-            Retry-After:
-              schema:
-                type: string
-              required: true
+          description: Refresh queue or authorization unavailable. Human submissions are fenced with refresh_authorization_provenance_required until durable authorization provenance is supported; this response is non-retryable and carries no ETA. Static admin API key submissions remain supported.
           content:
             application/json:
               schema:
@@ -13379,12 +13412,34 @@ paths:
                         type: string
                       code:
                         type: string
-                      retry_after:
-                        type: integer
+                        enum:
+                          - refresh_authorization_provenance_required
+                      retryable:
+                        type: boolean
+                        enum:
+                          - false
+                      scope:
+                        type: string
+                        enum:
+                          - platform
+                      applies_to:
+                        type: string
+                        enum:
+                          - human_session
+                      alternative_action:
+                        type: string
+                        enum:
+                          - monitoring_requeue
+                      alternative_description:
+                        type: string
                     required:
                       - error
                       - code
-                      - retry_after
+                      - retryable
+                      - scope
+                      - applies_to
+                      - alternative_action
+                      - alternative_description
   /api/registry/agents/{encodedUrl}/refreshes/{operationId}:
     get:
       operationId: getAgentRefreshOperation
