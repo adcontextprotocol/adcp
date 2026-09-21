@@ -1074,10 +1074,14 @@ export class PublisherDatabase {
             AND (
               caa.publisher_domain = $1
               OR caa.property_rid IN (
-                SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                SELECT property_rid FROM catalog_properties
+                 WHERE created_by = $2
+                   AND created_by LIKE 'adagents_json:%'
               )
               OR (caa.property_id_slug IS NOT NULL AND caa.property_rid IN (
-                SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                SELECT property_rid FROM catalog_properties
+                 WHERE created_by = $2
+                   AND created_by LIKE 'adagents_json:%'
               ))
             )`,
         [domain, adagentsCreatedBy(domain)],
@@ -1118,12 +1122,15 @@ export class PublisherDatabase {
         `DELETE FROM catalog_identifiers ci
           USING catalog_properties cp
          WHERE ci.property_rid = cp.property_rid
-           AND cp.created_by = $1`,
+           AND cp.created_by = $1
+           AND cp.created_by LIKE 'adagents_json:%'`,
         [adagentsCreatedBy(domain)],
       );
 
       await client.query(
-        `DELETE FROM catalog_properties WHERE created_by = $1`,
+        `DELETE FROM catalog_properties
+          WHERE created_by = $1
+            AND created_by LIKE 'adagents_json:%'`,
         [adagentsCreatedBy(domain)],
       );
 
@@ -1346,10 +1353,14 @@ export class PublisherDatabase {
               AND (
                 caa.publisher_domain = $1
                 OR caa.property_rid IN (
-                  SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                  SELECT property_rid FROM catalog_properties
+                   WHERE created_by = $2
+                     AND created_by LIKE 'adagents_json:%'
                 )
                 OR (caa.property_id_slug IS NOT NULL AND caa.property_rid IN (
-                  SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                  SELECT property_rid FROM catalog_properties
+                   WHERE created_by = $2
+                     AND created_by LIKE 'adagents_json:%'
                 ))
               )`,
           [domain, adagentsCreatedBy(domain)],
@@ -1499,10 +1510,14 @@ export class PublisherDatabase {
             AND (
               caa.publisher_domain = $1
               OR caa.property_rid IN (
-                SELECT property_rid FROM catalog_properties WHERE created_by = $3
+                SELECT property_rid FROM catalog_properties
+                 WHERE created_by = $3
+                   AND created_by LIKE 'adagents_json:%'
               )
               OR (caa.property_id_slug IS NOT NULL AND caa.property_rid IN (
-                SELECT property_rid FROM catalog_properties WHERE created_by = $3
+                SELECT property_rid FROM catalog_properties
+                 WHERE created_by = $3
+                   AND created_by LIKE 'adagents_json:%'
               ))
             )`,
         [domain, currentCanonical, adagentsCreatedBy(domain)],
@@ -1993,6 +2008,9 @@ export class PublisherDatabase {
     }
 
     // Resolve the set of (property_rid OR publisher-wide) targets for this entry.
+    // Keep the literal LIKE predicate on each catalog query below. Equality to
+    // adagentsCreatedBy(...) implies it at runtime, but PostgreSQL needs the
+    // partial-index predicate in the SQL to use idx_catalog_properties_adagents_lookup.
     const targets: Array<{ propertyRid: string | null; slug: string | null }> = [];
 
     if (variant === 'property_ids') {
@@ -2003,7 +2021,9 @@ export class PublisherDatabase {
       const rows = await client.query<{ property_rid: string; property_id: string }>(
         `SELECT property_rid, property_id
            FROM catalog_properties
-          WHERE created_by = $1 AND property_id = ANY($2)`,
+          WHERE created_by = $1
+            AND created_by LIKE 'adagents_json:%'
+            AND property_id = ANY($2)`,
         [adagentsCreatedBy(publisherDomain), slugs]
       );
       for (const row of rows.rows) {
@@ -2032,7 +2052,9 @@ export class PublisherDatabase {
         const rows = await client.query<{ property_rid: string; property_id: string }>(
           `SELECT property_rid, property_id
              FROM catalog_properties
-            WHERE created_by = $1 AND property_id = ANY($2)`,
+            WHERE created_by = $1
+              AND created_by LIKE 'adagents_json:%'
+              AND property_id = ANY($2)`,
           [adagentsCreatedBy(publisherDomain), slugs]
         );
         for (const row of rows.rows) {
@@ -2083,7 +2105,8 @@ export class PublisherDatabase {
           const rows = await client.query<{ property_rid: string; property_id: string | null }>(
             `SELECT property_rid, property_id
                FROM catalog_properties
-              WHERE created_by = $1`,
+              WHERE created_by = $1
+                AND created_by LIKE 'adagents_json:%'`,
             [adagentsCreatedBy(publisherDomain)]
           );
           for (const row of rows.rows) {
@@ -2097,7 +2120,9 @@ export class PublisherDatabase {
           const rows = await client.query<{ property_rid: string; property_id: string }>(
             `SELECT property_rid, property_id
                FROM catalog_properties
-              WHERE created_by = $1 AND property_id = ANY($2)`,
+              WHERE created_by = $1
+                AND created_by LIKE 'adagents_json:%'
+                AND property_id = ANY($2)`,
             [adagentsCreatedBy(publisherDomain), slugs]
           );
           for (const row of rows.rows) {
@@ -2118,6 +2143,7 @@ export class PublisherDatabase {
                      ELSE '[]'::jsonb END
               ) AS prop
               WHERE cp.created_by = $2
+                AND cp.created_by LIKE 'adagents_json:%'
                 AND cp.property_id IS NOT NULL
                 AND prop->>'property_id' = cp.property_id
                 AND LOWER(REGEXP_REPLACE(

@@ -28,7 +28,7 @@ import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { renderLegalMarkdown } from "./legal-markdown.js";
-import { closeDatabase, getPool, healthCheck } from "./db/client.js";
+import { closeDatabase, getPool, healthCheck, type HealthCheckDiagnostics } from "./db/client.js";
 import { ComplianceDatabase } from "./db/compliance-db.js";
 import { ComplianceRefreshRequestsDatabase } from "./db/compliance-refresh-requests-db.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
@@ -800,6 +800,7 @@ Llms-txt: ${baseUrl}/llms.txt
 let consecutiveDbHealthFailures = 0;
 let dbHealthAlerted = false;
 const HEALTH_DB_ALERT_THRESHOLD = 3;
+const HEALTH_DB_SLOW_LOG_MS = 1000;
 
 /**
  * Validate slug format and check against reserved keywords
@@ -3086,11 +3087,14 @@ export class HTTPServer {
       try {
         // Use a dedicated connection (not from the pool) so health checks
         // succeed even when the pool is fully occupied under load.
-        await healthCheck(5000);
+        const health = await healthCheck(5000);
         checks.database = true;
+        if (health?.total_ms >= HEALTH_DB_SLOW_LOG_MS) {
+          logger.warn({ health }, 'Database health check slow');
+        }
         if (dbHealthAlerted) {
           logger.info(
-            { priorFailures: consecutiveDbHealthFailures },
+            { priorFailures: consecutiveDbHealthFailures, health },
             'Database health check recovered',
           );
         }
@@ -3099,6 +3103,9 @@ export class HTTPServer {
       } catch (dbErr) {
         checks.database = false;
         const errMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+        const health = dbErr instanceof Error
+          ? (dbErr as Error & { healthCheckDiagnostics?: HealthCheckDiagnostics }).healthCheckDiagnostics
+          : undefined;
         consecutiveDbHealthFailures++;
         dbError = errMsg;
 
@@ -3111,7 +3118,7 @@ export class HTTPServer {
         if (consecutiveDbHealthFailures === HEALTH_DB_ALERT_THRESHOLD) {
           dbHealthAlerted = true;
           logger.warn(
-            { err: dbErr, consecutiveFailures: consecutiveDbHealthFailures },
+            { err: dbErr, health, consecutiveFailures: consecutiveDbHealthFailures },
             'Database health check alert threshold reached',
           );
           notifySystemError({
@@ -3120,7 +3127,7 @@ export class HTTPServer {
           });
         } else {
           logger.warn(
-            { err: dbErr, consecutiveFailures: consecutiveDbHealthFailures },
+            { err: dbErr, health, consecutiveFailures: consecutiveDbHealthFailures },
             consecutiveDbHealthFailures < HEALTH_DB_ALERT_THRESHOLD
               ? 'Database health check failed (transient, not yet alerting)'
               : 'Database health check remains unavailable',

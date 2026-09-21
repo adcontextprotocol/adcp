@@ -16,15 +16,28 @@ describe('db client checkout and health checks', () => {
     const clientQuery = vi.fn().mockResolvedValue({ rows: [{ '?column?': 1 }] });
     const clientEnd = vi.fn().mockResolvedValue(undefined);
     const clientOn = vi.fn();
-    const poolInstances: Array<{ query: typeof poolQuery; end: typeof poolEnd; on: typeof poolOn }> = [];
+    const poolInstances: Array<{
+      query: typeof poolQuery;
+      end: typeof poolEnd;
+      on: typeof poolOn;
+      totalCount: number;
+      idleCount: number;
+      waitingCount: number;
+      options: { max: number };
+    }> = [];
     const clientInstances: Array<{ connect: typeof clientConnect; query: typeof clientQuery; end: typeof clientEnd }> = [];
 
     class MockPool {
       query = poolQuery;
       end = poolEnd;
       on = poolOn;
+      totalCount = 0;
+      idleCount = 0;
+      waitingCount = 0;
+      options: { max: number };
 
-      constructor() {
+      constructor(options?: { max?: number }) {
+        this.options = { max: options?.max || 10 };
         poolInstances.push(this);
       }
 
@@ -74,6 +87,54 @@ describe('db client checkout and health checks', () => {
 
     await expect(db.getClient()).resolves.toBe(fakeClient);
     expect(pg.poolConnect).toHaveBeenCalledTimes(2);
+
+    await db.closeDatabase();
+  });
+
+  it('reports bounded low-cardinality application pool state', async () => {
+    const pg = mockPg();
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({
+      connectionString: 'postgresql://localhost/test',
+      maxPoolSize: 8,
+    });
+    Object.assign(pg.poolInstances[0], {
+      totalCount: 8,
+      idleCount: 0,
+      waitingCount: 3,
+    });
+
+    expect(db.getDatabasePoolSnapshot()).toEqual({
+      max: 8,
+      total: 8,
+      idle: 0,
+      waiting: 3,
+      saturated: true,
+    });
+
+    await db.closeDatabase();
+  });
+
+  it('reports pg-pool effective defaults when a zero maximum is normalized', async () => {
+    const pg = mockPg();
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({
+      connectionString: 'postgresql://localhost/test',
+      maxPoolSize: 0,
+    });
+    Object.assign(pg.poolInstances[0], {
+      totalCount: 10,
+      idleCount: 0,
+      waitingCount: 1,
+    });
+
+    expect(db.getDatabasePoolSnapshot()).toEqual({
+      max: 10,
+      total: 10,
+      idle: 0,
+      waiting: 1,
+      saturated: true,
+    });
 
     await db.closeDatabase();
   });
@@ -138,7 +199,12 @@ describe('db client checkout and health checks', () => {
     await expect(db.healthCheck(5000)).rejects.toBe(failure);
     expect(pg.clientEnd).toHaveBeenCalledTimes(1);
 
-    await expect(db.healthCheck(5000)).resolves.toBeUndefined();
+    await expect(db.healthCheck(5000)).resolves.toEqual(expect.objectContaining({
+      timeout_ms: 5000,
+      attempts: 1,
+      cleanup_ms: 0,
+      pool: expect.objectContaining({ max: 8, waiting: 0 }),
+    }));
     expect(pg.clientInstances).toHaveLength(2);
     expect(pg.clientConnect).toHaveBeenCalledTimes(2);
     expect(pg.clientQuery).toHaveBeenCalledTimes(2);
@@ -156,7 +222,9 @@ describe('db client checkout and health checks', () => {
     const db = await import('../../src/db/client.js');
     db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
 
-    await expect(db.healthCheck(5000)).resolves.toBeUndefined();
+    await expect(db.healthCheck(5000)).resolves.toEqual(expect.objectContaining({
+      attempts: 2,
+    }));
     expect(pg.clientInstances).toHaveLength(2);
     expect(pg.clientConnect).toHaveBeenCalledTimes(2);
     expect(pg.clientQuery).toHaveBeenCalledTimes(2);
@@ -226,6 +294,59 @@ describe('db client checkout and health checks', () => {
     await db.closeDatabase();
   });
 
+  it('bounds a hung health connect and cleanup by the probe deadline', async () => {
+    vi.useFakeTimers();
+    const pg = mockPg();
+    pg.clientConnect.mockReturnValue(new Promise(() => undefined));
+    pg.clientEnd.mockReturnValue(new Promise(() => undefined));
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    const check = db.healthCheck(50);
+    const rejection = expect(check).rejects.toThrow(
+      'health check connection timed out',
+    );
+    await vi.advanceTimersByTimeAsync(50);
+    await rejection;
+
+    expect(pg.clientQuery).not.toHaveBeenCalled();
+    expect(pg.clientEnd).toHaveBeenCalledTimes(1);
+    const failure = await check.catch((error) => error as Error);
+    expect(db.getHealthCheckDiagnostics(failure)).toEqual(expect.objectContaining({
+      timeout_ms: 50,
+      attempts: 1,
+      connect_ms: 50,
+      cleanup_ms: 0,
+      total_ms: 50,
+    }));
+    await db.closeDatabase();
+  });
+
+  it('does not let hung health-client cleanup outlive the probe deadline', async () => {
+    vi.useFakeTimers();
+    const pg = mockPg();
+    const failure = new Error('health query failed');
+    pg.clientQuery.mockRejectedValue(failure);
+    pg.clientEnd.mockReturnValue(new Promise(() => undefined));
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    const rejection = expect(db.healthCheck(50)).rejects.toBe(failure);
+    await vi.advanceTimersByTimeAsync(50);
+    await rejection;
+
+    expect(pg.clientEnd).toHaveBeenCalledTimes(1);
+    expect(db.getHealthCheckDiagnostics(failure)).toEqual(expect.objectContaining({
+      timeout_ms: 50,
+      attempts: 1,
+      cleanup_ms: 50,
+      total_ms: 50,
+    }));
+    await db.closeDatabase();
+  });
+
   it('recovers on the next probe after a health connection cannot be established', async () => {
     const pg = mockPg();
     const failure = new Error('initial connect failed');
@@ -236,7 +357,9 @@ describe('db client checkout and health checks', () => {
 
     await expect(db.healthCheck(5000)).rejects.toBe(failure);
     expect(pg.clientEnd).toHaveBeenCalledTimes(1);
-    await expect(db.healthCheck(5000)).resolves.toBeUndefined();
+    await expect(db.healthCheck(5000)).resolves.toEqual(expect.objectContaining({
+      attempts: 1,
+    }));
 
     expect(pg.clientInstances).toHaveLength(2);
     expect(pg.clientConnect).toHaveBeenCalledTimes(2);

@@ -11,7 +11,27 @@ let pool: Pool | null = null;
 let poolConfig: DatabaseConfig | null = null;
 let healthClient: Client | null = null;
 let healthClientConnectPromise: Promise<Client> | null = null;
-let healthCheckPromise: Promise<void> | null = null;
+export interface DatabasePoolSnapshot {
+  max: number;
+  total: number;
+  idle: number;
+  waiting: number;
+  saturated: boolean;
+}
+
+export interface HealthCheckDiagnostics {
+  timeout_ms: number;
+  attempts: number;
+  connect_ms: number;
+  query_ms: number;
+  cleanup_ms: number;
+  total_ms: number;
+  pool: DatabasePoolSnapshot;
+}
+
+type HealthCheckError = Error & { healthCheckDiagnostics?: HealthCheckDiagnostics };
+
+let healthCheckPromise: Promise<HealthCheckDiagnostics> | null = null;
 const healthClientClosePromises = new WeakMap<Client, Promise<void>>();
 interface QueryDeadlineContext {
   deadlineMs: number;
@@ -74,6 +94,15 @@ export function getPool(): Pool {
   return pool;
 }
 
+/** Low-cardinality pool state for slow/error logs and health diagnostics. */
+export function getDatabasePoolSnapshot(): DatabasePoolSnapshot {
+  const max = pool?.options.max ?? 8;
+  const total = pool?.totalCount ?? 0;
+  const idle = pool?.idleCount ?? 0;
+  const waiting = pool?.waitingCount ?? 0;
+  return { max, total, idle, waiting, saturated: total >= max && idle === 0 };
+}
+
 /** Transient connection errors that are safe to retry once. */
 const TRANSIENT_CONNECTION_ERRORS = new Set([
   "connection_reset",
@@ -126,14 +155,20 @@ export async function query<T extends QueryResultRow = any>(
     return await p.query<T>(text, params);
   } catch (err) {
     if (isTransientConnectionError(err)) {
-      console.warn("Transient DB connection error, retrying query:", (err as Error).message);
+      logger.warn(
+        { err, pool: getDatabasePoolSnapshot() },
+        "Transient DB connection error, retrying query",
+      );
       return p.query<T>(text, params);
     }
     throw err;
   } finally {
     const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
     if (durationMs > SLOW_QUERY_THRESHOLD_MS) {
-      logger.warn({ duration_ms: Math.round(durationMs) }, "Slow database query");
+      logger.warn(
+        { duration_ms: Math.round(durationMs), pool: getDatabasePoolSnapshot() },
+        "Slow database query",
+      );
     }
   }
 }
@@ -347,7 +382,10 @@ export async function getClient(): Promise<PoolClient> {
     return await p.connect();
   } catch (err) {
     if (isTransientConnectionError(err)) {
-      console.warn("Transient DB connection error, retrying client checkout:", (err as Error).message);
+      logger.warn(
+        { err, pool: getDatabasePoolSnapshot() },
+        "Transient DB connection error, retrying client checkout",
+      );
       return p.connect();
     }
     throw err;
@@ -404,7 +442,41 @@ export async function getDedicatedClient(): Promise<Client> {
  * reachable database look down, while reuse avoids opening a fresh TLS/DB
  * session for every Fly probe on every machine.
  */
-async function getHealthClient(timeoutMs: number): Promise<Client> {
+interface MutableHealthCheckTimings {
+  attempts: number;
+  connectMs: number;
+  queryMs: number;
+  cleanupMs: number;
+}
+
+function healthTimeout(message: string): Error {
+  return new Error(message);
+}
+
+async function healthOperationBeforeDeadline<T>(
+  operation: () => Promise<T>,
+  deadlineMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs <= 0) throw healthTimeout(timeoutMessage);
+
+  const pending = Promise.resolve().then(operation);
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(healthTimeout(timeoutMessage)), remainingMs);
+  });
+  try {
+    return await Promise.race([pending, deadline]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+async function getHealthClient(
+  deadlineMs: number,
+  timings: MutableHealthCheckTimings,
+): Promise<Client> {
   if (!poolConfig) {
     throw new Error("Database not initialized. Call initializeDatabase() first.");
   }
@@ -412,6 +484,7 @@ async function getHealthClient(timeoutMs: number): Promise<Client> {
   if (healthClient) return healthClient;
   if (healthClientConnectPromise) return healthClientConnectPromise;
 
+  const remainingMs = Math.max(1, deadlineMs - Date.now());
   const client = new Client({
     connectionString: poolConfig.connectionString,
     host: poolConfig.host,
@@ -420,22 +493,31 @@ async function getHealthClient(timeoutMs: number): Promise<Client> {
     user: poolConfig.user,
     password: poolConfig.password,
     ssl: poolConfig.ssl,
-    connectionTimeoutMillis: Math.min(poolConfig.connectionTimeoutMillis ?? timeoutMs, timeoutMs),
+    connectionTimeoutMillis: Math.min(poolConfig.connectionTimeoutMillis ?? remainingMs, remainingMs),
   });
 
   client.on('error', (err) => {
     if (healthClient === client) healthClient = null;
     logger.warn({ err }, 'Dedicated health check connection failed while idle');
-    void discardHealthClient(client);
+    void discardHealthClient(client, Date.now() + 1000);
   });
 
   const connectPromise = (async () => {
+    const connectStartedAt = Date.now();
     try {
-      await client.connect();
+      await healthOperationBeforeDeadline(
+        () => client.connect(),
+        deadlineMs,
+        'health check connection timed out',
+      );
+      timings.connectMs += Date.now() - connectStartedAt;
       healthClient = client;
       return client;
     } catch (error) {
-      await client.end().catch(() => undefined);
+      timings.connectMs += Date.now() - connectStartedAt;
+      const cleanupStartedAt = Date.now();
+      await discardHealthClient(client, deadlineMs);
+      timings.cleanupMs += Date.now() - cleanupStartedAt;
       throw error;
     }
   })();
@@ -450,16 +532,63 @@ async function getHealthClient(timeoutMs: number): Promise<Client> {
   }
 }
 
-async function discardHealthClient(client: Client): Promise<void> {
+async function discardHealthClient(client: Client, deadlineMs?: number): Promise<void> {
   if (healthClient === client) healthClient = null;
   const existingClose = healthClientClosePromises.get(client);
-  if (existingClose) return existingClose;
-
-  const closePromise = client.end().catch((err) => {
+  const closePromise = existingClose ?? client.end().catch((err) => {
     logger.warn({ err }, "Health check connection cleanup failed");
   });
-  healthClientClosePromises.set(client, closePromise);
-  return closePromise;
+  if (!existingClose) healthClientClosePromises.set(client, closePromise);
+  if (deadlineMs === undefined) return closePromise;
+
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs <= 0) return;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      closePromise,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, remainingMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function finalizeHealthCheckDiagnostics(
+  timeoutMs: number,
+  startedAt: number,
+  timings: MutableHealthCheckTimings,
+): HealthCheckDiagnostics {
+  return {
+    timeout_ms: timeoutMs,
+    attempts: timings.attempts,
+    connect_ms: timings.connectMs,
+    query_ms: timings.queryMs,
+    cleanup_ms: timings.cleanupMs,
+    total_ms: Date.now() - startedAt,
+    pool: getDatabasePoolSnapshot(),
+  };
+}
+
+function attachHealthCheckDiagnostics(
+  error: unknown,
+  diagnostics: HealthCheckDiagnostics,
+): unknown {
+  if (error instanceof Error) {
+    Object.defineProperty(error, 'healthCheckDiagnostics', {
+      configurable: true,
+      value: diagnostics,
+    });
+  }
+  return error;
+}
+
+export function getHealthCheckDiagnostics(error: unknown): HealthCheckDiagnostics | undefined {
+  return error instanceof Error
+    ? (error as HealthCheckError).healthCheckDiagnostics
+    : undefined;
 }
 
 /**
@@ -467,50 +596,71 @@ async function discardHealthClient(client: Client): Promise<void> {
  * pool. Concurrent HTTP probes share one in-flight query. A failed connection
  * is discarded so the next probe establishes a fresh session.
  */
-export async function healthCheck(timeoutMs = 5000): Promise<void> {
+export async function healthCheck(timeoutMs = 5000): Promise<HealthCheckDiagnostics> {
   if (healthCheckPromise) return healthCheckPromise;
 
-  const deadlineMs = Date.now() + timeoutMs;
+  const startedAt = Date.now();
+  const deadlineMs = startedAt + timeoutMs;
+  const timings: MutableHealthCheckTimings = {
+    attempts: 0,
+    connectMs: 0,
+    queryMs: 0,
+    cleanupMs: 0,
+  };
   const checkOnce = async (): Promise<void> => {
-    const remainingMs = deadlineMs - Date.now();
-    if (remainingMs <= 0) throw new Error('health check query timed out');
+    timings.attempts++;
+    if (deadlineMs - Date.now() <= 0) throw healthTimeout('health check query timed out');
 
-    const client = await getHealthClient(remainingMs);
-    let timeout: NodeJS.Timeout | null = null;
+    const client = await getHealthClient(deadlineMs, timings);
+    const queryStartedAt = Date.now();
 
     try {
-      await Promise.race([
-        client.query('SELECT 1'),
-        new Promise<never>((_, reject) => {
-          timeout = setTimeout(
-            () => reject(new Error('health check query timed out')),
-            Math.max(1, deadlineMs - Date.now()),
-          );
-        }),
-      ]);
+      await healthOperationBeforeDeadline(
+        () => client.query('SELECT 1'),
+        deadlineMs,
+        'health check query timed out',
+      );
     } catch (error) {
-      await discardHealthClient(client);
+      timings.queryMs += Date.now() - queryStartedAt;
+      const cleanupStartedAt = Date.now();
+      await discardHealthClient(client, deadlineMs);
+      timings.cleanupMs += Date.now() - cleanupStartedAt;
       throw error;
-    } finally {
-      if (timeout) clearTimeout(timeout);
     }
+    timings.queryMs += Date.now() - queryStartedAt;
   };
 
-  const run = async (): Promise<void> => {
+  const run = async (): Promise<HealthCheckDiagnostics> => {
     try {
       await checkOnce();
     } catch (error) {
-      if (!isTransientConnectionError(error) || Date.now() >= deadlineMs) throw error;
-      logger.warn({ err: error }, 'Transient health check connection error; retrying once');
-      await checkOnce();
+      if (!isTransientConnectionError(error) || Date.now() >= deadlineMs) {
+        throw attachHealthCheckDiagnostics(
+          error,
+          finalizeHealthCheckDiagnostics(timeoutMs, startedAt, timings),
+        );
+      }
+      logger.warn(
+        { err: error, pool: getDatabasePoolSnapshot() },
+        'Transient health check connection error; retrying once',
+      );
+      try {
+        await checkOnce();
+      } catch (retryError) {
+        throw attachHealthCheckDiagnostics(
+          retryError,
+          finalizeHealthCheckDiagnostics(timeoutMs, startedAt, timings),
+        );
+      }
     }
+    return finalizeHealthCheckDiagnostics(timeoutMs, startedAt, timings);
   };
 
   const checkPromise = run();
   healthCheckPromise = checkPromise;
 
   try {
-    await checkPromise;
+    return await checkPromise;
   } finally {
     if (healthCheckPromise === checkPromise) healthCheckPromise = null;
   }
