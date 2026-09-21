@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { createHash } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -124,7 +124,10 @@ describe.each([
     expect(next).toHaveBeenCalledOnce();
     expect(req.isStaticAdminApiKey).toBe(true);
     expect(req.adminKeyFingerprint).toBe(
-      createHash('sha256').update('static-admin-test').digest('hex').slice(0, 8),
+      createHmac('sha256', 'static-admin-test')
+        .update('adcp-static-admin-api-key-fingerprint:v1')
+        .digest('hex')
+        .slice(0, 8),
     );
     expect(getStaticAdminAuditDetails(req)).toEqual({
       ip_address: '203.0.113.17',

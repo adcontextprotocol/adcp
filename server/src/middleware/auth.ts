@@ -757,7 +757,10 @@ function setSessionCookie(res: Response, sealedSession: string) {
 // Static admin API key for internal tooling (bypasses WorkOS)
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
 const ADMIN_API_KEY_FINGERPRINT = ADMIN_API_KEY
-  ? createHash('sha256').update(ADMIN_API_KEY).digest('hex').slice(0, 8)
+  ? createHmac('sha256', ADMIN_API_KEY)
+      .update('adcp-static-admin-api-key-fingerprint:v1')
+      .digest('hex')
+      .slice(0, 8)
   : undefined;
 if (ADMIN_API_KEY) {
   logger.info('Admin API key configured for programmatic access');
