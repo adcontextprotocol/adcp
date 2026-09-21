@@ -39,6 +39,62 @@ import { withOrgIntakeLock } from "../billing/org-intake-lock.js";
 
 const logger = createLogger("billing-routes");
 
+const DEFAULT_CUSTOMER_PAGE_SIZE = 25;
+const MAX_CUSTOMER_PAGE_SIZE = 50;
+const MAX_CUSTOMER_SEARCH_LENGTH = 100;
+const MAX_CUSTOMER_CURSOR_LENGTH = 500;
+const CUSTOMER_FILTERS = new Set([
+  "all",
+  "linked",
+  "unlinked",
+  "unlinked-payments",
+  "paid",
+  "open",
+  "active",
+  "trialing",
+  "past_due",
+  "canceled",
+  "unpaid",
+  "paused",
+  "incomplete",
+  "incomplete_expired",
+  "none",
+]);
+const SUBSCRIPTION_STATUS_FILTERS = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "canceled",
+  "unpaid",
+  "paused",
+  "incomplete",
+  "incomplete_expired",
+]);
+
+function escapeStripeSearchValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function customerMatchesFilter(
+  customer: Stripe.Customer,
+  filter: string,
+  linked: boolean,
+  totalPaid: number,
+  openInvoiceCount: number,
+  hasMatchingSubscription: boolean
+): boolean {
+  if (filter === "all") return true;
+  if (filter === "linked") return linked;
+  if (filter === "unlinked") return !linked;
+  if (filter === "unlinked-payments") return !linked && totalPaid > 0;
+  if (filter === "paid") return totalPaid > 0;
+  if (filter === "open") return openInvoiceCount > 0;
+
+  const subscriptions = customer.subscriptions?.data ?? [];
+  if (filter === "none") return subscriptions.length === 0;
+  return hasMatchingSubscription;
+}
+
 /**
  * Sync all invoices for a Stripe customer to the local cache.
  * Called when manually linking a customer to an organization.
@@ -575,26 +631,94 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   // STRIPE CUSTOMER MANAGEMENT API (mounted at /api/admin)
   // =========================================================================
 
-  // GET /api/admin/stripe-customers - List all Stripe customers with link status and payment totals
+  // GET /api/admin/stripe-customers - Paginated Stripe customer search with link status and payment totals
   apiRouter.get("/stripe-customers", ...requireGlobalAdmin, async (req, res) => {
     if (!stripe) {
       return res.status(400).json({ error: "Stripe not configured" });
     }
 
     try {
-      const pool = getPool();
+      const rawLimit = req.query.limit;
+      const limit = rawLimit === undefined ? DEFAULT_CUSTOMER_PAGE_SIZE : Number(rawLimit);
+      const search = typeof req.query.q === "string" ? req.query.q.trim() : "";
+      const filter = typeof req.query.status === "string" ? req.query.status : "all";
+      const cursor = typeof req.query.cursor === "string" ? req.query.cursor : "";
 
-      // Get all orgs with stripe_customer_id
-      const orgsResult = await pool.query(`
-        SELECT workos_organization_id, name, stripe_customer_id
-        FROM organizations
-        WHERE stripe_customer_id IS NOT NULL
-      `);
-      const customerToOrg = new Map(
-        orgsResult.rows.map((o) => [o.stripe_customer_id, { id: o.workos_organization_id, name: o.name }])
+      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_CUSTOMER_PAGE_SIZE) {
+        return res.status(400).json({
+          error: `limit must be an integer between 1 and ${MAX_CUSTOMER_PAGE_SIZE}`,
+        });
+      }
+      if (search.length > MAX_CUSTOMER_SEARCH_LENGTH || /[\u0000-\u001f\u007f]/.test(search)) {
+        return res.status(400).json({ error: "Invalid customer search query" });
+      }
+      if (!CUSTOMER_FILTERS.has(filter)) {
+        return res.status(400).json({ error: "Invalid customer status filter" });
+      }
+      if (cursor.length > MAX_CUSTOMER_CURSOR_LENGTH || /[\u0000-\u001f\u007f]/.test(cursor)) {
+        return res.status(400).json({ error: "Invalid customer pagination cursor" });
+      }
+
+      const pool = getPool();
+      let stripeCustomers: Stripe.Customer[] = [];
+      let nextCursor: string | null = null;
+      let hasMore = false;
+      let providerTotal: number | null = null;
+
+      if (/^cus_[A-Za-z0-9]+$/.test(search)) {
+        try {
+          const result = await stripe.customers.retrieve(search, {
+            expand: ["subscriptions"],
+          });
+          if (!("deleted" in result) || !result.deleted) stripeCustomers = [result as Stripe.Customer];
+        } catch (error) {
+          const stripeError = error as { code?: string; statusCode?: number };
+          if (stripeError.code !== "resource_missing" && stripeError.statusCode !== 404) throw error;
+        }
+        providerTotal = stripeCustomers.length;
+      } else if (search) {
+        const escapedSearch = escapeStripeSearchValue(search);
+        const result = await stripe.customers.search({
+          query: `name~'${escapedSearch}' OR email~'${escapedSearch}' OR metadata['workos_organization_id']:'${escapedSearch}'`,
+          limit,
+          ...(cursor ? { page: cursor } : {}),
+          expand: ["data.subscriptions", "total_count"],
+        });
+        stripeCustomers = result.data;
+        hasMore = result.has_more;
+        nextCursor = result.next_page;
+        providerTotal = result.total_count ?? null;
+      } else {
+        const result = await stripe.customers.list({
+          limit,
+          ...(cursor ? { starting_after: cursor } : {}),
+          expand: ["data.subscriptions"],
+        });
+        stripeCustomers = result.data;
+        hasMore = result.has_more;
+        nextCursor = result.has_more && result.data.length > 0
+          ? result.data[result.data.length - 1].id
+          : null;
+      }
+
+      // Resolve links only for this bounded Stripe page. stripe_customer_id is
+      // indexed, so this avoids loading the full organization billing dataset.
+      const customerIds = stripeCustomers.map((customer) => customer.id);
+      const orgsResult = customerIds.length > 0
+        ? await pool.query(
+            `SELECT workos_organization_id, name, stripe_customer_id
+             FROM organizations
+             WHERE stripe_customer_id = ANY($1::text[])`,
+            [customerIds]
+          )
+        : { rows: [] };
+      const customerToOrg = new Map<string, { id: string; name: string }>(
+        orgsResult.rows.map((org) => [
+          org.stripe_customer_id,
+          { id: org.workos_organization_id, name: org.name },
+        ])
       );
 
-      // Fetch all Stripe customers with their payment totals
       const customers: Array<{
         id: string;
         name: string | null;
@@ -610,36 +734,39 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         currency: string | null;
       }> = [];
 
-      for await (const customer of stripe.customers.list({ limit: 100, expand: ["data.subscriptions"] })) {
-        // Get paid invoices for this customer to calculate total paid
-        let totalPaid = 0;
-        let invoiceCount = 0;
-
-        for await (const invoice of stripe.invoices.list({
-          customer: customer.id,
-          status: "paid",
-          limit: 100,
-        })) {
-          totalPaid += invoice.amount_paid;
-          invoiceCount++;
-        }
-
-        // Get open invoices
-        let openInvoiceCount = 0;
-        let openInvoiceTotal = 0;
-
-        for await (const invoice of stripe.invoices.list({
-          customer: customer.id,
-          status: "open",
-          limit: 100,
-        })) {
-          openInvoiceCount++;
-          openInvoiceTotal += invoice.amount_due;
-        }
+      for (const customer of stripeCustomers) {
+        // Invoice summaries are deliberately bounded to the first 100 invoices
+        // of each status for customers on the current page.
+        // Query subscription filters directly because Stripe's embedded customer
+        // list omits terminal subscriptions and is capped at ten entries.
+        const subscriptionStatus = SUBSCRIPTION_STATUS_FILTERS.has(filter)
+          ? filter as Stripe.SubscriptionListParams.Status
+          : null;
+        const [paidInvoices, openInvoices, matchingSubscriptions] = await Promise.all([
+          stripe.invoices.list({ customer: customer.id, status: "paid", limit: 100 }),
+          stripe.invoices.list({ customer: customer.id, status: "open", limit: 100 }),
+          subscriptionStatus
+            ? stripe.subscriptions.list({ customer: customer.id, status: subscriptionStatus, limit: 1 })
+            : Promise.resolve(null),
+        ]);
+        const totalPaid = paidInvoices.data.reduce((sum, invoice) => sum + invoice.amount_paid, 0);
+        const invoiceCount = paidInvoices.data.length;
+        const openInvoiceCount = openInvoices.data.length;
+        const openInvoiceTotal = openInvoices.data.reduce((sum, invoice) => sum + invoice.amount_due, 0);
 
         // Count active subscriptions
         const activeSubscriptions =
           customer.subscriptions?.data.filter((s) => s.status === "active" || s.status === "trialing").length ?? 0;
+
+        const linkedOrg = customerToOrg.get(customer.id) ?? null;
+        if (!customerMatchesFilter(
+          customer,
+          filter,
+          !!linkedOrg,
+          totalPaid,
+          openInvoiceCount,
+          (matchingSubscriptions?.data.length ?? 0) > 0
+        )) continue;
 
         customers.push({
           id: customer.id,
@@ -650,33 +777,32 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
           invoice_count: invoiceCount,
           open_invoice_count: openInvoiceCount,
           open_invoice_total: openInvoiceTotal,
-          linked_org: customerToOrg.get(customer.id) || null,
+          linked_org: linkedOrg,
           has_payment_method: !!customer.default_source || !!customer.invoice_settings?.default_payment_method,
           active_subscriptions: activeSubscriptions,
           currency: customer.currency ?? null,
         });
       }
 
-      // Sort: unlinked with payments first, then by total_paid descending
-      customers.sort((a, b) => {
-        // Unlinked customers with payments come first
-        const aUnlinkedWithPayments = !a.linked_org && a.total_paid > 0;
-        const bUnlinkedWithPayments = !b.linked_org && b.total_paid > 0;
-        if (aUnlinkedWithPayments && !bUnlinkedWithPayments) return -1;
-        if (!aUnlinkedWithPayments && bUnlinkedWithPayments) return 1;
-        // Then by total paid descending
-        return b.total_paid - a.total_paid;
-      });
-
       const unlinkedCount = customers.filter((c) => !c.linked_org).length;
       const unlinkedWithPayments = customers.filter((c) => !c.linked_org && c.total_paid > 0).length;
+      const total = filter === "all" ? providerTotal : null;
 
       res.json({
         customers,
-        total: customers.length,
+        count: customers.length,
+        total,
         linked: customers.length - unlinkedCount,
         unlinked: unlinkedCount,
         unlinked_with_payments: unlinkedWithPayments,
+        pagination: {
+          count: customers.length,
+          total,
+          limit,
+          has_more: hasMore,
+          next_cursor: nextCursor,
+        },
+        filters: { q: search, status: filter },
       });
     } catch (error) {
       logger.error({ err: error }, "Error fetching Stripe customers");
