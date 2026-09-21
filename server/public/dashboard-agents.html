@@ -231,6 +231,48 @@
     .agent-verification-panel-empty .agent-verification-header {
       color: var(--color-text-muted);
     }
+    .verification-panel-actions {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-2);
+      font-weight: normal;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .verification-version-toggle {
+      border: 0;
+      background: none;
+      color: var(--color-primary-700);
+      cursor: pointer;
+      font: inherit;
+      padding: 0;
+      text-decoration: underline;
+    }
+    .verification-version-toggle:hover { color: var(--color-primary-800); }
+    .verification-version-toggle:focus-visible {
+      outline: 2px solid var(--color-primary-500);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    .verification-badge-group {
+      padding: var(--space-2) 0;
+      border-bottom: 1px dashed var(--color-success-200, #a7f3d0);
+    }
+    .verification-badge-group:last-child { border-bottom: none; }
+    .verification-role-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-2);
+      margin-bottom: var(--space-1);
+      color: var(--color-text-primary);
+      font-size: var(--text-xs);
+    }
+    .verification-role-header span { color: var(--color-text-muted); }
+    .verification-badge-group .verification-badge-row {
+      padding-left: var(--space-3);
+      border-bottom: none;
+    }
     .verification-badge-row {
       display: flex;
       flex-direction: column;
@@ -239,6 +281,9 @@
       border-bottom: 1px dashed var(--color-success-200, #a7f3d0);
     }
     .verification-badge-row:last-child { border-bottom: none; }
+    .agent-verification-panel.verification-latest-only .verification-badge-row.is-older-version {
+      display: none;
+    }
     .verification-badge-row-top {
       display: flex;
       align-items: center;
@@ -2599,8 +2644,48 @@
       const ADCP_VERSION_SHAPE_RE = /^[1-9][0-9]*\.[0-9]+$/;
 
       const distinctRoleCount = new Set(badges.map(b => b.role)).size;
+      const hasParallelVersions = distinctRoleCount < badges.length;
+      const latestOnlyByDefault = badges.length >= 5 && hasParallelVersions;
+      const panelHash = Array.from(agentUrl).reduce(
+        (hash, char) => ((hash * 31) + char.charCodeAt(0)) >>> 0,
+        2166136261,
+      ).toString(36);
+      const panelId = `verification-panel-${panelHash}`;
 
-      const rowsHtml = badges.map((badge, idx) => {
+      const parsedVersion = (badge) => {
+        if (typeof badge.adcp_version !== 'string' || !ADCP_VERSION_SHAPE_RE.test(badge.adcp_version)) return null;
+        return badge.adcp_version.split('.').map(Number);
+      };
+      const compareBadgeVersions = (left, right) => {
+        const leftVersion = parsedVersion(left.badge);
+        const rightVersion = parsedVersion(right.badge);
+        if (leftVersion && rightVersion) {
+          const width = Math.max(leftVersion.length, rightVersion.length);
+          for (let i = 0; i < width; i += 1) {
+            const delta = (rightVersion[i] || 0) - (leftVersion[i] || 0);
+            if (delta !== 0) return delta;
+          }
+        } else if (leftVersion) {
+          return -1;
+        } else if (rightVersion) {
+          return 1;
+        }
+        return left.originalIndex - right.originalIndex;
+      };
+
+      // Preserve the API's role order, but always put the newest semantic
+      // version first within a role. Numeric comparison matters here: 3.10
+      // must sort above 3.2 rather than below it as a string would.
+      const badgesByRole = new Map();
+      badges.forEach((badge, originalIndex) => {
+        const role = String(badge.role || 'unknown');
+        const group = badgesByRole.get(role) || [];
+        group.push({ badge, originalIndex });
+        badgesByRole.set(role, group);
+      });
+      badgesByRole.forEach(group => group.sort(compareBadgeVersions));
+
+      const renderBadgeRow = ({ badge, originalIndex }, grouped, isLatestVersion) => {
         const protocol = PROTOCOL_LABELS[badge.role] || badge.role;
         const qualifier = formatModes(badge.verification_modes) || 'Spec';
         const gradingLabel = badge.grading_profile === 'spec' ? 'Strict Spec grading' : 'Legacy grading';
@@ -2644,7 +2729,12 @@
           ? ` ${adcpVersion}`
           : (badge.adcp_version ? ' (unversioned)' : '');
         const altText = `AAO Verified ${protocol} Agent${versionSegment} (${qualifier}) · ${gradingLabel}`;
-        const labelStrong = `${protocol} Agent${versionSegment} (${qualifier}) · ${gradingLabel}`;
+        const versionLabel = adcpVersion
+          ? `AdCP ${adcpVersion}`
+          : (badge.adcp_version ? 'Unversioned' : 'Legacy version');
+        const labelStrong = grouped
+          ? `${versionLabel} (${qualifier}) · ${gradingLabel}`
+          : `${protocol} Agent${versionSegment} (${qualifier}) · ${gradingLabel}`;
         const htmlEmbed = `<a href="${registryUrl}" target="_blank" rel="noopener noreferrer"><img src="${badgeSvgUrl}" alt="${altText}" loading="lazy" height="20" /></a>`;
         const mdEmbed = `[![${altText}](${badgeSvgUrl})](${registryUrl})`;
 
@@ -2653,10 +2743,10 @@
         // an already-expanded drawer. 'unv' for malformed-version
         // rows so two malformed badges don't collide on 'any'.
         const versionForId = adcpVersion ?? (badge.adcp_version ? 'unv' : 'any');
-        const drawerId = `verification-embed-${badge.role}-${versionForId}-${idx}`;
+        const drawerId = `verification-embed-${badge.role}-${versionForId}-${originalIndex}`;
 
         return `
-          <div class="verification-badge-row">
+          <div class="verification-badge-row ${isLatestVersion ? 'is-latest-version' : 'is-older-version'}">
             <div class="verification-badge-row-top">
               <span class="verification-badge-svg"><img src="${escapeHtml(versionedBadgeUrl)}" alt="${escapeHtml(altText)}" /></span>
               <span class="verification-badge-meta">
@@ -2690,6 +2780,22 @@
               </div>
             </div>
           </div>`;
+      };
+
+      const rowsHtml = Array.from(badgesByRole.entries()).map(([role, group]) => {
+        if (group.length === 1) return renderBadgeRow(group[0], false, true);
+        const protocol = PROTOCOL_LABELS[role] || role;
+        const versionRows = group
+          .map((entry, index) => renderBadgeRow(entry, true, index === 0))
+          .join('');
+        return `
+          <section class="verification-badge-group" aria-label="${escapeHtml(protocol)} Agent badges">
+            <div class="verification-role-header">
+              <strong>${escapeHtml(protocol)} Agent</strong>
+              <span>${group.length} versions</span>
+            </div>
+            ${versionRows}
+          </section>`;
       }).join('');
 
       // Header count: "1 badge" / "N badges" / "N badges across M roles"
@@ -2701,12 +2807,18 @@
       const badgeCountSummary = badges.length === 1
         ? '1 badge'
         : `${badges.length} badges${distinctRoleCount < badges.length ? ` across ${distinctRoleCount} role${distinctRoleCount === 1 ? '' : 's'}` : ''}`;
+      const versionToggle = latestOnlyByDefault
+        ? `<button type="button" class="verification-version-toggle" data-panel-id="${panelId}" aria-controls="${panelId}" aria-expanded="false">Show all versions</button>`
+        : '';
 
       return `
-        <div class="agent-verification-panel">
+        <div class="agent-verification-panel${latestOnlyByDefault ? ' verification-latest-only' : ''}" id="${panelId}">
           <div class="agent-verification-header">
             <span>AAO Verified</span>
-            <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">${badgeCountSummary}</span>
+            <span class="verification-panel-actions">
+              <span>${badgeCountSummary}</span>
+              ${versionToggle}
+            </span>
           </div>
           ${typeof renderGradingProfileComparisons === 'function' ? renderGradingProfileComparisons(cs) : ''}
           ${rowsHtml}
@@ -2839,6 +2951,18 @@
 
     // Verification panel — toggle embed-code drawers and copy snippets.
     document.addEventListener('click', function(e) {
+      const versionToggle = e.target.closest('.verification-version-toggle');
+      if (versionToggle) {
+        const panelId = versionToggle.dataset.panelId;
+        const panel = panelId ? document.getElementById(panelId) : null;
+        if (panel) {
+          const latestOnly = panel.classList.toggle('verification-latest-only');
+          versionToggle.setAttribute('aria-expanded', String(!latestOnly));
+          versionToggle.textContent = latestOnly ? 'Show all versions' : 'Show latest only';
+        }
+        return;
+      }
+
       const toggle = e.target.closest('.verification-embed-toggle');
       if (toggle) {
         const drawerId = toggle.dataset.drawerId;

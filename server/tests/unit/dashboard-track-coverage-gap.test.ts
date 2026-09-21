@@ -424,4 +424,68 @@ describe('dashboard badge grading profile labels', () => {
     expect(html).toContain(`Media Buy Agent 3.1 (Spec) · ${expected}`);
     expect(html).toContain(`alt="AAO Verified Media Buy Agent 3.1 (Spec) · ${expected}"`);
   });
+
+  const badge = (role: string, adcpVersion: string) => ({
+    role,
+    adcp_version: adcpVersion,
+    verification_modes: ['spec'],
+    grading_profile: 'spec',
+    verified_specialisms: [],
+    badge_url: `/api/registry/agents/example/badge/${role}.svg`,
+  });
+
+  it('groups parallel versions under one role heading without repeating the role in visual labels', () => {
+    const html = renderVerificationPanel({
+      status: 'verified',
+      verified_badges: [badge('media-buy', '3.1'), badge('media-buy', '3.0')],
+    }, 'https://agent.example.com', true);
+
+    expect(html).toContain('<strong>Media Buy Agent</strong>');
+    expect(html).toContain('<span>2 versions</span>');
+    expect(html).toContain('<strong>AdCP 3.1 (Spec) · Strict Spec grading</strong>');
+    expect(html).toContain('<strong>AdCP 3.0 (Spec) · Strict Spec grading</strong>');
+    expect(html).not.toContain('<strong>Media Buy Agent 3.1');
+  });
+
+  it('keeps four badges expanded while still grouping parallel versions', () => {
+    const html = renderVerificationPanel({
+      status: 'verified',
+      verified_badges: [
+        badge('media-buy', '3.1'),
+        badge('media-buy', '3.0'),
+        badge('creative', '3.1'),
+        badge('signals', '3.1'),
+      ],
+    }, 'https://agent.example.com', true);
+
+    expect(html).toContain('4 badges across 3 roles');
+    expect(html).not.toContain('verification-latest-only');
+    expect(html).not.toContain('verification-version-toggle');
+  });
+
+  it('defaults five badges to latest-per-role with an accessible show-all control', () => {
+    const html = renderVerificationPanel({
+      status: 'verified',
+      verified_badges: [
+        badge('media-buy', '3.2'),
+        badge('media-buy', '3.10'),
+        badge('media-buy', '3.1'),
+        badge('creative', '3.1'),
+        badge('signals', '3.1'),
+      ],
+    }, 'https://agent.example.com', true);
+
+    expect(html).toContain('agent-verification-panel verification-latest-only');
+    expect(html).toContain('class="verification-version-toggle"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('Show all versions');
+    expect(html.match(/is-older-version/g)).toHaveLength(2);
+    expect(html.indexOf('AdCP 3.10')).toBeLessThan(html.indexOf('AdCP 3.2'));
+  });
+
+  it('wires the version disclosure to its panel state and ARIA state', () => {
+    expect(dashboardSource).toContain("panel.classList.toggle('verification-latest-only')");
+    expect(dashboardSource).toContain("versionToggle.setAttribute('aria-expanded', String(!latestOnly))");
+    expect(dashboardSource).toContain("versionToggle.textContent = latestOnly ? 'Show all versions' : 'Show latest only'");
+  });
 });
