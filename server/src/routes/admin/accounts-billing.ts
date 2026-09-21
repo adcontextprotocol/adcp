@@ -21,6 +21,7 @@ import {
 } from "../../db/organization-db.js";
 import { stripe } from "../../billing/stripe-client.js";
 import { pickMembershipSubWithProductFetch } from "../../billing/membership-prices.js";
+import { syncInvoicesForCustomer } from "../../billing/invoice-cache.js";
 
 const logger = createLogger("admin-accounts-billing");
 
@@ -63,6 +64,7 @@ export function setupAccountsBillingRoutes(
           };
           updated?: boolean;
           revenue_events_synced?: number;
+          invoices_synced?: number;
         } = { success: false };
 
         const orgResult = await pool.query<{
@@ -474,6 +476,15 @@ export function setupAccountsBillingRoutes(
                   );
                   // Don't fail the sync response; backfill failure is non-fatal
                 }
+
+                // Refresh the local invoice cache from the same customer. This
+                // is idempotent and only writes Stripe-derived state locally.
+                syncResults.invoices_synced = await syncInvoicesForCustomer(
+                  org.stripe_customer_id,
+                  orgId,
+                  stripe,
+                  { throwOnError: true },
+                );
               }
             } catch (error) {
               // Log the actual error so future regressions like the May 2026
@@ -504,6 +515,38 @@ export function setupAccountsBillingRoutes(
         syncResults.success =
           (syncResults.workos?.success || false) &&
           (syncResults.stripe?.success || false);
+
+        if (org.stripe_customer_id) {
+          try {
+            await pool.query(
+              `INSERT INTO admin_billing_reconciliation_events
+                 (actor_user_id, action, resource_type, resource_id,
+                  workos_organization_id, outcome, details)
+               VALUES ($1, 'refresh', 'stripe_customer', $2, $3, $4, $5)`,
+              [
+                req.user?.id ?? "unknown",
+                org.stripe_customer_id,
+                orgId,
+                syncResults.stripe?.success ? "success" : "failed",
+                JSON.stringify({
+                  subscription_status: syncResults.stripe?.subscription?.status ?? null,
+                  subscription_updated: syncResults.updated ?? false,
+                  invoices_synced: syncResults.invoices_synced ?? 0,
+                  revenue_events_synced: syncResults.revenue_events_synced ?? 0,
+                }),
+              ],
+            );
+          } catch (auditError) {
+            logger.error(
+              { err: auditError, orgId, customerId: org.stripe_customer_id },
+              "Failed to audit admin billing reconciliation refresh",
+            );
+            return res.status(503).json({
+              error: "Billing state refreshed but the audit event could not be recorded",
+              retry_safe: true,
+            });
+          }
+        }
 
         res.json(syncResults);
       } catch (error) {
