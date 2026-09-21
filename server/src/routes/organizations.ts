@@ -1156,6 +1156,7 @@ export function createOrganizationsRouter(): Router {
         details: {
           ip_address: req.ip ?? null,
           user_agent: rawUA ? rawUA.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 512) : null,
+          ...req.staticAdminAuditDetails,
           ...updates,
           ...(membership.via_dev_bypass ? { auth_method: 'dev-bypass' } : {}),
         },

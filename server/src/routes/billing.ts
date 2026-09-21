@@ -736,6 +736,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         workosOrganizationId,
         outcome,
         details: {
+          ...req.staticAdminAuditDetails,
           linked: Boolean(workosOrganizationId),
         },
       });
@@ -1446,6 +1447,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         resource_type: 'subscription',
         resource_id: customerId,
         details: {
+          ...req.staticAdminAuditDetails,
           stripe_customer_id: customerId,
           prior_subscription_status: org.subscription_status,
           prior_stripe_subscription_id: org.stripe_subscription_id,

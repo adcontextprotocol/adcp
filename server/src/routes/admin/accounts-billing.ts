@@ -529,6 +529,7 @@ export function setupAccountsBillingRoutes(
                 orgId,
                 syncResults.stripe?.success ? "success" : "failed",
                 JSON.stringify({
+                  ...req.staticAdminAuditDetails,
                   subscription_status: syncResults.stripe?.subscription?.status ?? null,
                   subscription_updated: syncResults.updated ?? false,
                   invoices_synced: syncResults.invoices_synced ?? 0,

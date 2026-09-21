@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { createHash } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -52,6 +53,7 @@ vi.mock('../../src/db/session-refresh-db.js', () => ({
 
 import {
   optionalAuth,
+  getStaticAdminAuditDetails,
   requireAuth,
   requireAdmin,
   requireTenantAdminForOrganization,
@@ -69,6 +71,7 @@ function makeRequest(token = 'sk_tenant_key', orgId?: string): KeyRequest {
     path: '/api/admin/organizations',
     originalUrl: '/api/admin/organizations',
     method: 'GET',
+    ip: '203.0.113.17',
     accepts: () => false,
   } as unknown as KeyRequest;
 }
@@ -105,6 +108,41 @@ beforeEach(() => {
   }));
 });
 afterAll(stopAuthTimers);
+
+describe.each([
+  ['requireAuth', requireAuth],
+  ['optionalAuth', optionalAuth],
+] as const)('%s static admin attribution', (_name, authenticate) => {
+  it('attaches a key fingerprint, trusted request IP, and sanitized operator', async () => {
+    const req = makeRequest('static-admin-test');
+    req.headers['x-admin-operator'] = '  incident-script\r\nforged:\u2028value\u0000  ';
+    const res = makeResponse();
+    const next = vi.fn();
+
+    await authenticate(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.isStaticAdminApiKey).toBe(true);
+    expect(req.adminKeyFingerprint).toBe(
+      createHash('sha256').update('static-admin-test').digest('hex').slice(0, 8),
+    );
+    expect(getStaticAdminAuditDetails(req)).toEqual({
+      ip_address: '203.0.113.17',
+      admin_key_fingerprint: req.adminKeyFingerprint,
+      operator: 'incident-script forged: value',
+    });
+  });
+
+  it('does not emit static-admin attribution for tenant API keys', async () => {
+    const req = makeRequest();
+    req.headers['x-admin-operator'] = 'untrusted-tenant-label';
+    const res = makeResponse();
+
+    await authenticate(req, res, vi.fn());
+
+    expect(getStaticAdminAuditDetails(req)).toEqual({});
+  });
+});
 
 describe.each([
   ['requireAuth', requireAuth],

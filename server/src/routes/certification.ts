@@ -4,7 +4,12 @@ import { WorkOS } from '@workos-inc/node';
 import { Resend } from 'resend';
 import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
-import { requireAuth, requireGlobalAdmin, optionalAuth, isDevModeEnabled } from '../middleware/auth.js';
+import {
+  requireAuth,
+  requireGlobalAdmin,
+  optionalAuth,
+  isDevModeEnabled,
+} from '../middleware/auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
 import * as certDb from '../db/certification-db.js';
 import { query } from '../db/client.js';
@@ -1294,6 +1299,7 @@ export function createCertificationRouters() {
     let auditContext: {
       adminUserId: string;
       reason: string;
+      staticAdminDetails: Record<string, string>;
     } | null = null;
     try {
       if (!userId || userId.length > 255 || !credentialId || credentialId.length > 50) {
@@ -1312,7 +1318,8 @@ export function createCertificationRouters() {
         return res.status(401).json({ error: 'Global admin identity is required' });
       }
       const adminUserId = req.user?.id || 'static-admin-api-key';
-      auditContext = { adminUserId, reason };
+      const staticAdminDetails = { ...req.staticAdminAuditDetails };
+      auditContext = { adminUserId, reason, staticAdminDetails };
 
       const credential = await certDb.getCredential(credentialId);
       if (!credential) {
@@ -1346,6 +1353,7 @@ export function createCertificationRouters() {
         reason,
         eventType: 'started',
         details: {
+          ...staticAdminDetails,
           before: {
             certifier_credential_id: awarded.certifier_credential_id,
             certifier_public_id: awarded.certifier_public_id,
@@ -1366,6 +1374,7 @@ export function createCertificationRouters() {
           reason,
           eventType: 'succeeded',
           details: {
+            ...staticAdminDetails,
             outcome: result.outcome,
             email_delivery: result.emailDelivery,
             after: {
@@ -1408,7 +1417,10 @@ export function createCertificationRouters() {
             adminUserId: auditContext.adminUserId,
             reason: auditContext.reason,
             eventType: 'failed',
-            details: { error_type: error instanceof Error ? error.constructor.name : 'UnknownError' },
+            details: {
+              ...auditContext.staticAdminDetails,
+              error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
+            },
           });
         } catch (auditError) {
           logger.error({ error: auditError, operationId }, 'Failed to append credential recovery failure audit event');
