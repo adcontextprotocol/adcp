@@ -248,6 +248,14 @@ declare global {
       accessToken?: string;
       company?: Company;
       companyUser?: CompanyUser;
+      /** True only after the configured static admin credential is validated. */
+      isStaticAdminApiKey?: boolean;
+      /** Short, non-reversible identifier for the validated static admin key. */
+      adminKeyFingerprint?: string;
+      /** Sanitized operator attribution supplied by trusted admin tooling. */
+      adminOperator?: string;
+      /** Audit-safe context derived only after static admin authentication. */
+      staticAdminAuditDetails?: Readonly<Record<string, string>>;
       /** Authority path used by requireAdmin, retained for audited mutations. */
       adminAccessMechanism?: AAOAdminAccessMechanism;
     }
@@ -748,8 +756,47 @@ function setSessionCookie(res: Response, sealedSession: string) {
 
 // Static admin API key for internal tooling (bypasses WorkOS)
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+const ADMIN_API_KEY_FINGERPRINT = ADMIN_API_KEY
+  ? createHmac('sha256', ADMIN_API_KEY)
+      .update('adcp-static-admin-api-key-fingerprint:v1')
+      .digest('hex')
+      .slice(0, 8)
+  : undefined;
 if (ADMIN_API_KEY) {
   logger.info('Admin API key configured for programmatic access');
+}
+
+const MAX_ADMIN_OPERATOR_LENGTH = 128;
+
+function sanitizeAdminOperator(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return undefined;
+  const sanitized = raw
+    .replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_ADMIN_OPERATOR_LENGTH);
+  return sanitized || undefined;
+}
+
+function markStaticAdminRequest(req: Request): void {
+  req.isStaticAdminApiKey = true;
+  req.adminKeyFingerprint = ADMIN_API_KEY_FINGERPRINT;
+  req.adminOperator = sanitizeAdminOperator(req.headers['x-admin-operator']);
+  if (req.adminKeyFingerprint) {
+    req.staticAdminAuditDetails = Object.freeze({
+      ip_address: req.ip || 'unknown',
+      admin_key_fingerprint: req.adminKeyFingerprint,
+      ...(req.adminOperator ? { operator: req.adminOperator } : {}),
+    });
+  }
+}
+
+/** Structured attribution to merge into audit details for admin mutations. */
+export function getStaticAdminAuditDetails(req: Request): Record<string, string> {
+  return req.isStaticAdminApiKey && req.staticAdminAuditDetails
+    ? { ...req.staticAdminAuditDetails }
+    : {};
 }
 
 /**
@@ -882,7 +929,7 @@ async function requireAuthWithSnapshot(
     };
     req.accessToken = 'admin-api-key';
     // Mark this request as using the static admin API key for requireAdmin check
-    (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey = true;
+    markStaticAdminRequest(req);
     return next();
   }
 
@@ -1888,7 +1935,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       updatedAt: new Date().toISOString(),
     };
     req.accessToken = 'admin-api-key';
-    (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey = true;
+    markStaticAdminRequest(req);
     return next();
   }
 

@@ -8822,6 +8822,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           requesterWindowMs: REFRESH_USER_WINDOW_MS,
           requesterLimit: REFRESH_USER_LIMIT,
         });
+        logger.info(
+          {
+            ...req.staticAdminAuditDetails,
+            agent_url: agentUrl,
+            refresh_operation_id: request.id,
+            coalesced,
+          },
+          'Static-admin compliance refresh accepted',
+        );
         const statusUrl = `/api/registry/agents/${encodeURIComponent(agentUrl)}/refreshes/${request.id}`;
         res.setHeader('Location', statusUrl);
         res.setHeader('Cache-Control', 'private, no-store');
@@ -12963,6 +12972,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       logger.info(
         {
+          ...(staticAdmin ? req.staticAdminAuditDetails : {}),
           domain: normalizedDomain,
           crawl_request_id: crawlRequestId,
           crawl_status: "queued",
