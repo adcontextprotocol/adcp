@@ -52,6 +52,25 @@ Field names should describe **what** they represent, not generic categories.
 - ❌ `type` - Ambiguous: type of what?
 - ❌ `asset_type` - Better, but could conflict with other type fields
 
+### Ratio Field Names: `_rate` vs `_percentage`
+
+**RULE**: Name a **measured ratio** `_rate`. Name a **configured share** of a budget, allocation or target `_percentage`.
+
+A rate is read off the world: it is an observed outcome over an observed population, and no one chooses its value. A percentage is set by somebody and then enforced.
+
+**Examples**:
+
+- ✅ `viewable_rate`, `completion_rate`, `match_rate`, `engagement_rate`, `new_to_brand_rate` — measured
+- ✅ `allocation_percentage`, `spend_percentage`, `sov_percentage`, `max_spend_percentage` — configured
+- ❌ `approval_percentage` for the share of submitted conversions an advertiser approved — that is measured, so it is `approval_rate`
+- ❌ `allocation_rate` for a budget split the buyer chose — that is set, so it is `allocation_percentage`
+
+**Why**: the two are already used this way across the schema corpus, consistently enough that implementers infer the rule and rely on it. Writing it down turns a habit into a contract and prevents the split from eroding — `coverage_rate` and `coverage_percentage` currently both exist, which is the kind of drift an unwritten convention permits.
+
+**Out of scope**: the rule governs ratios of a population. Prices expressed as a proportion (`commission_rate`, `flat_rate`, `effective_rate`) and per-unit-time rates (`frame_rate`, `sampling_rate`, `speaking_rate`) keep `_rate` whether or not anybody configures them, and `threshold_rate` names the optimization goal kind that targets a measured rate.
+
+**Applying it to an existing field** is a breaking rename and is out of scope for this rule; the guidance binds new fields.
+
 ### Enum Consolidation
 
 When the same concept appears in multiple places with different subsets:
