@@ -10,8 +10,9 @@
  * bulk PUT path.
  *
  * Auth: WorkOS session OR Bearer API key (`requireAuth` handles both).
- * Callers must pass `?org=…` to select an existing organization;
- * authorization checks the exact authenticated WorkOS credential.
+ * Human callers must pass `?org=…` to select an existing organization;
+ * a validated WorkOS API key uses its provider-bound organization directly.
+ * Neither path creates an organization.
  *
  * Concurrency: writes go through a `SELECT … FOR UPDATE` on
  * `member_profiles` so two parallel POSTs/PATCHes/DELETEs serialize
@@ -22,7 +23,7 @@
 import { Router } from 'express';
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, type ValidatedApiKey } from '../middleware/auth.js';
 import { brandCreationRateLimiter } from '../middleware/rate-limit.js';
 import { MemberDatabase } from '../db/member-db.js';
 import {
@@ -98,6 +99,25 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
     res: import('express').Response,
   ): Promise<string | null> {
     const requestedOrgId = typeof req.query.org === 'string' ? req.query.org : null;
+    const apiKey = (req as typeof req & { apiKey?: ValidatedApiKey }).apiKey;
+    if (apiKey) {
+      if (requestedOrgId && requestedOrgId !== apiKey.organizationId) {
+        res.status(403).json({
+          error: 'organization_selection_conflict',
+          message: 'The requested organization does not match this API key.',
+        });
+        return null;
+      }
+      const localOrganization = await orgDb.getOrganization(apiKey.organizationId);
+      if (!localOrganization) {
+        res.status(409).json({
+          error: 'api_key_organization_not_provisioned',
+          message: 'This API key has a WorkOS organization, but that organization is not provisioned in the registry. Contact support to reconcile the existing organization; do not create another one.',
+        });
+        return null;
+      }
+      return apiKey.organizationId;
+    }
     if (!requestedOrgId) {
       res.status(400).json({ error: 'An explicit ?org= is required' });
       return null;
@@ -130,7 +150,8 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
     req: import('express').Request,
     res: import('express').Response,
   ): Promise<{ orgId: string; orgAutoCreated: boolean } | null> {
-    if (typeof req.query.org !== 'string' || !req.query.org) {
+    const apiKey = (req as typeof req & { apiKey?: ValidatedApiKey }).apiKey;
+    if (!apiKey && (typeof req.query.org !== 'string' || !req.query.org)) {
       res.status(403).json({
         error: 'organization_onboarding_disabled',
         message: 'Select an existing organization explicitly with ?org= to register an agent.',
