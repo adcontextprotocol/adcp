@@ -13,6 +13,9 @@ function readJson(relativePath) {
 
 const errorSchema = readJson('static/schemas/source/core/error.json');
 const errorCodes = readJson('static/schemas/source/enums/error-code.json');
+const requestSigningErrorCodes = readJson(
+  'static/schemas/source/enums/request-signing-error-code.json',
+);
 const fixture = readJson('static/compliance/source/test-vectors/error-recovery/vectors.json');
 const validateError = new Ajv({ allErrors: true, strict: false }).compile(errorSchema);
 const errorGuide = fs.readFileSync(
@@ -44,6 +47,42 @@ function is32(version) {
 function knownRecovery(code) {
   return errorCodes.enumMetadata[code]?.recovery;
 }
+
+test('request-signing prose codes have one machine-readable recovery authority', () => {
+  const documentedCodes = new Set(
+    [...securityGuide.matchAll(/`(request_(?:signature|body|target)_[a-z_]+)`/g)]
+      .map(match => match[1]),
+  );
+  const schemaCodes = new Set(requestSigningErrorCodes.enum);
+
+  assert.deepEqual([...schemaCodes].sort(), [...documentedCodes].sort());
+  for (const code of schemaCodes) {
+    const description = requestSigningErrorCodes.enumDescriptions[code];
+    const metadata = requestSigningErrorCodes.enumMetadata[code];
+    assert.match(code, /^request_(?:signature|body|target)_[a-z_]+$/);
+    assert.equal(typeof description, 'string');
+    assert.ok(RECOVERY_VALUES.has(metadata?.recovery));
+    assert.equal(typeof metadata?.suggestion, 'string');
+    assert.equal(
+      description.match(/Recovery:\s*(correctable|transient|terminal)\b/i)?.[1].toLowerCase(),
+      metadata.recovery,
+      `${code} prose and enumMetadata recovery must agree`,
+    );
+  }
+
+  assert.equal(
+    requestSigningErrorCodes.enumMetadata.request_signature_brand_json_malformed.recovery,
+    'terminal',
+  );
+  assert.equal(
+    requestSigningErrorCodes.enumMetadata.request_signature_jwks_unavailable.recovery,
+    'transient',
+  );
+  assert.match(
+    securityGuide,
+    /machine-readable authority is \[`request-signing-error-code\.json`\]/,
+  );
+});
 
 function effectiveRecovery(error) {
   if (error.recovery !== undefined) {

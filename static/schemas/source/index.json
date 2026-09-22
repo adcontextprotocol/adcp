@@ -1586,6 +1586,10 @@
           "$ref": "/schemas/enums/error-code.json",
           "description": "Standard error code vocabulary for agent recovery classification"
         },
+        "request-signing-error-code": {
+          "$ref": "/schemas/enums/request-signing-error-code.json",
+          "description": "Stable request-signing transport error vocabulary and recovery metadata"
+        },
         "consent-basis": {
           "$ref": "/schemas/enums/consent-basis.json",
           "description": "GDPR Article 6(1) lawful basis for processing personal data"
