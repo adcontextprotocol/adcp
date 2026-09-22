@@ -42,8 +42,9 @@ narrative: |
   4. Delivery with deterministic attribution — seller reports conversions,
      units_sold, and new_to_brand metrics from closed-loop transaction data
 
-  The fixture buyer (Daniel Park, ShopGrid) pushes a grocery catalog and buys
-  sponsored search + sponsored display on the seller's retail platform.
+  The fixture buyer (Summit Foods, via Pinnacle Agency) pushes a grocery catalog
+  and buys sponsored search + sponsored display on ShopGrid's (Daniel Park's)
+  retail platform.
 
 context:
   governance_agent_url: "https://test-agent.adcontextprotocol.org"
@@ -62,7 +63,7 @@ agent:
 
 caller:
   role: buyer_agent
-  example: "ShopGrid retail media buyer"
+  example: "Pinnacle Agency buying on behalf of Summit Foods"
 
 prerequisites:
   description: |
