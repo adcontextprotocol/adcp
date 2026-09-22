@@ -1553,6 +1553,8 @@ In 3.0/3.1, verifiers ship with `required_for: []` and populate it selectively. 
 
 Stable codes returned in `WWW-Authenticate: Signature error="<code>"` on 401, and surfaced by SDK verifiers as typed errors. Naming pattern matches the [governance taxonomy](#verification-error-taxonomy) so SDK error handling is symmetric.
 
+The machine-readable authority is [`request-signing-error-code.json`](https://adcontextprotocol.org/schemas/v3/enums/request-signing-error-code.json). SDKs MUST consume that schema's `enumMetadata` recovery classifications instead of inferring behavior from a code's spelling or parsing this prose table. These lowercase transport-profile codes are deliberately separate from the uppercase task error vocabulary in `error-code.json` because they are carried in `WWW-Authenticate`, not task `errors[]` arrays.
+
 | Failure | Retry? | Code |
 |---|---|---|
 | Unsigned request where signing is required — either (a) operation is in `required_for`, or (b) request payload carries a field that triggers signing regardless of `required_for` membership (e.g., `push_notification_config.authentication` or `accounts[].notification_configs[].authentication` on a signing-capable seller — see [Webhook callbacks](#webhook-callbacks)) | No | `request_signature_required` |
