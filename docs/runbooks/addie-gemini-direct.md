@@ -22,7 +22,7 @@ clients, internal jobs, and rollback. Do not remove them as part of this rollout
 
 ## Global policy and emergency fallback
 
-| Setting | Default | Behavior |
+| Setting | Application default | Behavior |
 | --- | --- | --- |
 | `ADDIE_RESPONSE_PROVIDER` | `gemini` | `gemini` selects Gemini for every user-facing response; `sonnet` is the global operator rollback. Other values fail closed. |
 | `ADDIE_RESPONSE_AUTOMATIC_FALLBACK` | `false` | Only explicit `true` allows one emergency Sonnet attempt after a Gemini provider failure, before any action reservation attempt. |
@@ -49,8 +49,11 @@ Operator rollback also overrides stale choices and saved assignments.
 
 ## Rollout
 
-`fly.toml` sets the global provider to `gemini`, automatic fallback to `false`,
-and the legacy authenticated/anonymous enrollment defaults to 100/100.
+`fly.toml` sets the global provider to `gemini`, explicitly enables pre-action
+emergency fallback with `ADDIE_RESPONSE_AUTOMATIC_FALLBACK=true`, and sets the
+legacy authenticated/anonymous enrollment defaults to 100/100. The application
+default remains `false` when this setting is absent. Production configuration
+changes follow the normal reviewed, tested deployment workflow.
 `ADDIE_GEMINI_DIRECT_MODE`, its percentages, and the anonymous surface switch
 are historical experiment configuration: they no longer control response
 execution or provide a rollback. Existing assignments are neither rewritten nor

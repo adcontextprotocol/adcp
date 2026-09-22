@@ -34,7 +34,7 @@ primary_region = 'iad'
   # Global response policy, including existing threads and every delivery channel.
   # Roll back with ADDIE_RESPONSE_PROVIDER=sonnet; fallback is a separate opt-in.
   ADDIE_RESPONSE_PROVIDER = "gemini"
-  ADDIE_RESPONSE_AUTOMATIC_FALLBACK = "false"
+  ADDIE_RESPONSE_AUTOMATIC_FALLBACK = "true"
   # Historical experiment enrollment settings do not override the global policy.
   ADDIE_GEMINI_DIRECT_MODE = "eligible"
   ADDIE_GEMINI_DIRECT_PERCENT = "100"
