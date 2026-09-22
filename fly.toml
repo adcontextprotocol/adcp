@@ -31,12 +31,15 @@ primary_region = 'iad'
   BASE_URL = "https://agenticadvertising.org"
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
-  # Authenticated new web conversations remain at 50/50. Anonymous new web
-  # conversations have an independent kill switch and 25% treatment threshold.
+  # Global response policy, including existing threads and every delivery channel.
+  # Roll back with ADDIE_RESPONSE_PROVIDER=sonnet; fallback is a separate opt-in.
+  ADDIE_RESPONSE_PROVIDER = "gemini"
+  ADDIE_RESPONSE_AUTOMATIC_FALLBACK = "false"
+  # Historical experiment enrollment settings do not override the global policy.
   ADDIE_GEMINI_DIRECT_MODE = "eligible"
-  ADDIE_GEMINI_DIRECT_PERCENT = "50"
+  ADDIE_GEMINI_DIRECT_PERCENT = "100"
   ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED = "true"
-  ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT = "25"
+  ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT = "100"
   PUBLISHER_CRAWL_QUEUE_ENABLED = "true"
   # Bounded, evaluation-only Luna router shadow. The runtime additionally
   # fails closed unless the channel is public and non-shared and the HMAC and

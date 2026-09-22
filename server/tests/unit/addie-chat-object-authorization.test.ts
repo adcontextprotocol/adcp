@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   addMessageFeedback: vi.fn(),
   processMessage: vi.fn(),
   processMessageStream: vi.fn(),
+  geminiStream: vi.fn(),
   initializeKnowledgeSearch: vi.fn().mockResolvedValue(undefined),
   getProgress: vi.fn(),
   getAttemptForUser: vi.fn(),
@@ -55,6 +56,7 @@ vi.mock('../../src/addie/claude-client.js', () => ({
   AddieClaudeClient: class {
     registerTool() {}
     getRegisteredTools() { return []; }
+    forkForGeminiDirect() { return { processMessageStream: mocks.geminiStream }; }
     processMessage(...args: unknown[]) { return mocks.processMessage(...args); }
     processMessageStream(...args: unknown[]) { return mocks.processMessageStream(...args); }
   },
@@ -312,6 +314,9 @@ function mountChatRouter() {
 
 describe('Addie chat conversation object authorization', () => {
   beforeEach(() => {
+    // Existing delivery/authorization harness uses the operator rollback. The
+    // Gemini cases below explicitly exercise the new policy.
+    process.env.ADDIE_RESPONSE_PROVIDER = 'sonnet';
     vi.clearAllMocks();
     mocks.authenticated = true;
     mocks.memberContext = {
@@ -380,11 +385,50 @@ describe('Addie chat conversation object authorization', () => {
     expect(mocks.processMessageStream).not.toHaveBeenCalled();
   });
 
-  it('offers model selection to signed-in non-admins only', async () => {
+  it('disables manual model selection for authenticated and anonymous callers', async () => {
     const app = mountChatRouter();
-    expect((await request(app).get('/status')).body.model_selection.enabled).toBe(true);
+    expect((await request(app).get('/status')).body.model_selection.enabled).toBe(false);
     mocks.authenticated = false;
     expect((await request(app).get('/status')).body.model_selection.enabled).toBe(false);
+  });
+
+  it.each(['/', '/stream'])('rejects manual Sonnet before persistence or dispatch on %s', async endpoint => {
+    process.env.ADDIE_RESPONSE_PROVIDER = 'gemini';
+    const result = await request(mountChatRouter()).post(endpoint).send({ message: 'Hello', model_preference: 'sonnet' });
+    expect(result.status).toBe(409);
+    expect(mocks.addMessage).not.toHaveBeenCalled();
+    expect(mocks.processMessage).not.toHaveBeenCalled();
+    expect(mocks.geminiStream).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['/', true], ['/stream', true], ['/', false], ['/stream', false],
+  ] as const)('uses Gemini for existing control-assigned threads on %s (authenticated=%s)', async (endpoint, authenticated) => {
+    process.env.ADDIE_RESPONSE_PROVIDER = 'gemini';
+    process.env.GEMINI_API_KEY = 'test-only';
+    process.env.ADDIE_RESPONSE_AUTOMATIC_FALLBACK = 'false';
+    mocks.authenticated = authenticated;
+    const owner = '11111111-1111-4111-8111-111111111111';
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web', external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: authenticated ? 'workos' : 'anonymous', user_id: authenticated ? 'user_attacker' : owner,
+      context: { [authenticated ? 'gemini_direct_v1' : 'gemini_direct_web_anonymous_v1']: { arm: 'control', cohort: 'existing', bucket: 9999 } },
+    });
+    const response = { ...successfulModelResponse('Global Gemini answer'), model_execution: {
+      source: 'provider', requested_provider: 'google', requested_model: 'gemini-3.7-flash',
+      provider: 'google', model: 'gemini-3.7-flash', model_resolution: 'exact', fallback_reason: null,
+    } };
+    mocks.geminiStream.mockImplementation(async function* () { yield { type: 'text', text: response.text }; yield { type: 'done', response }; });
+    const capability = issueAnonymousSessionCapability('addie-web-thread-owner', owner);
+    const result = await request(mountChatRouter()).post(endpoint)
+      .set('Cookie', `addie-anonymous-owner=${capability}`)
+      .send({ message: 'Continue', conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489' });
+    expect(result.status).toBe(200);
+    expect(result.text).toContain('Global Gemini answer');
+    expect(mocks.geminiStream).toHaveBeenCalledOnce();
+    expect(mocks.processMessage).not.toHaveBeenCalled();
+    expect(mocks.processMessageStream).not.toHaveBeenCalled();
+    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_execution: response.model_execution }));
   });
 
   it('denies a cross-user conversation UUID before reading history, writing, or invoking the model', async () => {
@@ -707,13 +751,13 @@ describe('Addie chat conversation object authorization', () => {
       });
       expect(res.status).toBe(200);
       expect(res.text).toContain('Gemini response');
-      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user_attacker', modelPreference: 'gemini', activeCertificationKind: null, sponsoredIntelligenceContextKind: null, hasPriorAssistant: false }));
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user_attacker', modelPreference: 'default', activeCertificationKind: null, sponsoredIntelligenceContextKind: null, hasPriorAssistant: false }));
       expect(mocks.processMessage).not.toHaveBeenCalled();
       expect(mocks.processMessageStream).not.toHaveBeenCalled();
-      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_preference: 'gemini', model: 'gemini-3.7-flash', model_execution: response.model_execution }));
-      expect(res.text).toContain('\"selected\":\"gemini\"');
+      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_preference: 'default', model: 'gemini-3.7-flash', model_execution: response.model_execution }));
+      expect(res.text).toContain('\"selected\":\"default\"');
       expect(res.text).toContain('\"model\":\"gemini-3.7-flash\"');
-      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'user', model_preference: 'gemini' }));
+      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'user', model_preference: 'default' }));
       expect(markDelivery).toHaveBeenCalledWith('completed', 'message_assistant', expect.any(Number));
     } finally { prepare.mockRestore(); }
   });
@@ -1229,7 +1273,7 @@ describe('Addie chat conversation object authorization', () => {
 
     expect(response.status).toBe(200);
     expect(replayDecision).toEqual({ allowed: false });
-    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_preference: 'sonnet' }));
+    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_preference: 'default' }));
   });
 
   it('gives every active certification learning thread the expanded reserve', async () => {

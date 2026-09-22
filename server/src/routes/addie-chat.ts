@@ -1,3 +1,4 @@
+import { getResponseProviderPolicy, responseProviderId } from '../addie/response-provider-policy.js';
 /**
  * Addie Chat routes module
  *
@@ -458,8 +459,8 @@ export async function selectRoutedWebTools(input: {
 /**
  * Initialize the chat client
  *
- * Anonymous users get Haiku with public read tools and training-agent execution.
- * Authenticated users get Sonnet with full tools (billing, schema, Slack, etc.).
+ * Authorization determines tool access; the global response policy determines
+ * the provider independently of identity or historical experiment assignment.
  */
 async function initializeChatClient(): Promise<void> {
   if (initialized) return;
@@ -470,7 +471,7 @@ async function initializeChatClient(): Promise<void> {
     return;
   }
 
-  // Client defaults to Sonnet; anonymous requests override to Haiku per-request
+  // Retain the Sonnet client as the explicit rollback/emergency backend.
   claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.chat);
   webChatRouter = createProductionRouter(process.env.OPENAI_API_KEY?.trim()).router;
 
@@ -1519,7 +1520,7 @@ export function createAddieChatRouter(options?: {
           flagged: true,
           flag_reason: `Error: ${error instanceof Error ? error.message : "Unknown"}`,
           model_execution: {
-            source: 'local', requested_provider: experimentTurn.model ? 'google' : 'anthropic', requested_model: effectiveModel, reason: 'provider_error',
+            source: 'local', requested_provider: options?.evaluationMode ? 'anthropic' : responseProviderId(), requested_model: effectiveModel, reason: 'provider_error',
           },
         };
       }
@@ -1628,7 +1629,8 @@ export function createAddieChatRouter(options?: {
       ready: (!!injectedChatClient || (initialized && claudeClient !== null)) && isKnowledgeReady(),
       knowledge_ready: isKnowledgeReady(),
       model_selection: {
-        enabled: !!req.user && !options?.evaluationMode,
+        enabled: false,
+        provider: getResponseProviderPolicy().provider,
         gemini_available: !options?.evaluationMode && geminiDirectAvailable(injectedChatClient ?? claudeClient),
       },
     });
@@ -1808,9 +1810,9 @@ export function createAddieChatRouter(options?: {
         .reverse()
         .find(m => m.role === 'assistant' && m.delivery_status === 'completed');
 
-      // A retry continues the original turn, even if the selector has since
-      // changed. Stored tool checkpoints and execution policy still apply.
-      if (existingUserMessage) modelPreference = existingUserMessage.model_preference ?? 'default';
+      // A retry retains stored tool checkpoints and execution policy. Preserve
+      // the historical user row; resumed execution follows today's provider policy.
+      if (existingUserMessage) modelPreference = 'default';
 
       if (existingUserMessage && existingUserMessage.content !== messageForStorage) {
         return res.status(409).json({
@@ -2058,7 +2060,7 @@ export function createAddieChatRouter(options?: {
         retryCheckpointToolCalls,
       );
       requestedModelForAttempt = effectiveModel;
-      requestedProviderForAttempt = experimentTurn.model ? 'google' : 'anthropic';
+      requestedProviderForAttempt = options?.evaluationMode ? 'anthropic' : responseProviderId();
       const preTurnCertification = userId && certificationModuleContext.moduleId
         ? await getCertificationModuleExperience(userId, certificationModuleContext.moduleId)
         : null;
