@@ -1,10 +1,11 @@
 import type { ComplianceRunProvenance } from '../compliance/run-provenance.js';
 import { isAuthoritativeComplianceRun, type RunCompleteness } from '../compliance/run-publication.js';
-import { query, getClient, withDatabaseDeadline } from './client.js';
+import { query, getClient, getClientWithDeadline, withDatabaseDeadline } from './client.js';
 import { decrypt as decryptToken } from './encryption.js';
 import { logger as baseLogger } from '../logger.js';
 import { CatalogEventsDatabase } from './catalog-events-db.js';
 import { ComplianceRefreshLeaseLostError } from './compliance-refresh-requests-db.js';
+import { AgentQualityEvaluationLeaseLostError } from './agent-quality-evaluation-db.js';
 import type { VerificationProfileRoleAssessmentInput } from '../services/verification-profile-assessment.js';
 
 const logger = baseLogger.child({ module: 'compliance-db' });
@@ -312,6 +313,10 @@ export interface RecordComplianceRunInput {
   refresh_operation_id?: string | null;
   /** Lease token paired with refresh_operation_id for fenced persistence. */
   refresh_operation_lease_token?: string | null;
+  /** Interactive Addie evaluation that produced this run; makes replay idempotent. */
+  agent_quality_evaluation_id?: string | null;
+  /** Lease token paired with agent_quality_evaluation_id for fenced persistence. */
+  agent_quality_evaluation_lease_token?: string | null;
   storyboard_statuses?: StoryboardStatusEntry[];
   /**
    * When true, this run is authoritative for the agent's full storyboard
@@ -619,10 +624,41 @@ export class ComplianceDatabase {
     replayedExisting: boolean;
   }> {
     const authoritative = isAuthoritativeComplianceRun(input);
-    const client = await getClient();
+    const fencedEvaluation = Boolean(input.agent_quality_evaluation_id || input.agent_quality_evaluation_lease_token);
+    const client = await (fencedEvaluation ? getClientWithDeadline(5_000) : getClient());
+    const assertEvaluationLease = async (): Promise<void> => {
+      if (!fencedEvaluation) return;
+      if (!input.agent_quality_evaluation_id || !input.agent_quality_evaluation_lease_token) {
+        throw new AgentQualityEvaluationLeaseLostError();
+      }
+      // The row lock prevents recovery while this transaction publishes. Use
+      // wall-clock time: NOW() predates any advisory/row-lock wait.
+      const lease = await client.query(
+        `SELECT 1
+           FROM addie_agent_quality_evaluations
+          WHERE id = $1
+            AND status = 'running'
+            AND lease_token = $2
+            AND lease_expires_at > clock_timestamp()
+          FOR UPDATE`,
+        [input.agent_quality_evaluation_id, input.agent_quality_evaluation_lease_token],
+      );
+      if (lease.rowCount !== 1) throw new AgentQualityEvaluationLeaseLostError();
+    };
+    const commitRun = async (): Promise<void> => {
+      // A slow publication must not commit after the lease expired while it
+      // held the row lock. Recheck every commit path, including replay/audit.
+      await assertEvaluationLease();
+      await client.query('COMMIT');
+    };
 
     try {
       await client.query('BEGIN');
+      if (fencedEvaluation) {
+        await client.query("SELECT set_config('statement_timeout', '5000ms', true)");
+        await client.query("SELECT set_config('lock_timeout', '2000ms', true)");
+        await client.query("SELECT set_config('idle_in_transaction_session_timeout', '5000ms', true)");
+      }
 
       // Profile selection and authoritative evidence publication share this
       // lock. A selection can therefore only commit against the latest fully
@@ -650,6 +686,8 @@ export class ComplianceDatabase {
         if (lease.rowCount !== 1) throw new ComplianceRefreshLeaseLostError();
       }
 
+      await assertEvaluationLease();
+
       // 1. Insert the run
       const runResult = await client.query(
         `INSERT INTO agent_compliance_runs (
@@ -657,9 +695,10 @@ export class ComplianceDatabase {
           total_duration_ms, tracks_json, tracks_passed, tracks_failed,
           tracks_skipped, tracks_partial, agent_profile_json,
           observations_json, triggered_by, triggered_org_id, dry_run,
-          notices_json, refresh_operation_id, completeness, is_authoritative, storyboard_statuses_json, provenance_json
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
-        ON CONFLICT (refresh_operation_id) DO NOTHING
+          notices_json, refresh_operation_id, agent_quality_evaluation_id,
+          completeness, is_authoritative, storyboard_statuses_json, provenance_json
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+        ON CONFLICT DO NOTHING
         RETURNING *`,
         [
           input.agent_url,
@@ -681,6 +720,7 @@ export class ComplianceDatabase {
           input.dry_run ?? true,
           input.notices_json ? JSON.stringify(input.notices_json) : null,
           input.refresh_operation_id ?? null,
+          input.agent_quality_evaluation_id ?? null,
           input.completeness ?? 'complete',
           authoritative,
           JSON.stringify(input.storyboard_statuses ?? []),
@@ -688,14 +728,16 @@ export class ComplianceDatabase {
         ],
       );
       let run = runResult.rows[0] as ComplianceRun | undefined;
-      if (!run && input.refresh_operation_id) {
+      if (!run && (input.refresh_operation_id || input.agent_quality_evaluation_id)) {
         const existingRun = await client.query<ComplianceRun>(
-          'SELECT * FROM agent_compliance_runs WHERE refresh_operation_id = $1',
-          [input.refresh_operation_id],
+          `SELECT * FROM agent_compliance_runs
+            WHERE ($1::uuid IS NOT NULL AND refresh_operation_id = $1)
+               OR ($2::uuid IS NOT NULL AND agent_quality_evaluation_id = $2)`,
+          [input.refresh_operation_id ?? null, input.agent_quality_evaluation_id ?? null],
         );
         run = existingRun.rows[0];
         if (!run) {
-          throw new Error('Refresh operation conflict did not resolve to an existing compliance run');
+          throw new Error('Compliance operation conflict did not resolve to an existing compliance run');
         }
         const existingStatuses = await client.query<StoryboardStatusEntry>(
           `SELECT storyboard_id, requested_compliance_target, adcp_version, status,
@@ -707,7 +749,7 @@ export class ComplianceDatabase {
             ORDER BY storyboard_id`,
           [input.agent_url, run.id],
         );
-        await client.query('COMMIT');
+        await commitRun();
         return {
           run,
           statusTransition: null,
@@ -801,7 +843,7 @@ export class ComplianceDatabase {
       // Publication invariant: audit evidence cannot change the public card,
       // storyboard materialization, scheduling, or transition notifications.
       if (!authoritative) {
-        await client.query('COMMIT');
+        await commitRun();
         return { run, statusTransition: null, storyboardStatuses, replayedExisting: false };
       }
 
@@ -1066,7 +1108,7 @@ export class ComplianceDatabase {
         }
       }
 
-      await client.query('COMMIT');
+      await commitRun();
 
       const row = statusResult.rows[0];
       const transition = row?.previous_status && row.previous_status !== row.status
