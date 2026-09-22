@@ -891,8 +891,9 @@ export class ComplianceDatabase {
         `WITH schedule_next AS (
           INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
           VALUES ($1, NOW() + INTERVAL '12 hours')
-          ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at =
-            NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours)
+          ON CONFLICT (agent_url) DO UPDATE SET
+            next_compliance_check_at = NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours),
+            requeued_at = NULL
         )
         INSERT INTO agent_compliance_status (
           agent_url, status, last_checked_at,
@@ -1473,6 +1474,10 @@ export class ComplianceDatabase {
     //   slipped past the seed would stay `unknown` forever — the same
     //   class of bug as the operator-endpoint visibility miss.
     //
+    // Explicit owner requeues are served first (oldest requeue wins), then
+    // the regular cadence by last authoritative check. Without that, an agent
+    // with a recent `last_checked_at` sorts behind every agent checked
+    // earlier and a requeue never moves it forward (#7632).
     // ORDER BY adds `agent_url` as a deterministic tiebreaker so two
     // never-checked agents land in a stable order across heartbeat runs.
     const result = await query(
@@ -1489,7 +1494,8 @@ export class ComplianceDatabase {
         SELECT
           ka.agent_url,
           COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
-          s.last_checked_at
+          s.last_checked_at,
+          m.requeued_at
         FROM known_agents ka
         LEFT JOIN agent_registry_metadata m ON m.agent_url = ka.agent_url
         LEFT JOIN agent_compliance_status s ON s.agent_url = ka.agent_url
@@ -1506,7 +1512,7 @@ export class ComplianceDatabase {
         last_checked_at,
         COUNT(*) OVER()::int AS eligible_backlog
       FROM due_agents
-      ORDER BY last_checked_at ASC NULLS FIRST, agent_url ASC
+      ORDER BY requeued_at ASC NULLS LAST, last_checked_at ASC NULLS FIRST, agent_url ASC
       LIMIT $1`,
       [limit],
     );
@@ -1556,9 +1562,9 @@ export class ComplianceDatabase {
 
   async requeueForHeartbeat(agentUrl: string): Promise<void> {
     await query(
-      `INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
-       VALUES ($1, NULL)
-       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NULL`,
+      `INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at, requeued_at)
+       VALUES ($1, NULL, NOW())
+       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NULL, requeued_at = NOW()`,
       [agentUrl],
     );
   }

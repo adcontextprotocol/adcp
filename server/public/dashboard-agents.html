@@ -1990,7 +1990,7 @@
           ? ` disabled data-refresh-paused="true" title="${escapeHtml(refreshAvailability.notice)}"`
           : '';
         const refreshNoticeHtml = refreshUnavailable
-          ? `<div class="agent-refresh-result" style="font-size:var(--text-xs);margin-top:var(--space-2);padding:var(--space-2) var(--space-3);border-radius:6px;background:var(--color-warning-bg);color:var(--color-warning-fg);">${escapeHtml(refreshAvailability.notice)} ${escapeHtml(refreshAvailability.alternative_description)}</div>`
+          ? `<div class="agent-refresh-result" style="font-size:var(--text-xs);margin-top:var(--space-2);padding:var(--space-2) var(--space-3);border-radius:6px;background:var(--color-warning-bg);color:var(--color-warning-fg);">${escapeHtml(refreshAvailability.notice)} ${escapeHtml(refreshAvailability.alternative_description)}${refreshAvailability.tracking_issue ? ` <a href="${escapeHtml(refreshAvailability.tracking_issue)}" target="_blank" rel="noopener">Tracking issue</a>` : ''}</div>`
           : '';
 
         const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');

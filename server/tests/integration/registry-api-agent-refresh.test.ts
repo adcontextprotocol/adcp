@@ -669,6 +669,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       scope: 'platform',
       applies_to: 'human_session',
       alternative_action: 'monitoring_requeue',
+      tracking_issue: 'https://github.com/adcontextprotocol/adcp/issues/7457',
     });
     expect(res.body).not.toHaveProperty('retry_after');
     expect(res.headers).not.toHaveProperty('retry-after');

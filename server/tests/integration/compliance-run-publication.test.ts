@@ -44,6 +44,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
     const client = await pool.connect();
     const schema = `publication_backfill_${randomUUID().replaceAll('-', '')}`;
     const migration = readFileSync(new URL('../../src/db/migrations/589_compliance_run_publication.sql', import.meta.url), 'utf8');
+    const requeueMigration = readFileSync(new URL('../../src/db/migrations/605_agent_registry_requeued_at.sql', import.meta.url), 'utf8');
     const querySpy = vi.spyOn(databaseClient, 'query');
     try {
       await client.query('BEGIN');
@@ -93,6 +94,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
       expect((await client.query('SELECT * FROM agent_registry_metadata ORDER BY agent_url')).rows).toEqual(scheduled.rows);
       expect((await client.query('SELECT * FROM agent_compliance_status ORDER BY agent_url')).rows).toEqual(before.rows);
       // Use the real heartbeat selection query on this transaction's migrated schema.
+      await client.query(requeueMigration);
       querySpy.mockImplementation((sql, values) => client.query(sql, values));
       expect((await db.getAgentsDueForCheck()).map(agent => agent.agent_url)).toEqual(['never', 'overdue']);
     } finally {
@@ -153,6 +155,37 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
     await db.updateCheckInterval(agentUrl, 6);
     expect((await db.getAgentsDueForCheck(1000)).some(agent => agent.agent_url === agentUrl)).toBe(true);
     expect((await db.getComplianceStatus(agentUrl))?.last_checked_at).toEqual(lastComplete?.last_checked_at);
+  });
+
+  it('serves explicit requeues ahead of agents with an older authoritative check', async () => {
+    const stale = `https://${randomUUID()}.example.test/mcp`;
+    const recent = `https://${randomUUID()}.example.test/mcp`;
+    const order = async () => (await db.getAgentsDueForCheck(100000))
+      .map(agent => agent.agent_url)
+      .filter(url => url === stale || url === recent);
+    try {
+      await db.upsertRegistryMetadata(stale, { lifecycle_stage: 'production' });
+      await db.upsertRegistryMetadata(recent, { lifecycle_stage: 'production' });
+      await pool.query(
+        `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
+         VALUES ($1, 'passing', NOW() - INTERVAL '3 days'), ($2, 'passing', NOW() - INTERVAL '1 hour')`,
+        [stale, recent],
+      );
+      expect(await order()).toEqual([stale, recent]);
+
+      await db.requeueForHeartbeat(recent);
+      expect(await order()).toEqual([recent, stale]);
+
+      await db.recordComplianceRun({ ...input, agent_url: recent });
+      expect((await db.getAgentsDueForCheck(100000)).some(agent => agent.agent_url === recent)).toBe(false);
+      await db.updateCheckInterval(recent, 6);
+      expect(await order()).toEqual([stale, recent]);
+    } finally {
+      for (const table of ['agent_compliance_step_diagnostics', 'agent_storyboard_status', 'agent_verification_badges',
+        'agent_compliance_status', 'agent_compliance_runs', 'agent_registry_metadata']) {
+        await pool.query(`DELETE FROM ${table} WHERE agent_url = ANY($1::text[])`, [[stale, recent]]);
+      }
+    }
   });
 
   it('uses only complete public profiles for version and specialism fallback', async () => {

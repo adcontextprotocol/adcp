@@ -650,7 +650,8 @@ const HUMAN_REFRESH_AVAILABILITY = {
   code: 'refresh_authorization_provenance_required' as const,
   notice: 'Recheck & retest is paused platform-wide until durable requester-authorization provenance is supported. Retrying is not expected to help until the platform changes.',
   alternative_action: 'monitoring_requeue' as const,
-  alternative_description: 'Requeue comply only marks the agent eligible for a future scheduled heartbeat; it does not perform or retry this human refresh and has no guaranteed start time.',
+  alternative_description: 'Requeue comply marks the agent eligible for the next scheduled heartbeat and serves explicit requeues ahead of the regular cadence; it does not perform or retry this human refresh and has no guaranteed start time.',
+  tracking_issue: 'https://github.com/adcontextprotocol/adcp/issues/7457',
 };
 
 function isStoryboardStatusSchemaUnavailable(err: unknown): boolean {
@@ -4309,6 +4310,7 @@ registry.registerPath({
           applies_to: z.literal('human_session'),
           alternative_action: z.literal('monitoring_requeue'),
           alternative_description: z.string(),
+          tracking_issue: z.string().url().openapi({ description: "Issue tracking the restoration of human-initiated refresh" }),
         }),
       ]) } },
     },
@@ -8807,6 +8809,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           applies_to: HUMAN_REFRESH_AVAILABILITY.applies_to,
           alternative_action: HUMAN_REFRESH_AVAILABILITY.alternative_action,
           alternative_description: HUMAN_REFRESH_AVAILABILITY.alternative_description,
+          tracking_issue: HUMAN_REFRESH_AVAILABILITY.tracking_issue,
         });
       }
       try {
