@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   renewClientTurnLease: vi.fn(),
   setClientTurnStatus: vi.fn(),
   processMessageStream: vi.fn(),
+  geminiStream: vi.fn(),
   getWebMemberContext: vi.fn(),
   isWebUserAdmin: vi.fn(),
   captureVoiceAuthorization: vi.fn(),
@@ -185,6 +186,7 @@ function mountApp(
         return mocks.processMessageStream(...args);
       },
       getRegisteredTools,
+      forkForGeminiDirect: () => ({ processMessageStream: mocks.geminiStream }) as never,
     },
     router,
     leaseRenewalScheduler,
@@ -216,6 +218,7 @@ describe("Tavus session guidance route boundary", () => {
   let tavusRequestBody: Record<string, unknown>;
 
   beforeEach(() => {
+    process.env.ADDIE_RESPONSE_PROVIDER = 'sonnet';
     vi.clearAllMocks();
     process.env.TAVUS_API_KEY = "test-tavus-key";
     process.env.TAVUS_PERSONA_ID = "test-persona";
@@ -703,6 +706,27 @@ describe("Tavus session guidance route boundary", () => {
         fallback_reason: null,
       },
     }));
+  });
+
+  it('delivers Gemini voice responses with existing cost scope, tools, lease and provenance', async () => {
+    process.env.ADDIE_RESPONSE_PROVIDER = 'gemini';
+    process.env.GEMINI_API_KEY = 'test-only';
+    const model_execution = { source: 'provider', requested_provider: 'google', requested_model: 'gemini-3.7-flash',
+      provider: 'google', model: 'gemini-3.7-flash', model_resolution: 'exact', fallback_reason: null };
+    mocks.geminiStream.mockImplementation(async function* () {
+      yield { type: 'text', text: 'Voice Gemini response.' };
+      yield { type: 'done', response: { text: 'Voice Gemini response.', tools_used: [], tool_executions: [], model_execution } };
+    });
+    const result = await request(mountApp()).post('/api/addie/v1/chat/completions')
+      .set('Authorization', 'Bearer test-llm-secret')
+      .send({ messages: [{ role: 'system', content: voiceSystemContext() }, { role: 'user', content: SPOKEN_MESSAGE }] });
+    expect(result.status).toBe(200);
+    expect(result.text).toContain('Voice Gemini response.');
+    expect(mocks.processMessageStream).not.toHaveBeenCalled();
+    expect(mocks.geminiStream.mock.calls[0][3]).toMatchObject({ modelOverride: 'gemini-3.7-flash',
+      costScope: { userId: 'authenticated-session-user' }, allowedToolNames: expect.any(Array), reserveSideEffect: expect.any(Function) });
+    expect(mocks.checkCostCap).toHaveBeenCalledWith(expect.any(String), expect.any(String), { selection: { provider: 'google', model: 'gemini-3.7-flash' } });
+    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_execution, finalize_client_turn_status: 'completed' }));
   });
 
   it("routes the sanitized spoken turn and passes its bounded tool provenance into the Tavus stream", async () => {

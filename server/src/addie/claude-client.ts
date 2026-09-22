@@ -1375,7 +1375,11 @@ export class AddieClaudeClient {
   /** Production entry point using the same executor and action guards as Sonnet. */
   forkForGeminiDirect(provider: ModelProvider): AddieClaudeClient {
     if (provider.id !== 'google') throw new Error('Gemini Direct requires the Google provider');
-    const fork = this.forkForIsolatedProvider(GOOGLE_ROUTER_MODEL, { provider });
+    // Retain the channel's health controller across turns and provider forks.
+    const fork = new AddieClaudeClient('', GOOGLE_ROUTER_MODEL, this.providerHealth, { provider });
+    fork.tools = [...this.tools];
+    fork.toolHandlers = new Map(this.toolHandlers);
+    fork.webSearchEnabled = false;
     fork.productionGeminiDirect = true;
     return fork;
   }
@@ -1383,7 +1387,7 @@ export class AddieClaudeClient {
   private assertProductionProvider(model: string, options?: ProcessMessageOptions): void {
     if (isIsolatedExecution(options) || this.modelProvider.id === 'anthropic') return;
     if (this.productionGeminiDirect && model === GOOGLE_ROUTER_MODEL
-      && options?.directToolSession && options.allowedToolNames && options.costScope) return;
+      && options?.directToolSession && options.allowedToolNames && (options.costScope || options.uncapped)) return;
     throw new Error('Alternate Addie model providers are restricted to isolated execution');
   }
 
@@ -1813,7 +1817,7 @@ export class AddieClaudeClient {
         // Replay and shadow are exactly-once paid experiments. A timeout can
         // occur after provider acceptance, so neither our outer retry helper
         // nor the provider SDK may submit the request again.
-        response = isExactlyOnceExecution(options) || recoveryInvocation.requiresExactlyOnce
+        response = isExactlyOnceExecution(options) || this.productionGeminiDirect || recoveryInvocation.requiresExactlyOnce
           ? await invokeProvider(true)
           : await withRetry(
             () => invokeProvider(false),

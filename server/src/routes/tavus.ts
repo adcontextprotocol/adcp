@@ -1,3 +1,5 @@
+import { responseProviderId, responseProviderModel } from '../addie/response-provider-policy.js';
+import { responseClient } from '../addie/response-client.js';
 import crypto from "crypto";
 import { Router, type Request, type Response } from "express";
 import path from "path";
@@ -136,7 +138,7 @@ let initPromise: Promise<void> | null = null;
 
 type TavusVoiceRouter = Pick<AddieRouter, 'quickMatch' | 'route'>;
 type TavusVoiceClient = Pick<AddieClaudeClient, 'processMessageStream'>
-  & Partial<Pick<AddieClaudeClient, 'getRegisteredTools'>>;
+  & Partial<Pick<AddieClaudeClient, 'getRegisteredTools' | 'forkForGeminiDirect'>>;
 
 async function initializeTavusClient(): Promise<void> {
   if (initPromise) return initPromise;
@@ -893,9 +895,9 @@ export function createTavusRouter(options?: {
           thread_id: threadId,
           role: 'assistant',
           content: 'Voice reply interrupted before completion. The provider may safely retry this turn.',
-          model: AddieModelConfig.voice,
+          model: responseProviderModel(),
           model_execution: {
-            source: 'local', requested_provider: 'anthropic', requested_model: AddieModelConfig.voice, reason: 'stream_interrupted',
+            source: 'local', requested_provider: responseProviderId(), requested_model: responseProviderModel(), reason: 'stream_interrupted',
           },
           flagged: true,
           flag_reason: `stream_interrupted: ${reason}`,
@@ -1109,7 +1111,7 @@ export function createTavusRouter(options?: {
       // dispatch, which preserves its race-safe final admission boundary.
       // A refused or unavailable admission must never initiate paid routing.
       const costAdmission = await checkCostCap(costScope.userId, costScope.tier, {
-        selection: { provider: 'anthropic', model: AddieModelConfig.voice },
+        selection: { provider: responseProviderId(), model: responseProviderModel() },
       });
       const routerForTurn = costAdmission.ok ? resolveRouter() : null;
 
@@ -1293,7 +1295,7 @@ export function createTavusRouter(options?: {
     let streamError = false;
     let terminalResponse: AddieResponse | undefined;
     try {
-      const voiceEvents = activeVoiceClient.processMessageStream(
+      const voiceEvents = responseClient(activeVoiceClient, 'tavus').processMessageStream(
         currentMessage,
         threadContext,
         voiceRequestTools,
@@ -1315,7 +1317,7 @@ export function createTavusRouter(options?: {
                 threadId,
                 toolName,
                 parameters,
-                requestedModel: AddieModelConfig.voice,
+                requestedModel: responseProviderModel(),
                 clientRequestId,
               });
               await proveVoiceTurnLease(`after_side_effect_reservation:${toolName}`);
@@ -1366,7 +1368,7 @@ export function createTavusRouter(options?: {
               await threadService.addMessage(buildToolResultCheckpoint({
                 threadId,
                 execution: event.execution,
-                requestedModel: AddieModelConfig.voice,
+                requestedModel: responseProviderModel(),
                 clientRequestId,
               }));
               await proveVoiceTurnLease(`after_tool_checkpoint:${event.tool_name}`);
@@ -1403,7 +1405,7 @@ export function createTavusRouter(options?: {
           thread_id: threadId,
           role: "assistant",
           content: terminalResponse.text,
-          model: AddieModelConfig.voice,
+          model: responseProviderModel(),
           model_execution: terminalResponse.model_execution,
           latency_ms: Date.now() - startTime,
           client_request_id: clientRequestId,

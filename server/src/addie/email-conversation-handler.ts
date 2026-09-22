@@ -1,3 +1,5 @@
+import { responseProviderModel } from './response-provider-policy.js';
+import { responseClient } from './response-client.js';
 /**
  * Email Conversation Handler for Addie
  *
@@ -181,7 +183,7 @@ export async function handleEmailConversation(
 
     // 4. Prepare tools — email senders are always unauthenticated.
     // Email From headers are spoofable, so we cannot use them for authorization.
-    // All email conversations get anonymous-tier access (Haiku, directory tools only).
+    // All email conversations get anonymous-tier access (directory tools only).
     const isAuthenticated = false;
     const prepared = await prepareRequestWithMemberTools(
       inputValidation.sanitized,
@@ -190,7 +192,7 @@ export async function handleEmailConversation(
       isAuthenticated,
       thread.thread_id
     );
-    const { requestTools, processOptions, effectiveModel } = buildTieredAccess(
+    const { requestTools, processOptions } = buildTieredAccess(
       prepared.requestTools,
       isAuthenticated
     );
@@ -217,7 +219,7 @@ export async function handleEmailConversation(
       .substring(0, 16)}`;
 
     const claudeClient = await getChatClaudeClient();
-    const response = await claudeClient.processMessage(
+    const response = await responseClient(claudeClient, 'email').processMessage(
       prepared.messageToProcess,
       contextMessages,
       requestTools,
@@ -233,7 +235,7 @@ export async function handleEmailConversation(
             threadId: thread.thread_id,
             toolName,
             parameters,
-            requestedModel: effectiveModel,
+            requestedModel: responseProviderModel(),
           });
         },
         costScope: { userId: emailScopeKey, tier: 'anonymous' },
@@ -277,8 +279,8 @@ export async function handleEmailConversation(
       tool_calls: response.tool_executions.length > 0
         ? response.tool_executions.map(storedToolCall)
         : undefined,
-      model: effectiveModel,
-        model_execution: response.model_execution,
+      model: responseProviderModel(),
+      model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,

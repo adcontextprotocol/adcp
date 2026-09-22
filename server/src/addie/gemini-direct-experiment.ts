@@ -4,9 +4,10 @@ import { createLogger } from '../logger.js';
 import type { AddieClaudeClient, AddieResponse, ProcessMessageOptions, RequestTools, StreamEvent } from './claude-client.js';
 import type { CostEvent } from './claude-cost-tracker.js';
 import { createGeminiDirectTools, type DirectToolContext } from './gemini-direct-tools.js';
-import { GoogleGenerateContentProvider, GOOGLE_ROUTER_MODEL } from './model-providers/google-generate-content-provider.js';
 import { resolveModelCostPricing } from './model-cost-pricing.js';
 import type { WebChatModelPreference } from './web-chat-model-selection.js';
+import { responseClient } from './response-client.js';
+import { getResponseProviderPolicy, responseProviderModel } from './response-provider-policy.js';
 import { anonymousSessionSubjectHmac } from '../routes/helpers/anonymous-session-capability.js';
 
 const logger = createLogger('addie-gemini-direct');
@@ -18,8 +19,7 @@ const AUTHENTICATED_ASSIGNMENT_SALT = 'gemini-3.7-direct-v1';
 export const ANONYMOUS_WEB_CONTEXT_KEY = 'gemini_direct_web_anonymous_v1';
 export const ANONYMOUS_WEB_ASSIGNMENT_VERSION = 'anonymous_web_v1';
 const ANONYMOUS_WEB_ASSIGNMENT_DOMAIN = 'addie:gemini-direct:assignment:web-anonymous:v1';
-const AUTHENTICATED_ASSIGNMENT_VERSION = 'authenticated_web_v1';
-const MANUAL_ASSIGNMENT_VERSION = 'manual_web_v1';
+export const GEMINI_PRIMARY_POLICY = 'gemini-3.7-primary-v1';
 type Client = Pick<AddieClaudeClient, 'processMessage' | 'processMessageStream'>
   & Partial<Pick<AddieClaudeClient, 'getRegisteredTools' | 'forkForGeminiDirect'>>;
 export interface WebToolSelection {
@@ -52,14 +52,13 @@ export interface ExperimentPreProviderStages {
   experimentRoutingMs: number;
   preProviderMs: number;
 }
-const clients = new WeakMap<Client, AddieClaudeClient>();
 
 export function geminiDirectAvailable(client: Client | null | undefined): boolean {
-  return ['staff', 'eligible'].includes(process.env.ADDIE_GEMINI_DIRECT_MODE ?? '')
+  return getResponseProviderPolicy().provider === 'gemini'
     && !!process.env.GEMINI_API_KEY && !!client?.forkForGeminiDirect;
 }
 
-/** Stable across workers/restarts. Raising the percentage only enrolls new threads. */
+/** Historical assignment reproduction only; global policy owns execution. */
 export function geminiDirectAssignment(userId: string, staff: boolean, existing: boolean, env = process.env): Assignment | null {
   const mode = env.ADDIE_GEMINI_DIRECT_MODE;
   if (mode !== 'staff' && mode !== 'eligible') return null;
@@ -79,7 +78,7 @@ export function geminiAnonymousWebEnabled(env = process.env): boolean {
     && env.ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED === 'true';
 }
 
-/** Stable anonymous-web assignment derived from the verified owner UUID, never IP. */
+/** Historical anonymous assignment reproduction from the verified owner UUID, never IP. */
 export function geminiAnonymousWebAssignment(
   anonymousOwnerId: string,
   existing: boolean,
@@ -270,21 +269,7 @@ class ExperimentTurn {
   }
 }
 
-function fallbackResponse(response: AddieResponse): AddieResponse {
-  return {
-    ...response,
-    model_execution: response.model_execution.source === 'provider' ? {
-      ...response.model_execution,
-      requested_provider: 'google', requested_model: GOOGLE_ROUTER_MODEL,
-      model_resolution: 'fallback',
-      fallback_reason: 'primary_unavailable',
-    } : {
-      ...response.model_execution, requested_provider: 'google', requested_model: GOOGLE_ROUTER_MODEL,
-    },
-  };
-}
-
-/** Select before routing: the treatment never pays for an up-front router call. */
+/** Global execution policy supersedes assignment; historical assignment data is never rewritten. */
 export async function prepareGeminiDirectTurn(input: DirectToolContext & {
   client: Client;
   userId?: string;
@@ -295,221 +280,112 @@ export async function prepareGeminiDirectTurn(input: DirectToolContext & {
   requestTools: RequestTools;
   baseRequestContext: string;
   getControlTools: () => Promise<WebToolSelection | null>;
-  /** Evaluation routes must never enroll live experiment traffic. */
   evaluation?: boolean;
   modelPreference?: WebChatModelPreference;
-  /** Verified signed-cookie subject. Never sourced from an IP or request body. */
   anonymousOwnerId?: string;
-  /** The thread began anonymously and must retain its anonymous assignment after sign-in. */
   anonymousOrigin?: boolean;
 }) {
-  let controlTools: WebToolSelection | null | undefined;
-  const getControl = async () => controlTools === undefined
-    ? (controlTools = await input.getControlTools()) : controlTools;
-  const ordinary = async () => ({ client: input.client, selection: await getControl(), experiment: undefined as ExperimentTurn | undefined, model: undefined as string | undefined });
-  const manual = !!input.userId && !input.evaluation
-    && (input.modelPreference === 'gemini' || input.modelPreference === 'sonnet');
-  const available = geminiDirectAvailable(input.client);
-  const anonymousAssignmentUnit = !manual && (!!input.anonymousOwnerId || input.anonymousOrigin === true);
-  const anonymousDigest = input.anonymousOwnerId
-    ? anonymousSessionSubjectHmac(input.anonymousOwnerId, ANONYMOUS_WEB_ASSIGNMENT_DOMAIN)
-    : null;
-  const identity: ExperimentIdentity = manual ? {
-    surface: 'web', identityCohort: input.anonymousOrigin ? 'auth_transition' : 'authenticated',
-    assignmentUnit: 'manual_choice', assignmentVersion: MANUAL_ASSIGNMENT_VERSION,
-    contextKey: AUTHENTICATED_CONTEXT_KEY, recordedUserId: input.userId!,
-  } : anonymousAssignmentUnit ? {
-    surface: 'web', identityCohort: input.userId ? 'auth_transition' : 'anonymous',
-    assignmentUnit: 'anonymous_owner', assignmentVersion: ANONYMOUS_WEB_ASSIGNMENT_VERSION,
-    contextKey: ANONYMOUS_WEB_CONTEXT_KEY,
-    recordedUserId: input.userId ?? `anonymous:${anonymousDigest}`,
-  } : {
-    surface: 'web', identityCohort: 'authenticated', assignmentUnit: 'user',
-    assignmentVersion: AUTHENTICATED_ASSIGNMENT_VERSION,
-    contextKey: AUTHENTICATED_CONTEXT_KEY, recordedUserId: input.userId ?? '',
+  if (input.evaluation) return {
+    client: input.client, selection: await input.getControlTools(),
+    experiment: undefined as ExperimentTurn | undefined, model: undefined as string | undefined,
   };
-  const anonymousEnabled = geminiAnonymousWebEnabled();
-  const proposed: Assignment | null = manual
-    ? { arm: input.modelPreference === 'gemini' ? 'gemini' : 'control', cohort: 'manual', bucket: 0 }
-    : anonymousAssignmentUnit && input.anonymousOwnerId && !input.evaluation && available && anonymousEnabled
-      ? geminiAnonymousWebAssignment(input.anonymousOwnerId, input.hasPriorAssistant)
-    : input.userId && !input.evaluation && available
-      ? geminiDirectAssignment(input.userId, input.isAdmin, input.hasPriorAssistant) : null;
-  const inspectStoredAnonymous = anonymousAssignmentUnit && !input.evaluation
-    && process.env.ADDIE_GEMINI_DIRECT_MODE === 'eligible';
-  if (!proposed && !inspectStoredAnonymous) return ordinary();
-
-  let assignment: Assignment;
-  let experiment: ExperimentTurn;
+  const policy = getResponseProviderPolicy();
+  const anonymous = !!input.anonymousOwnerId || input.anonymousOrigin === true;
+  const identity: ExperimentIdentity = {
+    surface: 'web',
+    identityCohort: input.userId ? anonymous ? 'auth_transition' : 'authenticated' : 'anonymous',
+    assignmentUnit: anonymous ? 'anonymous_owner' : 'user',
+    assignmentVersion: `global_${policy.provider}_v1`,
+    contextKey: anonymous ? ANONYMOUS_WEB_CONTEXT_KEY : AUTHENTICATED_CONTEXT_KEY,
+    recordedUserId: input.userId ?? (input.anonymousOwnerId
+      ? `anonymous:${anonymousSessionSubjectHmac(input.anonymousOwnerId, ANONYMOUS_WEB_ASSIGNMENT_DOMAIN)}`
+      : 'anonymous'),
+  };
+  const experiment = new ExperimentTurn(input.startedAt, {
+    arm: policy.provider === 'gemini' ? 'gemini' : 'control',
+    cohort: input.hasPriorAssistant ? 'existing' : 'eligible', bucket: 0,
+  }, identity);
   try {
-    if (manual) {
-      // A voluntary choice applies to this turn only. Never replace the stored
-      // randomized assignment when a user switches models mid-conversation.
-      assignment = proposed!;
-    } else {
-      // One atomic UPDATE elects the winner even when two requests start together.
-      const assigned = await query<{ assignment: unknown }>(`UPDATE addie_threads SET
-        context = CASE WHEN context ? $2 OR $3::jsonb IS NULL THEN context ELSE
-          COALESCE(context, '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb) END
-        WHERE thread_id = $1 RETURNING context -> $2 AS assignment`,
-      [input.threadId, identity.contextKey, proposed ? JSON.stringify(proposed) : null]);
-      const stored = assigned.rows[0]?.assignment;
-      if (!validAssignment(stored)) return ordinary();
-      assignment = stored;
-    }
-    const exclusionReason = assignment.arm === 'gemini'
-      ? !available ? 'gemini_unavailable'
-        : anonymousAssignmentUnit && !anonymousEnabled ? 'surface_disabled'
-          : null
-      : null;
-    experiment = new ExperimentTurn(input.startedAt, assignment, identity);
-    if (assignment.arm === 'gemini' && exclusionReason) experiment.fallbackReason = exclusionReason;
     await query(`INSERT INTO addie_chat_experiment_turns
       (id, experiment, thread_id, user_id, arm, cohort, exclusion_reason, started_at,
        surface, identity_cohort, assignment_unit, assignment_version)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`, [
-      experiment.id, GEMINI_DIRECT_EXPERIMENT, input.threadId, identity.recordedUserId,
-      assignment.arm, assignment.cohort, exclusionReason, new Date(input.startedAt),
+      experiment.id, GEMINI_PRIMARY_POLICY, input.threadId, identity.recordedUserId,
+      experiment.assignment.arm, experiment.assignment.cohort, null, new Date(input.startedAt),
       identity.surface, identity.identityCohort, identity.assignmentUnit, identity.assignmentVersion,
     ]);
   } catch (error) {
-    logger.error({ error }, 'Gemini Direct assignment unavailable; retaining control');
-    return ordinary();
+    // Observability failure must not silently select a different provider.
+    logger.error({ error }, 'Failed to save global response policy turn');
   }
-
-  const treatment = assignment.arm === 'gemini' && !experiment.fallbackReason;
-  const direct = treatment ? createGeminiDirectTools(input.requestTools, input.client.getRegisteredTools?.() ?? [], input.isAdmin, {
-    activeCertificationKind: input.activeCertificationKind,
-    activeAgentRegistration: input.activeAgentRegistration,
-    sponsoredIntelligenceContextKind: input.sponsoredIntelligenceContextKind,
-  }) : null;
-  let candidate: AddieClaudeClient | undefined;
-  if (direct) {
-    candidate = clients.get(input.client);
-    if (!candidate) {
-      candidate = input.client.forkForGeminiDirect!(new GoogleGenerateContentProvider(process.env.GEMINI_API_KEY!));
-      clients.set(input.client, candidate);
-    }
-  }
+  let control: WebToolSelection | null | undefined;
+  const getControl = async () => control === undefined ? (control = await input.getControlTools()) : control;
+  const direct = policy.provider === 'gemini'
+    ? createGeminiDirectTools(input.requestTools, input.client.getRegisteredTools?.() ?? [], input.isAdmin, input)
+    : null;
   const selection: WebToolSelection | null = direct ? {
-    requestTools: direct.tools,
-    selectedToolSets: direct.selectedToolSets,
-    allowedToolNames: direct.allowedToolNames,
+    requestTools: direct.tools, selectedToolSets: direct.selectedToolSets, allowedToolNames: direct.allowedToolNames,
     unavailableHint: 'Use load_tool_group to discover the authorized tools for the next step. Loaded actions use the same account permissions, confirmations, durable reservations and receipt checks as every Addie request.',
   } : await getControl();
   if (!direct) experiment.routed(selection);
-
-  const controlOptions = async (options?: ProcessMessageOptions) => {
-    const routed = await getControl();
-    experiment.routed(routed);
-    return {
-      tools: routed?.requestTools ?? input.requestTools,
-      options: experiment.options({
-        ...options, modelOverride: undefined, directToolSession: undefined,
-        allowedToolNames: routed?.allowedToolNames,
-        selectedToolSetNames: routed?.selectedToolSets,
-        requestContext: [input.baseRequestContext, routed?.unavailableHint].filter(Boolean).join('\n\n'),
-      }),
-    };
-  };
-  const directOptions = (options?: ProcessMessageOptions): ProcessMessageOptions => experiment.options({
-    ...options, modelOverride: GOOGLE_ROUTER_MODEL, disableServerTools: true,
-    directToolSession: direct!.session,
-    toolExecutionPolicy: async request => ({ allowed: (await direct!.policy(request)).allowed
-      && (!options?.toolExecutionPolicy || (await options.toolExecutionPolicy(request)).allowed) }),
+  const selectedClient = responseClient(input.client, 'web', {
+    onFailure(reason, executions) {
+      experiment.fallbackReason = reason;
+      experiment.usageComplete = false;
+      experiment.fallbackToolErrors = executions.filter(tool => tool.is_error).length;
+    },
+    async fallbackOptions(options) {
+      const routed = await getControl();
+      experiment.routed(routed);
+      return {
+        tools: routed?.requestTools ?? input.requestTools,
+        options: {
+          ...options, directToolSession: undefined,
+          allowedToolNames: routed?.allowedToolNames,
+          selectedToolSetNames: routed?.selectedToolSets,
+          requestContext: [input.baseRequestContext, routed?.unavailableHint].filter(Boolean).join('\n\n'),
+        },
+      };
+    },
   });
-
+  const processOptions = (options?: ProcessMessageOptions) => {
+    return experiment.options({ ...options,
+      ...(direct && {
+        // The executor intersects this session with the exact allowlist and
+        // the caller's authorization/replay policy.
+        directToolSession: direct.session,
+      }),
+    });
+  };
   const client: Client = {
     async processMessage(message, history, tools, rules, options) {
       if (!direct) {
+        let response: AddieResponse | undefined;
         try {
-          const response = await input.client.processMessage(message, history, tools, rules, experiment.options(options));
-          await experiment.finish(response);
+          response = await selectedClient.processMessage(message, history, tools, rules, processOptions(options));
           return response;
-        } catch (error) {
-          experiment.usageComplete = false;
-          await experiment.finish(undefined, undefined, true);
-          throw error;
+        } finally {
+          if (!response) experiment.usageComplete = false;
+          await experiment.finish(response);
         }
       }
+      // Web JSON uses the same checkpoint-aware, buffered logical turn as SSE.
       let response: AddieResponse | undefined;
       for await (const event of client.processMessageStream(message, history, tools, options)) {
         if (event.type === 'done') response = event.response;
         if (event.type === 'stream_error' || event.type === 'error') throw new Error('Addie provider response failed');
       }
       if (!response) throw new Error('Addie provider response missing');
-      // JSON delivery becomes visible after the route persists the reply.
       experiment.firstVisibleMs = null;
       return response;
     },
     async *processMessageStream(message, history, tools, options) {
       let response: AddieResponse | undefined;
       try {
-        if (direct && candidate) {
-          const buffered: StreamEvent[] = [];
-          let failed = false;
-          let actionReserved = false;
-          try {
-            for await (const event of candidate.processMessageStream(message, history, tools, {
-              ...directOptions(options),
-              ...(options?.reserveSideEffect && { reserveSideEffect: async request => {
-                // Mark before awaiting: even a failed reservation can have an
-                // uncertain durable outcome. Never restart this turn on Sonnet.
-                actionReserved = true;
-                await options.reserveSideEffect!(request);
-              } }),
-            })) {
-              buffered.push(event);
-              // Let the delivery layer persist each tool receipt before the
-              // next action. A checkpoint failure must stop this generator.
-              if (event.type === 'tool_start' || event.type === 'tool_end') yield event;
-              if (event.type === 'done') response = event.response;
-              if (event.type === 'error' || event.type === 'stream_error') failed = true;
-            }
-          } catch { failed = true; }
-          const localFailure = response?.model_execution.source === 'local'
-            && ['provider_error', 'stream_interrupted'].includes(response.model_execution.reason);
-          if (!failed && !localFailure && response) {
-            for (const event of buffered) {
-              if (event.type === 'tool_start' || event.type === 'tool_end') continue;
-              if (event.type === 'text') experiment.visible();
-              yield event;
-            }
-            return;
-          }
-          experiment.usageComplete = false;
-          if (actionReserved) {
-            experiment.fallbackReason = 'provider_error_after_action';
-            // Receipts were checkpointed as they completed. Retrying uses
-            // the existing durable replay policy.
-            const executions = buffered.flatMap(event => event.type === 'tool_end' ? [event.execution] : []);
-            experiment.fallbackToolErrors = executions.filter(tool => tool.is_error).length;
-            response = undefined;
-            yield {
-              type: 'stream_error',
-              reason: 'Gemini could not finish after an action was reserved. Its recorded outcome was preserved; the action was not automatically repeated.',
-              deltasBeforeError: 0, tool_executions: executions,
-              certification_reserve_used: buffered.some(event => event.type === 'stream_error' && event.certification_reserve_used),
-            };
-            return;
-          }
-          experiment.fallbackReason = 'provider_error';
-          experiment.fallbackToolErrors = buffered.filter(event => event.type === 'tool_end' && event.is_error).length;
-          const fallback = await controlOptions(options);
-          response = undefined;
-          for await (const event of input.client.processMessageStream(message, history, fallback.tools, fallback.options)) {
-            if (event.type === 'text') experiment.visible();
-            if (event.type === 'done') {
-              response = fallbackResponse(event.response);
-              yield { ...event, response };
-            } else yield event;
-          }
-        } else {
-          for await (const event of input.client.processMessageStream(message, history, tools, experiment.options(options))) {
-            if (event.type === 'text') experiment.visible();
-            if (event.type === 'done') response = event.response;
-            yield event;
-          }
+        for await (const event of selectedClient.processMessageStream(message, history, tools, processOptions(options))) {
+          if (event.type === 'text') experiment.visible();
+          if (event.type === 'done') response = event.response;
+          yield event;
         }
       } finally {
         if (!response) experiment.usageComplete = false;
@@ -517,11 +393,11 @@ export async function prepareGeminiDirectTurn(input: DirectToolContext & {
       }
     },
   };
-  return { client, selection, experiment, model: direct ? GOOGLE_ROUTER_MODEL : undefined };
+  return { client, selection, experiment, model: responseProviderModel() };
 }
 
 /** Read-only staff view; transcript content stays in the existing admin review UI. */
-export async function getGeminiDirectResults() {
+async function getResults(experimentId: string) {
   // Once a user chooses a model, that conversation's history can influence
   // every later answer. Keep all its turns out of the randomized cohorts.
   const result = await query(`WITH reported_turns AS (
@@ -531,7 +407,7 @@ export async function getGeminiDirectResults() {
         AND manual.cohort = 'manual'
     ) OR EXISTS (
       SELECT 1 FROM addie_thread_messages chosen
-      WHERE chosen.thread_id = e.thread_id AND chosen.role = 'user'
+      WHERE $1 = 'gemini-3.7-direct-v2' AND chosen.thread_id = e.thread_id AND chosen.role = 'user'
         AND chosen.model_preference IN ('gemini', 'sonnet')
     ) THEN 'manual' ELSE e.cohort END AS reporting_cohort
     FROM addie_chat_experiment_turns e WHERE e.experiment = $1
@@ -591,7 +467,7 @@ export async function getGeminiDirectResults() {
     LEFT JOIN addie_thread_messages m ON m.message_id = e.assistant_message_id
     GROUP BY e.surface, e.identity_cohort, e.assignment_unit, e.assignment_version,
       e.arm, e.reporting_cohort, e.exclusion_reason
-    ORDER BY e.surface, e.identity_cohort, e.reporting_cohort, e.arm`, [GEMINI_DIRECT_EXPERIMENT]);
+    ORDER BY e.surface, e.identity_cohort, e.reporting_cohort, e.arm`, [experimentId]);
   return {
     experiment: GEMINI_DIRECT_EXPERIMENT,
     mode: process.env.ADDIE_GEMINI_DIRECT_MODE ?? 'off',
@@ -603,4 +479,11 @@ export async function getGeminiDirectResults() {
     },
     cohorts: result.rows,
   };
+}
+
+export async function getGeminiDirectResults() {
+  const historical = await getResults(GEMINI_DIRECT_EXPERIMENT);
+  const primary = await getResults(GEMINI_PRIMARY_POLICY);
+  return { ...historical, response_policy: getResponseProviderPolicy(),
+    global_policy: { experiment: GEMINI_PRIMARY_POLICY, cohorts: primary.cohorts } };
 }

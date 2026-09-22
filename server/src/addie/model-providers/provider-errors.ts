@@ -1,4 +1,4 @@
-import type { ModelProviderId } from './model-provider.js';
+import { modelProviderAdapterFailure, type ModelProviderId } from './model-provider.js';
 
 export type ProviderFailureCategory =
   | 'billing_exhausted'
@@ -95,7 +95,9 @@ export function classifyProviderFailure(
   error: unknown,
   nowMs = Date.now(),
 ): ProviderFailure {
-  const status = statusFromError(error);
+  // Google deliberately strips provider-owned payloads. Its adapter-owned
+  // status receipt is sufficient for circuit health without restoring raw data.
+  const status = modelProviderAdapterFailure(error)?.httpStatus ?? statusFromError(error);
   const retryAfterSeconds = getProviderRetryAfterSeconds(error, nowMs);
   const message = messageFromError(error).toLowerCase();
   const codes = codeFromError(error);

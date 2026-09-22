@@ -273,6 +273,8 @@ describe('mounted Addie web-thread ownership', () => {
 
   beforeEach(() => {
     threadMocks.getThreadByExternalId.mockReset();
+    // These assertions exercise router selection during operator rollback.
+    process.env.ADDIE_RESPONSE_PROVIDER = 'sonnet';
     threadMocks.getOrCreateThread.mockReset().mockResolvedValue({
       thread_id: 'thread-anonymous-created',
       user_type: 'anonymous',

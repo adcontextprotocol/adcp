@@ -1,10 +1,50 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AddieTool } from '../../../src/addie/types.js';
 import { handleAppMention, selectRoutedDirectSlackTools } from '../../../src/addie/bolt-app.js';
 import { AAOAdminLookupUnavailableError } from '../../../src/addie/admin-status-lookup.js';
 import {
   PUBLIC_MENTION_READ_ONLY_TOOL_NAMES,
 } from '../../../src/addie/slack-tool-selection.js';
+
+afterEach(() => vi.unstubAllEnvs());
+
+describe('Slack response provider integration', () => {
+  it.each([
+    ['gemini', false], ['gemini', true], ['sonnet', false], ['sonnet', true],
+  ] as const)('uses %s for mentions (thread=%s) while preserving routing authority and delivery', async (provider, inThread) => {
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', provider); vi.stubEnv('GEMINI_API_KEY', 'unused');
+    const model = provider === 'gemini' ? 'gemini-3.7-flash' : 'claude-sonnet-5';
+    const model_execution = { source: 'provider', requested_provider: provider === 'gemini' ? 'google' : 'anthropic',
+      requested_model: model, provider: provider === 'gemini' ? 'google' : 'anthropic', model, model_resolution: 'exact', fallback_reason: null };
+    const answer = { text: 'Slack answer.', tools_used: [], tool_executions: [], model_execution };
+    const sonnet = vi.fn().mockResolvedValue(answer);
+    const gemini = vi.fn().mockResolvedValue(answer);
+    const say = vi.fn(); const addMessage = vi.fn(); const audit = vi.fn();
+    await handleAppMention({ event: { channel: 'C_PRIVATE', ts: '2', ...(inThread && { thread_ts: '1' }), user: 'U_TEST', text: '<@B_ADDIE> help' },
+      context: { botUserId: 'B_ADDIE' }, say } as never, {
+      claudeClient: { processMessage: sonnet, getRegisteredTools: () => ['search_docs'],
+        forkForGeminiDirect: () => ({ processMessage: gemini }) } as never,
+      resolveChannelContext: vi.fn().mockResolvedValue({ viewing_channel_name: 'wg-test', viewing_channel_is_private: true }),
+      getChannelHistory: vi.fn().mockResolvedValue({ messages: [], has_more: false }),
+      getThreadReplies: vi.fn().mockResolvedValue([]), getMemberContext: vi.fn().mockResolvedValue(null),
+      buildRequestContext: vi.fn().mockResolvedValue({ requestContext: 'Trusted context', memberContext: null }),
+      getThreadService: vi.fn(() => ({ getOrCreateThread: vi.fn().mockResolvedValue({ thread_id: 'thread-1' }),
+        getThreadMessages: vi.fn().mockResolvedValue([]), addMessage }) as never),
+      selectRoutedTools: vi.fn().mockResolvedValue({ tools: { tools: [], handlers: new Map() },
+        allowedToolNames: ['search_docs'], selectedToolSets: ['knowledge'], requiresPrecision: true, requiresDepth: true, isAAOAdmin: false }),
+      buildCurrentChannelCostOptions: vi.fn().mockResolvedValue({ costScope: { userId: 'slack:U_TEST', tier: 'anonymous' } }),
+      logInteraction: audit,
+    });
+    const selected = provider === 'gemini' ? gemini : sonnet;
+    expect(selected).toHaveBeenCalledOnce();
+    expect(provider === 'gemini' ? sonnet : gemini).not.toHaveBeenCalled();
+    expect(selected.mock.calls[0][4]).toMatchObject({ modelOverride: model, allowedToolNames: ['search_docs'],
+      selectedToolSetNames: ['knowledge'], costScope: { userId: 'slack:U_TEST', tier: 'anonymous' }, reserveSideEffect: expect.any(Function) });
+    expect(say).toHaveBeenCalledWith({ text: 'Slack answer.', thread_ts: inThread ? '1' : '2' });
+    expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_execution }));
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ model_execution }));
+  });
+});
 
 const tools: AddieTool[] = [
   { name: 'search_docs', description: 'Search docs', input_schema: { type: 'object', properties: {} } },

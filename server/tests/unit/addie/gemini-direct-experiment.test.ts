@@ -26,8 +26,7 @@ import { GoogleGenerateContentProvider, GOOGLE_ROUTER_MODEL } from '../../../src
 import { collectModelResponse } from '../../../src/addie/model-providers/events.js';
 import { createGeminiDirectTools } from '../../../src/addie/gemini-direct-tools.js';
 import {
-  ANONYMOUS_WEB_ASSIGNMENT_VERSION,
-  ANONYMOUS_WEB_CONTEXT_KEY,
+  GEMINI_PRIMARY_POLICY,
   geminiAnonymousWebAssignment,
   geminiDirectAssignment,
   getGeminiDirectResults,
@@ -101,6 +100,8 @@ async function run(
 }
 
 beforeEach(() => {
+  vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'gemini');
+  vi.stubEnv('ADDIE_RESPONSE_AUTOMATIC_FALLBACK', 'true');
   vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'staff');
   vi.stubEnv('GEMINI_API_KEY', 'unused');
   vi.stubEnv('ANONYMOUS_SESSION_CAPABILITY_SECRET', 'test-anonymous-assignment-secret-that-is-at-least-32-bytes');
@@ -193,6 +194,7 @@ describe('Gemini Direct production integration', () => {
   });
 
   it('includes the Luna router cost in a complete Sonnet comparison record', async () => {
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'sonnet');
     const f = fixture([]);
     f.getControlTools.mockResolvedValue({
       requestTools: { tools: [], handlers: new Map() }, selectedToolSets: ['knowledge'],
@@ -211,7 +213,7 @@ describe('Gemini Direct production integration', () => {
     ]));
   });
 
-  it('allows a non-admin to choose Gemini in staff mode without enrolling their thread', async () => {
+  it('applies global Gemini to a non-admin without enrolling their thread or granting admin tools', async () => {
     const f = fixture([receipt([call('query_admin_analytics')]), receipt([{ text: 'Admin access required.' }])]);
     const analytics = vi.fn();
     const result = await run({ ...f.input, isAdmin: false, modelPreference: 'gemini',
@@ -221,37 +223,38 @@ describe('Gemini Direct production integration', () => {
     expect(f.getControlTools).not.toHaveBeenCalled();
     expect(mocks.query.mock.calls.some(([sql]) => sql.startsWith('UPDATE addie_threads'))).toBe(false);
     expect(mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))?.[1].slice(4, 7))
-      .toEqual(['gemini', 'manual', null]);
+      .toEqual(['gemini', 'eligible', null]);
   });
 
-  it('switches to Sonnet and back to Default without replacing the randomized assignment', async () => {
+  it('rolls back to Sonnet and resumes Gemini without replacing the historical assignment', async () => {
     const f = fixture([receipt([{ text: 'First Gemini answer.' }]), receipt([{ text: 'Default Gemini answer.' }])]);
     await run(f.input);
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'sonnet');
     const sonnet = await run({ ...f.input, hasPriorAssistant: true, modelPreference: 'sonnet' });
     expect(sonnet.response?.model_execution.provider).toBe('anthropic');
     expect(f.control).toHaveBeenCalledOnce();
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'gemini');
     const restored = await run({ ...f.input, hasPriorAssistant: true, modelPreference: 'default' });
     expect(restored.response?.model_execution.provider).toBe('google');
-    expect(mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_threads'))).toHaveLength(2);
+    expect(mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_threads'))).toHaveLength(0);
     expect(mocks.query.mock.calls.filter(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))
-      .map(([, args]) => args.slice(4, 6))).toEqual([['gemini', 'staff'], ['control', 'manual'], ['gemini', 'staff']]);
+      .map(([, args]) => args.slice(4, 6))).toEqual([['gemini', 'eligible'], ['control', 'existing'], ['gemini', 'existing']]);
   });
 
-  it.each(['off', 'missing_key'])('honors the Gemini kill switch for explicit choices: %s', async mode => {
-    if (mode === 'off') vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'off');
+  it.each(['rollback', 'missing_key'])('honors global rollback or enabled emergency fallback: %s', async mode => {
+    if (mode === 'rollback') vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'sonnet');
     else vi.stubEnv('GEMINI_API_KEY', '');
     const f = fixture([]);
     const result = await run({ ...f.input, modelPreference: 'gemini' });
     expect(result.response?.model_execution.provider).toBe('anthropic');
     expect(f.dispatch).not.toHaveBeenCalled();
     expect(f.client.forkForGeminiDirect).not.toHaveBeenCalled();
-    expect(mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))?.[1].slice(4, 7))
-      .toEqual(['gemini', 'manual', 'gemini_unavailable']);
+    expect(result.response?.model_execution.model_resolution).toBe(mode === 'rollback' ? 'exact' : 'fallback');
   });
 
-  it.each([{ userId: undefined }, { evaluation: true }])('does not allow manual selection to enroll anonymous or evaluation traffic: %j', async override => {
+  it('leaves isolated evaluation execution outside the global response policy', async () => {
     const f = fixture([]);
-    await run({ ...f.input, ...override, modelPreference: 'gemini' });
+    await run({ ...f.input, evaluation: true, modelPreference: 'gemini' });
     expect(f.dispatch).not.toHaveBeenCalled();
     expect(mocks.query).not.toHaveBeenCalled();
   });
@@ -564,7 +567,7 @@ describe('Gemini Direct production integration', () => {
     expect(f.getControlTools).toHaveBeenCalledOnce();
     expect(f.control).toHaveBeenCalledOnce();
     expect(result.response?.model_execution).toMatchObject({ requested_provider: 'google', provider: 'anthropic', model_resolution: 'fallback', fallback_reason: 'primary_unavailable' });
-    expect(f.control.mock.calls[0][3]).toMatchObject({ modelOverride: undefined, directToolSession: undefined, allowedToolNames: ['search_docs'] });
+    expect(f.control.mock.calls[0][3]).toMatchObject({ modelOverride: AddieModelConfig.chat, directToolSession: undefined, allowedToolNames: ['search_docs'] });
     const outcome = mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns')).at(-1)?.[1];
     expect(outcome[7]).toBe('provider_error');
     expect(outcome[6]).toBe(false);
@@ -794,7 +797,7 @@ describe('assignment and rollback', () => {
     })).toBeNull();
   });
 
-  it('atomically persists anonymous assignment metadata without storing the owner UUID', async () => {
+  it('records anonymous global policy metadata without storing the owner UUID or rewriting assignments', async () => {
     vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
     vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
     vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
@@ -806,14 +809,14 @@ describe('assignment and rollback', () => {
     });
 
     expect(turn.model).toBe(GOOGLE_ROUTER_MODEL);
-    const assignmentWrite = mocks.query.mock.calls.find(([sql]) => sql.startsWith('UPDATE addie_threads'))!;
-    expect(assignmentWrite[1][1]).toBe(ANONYMOUS_WEB_CONTEXT_KEY);
+    expect(mocks.query.mock.calls.some(([sql]) => sql.startsWith('UPDATE addie_threads'))).toBe(false);
     const insert = mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))!;
+    expect(insert[1][1]).toBe(GEMINI_PRIMARY_POLICY);
     expect(insert[1][3]).toMatch(/^anonymous:[0-9a-f]{64}$/);
     expect(insert[1][3]).not.toContain(ownerId);
     expect(insert[1].slice(4, 12)).toEqual([
       'gemini', 'eligible', null, expect.any(Date),
-      'web', 'anonymous', 'anonymous_owner', ANONYMOUS_WEB_ASSIGNMENT_VERSION,
+      'web', 'anonymous', 'anonymous_owner', 'global_gemini_v1',
     ]);
   });
 
@@ -835,7 +838,7 @@ describe('assignment and rollback', () => {
     expect(later.model).toBe(GOOGLE_ROUTER_MODEL);
   });
 
-  it('uses the anonymous surface kill switch without erasing a stored treatment', async () => {
+  it('supersedes the old anonymous surface switch without erasing a stored assignment', async () => {
     vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
     vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
     vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
@@ -845,15 +848,13 @@ describe('assignment and rollback', () => {
 
     vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'false');
     const disabled = await prepareGeminiDirectTurn({ ...input, hasPriorAssistant: true });
-    expect(disabled.model).toBeUndefined();
+    expect(disabled.model).toBe(GOOGLE_ROUTER_MODEL);
     const assignmentWrites = mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_threads'));
-    expect(assignmentWrites.at(-1)?.[1]).toEqual([
-      'thread-test', ANONYMOUS_WEB_CONTEXT_KEY, null,
-    ]);
+    expect(assignmentWrites).toHaveLength(0);
     const insert = mocks.query.mock.calls
       .filter(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))
       .at(-1)!;
-    expect(insert[1].slice(4, 7)).toEqual(['gemini', 'eligible', 'surface_disabled']);
+    expect(insert[1].slice(4, 7)).toEqual(['gemini', 'existing', null]);
   });
 
   it('preserves an anonymous assignment after sign-in and reports auth_transition', async () => {
@@ -876,11 +877,11 @@ describe('assignment and rollback', () => {
       .at(-1)!;
     expect(insert[1][3]).toBe('signed-in-user');
     expect(insert[1].slice(8, 12)).toEqual([
-      'web', 'auth_transition', 'anonymous_owner', ANONYMOUS_WEB_ASSIGNMENT_VERSION,
+      'web', 'auth_transition', 'anonymous_owner', 'global_gemini_v1',
     ]);
   });
 
-  it('keeps an existing unassigned anonymous thread in control', async () => {
+  it('moves an existing unassigned anonymous thread to Gemini', async () => {
     vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
     vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
     vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
@@ -889,9 +890,9 @@ describe('assignment and rollback', () => {
       ...f.input, userId: undefined, isAdmin: false,
       anonymousOwnerId: 'anonymous-owner', hasPriorAssistant: true,
     });
-    expect(turn.model).toBeUndefined();
+    expect(turn.model).toBe(GOOGLE_ROUTER_MODEL);
     const insert = mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))!;
-    expect(insert[1].slice(4, 6)).toEqual(['control', 'existing']);
+    expect(insert[1].slice(4, 6)).toEqual(['gemini', 'existing']);
   });
 
   it('atomically retains an existing thread assignment during concurrent requests and rollout changes', async () => {
@@ -903,23 +904,24 @@ describe('assignment and rollback', () => {
     vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
     const later = await prepareGeminiDirectTurn({ ...f.input, hasPriorAssistant: true });
     expect(later.model).toBe(GOOGLE_ROUTER_MODEL);
-    expect(mocks.query.mock.calls[0][0]).toContain('CASE WHEN context ? $2');
+    expect(mocks.query.mock.calls.some(([sql]) => sql.startsWith('UPDATE addie_threads'))).toBe(false);
   });
 
-  it('kill switch and evaluation mode use control without experiment writes', async () => {
+  it('ignores the old kill switch while leaving evaluation outside global policy accounting', async () => {
     const f = fixture([]);
     vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'off');
-    expect((await prepareGeminiDirectTurn(f.input)).model).toBeUndefined();
+    expect((await prepareGeminiDirectTurn(f.input)).model).toBe(GOOGLE_ROUTER_MODEL);
     vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'staff');
+    mocks.query.mockClear();
     expect((await prepareGeminiDirectTurn({ ...f.input, evaluation: true })).model).toBeUndefined();
     expect(mocks.query).not.toHaveBeenCalled();
   });
 
-  it('keeps pre-existing conversations on control and fails closed on assignment persistence errors', async () => {
+  it('uses Gemini on pre-existing conversations even when telemetry persistence fails', async () => {
     const f = fixture([]);
-    expect((await prepareGeminiDirectTurn({ ...f.input, hasPriorAssistant: true })).model).toBeUndefined();
+    expect((await prepareGeminiDirectTurn({ ...f.input, hasPriorAssistant: true })).model).toBe(GOOGLE_ROUTER_MODEL);
     mocks.query.mockRejectedValue(new Error('Database unavailable'));
-    expect((await prepareGeminiDirectTurn(f.input)).model).toBeUndefined();
+    expect((await prepareGeminiDirectTurn(f.input)).model).toBe(GOOGLE_ROUTER_MODEL);
   });
 
   it('does not expose groups whose user-scoped handlers are absent', () => {

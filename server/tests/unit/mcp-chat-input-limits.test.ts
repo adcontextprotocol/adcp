@@ -1,11 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const processMessage = vi.hoisted(() => vi.fn());
+const geminiMessage = vi.hoisted(() => vi.fn());
 vi.mock("../../src/addie/claude-client.js", () => ({
   AddieClaudeClient: class {
     registerTool() {}
     getRegisteredTools() { return []; }
     processMessage = processMessage;
+    forkForGeminiDirect() { return { processMessage: geminiMessage }; }
   },
 }));
 vi.mock("../../src/addie/mcp/knowledge-search.js", () => ({
@@ -24,7 +26,23 @@ vi.mock("../../src/addie/mcp/member-tools.js", () => ({
 import { CHAT_TOOL, MCP_CHAT_LIMITS, handleChatTool } from "../../src/mcp/chat-tool.js";
 
 describe("MCP chat input limits", () => {
-  beforeEach(() => processMessage.mockReset());
+  beforeEach(() => { processMessage.mockReset(); geminiMessage.mockReset(); });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(['gemini', 'sonnet'])('routes MCP responses using global %s policy and retains anonymous cost scope', async provider => {
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', provider);
+    vi.stubEnv('ADDIE_ANTHROPIC_API_KEY', 'unused'); vi.stubEnv('GEMINI_API_KEY', 'unused');
+    const model = provider === 'gemini' ? 'gemini-3.7-flash' : 'claude-sonnet-5';
+    const selected = provider === 'gemini' ? geminiMessage : processMessage;
+    selected.mockResolvedValue({ text: 'MCP answer', tools_used: [], tool_executions: [], model_execution: {
+      source: 'provider', requested_provider: provider === 'gemini' ? 'google' : 'anthropic', requested_model: model,
+      provider: provider === 'gemini' ? 'google' : 'anthropic', model, model_resolution: 'exact', fallback_reason: null,
+    } });
+    const result = JSON.parse(await handleChatTool({ message: 'Explain AdCP', history: [{ role: 'assistant', content: 'Earlier answer' }] }, { sub: 'verified-client' } as never));
+    expect(result).toEqual({ response: 'MCP answer', tools_used: [] });
+    expect(selected.mock.calls[0][4]).toMatchObject({ modelOverride: model, maxIterations: 5, costScope: { userId: 'mcp:verified-client', tier: 'anonymous' } });
+    expect(provider === 'gemini' ? processMessage : geminiMessage).not.toHaveBeenCalled();
+  });
   it("publishes the same bounds enforced at runtime", () => {
     const message = CHAT_TOOL.input_schema.properties.message as Record<string, unknown>;
     const history = CHAT_TOOL.input_schema.properties.history as Record<string, unknown>;

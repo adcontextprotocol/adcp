@@ -1,69 +1,88 @@
 ---
-title: Gemini 3.7 Direct web experiment
-description: "Operate the Addie Gemini 3.7 Direct web experiment, compare routing, latency, cost and outcomes, and roll back safely."
-"og:title": "AdCP — Gemini 3.7 Direct web experiment"
+title: Addie Gemini response provider
+description: "Operate Addie's global Gemini response policy, emergency fallback, rollout, rollback, and historical experiment reporting."
+"og:title": "AdCP — Addie Gemini response provider"
 ---
 
-Experiment `gemini-3.7-direct-v2` compares the existing web routing and response
-stack (normally Luna → Sonnet, with quick matches) against Gemini 3.7 without
-an up-front router call. Both use the same authorized Addie custom-tool domains and
-shared action executor. This measures the model and tool-discovery architecture
-together. Version 2 reports separately from the earlier read-only pilot; the
-authenticated assignment key and user hash remain unchanged to preserve existing
-assignments. Slack remains outside this experiment.
+Gemini 3.7 Flash (`gemini-3.7-flash`) is the normal response provider for
+authenticated and anonymous web, Slack DMs, mentions, thread continuations,
+channel responses and reactions, MCP `chat_with_addie`, email conversations,
+and Tavus voice/video. This includes existing web threads, saved control
+assignments, certification, and requests previously assigned a precision/depth
+model. Model selection does not grant tools or change a caller's permissions.
+
+This is a response-provider migration. Internal classifiers, routers, sentiment
+analysis, and background jobs can still use Luna, Haiku, or Sonnet. Slack and
+Tavus retain their existing router-selected tool surface; web retains direct
+authorized discovery without an up-front router. This is not a Gemini-only
+migration of all AI calls.
+
+Existing Anthropic initialization credentials remain required for the shared
+clients, internal jobs, and rollback. Do not remove them as part of this rollout.
+
+## Global policy and emergency fallback
+
+| Setting | Default | Behavior |
+| --- | --- | --- |
+| `ADDIE_RESPONSE_PROVIDER` | `gemini` | `gemini` selects Gemini for every user-facing response; `sonnet` is the global operator rollback. Other values fail closed. |
+| `ADDIE_RESPONSE_AUTOMATIC_FALLBACK` | `false` | Only explicit `true` allows one emergency Sonnet attempt after a Gemini provider failure, before any action reservation attempt. |
+
+The controls are independent. Missing Google credentials, an open Google circuit,
+or a provider failure does not silently select Sonnet with fallback disabled.
+With fallback enabled, the Sonnet attempt retains the request's permissions,
+replay policy, cost scope, and iteration limit and passes normal cost admission.
+Cost-cap refusal and local safety responses do not trigger fallback.
+
+Once a mutation reservation is attempted, even if the write fails or its durable
+outcome is uncertain, the turn can never restart on Sonnet. Streaming tool
+receipts reach the delivery checkpoint before another provider step; checkpoint
+failure stops execution. Text is buffered until the Gemini logical response is
+accepted, so a pre-action fallback does not expose a discarded partial answer.
+After action failure, normal channel recovery preserves durable outcomes and
+does not automatically repeat the action. Existing retry receipt checks remain
+in force.
+
+The web model picker is disabled. Direct API requests selecting Sonnet receive
+409 while Gemini policy is active; stale Gemini choices normalize to `default`.
+Stored choices and provider badges on historical messages remain readable.
+Operator rollback also overrides stale choices and saved assignments.
 
 ## Rollout
 
-The runtime defaults to off. `fly.toml` currently selects `eligible` for the web
-experiment. Existing conversations retain control. Once a thread has an
-assignment, it persists across workers, restarts, and percentage changes.
+`fly.toml` sets the global provider to `gemini`, automatic fallback to `false`,
+and the legacy authenticated/anonymous enrollment defaults to 100/100.
+`ADDIE_GEMINI_DIRECT_MODE`, its percentages, and the anonymous surface switch
+are historical experiment configuration: they no longer control response
+execution or provide a rollback. Existing assignments are neither rewritten nor
+used to keep a thread on Sonnet.
 
-Authenticated new web conversations use the established 50/50 cohort:
+Before a separately approved production rollout, verify Google credentials and
+provider health, inspect existing secret overrides of these policy settings,
+and confirm the desired emergency-fallback setting. This PR does not deploy,
+change production secrets, or run paid model evaluations. Keep the go/no-go
+decision separate from merging and deploying.
 
-```sh
-fly secrets set -a adcp-docs ADDIE_GEMINI_DIRECT_MODE=eligible ADDIE_GEMINI_DIRECT_PERCENT=50
-```
-
-Anonymous new web conversations use a separate surface switch and initially
-assign 25% to treatment:
-
-```sh
-fly secrets set -a adcp-docs \
-  ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED=true \
-  ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT=25
-```
-
-Anonymous assignment uses a surface-scoped, versioned HMAC of the UUID from the
-verified signed owner capability. It never uses IP address, never stores the raw
-owner UUID in experiment telemetry, and is atomically persisted under a separate
-thread-context key. Existing unassigned threads stay in control. Saved
-assignments remain sticky across percentage changes. When an anonymous thread is
-claimed after sign-in, it keeps that assignment and reports under
-`identity_cohort=auth_transition`. Manual choices remain unavailable until the
-visitor signs in; manual, staff, existing, anonymous, authenticated, and
-auth-transition traffic remain separately reportable.
-
-Rollback takes precedence over saved assignments:
+Operators can roll every response channel back to Sonnet:
 
 ```sh
-fly secrets set -a adcp-docs ADDIE_GEMINI_DIRECT_MODE=off
+fly secrets set -a adcp-docs ADDIE_RESPONSE_PROVIDER=sonnet
 ```
 
-Fly applies these settings through a rolling restart. In-flight turns finish;
-subsequent requests on restarted workers use control. Set the mode back to
-`staff` or `eligible` to resume saved assignments. `PERCENT=0` stops enrolling
-new treatment conversations in eligible mode; use `MODE=off` for rollback.
+Fly applies settings through a rolling restart. In-flight turns finish using
+their snapshotted policy; requests on restarted workers use Sonnet. Neither
+rollback nor restart authorizes replaying a reserved action. Restore normal
+responses with `ADDIE_RESPONSE_PROVIDER=gemini`. Rollback needs a working
+Anthropic credential and remains subject to Anthropic health and cost admission.
 
-To stop only anonymous treatment without affecting authenticated randomization
-or erasing saved anonymous assignments:
+To enable emergency pre-action fallback while keeping Gemini primary:
 
 ```sh
-fly secrets set -a adcp-docs ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED=false
+fly secrets set -a adcp-docs ADDIE_RESPONSE_AUTOMATIC_FALLBACK=true
 ```
 
-With this switch off, a saved anonymous treatment assignment executes on the
-control model and records `surface_disabled`. Percentage controls enrollment;
-the boolean switch controls execution.
+Set the fallback control back to `false` to stop automatic cross-provider
+attempts. Setting enrollment percentages to zero or the old experiment mode to
+`off` has no effect on this global policy.
 
 ## Treatment behavior
 
@@ -101,7 +120,7 @@ the boolean switch controls execution.
   tools. Provider-managed Anthropic web search is not an Addie custom tool and
   is not exposed through Google's adapter; registered research/fetch tools are
   available through discovery.
-- Provider errors may fall back to Sonnet before any action reservation. After
+- With automatic fallback explicitly enabled, provider errors may fall back to Sonnet before any action reservation. After
   an action is reserved, a provider error preserves the recorded receipts and
   stops the turn without replaying it on Sonnet. These are reported separately
   as `provider_error_fallbacks` and `post_action_provider_failures`.
@@ -226,19 +245,33 @@ durable pre-dispatch reservation. Validation, auth, protocol, application,
 ambiguous unkeyed, and excessive Retry-After failures are never retried
 automatically.
 
-These code changes do not alter rollout configuration. Production's separately
-managed 100% authenticated / 100% anonymous web setting remains in effect until
-operators change it; saved/preexisting assignment and Slack semantics remain as
-documented above.
+Historical experiment `gemini-3.7-direct-v2` remains separately reportable.
+Global-policy web turns use `gemini-3.7-primary-v1` with
+`assignment_version=global_gemini_v1` (or `global_sonnet_v1` during rollback).
+They do not update thread assignment keys or historical manual choices and must
+not be pooled into randomized experiment estimates. Anonymous policy telemetry
+still uses the verified owner's HMAC, never the raw owner UUID or an IP address;
+claimed anonymous threads retain the `auth_transition` identity cohort.
 
 While signed in as a site admin, open
 `https://agenticadvertising.org/api/addie/chat/experiment`.
+The endpoint's `cohorts` retains historical results; `global_policy.cohorts`
+contains the new population and `response_policy` exposes operator settings.
 It reports users/turns, incomplete turns, failures, fallbacks, first visible
 response time, median/p95 total time, router time, estimated cost, tool errors,
 ratings, and marked resolutions. Results are grouped by surface, identity
 cohort, assignment unit/version, arm, randomized/manual cohort, and exclusion
 reason. Do not pool authenticated and anonymous estimates: their permissions,
 base iteration budgets, cost scopes, and traffic mix differ.
+
+Across all channels, `addie_response_provider` logs the snapshotted policy,
+surface and final `model_execution`; `addie_response_provider_failure` records
+fallback decisions and whether an action reservation was attempted. Thread
+messages retain requested/actual provider provenance, and cost events retain
+each provider's settled usage. MCP has no persisted transcript and uses these
+content-free logs and cost events. Internal router costs remain separate.
+Monitor Google circuit state, fallback frequency, post-reservation failures,
+latency, cost, truncation, and actual provider separately by channel.
 
 The durable turn record also contains delivery outcome, iteration count,
 progress-extension count, final-answer-opportunity count, final-boundary
