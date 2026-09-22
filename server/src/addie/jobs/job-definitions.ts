@@ -45,6 +45,7 @@ import { runWgSlackContextJob } from './wg-slack-context.js';
 import { runSecretariatExecutorJob } from './secretariat-executor.js';
 import { runSecretariatPrShepherdJob } from './secretariat-pr-shepherd.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
+import { runVerificationProfileProjectionJob } from './verification-profile-projection.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runAddieCorrectedCaptureJob } from './shadow-corrected-capture.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
@@ -558,9 +559,40 @@ export function registerAllJobs(): void {
     description: 'Agent compliance heartbeat',
     interval: { value: 1, unit: 'hours' },
     initialDelay: { value: 10, unit: 'minutes' },
-    runner: runComplianceHeartbeatJob,
-    options: { limit: 10 },
+    // Ten agents can each consume the 10-minute suite budget plus two
+    // 30-second discovery budgets. Two hours bounds admission plus the
+    // documented ~115m run, so waiting behind a wedged pool is bounded too.
+    executionTimeoutMs: 2 * 60 * 60 * 1000,
+    passExecutionContext: true,
+    runner: (options, context) => runComplianceHeartbeatJob(options, context.signal),
+    options: { limit: 10, includeOperationalDiagnostics: true },
     shouldLogResult: (r) => r.checked > 0,
+    statusResult: (r) => ({
+      checked: r.checked,
+      passed: r.passed,
+      failed: r.failed,
+      skipped: r.skipped,
+      ...r.diagnostics,
+    }),
+    validateResult: (r) => {
+      if (r.diagnostics && r.diagnostics.selectedAgents.length > 0 && r.checked === 0) {
+        throw new Error(
+          `Compliance heartbeat made no authoritative progress across ${r.diagnostics.selectedAgents.length} selected agents`
+          + ` (backlog=${r.diagnostics.eligibleBacklog}, runs_recorded=${r.diagnostics.runsRecorded},`
+          + ` skips=${JSON.stringify(r.diagnostics.skipReasons)})`,
+        );
+      }
+    },
+  });
+
+  jobScheduler.register({
+    name: 'verification-profile-projection',
+    description: 'Exact grading badge and token projection retry',
+    interval: { value: 1, unit: 'minutes' },
+    initialDelay: { value: 10, unit: 'seconds' },
+    runner: runVerificationProfileProjectionJob,
+    options: { limit: 20 },
+    shouldLogResult: (r) => r.claimed > 0,
   });
 
   // Outbound request log cleanup - retain 30 days
@@ -1007,6 +1039,7 @@ export const JOB_NAMES = {
   SLACK_AUTO_LINK: 'slack-auto-link',
   DOMAIN_MEMBER_BACKFILL: 'domain-member-backfill',
   COMPLIANCE_HEARTBEAT: 'compliance-heartbeat',
+  VERIFICATION_PROFILE_PROJECTION: 'verification-profile-projection',
   EVENT_REMINDER: 'event-reminder',
   EVENT_RECAP_NUDGE: 'event-recap-nudge',
   MEETING_PREP_NUDGE: 'meeting-prep-nudge',

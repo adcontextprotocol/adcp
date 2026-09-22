@@ -26,11 +26,19 @@ const SUB_DOMAIN_B = 'apt-sub-b.test';
 
 let currentMockUser = OWNER_USER;
 let currentMockEmail = 'owner@apt-co.test';
+let currentAuthWorkosUserId: string | undefined;
+let currentRequestUser: { id: string; email: string; authWorkosUserId?: string } | undefined;
+const adminLookupState = {
+  grantedUserId: undefined as string | undefined,
+  unavailable: false,
+  principals: [] as Array<{ id: string; email?: string | null }>,
+};
 
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
   requireAuth: (req: any, _res: any, next: any) => {
-    req.user = { id: currentMockUser, email: currentMockEmail, is_admin: false };
+    req.user = { id: currentMockUser, authWorkosUserId: currentAuthWorkosUserId, email: currentMockEmail, is_admin: false };
+    currentRequestUser = req.user;
     next();
   },
 }));
@@ -59,6 +67,25 @@ vi.mock('../../src/addie/mcp/admin-tools.js', async (importOriginal) => ({
   isWebUserAAOAdmin: vi.fn().mockResolvedValue(false),
 }));
 
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>();
+  const checkMembership = vi.fn(async (id: string) => {
+    if (adminLookupState.unavailable) throw new actual.AAOAdminLookupUnavailableError();
+    return id === adminLookupState.grantedUserId;
+  });
+  const resolve = async (principal: any, email?: string | null) => {
+    const id = typeof principal === 'string' ? principal : principal.authWorkosUserId ?? principal.id;
+    if (typeof principal !== 'string') adminLookupState.principals.push(principal);
+    return actual.decideAAOAdminAccess(await checkMembership(id), typeof principal === 'string' ? email : principal.email);
+  };
+  return {
+    ...actual,
+    isWebUserAAOAdmin: checkMembership,
+    resolveWebUserAAOAdminAccess: resolve,
+    isAuthenticatedUserAAOAdmin: async (principal: any) => (await resolve(principal)).isAdmin,
+  };
+});
+
 describe('org auto-provisioning toggles', () => {
   let server: HTTPServer;
   let app: any;
@@ -83,6 +110,13 @@ describe('org auto-provisioning toggles', () => {
   beforeEach(async () => {
     await cleanupTestData(pool);
     workosMocks.listOrganizationMemberships.mockReset();
+    currentMockUser = OWNER_USER;
+    currentMockEmail = 'owner@apt-co.test';
+    currentAuthWorkosUserId = undefined;
+    currentRequestUser = undefined;
+    adminLookupState.grantedUserId = undefined;
+    adminLookupState.unavailable = false;
+    adminLookupState.principals = [];
   });
 
   it('owner GET /domains returns both flags and inferred subsidiaries', async () => {
@@ -315,6 +349,107 @@ describe('org auto-provisioning toggles', () => {
     // Reset for next test
     currentMockUser = OWNER_USER;
     currentMockEmail = 'owner@apt-co.test';
+  });
+
+  it.each([
+    { authenticated: OWNER_USER, canonical: ADMIN_USER, allowed: true },
+    { authenticated: ADMIN_USER, canonical: OWNER_USER, allowed: false },
+  ])('uses exact $authenticated ownership rather than linked $canonical for both provision flags', async ({ authenticated, canonical, allowed }) => {
+    await seedTestOrg(pool);
+    currentMockUser = canonical;
+    currentAuthWorkosUserId = authenticated;
+    workosMocks.listOrganizationMemberships.mockImplementation(async ({ userId }) => ({
+      data: [{ organizationId: TEST_ORG, role: { slug: userId === OWNER_USER ? 'owner' : 'admin' }, status: 'active' }],
+    }));
+
+    const res = await request(app).patch(`/api/organizations/${TEST_ORG}/settings`).send({
+      auto_provision_verified_domain: false,
+      auto_provision_brand_hierarchy_children: true,
+      role: 'owner', userRole: 'owner', isAAOAdmin: true, adminPrincipal: { id: OWNER_USER },
+    });
+
+    expect(res.status).toBe(allowed ? 200 : 403);
+    expect(workosMocks.listOrganizationMemberships).toHaveBeenCalledWith({ userId: authenticated, organizationId: TEST_ORG });
+    const stored = await pool.query(
+      'SELECT auto_provision_verified_domain, auto_provision_brand_hierarchy_children FROM organizations WHERE workos_organization_id = $1', [TEST_ORG],
+    );
+    expect(stored.rows[0]).toEqual({
+      auto_provision_verified_domain: !allowed,
+      auto_provision_brand_hierarchy_children: allowed,
+    });
+  });
+
+  it.each([
+    { authenticated: OWNER_USER, canonical: ADMIN_USER, allowed: true },
+    { authenticated: ADMIN_USER, canonical: OWNER_USER, allowed: false },
+  ])('uses immutable exact platform authority for $authenticated despite linked identity mutation', async ({ authenticated, canonical, allowed }) => {
+    await seedTestOrg(pool);
+    currentMockUser = canonical;
+    currentAuthWorkosUserId = authenticated;
+    currentMockEmail = `${authenticated}@apt-co.test`;
+    adminLookupState.grantedUserId = OWNER_USER;
+    workosMocks.listOrganizationMemberships.mockImplementation(async () => {
+      await Promise.resolve();
+      currentRequestUser!.id = authenticated;
+      currentRequestUser!.authWorkosUserId = canonical;
+      currentRequestUser!.email = 'spoofed@apt-co.test';
+      return { data: [{ organizationId: TEST_ORG, role: { slug: 'admin' }, status: 'active' }] };
+    });
+
+    const res = await request(app).patch(`/api/organizations/${TEST_ORG}/settings`).send({
+      auto_provision_brand_hierarchy_children: true,
+      isStaticAdminApiKey: true, authWorkosUserId: OWNER_USER, isAdmin: true,
+    });
+
+    expect(res.status).toBe(allowed ? 200 : 403);
+    expect(workosMocks.listOrganizationMemberships).toHaveBeenCalledWith({ userId: authenticated, organizationId: TEST_ORG });
+    expect(adminLookupState.principals).toHaveLength(1);
+    expect(adminLookupState.principals[0]).toEqual({ id: authenticated, email: `${authenticated}@apt-co.test` });
+    expect(Object.isFrozen(adminLookupState.principals[0])).toBe(true);
+    expect((await pool.query(
+      'SELECT auto_provision_brand_hierarchy_children FROM organizations WHERE workos_organization_id = $1', [TEST_ORG],
+    )).rows[0].auto_provision_brand_hierarchy_children).toBe(allowed);
+  });
+
+  it.each([
+    { field: 'auto_provision_verified_domain', value: false },
+    { field: 'auto_provision_brand_hierarchy_children', value: true },
+  ])('fails closed with typed unavailable for $field while retaining ordinary admin updates', async ({ field, value }) => {
+    await seedTestOrg(pool);
+    currentMockUser = ADMIN_USER;
+    adminLookupState.unavailable = true;
+    workosMocks.listOrganizationMemberships.mockResolvedValue({
+      data: [{ organizationId: TEST_ORG, role: { slug: 'admin' }, status: 'active' }],
+    });
+
+    const denied = await request(app).patch(`/api/organizations/${TEST_ORG}/settings`).send({ [field]: value, isAdmin: true });
+    expect(denied.status).toBe(503);
+    expect(denied.body.error).toBe('admin_authorization_unavailable');
+    expect(denied.headers['cache-control']).toBe('no-store');
+    expect(denied.headers['retry-after']).toBe('5');
+    expect((await pool.query(
+      'SELECT auto_provision_verified_domain, auto_provision_brand_hierarchy_children FROM organizations WHERE workos_organization_id = $1', [TEST_ORG],
+    )).rows[0]).toEqual({ auto_provision_verified_domain: true, auto_provision_brand_hierarchy_children: false });
+
+    const ordinary = await request(app).patch(`/api/organizations/${TEST_ORG}/settings`).send({ revenue_tier: null });
+    expect(ordinary.status).toBe(200);
+  });
+
+  it('rejects absent exact membership before malformed settings or spoofed body roles', async () => {
+    await seedTestOrg(pool);
+    currentMockUser = OWNER_USER;
+    currentAuthWorkosUserId = ADMIN_USER;
+    workosMocks.listOrganizationMemberships.mockResolvedValue({ data: [] });
+
+    const res = await request(app).patch(`/api/organizations/${TEST_ORG}/settings`).send({
+      auto_provision_brand_hierarchy_children: 'yes', role: 'owner', isStaticAdminApiKey: true,
+    });
+    expect(res.status).toBe(403);
+    expect(adminLookupState.principals).toEqual([]);
+    expect(workosMocks.listOrganizationMemberships).toHaveBeenCalledWith({ userId: ADMIN_USER, organizationId: TEST_ORG });
+    expect((await pool.query(
+      'SELECT auto_provision_brand_hierarchy_children FROM organizations WHERE workos_organization_id = $1', [TEST_ORG],
+    )).rows[0].auto_provision_brand_hierarchy_children).toBe(false);
   });
 
   it('flipping the flag back to false sets disabled_at and preserves enabled_at', async () => {

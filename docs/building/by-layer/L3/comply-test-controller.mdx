@@ -71,12 +71,14 @@ Sellers that implement compliance test controller MUST:
           "force_creative_purge",
           "force_account_status",
           "force_media_buy_status",
+          "force_media_buy_purge",
           "compact_product_lifecycle_probe",
           "compact_direct_buy_lifecycle_probe",
           "reporting_core_lifecycle_probe",
           "force_create_media_buy_arm",
           "force_get_products_arm",
           "force_get_signals_arm",
+          "force_get_creative_features_arm",
           "force_task_completion",
           "force_session_status",
           "simulate_delivery",
@@ -98,7 +100,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. reporting_core_lifecycle_probe: {operation: prepare | publish_zero_row | omit_obligation} or {operation: advance_time, target_health: delayed | action_required}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_media_buy_purge: {media_buy_id}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. reporting_core_lifecycle_probe: {operation: prepare | publish_zero_row | publish_nonempty | restate_snapshot | omit_obligation | advance_past_status_deadline | advance_past_escalation}, {operation: advance_time, target_health: delayed | action_required}, or {operation: restate_after_received, received_reporting_revision_id, advance_to?: within_grace | past_grace}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_creative_features_arm: {arm: submitted, task_id, evaluation_id, message?} or {arm: completed, result}. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -184,6 +186,35 @@ Transitions a media buy to the specified status. The seller MUST enforce the med
     "media_buy_id": "mb-789",
     "status": "rejected",
     "rejection_reason": "Policy violation"
+  }
+}
+```
+
+### `force_media_buy_purge`
+
+Physically removes the named sandbox MediaBuy while leaving the seller's
+idempotency ledger untouched. This scenario exists to test replay after resource
+deletion; it MUST NOT delete, shorten, or rewrite an idempotency entry. Repeating
+the controller call is naturally idempotent. A successful purge uses the
+`StateTransitionSuccess` response shape and reports both `previous_state` and
+`current_state: "purged"`.
+Sellers advertise this scenario only when they can guarantee it never reaches
+production data.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `media_buy_id` | string | Yes | Sandbox MediaBuy to purge without touching its idempotency ledger |
+
+```json
+{
+  "scenario": "force_media_buy_purge",
+  "params": {
+    "media_buy_id": "mb-789"
+  },
+  "account": {
+    "sandbox": true
   }
 }
 ```
@@ -385,7 +416,12 @@ Prepares and advances a deterministic, caller/account-scoped
 [`reporting.core`](/docs/media-buy/reporting-core-implementation-guide)
 fixture without waiting for real reporting boundaries. This lets a learner or
 storyboard observe that an obligation exists before its first report, then
-exercise deadline-based health or publish an explicit empty revision.
+exercise deadline-based health, publish an explicit empty revision, or
+restate a provisional revision after a buyer has read it — including a
+restatement bound to a revision the caller already reported as `received`. Two
+further operations cross the consumer-status deadline and the
+consumer-mismatch escalation boundary, so the counted-silence and escalation
+projections are gradable without a wall-clock wait.
 
 The fixture is Core-only: no destination, materialization, readiness doorbell,
 canonical digest, or receipt is implied.
@@ -396,16 +432,41 @@ canonical digest, or receipt is implied.
 | **advance_time** | `target_health: delayed` | Set `simulated_now` to `2026-08-01T02:05:00.000Z`, strictly after `expected_at`. The same obligation becomes `delayed` with a stable issue while automated recovery remains open. |
 | **advance_time** | `target_health: action_required` | Set `simulated_now` to `2026-08-01T04:05:00.000Z`, strictly after the returned `recovery_deadline`. The same obligation becomes `action_required`. |
 | **publish_zero_row** | none | Commit an immutable current revision with `row_count: 0`. The obligation becomes satisfied; this is empty reporting, not missing reporting. |
+| **restate_snapshot** | none | Commit a new immutable snapshot revision that names the current snapshot in `supersedes_reporting_revision_id`. Reject the operation when no snapshot exists or the current revision is official. |
+| **restate_after_received** | `received_reporting_revision_id`, optional `advance_to: within_grace \| past_grace` | Same restatement, but only against the revision the caller already read. Reject the operation unless `received_reporting_revision_id` names the caller's current required revision; a seller advertising `consumer_status_task` MUST additionally require a current `received` consumer status from that caller naming it. Return `stale_received_grace_deadline` and set `simulated_now` inside it (`within_grace`, the default) or one second past it (`past_grace`). Repeating the call is convergent: it reuses the committed restatement and only moves the clock. |
 | **omit_obligation** | none | Advance through a second elapsed period while deliberately suppressing its obligation. The response supplies the expected period and ID so a buyer can demonstrate denominator-based detection. Sandbox education only: this intentionally produces a non-conformant ledger. |
+| **advance_past_status_deadline** | none | Move `simulated_now` strictly past the buyer's consumer-status deadline — `expected_at` plus the advertised `automated_recovery_window_seconds` — without recording any consumer status. The obligation is then counted in `obligation_counts.consumer_status_pending`, and nothing else in the response moves: silence raises no issue and changes no health. Return the crossed `consumer_status_deadline`. |
+| **advance_past_escalation** | none | Move `simulated_now` strictly past the open `CONSUMER_STATUS_MISMATCH` issue's `opened_at` plus the advertised `consumer_mismatch_escalation_seconds`. Reject the operation when no mismatch is open. Return the issue's `issue_id` and `opened_at`, the crossed `consumer_mismatch_escalation_deadline`, and — when the open mismatch is a stale `received` — the still-future `stale_received_grace_deadline`, so a storyboard can grade that the escalation boundary takes precedence over the grace window rather than merely following it. |
 
 Every successful response includes `account_id` and the applied
 `simulated_now`. `prepare` returns the resolved configuration, generation
 tuple, obligation ID, half-open period, `expected_at`, and `recovery_deadline`;
 `advance_time` repeats the generation, obligation, and deadline identities;
-`publish_zero_row` adds `reporting_revision_id` and `row_count`; and
+`publish_zero_row` adds `reporting_revision_id`, `revision_content_sha256`,
+`finality: "snapshot"`, and `row_count`; `restate_snapshot` returns those fields
+for the new snapshot plus `supersedes_reporting_revision_id`;
+`restate_after_received` returns those plus `received_reporting_revision_id`,
+`restated_at`, and `stale_received_grace_deadline`;
 `omit_obligation` instead returns `expected_reporting_obligation_id`,
-`omitted_period`, and its `expected_at`. Implementations choose fixture
-identifiers, so callers capture the returned values rather than guessing them.
+`omitted_period`, and its `expected_at`;
+`advance_past_status_deadline` returns `expected_at`,
+`automated_recovery_window_seconds`, and the crossed
+`consumer_status_deadline`; and `advance_past_escalation` returns `issue_id`,
+`issue_opened_at`, `consumer_mismatch_escalation_seconds`,
+`consumer_mismatch_escalation_deadline`, `expected_recommended_action`, and any
+still-future `stale_received_grace_deadline`. Implementations choose fixture
+identifiers — including the sandbox `account_id` — so callers capture the
+returned values rather than guessing them.
+
+`restate_after_received` exists so the
+[stale-received grace projection](/docs/media-buy/task-reference/get_reporting_status#consumer-status-mismatch)
+can be graded live instead of only in a seller's own integration tests. A buyer
+that consumed exactly what the seller required, and is then overtaken by a
+restatement, is `delayed` until `stale_received_grace_deadline` and
+`action_required` after it. Calling the operation twice — once with
+`advance_to: "within_grace"`, once with `advance_to: "past_grace"` — grades both
+sides of that boundary against one committed restatement, and the returned
+deadline stays anchored to the restatement rather than to the poll.
 
 First provision the sandbox account and install the Core configuration. Copy
 the returned `accounts[0].account_id`; use that durable ID for every controller
@@ -495,6 +556,57 @@ The corresponding escalation, publication, and deliberate omission calls are:
 }
 ```
 
+To grade the stale-received grace window, first publish a revision and record a
+`received` consumer status for it, then restate it against that exact ID:
+
+```json
+{
+  "adcp_version": "3.2-rc.1",
+  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "scenario": "reporting_core_lifecycle_probe",
+  "params": {
+    "operation": "restate_after_received",
+    "received_reporting_revision_id": "rev_copy_from_publish_zero_row",
+    "advance_to": "within_grace"
+  }
+}
+```
+
+Repeat the identical call with `"advance_to": "past_grace"` to cross the
+returned `stale_received_grace_deadline` without committing a second
+restatement.
+
+The two consumer-status boundaries have their own operations. Neither takes
+parameters, because the seller — not the caller — owns the windows being
+crossed:
+
+```json
+{
+  "adcp_version": "3.2-rc.1",
+  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "scenario": "reporting_core_lifecycle_probe",
+  "params": { "operation": "advance_past_status_deadline" }
+}
+```
+
+```json
+{
+  "adcp_version": "3.2-rc.1",
+  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "scenario": "reporting_core_lifecycle_probe",
+  "params": { "operation": "advance_past_escalation" }
+}
+```
+
+`advance_past_status_deadline` grades counted silence: the response's
+`consumer_status_deadline` is `expected_at` plus the seller's advertised
+`automated_recovery_window_seconds`, and a `get_reporting_status` summary read
+past it must raise `obligation_counts.consumer_status_pending` while leaving
+`health` and every other count exactly where they were.
+`advance_past_escalation` grades the escalation commitment: the returned
+`issue_opened_at` is the open issue's own `opened_at`, never the poll time, so
+a re-emission cannot reset the window.
+
 Reset with `prepare` before the negative fixture, then call:
 
 ```json
@@ -550,7 +662,7 @@ The submitted-arm wire shape is otherwise implementation-dependent: most sellers
 
 **Consumption and idempotency.** The directive is keyed to the caller's authenticated sandbox account (account + principal pair) and is consumed by the next `create_media_buy` call from that account. Subsequent calls without a fresh directive return the seller's default arm. Buyer-side `idempotency_key` semantics are unchanged: if the caller replays a `create_media_buy` request that already consumed a directive, the seller MUST replay the cached response (the request idempotency cache wins) and MUST NOT re-evaluate against the now-empty directive slot. Sellers MUST NOT match a directive against a `create_media_buy` call from a different account or principal, even within the same transport connection. A second `force_create_media_buy_arm` call before the directive is consumed overwrites the prior one.
 
-### `force_get_products_arm` / `force_get_signals_arm`
+### `force_get_products_arm` / `force_get_signals_arm` / `force_get_creative_features_arm`
 
 Shape the next curated discovery call from the caller's authenticated sandbox
 account (account + principal pair) into a status-specific response arm.
@@ -566,12 +678,15 @@ call MUST negotiate the same served release.
 feed reads are synchronous feed access and MUST NOT consume these directives or
 return the Submitted arm solely because a directive exists.
 
+`force_get_creative_features_arm` applies to the next [`get_creative_features`](/docs/governance/creative/get_creative_features) call. Its `submitted` arm requires both `task_id` and `evaluation_id`; the provider returns those values verbatim on the acknowledgement, and `force_task_completion` requires the terminal result to preserve the same `evaluation_id`. Its `completed` arm requires a schema-valid terminal success `result`, which the provider returns verbatim on the next matching call. This makes synchronous replay and optional economics deterministic without requiring every provider to complete naturally within the initial response window.
+
 The directive exists for the same reason as `force_create_media_buy_arm`:
 buyers cannot reliably trigger async discovery or a seller-controlled business
 decline from request shape alone, but conformance needs deterministic coverage.
-The submitted envelope carries only `status` and `task_id` (plus optional
-advisory fields such as `message`); terminal `products[]`, `proposals[]`, or
-`signals[]` land on task completion through [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) (legacy
+The submitted envelope carries `status` and `task_id`, plus `evaluation_id` for
+creative-feature evaluations and optional advisory fields such as `message`;
+terminal `products[]`, `proposals[]`, `signals[]`, or feature `results[]` land
+on task completion through [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) (legacy
 `tasks/get`) and any registered push notification. The rejected get_products
 arm carries `status: "rejected"`, `reason`, and optional `suggestions[]`, with no
 products, proposals, errors, or envelope-level adcp_error.
@@ -580,8 +695,10 @@ products, proposals, errors, or envelope-level adcp_error.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `arm` | `submitted` \| `rejected` | Yes | Target response arm for the next matching discovery call. `rejected` is valid only for `force_get_products_arm`; signals discovery supports only `submitted`. |
+| `arm` | `submitted` \| `completed` \| `rejected` | Yes | Target response arm for the next matching call. `completed` is valid only for `force_get_creative_features_arm`; `rejected` is valid only for `force_get_products_arm`. |
 | `task_id` | string | When `arm` = `submitted` | Deterministic task handle (max 128 chars) the seller MUST emit verbatim on the submitted envelope and MUST accept on subsequent polling. |
+| `evaluation_id` | string | For the creative `submitted` arm | Deterministic provider evaluation identity returned on the submitted acknowledgement and terminal success. |
+| `result` | object | For the creative `completed` arm | Schema-valid `get_creative_features` terminal success returned verbatim on the next matching call. |
 | `message` | string | No | Human-readable explanation surfaced verbatim on the submitted discovery response. Plain text, max 2000 characters. |
 | `reason` | string | When `arm` = `rejected` | Sanitized buyer-facing decline reason emitted verbatim on the next get_products response. Plain text, max 2000 characters. |
 | `suggestions` | string[] | No | Actionable alternatives emitted on the next get_products rejection. |
@@ -644,10 +761,11 @@ products, proposals, errors, or envelope-level adcp_error.
 }
 ```
 
-**Response.** Both scenarios return the same `ForcedDirectiveSuccess` shape as
+**Response.** These scenarios return the same `ForcedDirectiveSuccess` shape as
 `force_create_media_buy_arm`. A `submitted` directive carries `forced.arm` and
 `forced.task_id`; a `rejected` get-products directive carries `forced.arm`,
-`forced.reason`, and optional `forced.suggestions`.
+`forced.reason`, and optional `forced.suggestions`; a completed creative
+directive carries `forced.arm: "completed"`.
 
 **Consumption and idempotency.** The directive is keyed to the caller's
 authenticated sandbox account (account + principal pair) and consumed by the
@@ -656,10 +774,11 @@ product directive against `get_signals`, a signal directive against
 `get_products`, a brief/refine directive against wholesale mode, or any
 directive against a different account or principal. A second directive for the
 same operation and principal before consumption overwrites the prior directive.
-The directive is consumed exactly once. Because discovery tools are read
-operations rather than idempotency-cached mutations, repeating the same request
-after consumption is a new read and is not guaranteed to replay the forced
-response.
+The directive is consumed exactly once. Product and signal discovery calls are
+reads, so repeating them after consumption is a new read and is not guaranteed
+to replay the forced response. `get_creative_features` is replay-protected:
+repeating the exact request with its original `idempotency_key` returns the
+cached forced response even though the directive slot has already been consumed.
 
 ### `force_task_completion`
 
@@ -1173,7 +1292,8 @@ A seller may implement the test controller without supporting every scenario. Th
   "scenarios": [
     "force_creative_status",
     "force_account_status",
-    "force_media_buy_status"
+    "force_media_buy_status",
+    "force_media_buy_purge"
   ]
 }
 ```

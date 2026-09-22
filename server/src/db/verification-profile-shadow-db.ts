@@ -3,6 +3,18 @@ import type { LifecycleStage } from './compliance-db.js';
 import type { VerificationProfileShadowAssessment } from '../services/verification-profile-shadow.js';
 import { SETTING_KEYS } from './system-settings-db.js';
 
+export interface StoredVerificationProfileAssessment extends VerificationProfileShadowAssessment {
+  id: string;
+  source_run_id: string;
+  agent_url: string;
+  lifecycle_stage: LifecycleStage;
+  adcp_version: string;
+  evaluated_at: Date;
+  source_tested_at: Date;
+  requested_compliance_target: string | null;
+  source_provenance: Record<string, unknown> | null;
+}
+
 export async function recordVerificationProfileShadowAssessment(input: {
   sourceRunId: string;
   agentUrl: string;
@@ -12,15 +24,22 @@ export async function recordVerificationProfileShadowAssessment(input: {
 }): Promise<boolean> {
   const { assessment } = input;
   const result = await withDatabaseDeadline(Date.now() + 2_000, () => query(
-    `WITH rollout AS MATERIALIZED (
+    `WITH collection_enabled AS MATERIALIZED (
        SELECT 1
        FROM system_settings
-       WHERE key = $33
-         AND value->>'enabled' = 'true'
-         AND COALESCE(value->>'expires_at', '') ~
-           '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:[.][0-9]{3})?Z$'
-         AND (value->>'expires_at')::timestamptz > NOW()
+       WHERE key = $34
+         AND value = '{"enabled": true, "expires_at": null}'::jsonb
        FOR SHARE
+     ), source_run AS MATERIALIZED (
+       SELECT tested_at, requested_compliance_target
+       FROM agent_compliance_runs
+       WHERE id = $1
+         AND agent_url = $2
+         AND lifecycle_stage = $3
+         AND adcp_version IS NOT DISTINCT FROM $4
+         AND dry_run = FALSE
+         AND is_authoritative = TRUE
+         AND completeness = 'complete'
      )
      INSERT INTO verification_profile_shadow_assessments (
        source_run_id, agent_url, lifecycle_stage, adcp_version, policy_version,
@@ -35,11 +54,12 @@ export async function recordVerificationProfileShadowAssessment(input: {
        sandbox_observable_failure_count, non_controller_gap_step_count,
        controller_missing_storyboard_count, other_missing_storyboard_count,
        mixed_controller_failure_phase_count,
-       unattributed_flat_failure_count, unexplained_phase_failure_count,
+       flat_failure_count, unattributed_flat_failure_count,
+       unexplained_phase_failure_count,
        sandbox_unresolved_executed_bundle_count,
        sandbox_unresolved_missing_tools_bundle_count,
        sandbox_unresolved_unknown_bundle_count,
-       evaluated_at
+       evaluated_at, source_tested_at, requested_compliance_target
      ) SELECT
        $1, $2, $3, $4, $5,
        $6, $7, $8,
@@ -52,42 +72,11 @@ export async function recordVerificationProfileShadowAssessment(input: {
        $22, $23,
        $24, $25,
        $26, $27,
-       $28, $29,
-       $30, $31, $32,
-       NOW()
-     FROM rollout
-     ON CONFLICT (source_run_id) DO UPDATE SET
-       lifecycle_stage = EXCLUDED.lifecycle_stage,
-       adcp_version = EXCLUDED.adcp_version,
-       policy_version = EXCLUDED.policy_version,
-       current_public_status = EXCLUDED.current_public_status,
-       proposed_spec_status = EXCLUDED.proposed_spec_status,
-       proposed_sandbox_status = EXCLUDED.proposed_sandbox_status,
-       sandbox_eligible = EXCLUDED.sandbox_eligible,
-       recommended_profile = EXCLUDED.recommended_profile,
-       run_complete = EXCLUDED.run_complete,
-       bundle_evidence_present = EXCLUDED.bundle_evidence_present,
-       failing_bundle_count = EXCLUDED.failing_bundle_count,
-       incomplete_bundle_count = EXCLUDED.incomplete_bundle_count,
-       sandbox_unresolved_bundle_count = EXCLUDED.sandbox_unresolved_bundle_count,
-       unattributed_failure_count = EXCLUDED.unattributed_failure_count,
-       selected_storyboard_count = EXCLUDED.selected_storyboard_count,
-       applicable_phase_count = EXCLUDED.applicable_phase_count,
-       controller_gap_phase_count = EXCLUDED.controller_gap_phase_count,
-       controller_gap_step_count = EXCLUDED.controller_gap_step_count,
-       controller_cascade_step_count = EXCLUDED.controller_cascade_step_count,
-       observed_failure_count = EXCLUDED.observed_failure_count,
-       sandbox_observable_failure_count = EXCLUDED.sandbox_observable_failure_count,
-       non_controller_gap_step_count = EXCLUDED.non_controller_gap_step_count,
-       controller_missing_storyboard_count = EXCLUDED.controller_missing_storyboard_count,
-       other_missing_storyboard_count = EXCLUDED.other_missing_storyboard_count,
-       mixed_controller_failure_phase_count = EXCLUDED.mixed_controller_failure_phase_count,
-       unattributed_flat_failure_count = EXCLUDED.unattributed_flat_failure_count,
-       unexplained_phase_failure_count = EXCLUDED.unexplained_phase_failure_count,
-       sandbox_unresolved_executed_bundle_count = EXCLUDED.sandbox_unresolved_executed_bundle_count,
-       sandbox_unresolved_missing_tools_bundle_count = EXCLUDED.sandbox_unresolved_missing_tools_bundle_count,
-       sandbox_unresolved_unknown_bundle_count = EXCLUDED.sandbox_unresolved_unknown_bundle_count,
-       evaluated_at = NOW()
+       $28, $29, $30,
+       $31, $32, $33,
+       NOW(), source_run.tested_at, source_run.requested_compliance_target
+     FROM collection_enabled CROSS JOIN source_run
+     ON CONFLICT (source_run_id) DO NOTHING
      RETURNING source_run_id`,
     [
       input.sourceRunId,
@@ -117,6 +106,7 @@ export async function recordVerificationProfileShadowAssessment(input: {
       assessment.controller_missing_storyboard_count,
       assessment.other_missing_storyboard_count,
       assessment.mixed_controller_failure_phase_count,
+      assessment.flat_failure_count,
       assessment.unattributed_flat_failure_count,
       assessment.unexplained_phase_failure_count,
       assessment.sandbox_unresolved_executed_bundle_count,
@@ -129,8 +119,37 @@ export async function recordVerificationProfileShadowAssessment(input: {
 }
 
 /**
- * Delete rows beyond the fixed 90-day retention window. This remains callable
- * while collection is disabled, so expiry does not depend on new heartbeats.
+ * Return the newest agent-wide comparison. Assessments remain read-only
+ * evidence: callers may display them, but they do not drive badges.
+ */
+export async function getLatestVerificationProfileAssessment(
+  agentUrl: string,
+  policyVersion: string,
+): Promise<StoredVerificationProfileAssessment | null> {
+  const result = await withDatabaseDeadline(Date.now() + 2_000, () => query<StoredVerificationProfileAssessment>(
+    `SELECT s.*, r.provenance_json AS source_provenance
+     FROM verification_profile_shadow_assessments s
+     JOIN agent_compliance_runs r
+      ON r.id = s.source_run_id
+      AND r.agent_url = s.agent_url
+      AND r.lifecycle_stage = s.lifecycle_stage
+      AND r.adcp_version IS NOT DISTINCT FROM s.adcp_version
+     WHERE s.agent_url = $1
+       AND s.policy_version = $2
+       AND s.adcp_version IS NOT NULL
+       AND s.source_tested_at IS NOT NULL
+       AND r.dry_run = FALSE
+       AND r.is_authoritative = TRUE
+       AND r.completeness = 'complete'
+     ORDER BY s.evaluated_at DESC
+     LIMIT 1`,
+    [agentUrl, policyVersion],
+  ), { readOnly: true });
+  return result.rows[0] ?? null;
+}
+
+/**
+ * Delete rows beyond the fixed 90-day retention window.
  */
 export async function pruneVerificationProfileShadowAssessments(): Promise<number> {
   const result = await withDatabaseDeadline(Date.now() + 2_000, () => query<{ pruned_count: string | number }>(

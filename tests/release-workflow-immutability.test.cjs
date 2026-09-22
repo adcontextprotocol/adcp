@@ -7,10 +7,10 @@ const crypto = require('crypto');
 const YAML = require('yaml');
 
 const repoRoot = path.join(__dirname, '..');
-const changesetsActionSha = '8488615a623b1b9c987934bb89eae8af6a946ac1';
+const changesetsActionSha = 'ae32849d5ba541f9ae29e40e22a623bc13562f51';
 const changesetsActionFixtureDir = path.join(
   repoRoot,
-  'tests/fixtures/changesets-action-v2.1.1'
+  'tests/fixtures/changesets-action-v2.1.2'
 );
 const workflowPath = path.join(repoRoot, '.github/workflows/release.yml');
 const workflow = fs.readFileSync(workflowPath, 'utf8');
@@ -53,8 +53,9 @@ function extractStep(name) {
 }
 
 const releaseRelevance = extractStep('Detect release-relevant push');
+const releaseTarget = extractStep('Resolve release target');
 const artifactDetection = extractStep('Detect committed release artifacts');
-const approvalGate = extractStep('Require human approval for committed release artifacts');
+const approvalGate = extractStep('Require human authorization for committed release artifacts');
 const changesetsStep = extractStep('Create Release Pull Request or Tag Release');
 const uploadStep = extractStep('Upload protocol tarball to GitHub Release');
 const changesetsStepConfig = workflowConfig.jobs.release.steps.find(
@@ -149,13 +150,13 @@ assert(
 assert.strictEqual(
   crypto.createHash('sha256').update(changesetsActionContractSource).digest('hex'),
   'e3277ecb13148921adcfbc29971acb12b10ece79e7de24a200ba56dff1f6a1d7',
-  'Vendored action.yml must match changesets/action v2.1.1 at the pinned commit.'
+  'Vendored action.yml must match changesets/action v2.1.2 at the pinned commit.'
 );
 
 assert.strictEqual(
   crypto.createHash('sha256').update(changesetsActionImplementation).digest('hex'),
-  '54e11379e2c4d37af7c059daeaaf409e6a044dc068bd8eb56bc5180cd0424bb5',
-  'Vendored src/index.ts must match changesets/action v2.1.1 at the pinned commit.'
+  '4264a1dfe6d6a794dcb04aef04d18700707826071ce88b504567aa25b706b8f3',
+  'Vendored src/index.ts must match changesets/action v2.1.2 at the pinned commit.'
 );
 
 for (const branch of eolReleaseBranches) {
@@ -186,6 +187,25 @@ assert.strictEqual(
   verificationJob.outputs.relevant,
   '${{ steps.release-relevance.outputs.relevant }}',
   'The verification job must expose release relevance to the mutation job.'
+);
+
+assert.strictEqual(
+  workflowConfig.on.workflow_dispatch.inputs.release_commit.required,
+  true,
+  'Manual release recovery must require an explicit release commit.'
+);
+
+assert.strictEqual(
+  verificationJob.outputs.target_commit,
+  '${{ steps.release-target.outputs.commit }}',
+  'The verification job must expose the validated release target to the mutation job.'
+);
+
+assert(
+  releaseTarget.includes('^[0-9a-f]{40}$') &&
+    releaseTarget.includes('git merge-base --is-ancestor "${target_commit}" "refs/remotes/origin/${GITHUB_REF_NAME}"') &&
+    releaseTarget.includes('main|3.1.x|3.0.x'),
+  'Manual recovery must require a full SHA already reachable from a supported release branch.'
 );
 
 assert.strictEqual(
@@ -224,6 +244,11 @@ assert.strictEqual(
   '${{ steps.app-token.outputs.token }}',
   'The release checkout must persist the App token used by Changesets git-CLI pushes.'
 );
+assert.strictEqual(
+  releaseCheckout.with.ref,
+  '${{ needs.verify-release.outputs.target_commit }}',
+  'The release job must check out the validated release target.'
+);
 
 assert(
   !artifactDetection.includes('[ -d "dist/schemas/${VERSION}" ]'),
@@ -241,7 +266,7 @@ assert(
 );
 
 assert(
-  approvalGate.includes('/commits/${GITHUB_SHA}/pulls') &&
+  approvalGate.includes('/commits/${RELEASE_COMMIT}/pulls') &&
     approvalGate.includes('.base.ref == $base') &&
     approvalGate.includes('.merged_at != null'),
   'The approval gate must resolve the merged PR associated with the release commit and branch.'
@@ -251,7 +276,31 @@ assert(
   approvalGate.includes('select(.user.type == "User")') &&
     approvalGate.includes('map(last)') &&
     approvalGate.includes('select(.state == "APPROVED" and .commit_id == $head)'),
-  'Only human approvals submitted against the final release PR head may authorize publication.'
+  'Human review authorization must require an approval submitted against the final release PR head.'
+);
+
+assert(
+  approvalGate.includes('[ "${author_type}" = "Bot" ]') &&
+    approvalGate.includes('[ "${merger_type}" = "User" ]') &&
+    approvalGate.includes('/issues/${pr_number}/timeline') &&
+    approvalGate.includes('.event == "auto_squash_enabled"') &&
+    approvalGate.includes('.event == "auto_merge_disabled"') &&
+    approvalGate.includes('[ "${auto_merge_state}" = "not_enabled" ]') &&
+    approvalGate.includes('[ "${auto_merge_state}" = "auto_merge_disabled" ]') &&
+    approvalGate.includes('[ "${approved_count}" -lt 1 ] && [ "${direct_merge_authorized}" != "true" ]'),
+  'A human merge may authorize publication only for a bot-authored release PR.'
+);
+
+assert(
+  artifactDetection.includes('git show --format= --name-only --no-renames "${RELEASE_COMMIT}"') &&
+    uploadStep.includes('--target "${RELEASE_COMMIT}"'),
+  'Recovery must detect and publish artifacts from the validated release commit.'
+);
+
+assert(
+  artifactDetection.includes('[ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]') &&
+    artifactDetection.includes('does not commit artifacts for ${VERSION}'),
+  'Manual recovery must fail instead of running Changesets when its target has no committed release artifacts.'
 );
 
 assert(
@@ -291,7 +340,7 @@ assert.deepStrictEqual(
       HUSKY: '0',
     },
   },
-  'Release automation must preserve the pinned Changesets v2.1.1 input contract and git-CLI push mode.'
+  'Release automation must preserve the pinned Changesets v2.1.2 input contract and git-CLI push mode.'
 );
 
 for (const inputName of Object.keys(changesetsStepConfig.with)) {

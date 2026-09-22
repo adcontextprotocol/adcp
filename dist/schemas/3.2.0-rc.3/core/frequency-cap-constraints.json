@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/frequency-cap-constraints.json",
+  "title": "Frequency Cap Constraints",
+  "x-adcp-hoist": true,
+  "description": "Structured frequency-cap constraints. Count and duration declarations are exact: each uses either an exhaustive preset list or an inclusive range, never a unit-only promise. At product scope, omitted fields inherit the applicable seller-wide capability and never broaden it. Product mutability describes implementation capability; MediaBuy.available_actions remains authoritative for a live buy.",
+  "type": "object",
+  "properties": {
+    "mutable_fields": {
+      "type": "array",
+      "description": "Logical cap fields that can change after creation. An empty array means create-only. For example, [max_impressions] permits changing the count while keeping per and window fixed. Omission means update support is undeclared and the legacy broad meaning applies.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/enums/frequency-cap-mutable-field.json"
+      },
+      "uniqueItems": true
+    },
+    "supported_control_modes": {
+      "type": "array",
+      "description": "FrequencyCap shapes accepted by the product. max_impressions_and_suppress means both controls may appear together and are enforced with AND semantics.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/enums/frequency-cap-control-mode.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "supported_per_units": {
+      "type": "array",
+      "description": "Entity granularities accepted by max_impressions caps.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/enums/reach-unit.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "max_impressions_constraints": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/frequency-cap-impression-constraints.json",
+      "description": "Exact supported max_impressions presets or range."
+    },
+    "window_constraints": {
+      "type": "array",
+      "description": "Exact supported max_impressions.window intervals, one entry per duration unit.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/frequency-cap-interval-constraints.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "suppression_constraints": {
+      "type": "array",
+      "description": "Exact supported suppress cooldown intervals, one entry per duration unit.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/frequency-cap-interval-constraints.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/ext.json"
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "mutable_fields"
+      ]
+    },
+    {
+      "required": [
+        "supported_control_modes"
+      ]
+    },
+    {
+      "required": [
+        "supported_per_units"
+      ]
+    },
+    {
+      "required": [
+        "max_impressions_constraints"
+      ]
+    },
+    {
+      "required": [
+        "window_constraints"
+      ]
+    },
+    {
+      "required": [
+        "suppression_constraints"
+      ]
+    }
+  ],
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "unique_window_units": "window_constraints MUST contain at most one entry for each unit.",
+    "unique_suppression_units": "suppression_constraints MUST contain at most one entry for each unit."
+  }
+}

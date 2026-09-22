@@ -739,6 +739,8 @@ components:
     AgentCompliance:
       type: object
       properties:
+        provenance:
+          $ref: "#/components/schemas/ComplianceRunProvenance"
         status:
           type: string
           enum:
@@ -829,6 +831,54 @@ components:
         - streak_days
         - last_checked_at
         - headline
+    ComplianceRunProvenance:
+      type:
+        - object
+        - "null"
+      properties:
+        grading_policy_version:
+          type: string
+        compliance_bundle_version:
+          type:
+            - string
+            - "null"
+        sdk_version:
+          type: string
+        agent_build_version:
+          type:
+            - string
+            - "null"
+          description: Agent-reported adcp.build_version; null when not supplied. Never inferred from the endpoint.
+        agent_library_version:
+          type:
+            - string
+            - "null"
+        test_session_id:
+          type:
+            - string
+            - "null"
+        timeout_ms:
+          type:
+            - number
+            - "null"
+        storyboard_start_offset:
+          type:
+            - number
+            - "null"
+        auth_type:
+          type:
+            - string
+            - "null"
+      required:
+        - grading_policy_version
+        - compliance_bundle_version
+        - sdk_version
+        - agent_build_version
+        - agent_library_version
+        - test_session_id
+        - timeout_ms
+        - storyboard_start_offset
+        - auth_type
     BadgeRole:
       type: string
       enum:
@@ -4210,6 +4260,8 @@ components:
     AgentComplianceDetail:
       type: object
       properties:
+        provenance:
+          $ref: "#/components/schemas/ComplianceRunProvenance"
         agent_url:
           type: string
         requested_compliance_target:
@@ -4230,6 +4282,54 @@ components:
             - failing
             - unknown
             - opted_out
+        selected_grading_statuses:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                $ref: "#/components/schemas/BadgeRole"
+              adcp_version:
+                type: string
+              grading_profile:
+                type: string
+                enum:
+                  - legacy
+                  - spec
+              grading_status:
+                type:
+                  - string
+                  - "null"
+                enum:
+                  - passing
+                  - partial
+                  - failing
+                  - null
+              availability:
+                type: string
+                enum:
+                  - current
+                  - unavailable
+              badge_status:
+                type:
+                  - string
+                  - "null"
+                enum:
+                  - active
+                  - degraded
+                  - revoked
+                  - null
+              revision:
+                type: string
+            required:
+              - role
+              - adcp_version
+              - grading_profile
+              - grading_status
+              - availability
+              - badge_status
+              - revision
+          description: Public exact role/version status for every explicit grading selection. This is authoritative for the selected badge identity; the top-level status remains the agent-wide compliance summary.
         lifecycle_stage:
           type: string
           enum:
@@ -4242,6 +4342,44 @@ components:
         badge_requalification_required:
           type: boolean
           description: True when monitoring is enabled but badges remain suppressed until a fresh passing full-suite run completes.
+        refresh_availability:
+          type: object
+          properties:
+            available:
+              type: boolean
+            retryable:
+              type: boolean
+              description: Whether retrying the same human refresh request later is expected to succeed without a platform change.
+            scope:
+              type: string
+              enum:
+                - platform
+            applies_to:
+              type: string
+              enum:
+                - human_session
+            code:
+              type: string
+              enum:
+                - refresh_authorization_provenance_required
+            notice:
+              type: string
+            alternative_action:
+              type: string
+              enum:
+                - monitoring_requeue
+            alternative_description:
+              type: string
+          required:
+            - available
+            - retryable
+            - scope
+            - applies_to
+            - code
+            - notice
+            - alternative_action
+            - alternative_description
+          description: Current human refresh admission state. Monitoring requeue is a separate scheduler operation and is not a retry or ETA for this endpoint.
         tracks:
           type: object
           additionalProperties:
@@ -4314,6 +4452,8 @@ components:
               - untested
               - unknown
           description: Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status
+        eligibility:
+          $ref: "#/components/schemas/ComplianceEligibility"
         storyboard_statuses:
           type: array
           items:
@@ -4440,6 +4580,8 @@ components:
         is_api_access_tier:
           type: boolean
           description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive."
+        eligibility_owner:
+          $ref: "#/components/schemas/OwnerComplianceEligibility"
         verdict_source:
           type:
             - string
@@ -4457,10 +4599,77 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VerificationBadge"
+        grading_profile_comparisons:
+          type: array
+          items:
+            $ref: "#/components/schemas/GradingProfileComparison"
+          description: Owner/admin-only comparisons from one source run. Exact badge-scope rows allow Legacy or Strict Spec selection; Sandbox remains preview-only. Empty for other viewers. Reading never contacts the agent.
       required:
         - agent_url
         - status
         - lifecycle_stage
+    ComplianceEligibility:
+      type: object
+      properties:
+        criteria_version:
+          type: string
+          description: Version of the badge eligibility criteria and blocker vocabulary.
+          example: 2026-08
+        blockers:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                enum:
+                  - no_declared_specialisms
+            required:
+              - code
+          description: Agent-level blockers. no_declared_specialisms appears when no supported, stable badge role can be derived from the declaration.
+        roles:
+          type: object
+          properties:
+            media-buy:
+              $ref: "#/components/schemas/RoleEligibility"
+            creative:
+              $ref: "#/components/schemas/RoleEligibility"
+            signals:
+              $ref: "#/components/schemas/RoleEligibility"
+            governance:
+              $ref: "#/components/schemas/RoleEligibility"
+            brand:
+              $ref: "#/components/schemas/RoleEligibility"
+            sponsored-intelligence:
+              $ref: "#/components/schemas/RoleEligibility"
+      required:
+        - criteria_version
+        - blockers
+        - roles
+      description: Public machine-readable badge eligibility by role. Contains only declared-specialism and storyboard blockers; membership tier is owner-scoped separately.
+    RoleEligibility:
+      type: object
+      properties:
+        eligible:
+          type: boolean
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleEligibilityBlocker"
+      required:
+        - eligible
+        - blockers
+    RoleEligibilityBlocker:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+            - storyboards_failing
+            - storyboards_partial
+            - storyboards_untested
+      required:
+        - code
     PublicComplianceNotice:
       type: object
       properties:
@@ -4501,6 +4710,33 @@ components:
         - code
         - message
       additionalProperties: false
+    OwnerComplianceEligibility:
+      type: object
+      properties:
+        criteria_version:
+          type: string
+        eligible:
+          type:
+            - boolean
+            - "null"
+          description: Whether the owner membership tier grants badge eligibility. Null for non-owners.
+        blockers:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                enum:
+                  - membership_tier_ineligible
+            required:
+              - code
+          description: Owner-only membership blockers. Empty for non-owners.
+      required:
+        - criteria_version
+        - eligible
+        - blockers
+      description: "Owner-scoped membership leg of badge eligibility. Non-owners receive eligible: null and an empty blocker list."
     VerificationBadge:
       type: object
       properties:
@@ -4559,7 +4795,22 @@ components:
               - spec
               - live
           minItems: 1
-          description: Verification axes earned. 'spec' = AdCP storyboards pass for the declared specialisms. 'live' = AAO has observed real production traffic via canonical campaigns. Always non-empty when a badge is present; an absent badge is conveyed by the parent record being omitted, not by an empty array.
+          description: Evidence modes earned. 'spec' = AdCP storyboards were exercised; 'live' = production traffic was observed. Independent of grading_profile and always non-empty when a badge is present.
+        grading_profile:
+          type: string
+          enum:
+            - legacy
+            - spec
+          description: Grading profile that produced the public badge. 'spec' means Strict Spec grading; this is independent of the 'spec' evidence mode.
+        grading_profile_revision:
+          type: integer
+          minimum: 0
+        first_failing_spec_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Start of the current Strict Spec failure episode. Null when no Strict Spec failure clock is active.
         verified_protocol_version:
           type:
             - string
@@ -4573,7 +4824,559 @@ components:
         - verified_at
         - verified_specialisms
         - verification_modes
+        - grading_profile
         - verified_protocol_version
+    GradingProfileComparison:
+      oneOf:
+        - type: object
+          properties:
+            role:
+              $ref: "#/components/schemas/BadgeRole"
+            adcp_version:
+              type: string
+            availability:
+              type: string
+              enum:
+                - current
+                - stale
+                - pending
+                - temporarily_unavailable
+            unavailable_reason:
+              type:
+                - string
+                - "null"
+            selected_profile:
+              type: string
+              enum:
+                - legacy
+                - spec
+            selection_enabled:
+              type: boolean
+            selection_revision:
+              type: integer
+              minimum: 0
+            first_failing_spec_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+            legacy_selection_allowed_until:
+              type:
+                - string
+                - "null"
+              format: date-time
+            source_run_id:
+              type: string
+              format: uuid
+            evaluator_policy_version:
+              type: string
+            requested_compliance_target:
+              type:
+                - string
+                - "null"
+            compliance_bundle_version:
+              type:
+                - string
+                - "null"
+            assessed_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+            source_tested_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+            stale:
+              type: boolean
+            incomplete:
+              type: boolean
+            public_impact:
+              type: string
+            profiles:
+              type:
+                - object
+                - "null"
+              properties:
+                legacy:
+                  type: object
+                  properties:
+                    available:
+                      type: boolean
+                    status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    observed_status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    explanation:
+                      type: string
+                    assessment_id:
+                      type: string
+                      format: uuid
+                    selectable:
+                      type: boolean
+                    public_effect:
+                      type: string
+                      enum:
+                        - unchanged
+                        - issue
+                        - restore
+                        - regrade
+                        - degrade
+                        - revoke
+                    grace_deadline:
+                      type:
+                        - string
+                        - "null"
+                      format: date-time
+                  required:
+                    - available
+                    - status
+                    - observed_status
+                    - explanation
+                spec:
+                  type: object
+                  properties:
+                    available:
+                      type: boolean
+                    status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    observed_status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    explanation:
+                      type: string
+                    assessment_id:
+                      type: string
+                      format: uuid
+                    selectable:
+                      type: boolean
+                    public_effect:
+                      type: string
+                      enum:
+                        - unchanged
+                        - issue
+                        - restore
+                        - regrade
+                        - degrade
+                        - revoke
+                    grace_deadline:
+                      type:
+                        - string
+                        - "null"
+                      format: date-time
+                  required:
+                    - available
+                    - status
+                    - observed_status
+                    - explanation
+                sandbox:
+                  type: object
+                  properties:
+                    available:
+                      type: boolean
+                    status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    observed_status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    explanation:
+                      type: string
+                    assessment_id:
+                      type: string
+                      format: uuid
+                    selectable:
+                      type: boolean
+                    public_effect:
+                      type: string
+                      enum:
+                        - unchanged
+                        - issue
+                        - restore
+                        - regrade
+                        - degrade
+                        - revoke
+                    grace_deadline:
+                      type:
+                        - string
+                        - "null"
+                      format: date-time
+                  required:
+                    - available
+                    - status
+                    - observed_status
+                    - explanation
+              required:
+                - legacy
+                - spec
+                - sandbox
+            scope:
+              type: string
+              enum:
+                - agent
+            evidence:
+              type: object
+              properties:
+                run_complete:
+                  type: boolean
+                bundle_evidence_present:
+                  type: boolean
+                selected_storyboard_count:
+                  type: integer
+                  minimum: 0
+                controller_gap_phase_count:
+                  type: integer
+                  minimum: 0
+                observed_failure_count:
+                  type: integer
+                  minimum: 0
+                flat_failure_count:
+                  type: integer
+                  minimum: 0
+                unattributed_failure_count:
+                  type: integer
+                  minimum: 0
+                sandbox_unresolved_bundle_count:
+                  type: integer
+                  minimum: 0
+              required:
+                - run_complete
+                - bundle_evidence_present
+                - selected_storyboard_count
+                - controller_gap_phase_count
+                - observed_failure_count
+                - flat_failure_count
+                - unattributed_failure_count
+                - sandbox_unresolved_bundle_count
+          required:
+            - availability
+            - unavailable_reason
+            - selected_profile
+            - selection_enabled
+            - compliance_bundle_version
+            - profiles
+            - scope
+        - type: object
+          properties:
+            role:
+              $ref: "#/components/schemas/BadgeRole"
+            adcp_version:
+              type: string
+            availability:
+              type: string
+              enum:
+                - current
+                - stale
+                - pending
+                - temporarily_unavailable
+            unavailable_reason:
+              type:
+                - string
+                - "null"
+            selected_profile:
+              type: string
+              enum:
+                - legacy
+                - spec
+            selection_enabled:
+              type: boolean
+            selection_revision:
+              type: integer
+              minimum: 0
+            first_failing_spec_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+            legacy_selection_allowed_until:
+              type:
+                - string
+                - "null"
+              format: date-time
+            source_run_id:
+              type: string
+              format: uuid
+            evaluator_policy_version:
+              type: string
+            requested_compliance_target:
+              type:
+                - string
+                - "null"
+            compliance_bundle_version:
+              type: string
+            assessed_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+            source_tested_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+            stale:
+              type: boolean
+            incomplete:
+              type: boolean
+            public_impact:
+              type: string
+            profiles:
+              type:
+                - object
+                - "null"
+              properties:
+                legacy:
+                  type: object
+                  properties:
+                    available:
+                      type: boolean
+                    status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    observed_status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    explanation:
+                      type: string
+                    assessment_id:
+                      type: string
+                      format: uuid
+                    selectable:
+                      type: boolean
+                    public_effect:
+                      type: string
+                      enum:
+                        - unchanged
+                        - issue
+                        - restore
+                        - regrade
+                        - degrade
+                        - revoke
+                    grace_deadline:
+                      type:
+                        - string
+                        - "null"
+                      format: date-time
+                  required:
+                    - available
+                    - status
+                    - observed_status
+                    - explanation
+                spec:
+                  type: object
+                  properties:
+                    available:
+                      type: boolean
+                    status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    observed_status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    explanation:
+                      type: string
+                    assessment_id:
+                      type: string
+                      format: uuid
+                    selectable:
+                      type: boolean
+                    public_effect:
+                      type: string
+                      enum:
+                        - unchanged
+                        - issue
+                        - restore
+                        - regrade
+                        - degrade
+                        - revoke
+                    grace_deadline:
+                      type:
+                        - string
+                        - "null"
+                      format: date-time
+                  required:
+                    - available
+                    - status
+                    - observed_status
+                    - explanation
+                sandbox:
+                  type: object
+                  properties:
+                    available:
+                      type: boolean
+                    status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    observed_status:
+                      type:
+                        - string
+                        - "null"
+                      enum:
+                        - passing
+                        - partial
+                        - failing
+                        - null
+                    explanation:
+                      type: string
+                    assessment_id:
+                      type: string
+                      format: uuid
+                    selectable:
+                      type: boolean
+                    public_effect:
+                      type: string
+                      enum:
+                        - unchanged
+                        - issue
+                        - restore
+                        - regrade
+                        - degrade
+                        - revoke
+                    grace_deadline:
+                      type:
+                        - string
+                        - "null"
+                      format: date-time
+                  required:
+                    - available
+                    - status
+                    - observed_status
+                    - explanation
+              required:
+                - legacy
+                - spec
+                - sandbox
+            scope:
+              type: string
+              enum:
+                - badge
+            evidence:
+              type: object
+              properties:
+                specialisms:
+                  type: array
+                  items:
+                    type: string
+                relevant_bundle_count:
+                  type: integer
+                  minimum: 0
+                relevant_bundle_ids:
+                  type: array
+                  items:
+                    type: string
+                failing_bundle_count:
+                  type: integer
+                  minimum: 0
+                incomplete_bundle_count:
+                  type: integer
+                  minimum: 0
+                relevant_failure_count:
+                  type: integer
+                  minimum: 0
+                missing_universal_bundle:
+                  type: boolean
+                missing_protocol_bundle:
+                  type: boolean
+                missing_specialism_bundles:
+                  type: array
+                  items:
+                    type: string
+                evaluator:
+                  type: string
+              required:
+                - specialisms
+                - relevant_bundle_count
+                - relevant_bundle_ids
+                - failing_bundle_count
+                - incomplete_bundle_count
+                - relevant_failure_count
+                - missing_universal_bundle
+                - missing_protocol_bundle
+                - missing_specialism_bundles
+                - evaluator
+          required:
+            - role
+            - adcp_version
+            - availability
+            - unavailable_reason
+            - selected_profile
+            - selection_enabled
+            - source_run_id
+            - evaluator_policy_version
+            - compliance_bundle_version
+            - profiles
+            - scope
+            - evidence
     AgentVerification:
       type: object
       properties:
@@ -4680,8 +5483,18 @@ components:
     ComplianceRun:
       type: object
       properties:
+        provenance:
+          $ref: "#/components/schemas/ComplianceRunProvenance"
         id:
           type: string
+        completeness:
+          type: string
+          enum:
+            - complete
+            - timed_out
+            - not_completed
+        is_authoritative:
+          type: boolean
         requested_compliance_target:
           type:
             - string
@@ -5167,9 +5980,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MemberAgentVisibilityWarning"
-        org_auto_created:
-          type: boolean
-          description: "Set to `true` when this `POST` was the caller's first interaction with the registry and the server auto-created the organization (display name derived from the user's email domain for corporate emails, or `<First Last>'s Workspace` for free-email providers). Combined with `profile_auto_created`, this is the one-call storefront experience: a third-party app holding only an OAuth token gets the org, profile, and registered agent in a single request."
         profile_auto_created:
           type: boolean
           description: "Set to `true` when this `POST` was the first agent registration on the caller's organization and the server auto-created a private member profile (display name = organization name, `is_public: false`). Absent on subsequent calls and on update-in-place. Surfaced so storefront-style integrations can show a \"we set up your profile\" hint without needing to detect the prior 404 → bootstrap → retry shape."
@@ -7889,7 +8699,7 @@ paths:
                   - error
                   - retry_after
         "503":
-          description: Publisher crawl is temporarily busy
+          description: Publisher crawl is temporarily busy, or administrator authorization could not be checked
           headers:
             Retry-After:
               schema:
@@ -7900,21 +8710,33 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  code:
-                    type: string
-                    enum:
-                      - publisher_crawl_busy
-                  retry_after:
-                    type: integer
-                    description: Seconds to wait before retrying
-                required:
-                  - error
-                  - code
-                  - retry_after
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                        enum:
+                          - admin_authorization_unavailable
+                      message:
+                        type: string
+                    required:
+                      - error
+                      - message
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - publisher_crawl_busy
+                      retry_after:
+                        type: integer
+                        description: Seconds to wait before retrying
+                    required:
+                      - error
+                      - code
+                      - retry_after
   /api/registry/brand/{domain}/force-crawl:
     post:
       operationId: forceBrandCrawl
@@ -8057,6 +8879,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Administrator authorization could not be checked
+          headers:
+            Retry-After:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - admin_authorization_unavailable
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/registry/publisher/authorization:
     get:
       operationId: lookupPublisherAgentAuthorization
@@ -8232,6 +9075,7 @@ paths:
                 collection_id:
                   type: string
                   minLength: 1
+                  maxLength: 256
                   description: Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals).
               required:
                 - owner_domain
@@ -8245,6 +9089,14 @@ paths:
               schema:
                 type: object
                 properties:
+                  semantics_version:
+                    type: string
+                    enum:
+                      - "1"
+                    description: Canonical supply-path evaluator semantics; pinned by the shared supply-path golden vectors.
+                  resolved_collection_id:
+                    type: string
+                    description: Concrete collection chosen for the complete path, including domain-level inquiries.
                   state:
                     type: string
                     enum:
@@ -8342,6 +9194,24 @@ paths:
                   sources:
                     type: object
                     properties:
+                      owner_fetched_at:
+                        type:
+                          - string
+                          - "null"
+                        format: date-time
+                      host_fetched_at:
+                        type:
+                          - string
+                          - "null"
+                        format: date-time
+                      owner_resolved_url:
+                        type:
+                          - string
+                          - "null"
+                      host_resolved_url:
+                        type:
+                          - string
+                          - "null"
                       owner_adagents_url:
                         type: string
                       host_adagents_url:
@@ -8350,12 +9220,17 @@ paths:
                         type: boolean
                         description: "true: manifests came from the registry's crawl cache. Re-derive from the URLs above for enforcement."
                     required:
+                      - owner_fetched_at
+                      - host_fetched_at
+                      - owner_resolved_url
+                      - host_resolved_url
                       - owner_adagents_url
                       - host_adagents_url
                       - cached
                   checked_at:
                     type: string
                 required:
+                  - semantics_version
                   - state
                   - legs
                   - owner_domain
@@ -10829,7 +11704,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "503":
-          description: Crawl status is temporarily unavailable
+          description: Crawl status or administrator authorization is temporarily unavailable
           headers:
             Retry-After:
               schema:
@@ -10840,20 +11715,32 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  code:
-                    type: string
-                    enum:
-                      - crawl_status_unavailable
-                  retry_after:
-                    type: integer
-                required:
-                  - error
-                  - code
-                  - retry_after
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                        enum:
+                          - admin_authorization_unavailable
+                      message:
+                        type: string
+                    required:
+                      - error
+                      - message
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - crawl_status_unavailable
+                      retry_after:
+                        type: integer
+                    required:
+                      - error
+                      - code
+                      - retry_after
   /api/registry/manager-revalidation-request:
     post:
       operationId: requestManagerRevalidation
@@ -11001,7 +11888,7 @@ paths:
       operationId: getAgentCompliance
       summary: Get agent compliance detail
       description: |-
-        Returns detailed compliance status for a single agent, including track-level results, storyboard counts, and timestamps.
+        Returns detailed compliance status for a single agent, including track-level results, storyboard counts, timestamps, and owner-only grading comparisons. Exact badge-scope rows compare Legacy and Strict Spec grading for one role/version; Sandbox remains preview-only. Reading never contacts the agent.
 
         If the agent has opted out of compliance monitoring, returns a minimal response with `status: opted_out`.
       tags:
@@ -11024,6 +11911,136 @@ paths:
                 $ref: "#/components/schemas/AgentComplianceDetail"
         "400":
           description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/grading-profile:
+    put:
+      operationId: selectAgentGradingProfile
+      summary: Select an exact badge grading profile
+      description: Selects Legacy or Strict Spec grading for one exact agent role and AdCP version. Requires a current immutable assessment, organization owner/admin authorization, revision compare-and-swap, and an idempotency key. Sandbox is preview-only. The selection itself does not contact the agent.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  minLength: 1
+                role:
+                  $ref: "#/components/schemas/BadgeRole"
+                adcp_version:
+                  type: string
+                  pattern: ^[1-9][0-9]{0,3}\.[0-9]{1,3}$
+                selected_profile:
+                  type: string
+                  enum:
+                    - legacy
+                    - spec
+                assessment_id:
+                  type: string
+                  format: uuid
+                expected_revision:
+                  type: integer
+                  minimum: 0
+                acknowledge_public_impact:
+                  type: boolean
+                idempotency_key:
+                  type: string
+                  format: uuid
+                admin_override_reason:
+                  type: string
+                  minLength: 1
+              required:
+                - organization_id
+                - role
+                - adcp_version
+                - selected_profile
+                - assessment_id
+                - expected_revision
+                - idempotency_key
+      responses:
+        "200":
+          description: Selection committed and audited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  selected_profile:
+                    type: string
+                    enum:
+                      - legacy
+                      - spec
+                  revision:
+                    type: string
+                  public_effect:
+                    type: string
+                    enum:
+                      - unchanged
+                      - issue
+                      - restore
+                      - regrade
+                      - degrade
+                      - revoke
+                  replayed:
+                    type: boolean
+                  source_run_id:
+                    type: string
+                    format: uuid
+                  token_refresh:
+                    type: string
+                    enum:
+                      - completed
+                      - scheduled
+                required:
+                  - selected_profile
+                  - revision
+                  - public_effect
+                  - replayed
+                  - source_run_id
+                  - token_refresh
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Organization owner/admin required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Stale assessment/revision, disabled selection, or impact confirmation required
           content:
             application/json:
               schema:
@@ -11198,6 +12215,11 @@ paths:
                     $ref: "#/components/schemas/BadgeRole"
                   verified:
                     type: boolean
+                  grading_profile:
+                    type: string
+                    enum:
+                      - legacy
+                      - spec
                   adcp_version:
                     type: string
                   badge_svg_url:
@@ -11212,6 +12234,7 @@ paths:
                   - agent_url
                   - role
                   - verified
+                  - grading_profile
                   - badge_svg_url
                   - registry_url
                   - html
@@ -11369,6 +12392,11 @@ paths:
                     $ref: "#/components/schemas/BadgeRole"
                   verified:
                     type: boolean
+                  grading_profile:
+                    type: string
+                    enum:
+                      - legacy
+                      - spec
                   adcp_version:
                     type: string
                   badge_svg_url:
@@ -11383,6 +12411,7 @@ paths:
                   - agent_url
                   - role
                   - verified
+                  - grading_profile
                   - adcp_version
                   - badge_svg_url
                   - registry_url
@@ -11943,7 +12972,7 @@ paths:
     post:
       operationId: requeueAgentForHeartbeat
       summary: Requeue agent for compliance heartbeat
-      description: Clears the agent's last_checked_at timestamp so it is picked up on the next heartbeat cycle (within ~1 hour). This is queued-async; it does not run the compliance suite synchronously or change the current verdict until the heartbeat completes. Requires authentication and ownership.
+      description: Clears the agent's next scheduled check time so it is picked up on the next heartbeat cycle (within ~1 hour). This is queued-async; it does not run the compliance suite synchronously or change the current verdict until the heartbeat completes. Requires authentication and ownership.
       tags:
         - Agent Compliance
       security:
@@ -12048,6 +13077,31 @@ paths:
                     type:
                       - string
                       - "null"
+                  completeness:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - complete
+                      - timed_out
+                      - not_completed
+                      - null
+                  is_authoritative:
+                    type: boolean
+                  provenance:
+                    $ref: "#/components/schemas/ComplianceRunProvenance"
+                  storyboard_statuses:
+                    type: array
+                    items: {}
+                  observations:
+                    type: array
+                    items: {}
+                  diagnostics_visibility:
+                    type: string
+                    enum:
+                      - owner_or_operator
+                  diagnostics_note:
+                    type: string
                   count:
                     type: integer
                   diagnostics:
@@ -12057,6 +13111,13 @@ paths:
                 required:
                   - agent_url
                   - run_id
+                  - completeness
+                  - is_authoritative
+                  - provenance
+                  - storyboard_statuses
+                  - observations
+                  - diagnostics_visibility
+                  - diagnostics_note
                   - count
                   - diagnostics
         "400":
@@ -12171,7 +13232,7 @@ paths:
 
         **Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.
 
-        **Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.
+        **Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`. Human submissions are temporarily fenced with HTTP 503 until durable authorization provenance is supported; static admin API key submissions remain available.
 
         **Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.
       tags:
@@ -12253,7 +13314,18 @@ paths:
                     properties:
                       ran:
                         type: boolean
-                        description: True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed.
+                        description: True if a compliance run was recorded. Check completeness and is_authoritative before treating its results as the public grade.
+                      completeness:
+                        type: string
+                        enum:
+                          - complete
+                          - timed_out
+                          - not_completed
+                      is_authoritative:
+                        type: boolean
+                        description: Only authoritative runs update the public grade and badge state. Incomplete runs preserve the previous complete assessment.
+                      provenance:
+                        $ref: "#/components/schemas/ComplianceRunProvenance"
                       run_id:
                         type: string
                         description: Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence.
@@ -12411,11 +13483,56 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "503":
-          description: Durable refresh queue unavailable or at capacity
+          description: Refresh queue or authorization unavailable. Human submissions are fenced with refresh_authorization_provenance_required until durable authorization provenance is supported; this response is non-retryable and carries no ETA. Static admin API key submissions remain supported.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                        enum:
+                          - admin_authorization_unavailable
+                      message:
+                        type: string
+                    required:
+                      - error
+                      - message
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - refresh_authorization_provenance_required
+                      retryable:
+                        type: boolean
+                        enum:
+                          - false
+                      scope:
+                        type: string
+                        enum:
+                          - platform
+                      applies_to:
+                        type: string
+                        enum:
+                          - human_session
+                      alternative_action:
+                        type: string
+                        enum:
+                          - monitoring_requeue
+                      alternative_description:
+                        type: string
+                    required:
+                      - error
+                      - code
+                      - retryable
+                      - scope
+                      - applies_to
+                      - alternative_action
+                      - alternative_description
   /api/registry/agents/{encodedUrl}/refreshes/{operationId}:
     get:
       operationId: getAgentRefreshOperation
@@ -12556,11 +13673,23 @@ paths:
                 required:
                   - error
         "503":
-          description: Refresh status temporarily unavailable
+          description: Refresh status or administrator authorization temporarily unavailable
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                        enum:
+                          - admin_authorization_unavailable
+                      message:
+                        type: string
+                    required:
+                      - error
+                      - message
+                  - $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/auth-status:
     get:
       operationId: getAgentAuthStatus
@@ -13782,6 +14911,16 @@ paths:
                   run_id:
                     type: string
                     description: Compliance run id written by this owner-triggered storyboard run.
+                  completeness:
+                    type: string
+                    enum:
+                      - complete
+                      - timed_out
+                      - not_completed
+                  is_authoritative:
+                    type: boolean
+                  provenance:
+                    $ref: "#/components/schemas/ComplianceRunProvenance"
                   storyboard_status:
                     type: object
                     properties:
@@ -13883,6 +15022,9 @@ paths:
                   - badge_eligible
                   - badge_eligible_adcp_versions
                   - run_id
+                  - completeness
+                  - is_authoritative
+                  - provenance
                   - storyboard_status
                   - diagnostics
                   - total_duration_ms
@@ -14055,10 +15197,10 @@ paths:
       parameters:
         - schema:
             type: string
-            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            description: WorkOS organization id to act on. Human sessions and user JWTs must select it explicitly. WorkOS API keys may omit it because their validated credential already carries an exact organization scope; when supplied with an API key it must match that scope.
             example: org_01HXZAB123
           required: false
-          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          description: WorkOS organization id to act on. Human sessions and user JWTs must select it explicitly. WorkOS API keys may omit it because their validated credential already carries an exact organization scope; when supplied with an API key it must match that scope.
           name: org
           in: query
       responses:
@@ -14069,7 +15211,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberAgentListResponse"
         "400":
-          description: No organization associated with this account
+          description: A human credential did not select an organization explicitly.
           content:
             application/json:
               schema:
@@ -14092,6 +15234,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: The API key has a WorkOS organization scope, but the existing organization has not been provisioned locally. Reconcile it; do not create a duplicate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       operationId: registerMemberAgent
       summary: Register an agent
@@ -14100,13 +15248,7 @@ paths:
 
         Idempotent on `url`: re-posting the same `url` updates the entry in place rather than creating a duplicate. New entries return `201`; updates return `200`.
 
-        **True one-call storefront experience.** A third-party app holding only a user's OAuth token can `POST /api/me/agents` once and have the entire bootstrap chain materialize:
-
-        - If the caller has zero org memberships, the server auto-creates an organization (corporate or personal workspace based on the user's email domain) and the response includes `org_auto_created: true`.
-
-        - If the caller's org has no member profile, the server auto-creates a private profile (display name = organization name, `is_public: false`) and the response includes `profile_auto_created: true`.
-
-        Both auto-bootstraps are best-effort fallbacks. To customize org name / company_type / revenue_tier, or to control profile slug / brand identity / tagline, call `POST /api/organizations` and `POST /api/me/member-profile` explicitly before registering the agent. Tier transitions never happen via this path — go through the billing flow.
+        The organization must already exist. Human credentials select it explicitly with `?org=`; an API key uses the exact organization scope returned by WorkOS. The endpoint never creates an organization. If the existing organization has no member profile, the server creates a private profile and includes `profile_auto_created: true`.
 
         `type` is required and declared by the caller — the server does not infer it. Server-side smuggle protection still cross-checks the declared type against the agent's capability snapshot when one exists; if the snapshot contradicts the declaration without classifying it, the stored value is `unknown` and the dashboard surfaces the conflict for the owner to resolve.
 
@@ -14119,10 +15261,10 @@ paths:
       parameters:
         - schema:
             type: string
-            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            description: WorkOS organization id to act on. Human sessions and user JWTs must select it explicitly. WorkOS API keys may omit it because their validated credential already carries an exact organization scope; when supplied with an API key it must match that scope.
             example: org_01HXZAB123
           required: false
-          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          description: WorkOS organization id to act on. Human sessions and user JWTs must select it explicitly. WorkOS API keys may omit it because their validated credential already carries an exact organization scope; when supplied with an API key it must match that scope.
           name: org
           in: query
       requestBody:
@@ -14144,7 +15286,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberAgentResponse"
         "400":
-          description: Missing or invalid `url`, missing/invalid `type`, or the caller has memberships in other orgs but no primary org set — pass `?org=<id>` to target one explicitly. (Fresh users with no memberships at all hit the org auto-bootstrap path and do not see this error.)
+          description: Missing or invalid `url`, or missing/invalid `type`.
           content:
             application/json:
               schema:
@@ -14156,13 +15298,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: "`?org=` was supplied but the caller is not a member of that organization."
+          description: A human credential omitted `?org=`, the caller is not a member of the selected organization, or the selector conflicts with the API key scope.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
           description: Auto-bootstrap could not run (e.g. the organization has no name yet). Call `POST /api/me/member-profile` to create a profile explicitly, then retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The API key has a WorkOS organization scope, but the existing organization has not been provisioned locally. Reconcile it; do not create a duplicate.
           content:
             application/json:
               schema:
@@ -14193,10 +15341,10 @@ paths:
           in: path
         - schema:
             type: string
-            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            description: WorkOS organization id to act on. Human sessions and user JWTs must select it explicitly. WorkOS API keys may omit it because their validated credential already carries an exact organization scope; when supplied with an API key it must match that scope.
             example: org_01HXZAB123
           required: false
-          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          description: WorkOS organization id to act on. Human sessions and user JWTs must select it explicitly. WorkOS API keys may omit it because their validated credential already carries an exact organization scope; when supplied with an API key it must match that scope.
           name: org
           in: query
       requestBody:
@@ -14257,10 +15405,10 @@ paths:
           in: path
         - schema:
             type: string
-            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            description: WorkOS organization id to act on. Human sessions and user JWTs must select it explicitly. WorkOS API keys may omit it because their validated credential already carries an exact organization scope; when supplied with an API key it must match that scope.
             example: org_01HXZAB123
           required: false
-          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          description: WorkOS organization id to act on. Human sessions and user JWTs must select it explicitly. WorkOS API keys may omit it because their validated credential already carries an exact organization scope; when supplied with an API key it must match that scope.
           name: org
           in: query
       responses:

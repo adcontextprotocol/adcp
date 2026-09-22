@@ -53,7 +53,7 @@ import {
 import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
-import { supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability } from './types.js';
+import { supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -73,6 +73,22 @@ import {
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { validateSourceSchema } from './source-schema.js';
+import {
+  TRAINING_AGGREGATE_FREQUENCY_CAPPING,
+  TRAINING_PACKAGE_FREQUENCY_CAPPING,
+  changedFrequencyCapFields,
+  mediaBuyFrequencyCapChangeError,
+  mediaBuyFrequencyCapError,
+  mediaBuyFrequencyCapIsMutable,
+  mediaBuyFrequencyCapSupport,
+  mediaBuySupportRequirementMatches,
+  packageFrequencyCapChangeError,
+  packageFrequencyCapError,
+  packageFrequencyCapIsMutable,
+  packageFrequencyCapRequirementMatches,
+  packageFrequencyCapSupport,
+  productExecutesMediaBuyFrequencyCap,
+} from './frequency-caps.js';
 import {
   getSharedAccountCreative,
   listSharedAccountCreatives,
@@ -194,7 +210,25 @@ type GetProductsReadDirectives = {
   staleDirective?: { tool: string; upstreamName?: string; cacheAgeSeconds?: number; createdAt: string };
 };
 type PricingOption = Product['pricing_options'][number];
-type CompactProductPurchase = ProposalPurchase & {
+type CompactProductPurchase = Omit<
+  ProposalPurchase,
+  | 'format_option_refs'
+  | 'catalog_ids'
+  | 'budget'
+  | 'daily_budget_cap'
+  | 'min_spend_target'
+  | 'pacing'
+  | 'bidding'
+  | 'targeting_overlay'
+  | 'optimization_goals'
+  | 'audience_evidence_requirements'
+  | 'audience_evidence_pins'
+  | 'agency_estimate_number'
+  | 'measurement_terms'
+  | 'performance_standards'
+  | 'context'
+  | 'ext'
+> & {
   budget?: number;
   format_option_refs?: unknown[];
   catalog_ids?: string[];
@@ -242,6 +276,8 @@ type ControlMediaBuyRequest = ToolArgs & {
   canceled?: true;
   cancellation_reason?: string;
   packages?: Array<Record<string, unknown>>;
+  /** Replace the shared MediaBuy frequency cap; null removes it. */
+  frequency_cap?: Record<string, unknown> | null;
 };
 type PricingStructure = 'fixed' | 'auction' | 'contingent';
 type PricingOptionView = {
@@ -2980,6 +3016,7 @@ import {
   emitAccountChangeRecordedWebhook,
   recordAccountChange,
   sandboxAccountRefForId,
+  accountRefForId,
   resolveAccountIdForRef,
   resolveAccountCurrencyForRef,
   resolveAccountBrandForRef,
@@ -3826,8 +3863,24 @@ function controllerFixtureSessionKey(
       // owns that sandbox account. Keep the opaque identity for projection:
       // controller fixture writes are keyed by account_id, and resolving it
       // to a natural ref here would fork reads into a different partition.
-      if (!sandboxAccountRefForId(account.account_id, ctx.principal)) return undefined;
-      fixtureAccount = { account_id: account.account_id };
+      if (sandboxAccountRefForId(account.account_id, ctx.principal)) {
+        fixtureAccount = { account_id: account.account_id };
+      } else {
+        // A synced (non-sandbox) account addressed by id under public static
+        // credentials names the same brand-owned demo partition that its
+        // natural reference would: storyboards sync an account, then address
+        // raw negative-path steps by `$context.account_id`. Authenticated
+        // principals keep the sandbox requirement above.
+        const synced = ctx.principal?.startsWith('static:')
+          ? accountRefForId(account.account_id, ctx.principal)
+          : undefined;
+        if (!synced?.brand) return undefined;
+        fixtureAccount = {
+          brand: synced.brand,
+          operator: synced.brand.domain,
+          sandbox: true,
+        };
+      }
     }
   } catch {
     return undefined;
@@ -4704,12 +4757,106 @@ function availableActionsForMediaBuy(mb: MediaBuyState, status: string, servedAd
         task: action.task ?? canonicalTaskForMediaBuyAction(action.action),
       }),
     }));
+  const withFrequencyCaps = withFrequencyCapActions(
+    mb,
+    status,
+    canonical,
+    changeTermDerived !== undefined,
+    servedAdcpVersion,
+  );
   if (
     changeTermDerived !== undefined
     || !hasLatentMediaBuyPause(mb, status)
-    || canonical.some(action => action.action === 'resume')
-  ) return canonical;
-  return [{ task: 'control_media_buy', action: 'resume', mode: 'self_serve' }, ...canonical];
+    || withFrequencyCaps.some(action => action.action === 'resume')
+  ) return withFrequencyCaps;
+  return [{ task: 'control_media_buy', action: 'resume', mode: 'self_serve' }, ...withFrequencyCaps];
+}
+
+/**
+ * Frequency-cap actions derive from the product capability snapshots taken
+ * when each package was created. `update_frequency_caps` names the exact
+ * eligible packages through `applicable_package_ids` when the buy is
+ * heterogeneous (a product with `mutable_fields: []` is create-only);
+ * omission means every package. `update_media_buy_frequency_cap` appears only
+ * when every active package's product participates in the shared counter and
+ * can change it after creation. Accepted change_terms remain the complete
+ * authority ceiling: negotiated buys are annotated, never widened.
+ */
+function withFrequencyCapActions(
+  mb: MediaBuyState,
+  status: string,
+  actions: MediaBuyAvailableActionState[],
+  negotiatedCeiling: boolean,
+  servedAdcpVersion?: string,
+): MediaBuyAvailableActionState[] {
+  if (!NON_TERMINAL_MEDIA_BUY_STATUSES.has(status)) return actions;
+  const activePackages = mb.packages.filter(pkg => !pkg.canceled);
+  if (activePackages.length === 0) return actions;
+  const eligiblePackageIds = activePackages
+    .filter(pkg => pkg.frequencyCapEligibility?.packageMutable ?? true)
+    .map(pkg => pkg.packageId);
+  const heterogeneous = eligiblePackageIds.length > 0 && eligiblePackageIds.length < activePackages.length;
+  const rootMutable = activePackages.every(pkg => pkg.frequencyCapEligibility?.mediaBuyMutable === true);
+  const result = actions.flatMap(action => {
+    if (action.action !== 'update_frequency_caps') return [action];
+    if (eligiblePackageIds.length === 0) return [];
+    const { applicable_package_ids: _previous, ...rest } = action;
+    return [heterogeneous ? { ...rest, applicable_package_ids: eligiblePackageIds } : rest];
+  });
+  if (negotiatedCeiling || !supportsLifecycleSplitCompatibility(servedAdcpVersion)) return result;
+  if (eligiblePackageIds.length > 0 && !result.some(action => action.action === 'update_frequency_caps')) {
+    result.push({
+      task: 'control_media_buy',
+      action: 'update_frequency_caps',
+      mode: 'self_serve',
+      ...(heterogeneous && { applicable_package_ids: eligiblePackageIds }),
+    });
+  }
+  if (rootMutable && !result.some(action => action.action === 'update_media_buy_frequency_cap')) {
+    result.push({ task: 'control_media_buy', action: 'update_media_buy_frequency_cap', mode: 'self_serve' });
+  }
+  return result;
+}
+
+/** Capability snapshot stored on a package so read surfaces can derive
+ * frequency-cap actions without the (possibly fixture-scoped) catalog. A
+ * product that declares an `allowed_actions` template narrows eligibility to
+ * the actions it lists. */
+function packageFrequencyCapEligibilityFor(product: Product | undefined): PackageFrequencyCapEligibility {
+  const declaredActions = Array.isArray((product as unknown as { allowed_actions?: unknown } | undefined)?.allowed_actions)
+    ? normalizeProductAllowedActions(product)
+    : undefined;
+  const templateAllows = (action: string): boolean => (
+    declaredActions === undefined || declaredActions.some(entry => entry.action === action)
+  );
+  return {
+    packageMutable: packageFrequencyCapIsMutable(product) && templateAllows('update_frequency_caps'),
+    mediaBuyParticipant: mediaBuyFrequencyCapSupport(product).participates,
+    mediaBuyMutable: mediaBuyFrequencyCapIsMutable(product) && templateAllows('update_media_buy_frequency_cap'),
+  };
+}
+
+/** Tightest max-impression ceiling the seller enforces on this buy: the root
+ * cap and every active package cap combine with AND semantics. */
+function enforcedFrequencyCapCeiling(
+  mb: MediaBuyState,
+  packages: readonly PackageState[],
+): { maxImpressions: number; per?: string } | undefined {
+  const candidates: Array<Record<string, unknown>> = [
+    ...(isRecord(mb.frequencyCap) ? [mb.frequencyCap] : []),
+    ...packages.flatMap(pkg => (isRecord(pkg.targeting?.frequency_cap) ? [pkg.targeting.frequency_cap] : [])),
+  ];
+  let ceiling: { maxImpressions: number; per?: string } | undefined;
+  for (const cap of candidates) {
+    if (typeof cap.max_impressions !== 'number' || cap.max_impressions < 1) continue;
+    if (!ceiling || cap.max_impressions < ceiling.maxImpressions) {
+      ceiling = {
+        maxImpressions: cap.max_impressions,
+        ...(typeof cap.per === 'string' && { per: cap.per }),
+      };
+    }
+  }
+  return ceiling;
 }
 
 function canonicalTaskForMediaBuyAction(action: string): MediaBuyAvailableActionState['task'] {
@@ -4738,6 +4885,7 @@ type AttemptedMediaBuyAction =
   | 'update_pacing'
   | 'update_bidding'
   | 'update_frequency_caps'
+  | 'update_media_buy_frequency_cap'
   | 'update_catalog_assignments'
   | 'update_keywords'
   | 'update_optimization_goals'
@@ -4851,6 +4999,9 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: MediaBuyMutationRequest
   if (Object.hasOwn(aggregateControl, 'budget_cap_timezone')) addAction('update_pacing');
   if (Object.hasOwn(aggregateControl, 'pacing')) addAction('update_pacing');
   if (Object.hasOwn(aggregateControl, 'bidding')) addAction('update_bidding');
+  if (Object.hasOwn(aggregateControl, 'frequency_cap') && aggregateControl.frequency_cap !== undefined) {
+    addAction('update_media_buy_frequency_cap');
+  }
   if (
     Object.hasOwn(aggregateControl, 'reporting_webhook')
     || Object.hasOwn(aggregateControl, 'push_notification_config')
@@ -4908,7 +5059,17 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: MediaBuyMutationRequest
           if (nextPackageEnd < currentPackageEnd) addAction('shorten_flight', pkgId);
         }
       }
-      if (update.targeting_overlay || update.targeting) addAction('update_targeting', pkgId);
+      const requestedOverlay = update.targeting_overlay ?? update.targeting;
+      if (requestedOverlay && typeof requestedOverlay === 'object') {
+        // update_frequency_caps owns packages[].targeting_overlay.frequency_cap;
+        // update_targeting covers every other dimension. A restated overlay
+        // that changes only the cap exercises the cap right alone, and an
+        // unchanged cap inside a broader targeting change exercises neither.
+        const { frequency_cap: requestedCap, ...requestedRest } = requestedOverlay as Record<string, unknown>;
+        const { frequency_cap: currentCap, ...currentRest } = (pkg.targeting ?? {}) as Record<string, unknown>;
+        if (canonicalize(requestedRest) !== canonicalize(currentRest)) addAction('update_targeting', pkgId);
+        if (changedFrequencyCapFields(currentCap, requestedCap).length > 0) addAction('update_frequency_caps', pkgId);
+      }
       if (update.keyword_targets_add || update.keyword_targets_remove || update.negative_keywords_add || update.negative_keywords_remove) addAction('update_keywords', pkgId);
       if (Object.hasOwn(update, 'pacing')) addAction('update_pacing', pkgId);
       if (Object.hasOwn(update, 'bidding')) addAction('update_bidding', pkgId);
@@ -4928,11 +5089,6 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: MediaBuyMutationRequest
       }
       if (Object.hasOwn(update, 'min_spend_target')) addAction('update_spend_target', pkgId);
       if (Object.hasOwn(update, 'paused')) addAction(update.paused ? 'pause' : 'resume', pkgId);
-      if (
-        update.targeting_overlay
-        && typeof update.targeting_overlay === 'object'
-        && 'frequency_cap' in (update.targeting_overlay as Record<string, unknown>)
-      ) addAction('update_frequency_caps', pkgId);
       if (update.creative_assignments) addAction('update_creative_assignments', pkgId);
       if (update.creatives) addAction('replace_creative', pkgId);
     }
@@ -4971,6 +5127,7 @@ function legacyUpdateChangesCommercialEnvelope(req: UpdateMediaBuyArgs): boolean
     'budget_allocation',
     'pacing',
     'bidding',
+    'frequency_cap',
     'invoice_recipient',
     'purchase_order_ref',
     'agency_estimate_number',
@@ -5188,6 +5345,114 @@ function rejectUnavailableAction(
     return { kind: 'seller_managed_control', actions: sellerManagedActions };
   }
   return deferredModeMismatch;
+}
+
+/**
+ * Frequency-cap authorization and executability for one update or control
+ * request, evaluated before any mutation. ACTION_NOT_ALLOWED covers a package
+ * outside `update_frequency_caps.applicable_package_ids` and a root change the
+ * buy cannot make now. UNSUPPORTED_FEATURE covers a cap shape outside product
+ * capability, including a change to a field not listed in `mutable_fields`,
+ * and a resulting package mix that cannot share the root cap. The root check
+ * applies to the state the request would produce, so `frequency_cap: null`
+ * combined with `new_packages` adds those packages uncapped.
+ */
+function frequencyCapMutationRejection(
+  mb: MediaBuyState,
+  req: UpdateMediaBuyArgs,
+  status: string,
+  productMap: Map<string, Product>,
+  options: { acceptedProposalExecution?: boolean },
+  servedAdcpVersion?: string,
+): MediaBuyActionRejection | { errors: TaskError[]; context?: unknown } | undefined {
+  const root = req as unknown as Record<string, unknown>;
+  const contextEcho = req.context !== undefined ? { context: req.context } : {};
+  const rejectUnsupported = (error: TaskError) => ({ errors: [error], ...contextEcho });
+  const activePackages = mb.packages.filter(pkg => !pkg.canceled);
+
+  // Package cap changes requested by this update.
+  const packageCapChanges: Array<{ pkg: PackageState; before: unknown; after: unknown; path: string }> = [];
+  for (const [index, rawUpdate] of (req.packages ?? []).entries()) {
+    const update = rawUpdate as PackageUpdateExt;
+    if (update.canceled === true) continue;
+    const requested = update.targeting_overlay ?? update.targeting;
+    if (!isRecord(requested)) continue;
+    const pkg = mb.packages.find(candidate => candidate.packageId === update.package_id);
+    if (!pkg || pkg.canceled) continue;
+    const before = pkg.targeting?.frequency_cap;
+    const after = requested.frequency_cap;
+    if (changedFrequencyCapFields(before, after).length === 0) continue;
+    packageCapChanges.push({ pkg, before, after, path: `packages[${index}].targeting_overlay.frequency_cap` });
+  }
+  const rootRequested = Object.hasOwn(root, 'frequency_cap') && root.frequency_cap !== undefined;
+  const resultingRootCap = rootRequested
+    ? (root.frequency_cap === null ? undefined : root.frequency_cap)
+    : mb.frequencyCap;
+  const rootChanged = rootRequested
+    && canonicalize(resultingRootCap ?? null) !== canonicalize(mb.frequencyCap ?? null);
+
+  // Authorization precedes capability: every ACTION_NOT_ALLOWED outcome is
+  // decided before any UNSUPPORTED_FEATURE check runs.
+  if (!options.acceptedProposalExecution) {
+    const availableActions = () => availableActionsForMediaBuy(mb, status, servedAdcpVersion);
+    for (const change of packageCapChanges) {
+      if (change.pkg.frequencyCapEligibility?.packageMutable ?? true) continue;
+      return actionNotAllowedError(
+        'update_frequency_caps',
+        'not_supported_on_product',
+        availableActions(),
+        req.context,
+        servedAdcpVersion,
+      );
+    }
+    const rootMutable = activePackages.length > 0
+      && activePackages.every(pkg => pkg.frequencyCapEligibility?.mediaBuyMutable === true);
+    if (rootChanged && !rootMutable) {
+      return actionNotAllowedError(
+        'update_media_buy_frequency_cap',
+        'not_supported_on_product',
+        availableActions(),
+        req.context,
+        servedAdcpVersion,
+      );
+    }
+  }
+
+  for (const change of packageCapChanges) {
+    const product = productMap.get(change.pkg.productId);
+    const changeError = packageFrequencyCapChangeError(product, change.before, change.after, change.path);
+    if (changeError) return rejectUnsupported(changeError);
+    const shapeError = packageFrequencyCapError(product, change.after, change.path);
+    if (shapeError) return rejectUnsupported(shapeError);
+  }
+
+  // Unknown products in new_packages are reported by the package path itself
+  // (PACKAGE_NOT_FOUND); only resolvable additions join the root-cap check.
+  const additions = (req.new_packages ?? [])
+    .map((pkg, index) => ({ pkg, index }))
+    .filter(({ pkg }) => productMap.has(pkg.product_id));
+  if (isRecord(resultingRootCap) && (rootRequested || additions.length > 0)) {
+    const canceledByRequest = new Set((req.packages ?? [])
+      .filter(update => (update as PackageUpdateExt).canceled === true)
+      .map(update => update.package_id));
+    const remaining = rootRequested
+      ? activePackages
+        .filter(pkg => !canceledByRequest.has(pkg.packageId))
+        .map(pkg => ({ productId: pkg.productId, product: productMap.get(pkg.productId), field: 'frequency_cap' }))
+      : [];
+    const added = additions.map(({ pkg, index }) => ({
+      productId: pkg.product_id,
+      product: productMap.get(pkg.product_id),
+      field: `new_packages[${index}].product_id`,
+    }));
+    const rootChangeError = rootRequested
+      ? mediaBuyFrequencyCapChangeError(mb.frequencyCap, resultingRootCap, remaining, 'frequency_cap')
+      : undefined;
+    if (rootChangeError) return rejectUnsupported(rootChangeError);
+    const rootError = mediaBuyFrequencyCapError(resultingRootCap, [...remaining, ...added], 'frequency_cap');
+    if (rootError) return rejectUnsupported(rootError);
+  }
+  return undefined;
 }
 
 function durationMilliseconds(value: unknown): number | undefined {
@@ -7097,6 +7362,9 @@ function buildCanonicalCommercialTerms(
     purchases,
     start_time: startTime,
     end_time: endTime,
+    ...(isRecord(internal.__media_buy_frequency_cap) && {
+      frequency_cap: structuredClone(internal.__media_buy_frequency_cap),
+    }),
     ...(typeof recommendedBudget === 'number' && {
       total_budget: { amount: recommendedBudget, currency },
     }),
@@ -7141,7 +7409,7 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'acceptance_policy_profile_ids',
   'demographic_targeting', 'audience_activation', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
-  'sponsored_placement_types', 'is_custom', 'overlay_support', 'identity',
+  'sponsored_placement_types', 'is_custom', 'overlay_support', 'media_buy_support', 'identity',
   'targeting_resolution', 'collections', 'collection_targeting_allowed',
   'installments', 'ext',
 ]);
@@ -7209,9 +7477,30 @@ function overlaySupportContains(
   if (support.all_values === true && Array.isArray(requirement.values)) return true;
   return Object.entries(requirement).every(([field, requiredValue]) => {
     if (field === 'ext') return true;
+    // A structured package-cap requirement matches legacy frequency_cap: true
+    // or a containing frequency_cap_support after seller-wide inheritance.
+    if (field === 'frequency_cap_support') {
+      return packageFrequencyCapRequirementMatches({ overlay_support: support }, requiredValue);
+    }
     return support[field] !== undefined
       && overlaySupportContains(support[field], requiredValue, field);
   });
+}
+
+/** Concrete discovery or purchase targeting against a product's complete
+ * overlay_support record. Frequency caps resolve through either declaration
+ * form and must also fit the product's resolved constraints. */
+function concreteTargetingSupportedForProduct(
+  overlaySupport: Record<string, unknown>,
+  field: string,
+  value: unknown,
+): boolean {
+  if (field === 'frequency_cap') {
+    const product = { overlay_support: overlaySupport };
+    return packageFrequencyCapSupport(product).kind !== 'none'
+      && packageFrequencyCapError(product, value, field) === undefined;
+  }
+  return concreteTargetingSupported(field, overlaySupport[field], value);
 }
 
 function concreteTargetingSupported(field: string, support: unknown, value: unknown): boolean {
@@ -7521,7 +7810,7 @@ function resolveConfiguredPurchaseTargeting(
   if (!bound && requested) {
     const supportRecord = isRecord(support) ? support : {};
     for (const [field, requestedValue] of Object.entries(requested)) {
-      if (!concreteTargetingSupported(field, supportRecord[field], requestedValue)) {
+      if (!concreteTargetingSupportedForProduct(supportRecord, field, requestedValue)) {
         return { errorPath: `${path}.${field}` };
       }
     }
@@ -7533,9 +7822,9 @@ function resolveConfiguredPurchaseTargeting(
   const supportRecord = isRecord(support) ? support : {};
   for (const [field, requestedValue] of Object.entries(requested)) {
     if (bound[field] !== undefined) {
-      const supportAllowsAdditions = concreteTargetingSupported(
+      const supportAllowsAdditions = concreteTargetingSupportedForProduct(
+        supportRecord,
         field,
-        supportRecord[field],
         requestedValue,
       );
       const intersection = intersectBoundTargeting(
@@ -7549,7 +7838,7 @@ function resolveConfiguredPurchaseTargeting(
       resolved[field] = intersection.value;
       continue;
     }
-    if (!concreteTargetingSupported(field, supportRecord[field], requestedValue)) {
+    if (!concreteTargetingSupportedForProduct(supportRecord, field, requestedValue)) {
       return { errorPath: `${path}.${field}` };
     }
     resolved[field] = structuredClone(requestedValue);
@@ -7589,20 +7878,42 @@ function canonicalStringSet(value: unknown): string[] | undefined {
   return [...new Set(value)].sort();
 }
 
-function conflictingLegacyDiscoveryTargeting(req: GetProductsRequest): string | undefined {
-  const request = req as unknown as Record<string, unknown>;
-  const filters = isRecord(request.filters) ? request.filters : undefined;
-  const overlay = isRecord(request.targeting_overlay) ? request.targeting_overlay : undefined;
-  const legacyCountries = canonicalStringSet(filters?.countries);
-  const overlayCountries = canonicalStringSet(overlay?.geo_countries);
-  if (
-    legacyCountries
-    && overlayCountries
-    && !isDeepStrictEqual(legacyCountries, overlayCountries)
-  ) {
-    return 'filters.countries';
+/** Controller fixtures expose discrete inventory coverage separately from
+ * overlay_support. The training seller can evaluate country and metro facts;
+ * it refuses geography it cannot evaluate instead of ignoring a predicate. */
+function filterProductsByCoverage(
+  products: Product[],
+  filters: Record<string, unknown>,
+): { products: Product[]; unsupported?: string } {
+  const fields = ['countries', 'regions', 'metros', 'postal_areas', 'geo_proximity'];
+  const requested = fields.filter(field => filters[field] !== undefined);
+  if (requested.length === 0) return { products };
+  const unsupported = requested.find(field => field !== 'countries' && field !== 'metros');
+  if (unsupported) return { products: [], unsupported };
+  const coverageByProduct = new Map<Product, Record<string, unknown>>();
+  for (const product of products) {
+    const ext = (product as unknown as Record<string, unknown>).ext;
+    const training = isRecord(ext) && isRecord(ext.training) ? ext.training : undefined;
+    const coverage = training && isRecord(training.coverage) ? training.coverage : undefined;
+    for (const field of requested) {
+      if (!coverage || !Array.isArray(coverage[field])) return { products: [], unsupported: field };
+    }
+    coverageByProduct.set(product, coverage!);
   }
-  return undefined;
+  return {
+    products: products.filter(product => {
+      const coverage = coverageByProduct.get(product)!;
+      return requested.every(field => {
+        const values = filters[field];
+        if (!Array.isArray(values)) return false;
+        const inventory = coverage[field] as unknown[];
+        return values.some(value => inventory.some(area => field === 'countries'
+          ? area === value
+          : isRecord(area) && isRecord(value)
+            && area.system === value.system && area.code === value.code));
+      });
+    }),
+  };
 }
 
 /** The training seller recognizes only deliberately explicit hard-requirement
@@ -7748,7 +8059,7 @@ function concreteTargetingError(
   const inherentPlacementMatch = matchesInherentPlacementSelection(product, targeting);
   for (const [field, value] of Object.entries(targeting)) {
     if (field === 'placement_selection' && inherentPlacementMatch === true) continue;
-    if (!concreteTargetingSupported(field, support[field], value)) {
+    if (!concreteTargetingSupportedForProduct(support, field, value)) {
       return {
         code: 'UNSUPPORTED_FEATURE',
         message: `The selected product cannot execute the requested ${field} targeting.`,
@@ -8009,6 +8320,27 @@ function applyDiscoveryTargeting(
       return overlaySupportContains(support, requiredOverlaySupport);
     });
   }
+  const requiredMediaBuySupport = isRecord(request.required_media_buy_support)
+    ? request.required_media_buy_support
+    : undefined;
+  const mediaBuyFrequencyCap = isRecord(request.media_buy_frequency_cap)
+    ? request.media_buy_frequency_cap
+    : undefined;
+  if (requiredMediaBuySupport || mediaBuyFrequencyCap) {
+    // Shared-counter participation is a fixture-described catalog property in
+    // controller-seeded sessions, so scope the answer to the catalog under
+    // test the same way coverage filters do. Ordinary sessions keep the
+    // demonstration catalog, whose products all participate.
+    const seededIds = seededProductIds(session);
+    if (seededIds.size > 0) targeted = targeted.filter(product => seededIds.has(product.product_id));
+    if (requiredMediaBuySupport) {
+      targeted = targeted.filter(product => mediaBuySupportRequirementMatches(product, requiredMediaBuySupport));
+    }
+    if (mediaBuyFrequencyCap) {
+      // The exact value alone suffices because it implies participation.
+      targeted = targeted.filter(product => productExecutesMediaBuyFrequencyCap(product, mediaBuyFrequencyCap));
+    }
+  }
   if (!targetingOverlay) return { products: targeted, capacityDrops: 0 };
   const inherentlyMatched: Product[] = [];
   targeted = targeted.filter(product => {
@@ -8017,7 +8349,7 @@ function applyDiscoveryTargeting(
       const support = (product as unknown as Record<string, unknown>).overlay_support;
       const supportRecord = isRecord(support) ? support : {};
       return Object.entries(targetingOverlay).every(([field, value]) => (
-        concreteTargetingSupported(field, supportRecord[field], value)
+        concreteTargetingSupportedForProduct(supportRecord, field, value)
       ));
     }
     if (inherentMatch && Object.keys(targetingOverlay).length === 1) inherentlyMatched.push(product);
@@ -8299,6 +8631,9 @@ export function projectProductDiscoveryResult(
       : undefined;
     const requiredProductFields = new Set<string>();
     if (isRecord(criteria?.required_overlay_support)) requiredProductFields.add('overlay_support');
+    if (isRecord(criteria?.required_media_buy_support) || isRecord(criteria?.media_buy_frequency_cap)) {
+      requiredProductFields.add('media_buy_support');
+    }
     if (isRecord(criteria?.targeting_overlay)) {
       requiredProductFields.add('is_custom');
       requiredProductFields.add('expires_at');
@@ -9591,17 +9926,6 @@ async function handleGetProductsUnlocked(
       }] as TaskError[],
     };
   }
-  const conflictingTargetingField = conflictingLegacyDiscoveryTargeting(req);
-  if (conflictingTargetingField) {
-    return {
-      errors: [{
-        code: 'INVALID_REQUEST',
-        message: 'Legacy country filters and targeting_overlay.geo_countries must express the same delivery constraint when both are present.',
-        field: conflictingTargetingField,
-        recovery: 'correctable',
-      }] as TaskError[],
-    };
-  }
   if ((req as WholesaleFeedRequest).if_pricing_version !== undefined) {
     if (buyingMode !== 'wholesale') {
       return {
@@ -9726,6 +10050,24 @@ async function handleGetProductsUnlocked(
       }
       products = applyPricingCurrenciesFilterToProducts(products, pricingCurrencies);
     }
+    const coverageFilters = req.filters as Record<string, unknown>;
+    if (['countries', 'regions', 'metros', 'postal_areas', 'geo_proximity'].some(field => coverageFilters[field] !== undefined)) {
+      const seededIds = seededProductIds(session);
+      if (seededIds.size > 0) products = products.filter(product => seededIds.has(product.product_id));
+    }
+    const coverage = filterProductsByCoverage(products, coverageFilters);
+    if (coverage.unsupported) {
+      const prefix = request.__adcp_operation === 'list_products'
+        || request.__adcp_operation === 'request_proposals'
+        ? '/criteria/offer_filters' : '/filters';
+      return { errors: [{
+        code: 'UNSUPPORTED_FEATURE',
+        message: `The training seller cannot evaluate ${coverage.unsupported} coverage for this selection.`,
+        field: `${prefix}/${coverage.unsupported}`,
+        recovery: 'correctable',
+      }] as TaskError[] };
+    }
+    products = coverage.products;
     const formatIdsFilter = req.filters.format_ids;
     if (formatIdsFilter?.length) {
       products = applyFormatIdsFilterToProducts(products, formatIdsFilter);
@@ -10466,6 +10808,25 @@ async function handleGetProductsUnlocked(
         }) as Proposal['allocations'],
       };
     }) as Proposal[];
+  // A concrete aggregate cap binds into every returned proposal: legacy
+  // proposals echo it as proposal.frequency_cap and compact proposals carry
+  // it in commercial_terms.frequency_cap. Committed proposals are receipts
+  // for a specific hold and are never rewritten.
+  const requestedMediaBuyFrequencyCap = isRecord(request.media_buy_frequency_cap)
+    ? request.media_buy_frequency_cap
+    : undefined;
+  if (requestedMediaBuyFrequencyCap) {
+    proposals = proposals.map(proposal => (
+      proposalLifecycle(proposal).proposal_status === 'committed'
+        || compactFinalizeSourceIds.has(proposal.proposal_id)
+        ? proposal
+        : {
+            ...proposal,
+            frequency_cap: structuredClone(requestedMediaBuyFrequencyCap),
+            __media_buy_frequency_cap: structuredClone(requestedMediaBuyFrequencyCap),
+          } as unknown as Proposal
+    ));
+  }
   const requireProposals = buyingMode === 'brief'
     && (req as unknown as Record<string, unknown>).__require_proposals === true;
   // criteria.outcome_target expands to a top-level field by
@@ -13317,6 +13678,9 @@ async function handleCreateMediaBuyUnlocked(
   const mediaBuyCurrency = accountCurrency ?? req.total_budget?.currency ?? 'USD';
   let executedCompactProposal: Proposal | undefined;
   let executedCompactProposalSession: SessionState | undefined;
+  // `null` records that a proposal was executed without a root cap so the
+  // request's own frequency_cap is ignored: accepted terms are authoritative.
+  let executedProposalFrequencyCap: Record<string, unknown> | null | undefined;
 
   // Consume any single-shot directive registered by
   // comply_test_controller.force_create_media_buy_arm. Runs before all other
@@ -13959,6 +14323,13 @@ async function handleCreateMediaBuyUnlocked(
             ...(bidPrice !== undefined && { bid_price: bidPrice }),
           };
         });
+    const proposalRecord = proposal as unknown as Record<string, unknown>;
+    const proposalFrequencyCap = isRecord(committedTerms?.frequency_cap)
+      ? committedTerms.frequency_cap
+      : isRecord(proposalRecord.frequency_cap)
+        ? proposalRecord.frequency_cap
+        : undefined;
+    executedProposalFrequencyCap = proposalFrequencyCap ? structuredClone(proposalFrequencyCap) : null;
     if (compactProposal) {
       executedCompactProposal = proposal;
       if (!executedCompactProposalSession && session.proposalRefinementRecords.has(proposal.proposal_id)) {
@@ -14278,6 +14649,11 @@ async function handleCreateMediaBuyUnlocked(
       : undefined;
     const ordinaryTargetingError = requestedTargeting
       ? identityAbsenceFrequencyCapError(product, requestedTargeting, targetingPath)
+        ?? packageFrequencyCapError(
+          product,
+          (resolvedTargeting.targeting ?? requestedTargeting).frequency_cap,
+          `${targetingPath}.frequency_cap`,
+        )
         ?? ordinaryDaypartError
       : ordinaryDaypartError;
     if (ordinaryTargetingError) {
@@ -14404,6 +14780,7 @@ async function handleCreateMediaBuyUnlocked(
       creativeAssignmentDetails: requestedAssignmentRows.map(assignment => structuredClone(assignment)),
       targeting: targetingResult.targeting,
       ...(targetingResolution && { targetingResolution }),
+      frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
       ...(isRecord(pkg.context) && { context: pkg.context }),
       ...(isRecord(pkg.measurement_terms) && { measurementTerms: structuredClone(pkg.measurement_terms) }),
       ...(Array.isArray(pkg.performance_standards) && { performanceStandards: structuredClone(pkg.performance_standards) }),
@@ -14415,6 +14792,29 @@ async function handleCreateMediaBuyUnlocked(
       ...(committedMetrics && committedMetrics.length > 0 && { committedMetrics }),
     };
     createdPackages.push(candidatePackage);
+  }
+
+  // Root frequency cap: one counter shared across every package. Accepted
+  // proposal terms are authoritative when a proposal is executed; otherwise
+  // the request value must be executable seller-wide and by every selected
+  // product, or the whole create is rejected before any mutation. It is never
+  // clamped or silently dropped.
+  const rootFrequencyCap = executedProposalFrequencyCap !== undefined
+    ? executedProposalFrequencyCap ?? undefined
+    : isRecord((req as unknown as Record<string, unknown>).frequency_cap)
+      ? structuredClone((req as unknown as Record<string, unknown>).frequency_cap as Record<string, unknown>)
+      : undefined;
+  if (rootFrequencyCap && errors.length === 0) {
+    const rootCapError = mediaBuyFrequencyCapError(
+      rootFrequencyCap,
+      createdPackages.map((pkg, index) => ({
+        productId: pkg.productId,
+        product: productMap.get(pkg.productId),
+        field: `packages[${index}].product_id`,
+      })),
+      'frequency_cap',
+    );
+    if (rootCapError) errors.push(rootCapError);
   }
 
   if (errors.length > 0) {
@@ -14442,7 +14842,7 @@ async function handleCreateMediaBuyUnlocked(
     const audienceIds = [...new Set(createdPackages.flatMap(pkg => (
       Array.isArray(pkg.targeting?.audience_include) ? pkg.targeting.audience_include : []
     )))];
-    const frequencyCap = createdPackages
+    const frequencyCap = rootFrequencyCap ?? createdPackages
       .map(pkg => pkg.targeting?.frequency_cap)
       .find(isRecord);
     const plannedDelivery: PlannedDelivery = {
@@ -14507,6 +14907,7 @@ async function handleCreateMediaBuyUnlocked(
     ...((req as unknown as { daily_budget_cap?: number }).daily_budget_cap !== undefined && {
       dailyBudgetCap: (req as unknown as { daily_budget_cap: number }).daily_budget_cap,
     }),
+    ...(rootFrequencyCap && { frequencyCap: rootFrequencyCap }),
     ...((req as unknown as { budget_cap_timezone?: string }).budget_cap_timezone && {
       budgetCapTimezone: (req as unknown as { budget_cap_timezone: string }).budget_cap_timezone,
     }),
@@ -14628,6 +15029,7 @@ async function handleCreateMediaBuyUnlocked(
     currency: mediaBuy.currency,
     total_budget: mediaBuy.totalBudget,
     ...(mediaBuy.dailyBudgetCap !== undefined && { daily_budget_cap: mediaBuy.dailyBudgetCap }),
+    ...(mediaBuy.frequencyCap && { frequency_cap: structuredClone(mediaBuy.frequencyCap) }),
     ...(mediaBuy.budgetCapTimezone && { budget_cap_timezone: mediaBuy.budgetCapTimezone }),
     ...(mediaBuy.budgetAllocation && { budget_allocation: mediaBuy.budgetAllocation }),
     ...(mediaBuy.aggregatePacing && { pacing: mediaBuy.aggregatePacing }),
@@ -14767,6 +15169,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         currency: mb.currency,
         total_budget: totalBudget,
         ...(mb.dailyBudgetCap !== undefined && { daily_budget_cap: mb.dailyBudgetCap }),
+        ...(mb.frequencyCap && { frequency_cap: structuredClone(mb.frequencyCap) }),
         ...(mb.budgetCapTimezone && { budget_cap_timezone: mb.budgetCapTimezone }),
         ...(mb.budgetAllocation && { budget_allocation: mb.budgetAllocation }),
         ...(mb.aggregatePacing && { pacing: mb.aggregatePacing }),
@@ -15464,13 +15867,29 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     derivedReachUnit = reachGoalUnit;
   }
 
-  const goalDerivedReach = hasReachGoal && totalImpressions > 0 && totalReach === 0
-    && (!totalsBoundToIdentityAbsence || derivedReachUnit)
-    ? {
-      reach: Math.max(1, Math.floor(totalImpressions / 3)),
-      ...(derivedReachUnit && { reach_unit: derivedReachUnit }),
-      frequency: +(totalImpressions / Math.max(1, Math.floor(totalImpressions / 3))).toFixed(1),
-    }
+  // A package or root frequency cap is a runtime-enforcement contract: the
+  // seller commits to observed frequency at or below the tightest ceiling and
+  // must surface reach + frequency so the buyer can verify it. The placeholder
+  // frequency therefore never exceeds the enforced cap, and reach is rounded
+  // up so impressions / reach stays within it.
+  const enforcedFrequencyCap = enforcedFrequencyCapCeiling(mb, simulatedPackages);
+  const capReachUnit = enforcedFrequencyCap?.per && identityAbsencePermitsReachUnit(enforcedFrequencyCap.per)
+    ? enforcedFrequencyCap.per
+    : undefined;
+  const placeholderReachUnit = derivedReachUnit ?? capReachUnit;
+  const placeholderFrequency = enforcedFrequencyCap
+    ? Math.min(3, enforcedFrequencyCap.maxImpressions)
+    : 3;
+  const goalDerivedReach = (hasReachGoal || enforcedFrequencyCap) && totalImpressions > 0 && totalReach === 0
+    && (!totalsBoundToIdentityAbsence || placeholderReachUnit)
+    ? (() => {
+      const reach = Math.max(1, Math.ceil(totalImpressions / placeholderFrequency));
+      return {
+        reach,
+        ...(placeholderReachUnit && { reach_unit: placeholderReachUnit }),
+        frequency: +(totalImpressions / reach).toFixed(1),
+      };
+    })()
     : {};
   const defaultReachWindow = hasReachGoal && simDelivery?.reach !== undefined && !simDelivery.reachWindow
     ? { kind: 'period' as const, period: { interval: 1, unit: 'days' } }
@@ -16073,7 +16492,22 @@ function accountRefVisibleToRequest(
   ctx: TrainingContext,
 ): boolean {
   if (accountRefsOverlap(stored, requested)) return true;
-  if (!ctx.principal?.startsWith('static:') || !stored) return false;
+  if (!stored) return false;
+  // An opaque account id and a natural reference can name the same synced
+  // account. Resolve the id through the principal's account store so a buy
+  // created under the natural form stays reachable by id (and vice versa).
+  if (requested.account_id && !stored.account_id) {
+    const resolved = accountRefForId(requested.account_id, ctx.principal);
+    return resolved !== undefined && accountRefVisibleToRequest(stored, resolved, ctx);
+  }
+  if (stored.account_id && !requested.account_id) {
+    // A buy stored under an opaque id is reachable by natural reference only
+    // through exact brand + operator overlap; the brand-only static match
+    // below is reserved for buys that were themselves stored naturally.
+    const resolved = accountRefForId(stored.account_id, ctx.principal);
+    return resolved !== undefined && accountRefsOverlap(resolved, requested);
+  }
+  if (!ctx.principal?.startsWith('static:')) return false;
   if (
     !stored.account_id
     && !requested.account_id
@@ -16523,6 +16957,10 @@ async function handleUpdateMediaBuyUnlocked(
     controllerFixtureSessionKey(req as unknown as ToolArgs, ctx),
   );
   const mediaBuyId = req.media_buy_id || '';
+  // The request partition carries the controller fixture projection; keep it
+  // so the catalog under test stays visible when the buy lives in a sibling
+  // partition of the same account.
+  const requestSession = session;
   let mb = session.mediaBuys.get(mediaBuyId);
 
   if (!mb && req.account) {
@@ -16554,6 +16992,9 @@ async function handleUpdateMediaBuyUnlocked(
   }
 
   const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+  // The owning partition's catalog is authoritative for capability checks;
+  // the request partition only fills in fixtures the owner cannot see.
+  if (requestSession !== session) overlaySeededProducts(requestSession, productMap);
   overlaySeededProducts(session, productMap);
   overlayConfiguredProducts(session, productMap);
   overlayNegotiatedPricingOptions(session, productMap);
@@ -16743,6 +17184,16 @@ async function handleUpdateMediaBuyUnlocked(
       }] as TaskError[],
     };
   }
+
+  const frequencyCapRejection = frequencyCapMutationRejection(
+    mb,
+    req,
+    currentStatus,
+    productMap,
+    options,
+    lifecycleSplitVersionForContext(ctx),
+  );
+  if (frequencyCapRejection) return frequencyCapRejection;
 
   const pausedValue = req.paused;
   if (pausedValue === true && !NON_TERMINAL_MEDIA_BUY_STATUSES.has(currentStatus)) {
@@ -17441,6 +17892,7 @@ async function handleUpdateMediaBuyUnlocked(
         creativeAssignments: assignmentRows.flatMap(row => typeof row.creative_id === 'string' ? [row.creative_id] : []),
         creativeAssignmentDetails: assignmentRows.map(row => structuredClone(row)),
         targeting: targetingResult.targeting,
+        frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
         context: npkg.context ? structuredClone(npkg.context) : undefined,
       };
       stagedInlineCreatives.push(...inlineCreatives.validatedCreatives);
@@ -17496,6 +17948,31 @@ async function handleUpdateMediaBuyUnlocked(
   if (aggregateUpdate.budget_cap_timezone === null) delete mb.budgetCapTimezone;
   else if (aggregateUpdate.budget_cap_timezone !== undefined) {
     mb.budgetCapTimezone = aggregateUpdate.budget_cap_timezone;
+  }
+  // Root frequency cap replace or clear. Executability against the resulting
+  // package mix was checked before mutation. Changing a cap never resets the
+  // shared counter; prior qualifying exposures keep counting.
+  const requestedRootFrequencyCap = (req as unknown as Record<string, unknown>).frequency_cap;
+  const rootFrequencyCapRequested = Object.hasOwn(req as unknown as Record<string, unknown>, 'frequency_cap')
+    && requestedRootFrequencyCap !== undefined;
+  if (rootFrequencyCapRequested) {
+    const before = mb.frequencyCap;
+    if (requestedRootFrequencyCap === null) delete mb.frequencyCap;
+    else if (isRecord(requestedRootFrequencyCap)) mb.frequencyCap = structuredClone(requestedRootFrequencyCap);
+    if (JSON.stringify(before ?? null) !== JSON.stringify(mb.frequencyCap ?? null)) {
+      for (const pkg of mb.packages) {
+        if (!pkg.canceled) affectedPackageIds.add(pkg.packageId);
+      }
+      mb.history.push({
+        revision: mb.revision,
+        timestamp: now,
+        actor: 'buyer',
+        action: mb.frequencyCap ? 'frequency_cap_updated' : 'frequency_cap_cleared',
+        summary: mb.frequencyCap
+          ? 'MediaBuy frequency cap replaced without resetting the shared counter'
+          : 'MediaBuy frequency cap removed',
+      });
+    }
   }
   if (aggregateUpdate.budget_allocation !== undefined) {
     mb.budgetAllocation = structuredClone(aggregateUpdate.budget_allocation);
@@ -17662,6 +18139,7 @@ async function handleUpdateMediaBuyUnlocked(
     ...(aggregateUpdate.budget_cap_timezone !== undefined && {
       budget_cap_timezone: mb.budgetCapTimezone ?? null,
     }),
+    ...(rootFrequencyCapRequested && mb.frequencyCap && { frequency_cap: structuredClone(mb.frequencyCap) }),
     ...(aggregateUpdate.budget_allocation !== undefined && mb.budgetAllocation
       ? { budget_allocation: mb.budgetAllocation }
       : {}),
@@ -17848,6 +18326,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       },
     }),
     media_buy: {
+      anonymous_discovery: true,
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       ...(acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId) && {
         acceptance_policy_discovery: acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId),
@@ -17906,6 +18385,16 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       // derives the union when an adopter supplies a static productCatalog;
       // this dynamic reference handler declares the same honest union.
       supported_optimization_metrics: ['clicks', 'views', 'completed_views', 'engagements', 'reach'],
+      ...(!isThreeZeroResponse && {
+        // Package caps: independent counter per package within these
+        // seller-wide units. Products inherit omitted structured fields from
+        // this declaration and never broaden it.
+        frequency_capping: structuredClone(TRAINING_PACKAGE_FREQUENCY_CAPPING),
+        // Root MediaBuy caps: one counter shared across every participating
+        // package. This is the complete executable domain; product
+        // media_buy_support.frequency_cap_constraints may only narrow it.
+        aggregate_frequency_capping: structuredClone(TRAINING_AGGREGATE_FREQUENCY_CAPPING),
+      }),
       execution: {
         targeting: {
           geo_countries: true,
@@ -17958,6 +18447,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     },
     ...(wholesaleProfile.signalWholesale && {
       signals: {
+        anonymous_discovery: true,
         discovery_modes: ['brief', 'wholesale'],
         features: {
           catalog_signals: true,
@@ -20028,6 +20518,7 @@ function proposalForCurrentMediaBuy(
     'budget_allocation',
     'pacing',
     'bidding',
+    'frequency_cap',
     'invoice_recipient',
   ]) delete commercialTerms[field];
   if (mediaBuy.totalBudget !== undefined) {
@@ -20039,6 +20530,7 @@ function proposalForCurrentMediaBuy(
   if (mediaBuy.aggregatePacing !== undefined) commercialTerms.pacing = mediaBuy.aggregatePacing;
   if (mediaBuy.aggregateBidding !== undefined) commercialTerms.bidding = structuredClone(mediaBuy.aggregateBidding);
   if (mediaBuy.invoiceRecipient !== undefined) commercialTerms.invoice_recipient = structuredClone(mediaBuy.invoiceRecipient);
+  if (mediaBuy.frequencyCap !== undefined) commercialTerms.frequency_cap = structuredClone(mediaBuy.frequencyCap);
 
   return {
     ...source,
@@ -20198,11 +20690,23 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
     const activeHoldCount = Array.from(session.proposalRefinementRecords.values())
       .filter(record => record.activeHold && Date.parse(record.activeHold.expires_at) > now.getTime())
       .length;
+    // Root-cap compatibility of a revised product mix is evaluated against
+    // the same catalog the proposal was quoted from: the static catalog,
+    // controller fixtures, and the immutable snapshots that supported the
+    // preceding request_proposals response.
+    const refinementProducts = new Map<string, Product>(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+    overlaySeededProducts(mediaBuySession, refinementProducts);
+    overlaySeededProducts(session, refinementProducts);
+    overlayConfiguredProducts(session, refinementProducts);
+    for (const product of session.lastGetProductsContext?.products ?? []) {
+      if (!refinementProducts.has(product.product_id)) refinementProducts.set(product.product_id, product);
+    }
     const policyContext: TrainingProposalPolicyContext = {
       profile,
       now,
       activeHoldCount,
       purchaseForProduct: purchaseForTrainingProduct,
+      productForPurchase: productId => refinementProducts.get(productId),
     };
     const handler = createProposalRefinementHandler<
       CanonicalProposal,
@@ -20367,7 +20871,7 @@ function legacyPackagesFromPurchases(
 }
 
 function purchaseBindings(
-  purchases: readonly CompactProductPurchase[],
+  purchases: readonly Pick<ProposalPurchase, 'product_id'>[],
   response: Record<string, unknown>,
 ): Array<{ purchase_index: number; product_id: string; package_id: string }> {
   const packages = Array.isArray(response.packages) ? response.packages.filter(isRecord) : [];
@@ -20592,6 +21096,9 @@ export async function handleBuyProducts(
     ...(args.budget_allocation !== undefined && { budget_allocation: args.budget_allocation }),
     ...(args.pacing !== undefined && { pacing: args.pacing }),
     ...(args.bidding !== undefined && { bidding: args.bidding }),
+    ...(isRecord((args as unknown as Record<string, unknown>).frequency_cap) && {
+      frequency_cap: structuredClone((args as unknown as Record<string, unknown>).frequency_cap),
+    }),
     ...(args.purchase_order_ref !== undefined && { purchase_order_ref: args.purchase_order_ref }),
     ...(args.agency_estimate_number !== undefined && { agency_estimate_number: args.agency_estimate_number }),
     ...(() => {
@@ -20847,6 +21354,13 @@ async function acceptExistingMediaBuyProposal(
         ...(compactTerms.pacing !== undefined && { pacing: compactTerms.pacing }),
         ...(compactTerms.bidding !== undefined && { bidding: compactTerms.bidding }),
         ...(compactTerms.invoice_recipient !== undefined && { invoice_recipient: compactTerms.invoice_recipient }),
+        // Accepted terms are authoritative for the root cap: an amendment that
+        // dropped it (remove_media_buy_frequency_cap) clears the live cap.
+        ...(compactTerms.frequency_cap !== undefined
+          ? { frequency_cap: compactTerms.frequency_cap }
+          : mediaBuy.frequencyCap
+            ? { frequency_cap: null }
+            : {}),
         packages: packageUpdates,
         ...(newPackages.length > 0 && { new_packages: newPackages }),
       };
@@ -21110,11 +21624,26 @@ async function handleControlMediaBuyUnlocked(
       }
     }
   }
-  const session = await getSession(
+  let session = await getSession(
     sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(args, ctx),
   );
-  const mediaBuy = session.mediaBuys.get(args.media_buy_id);
+  const requestSession = session;
+  let mediaBuy = session.mediaBuys.get(args.media_buy_id);
+  if (!mediaBuy && args.account) {
+    // The same account may be addressed by id or by natural reference, and
+    // the legacy session partitions differ by shape. Authorization must run
+    // against the buy wherever it lives, so locate it the way reads do.
+    const ownerSession = await findSessionMatching(candidate => {
+      const candidateBuy = candidate.mediaBuys.get(args.media_buy_id);
+      return candidateBuy !== undefined
+        && accountRefVisibleToRequest(candidateBuy.accountRef, args.account!, ctx);
+    });
+    if (ownerSession) {
+      session = ownerSession;
+      mediaBuy = ownerSession.mediaBuys.get(args.media_buy_id);
+    }
+  }
   if (mediaBuy) {
     const execution = options.sellerManagedExecution?.kind === 'execute'
       ? options.sellerManagedExecution
@@ -21139,6 +21668,7 @@ async function handleControlMediaBuyUnlocked(
     }
     const currentStatus = deriveStatus(mediaBuy, session);
     const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+    if (requestSession !== session) overlaySeededProducts(requestSession, productMap);
     overlaySeededProducts(session, productMap);
     const servedAdcpVersion = lifecycleSplitVersionForContext(ctx);
     const actionRejection = options.sellerManagedExecution
@@ -21160,6 +21690,20 @@ async function handleControlMediaBuyUnlocked(
       } as SellerManagedControlTaskRequired;
     }
     if (actionRejection) return actionRejection;
+    // Frequency caps check authorization, then product capability, and only
+    // then accepted commercial terms. Run the cap gate here, ahead of the
+    // accepted-envelope REQUOTE_REQUIRED checks below, so a cap that is both
+    // outside capability and outside accepted terms reports the capability
+    // failure. The legacy update path repeats the same pure check.
+    const frequencyCapRejection = frequencyCapMutationRejection(
+      mediaBuy,
+      args as unknown as UpdateMediaBuyArgs,
+      currentStatus,
+      productMap,
+      {},
+      servedAdcpVersion,
+    );
+    if (frequencyCapRejection) return frequencyCapRejection;
   }
   const acceptedCommercialTerms = mediaBuy?.acceptedProposal?.commercial_terms as unknown as Record<string, unknown> | undefined;
   if (
@@ -21201,7 +21745,7 @@ async function handleControlMediaBuyUnlocked(
       }],
     });
     const aggregateControl = args as unknown as Record<string, unknown>;
-    for (const field of ['budget_allocation', 'pacing', 'bidding', 'start_time', 'end_time'] as const) {
+    for (const field of ['budget_allocation', 'pacing', 'bidding', 'frequency_cap', 'start_time', 'end_time'] as const) {
       if (aggregateControl[field] === undefined) continue;
       if (
         acceptedTerms[field] !== undefined

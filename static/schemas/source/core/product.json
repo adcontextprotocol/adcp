@@ -235,6 +235,10 @@
       "$ref": "/schemas/core/targeting-overlay-support.json",
       "description": "Binding product-scoped targeting dimensions the buyer may set independently on packages after discovery. Presence guarantees selectable capability subject to disclosed limits, not inventory or a forecast for every possible value. Targeting satisfied only through inherent product scope does not appear here. Returned products MUST cover every field requested through get_products.required_overlay_support. A later supported selection with no available inventory returns PRODUCT_UNAVAILABLE on create; an update outside the original priced envelope may return REQUOTE_REQUIRED."
     },
+    "media_buy_support": {
+      "$ref": "/schemas/core/media-buy-support.json",
+      "description": "Binding product participation in shared MediaBuy-level controls. This is separate from overlay_support because a root frequency cap aggregates exposures across packages rather than targeting one package. Returned products MUST cover every field requested through required_media_buy_support."
+    },
     "identity": {
       "$ref": "/schemas/core/product-identity.json",
       "x-status": "experimental",
@@ -710,6 +714,14 @@
       "then": {
         "properties": {
           "overlay_support": {
+            "not": {
+              "anyOf": [
+                { "required": ["frequency_cap"] },
+                { "required": ["frequency_cap_support"] }
+              ]
+            }
+          },
+          "media_buy_support": {
             "not": { "required": ["frequency_cap"] }
           },
           "metric_optimization": {

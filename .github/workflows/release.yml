@@ -6,6 +6,12 @@ on:
       - main
       - '3.1.x'
       - '3.0.x'
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: 'Full commit SHA containing the committed release artifacts to recover'
+        required: true
+        type: string
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -17,11 +23,49 @@ jobs:
       contents: read
     outputs:
       relevant: ${{ steps.release-relevance.outputs.relevant }}
+      target_commit: ${{ steps.release-target.outputs.commit }}
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || github.sha }}
           fetch-depth: 0
+
+      - name: Resolve release target
+        id: release-target
+        env:
+          REQUESTED_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${REQUESTED_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Release recovery requires a full lowercase 40-character commit SHA."
+            exit 1
+          fi
+
+          target_commit="$(git rev-parse HEAD)"
+          if [ "${target_commit}" != "${REQUESTED_COMMIT}" ]; then
+            echo "::error::Checked out ${target_commit}, expected ${REQUESTED_COMMIT}."
+            exit 1
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            case "${GITHUB_REF_NAME}" in
+              main|3.1.x|3.0.x) ;;
+              *)
+                echo "::error::Release recovery must run from a supported release branch."
+                exit 1
+                ;;
+            esac
+
+            git fetch --no-tags origin "+${GITHUB_REF}:refs/remotes/origin/${GITHUB_REF_NAME}"
+            if ! git merge-base --is-ancestor "${target_commit}" "refs/remotes/origin/${GITHUB_REF_NAME}"; then
+              echo "::error::Release recovery target ${target_commit} is not on ${GITHUB_REF_NAME}."
+              exit 1
+            fi
+          fi
+
+          echo "commit=${target_commit}" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -37,7 +81,7 @@ jobs:
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-          changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
+          changed_files="$(git show --format= --name-only --no-renames "${{ steps.release-target.outputs.commit }}")"
           if grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-([^/]+[.]sh|isolated[.]mjs))|[.]github/workflows/(release|training-agent-storyboards|validate-schema-bundle)[.]yml$)' <<< "${changed_files}"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             echo "Release-relevant files changed."
@@ -80,6 +124,8 @@ jobs:
       contents: write
       pull-requests: write
       id-token: write
+    env:
+      RELEASE_COMMIT: ${{ needs.verify-release.outputs.target_commit }}
     steps:
       # Mint the GitHub App installation token only after the long-running
       # verification job succeeds. Installation tokens expire after one hour;
@@ -102,6 +148,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ needs.verify-release.outputs.target_commit }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
@@ -131,19 +178,24 @@ jobs:
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-          changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
+          changed_files="$(git show --format= --name-only --no-renames "${RELEASE_COMMIT}")"
           if grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"; then
             echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
             echo "Detected committed release artifact changes for ${VERSION}."
           else
             echo "has_release_artifacts=false" >> "$GITHUB_OUTPUT"
+            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+              echo "::error::Release recovery target ${RELEASE_COMMIT} does not commit artifacts for ${VERSION}."
+              exit 1
+            fi
             echo "No committed release artifacts detected for ${VERSION}."
           fi
 
       # Branch rules can be bypassed by repository administrators and GitHub
       # Apps. Before publishing committed artifacts, independently verify that
-      # the merged release PR received a human approval on its final head SHA.
-      - name: Require human approval for committed release artifacts
+      # a human authorized the merged release PR. A final-head approval always
+      # counts; for a bot-authored release PR, a human merge counts too.
+      - name: Require human authorization for committed release artifacts
         if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -152,20 +204,35 @@ jobs:
 
           pulls="$(gh api \
             -H 'Accept: application/vnd.github+json' \
-            "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls")"
+            "/repos/${GITHUB_REPOSITORY}/commits/${RELEASE_COMMIT}/pulls")"
           pr_number="$(jq -r \
             --arg base "${GITHUB_REF_NAME}" \
             '[.[] | select(.merged_at != null and .base.ref == $base)] | sort_by(.merged_at) | last | .number // empty' \
             <<< "${pulls}")"
 
           if [ -z "${pr_number}" ]; then
-            echo "::error::Release artifact commit ${GITHUB_SHA} is not associated with a merged PR targeting ${GITHUB_REF_NAME}."
+            echo "::error::Release artifact commit ${RELEASE_COMMIT} is not associated with a merged PR targeting ${GITHUB_REF_NAME}."
             exit 1
           fi
 
           pr="$(gh api "/repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
           head_sha="$(jq -r '.head.sha' <<< "${pr}")"
           author="$(jq -r '.user.login' <<< "${pr}")"
+          author_type="$(jq -r '.user.type' <<< "${pr}")"
+          merger="$(jq -r '.merged_by.login // empty' <<< "${pr}")"
+          merger_type="$(jq -r '.merged_by.type // empty' <<< "${pr}")"
+          timeline="$(gh api --paginate "/repos/${GITHUB_REPOSITORY}/issues/${pr_number}/timeline" | jq -s 'add')"
+          auto_merge_state="$(jq -r \
+            '[.[] | select(
+              .event == "auto_merge_enabled" or
+              .event == "auto_squash_enabled" or
+              .event == "auto_rebase_enabled" or
+              .event == "auto_merge_disabled"
+            )]
+            | sort_by(.created_at)
+            | last
+            | .event // "not_enabled"' \
+            <<< "${timeline}")"
           reviews="$(gh api --paginate "/repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/reviews" | jq -s 'add')"
           approved_count="$(jq \
             --arg head "${head_sha}" \
@@ -177,23 +244,34 @@ jobs:
             | length' \
             <<< "${reviews}")"
 
-          if [ "${approved_count}" -lt 1 ]; then
-            echo "::error::Release PR #${pr_number} by ${author} has no human approval on final head ${head_sha}. Refusing to publish artifacts."
+          direct_merge_authorized=false
+          if [ "${author_type}" = "Bot" ] && \
+             [ "${merger_type}" = "User" ] && \
+             { [ "${auto_merge_state}" = "not_enabled" ] || [ "${auto_merge_state}" = "auto_merge_disabled" ]; }; then
+            direct_merge_authorized=true
+          fi
+
+          if [ "${approved_count}" -lt 1 ] && [ "${direct_merge_authorized}" != "true" ]; then
+            echo "::error::Release PR #${pr_number} by ${author} has neither a human approval on final head ${head_sha} nor a direct human merge of a bot-authored PR. Auto-merge state: ${auto_merge_state}. Refusing to publish artifacts."
             exit 1
           fi
 
-          echo "Release PR #${pr_number} has ${approved_count} human approval(s) on final head ${head_sha}."
+          if [ "${approved_count}" -ge 1 ]; then
+            echo "Release PR #${pr_number} has ${approved_count} human approval(s) on final head ${head_sha}."
+          else
+            echo "Release PR #${pr_number} was authored by bot ${author} and directly merged by human ${merger}."
+          fi
 
       - name: Create Release Pull Request or Tag Release
         if: steps.release-artifacts.outputs.has_release_artifacts != 'true'
         id: changesets
         # v2 understands the Changesets v3 `.changeset/pre/` archive. This is
-        # v2.1.0, pinned to the contract verified at:
-        # https://github.com/changesets/action/blob/198f833dd7d863100ea6e28967bc9a9fdefadb0a/action.yml
-        # Its implementation reads push-with-git-cli at src/index.ts:37.
+        # v2.1.2, pinned to the contract verified at:
+        # https://github.com/changesets/action/blob/ae32849d5ba541f9ae29e40e22a623bc13562f51/action.yml
+        # Its implementation reads push-with-git-cli at src/index.ts:43.
         # Keep git CLI pushing enabled because beta-scale generated schema and
         # compliance artifacts exceed GitHub's API payload limit.
-        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           version-script: npm run version
@@ -270,7 +348,7 @@ jobs:
               release_args+=(--prerelease)
             fi
             gh release create "${TAG}" \
-              --target "${GITHUB_SHA}" \
+              --target "${RELEASE_COMMIT}" \
               --title "${TAG}" \
               --notes "AdCP ${VERSION}" \
               "${release_args[@]}"

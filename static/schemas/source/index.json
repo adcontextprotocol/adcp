@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.2.0-rc.1",
+  "adcp_version": "3.2.0-rc.4",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
@@ -171,7 +171,11 @@
         },
         "targeting": {
           "$ref": "/schemas/core/targeting.json",
-          "description": "Audience targeting criteria"
+          "description": "Strict non-null targeting criteria and effective state"
+        },
+        "targeting-input": {
+          "$ref": "/schemas/core/targeting-input.json",
+          "description": "Request-only per-dimension targeting mutations with null-clear semantics"
         },
         "targeting-overlay-support": {
           "$ref": "/schemas/core/targeting-overlay-support.json",
@@ -485,6 +489,10 @@
         "registry-event": {
           "$ref": "/schemas/core/registry-event.json",
           "description": "A cursor-ordered registry change-feed event from /api/registry/feed"
+        },
+        "verification-token-claims": {
+          "$ref": "/schemas/core/verification-token-claims.json",
+          "description": "Signed AgenticAdvertising.org verification token claims, including the authoritative grading profile"
         },
         "registry-feed-response": {
           "$ref": "/schemas/core/registry-feed-response.json",
@@ -1181,6 +1189,10 @@
           "$ref": "/schemas/enums/proposal-decline-reason.json",
           "description": "Machine-readable terminal proposal feedback"
         },
+        "seller-policy-decline-reason": {
+          "$ref": "/schemas/enums/seller-policy-decline-reason.json",
+          "description": "Machine-readable seller-policy reason for declining a MediaBuy control shape"
+        },
         "proposal-refinement-reason": {
           "$ref": "/schemas/enums/proposal-refinement-reason.json",
           "description": "Machine-readable partial or unable proposal-refinement outcome"
@@ -1775,7 +1787,11 @@
         },
         "product-purchase": {
           "$ref": "/schemas/media-buy/product-purchase.json",
-          "description": "Canonical direct product selection without creatives or negotiated term overrides"
+          "description": "Resolved canonical product selection in proposal and accepted commercial snapshots"
+        },
+        "product-purchase-input": {
+          "$ref": "/schemas/media-buy/product-purchase-input.json",
+          "description": "Request-only canonical direct product selection with targeting inheritance and null-clear semantics"
         },
         "compatibility-purchase-coordinator-input": {
           "$ref": "/schemas/media-buy/legacy-purchase-continuation-input.json",
@@ -1953,6 +1969,16 @@
           "response": {
             "$ref": "/schemas/media-buy/get-reporting-status-response.json",
             "description": "Authoritative reporting ledger status for summary, periods, or one exact revision"
+          }
+        },
+        "sync-reporting-status": {
+          "request": {
+            "$ref": "/schemas/media-buy/sync-reporting-status-request.json",
+            "description": "Submit authenticated consumer status for expected reporting periods"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/sync-reporting-status-response.json",
+            "description": "Per-status durable recording results"
           }
         },
         "sync-reporting-receipts": {
@@ -2817,5 +2843,5 @@
       "code": "// Use everit-org/json-schema or similar library"
     }
   ],
-  "published_version": "3.2.0-rc.1"
+  "published_version": "3.2.0-rc.4"
 }

@@ -13,7 +13,14 @@
     "mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
     "sla": { "$ref": "/schemas/core/sla-window.json" },
     "change_term_id": { "$ref": "/schemas/core/media-buy-change-term-id.json" },
-    "terms_ref": { "$ref": "/schemas/core/media-buy-legacy-terms-ref.json" }
+    "terms_ref": { "$ref": "/schemas/core/media-buy-legacy-terms-ref.json" },
+    "applicable_package_ids": {
+      "type": "array",
+      "description": "Exact eligible packages for a package-scoped action; omission means all relevant packages.",
+      "items": { "$ref": "/schemas/core/applicable-package-id.json" },
+      "minItems": 1,
+      "uniqueItems": true
+    }
   },
   "required": ["task", "action", "mode"],
   "additionalProperties": false

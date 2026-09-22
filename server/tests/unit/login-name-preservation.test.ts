@@ -18,6 +18,9 @@ import * as path from 'path';
 
 const SRC_DIR = path.resolve(__dirname, '../../src');
 const HTTP_FILE = path.join(SRC_DIR, 'http.ts');
+const IDENTITY_DB_FILE = path.join(SRC_DIR, 'db/identity-db.ts');
+const WEBHOOK_FILE = path.join(SRC_DIR, 'routes/workos-webhooks.ts');
+const MCP_OAUTH_FILE = path.join(SRC_DIR, 'mcp/oauth-provider.ts');
 const MEMBERSHIP_DB_FILE = path.join(SRC_DIR, 'db/membership-db.ts');
 const ADMIN_ORGS_FILE = path.join(SRC_DIR, 'routes/admin/organizations.ts');
 
@@ -55,7 +58,14 @@ function findUnconditionalNameOverwrites(filePath: string): string[] {
 
 describe('auth callback name preservation', () => {
   const httpContent = fs.readFileSync(HTTP_FILE, 'utf-8');
-  const authCallbackSection = extractAuthCallbackUpsert(httpContent);
+  const identityDbContent = fs.readFileSync(IDENTITY_DB_FILE, 'utf-8');
+  const authCallbackSection = extractCredentialEventUpsert(identityDbContent);
+
+  it('routes the auth callback through the credential-event upsert', () => {
+    const callback = extractAuthCallback(httpContent);
+    expect(callback).toContain('upsertWorkosUserInCredentialEvent');
+    expect(callback).toContain("'preserve_existing'");
+  });
 
   it('should not unconditionally overwrite first_name on login', () => {
     expect(authCallbackSection).not.toContain('first_name = EXCLUDED.first_name');
@@ -68,6 +78,19 @@ describe('auth callback name preservation', () => {
   it('should use COALESCE to preserve existing DB names', () => {
     expect(authCallbackSection).toMatch(/COALESCE.*users\.first_name.*EXCLUDED\.first_name/s);
     expect(authCallbackSection).toMatch(/COALESCE.*users\.last_name.*EXCLUDED\.last_name/s);
+  });
+
+  it('keeps login and provider-event name precedence explicit at every shared-helper caller', () => {
+    const webhookContent = fs.readFileSync(WEBHOOK_FILE, 'utf-8');
+    const mcpOauthContent = fs.readFileSync(MCP_OAUTH_FILE, 'utf-8');
+    expect(webhookContent).toMatch(
+      /upsertWorkosUserInCredentialEvent\([\s\S]*?'provider_authoritative'/,
+    );
+    expect(mcpOauthContent).toMatch(
+      /upsertWorkosUserInCredentialEvent\([\s\S]*?'preserve_existing'/,
+    );
+    expect(identityDbContent).toContain("'provider_authoritative'");
+    expect(identityDbContent).toContain("'preserve_existing'");
   });
 });
 
@@ -109,12 +132,22 @@ describe('no unconditional name overwrites anywhere in runtime code', () => {
 
 // --- helpers ---
 
-function extractAuthCallbackUpsert(content: string): string {
+function extractAuthCallback(content: string): string {
   const callbackStart = content.indexOf("'/auth/callback'");
   if (callbackStart === -1) throw new Error('Could not find /auth/callback handler');
 
-  const insertStart = content.indexOf('INSERT INTO users', callbackStart);
-  if (insertStart === -1) throw new Error('Could not find INSERT INTO users in auth callback');
+  const callbackEnd = content.indexOf("// GET /auth/logout", callbackStart);
+  if (callbackEnd === -1) throw new Error('Could not find end of /auth/callback handler');
+
+  return content.slice(callbackStart, callbackEnd);
+}
+
+function extractCredentialEventUpsert(content: string): string {
+  const helperStart = content.indexOf('export async function upsertWorkosUserInCredentialEvent');
+  if (helperStart === -1) throw new Error('Could not find credential-event user upsert');
+
+  const insertStart = content.indexOf('INSERT INTO users', helperStart);
+  if (insertStart === -1) throw new Error('Could not find INSERT INTO users in credential-event upsert');
 
   const onConflict = content.indexOf('ON CONFLICT', insertStart);
   if (onConflict === -1) throw new Error('Could not find ON CONFLICT in auth callback upsert');

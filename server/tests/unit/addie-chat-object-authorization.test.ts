@@ -9,6 +9,7 @@ process.env.OPENAI_API_KEY = 'test-addie-object-authorization-router-key';
 
 const mocks = vi.hoisted(() => ({
   authenticated: true,
+  isAuthenticatedUserAAOAdmin: vi.fn().mockResolvedValue(false),
   getThreadByExternalId: vi.fn(),
   getThreadMessages: vi.fn(),
   getMessagesByClientRequestId: vi.fn(),
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   addMessageFeedback: vi.fn(),
   processMessage: vi.fn(),
   processMessageStream: vi.fn(),
+  geminiStream: vi.fn(),
   initializeKnowledgeSearch: vi.fn().mockResolvedValue(undefined),
   getProgress: vi.fn(),
   getAttemptForUser: vi.fn(),
@@ -54,6 +56,7 @@ vi.mock('../../src/addie/claude-client.js', () => ({
   AddieClaudeClient: class {
     registerTool() {}
     getRegisteredTools() { return []; }
+    forkForGeminiDirect() { return { processMessageStream: mocks.geminiStream }; }
     processMessage(...args: unknown[]) { return mocks.processMessage(...args); }
     processMessageStream(...args: unknown[]) { return mocks.processMessageStream(...args); }
   },
@@ -137,7 +140,11 @@ vi.mock('../../src/addie/mcp/escalation-tools.js', () => ({
 vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
   ADMIN_TOOLS: [],
   createAdminToolHandlers: () => new Map(),
-  isWebUserAAOAdmin: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>(),
+  isAuthenticatedUserAAOAdmin: mocks.isAuthenticatedUserAAOAdmin,
 }));
 
 vi.mock('../../src/addie/mcp/event-tools.js', () => ({
@@ -238,8 +245,12 @@ import {
   resolveThreadCertificationProgress,
   prepareRequestWithMemberTools,
 } from '../../src/routes/addie-chat.js';
-import { issueAnonymousSessionCapability } from '../../src/routes/helpers/anonymous-session-capability.js';
+import {
+  issueAnonymousSessionCapability,
+  verifyAnonymousSessionCapability,
+} from '../../src/routes/helpers/anonymous-session-capability.js';
 import * as geminiExperiment from '../../src/addie/gemini-direct-experiment.js';
+import { getToolsForSets } from '../../src/addie/tool-sets.js';
 
 afterAll(() => {
   if (originalApiKey === undefined) {
@@ -303,6 +314,9 @@ function mountChatRouter() {
 
 describe('Addie chat conversation object authorization', () => {
   beforeEach(() => {
+    // Existing delivery/authorization harness uses the operator rollback. The
+    // Gemini cases below explicitly exercise the new policy.
+    process.env.ADDIE_RESPONSE_PROVIDER = 'sonnet';
     vi.clearAllMocks();
     mocks.authenticated = true;
     mocks.memberContext = {
@@ -371,11 +385,50 @@ describe('Addie chat conversation object authorization', () => {
     expect(mocks.processMessageStream).not.toHaveBeenCalled();
   });
 
-  it('offers model selection to signed-in non-admins only', async () => {
+  it('disables manual model selection for authenticated and anonymous callers', async () => {
     const app = mountChatRouter();
-    expect((await request(app).get('/status')).body.model_selection.enabled).toBe(true);
+    expect((await request(app).get('/status')).body.model_selection.enabled).toBe(false);
     mocks.authenticated = false;
     expect((await request(app).get('/status')).body.model_selection.enabled).toBe(false);
+  });
+
+  it.each(['/', '/stream'])('rejects manual Sonnet before persistence or dispatch on %s', async endpoint => {
+    process.env.ADDIE_RESPONSE_PROVIDER = 'gemini';
+    const result = await request(mountChatRouter()).post(endpoint).send({ message: 'Hello', model_preference: 'sonnet' });
+    expect(result.status).toBe(409);
+    expect(mocks.addMessage).not.toHaveBeenCalled();
+    expect(mocks.processMessage).not.toHaveBeenCalled();
+    expect(mocks.geminiStream).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['/', true], ['/stream', true], ['/', false], ['/stream', false],
+  ] as const)('uses Gemini for existing control-assigned threads on %s (authenticated=%s)', async (endpoint, authenticated) => {
+    process.env.ADDIE_RESPONSE_PROVIDER = 'gemini';
+    process.env.GEMINI_API_KEY = 'test-only';
+    process.env.ADDIE_RESPONSE_AUTOMATIC_FALLBACK = 'false';
+    mocks.authenticated = authenticated;
+    const owner = '11111111-1111-4111-8111-111111111111';
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web', external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: authenticated ? 'workos' : 'anonymous', user_id: authenticated ? 'user_attacker' : owner,
+      context: { [authenticated ? 'gemini_direct_v1' : 'gemini_direct_web_anonymous_v1']: { arm: 'control', cohort: 'existing', bucket: 9999 } },
+    });
+    const response = { ...successfulModelResponse('Global Gemini answer'), model_execution: {
+      source: 'provider', requested_provider: 'google', requested_model: 'gemini-3.7-flash',
+      provider: 'google', model: 'gemini-3.7-flash', model_resolution: 'exact', fallback_reason: null,
+    } };
+    mocks.geminiStream.mockImplementation(async function* () { yield { type: 'text', text: response.text }; yield { type: 'done', response }; });
+    const capability = issueAnonymousSessionCapability('addie-web-thread-owner', owner);
+    const result = await request(mountChatRouter()).post(endpoint)
+      .set('Cookie', `addie-anonymous-owner=${capability}`)
+      .send({ message: 'Continue', conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489' });
+    expect(result.status).toBe(200);
+    expect(result.text).toContain('Global Gemini answer');
+    expect(mocks.geminiStream).toHaveBeenCalledOnce();
+    expect(mocks.processMessage).not.toHaveBeenCalled();
+    expect(mocks.processMessageStream).not.toHaveBeenCalled();
+    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_execution: response.model_execution }));
   });
 
   it('denies a cross-user conversation UUID before reading history, writing, or invoking the model', async () => {
@@ -405,6 +458,66 @@ describe('Addie chat conversation object authorization', () => {
     ], 'conversation-a1', 'internal-thread-a1');
 
     expect(resolved?.module_id).toBe('A2');
+  });
+
+  it.each(['/', '/stream'])('retains registration context from the authorized web conversation: %s', async endpoint => {
+    const externalId = '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489';
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web', external_id: externalId,
+      user_type: 'workos', user_id: 'user_attacker',
+    });
+    mocks.getThreadMessages.mockResolvedValue([
+      { role: 'user', content: 'Help me register my agent.' },
+      { role: 'assistant', content: 'What is the URL and auth method?', delivery_status: 'completed' },
+    ]);
+    const registered = vi.spyOn((await getChatClaudeClient())!, 'getRegisteredTools').mockReturnValue(getToolsForSets(['adcp_agent_management', 'knowledge'], false, false));
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn');
+    try {
+      const response = await request(mountChatRouter()).post(endpoint).send({
+        message: 'Agent URL: https://sales.streamhaus.example/mcp\nType: sales\nAuth: OAuth client credentials',
+        conversation_id: externalId,
+      });
+      expect(response.status).toBe(200);
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ activeAgentRegistration: true }));
+      const control = await prepare.mock.calls[0][0].getControlTools();
+      expect(control?.allowedToolNames).toContain('save_agent');
+    } finally { prepare.mockRestore(); registered.mockRestore(); }
+  });
+
+  it.each([
+    ['/', 'learning'], ['/stream', 'learning'],
+    ['/', 'assessment'], ['/stream', 'assessment'],
+  ])('passes recovered certification context through %s for %s', async (endpoint, kind) => {
+    const externalId = '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489';
+    mocks.memberContext = { is_mapped: true, is_member: false, slack_linked: false,
+      workos_user: { workos_user_id: 'user_attacker' } };
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web', external_id: externalId,
+      user_type: 'workos', user_id: 'user_attacker',
+    });
+    mocks.getProgress.mockResolvedValue(kind === 'learning'
+      ? [{ module_id: 'A2B', status: 'in_progress', addie_thread_id: 'older-chat' }]
+      : []);
+    mocks.getThreadMessages.mockResolvedValue([{
+      role: 'assistant', delivery_status: 'completed', content: 'Continue the assessment.',
+      tool_calls: [{ name: kind === 'learning' ? 'get_learner_progress' : 'test_out_modules',
+        input: kind === 'learning' ? {} : { module_ids: ['A1', 'A2', 'A3'] },
+        result: 'Handled tool result', is_error: false, result_status: 'ok' }],
+    }]);
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn');
+    try {
+      const response = await request(mountChatRouter()).post(endpoint).send({
+        message: 'Here are my answers', conversation_id: externalId,
+      });
+      expect(response.status).toBe(200);
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ activeCertificationKind: kind }));
+      if (endpoint === '/stream') {
+        expect(mocks.processMessageStream).toHaveBeenCalledWith(
+          expect.any(String), expect.any(Array), expect.any(Object),
+          expect.objectContaining({ costScope: expect.objectContaining({ certificationReserveUsd: 3 }) }),
+        );
+      }
+    } finally { prepare.mockRestore(); }
   });
 
   it('attributes capstone completion to the attempt module instead of stale thread context', async () => {
@@ -471,6 +584,12 @@ describe('Addie chat conversation object authorization', () => {
     expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_anonymous', { limit: 100 });
     expect(mocks.addMessage).toHaveBeenCalledTimes(2);
     expect(mocks.processMessage).toHaveBeenCalledOnce();
+    const renewed = response.headers['set-cookie']?.[0]
+      ?.match(/addie-anonymous-owner=([^;]+)/)?.[1];
+    expect(renewed).toBeDefined();
+    expect(verifyAnonymousSessionCapability(
+      renewed, 'addie-web-thread-owner', ownerId,
+    )).not.toBeNull();
   });
 
   it('wires the synchronous web path through a durable mutation reservation before dispatch', async () => {
@@ -508,20 +627,30 @@ describe('Addie chat conversation object authorization', () => {
       user_id: ownerId,
     });
     const capability = issueAnonymousSessionCapability('addie-web-thread-owner', ownerId);
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn');
 
-    const response = await request(mountChatRouter())
-      .post('/')
-      .set('Cookie', `addie-anonymous-owner=${capability}`)
-      .send({
-        message: 'Continue after signing in',
-        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
-      });
+    try {
+      const response = await request(mountChatRouter())
+        .post('/')
+        .set('Cookie', `addie-anonymous-owner=${capability}`)
+        .send({
+          message: 'Continue after signing in',
+          conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+        });
 
-    expect(response.status).toBe(200);
-    expect(mocks.claimAnonymousThread).toHaveBeenCalledWith(
-      'thread_anonymous', ownerId, 'user_attacker', 'Attacker',
-    );
-    expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_anonymous', { limit: 100 });
+      expect(response.status).toBe(200);
+      expect(mocks.claimAnonymousThread).toHaveBeenCalledWith(
+        'thread_anonymous', ownerId, 'user_attacker', 'Attacker',
+      );
+      expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_anonymous', { limit: 100 });
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({
+        anonymousOwnerId: ownerId,
+        anonymousOrigin: true,
+        userId: 'user_attacker',
+      }));
+    } finally {
+      prepare.mockRestore();
+    }
   });
 
   it('denies an authenticated caller access to an anonymous thread before effects', async () => {
@@ -602,7 +731,7 @@ describe('Addie chat conversation object authorization', () => {
         requested_model: 'gemini-3.7-flash', provider: 'google' as const, model: 'gemini-3.7-flash',
         model_resolution: 'exact' as const, fallback_reason: null },
     };
-    const finish = vi.fn();
+    const markDelivery = vi.fn();
     const candidate = {
       processMessage: vi.fn().mockResolvedValue(response),
       processMessageStream: vi.fn(async function* () {
@@ -614,7 +743,7 @@ describe('Addie chat conversation object authorization', () => {
       client: candidate, model: 'gemini-3.7-flash',
       selection: { requestTools: { tools: [], handlers: new Map() }, allowedToolNames: ['search_docs'],
         selectedToolSets: ['knowledge'], unavailableHint: 'Available docs.' },
-      experiment: { finish },
+      experiment: { markDelivery },
     } as unknown as Awaited<ReturnType<typeof geminiExperiment.prepareGeminiDirectTurn>>);
     try {
       const res = await request(mountChatRouter()).post(endpoint).send({
@@ -622,15 +751,98 @@ describe('Addie chat conversation object authorization', () => {
       });
       expect(res.status).toBe(200);
       expect(res.text).toContain('Gemini response');
-      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user_attacker', modelPreference: 'gemini', exclusionReason: null, hasPriorAssistant: false }));
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user_attacker', modelPreference: 'default', activeCertificationKind: null, sponsoredIntelligenceContextKind: null, hasPriorAssistant: false }));
       expect(mocks.processMessage).not.toHaveBeenCalled();
       expect(mocks.processMessageStream).not.toHaveBeenCalled();
-      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_preference: 'gemini', model: 'gemini-3.7-flash', model_execution: response.model_execution }));
-      expect(res.text).toContain('\"selected\":\"gemini\"');
+      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_preference: 'default', model: 'gemini-3.7-flash', model_execution: response.model_execution }));
+      expect(res.text).toContain('\"selected\":\"default\"');
       expect(res.text).toContain('\"model\":\"gemini-3.7-flash\"');
-      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'user', model_preference: 'gemini' }));
-      expect(finish).toHaveBeenCalledWith(expect.objectContaining({ text: 'Gemini response' }), 'message_assistant');
+      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'user', model_preference: 'default' }));
+      expect(markDelivery).toHaveBeenCalledWith('completed', 'message_assistant', expect.any(Number));
     } finally { prepare.mockRestore(); }
+  });
+
+  it('records an interrupted Gemini SSE delivery separately from completion', async () => {
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489', user_type: 'workos', user_id: 'user_attacker',
+    });
+    mocks.getThreadMessages.mockResolvedValue([]);
+    const markDelivery = vi.fn();
+    const candidate = {
+      processMessage: vi.fn(),
+      processMessageStream: vi.fn(async function* () {
+        yield {
+          type: 'stream_error' as const,
+          reason: 'Provider continuation failed',
+          deltasBeforeError: 0,
+          tool_executions: [],
+        };
+      }),
+    };
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn').mockResolvedValue({
+      client: candidate, model: 'gemini-3.7-flash',
+      selection: { requestTools: { tools: [], handlers: new Map() }, allowedToolNames: [],
+        selectedToolSets: [], unavailableHint: '' },
+      experiment: { markDelivery },
+    } as unknown as Awaited<ReturnType<typeof geminiExperiment.prepareGeminiDirectTurn>>);
+    try {
+      const response = await request(mountChatRouter()).post('/stream').send({
+        message: 'Explain AdCP', conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      });
+      expect(response.status).toBe(200);
+      expect(response.text).toContain('event: stream_error');
+      expect(markDelivery).toHaveBeenCalledWith('interrupted', 'message_assistant');
+    } finally {
+      prepare.mockRestore();
+    }
+  });
+
+  it('does not downgrade completed Gemini delivery after a later SSE route error', async () => {
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489', user_type: 'workos', user_id: 'user_attacker',
+    });
+    mocks.getThreadMessages.mockResolvedValue([]);
+    mocks.getAttemptForUser.mockRejectedValueOnce(new Error('post-delivery certification lookup failed'));
+    const response = {
+      ...successfulModelResponse('Gemini response'),
+      tool_executions: [{
+        tool_name: 'complete_certification_exam',
+        parameters: { attempt_id: '6d5c9b76-1ee0-49b3-a4d4-c85963080430' },
+        result: { status: 'completed' },
+        duration_ms: 1,
+        is_error: false,
+      }],
+      model_execution: { source: 'provider' as const, requested_provider: 'google' as const,
+        requested_model: 'gemini-3.7-flash', provider: 'google' as const, model: 'gemini-3.7-flash',
+        model_resolution: 'exact' as const, fallback_reason: null },
+    };
+    const markDelivery = vi.fn();
+    const candidate = {
+      processMessage: vi.fn(),
+      processMessageStream: vi.fn(async function* () {
+        yield { type: 'text' as const, text: response.text };
+        yield { type: 'done' as const, response };
+      }),
+    };
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn').mockResolvedValue({
+      client: candidate, model: 'gemini-3.7-flash',
+      selection: { requestTools: { tools: [], handlers: new Map() }, allowedToolNames: [],
+        selectedToolSets: [], unavailableHint: '' },
+      experiment: { markDelivery },
+    } as unknown as Awaited<ReturnType<typeof geminiExperiment.prepareGeminiDirectTurn>>);
+    try {
+      const routeResponse = await request(mountChatRouter()).post('/stream').send({
+        message: 'Complete my assessment', conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      });
+      expect(routeResponse.status).toBe(200);
+      expect(routeResponse.text).toContain('event: stream_error');
+      expect(markDelivery).toHaveBeenCalledTimes(1);
+      expect(markDelivery).toHaveBeenCalledWith('completed', 'message_assistant', expect.any(Number));
+    } finally {
+      prepare.mockRestore();
+    }
   });
 
   it('returns the saved choice and actual provider on history and recovery', async () => {
@@ -653,6 +865,9 @@ describe('Addie chat conversation object authorization', () => {
 
   it('restricts experiment outcomes to site admins', async () => {
     expect((await request(mountChatRouter()).get('/experiment')).status).toBe(403);
+    expect(mocks.isAuthenticatedUserAAOAdmin).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'user_attacker', email: 'attacker@example.test',
+    }));
   });
 
   it('denies a cross-user conversation UUID through the streaming path before side effects', async () => {
@@ -1058,7 +1273,7 @@ describe('Addie chat conversation object authorization', () => {
 
     expect(response.status).toBe(200);
     expect(replayDecision).toEqual({ allowed: false });
-    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_preference: 'sonnet' }));
+    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_preference: 'default' }));
   });
 
   it('gives every active certification learning thread the expanded reserve', async () => {

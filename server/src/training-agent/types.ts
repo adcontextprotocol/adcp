@@ -29,7 +29,7 @@ export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
 
 /** Current published candidate schema bundle shipped by the server. */
-export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-rc.1' as const;
+export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-rc.3' as const;
 /** First released schema checkpoint containing get_reporting_status. */
 export const REPORTING_STATUS_ADCP_VERSION = '3.2-beta.10' as const;
 /** First candidate checkpoint containing Reliable Reporting 1.0. */
@@ -645,6 +645,9 @@ export interface MediaBuyAvailableActionState {
   };
   change_term_id?: string;
   terms_ref?: string;
+  /** Package-scoped actions list the exact eligible packages; omission means
+   * every relevant package. Root actions never carry this field. */
+  applicable_package_ids?: string[];
 }
 
 export interface MediaBuyProductAllowedActionState {
@@ -673,6 +676,10 @@ export interface MediaBuyState {
   acceptedProposal?: CanonicalProposal;
   /** Hard aggregate daily spend ceiling shared by all packages. */
   dailyBudgetCap?: number;
+  /** Root MediaBuy frequency cap: one max-impression counter shared across
+   * every participating package. Package targeting_overlay caps remain
+   * independent counters. Never clamped; absent means uncapped. */
+  frequencyCap?: Record<string, unknown>;
   /** Buyer-selected IANA timezone for aggregate and package cap days. */
   budgetCapTimezone?: string;
   budgetAllocation?: Record<string, unknown>;
@@ -790,9 +797,14 @@ export interface PackageState {
   legacyOmitProductId?: boolean;
   /** Buyer-declared optimization goals carried through from create_media_buy.
    *  Persisted opaquely so delivery handlers can gate metric emission on
-   *  what the buyer actually requested (e.g., only surface reach + frequency
-   *  when a reach goal was requested). */
+   *  what the buyer actually requested (e.g., surface reach + frequency when
+   *  a reach goal was requested or a frequency cap is enforced). */
   optimizationGoals?: Array<Record<string, unknown>>;
+  /** Frequency-cap eligibility snapshot taken from the selected product when
+   * the package was created. Read surfaces derive update_frequency_caps and
+   * update_media_buy_frequency_cap availability from it without needing the
+   * (possibly fixture-scoped) product catalog. */
+  frequencyCapEligibility?: PackageFrequencyCapEligibility;
   /** Seller-stamped reporting contract captured when the package is confirmed. */
   committedMetrics?: Array<{
     scope: 'standard' | 'vendor';
@@ -801,6 +813,16 @@ export interface PackageState {
     qualifier?: Record<string, unknown>;
     committed_at: string;
   }>;
+}
+
+export interface PackageFrequencyCapEligibility {
+  /** The product can change this package's own cap after creation (legacy
+   * `frequency_cap: true`, omitted `mutable_fields`, or a non-empty list). */
+  packageMutable: boolean;
+  /** The product participates in a shared MediaBuy counter. */
+  mediaBuyParticipant: boolean;
+  /** The product's implementation can change the root cap after creation. */
+  mediaBuyMutable: boolean;
 }
 
 export interface ListReference {

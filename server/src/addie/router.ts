@@ -471,6 +471,7 @@ export const ROUTING_RULES = {
         "check_credentials",
         "find_membership_products",
         "call_adcp_task",
+        "call_adcp_get_products",
       ],
       description: "AdCP Academy standard module teaching and completion",
     },
@@ -492,6 +493,7 @@ export const ROUTING_RULES = {
         "set_my_name",
         "find_membership_products",
         "call_adcp_task",
+        "call_adcp_get_products",
       ],
       description: "AdCP Academy placement assessment and specialist capstones",
     },
@@ -688,6 +690,7 @@ ${
 - A request that genuinely needs both registry-record and identity-verification workflows may select both bounded domains; do not select the hidden legacy alias.
 - Validating adagents.json, brand resolution, registry status, or publisher authorization → ["agent_registry"]
 - Testing an agent's live quality, RFP response, or IO execution → ["agent_quality"]
+- Running or recommending compliance storyboards against a supplied or previously registered agent URL, including follow-ups such as "run compliance on it" or "run storyboard please" → ["agent_storyboards"]. Use ["agent_conformance"] only when the user explicitly requests the Socket Mode/WebSocket conformance-client workflow for a private/local agent.
 - Diagnosing OAuth or grading RFC 9421 request signing → ["agent_authentication"]
 - A single long end-to-end agent diagnosis that explicitly needs registry/configuration, OAuth or signing, and RFP or IO behavior → exactly ["agent_end_to_end"]. This composite preserves every requested step under the direct two-domain cap; use the three narrow domains above for typical requests.
 - Resolving, saving, or browsing publisher property-registry records, including missing domains and property visibility → ["property_registry_records"]
@@ -740,7 +743,7 @@ ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage regis
 - Community analytics or listing/reviewing flagged conversations → ["admin_conversation_review"]
 - Task management, reminders, or logging member/prospect interactions → ["admin_followup_tasks"]
 - A request that genuinely needs analytics/review plus follow-up work may select both bounded domains; do not select the hidden legacy alias.
-- Escalations and pending requests → [] (list_escalations and resolve_escalation are always available to admins)` : ''}
+- Escalations and pending requests → ["admin_escalations"]. This includes follow-ups referring to an earlier escalation by number, such as "sort out 583". Select this explicit domain even though escalation tools are also available alongside other valid admin routes; an empty tool-set selection triggers the read-only fallback.` : ''}
 - Listing, adding, or removing co-leaders for your own committee (non-admin) → ["committee_co_leaders"]
 - Creating or updating an event for your own committee (non-admin) → ["committee_event_planning"]
 - Managing event registrations, checking attendance status, or inviting people to your own committee event (non-admin) → ["committee_event_registrations"]
@@ -755,6 +758,7 @@ ${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming 
 - Outreach performance, history, or action items → ["outreach_reporting"]
 - Person/account lookup, contact creation, or sending outreach → ["outreach_contact_management"]
 - Requests needing reporting plus contact work may select both; never use the hidden legacy alias.
+- Current paying-member counts, active membership breakdowns, and platform totals → ["admin_conversation_review"] (query_admin_analytics; use the aggregate, not a member/contact list)
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_conversation_review"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_registry"]
 - Questions about Addie's current capabilities, tools, integrations, API or MCP availability, or how to connect to Addie → ["knowledge"]. This includes asking whether Addie exists as an MCP tool. These are deployment facts, not general knowledge

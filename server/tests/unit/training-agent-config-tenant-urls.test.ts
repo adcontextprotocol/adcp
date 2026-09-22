@@ -58,22 +58,51 @@ describe('formatTenantBlock', () => {
     expect(block).toBe(`agent_url: "${BASE}/mcp"`);
   });
 
-  it('emits primary + sibling list with internal-only framing for multi-tenant modules', () => {
+  it('emits proactive per-tool routing table for multi-tenant modules', () => {
     const block = formatTenantBlock(
       tenantUrlsForModule(['brand', 'governance', 'creative'], BASE),
     );
-    // Primary URL must lead and every sibling must appear in declaration order.
+    // Primary URL must lead.
     expect(block).toContain(`agent_url (primary): "${BASE}/brand/mcp"`);
-    expect(block).toContain(`brand → ${BASE}/brand/mcp`);
-    expect(block).toContain(`governance → ${BASE}/governance/mcp`);
-    expect(block).toContain(`creative → ${BASE}/creative/mcp`);
-    // Block must be tagged as agent-only context — without this Sage
-    // paraphrases the URL list into the conversation.
+    // Block must be tagged as agent-only context.
     expect(block).toContain('Internal — do not narrate to the learner');
-    // Switch trigger must be explicit + procedural, not aspirational.
-    expect(block).toContain('unknown tool');
-    expect(block).toContain('/.well-known/adagents.json');
-    expect(block).toContain('_training_agent_tenants');
-    expect(block).toContain('Do not enumerate siblings to the learner');
+    // Must contain per-tool routing, not a reactive sibling-switch.
+    expect(block).toContain('Tool routing:');
+    expect(block).toContain(`${BASE}/brand/mcp`);
+    expect(block).toContain(`${BASE}/governance/mcp`);
+    expect(block).toContain(`${BASE}/creative/mcp`);
+    // Tools must be routed to the correct tenant URL.
+    expect(block).toContain('search_brands');
+    expect(block).toContain('check_governance');
+    expect(block).toContain('sync_creatives');
+    // No reactive fallback instructions.
+    expect(block).not.toContain('unknown tool');
+    expect(block).not.toContain('/.well-known/adagents.json');
+  });
+
+  it('routes si_* tools to the /si tenant for C3-style modules', () => {
+    const block = formatTenantBlock(
+      tenantUrlsForModule(['creative', 'si'], BASE),
+    );
+    expect(block).toContain(`agent_url (primary): "${BASE}/creative/mcp"`);
+    // SI tools must route to /si, not primary.
+    expect(block).toContain(`${BASE}/si/mcp`);
+    expect(block).toContain('si_initiate_session');
+    expect(block).toContain('si_send_message');
+    // si_* tools must NOT appear on the primary creative line
+    const lines = block.split('\n');
+    const creativeLine = lines.find(l => l.includes(`${BASE}/creative/mcp`));
+    expect(creativeLine).not.toContain('si_initiate_session');
+  });
+
+  it('handles a tenant with no tools in TOOL_CATALOG gracefully', () => {
+    const block = formatTenantBlock(
+      tenantUrlsForModule(['creative', 'unknown-tenant'], BASE),
+    );
+    // Should still produce a valid block with the primary URL
+    expect(block).toContain(`agent_url (primary): "${BASE}/creative/mcp"`);
+    expect(block).toContain('Tool routing:');
+    // Creative tools should still appear
+    expect(block).toContain('sync_creatives');
   });
 });

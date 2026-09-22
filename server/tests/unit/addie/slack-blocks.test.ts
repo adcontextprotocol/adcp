@@ -40,6 +40,7 @@ describe('splitMrkdwnIntoSections', () => {
     expect(sections).toHaveLength(1);
     expectValidSection(sections[0]);
     expect(sections[0].text.text).toBe('hello');
+    expect(sections[0].expand).toBe(true);
   });
 
   it('keeps input exactly at the soft limit in a single section', () => {

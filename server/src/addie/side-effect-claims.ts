@@ -5,6 +5,8 @@
  * never evidence that an external action happened; action-specific receipt
  * modules own that boundary instead.
  */
+import { isMutatingTool } from '../training-agent/idempotency.js';
+
 
 /** Every known Addie mutation is conservative replay-sensitive. */
 export const SIDE_EFFECT_TOOL_NAMES = new Set<string>([
@@ -32,12 +34,44 @@ export const SIDE_EFFECT_TOOL_NAMES = new Set<string>([
   'resolve_escalation', 'register_event_interest',
 ]);
 
+/**
+ * Mutations whose handlers are authoritative for the whole durable outcome.
+ *
+ * These certification handlers perform their writes in the local database and
+ * return explicit gate rejections before any write. A normal handler return is
+ * therefore a definitive outcome even when the normalized result is an error
+ * such as `NOT COMPLETED`. Unexpected throws and process crashes deliberately
+ * remain unknown and require reconciliation.
+ */
+export const DURABLE_HANDLER_OUTCOME_TOOLS = [
+  'checkpoint_teaching_progress',
+  'complete_certification_exam',
+  'complete_certification_module',
+  'start_certification_exam',
+  'start_certification_module',
+  'test_out_modules',
+] as const;
+
+const DURABLE_HANDLER_OUTCOME_TOOL_NAMES = new Set<string>(DURABLE_HANDLER_OUTCOME_TOOLS);
+
+export function hasDurableHandlerOutcome(toolName: string): boolean {
+  return DURABLE_HANDLER_OUTCOME_TOOL_NAMES.has(toolName);
+}
+
 export function isSideEffectTool(toolName: string): boolean {
   // Old tool definitions are not universally annotated with replaySafety.
   // This conservative fallback protects dispatch/replay only; it never
   // authorizes a model-authored success message or identifier.
   return SIDE_EFFECT_TOOL_NAMES.has(toolName)
     || /^(?:add|approve|attach|ban|bookmark|cancel|checkpoint|claim|comment|complete|confirm|connect|create|delete|dispute|end|enhance|enrich|express|generate|grant|import|invite|issue|join|manage|merge|notify|offer|post|propose|publish|reject|remove|rename|request|resend|revoke|run|save|schedule|send|set|setup|start|transfer|triage|unban|update|upload|verify|withdraw)_/.test(toolName);
+}
+
+/** Resolve mutation safety for meta-tools whose operation lives in input. */
+export function isSideEffectToolCall(toolName: string, input: unknown): boolean {
+  if (isSideEffectTool(toolName)) return true;
+  if (toolName !== 'call_adcp_task' || !input || typeof input !== 'object' || Array.isArray(input)) return false;
+  const task = (input as Record<string, unknown>).task;
+  return typeof task === 'string' && isMutatingTool(task);
 }
 
 function canonicalJson(value: unknown): string {

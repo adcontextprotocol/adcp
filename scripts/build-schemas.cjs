@@ -92,6 +92,7 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'sync_creatives',
     'sync_event_sources',
     'sync_governance',
+    'sync_reporting_status',
     'sync_reporting_receipts',
   ],
   creative: [
@@ -449,11 +450,20 @@ function hasNaturallyIdempotentMarker(schema) {
   return /naturally idempotent/i.test(haystack);
 }
 
-function isDeprecatedGetProductsCompatibilityFacade(schema) {
-  return schema.$id === '/schemas/media-buy/get-products-request.json'
+function isExplicitKeyOptionalCompatibilityOperation(schema) {
+  if (schema['x-idempotency-key-required'] !== false) return false;
+
+  const isDeprecatedGetProductsFacade = (
+    schema.$id === '/schemas/media-buy/get-products-request.json'
     && schema['x-operation-family'] === 'get_products'
     && schema['x-deprecated-in'] === '3.2.0'
-    && schema['x-idempotency-key-required'] === false;
+  );
+  const isCreativeFeaturesMigration = (
+    schema.$id === '/schemas/creative/get-creative-features-request.json'
+    && schema.properties?.idempotency_key
+  );
+
+  return isDeprecatedGetProductsFacade || isCreativeFeaturesMigration;
 }
 
 // Classify a request schema as mutating or non-mutating using the same rules
@@ -462,9 +472,10 @@ function isDeprecatedGetProductsCompatibilityFacade(schema) {
 // Read-only verb basenames (get-/list-/check-/validate-/preview-) and the
 // NON_OPERATION_ALLOWLIST entries are non-mutating utility shapes.
 // Anything else is a state-changing operation: it MUST either declare
-// idempotency_key in `required` or carry a "naturally idempotent" marker
-// (which means it uses a different idempotency key like session_id).
-// Both forms are mutating; the lint above guarantees one of them is present.
+// idempotency_key in `required`, carry a "naturally idempotent" marker
+// (which means it uses a different idempotency key like session_id), or be a
+// specifically reviewed stable-3.x compatibility operation staging the
+// required-key contract for the next major. All forms remain mutating.
 //
 // Used by both lintMutatingRequestsRequireIdempotencyKey and the manifest
 // generator — single source of truth for "is this a mutating tool?".
@@ -495,11 +506,10 @@ function lintMutatingRequestsRequireIdempotencyKey(sourceDir) {
       const required = Array.isArray(schema.required) ? schema.required : [];
       if (required.includes('idempotency_key')) continue;
       if (hasNaturallyIdempotentMarker(schema)) continue;
-      // A stable 3.x compatibility facade may remain polymorphic while newer,
-      // narrow replacement tools carry the required-key contract. This marker
-      // is deliberately explicit so a newly added mutator cannot become
-      // key-optional by accident.
-      if (isDeprecatedGetProductsCompatibilityFacade(schema)) continue;
+      // Stable 3.x compatibility operations may stage a required-key contract
+      // for the next major. This marker and allowlist are deliberately explicit
+      // so a newly added mutator cannot become key-optional by accident.
+      if (isExplicitKeyOptionalCompatibilityOperation(schema)) continue;
       violations.push(path.relative(sourceDir, p));
     }
   }
@@ -2238,8 +2248,7 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // inner `$id` to the versioned flat-tree URI
       // (`/schemas/{version}/core/foo.json`) — the published identity
       // of the un-bundled sub-schema, which is what consumers want to
-      // resolve. The root `$id` is rewritten separately below to the
-      // bundled URI.
+      // resolve. The root `$id` is canonicalized separately below.
       versionInlineSchemaIds(dereferenced, version);
 
       // Strip $id from subtrees whose descendants contain hoisted
@@ -2254,10 +2263,9 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // the deep $id at the first occurrence of each sub-schema.
       dedupBundledSchemaIds(dereferenced);
 
-      // Update root $id to indicate this is a bundled schema
-      if (dereferenced.$id) {
-        dereferenced.$id = dereferenced.$id.replace('/schemas/', `/schemas/${version}/bundled/`);
-      }
+      // A bundled schema is an alternate representation of the canonical
+      // document, not a distinct schema resource. Keep the canonical root
+      // identity even though the artifact is retrieved through bundled/.
       canonicalizePublishedSchemaUris(dereferenced, version);
 
       // Add metadata indicating this is bundled
@@ -2721,6 +2729,7 @@ module.exports = {
   collectVendorMetricExamples,
   canonicalQualifier,
   lintVendorMetricSemanticUniqueness,
+  generateBundledSchemas,
 };
 
 if (require.main === module) {

@@ -224,6 +224,7 @@ export const ADMIN_DOMAIN_TOOL_SETS = {
     "update_org_member_role",
     "list_slack_users_by_org",
     "list_paying_members",
+    "query_admin_analytics",
     "update_member_logo",
     "update_member_profile",
   ],
@@ -588,6 +589,7 @@ export const CERTIFICATION_LEARNING_TOOLS = [
   "check_credentials",
   "find_membership_products",
   "call_adcp_task",
+  "call_adcp_get_products",
 ] as const;
 
 /** Placement assessment and specialist capstone workflow. */
@@ -601,6 +603,7 @@ export const CERTIFICATION_ASSESSMENT_TOOLS = [
   "check_credentials",
   "find_membership_products",
   "call_adcp_task",
+  "call_adcp_get_products",
 ] as const;
 
 /** Calendar lookup, RSVP, and invitation attendance workflow. */
@@ -712,6 +715,14 @@ export const AGENT_QUALITY_TOOLS = [
   "test_io_execution",
 ] as const;
 
+/** Discover and run compliance storyboards against a supplied agent URL. */
+export const AGENT_STORYBOARD_TOOLS = [
+  "recommend_storyboards",
+  "get_storyboard_detail",
+  "run_storyboard",
+  "run_storyboard_step",
+] as const;
+
 /** Public OAuth and RFC 9421 request-signing diagnosis. */
 export const AGENT_AUTHENTICATION_TOOLS = [
   "grade_agent_signing",
@@ -789,6 +800,7 @@ export const ADCP_OPERATION_DOMAIN_TOOL_SETS = {
   adcp_task_operations: [
     "ask_about_adcp_task",
     "call_adcp_task",
+    "call_adcp_get_products",
     "get_adcp_capabilities",
   ],
   adcp_agent_management: [
@@ -806,6 +818,7 @@ export const ADCP_AGENT_MANAGEMENT_TOOLS = ADCP_OPERATION_DOMAIN_TOOL_SETS.adcp_
 export const ADCP_OPERATIONS_TOOLS = [
   "ask_about_adcp_task",
   "call_adcp_task",
+  "call_adcp_get_products",
   "get_adcp_capabilities",
   "save_agent",
   "list_saved_agents",
@@ -1050,10 +1063,17 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  agent_storyboards: {
+    name: "agent_storyboards",
+    description:
+      "Discover and run compliance storyboards against a supplied or previously registered agent URL, including follow-up requests to test it. Uses the agent's HTTP/MCP endpoint; no Socket Mode connection is needed.",
+    tools: [...AGENT_STORYBOARD_TOOLS],
+  },
+
   agent_conformance: {
     name: "agent_conformance",
     description:
-      "Run AdCP compliance storyboards against the user's own dev/staging MCP server via Addie's Socket Mode channel — outbound WebSocket from the adopter to Addie, no public DNS or ngrok needed. Use when the user wants to test their own AdCP agent during development. Requires the user to be mapped to a WorkOS organization. Tools issue a session-bound token and then run a storyboard against the connected adopter agent.",
+      "Run AdCP compliance storyboards over an explicitly requested Socket Mode connection: an outbound WebSocket from the user's private/local MCP server to Addie. Requires an organization and a connected conformance client. For testing a supplied or registered agent URL, use agent_storyboards instead.",
     tools: ["issue_conformance_token", "run_conformance_against_my_agent"],
   },
 
@@ -1401,7 +1421,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
   admin_organization_member_records: {
     name: "admin_organization_member_records",
     description:
-      "Manage organization-member roles, Slack rosters, paid-member records, and directory profiles (admin only)",
+      "Count or list paying memberships, inspect membership breakdowns, and manage organization-member roles, Slack rosters, and directory profiles (admin only)",
     tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_organization_member_records],
     adminOnly: true,
   },
@@ -1414,6 +1434,16 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     tools: [...ADMIN_ORGANIZATIONS_TOOLS],
     adminOnly: true,
     routerVisible: false,
+  },
+
+  // Escalation-only requests need a nonempty route: the bounded selector's
+  // read-only fallback intentionally withholds the always-available admin tools.
+  admin_escalations: {
+    name: "admin_escalations",
+    description:
+      "Inspect, list, and resolve escalations or pending support requests, including follow-ups referring to an escalation number (admin only, private conversations).",
+    tools: [...ALWAYS_AVAILABLE_ADMIN_TOOLS],
+    adminOnly: true,
   },
 
   admin_conversation_review: {
@@ -1574,12 +1604,13 @@ export function getToolsForSets(
       if (toolSet.adminOnly && !isAAOAdmin) {
         continue;
       }
-      // Skip enrollment and financial actions in public channels.
+      // Keep enrollment, financial actions, and escalation records private.
       if (
         isPublicChannel
         && (
           setName === "member_billing"
           || setName === "billing"
+          || setName === "admin_escalations"
           || Object.prototype.hasOwnProperty.call(ADMIN_BILLING_DOMAIN_TOOL_SETS, setName)
         )
       ) {

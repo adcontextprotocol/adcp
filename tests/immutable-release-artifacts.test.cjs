@@ -84,6 +84,22 @@ violations = findImmutableArtifactViolations(
 assert.deepStrictEqual(violations, [], 'Deleting artifacts for an untagged aborted release is allowed');
 
 violations = findImmutableArtifactViolations(
+  [
+    { status: 'D', paths: ['dist/schemas/3.2.0-beta.3/index.json'] },
+    { status: 'D', paths: ['dist/compliance/3.2.0-beta.3/index.json'] },
+    { status: 'D', paths: ['dist/protocol/3.2.0-beta.3.tgz'] },
+  ],
+  hasBasePath(['dist/schemas/3.2.0-beta.3', 'dist/compliance/3.2.0-beta.3', 'dist/protocol/3.2.0-beta.3.tgz'])
+);
+assert.deepStrictEqual(violations, [], 'Retiring a tagged beta checkpoint by deleting its artifacts is allowed');
+
+violations = findImmutableArtifactViolations(
+  [{ status: 'D', paths: ['dist/schemas/3.2.0-rc.1/index.json'] }],
+  hasBasePath(['dist/schemas/3.2.0-rc.1'])
+);
+assert.strictEqual(violations.length, 1, 'Deleting a tagged release-candidate artifact must still fail');
+
+violations = findImmutableArtifactViolations(
   [{ status: 'M', paths: ['dist/protocol/3.0.14.tgz.sha256'] }],
   hasBasePath(['dist/protocol/3.0.14.tgz'])
 );

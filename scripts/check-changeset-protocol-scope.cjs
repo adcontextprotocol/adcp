@@ -38,6 +38,7 @@ const CHANGESET_POLICY_CODE_PATHS = new Set([
 
 const CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS = new Set([
   ...CHANGESET_POLICY_CODE_PATHS,
+  '.github/workflows/release.yml',
   '.agents/playbook.md',
   '.agents/routines/context-refresh-prompt.md',
   '.agents/routines/triage-prompt.md',
@@ -48,6 +49,7 @@ const CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS = new Set([
   '.agents/shortcuts/prep-for-pr.md',
   'docs/reference/changelog.mdx',
   'docs/spec-guidelines.md',
+  'tests/release-workflow-immutability.test.cjs',
 ]);
 
 function normalizePath(filePath) {
@@ -251,7 +253,9 @@ function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileA
 }
 
 function git(args) {
-  return execFileSync('git', args, { encoding: 'utf8' });
+  // Large artifact retirements produce multi-megabyte name-status diffs; Node's
+  // default 1 MiB maxBuffer would fail with ENOBUFS.
+  return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
 
 function readFileAtHead(filePath) {

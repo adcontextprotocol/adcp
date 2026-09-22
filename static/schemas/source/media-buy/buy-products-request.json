@@ -23,6 +23,13 @@
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "\\S",
+      "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. When supplied, the seller MUST persist it and echo it unchanged on the commitment success response and subsequent get_media_buys reads. The name is operational metadata outside accepted_proposal and is not covered by terms_digest. This display label is not an identifier or financial reference."
+    },
     "account": {
       "allOf": [{ "$ref": "/schemas/core/canonical-account-ref.json" }],
       "description": "Execution account. A natural-key account is the single brand source and MUST NOT be combined with top-level brand."
@@ -47,7 +54,7 @@
     },
     "purchases": {
       "type": "array",
-      "items": { "$ref": "/schemas/media-buy/product-purchase.json" },
+      "items": { "$ref": "/schemas/media-buy/product-purchase-input.json" },
       "minItems": 1
     },
     "total_budget": {
@@ -63,6 +70,10 @@
       "type": "number",
       "minimum": 0,
       "description": "Optional hard aggregate daily spend ceiling in total_budget.currency or the media buy's derived currency. It bounds the shared daily spend pool without allocating or reserving amounts for purchases."
+    },
+    "frequency_cap": {
+      "$ref": "/schemas/core/media-buy-frequency-cap.json",
+      "description": "Optional max-impression cap using one counter across purchases. Buyers send it only when aggregate_frequency_capping is advertised. Every selected product must declare compatible media_buy_support; otherwise the purchase is rejected atomically with UNSUPPORTED_FEATURE before any mutation, never clamped."
     },
     "budget_cap_timezone": {
       "type": "string",

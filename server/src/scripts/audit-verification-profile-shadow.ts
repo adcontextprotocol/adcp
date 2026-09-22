@@ -224,7 +224,7 @@ export async function runAudit(
               r.agent_url, r.tested_at, r.overall_status, r.tracks_json
        FROM agent_compliance_runs r
        JOIN eligible e ON e.agent_url = r.agent_url
-       WHERE r.dry_run = FALSE
+       WHERE r.dry_run = FALSE AND is_authoritative = TRUE
        ORDER BY r.agent_url, r.tested_at DESC, r.id DESC
      ),
      policy_history AS (
@@ -472,7 +472,7 @@ export async function runAudit(
                 r.agent_url, r.tested_at, r.overall_status, r.tracks_json
          FROM agent_compliance_runs r
          JOIN eligible e ON e.agent_url = r.agent_url
-         WHERE r.dry_run = FALSE
+         WHERE r.dry_run = FALSE AND is_authoritative = TRUE
          ORDER BY r.agent_url, r.tested_at DESC, r.id DESC
        ),
        ranked AS (

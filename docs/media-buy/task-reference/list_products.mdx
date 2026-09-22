@@ -11,7 +11,7 @@ Wholesale support is optional. A seller that omits `list_products` from `media_b
 
 {/* Using latest because this schema is not yet released in any version.
     Update to the correct version alias after the next release. */}
-**Request schema:** [`/schemas/3.2.0-beta.0/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/list-products-request.json)
+**Request schema:** [`/schemas/3.2.0-rc.2/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/media-buy/list-products-request.json)
 
 ```json
 {
@@ -34,7 +34,16 @@ Wholesale support is optional. A seller that omits `list_products` from `media_b
 
 `brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs); discovery accepts only a compact catalog selection under `criteria.catalog`.
 
-`offer_filters` select commercial offers. `targeting_overlay` instead constrains the inventory or impressions that may deliver, so every returned price and forecast must account for the effective overlay. `required_overlay_support` asks for targeting dimensions the buyer can select independently on packages later; it does not request one product per metro or guarantee availability for every future value.
+`offer_filters` select commercial offers. `targeting_overlay` instead constrains the inventory or impressions that may deliver, so every returned price and forecast must account for the effective overlay. `required_overlay_support` asks for targeting dimensions the buyer can select independently on packages later. For aggregate frequency capping, use `criteria.required_media_buy_support` to require product participation and `criteria.media_buy_frequency_cap` to preflight an exact shared cap.
+
+Geographic coverage belongs in `offer_filters.countries`, `regions`, `metros`,
+`postal_areas`, or `geo_proximity`. For example, a metro entry
+`{"system": "nielsen_dma", "code": "501"}` asks for products with New York DMA
+inventory. It does not request DMA-targeted delivery or require selectable metro
+targeting. Entries within a coverage field are alternatives; different filters
+combine with AND. Apply filters before pagination. Coverage preserves the
+offer's pricing and forecast scope; only an explicit delivery overlay changes
+that scope. See [filter migration](/docs/reference/migration/targeting-aware-discovery#filter-migration).
 
 When a product can honor the overlay exactly, it does not echo the request. A product that proposes a different executable overlay returns sparse `targeting_resolution.modifications`; selecting that configured product accepts those disclosed changes.
 

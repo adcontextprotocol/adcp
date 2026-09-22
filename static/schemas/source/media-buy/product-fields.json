@@ -31,6 +31,8 @@
       "signal_targeting_allowed",
       "signal_targeting_rules",
       "demographic_targeting",
+      "overlay_support",
+      "media_buy_support",
       "audience_evidence",
       "audience_evidence_selections",
       "max_optimization_goals",

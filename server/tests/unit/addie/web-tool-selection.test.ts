@@ -4,6 +4,7 @@ import {
   selectRoutedWebTools,
 } from '../../../src/routes/addie-chat.js';
 import { getToolsForSets } from '../../../src/addie/tool-sets.js';
+import { resolveWebCertificationContext } from '../../../src/addie/web-certification-context.js';
 
 const tools: AddieTool[] = [
   { name: 'search_docs', description: 'Search docs', input_schema: { type: 'object', properties: {} } },
@@ -60,6 +61,108 @@ async function select(
 }
 
 describe('authenticated web Addie tool routing', () => {
+  it.each([routerFor(['knowledge']), null])('keeps registration executable through intake even when the router drifts or is absent', async router => {
+    const names = getToolsForSets(['adcp_agent_management', 'knowledge'], false, false);
+    const save = vi.fn(async () => 'Saved registration');
+    const selected = await selectRoutedWebTools({
+      message: 'Agent URL: https://sales.streamhaus.example/mcp\nAuth: OAuth client credentials',
+      memberContext: null, threadId: 'thread-1', isAAOAdmin: false,
+      activeAgentRegistration: true, router,
+      requestTools: {
+        tools: [{ name: 'save_agent', description: 'Register', input_schema: { type: 'object', properties: {} } }],
+        handlers: new Map([['save_agent', save]]),
+      },
+      globalToolNames: names.filter(name => name !== 'save_agent'),
+    });
+    expect(selected.selectedToolSets).toEqual(['adcp_agent_management', 'knowledge']);
+    expect(selected.allowedToolNames).toContain('save_agent');
+    await selected.requestTools.handlers.get('save_agent')!({});
+    expect(save).toHaveBeenCalledOnce();
+    expect(selected.allowedToolNames).not.toContain('resolve_escalation');
+  });
+
+  it('does not grant a missing registration handler through the intake overlay', async () => {
+    const selected = await selectRoutedWebTools({
+      message: 'Register my agent', memberContext: null, threadId: 'thread-1', isAAOAdmin: false,
+      activeAgentRegistration: true, router: routerFor(['knowledge']),
+      requestTools: { tools: [], handlers: new Map() },
+      globalToolNames: getToolsForSets(['adcp_agent_management', 'knowledge'], false, false).filter(name => name !== 'save_agent'),
+    });
+    expect(selected.allowedToolNames).not.toContain('save_agent');
+    expect(selected.selectedToolSets).not.toContain('adcp_agent_management');
+  });
+
+  it.each([
+    ['learning', 'get_learner_progress', {}, ['checkpoint_teaching_progress', 'complete_certification_module']],
+    ['assessment', 'test_out_modules', { module_ids: ['A1', 'A2', 'A3'] }, ['test_out_modules']],
+  ] as const)('retains executable %s tools when follow-up routing drifts to knowledge', async (kind, name, input, required) => {
+    const context = resolveWebCertificationContext(
+      kind === 'learning' ? [{ module_id: 'A2B', status: 'in_progress', addie_thread_id: 'old-chat' }] : [],
+      [{ role: 'assistant', delivery_status: 'completed', tool_calls: [
+        { name, input, result: 'Handled result', is_error: false, result_status: 'ok' },
+      ] }], 'new-chat', 'thread-1',
+    );
+    const names = getToolsForSets([`certification_${kind}`, 'knowledge', 'illustrations'], false, false);
+    const selected = await selectRoutedWebTools({
+      message: 'Here are my answers', memberContext: null, threadId: 'thread-1', isAAOAdmin: false,
+      activeCertificationKind: context.kind, activeAgentRegistration: true, router: routerFor(['knowledge']),
+      requestTools: {
+        tools: required.map(name => ({ name, description: name, input_schema: { type: 'object', properties: {} } })),
+        handlers: new Map(required.map(name => [name, vi.fn(async () => 'Saved')])),
+      },
+      globalToolNames: names.filter(name => !(required as readonly string[]).includes(name)),
+    });
+    expect(selected.allowedToolNames).toEqual(expect.arrayContaining([...required]));
+    expect([...selected.requestTools.handlers.keys()]).toEqual(expect.arrayContaining([...required]));
+    expect(selected.selectedToolSets).toContain(`certification_${kind}`);
+    expect(selected.allowedToolNames).not.toContain('resolve_escalation');
+  });
+
+  it.each([
+    ['admin_escalations', true, ['list_escalations', 'resolve_escalation']],
+    ['agent_storyboards', false, ['recommend_storyboards', 'get_storyboard_detail', 'run_storyboard', 'run_storyboard_step']],
+  ] as const)('retains the registered tools for a %s follow-up', async (domain, admin, required) => {
+    const names = getToolsForSets([domain], admin, false);
+    const selected = await select(routerFor([domain]), admin, {
+      tools: required.map(name => ({ name, description: name, input_schema: { type: 'object', properties: {} } })),
+      handlers: new Map(required.map(name => [name, vi.fn(async () => '{}')])),
+    }, names.filter(name => !(required as readonly string[]).includes(name)));
+
+    expect(selected.selectedToolSets).toEqual([domain]);
+    expect(selected.allowedToolNames).toEqual(expect.arrayContaining([...required]));
+    expect(selected.requestTools.tools.map(tool => tool.name)).toEqual([...required]);
+    expect([...selected.requestTools.handlers.keys()]).toEqual([...required]);
+  });
+
+  it('withholds escalation management from a non-admin even when definitions are registered', async () => {
+    const names = getToolsForSets(['admin_escalations'], true, false);
+    const selected = await select(routerFor(['admin_escalations']), false, { tools: [], handlers: new Map() }, names);
+    expect(selected.allowedToolNames).not.toContain('list_escalations');
+    expect(selected.allowedToolNames).not.toContain('resolve_escalation');
+  });
+
+  it('does not bypass a missing escalation handler', async () => {
+    const names = getToolsForSets(['admin_escalations'], true, false).filter(name => name !== 'resolve_escalation');
+    const selected = await select(routerFor(['admin_escalations']), true, { tools: [], handlers: new Map() }, names);
+    expect(selected.selectedToolSets).toEqual(['knowledge', 'community_research', 'schema_reference']);
+    expect(selected.allowedToolNames).not.toContain('resolve_escalation');
+  });
+
+  it('keeps exact analytics callable alongside member lists only for admins', async () => {
+    const names = getToolsForSets(['admin_organization_member_records'], true, false);
+    const selected = await select(routerFor(['admin_organization_member_records']), true, {
+      tools: [], handlers: new Map(),
+    }, names);
+    expect(selected.allowedToolNames).toContain('list_paying_members');
+    expect(selected.allowedToolNames).toContain('query_admin_analytics');
+
+    const member = await select(routerFor(['admin_organization_member_records']), false, {
+      tools: [], handlers: new Map(),
+    }, names);
+    expect(member.allowedToolNames).not.toContain('query_admin_analytics');
+    expect(member.allowedToolNames).not.toContain('list_paying_members');
+  });
+
   it('selects bounded member tools without an implicit knowledge overlay', async () => {
     const router = routerFor(['member_billing']);
     const selected = await select(router);

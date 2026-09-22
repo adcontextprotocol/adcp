@@ -59,6 +59,8 @@ const ALLOWED = new Set([
   'core/creative-approval-scope.json|*',
   // Diagnostic severity (error/warning/info) is distinct from escalation severity
   'core/diagnostic-issue.json|*',
+  // Verification tokens carry public badge roles, which intentionally exclude measurement.
+  'core/verification-token-claims.json|/properties/role',
   // Signal definition methodology intentionally excludes "projected"
   'core/signal-definition.json|*',
   'core/signal-definition-enrichment.json|*',

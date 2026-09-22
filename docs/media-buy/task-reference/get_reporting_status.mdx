@@ -5,8 +5,12 @@ description: "Check Reliable Reporting health, enumerate expected periods and re
 ---
 
 <Warning>
-**Reliable Reporting 1.0 is published in RC.1 and remains experimental.**
-Sellers implementing it declare
+**Reliable Reporting 1.0 is published through `3.2.0-rc.3` and remains
+experimental.** RC.2 publishes the opt-in consumer-status sync and readback and
+RC.3 hardens it. Sellers implementing that extension advertise
+`consumer_status_task`; it stays opt-in until the notice window closes on
+October 24, 2026, and becomes required Core only in the next eligible minor
+after that date. Sellers declare
 `media_buy.reporting_delivery` in `get_adcp_capabilities.experimental_features`.
 </Warning>
 
@@ -15,23 +19,23 @@ Reliable Reporting. It answers whether every report that should exist is present
 usable. It does not replace [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 as the reporting-data API.
 
-<Note>
-The schema links below pin the published RC.1 contract. RC.0 does not support `changes_after`,
-`adjustment_receipts`, receipt replacement semantics, or any other RC.1-only
-addition.
-</Note>
+{/* The stable /schemas/v3 alias does not expose this prerelease-only task yet. */}
+**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/get-reporting-status-request.json)
 
-{/* The stable /schemas/v3 alias does not expose this RC.1-only task yet. */}
-**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.1/media-buy/get-reporting-status-request.json)
-
-**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.1/media-buy/get-reporting-status-response.json)
+**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/get-reporting-status-response.json)
 
 <Note>
-**Reliable Reporting 1.0 / RC.1 additions:** incremental `changes_after` repair and
-its checkpoint, post-official `adjustments[]` and `adjustment_receipts[]`, and their
-correction/reconciliation semantics below are published in RC.1. RC.0 supports the
-`summary`, `periods`, and `revision` views, retained revisions, materializations,
-`receipts[]`, and cursor pagination; do not infer the RC.1 additions from that baseline.
+**What landed when.** RC.0 supports the `summary`, `periods`, and `revision`
+views, retained revisions, materializations, `receipts[]`, and cursor
+pagination. RC.1 adds incremental `changes_after` repair and its checkpoint,
+post-official `adjustments[]` and `adjustment_receipts[]`, and their
+correction/reconciliation semantics. `3.2.0-rc.2` adds `consumer_statuses[]` for
+sellers advertising `consumer_status_task` and includes those immutable records
+in flat pagination and `changes_after` checkpoints. `3.2.0-rc.3` adds the
+consumer-status hardening: `obligation_counts.consumer_status_pending`, issue
+`opened_at` / `issue_state` / `external_ref`, and the
+`consumer_mismatch_escalation_seconds` and `operations_contact` capability
+fields. Do not infer a later tier's additions from an earlier baseline.
 </Note>
 
 ## Views
@@ -41,8 +45,8 @@ Every request explicitly selects one response shape:
 | View | Use |
 | --- | --- |
 | `summary` | Answer “where is my reporting?” for an account, media-buy, and time scope. |
-| `periods` | Enumerate a flat cursor-paginated ledger of obligations, retained revisions, **RC.1** post-official adjustments and adjustment receipts, materialization attempts, and consumer receipts. Use **RC.1** `changes_after` for incremental repair. |
-| `revision` | Resolve one exact `reporting_revision_id` and a cursor-paginated page of its **RC.1** adjustments and adjustment receipts, materializations, and receipts. |
+| `periods` | Enumerate a flat cursor-paginated ledger of obligations, retained revisions, post-official adjustments, consumer status statements, materialization attempts, and receipts. Use `changes_after` for incremental repair. |
+| `revision` | Resolve one exact `reporting_revision_id` and a cursor-paginated page of its adjustments, consumer status statements naming that revision, materializations, and receipts. |
 
 SDKs may default a convenience `status()` call to `summary`; the wire request remains
 explicit so adding a filter never silently changes the response type.
@@ -107,10 +111,12 @@ explicit so adding a filter never silently changes the response type.
     "healthy": 25,
     "delayed": 0,
     "action_required": 1,
-    "complete": 0
+    "complete": 0,
+    "consumer_status_pending": 2
   },
   "issues": [
     {
+      "issue_id": "iss_report_overdue_analytics_daily_20260826",
       "code": "REPORT_OVERDUE",
       "severity": "action_required",
       "responsible_party": "seller",
@@ -130,14 +136,14 @@ explicit so adding a filter never silently changes the response type.
 | --- | --- |
 | `healthy` | Due obligations in this active scope are current and automatic delivery is working. |
 | `waiting` | No obligation in this active scope is due yet. |
-| `delayed` | At least one obligation is late but still inside automatic recovery. |
-| `action_required` | An SLA or retry boundary was crossed, **or** readable revision and verified materialization evidence crossed the immediate consumer-reconciliation boundary with a missing or rejected current receipt; `issues[]` supplies the human action. Reliable Reporting defines no separate receipt SLA. |
+| `delayed` | At least one obligation is late but still inside automatic recovery, or — caller-scoped only — a buyer's `received` status was made stale by a seller restatement and is still inside its re-read grace window. In the second case nothing is actually late; read `issues[].code` before charting this as seller lateness. |
+| `action_required` | An SLA or retry boundary was crossed, a Reconciled Billing receipt is missing/rejected, **or** the authenticated buyer reports that seller-healthy reporting is omitted, missing, unreadable, or contradictory; `issues[]` supplies the human action. |
 | `complete` | This scope is closed, fully covered by retained ledger history, and every obligation over its configured covered denominator has the required finality and an authoritative readable revision — for Core (API-delivered) obligations that means published and retained per `status_retention_days`; managed-delivery obligations additionally require a verified readable materialization. Obligations configured for consumer reconciliation also have an accepted receipt for the current revision. This delivery state does not replace the separate `coverage.status` claim. |
 
 Aggregate precedence is `action_required` before `delayed` before `healthy`.
 `waiting` applies only when nothing is due. `complete` requires
-`scope.scope_closed: true`; a current but open account scope is `healthy`, not
-`complete`.
+both `scope.scope_closed: true` and `scope.coverage_complete: true`; a current
+but open account scope is `healthy`, not `complete`.
 
 Health is evaluated over the exact `delivery_config_generations`, `feed_purposes`,
 finality, media buys, and time horizon echoed in `scope`. Buyers can query billing,
@@ -153,9 +159,43 @@ scope may be `complete`; this is distinct from naming an unknown or unauthorized
 This state is reachable after the caller intentionally sends
 `reporting_delivery_configs: []`.
 
+### Future expectation on a complete summary
+
+This correction targets the next 3.2 release candidate. The immutable RC.3
+schemas retain the earlier prohibition on this field with complete health.
+
+For `view: summary` with `health: complete`, a seller MUST populate
+`next_expected_at` when an active committed configuration generation in
+`scope.delivery_config_generations` has a future scheduled period outside the
+closed evaluated scope. Select the nearest future **period start**, strictly
+after `ledger_as_of`, across all those active generations. Omit the field when
+none has such a future period, including an account with no configurations.
+
+This timestamp comes from the configuration schedule. Its presence does not
+indicate that the evaluated scope is still open and does not represent an open
+obligation in that scope. Projecting it MUST NOT create, expose, lease, count,
+or alter an obligation whose period has not closed, or change `obligation_counts`,
+`scope`, or `coverage`. Both complete-health scope guards still apply.
+
+For example, at `ledger_as_of: 2026-08-01T04:05:00Z`, a completed evaluated
+scope `[00:00, 01:00)` may select active hourly and daily UTC configurations.
+Their next period starts are `2026-08-01T05:00:00Z` and
+`2026-08-02T00:00:00Z`, so the summary returns the former as `next_expected_at`.
+The completed obligation count and coverage remain those of `[00:00, 01:00)`.
+
+This complete-scope projection applies to the summary view; a complete periods
+response continues to omit the field. The existing open-scope value remains
+the next obligation due time. An obligation's
+`expected_at` remains `period.end + schedule.delivery_sla`, while the
+similarly named field in
+[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
+remains the next webhook notification time and is omitted for final
+notifications. Completing an evaluated reporting scope does not finalize an
+active configuration's schedule or its notification stream.
+
 ## Reliability model
 
-The periods view keeps five facts distinct:
+The periods view keeps six facts distinct:
 
 - An **obligation** records what report was expected and when, so a missing first
   webhook is detectable.
@@ -170,6 +210,11 @@ The periods view keeps five facts distinct:
 - A **materialization** is one attempt to expose that revision through a durable file
   transfer, dataset share, or warehouse for one obligation and destination. A retry
   gets a new materialization ID but keeps the same revision ID.
+- A **consumer status** is the authenticated buyer's immutable statement that an
+  expected period was received, omitted from the seller ledger, missing its
+  revision, unreadable, or contradictory to the accepted configuration
+  generation. It remains separately attributed and can identify a
+  missing seller obligation without a seller-issued obligation ID.
 - A **receipt** is one authenticated consumer's accepted or rejected reconciliation
   result for an exact materialization. Availability says the producer published it;
   an accepted receipt says that consumer independently observed matching evidence.
@@ -214,11 +259,107 @@ durable materialization in this first managed-ledger version; a short-period pac
 configuration plus the signed readiness doorbell is the reliable fast path here.
 
 Periods pagination applies to the flat union of `periods[]` obligation records,
-`revisions[]`, `adjustments[]`, `materializations[]`, `receipts[]`, and
+`revisions[]`, `adjustments[]`, `consumer_statuses[]`, `materializations[]`, `receipts[]`, and
 `adjustment_receipts[]`, so one
 heavily restated, corrected, retried, or reconciled period cannot create an
 unbounded nested response. Each obligation's record counts let the SDK prove it
 found the complete associated history across pages.
+
+## Consumer-status mismatch
+
+After reading or repairing reporting, a buyer calls
+[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status).
+`get_reporting_status` returns that authenticated caller's append-only statements
+in `consumer_statuses[]`; no buyer can read another buyer's status.
+
+The seller compares only the current unsuperseded statement with its own current
+projection. If the seller says `healthy` or `complete` while that buyer's status
+conflicts, this caller/account view is degraded with a stable
+`CONSUMER_STATUS_MISMATCH` issue.
+The issue carries `opened_at`, points at `reporting_status_id`, and names the
+diagnosed `responsible_party`. Neither claim overwrites the other.
+
+A conflict is `obligation_missing`, `revision_missing`, `unreadable`,
+`content_mismatch`, or `received` naming an older revision after the seller
+publishes a newer required restatement. The last one is how the seller can see
+that reporting changed after the buyer already read it;
+`content_mismatch` is how the buyer says the reporting arrived but contradicts
+the accepted configuration generation — a contract-fact disagreement, not a
+measurement dispute.
+
+### Severity: immediate, except for stale `received`
+
+| Current statement | Severity |
+|---|---|
+| `obligation_missing`, `revision_missing`, `unreadable`, `content_mismatch` | `action_required` immediately. |
+| `received` naming a revision superseded by a seller restatement | `delayed` until the grace deadline below, then `action_required`. |
+
+The stale-`received` carve-out exists because that buyer consumed exactly what
+the seller required at the time and has not yet had a bounded chance to re-read.
+Paging a human the instant a seller restates a provisional revision would train
+buyers to ignore the signal.
+
+The grace deadline is the `created_at` of the **first** revision that superseded
+the one the consumer named, plus the configuration generation's
+`schedule.delivery_sla`, as exact elapsed time in UTC. When that SLA resolves to
+a zero duration, the seller uses `automated_recovery_window_seconds` instead so
+a zero-SLA feed still gets a bounded window.
+
+Two properties keep the window from becoming a hiding place. Later restatements
+do **not** restart it — it is anchored to the first supersession, not to the
+newest revision — and the issue keeps one `issue_id` and one `opened_at` across
+the severity change, so it ages as a single work item. An advertised
+`consumer_mismatch_escalation_seconds` boundary takes precedence when the two
+overlap: at `opened_at` plus that window the issue is `action_required`
+regardless of the grace deadline.
+
+### Escalation, lifecycle, and contacts
+
+A seller that advertises `consumer_mismatch_escalation_seconds` (which requires
+advertising `operations_contact`) commits to escalating: once an issue has been
+open that long measured from its `opened_at`, it MUST be `action_required` with
+a `contact_*` `recommended_action` naming the diagnosed `responsible_party`.
+Issues may also carry `issue_state` (`open`, `acknowledged`, `resolved`,
+`waived`) and an inert `external_ref` for correlation with each side's own
+ticketing. Only `open` and `acknowledged` issues appear in `issues[]`; retiring
+an issue removes it rather than publishing it in a terminal state, so a reader
+that treats a non-empty `issues[]` as degradation stays correct.
+
+Retiring is not a way to discharge a live disagreement. A seller MUST NOT take a
+`CONSUMER_STATUS_MISMATCH` out of a degraded projection while the statement that
+caused it is still that consumer's current unsuperseded leaf. `resolved` is
+reachable when the consumer supersedes that statement with one that agrees, or
+when the seller's own projection changes so the two no longer conflict.
+`waived` records an off-protocol agreement to stop acting and does not by itself
+return the period to `healthy` or `complete` — otherwise the seller could
+unilaterally erase a buyer-attributed disagreement, which is exactly what this
+separately attributed loop exists to prevent. A seller may still waive a
+statement it has diagnosed as buyer-side; that is an explicit, readable act
+rather than silence.
+
+`operations_contact` is human-facing metadata: surface it to an
+operator, never dereference it or treat it as an AdCP endpoint. Its URL is
+constrained to the same hardened public-origin shape as the offering document
+URIs, so it cannot name a loopback host, an IP literal, or a credentialed link.
+
+### Silence is counted, not escalated
+
+A buyer owes a current status for each elapsed expected period by
+`expected_at` + `automated_recovery_window_seconds`. A seller that advertises
+`consumer_status_task` reports how many obligations in scope are past that
+deadline with no current statement from this caller in
+`obligation_counts.consumer_status_pending`. A chain with any unsuperseded leaf
+counts as current whatever that leaf says; only an empty chain is pending. It
+counts obligations, so a period the seller omitted entirely is not in it — your
+own derived denominator, not this field, stays the authority on omitted periods.
+That count is visibility only: it
+overlaps the health counts rather than partitioning them, and it never changes
+`health`, another count, or seller-advertised `reliability_statistics`.
+
+A `received` status does not satisfy seller production health and is not a billing
+receipt. Missing buyer status stays unknown and never excuses an overdue seller
+obligation. Buyer-attributed status also stays out of seller-advertised
+`reliability_statistics` unless independently corroborated.
 
 ## Readiness and recovery
 
@@ -464,7 +605,7 @@ bound to that immutable snapshot, every page repeats its identity, and
 `pagination.total_count` is required. SDKs reject a changed snapshot identity, dedupe
 each record by its type-specific immutable ID, and finish only when the unique stored
 record count equals `total_count` and each obligation's
-revision/adjustment/materialization/receipt counts match. A periods response also
+revision/adjustment/consumer-status/materialization/receipt counts match. A periods response also
 returns `changes_checkpoint`. The buyer persists it only after `has_more: false`
 and supplies it as `changes_after` on the next read. The seller must return every
 later record and the current projection of affected obligations; it may safely

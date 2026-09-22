@@ -495,6 +495,18 @@ See [Accounts and Agents](/docs/building/by-layer/L2/accounts-and-agents#what-se
 
 Media-buy protocol capabilities. Only present if `media_buy` is in `supported_protocols`. Sellers declaring `media_buy` should also include `account` (with `supported_billing`) and `media_buy.portfolio` — buyers need both to establish billing and understand inventory coverage. Compliance testing validates their presence.
 
+#### anonymous_discovery
+
+`media_buy.anonymous_discovery` declares whether the seller accepts product-discovery calls without caller credentials. It covers [`list_products`](/docs/media-buy/task-reference/list_products) and [`get_products`](/docs/media-buy/task-reference/get_products) in `brief` or `wholesale` mode. It does not cover proposal refinement or finalization, purchasing, account-scoped reads, or mutations; those operations follow their normative authentication requirements.
+
+- `true` means an anonymous discovery request can return a successful response. It does not promise a complete seller catalog, globally public commercial terms, or the same result an authenticated principal or selected account would receive.
+- `false` means product discovery requires an authenticated principal.
+- Absence means unspecified legacy behavior. Callers MAY probe anonymously and handle [`AUTH_MISSING`](/docs/building/verification/compliance-catalog#error-code-auth-missing); they MUST NOT infer either value.
+
+This declaration describes the minimum caller context accepted by the discovery task, not product visibility. Every response is authoritative only for the authentication and account context of that request. A seller MUST validate credentials when they are presented and MUST NOT silently downgrade invalid credentials to anonymous access.
+
+`anonymous_discovery: true` and `account.required_for_products: true` are inconsistent and fail capability validation: an anonymous caller cannot select protected account context. The inverse dimensions remain independent—a seller may require an authenticated principal without requiring an account reference.
+
 #### acceptance_policy_discovery
 
 `media_buy.acceptance_policy_discovery` advertises a structured catalog for what the seller will accept. `catalog_url` identifies an HTTPS `acceptance-policy-catalog.json` document, `catalog_digest` pins its bytes, and `default_profile_ids[]` selects seller-wide profiles. The declaration does not claim the seller evaluates buyer-supplied acceptance context during discovery; buyers compose the published profiles for advisory preflight and treat exact task responses as authoritative.
@@ -537,7 +549,7 @@ When `lifecycle_tools` includes `refine_proposals`, `proposal_refinement` option
 
 `alternatives.count` has a protocol maximum of 10. `max_alternatives` may accompany `alternatives` to publish a lower pre-flight count ceiling and therefore cannot exceed 10. A request whose `alternatives.count` exceeds that declared ceiling MUST fail at task level with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error); `error.field` identifies the offending `refinements[i].alternatives.count`. Sellers MUST NOT silently clamp the count or reinterpret the ceiling as an `alternatives_unavailable` result.
 
-An explicit `supported_dimensions` list is authoritative, including an empty list meaning the seller supports `ask`-only refinement but no typed dimensions. Buyers SHOULD NOT send omitted dimensions, and sellers MUST reject them at task level with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). Such errors SHOULD carry the [`error-details/unsupported-refinement-dimension.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/error-details/unsupported-refinement-dimension.json) shape — `details.unsupported_dimension` and `details.supported_dimensions` — so an authorized buyer can remove or translate unsupported fields without another capability round trip. This task-level rejection applies to the complete request: no sibling refinement succeeds and no proposal is created, even when the unsupported dimension appears after otherwise supported entries. When `proposal_refinement` is absent, support is unknown; sellers report unsupported dimensions through `partial` or `unable` results instead. `proposal_refinement` is valid only when `lifecycle_tools` includes `refine_proposals`.
+An explicit `supported_dimensions` list is authoritative, including an empty list meaning the seller supports `ask`-only refinement but no typed dimensions. Buyers SHOULD NOT send omitted dimensions, and sellers MUST reject them at task level with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). Such errors SHOULD carry the [`error-details/unsupported-refinement-dimension.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/error-details/unsupported-refinement-dimension.json) shape — `details.unsupported_dimension` and `details.supported_dimensions` — so an authorized buyer can remove or translate unsupported fields without another capability round trip. This task-level rejection applies to the complete request: no sibling refinement succeeds and no proposal is created, even when the unsupported dimension appears after otherwise supported entries. When `proposal_refinement` is absent, support is unknown; sellers report unsupported dimensions through `partial` or `unable` results instead. `proposal_refinement` is valid only when `lifecycle_tools` includes `refine_proposals`.
 
 This capability is about parse and validation support, never commercial willingness. Free-text `ask` interpretation remains seller competence rather than a boolean capability. Multi-proposal finalization deliberately retains its separate failure-as-discovery model through [`MULTI_FINALIZE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-multi-finalize-unsupported): it describes atomic infrastructure topology, while the core typed revision fields must be discoverable before a deterministic buyer constructs a request.
 
@@ -563,6 +575,57 @@ This capability is about parse and validation support, never commercial willingn
 ```
 
 `timezone_basis: "account"` uses the selected `Account.timezone`, allowing two accounts on the same seller to have different cap days. `timezone_basis: "fixed"` requires `fixed_timezone` and uses that feature-specific boundary for every buy. A buyer override is media-buy-level and applies to every cap on that buy. The accepted effective timezone is echoed as `budget_cap_timezone`; DST transition dates remain one calendar day carrying the full cap. Billing and reporting timezones remain independently explicit and MUST NOT be inferred from the cap basis.
+
+#### frequency_capping
+
+`frequency_capping` retains its legacy meaning: the seller honors package-level
+caps, with an independent counter per package, and rejects caps it cannot
+enforce rather than silently dropping them. A cap with one counter shared
+across every package in a MediaBuy is advertised by the separate, additive
+`aggregate_frequency_capping` object, so older buyers never mistake a root-only
+seller for one that accepts package caps.
+
+```json
+{
+  "media_buy": {
+    "frequency_capping": {
+      "supported_per_units": ["individuals", "households"],
+      "supported_window_units": ["hours", "days", "campaign"]
+    },
+    "aggregate_frequency_capping": {
+      "supported_control_modes": ["max_impressions"],
+      "supported_per_units": ["individuals", "households"],
+      "max_impressions_constraints": {
+        "minimum": 1,
+        "maximum": 20
+      },
+      "window_constraints": [
+        { "unit": "hours", "minimum_interval": 1, "maximum_interval": 24 },
+        { "unit": "days", "allowed_intervals": [1, 7, 30] },
+        { "unit": "campaign", "allowed_intervals": [1] }
+      ]
+    }
+  }
+}
+```
+
+Package execution requires either broad
+`Product.overlay_support.frequency_cap: true` or structured
+`Product.overlay_support.frequency_cap_support`. Product constraints may narrow
+but never broaden seller-wide support: omitted per units inherit
+`supported_per_units`, and omitted window or suppression constraints inherit
+`supported_window_units` with no interval restriction. Each count or duration
+constraint is either an exact preset list or an inclusive range.
+`mutable_fields` distinguishes count updates from window or entity changes, and
+`[]` means create-only.
+
+Aggregate execution requires `Product.media_buy_support.frequency_cap: true` on
+every selected product, and every product's resolved `supported_per_units` must
+include the root cap's `per` value. The seller-wide aggregate object must
+declare its complete executable domain; product detail may only inherit or
+narrow it. Root caps are max-impression-only in 3.2; package caps may also use
+suppression. Scope is determined by field location, not by a `FrequencyCap`
+discriminator.
 
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:
@@ -612,12 +675,13 @@ wire-compatible, so each is evaluated through its own capability surface.
 
 | Tier | Advertised by | Contains | Required? |
 |---|---|---|---|
-| **Core** | `supported: true` | Obligations, revisions, immutable post-official adjustments, the five health states, and [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) — delivered over transports sellers already have (`get_media_buy_delivery`, the existing `reporting_webhook`). Core offerings omit `method`, destinations, materializations, and canonicalization. | **Yes** — the only required tier |
+| **Core** | `supported: true` | Obligations, revisions, immutable post-official adjustments, the five health states, and seller [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status). Current source also defines opt-in buyer-to-seller [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status) over ordinary task transport; it becomes required only in the next eligible minor after the notice window. Core offerings omit `method`, destinations, materializations, Managed canonicalization, billing receipts, and bespoke status webhooks. | **Yes** — the only required tier |
 | **Managed delivery** | `managed_delivery: true` | Offerings whose `method` names `file_transfer`, `dataset_share`, or `warehouse_materialization`, plus exact-resource retention and authorization-revocation bounds. | No |
 | **Reconciled billing** | `reconciled_billing: true` | `receipt_task` ([`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)), `consumer_receipt` reconciliation, and the canonical-digest contract in offering profiles. | No |
 
-A polling-only seller that repairs through `get_reporting_status` is fully
-Core-conformant. A supported RFC 9421 `webhook_signing` profile is required only
+A seller with no outbound reporting push remains Core-conformant: status sync is
+an ordinary inbound task, not a buyer-hosted callback. A supported RFC 9421
+`webhook_signing` profile is required only
 when the seller declares any reporting notification.
 
 Three optional doorbells: `status_notification` (`reporting.status_changed`) is
@@ -633,6 +697,19 @@ is managed-delivery-only positive readiness. Ledger changes repair through
 content-addressed reporting profile/schema, schedule, and supported finality;
 managed-delivery offerings additionally bind transport, orchestration,
 provider/access mode/format, and destination modes.
+
+The Core capability can declare both status directions:
+
+- `status_task: "get_reporting_status"` exposes the seller's obligation and
+  revision ledger; and
+- optional `consumer_status_task: "sync_reporting_status"` records what the
+  authenticated buyer could actually consume. It becomes mandatory only in the
+  next eligible minor after the active notice window.
+
+The second task does not require the buyer to expose an agent endpoint or
+webhook. A buyer using a Reliable Reporting configuration calls the seller task
+automatically after bounded repair and whenever its period status changes.
+Missing buyer status remains unknown and never excuses seller reporting.
 
 Schedules may align to UTC, the AdCP account timezone, an explicit upstream
 `source_timezone`, or an anchored billing cycle. `source_timezone` covers clocks
@@ -1070,6 +1147,7 @@ Signals protocol capabilities. Only present if `signals` is in `supported_protoc
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `anonymous_discovery` | boolean | Whether [`get_signals`](/docs/signals/tasks/get_signals) accepts anonymous discovery in `brief` or `wholesale` mode. `true` permits a successful anonymous response but makes no completeness or cross-account equivalence claim; `false` requires an authenticated principal; absence is unspecified legacy behavior. Presented credentials are always validated and invalid credentials never downgrade to anonymous access. |
 | `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal definitions and to verify authorization. |
 | `discovery_modes` | string[] | Discovery modes the agent supports on [`get_signals`](/docs/signals/tasks/get_signals). `"brief"` (semantic discovery via `signal_spec` / `signal_refs`, with deprecated `signal_ids` accepted for older clients) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_refs` / `signal_ids` and enumerate the full priced signals feed. Agents not declaring `"wholesale"` MAY return [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) for wholesale calls. Absent declaration is treated as `["brief"]`. |
 | `features.catalog_signals` | boolean | **Deprecated.** Legacy wire flag for structured `signal_ref` references to provider-published signal definitions in adagents.json `signals[]`. |
@@ -1970,6 +2048,7 @@ An agent can implement multiple protocols from a single endpoint. This is common
     "timezone": { "mode": "seller_fixed", "fixed_timezone": "UTC" }
   },
   "media_buy": {
+    "anonymous_discovery": true,
     "creative_approval_mode": "require_human",
     "features": {
       "inline_creative_management": true

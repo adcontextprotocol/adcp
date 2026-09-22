@@ -8,11 +8,11 @@ description: "Role-based migration checklist for adopting the AdCP 3.2 release c
 # Migrating from 3.1 to 3.2
 
 <Warning>
-**3.2 is in release candidate.** RC.1 is the current signed protocol
-checkpoint. TypeScript `@adcp/sdk@14.0.0-rc.33`, Python `adcp==8.0.0b14`, and
-Go `adcp/v3@v3.2.1` embed it exactly; Python and Go higher-level coverage
-remains role-dependent. Keep production traffic pinned to `"3.1"`
-while validating an exact 3.2 checkpoint in staging.
+**3.2 is in release candidate.** RC.3 is the current signed protocol
+checkpoint. TypeScript `@adcp/sdk@14.0.0-rc.40` embeds RC.3 exactly; Python
+`adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` still embed `3.2.0-rc.1`, with
+role-dependent higher-level coverage. Keep production traffic pinned to `"3.1"` while validating an
+exact 3.2 checkpoint in staging.
 </Warning>
 
 3.2 is a minor release over 3.1. Existing integrations do not need to adopt the
@@ -47,23 +47,24 @@ surfaces by hand.
 | Step | Who | Action |
 |---|---|---|
 | 1 | Everyone | Keep production on `"3.1"`; choose an exact 3.2 prerelease artifact for staging. |
-| 2 | SDK and codegen maintainers | Generate from the signed `3.2.0-rc.1` protocol tarball, not `main` or `/schemas/latest/`. |
+| 2 | SDK and codegen maintainers | Generate from the signed `3.2.0-rc.3` protocol tarball, not `main` or `/schemas/latest/`. |
 | 3 | Sellers and agents | Advertise the exact prerelease in `adcp.supported_versions` and echo the release actually served. |
-| 4 | Buyers | Send `adcp_version: "3.2-rc.1"` only after exact capability discovery; never silently move between prerelease pins. |
+| 4 | Buyers | Send `adcp_version: "3.2-rc.3"` — or whichever exact prerelease the peer advertises — only after exact capability discovery; never silently move between prerelease pins. |
 | 5 | Media-buy implementations | Move create/update success handling completely to `media_buy_status`. |
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
-| 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
-| 8 | Compliance operators | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.33`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain the exact package and wire versions. |
-| 9 | Delivery-reporting implementations | Emit and consume currency at media-buy or package grain, move qualified outcomes to `by_package[].metric_values`, and stop producing new `aggregated_totals`. |
+| 7 | Producers and SDK maintainers | Emit `error.recovery` on every 3.2 error; keep decoders compatible with 3.1 errors that omit it. |
+| 8 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
+| 9 | Compliance operators | Pair `@adcp/sdk@14.0.0-rc.40` with RC.3. Python `adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` remain paired with RC.1. Retain the exact package and wire versions. |
+| 10 | Delivery-reporting implementations | Emit and consume currency at media-buy or package grain, move qualified outcomes to `by_package[].metric_values`, and stop producing new `aggregated_totals`. |
 
 ## Required to claim 3.2 behavior
 
 ### Serve and echo the exact release
 
-During prerelease, version matching is exact. A seller serving RC.1 advertises
-`"3.2-rc.1"`. Do not advertise stable `"3.2"` before GA, silently negotiate
-between prerelease pins, or treat a major-only declaration as evidence of 3.2
-support.
+During prerelease, version matching is exact. A seller serving RC.3 advertises
+`"3.2-rc.3"`; a seller still on RC.1 advertises `"3.2-rc.1"`. Do not advertise
+stable `"3.2"` before GA, silently negotiate between prerelease pins, or treat
+a major-only declaration as evidence of 3.2 support.
 
 The 3.2 compliance posture makes missing `supported_versions` or a missing
 response echo a blocking failure for a 3.2 claim, even though the fields remain
@@ -103,11 +104,29 @@ from a version field inside the untrusted body. Keep an explicitly routed
 encoding throughout AdCP 3.x; do not apply the request-profile migration to
 webhook receivers. See [Signed requests](/docs/building/by-layer/L1/security#signed-requests-transport-layer).
 
+### Populate recovery without rejecting legacy errors
+
+AdCP 3.2 producers MUST populate `error.recovery` on every error. AdCP 3.1
+producers SHOULD populate it, and the shared 3.x schema deliberately continues
+to require only `code` and `message`. Do not make `recovery` schema-required in
+a shared decoder: stored responses and live 3.1 peers may validly omit it.
+
+Consumers use wire `recovery` when present. When it is absent, use the
+registered classification for a known code and the bounded `transient`
+fallback for an unknown code. Determine that classification before consulting
+`retry_after`; a delay never makes a `correctable` or `terminal` error eligible
+for automatic retry.
+
+SDK suites should consume the versioned [error-recovery reference vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/error-recovery/vectors.json), replacing `latest` with the exact protocol artifact version for release qualification. The vectors include the known/unknown decision table, semantic `buyer_reason` consistency, retry-budget exhaustion, and legacy fractional delays.
+
 ### Emit integer retry delays
 
 3.2 producers emit `error.retry_after` as an integer number of seconds. Clients
 that still receive a legacy fractional value should round up before applying
-their bounded retry policy. Do not read `retry_after` from `error.data`.
+their bounded retry policy. Apply the delay only after classifying the error as
+`transient`; never automatically retry a `correctable` or `terminal` error
+merely because the field is present. Do not read `retry_after` from
+`error.data`.
 
 ### Move delivery reporting to row-level semantics
 
@@ -138,6 +157,21 @@ When a qualified standard metric is present in `metric_values`, sellers MUST
 omit its flat package scalar so consumers never see two sources of truth.
 
 ## Adopt by capability
+
+### Plan anonymous catalog discovery
+
+Before omitting caller credentials, read `media_buy.anonymous_discovery` for
+`list_products` and discovery-mode `get_products`, or
+`signals.anonymous_discovery` for `get_signals`. `true` means an anonymous call
+can succeed; it does not mean the response is a complete seller catalog or that
+authenticated buyers and accounts receive identical data. `false` means the
+discovery call requires an authenticated principal. Absence is the 3.1 and
+early-3.2 posture: treat the requirement as unspecified, probe if appropriate,
+and handle `AUTH_MISSING` without assuming a seller defect.
+
+Presented credentials are always validated. An invalid credential does not
+fall back to anonymous discovery. Mutations and private or account-scoped reads
+remain authenticated by protocol rule and do not use these discovery flags.
 
 ### Compact product and MediaBuy lifecycle
 
@@ -244,7 +278,7 @@ See [Cross-role governance enforcement](/docs/reference/migration/cross-role-gov
 | Creative agent | Canonical supported-format capabilities, operation selection, and explicit compatibility handling for legacy named formats. |
 | Signals or measurement agent | Exact prerelease pin and only the attestation, targeting, or feedback capabilities actually implemented. |
 | Governance provider/service | Exact prerelease pin, `governance.campaign` experimental declaration, and the complete cross-role authorization migration. |
-| SDK maintainer | Signed RC.1 bundle ingestion, generated-type/validator tests, exact support matrix entry, and protocol feedback destined for the next prerelease. |
+| SDK maintainer | Signed RC.3 bundle ingestion, generated-type/validator tests, exact support matrix entry, and protocol feedback destined for the next prerelease. |
 | Compliance operator | Matching assets, SDK package, and wire pin end to end; no 3.2 badge from a prerelease checkpoint. |
 
 ## Rollback

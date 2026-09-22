@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase-input.json",
+  "title": "Product Purchase Input",
+  "description": "Request-only canonical product selection for buy_products. It shares the strict Product Purchase field shapes but uses Targeting Input so a buyer can distinguish inheritance, replacement, and explicit clearing. Accepted commercial snapshots use product-purchase.json and contain only resolved, non-null effective targeting.",
+  "type": "object",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "direct_purchase_terms": "On buy_products, supplied start_time, end_time, measurement_terms, and performance_standards MUST exactly match the selected published offer; omission inherits that offer.",
+      "pricing_identity": {
+        "pricing_option_id": "equals_pricing.pricing_option_id_when_pricing_present",
+        "on_violation": "reject_before_commitment"
+      }
+    }
+  },
+  "properties": {
+    "product_id": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/product_id"
+    },
+    "pricing_option_id": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/pricing_option_id"
+    },
+    "pricing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/pricing"
+    },
+    "format_option_refs": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/format_option_refs"
+    },
+    "catalog_ids": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/catalog_ids"
+    },
+    "budget": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/budget"
+    },
+    "daily_budget_cap": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/daily_budget_cap"
+    },
+    "min_spend_target": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/min_spend_target"
+    },
+    "impressions": {
+      "title": "Product Purchase Impressions",
+      "type": "number",
+      "minimum": 0
+    },
+    "start_time": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/start_time"
+    },
+    "end_time": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/end_time"
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/pacing"
+    },
+    "bidding": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/bidding"
+    },
+    "targeting_overlay": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/targeting-input.json",
+      "description": "Per-dimension targeting input. Omission inherits the selected product's configured/default dimension, a non-null value replaces it, and null explicitly suppresses it. A clear cannot remove inherent product scope."
+    },
+    "optimization_goals": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/optimization_goals"
+    },
+    "audience_evidence_requirements": {
+      "title": "Product Purchase Audience Evidence Requirements",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/product-audience-evidence-requirements.json",
+      "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot."
+    },
+    "audience_evidence_pins": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/audience_evidence_pins"
+    },
+    "agency_estimate_number": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/agency_estimate_number"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/context"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/ext"
+    },
+    "measurement_terms": {
+      "title": "Product Purchase Measurement Terms",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/canonical-measurement-terms.json",
+      "description": "Published or negotiated billing-measurement and makegood terms for this purchase. Direct buyers may omit this to inherit the product default; accepted proposal snapshots preserve the resolved terms."
+    },
+    "performance_standards": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/product-purchase.json#/properties/performance_standards"
+    }
+  },
+  "required": [
+    "product_id",
+    "pricing_option_id"
+  ],
+  "additionalProperties": false,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "creatives"
+        ]
+      },
+      {
+        "required": [
+          "creative_assignments"
+        ]
+      },
+      {
+        "required": [
+          "catalogs"
+        ]
+      }
+    ]
+  }
+}

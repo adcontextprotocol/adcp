@@ -38,15 +38,21 @@ flowchart TD
    creative capabilities.
 2. **Form the commercial commitment** — purchase a versioned published offer
    with `buy_products`, or accept a committed immutable proposal with
-   `accept_proposal`.
+   `accept_proposal`. Either request may set the buyer's MediaBuy `name`; the
+   completed commitment echoes it outside `accepted_proposal` and its digest.
 3. **Supply creatives** — use `sync_creatives` and explicit assignment
    operations. Compact purchase calls never carry creative bodies.
 4. **Operate and reconcile** — read `get_media_buys`, apply in-envelope changes
    with `control_media_buy`, and use `get_media_buy_delivery` for reporting.
 
 Commercial changes outside the accepted envelope return `REQUOTE_REQUIRED`.
-Begin an amendment from the snapshot's `accepted_proposal_id`, then revise,
-finalize, and accept the successor proposal.
+When `error.details.decline_reason` is present, use the coarse seller-policy
+dimension to inform recovery. The reason may select a typed refinement, but
+some policies still require the buyer-safe message, a free-text `ask`, or human
+negotiation. Begin the amendment from the snapshot's `accepted_proposal_id`,
+then revise, finalize, and accept the successor proposal. Sellers retain
+disclosure control and may omit `decline_reason` when even the coarse
+classification would expose private thresholds or enforcement controls.
 
 ### Compact operations form a saga
 
@@ -69,7 +75,7 @@ assignment fails. Implementations MUST NOT describe such a sequence as an
 atomic translation of the compatibility facade.
 
 Some compatibility requests therefore require the facade itself. A placement
-targeting replacement that removes a placement used by an assignment must
+targeting patch that removes a placement used by an assignment must
 replace or reroute that assignment in the same `update_media_buy` mutation.
 `control_media_buy` cannot carry creative assignments, so `control_media_buy`
 followed by `sync_creatives` is not equivalent. Inline-only creative sellers
@@ -82,7 +88,9 @@ and a buyer-authored exact `committed_metrics` set. Compact callers synchronize
 catalogs before purchase and accept that a catalog can remain after a failed
 purchase. Direct compact purchase derives reporting commitments from published
 terms; an exact set is lossless only when it is already captured by the
-proposal being accepted.
+proposal being accepted. The MediaBuy `name` is not lossy: both compact
+commitment requests accept the buyer's display label and return the persisted
+value outside the accepted commercial terms.
 
 ## State machine
 
@@ -157,10 +165,11 @@ another. `available_actions` tells compact clients whether the next change
 routes to `control_media_buy`, proposal refinement, creative assignment, or
 another task. Prefer it over inferring routing from the state enum.
 
-A display-name-only change routes to `control_media_buy`. `name` is
-revision-checked non-commercial metadata: changing it increments the MediaBuy
-revision without changing the accepted terms or creating an accepted-proposal
-successor.
+A display name may be set on `buy_products` or `accept_proposal` when the
+MediaBuy is committed. A later display-name-only change routes to
+`control_media_buy`. `name` is revision-checked non-commercial metadata:
+changing it increments the MediaBuy revision without changing the accepted
+terms or creating an accepted-proposal successor.
 
 Use `sync_creatives.assignment_operations` for creative changes. Creative
 assignment is independent from commercial control and does not increment the

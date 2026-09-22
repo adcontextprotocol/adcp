@@ -17,9 +17,13 @@ primary_region = 'iad'
   release_command = "node dist/db/migrate.js"
   release_command_timeout = "15m"
   strategy = "rolling"
+  wait_timeout = "10m"
+  # CI deploys web with bluegreen, then worker with rolling using the same
+  # image. Keep the default rolling for singleton worker/operator deployments.
 
 [processes]
-  web = "node dist/index.js"
+  # Leave room for native buffers and the OS within the 4 GB web allocation.
+  web = "node --max-old-space-size=2048 dist/index.js"
   worker = "node dist/index.js"
 
 [env]
@@ -27,10 +31,15 @@ primary_region = 'iad'
   BASE_URL = "https://agenticadvertising.org"
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
-  # First stage: new staff web conversations only. Set MODE=eligible for the
-  # 10% user A/B after reviewing staff outcomes; MODE=off rolls back all turns.
-  ADDIE_GEMINI_DIRECT_MODE = "staff"
-  ADDIE_GEMINI_DIRECT_PERCENT = "10"
+  # Global response policy, including existing threads and every delivery channel.
+  # Roll back with ADDIE_RESPONSE_PROVIDER=sonnet; fallback is a separate opt-in.
+  ADDIE_RESPONSE_PROVIDER = "gemini"
+  ADDIE_RESPONSE_AUTOMATIC_FALLBACK = "true"
+  # Historical experiment enrollment settings do not override the global policy.
+  ADDIE_GEMINI_DIRECT_MODE = "eligible"
+  ADDIE_GEMINI_DIRECT_PERCENT = "100"
+  ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED = "true"
+  ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT = "100"
   PUBLISHER_CRAWL_QUEUE_ENABLED = "true"
   # Bounded, evaluation-only Luna router shadow. The runtime additionally
   # fails closed unless the channel is public and non-shared and the HMAC and
@@ -67,7 +76,7 @@ primary_region = 'iad'
     timeout = "20s"
     grace_period = "60s"
     method = "GET"
-    path = "/health"
+    path = "/ready"
     protocol = "http"
     tls_skip_verify = false
 

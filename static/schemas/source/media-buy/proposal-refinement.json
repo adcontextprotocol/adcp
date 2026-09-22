@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/proposal-refinement.json",
   "title": "Proposal Refinement",
-  "description": "Fork an immutable proposal or finalize a draft into a held committed snapshot. Revising with structured criteria, typed boundaries, product changes, requested alternatives, and/or a semantic ask creates one or more new drafts; finalizing changes no terms. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged.",
+  "description": "Fork an immutable proposal or finalize a draft into a held committed snapshot. Revising with structured criteria, typed boundaries, product changes, requested alternatives, and/or a semantic ask creates one or more new drafts; finalizing changes no terms. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged. A revised product mix must support the resulting root frequency cap; because omitted criteria inherit, clearing the cap is explicit through remove_media_buy_frequency_cap.",
   "type": "object",
   "properties": {
     "proposal_id": {
@@ -91,6 +91,11 @@
     "criteria": {
       "$ref": "/schemas/media-buy/product-discovery-criteria.json",
       "description": "Structured discovery changes for action revise. Each present field replaces that criterion from the source proposal; omitted fields inherit. Concrete targeting, future targeting support, and offer filters belong here rather than being repeated in ask."
+    },
+    "remove_media_buy_frequency_cap": {
+      "type": "boolean",
+      "const": true,
+      "description": "Request a revised draft whose commercial terms omit the existing MediaBuy frequency cap. Omission inherits it. To replace it, provide criteria.media_buy_frequency_cap instead."
     }
   },
   "required": ["proposal_id"],
@@ -105,7 +110,8 @@
           { "required": ["product_changes"] },
           { "required": ["alternatives"] },
           { "required": ["ask"] },
-          { "required": ["criteria"] }
+          { "required": ["criteria"] },
+          { "required": ["remove_media_buy_frequency_cap"] }
         ]
       }
     },
@@ -118,6 +124,7 @@
         { "required": ["alternatives"] },
         { "required": ["ask"] },
         { "required": ["criteria"] },
+        { "required": ["remove_media_buy_frequency_cap"] },
         {
           "properties": { "change_kind": { "type": "string", "const": "cancellation" } },
           "required": ["change_kind"]
@@ -125,5 +132,15 @@
       ]
     }
   ],
+  "not": {
+    "allOf": [
+      { "required": ["remove_media_buy_frequency_cap", "criteria"] },
+      {
+        "properties": {
+          "criteria": { "required": ["media_buy_frequency_cap"] }
+        }
+      }
+    ]
+  },
   "additionalProperties": false
 }

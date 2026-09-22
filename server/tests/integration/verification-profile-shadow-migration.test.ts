@@ -13,6 +13,10 @@ const DIAGNOSTICS_MIGRATION = readFileSync(
   resolve(__dirname, '../../src/db/migrations/576_verification_profile_shadow_diagnostics.sql'),
   'utf8',
 );
+const ENABLE_COMPARISONS_MIGRATION = readFileSync(
+  resolve(__dirname, '../../src/db/migrations/591_enable_verification_profile_comparisons.sql'),
+  'utf8',
+);
 
 describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migrations', () => {
   let pool: Pool;
@@ -33,13 +37,24 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
         updated_at TIMESTAMPTZ DEFAULT NOW(),
         updated_by VARCHAR(255)
       );
+      CREATE TABLE system_settings_audit (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        key VARCHAR(100) NOT NULL,
+        old_value JSONB,
+        new_value JSONB NOT NULL,
+        changed_by VARCHAR(255),
+        changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       CREATE TABLE agent_compliance_runs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         agent_url TEXT,
         tested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         overall_status TEXT NOT NULL DEFAULT 'unknown',
         tracks_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-        dry_run BOOLEAN NOT NULL DEFAULT FALSE
+        dry_run BOOLEAN NOT NULL DEFAULT FALSE,
+        is_authoritative BOOLEAN NOT NULL DEFAULT TRUE,
+        adcp_version TEXT,
+        requested_compliance_target TEXT
       );
       CREATE TABLE discovered_agents (agent_url TEXT PRIMARY KEY);
       CREATE TABLE agent_registry_metadata (
@@ -63,6 +78,7 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
     sourceRunId = run.rows[0].id;
     await client.query(MIGRATION);
     await client.query(DIAGNOSTICS_MIGRATION);
+    await client.query(ENABLE_COMPARISONS_MIGRATION);
   });
 
   afterAll(async () => {
@@ -74,12 +90,49 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
     await pool?.end();
   });
 
-  it('starts collection disabled and remains idempotent', async () => {
+  it('enables persistent comparison collection with an audit record', async () => {
     await client.query(MIGRATION);
-    const setting = await client.query<{ value: { enabled: boolean; expires_at: string | null } }>(
-      `SELECT value FROM system_settings WHERE key = 'verification_profile_shadow_rollout'`,
+    const setting = await client.query<{
+      value: { enabled: boolean; expires_at: string | null };
+      updated_by: string;
+    }>(
+      `SELECT value, updated_by
+       FROM system_settings
+       WHERE key = 'verification_profile_shadow_rollout'`,
     );
-    expect(setting.rows).toEqual([{ value: { enabled: false, expires_at: null } }]);
+    expect(setting.rows).toEqual([{
+      value: { enabled: true, expires_at: null },
+      updated_by: 'migration:591_enable_verification_profile_comparisons',
+    }]);
+
+    const audit = await client.query<{
+      old_value: { enabled: boolean; expires_at: string | null };
+      new_value: { enabled: boolean; expires_at: string | null };
+      changed_by: string;
+    }>(
+      `SELECT old_value, new_value, changed_by
+       FROM system_settings_audit
+       WHERE key = 'verification_profile_shadow_rollout'`,
+    );
+    expect(audit.rows).toEqual([{
+      old_value: { enabled: false, expires_at: null },
+      new_value: { enabled: true, expires_at: null },
+      changed_by: 'migration:591_enable_verification_profile_comparisons',
+    }]);
+  });
+
+  it('backfills immutable source provenance before enabling collection', async () => {
+    const columns = await client.query<{ column_name: string }>(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = $1
+         AND table_name = 'verification_profile_shadow_assessments'`,
+      [TEST_SCHEMA],
+    );
+    expect(columns.rows.map((row) => row.column_name)).toEqual(expect.arrayContaining([
+      'source_tested_at',
+      'requested_compliance_target',
+    ]));
   });
 
   it('accepts a bounded production assessment without raw request or response columns', async () => {
@@ -96,12 +149,12 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
          controller_cascade_step_count, observed_failure_count,
          sandbox_observable_failure_count, non_controller_gap_step_count,
          controller_missing_storyboard_count, other_missing_storyboard_count,
-         mixed_controller_failure_phase_count
+         mixed_controller_failure_phase_count, source_tested_at
        ) VALUES (
          $1, 'https://seller.example.test/mcp', 'production', '3.1', 'verification-profiles-v1',
          'passing', 'partial', 'passing', TRUE, 'sandbox', TRUE,
          TRUE, 0, 0, 0, 0,
-         10, 9, 1, 1, 2, 0, 0, 0, 1, 0, 0
+         10, 9, 1, 1, 2, 0, 0, 0, 1, 0, 0, NOW()
        )`,
       [sourceRunId],
     );
@@ -136,12 +189,12 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
          controller_cascade_step_count, observed_failure_count,
          sandbox_observable_failure_count, non_controller_gap_step_count,
          controller_missing_storyboard_count, other_missing_storyboard_count,
-         mixed_controller_failure_phase_count
+         mixed_controller_failure_phase_count, source_tested_at
        ) VALUES (
          $1, 'https://seller.example.test/partial', 'production', 'verification-profiles-v1',
          'partial', 'partial', 'partial', TRUE, NULL, TRUE,
          TRUE, 2, 1, 0, 0,
-         10, 9, 1, 1, 2, 2, 1, 0, 1, 0, 0
+         10, 9, 1, 1, 2, 2, 1, 0, 1, 0, 0, NOW()
        )`,
       [run.rows[0].id],
     )).resolves.toBeDefined();
@@ -164,12 +217,12 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
          controller_cascade_step_count, observed_failure_count,
          sandbox_observable_failure_count, non_controller_gap_step_count,
          controller_missing_storyboard_count, other_missing_storyboard_count,
-         mixed_controller_failure_phase_count
+         mixed_controller_failure_phase_count, source_tested_at
        ) VALUES (
          $1, 'https://seller.example.test/testing', 'testing', 'verification-profiles-v1',
          'passing', 'passing', 'passing', TRUE, 'sandbox', TRUE,
          TRUE, 0, 0, 0, 0,
-         1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
+         1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NOW()
        )`,
       [anotherRun.rows[0].id],
     )).rejects.toThrow();
@@ -231,16 +284,16 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
          controller_cascade_step_count, observed_failure_count,
          sandbox_observable_failure_count, non_controller_gap_step_count,
          controller_missing_storyboard_count, other_missing_storyboard_count,
-         mixed_controller_failure_phase_count
+         mixed_controller_failure_phase_count, source_tested_at
        ) VALUES
        ($1, 'https://audit.example.test/mcp', 'production', '3.1', 'verification-profiles-v3',
         'partial', 'partial', 'partial', TRUE, NULL, FALSE,
         TRUE, 0, 1, 0, 0,
-        10, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+        10, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, NOW()),
        ($2, 'https://audit.example.test/mcp', 'production', '3.1', 'verification-profiles-v3',
         'partial', 'partial', 'partial', TRUE, NULL, TRUE,
         TRUE, 0, 1, 0, 0,
-        10, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
+        10, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, NOW())`,
       [firstRun.rows[0].id, secondRun.rows[0].id],
     );
 
@@ -250,5 +303,27 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
     expect(report.agents_with_two_or_more_runs).toBe(1);
     expect(report.agents_with_two_or_more_decision_ready_runs).toBe(0);
     expect(report.agents_with_stable_two_or_more_decision_ready_runs).toBe(0);
+  });
+
+  it('excludes audit-only history from both aggregate and per-agent public evidence', async () => {
+    await client.query(`
+      INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage)
+        VALUES ('https://public-profile.example.test/mcp', 'production'),
+               ('https://audit-only.example.test/mcp', 'production');
+      INSERT INTO agent_compliance_runs (agent_url, tested_at, overall_status, tracks_json, is_authoritative)
+        VALUES ('https://public-profile.example.test/mcp', NOW() - INTERVAL '1 hour', 'passing', '[{"track":"core"}]', TRUE),
+               ('https://public-profile.example.test/mcp', NOW(), 'failing', '[]', FALSE),
+               ('https://audit-only.example.test/mcp', NOW(), 'failing', '[]', FALSE);
+    `);
+    const report = await runAudit(['--hours=48', '--include-agents'], client);
+    expect(report.unassessed_without_public_run).toBe(1);
+    expect(report.unassessed_latest_public_run_empty_tracks).toBe(0);
+    const agents = report.agents as Array<Record<string, unknown>>;
+    expect(agents.find(agent => agent.agent_url === 'https://public-profile.example.test/mcp')).toMatchObject({
+      latest_public_status: 'passing', latest_public_run_empty_tracks: false,
+    });
+    expect(agents.find(agent => agent.agent_url === 'https://audit-only.example.test/mcp')).toMatchObject({
+      latest_public_run_at: null, blocking_reasons: ['not_assessed', 'no_public_run'],
+    });
   });
 });

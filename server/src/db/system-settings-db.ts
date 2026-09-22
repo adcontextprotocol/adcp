@@ -81,9 +81,6 @@ export interface VerificationProfileShadowRolloutSetting {
   expires_at: string | null;
 }
 
-const VERIFICATION_PROFILE_SHADOW_ROLLOUT_TTL_HOURS = 72;
-const VERIFICATION_PROFILE_SHADOW_AUTO_EXPIRY_ACTOR = 'system:verification-profile-shadow-auto-expiry';
-
 // ============== Setting Keys ==============
 
 export const SETTING_KEYS = {
@@ -245,49 +242,11 @@ export async function setOrganizationAuthorizationEnforcement(
 }
 
 /**
- * Read the observation-only verification-profile collection switch. Missing or
- * malformed values are disabled so a rollback cannot accidentally collect.
+ * Read the observation-only verification-profile comparison switch. Missing
+ * or malformed values are disabled so a rollback cannot accidentally collect.
  */
 export async function getVerificationProfileShadowRollout(): Promise<VerificationProfileShadowRolloutSetting> {
-  const result = await query<{ value: unknown }>(
-    `WITH current_setting AS MATERIALIZED (
-       SELECT value AS old_value
-       FROM system_settings
-       WHERE key = $1
-       FOR UPDATE
-     ),
-     expired AS (
-       UPDATE system_settings setting
-       SET value = '{"enabled": false, "expires_at": null}'::jsonb,
-           updated_at = NOW(),
-           updated_by = $2
-       FROM current_setting current
-       WHERE setting.key = $1
-         AND jsonb_typeof(current.old_value) = 'object'
-         AND current.old_value->>'enabled' = 'true'
-         AND CASE
-           WHEN COALESCE(current.old_value->>'expires_at', '') ~
-             '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:[.][0-9]{3})?Z$'
-           THEN (current.old_value->>'expires_at')::timestamptz <= NOW()
-           ELSE FALSE
-         END
-       RETURNING current.old_value, setting.value AS new_value
-     ),
-     audit AS (
-       INSERT INTO system_settings_audit (
-         key, old_value, new_value, changed_by, changed_at
-       )
-       SELECT $1, old_value, new_value, $2, NOW()
-       FROM expired
-     )
-     SELECT new_value AS value FROM expired
-     UNION ALL
-     SELECT old_value AS value
-     FROM current_setting
-     WHERE NOT EXISTS (SELECT 1 FROM expired)`,
-    [SETTING_KEYS.VERIFICATION_PROFILE_SHADOW_ROLLOUT, VERIFICATION_PROFILE_SHADOW_AUTO_EXPIRY_ACTOR],
-  );
-  const setting = result.rows[0]?.value ?? null;
+  const setting = await getSetting<unknown>(SETTING_KEYS.VERIFICATION_PROFILE_SHADOW_ROLLOUT);
   if (
     setting === null ||
     typeof setting !== 'object' ||
@@ -303,24 +262,17 @@ export async function getVerificationProfileShadowRollout(): Promise<Verificatio
   }
   const enabled = (setting as { enabled: boolean }).enabled;
   const expiresAt = (setting as { expires_at: string | null }).expires_at;
-  const parsedExpiry = expiresAt === null ? null : new Date(expiresAt);
-  if (
-    (enabled && (parsedExpiry === null || Number.isNaN(parsedExpiry.getTime()))) ||
-    (!enabled && expiresAt !== null)
-  ) {
+  if (expiresAt !== null) {
     return { enabled: false, expires_at: null };
   }
-  return { enabled, expires_at: enabled ? parsedExpiry!.toISOString() : null };
+  return { enabled, expires_at: null };
 }
 
 export async function setVerificationProfileShadowRollout(
   setting: Pick<VerificationProfileShadowRolloutSetting, 'enabled'>,
   updatedBy?: string,
 ): Promise<VerificationProfileShadowRolloutSetting> {
-  const expiresAt = setting.enabled
-    ? new Date(Date.now() + VERIFICATION_PROFILE_SHADOW_ROLLOUT_TTL_HOURS * 60 * 60 * 1_000).toISOString()
-    : null;
-  const persisted = { enabled: setting.enabled, expires_at: expiresAt };
+  const persisted = { enabled: setting.enabled, expires_at: null };
   await setSetting(
     SETTING_KEYS.VERIFICATION_PROFILE_SHADOW_ROLLOUT,
     persisted,

@@ -58,9 +58,9 @@ must reject the field before mutation.
 
 ## Action vocabulary and field mapping
 
-Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative for current routing) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). Accepted proposal `commercial_terms.change_terms[]` are the contractual ceiling: current `available_actions[]` may narrow a right because of state or a stated condition, but cannot broaden it or silently replace its mode, SLA, constraints, conditions, or contract reference. When both action fields are present, consumers MUST prefer `available_actions[]` — it carries the resolved `mode`, optional `sla`, and in 3.2 an optional `change_term_id` that the flat string array cannot represent. Deprecated 3.1 `terms_ref` remains an opaque compatibility pointer and MUST NOT be assumed to identify a proposal term. When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`.
+Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative for current routing) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). Accepted proposal `commercial_terms.change_terms[]` are the contractual ceiling: current `available_actions[]` may narrow a right because of state or a stated condition, but cannot broaden it or silently replace its mode, SLA, constraints, conditions, or contract reference. When both action fields are present, consumers MUST prefer `available_actions[]` — it carries the resolved `mode`, optional `sla`, and in 3.2 an optional `change_term_id` that the flat string array cannot represent. Deprecated 3.1 `terms_ref` remains an opaque compatibility pointer and MUST NOT be assumed to identify a proposal term. When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`. For a buy-specific seller-policy denial (`reason: "not_supported_on_buy"`), the seller SHOULD also populate `decline_reason` when it has a structured reason and can disclose the coarse policy dimension safely; structural denials SHOULD omit it.
 
-The mapping is normative — sellers and SDKs MUST use this table to translate between request fields and action identifiers so the surface is consistent across implementations.
+The mapping is normative — sellers and SDKs MUST use this table to translate between request fields and action identifiers so the surface is consistent across implementations. Machine-readable bindings live in `media-buy-valid-action.json#/enumMetadata` for legacy values and `core/media-buy-available-action-id.json#/enumMetadata` for structured-only actions such as `update_media_buy_frequency_cap`.
 
 | Action | update_media_buy fields | Notes |
 |--------|-------------------------|-------|
@@ -78,7 +78,8 @@ The mapping is normative — sellers and SDKs MUST use this table to translate b
 | `update_targeting` | `packages[].targeting_overlay`, `packages[].keyword_targets_add`, `packages[].keyword_targets_remove`, `packages[].negative_keywords_add`, `packages[].negative_keywords_remove` | Includes audience, geography, property, collection, and `placement_selection` changes. |
 | `update_pacing` | `pacing`, `packages[].pacing`, `budget_cap_timezone` | Media-buy pacing controls aggregate spend; package pacing is subordinate. A cap-timezone change begins at the next existing day boundary. |
 | `update_bidding` | `bidding`, `packages[].bidding` | Replaces or clears complete authored bidding blocks. The seller validates every resulting effective package policy before mutation. |
-| `update_frequency_caps` | `packages[].targeting_overlay.frequency_cap` | Renegotiated mid-flight more often than other targeting. Field is singular `frequency_cap` (single rule), not plural. |
+| `update_frequency_caps` | `packages[].targeting_overlay.frequency_cap` | Update independent package counters. |
+| `update_media_buy_frequency_cap` | `frequency_cap` | Replace or clear the shared root cap. Changes do not reset its counter. |
 | `replace_creative` | `packages[].creatives[]` swap (assignments unchanged) | Distinct AM workflow from changing assignment set |
 | `update_creative_assignments` | `packages[].creative_assignments` | Which creatives go where |
 | `remove_creative` | Creative omitted from `packages[].creatives[]` and/or `packages[].creative_assignments` on a replacement payload | Both arrays use replacement semantics, so removal is expressed by sending the desired post-state with the creative absent (no explicit delete primitive in 3.x). Time-sensitive; sellers SHOULD support self_serve removal even when add/swap require approval |
@@ -93,7 +94,7 @@ The coarse legacy actions (`update_budget`, `update_dates`, `update_packages`, [
 
 ### Action modes
 
-Each entry in `available_actions[]` carries a singular `mode` (resolved against the buy's current state). On the product-level `allowed_actions[]` template the field is `modes[]` (plural) because a product can offer multiple conditional modes (e.g. `self_serve` within tolerances, escalating to `requires_approval` outside).
+Each entry in `available_actions[]` carries a singular `mode` (resolved against the buy's current state). Package-scoped entries such as `update_frequency_caps` may carry `applicable_package_ids`; omission means every relevant package. On the product-level `allowed_actions[]` template the field is `modes[]` (plural) because a product can offer multiple conditional modes (e.g. `self_serve` within tolerances, escalating to `requires_approval` outside).
 
 | Mode | Meaning |
 |------|---------|
@@ -240,9 +241,10 @@ asyncio.run(create_and_pause_campaign())
 | `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
 | `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in [`check_governance`](/docs/governance/campaign/tasks/check_governance) when governance agents are configured. |
-| `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) packages. When `budget_allocation` is omitted or fixed, each new package requires `budget` and cannot use `min_spend_target`. To add an uncapped package to an existing seller-optimized buy, include the resulting seller-optimized `budget_allocation` block so the allocation context is explicit. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
+| `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) packages. When `budget_allocation` is omitted or fixed, each new package requires `budget` and cannot use `min_spend_target`. To add an uncapped package to an existing seller-optimized buy, include the resulting seller-optimized `budget_allocation` block so the allocation context is explicit. Only supported by sellers that advertise `add_packages` in `valid_actions`. If the buy has a root `frequency_cap`, every added product must support that exact aggregate cap or the whole update is rejected with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), preserving counter history. |
 | `total_budget` | TotalBudget | No | Updated hard aggregate lifetime budget. When supplied alone, in fixed mode the seller atomically scales active package budgets proportionally; when supplied with `packages` or `new_packages`, `total_budget.amount` must equal the resulting package sum (assertion path). In seller-optimized mode, updates the shared pool without treating package caps as allocations. Already-spent amounts continue to count against the new total. `currency` must equal the existing media-buy currency. |
 | `daily_budget_cap` | number \| null | No | Replace the hard aggregate daily cap; `null` removes it. Numeric changes apply immediately with spend already incurred in the current cap day counted against the new value. Package caps are not redistributed. |
+| `frequency_cap` | MediaBuyFrequencyCap \| null | No | Replace the shared MediaBuy-level frequency cap; `null` removes it. Changes apply immediately without resetting the shared counter, so prior qualifying exposures in the resulting window still count. Every active package must support the resulting cap or the request is rejected atomically. Requires `update_media_buy_frequency_cap`. |
 | `budget_cap_timezone` | string \| null | No | Replace the shared IANA cap-day timezone override; `null` restores the default selected by `budget_capping.timezone_basis` (`Account.timezone` or `fixed_timezone`). The new timezone begins at the next boundary under the previously effective timezone. |
 | `budget_allocation` | BudgetAllocation | No | Updated fixed or seller-optimized allocation configuration. Mode changes require `update_budget_allocation` in `available_actions`. |
 | `pacing` | string | No | Updated aggregate media-buy pacing strategy. |
@@ -342,7 +344,7 @@ Configure automated delivery reporting for this media buy:
 | `bidding` | BiddingPolicy \| null | Replace the complete package-authored override, use `{automatic: true}` to explicitly disable inherited buyer controls, or clear it with `null` so the package inherits media-buy bidding. During legacy migration, `null` may accompany `bid_price` or a monetary optimization-goal target; only a non-null canonical block conflicts with those representations. |
 | `bid_price` | number | **Deprecated in 3.2.** Legacy package bid representation; cannot be combined with a non-null `bidding` object. |
 | `optimization_goals` | OptimizationGoal[] | Replace objective functions for this package. Currency-bearing policy belongs in `bidding`; legacy monetary targets cannot be combined with canonical bidding. |
-| `targeting_overlay` | TargetingOverlay | Complete replacement for the package's effective targeting, including values originally accepted through configured-product selection. Omit the field to leave targeting unchanged; omitting a field inside the replacement removes that constraint. Placement, property, and collection selection use the same replacement contract as audience and geography. Changing priced signal selection or broader targeting may require [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required). A demographic change is compiled against the product's current `demographic_targeting` declaration and refreshes `targeting_resolution.demographics` atomically; unsupported or inexact changes are rejected rather than broadened. If placement selection removes a placement used by an assignment, the same atomic update must provide a compatible complete `creative_assignments` replacement or the seller rejects it. |
+| `targeting_overlay` | TargetingInput | Per-dimension patch for the package's effective targeting, including values originally accepted through configured-product selection. Omit the overlay or a dimension inside it to leave that dimension unchanged; provide a non-null value to replace it; provide `null` to clear it. Placement, property, and collection selection use the same three-state contract as audience and geography. Readback contains only the resulting strict, non-null effective targeting. Changing priced signal selection or broader targeting may require [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required). A demographic change is compiled against the product's current `demographic_targeting` declaration and refreshes `targeting_resolution.demographics` atomically; unsupported or inexact changes are rejected rather than broadened. If placement selection is narrowed or cleared while an assignment uses it, the same atomic update must provide a compatible complete `creative_assignments` replacement or the seller rejects it. |
 | `catalogs` | Catalog[] | Replace the catalogs this package promotes. Uses replacement semantics — omit to leave unchanged. |
 | `keyword_targets_add` | KeywordTarget[] | Keyword targets to add or upsert by (keyword, match_type) identity. On create, these are set as `keyword_targets` inside `targeting_overlay`. |
 | `keyword_targets_remove` | KeywordTarget[] | Keyword targets to remove by (keyword, match_type) identity. |
@@ -353,11 +355,11 @@ Configure automated delivery reporting for this media buy:
 
 `package_id` is required to identify the package to update.
 
-Sellers validate targeting and creative-assignment replacements atomically.
+Sellers validate targeting patches and creative-assignment replacements atomically.
 They must never silently delete an assignment or retain an assignment reference
 to a placement removed from the package's purchased set.
 
-For budget/pacing interaction and bidding inheritance, see [Budget & Pacing Controls](/docs/media-buy/task-reference/create_media_buy#budget--pacing-controls) and [BiddingPolicy Object](/docs/media-buy/task-reference/create_media_buy#biddingpolicy-object) on the `create_media_buy` reference.
+For budget/pacing interaction and bidding inheritance, see [Budget & Pacing Controls](/docs/media-buy/task-reference/create_media_buy#budget--pacing-controls) and [BiddingPolicy Object](/docs/media-buy/task-reference/create_media_buy#biddingpolicy-object) on the [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) reference.
 
 ## Response
 
@@ -770,11 +772,14 @@ The body-level `media_buy_status` is the canonical field for the buy's lifecycle
 {
   "errors": [{
     "code": "REQUOTE_REQUIRED",
-    "message": "Doubling budget and extending end_time into Q4 changes the pricing basis of the current buy",
+    "message": "The requested package budget exceeds the seller's share-of-voice policy for the current flight",
+    "recovery": "correctable",
     "details": {
-      "envelope_field": ["packages[0].budget", "end_time"]
+      "envelope_field": ["packages[0].budget"],
+      "change_term_id": "right_increase_budget",
+      "decline_reason": "share_of_voice"
     },
-    "suggestion": "Adjust the update to stay within the current quote envelope, rediscover products/terms, add packages when available, or create a separate media buy"
+    "suggestion": "Refine the accepted proposal with a lower package budget"
   }]
 }
 ```
@@ -841,7 +846,7 @@ Common errors and resolutions:
 |------------|-------------|------------|
 | [`MEDIA_BUY_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-media-buy-not-found) | Media buy doesn't exist | Verify `media_buy_id`; for legacy correlation use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) + `context.internal_campaign_id` |
 | [`PACKAGE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-package-not-found) | Package doesn't exist | Verify `package_id`; for legacy package correlation use `get_media_buys` + package `context.buyer_ref` |
-| [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) | Field cannot be changed | See "What Can Be Updated" above |
+| [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) | Field cannot be changed | Branch on `error.details.reason`; for `not_supported_on_buy`, use optional `decline_reason` to inform renegotiation |
 | [`BUDGET_TOO_LOW`](/docs/building/verification/compliance-catalog#error-code-budget-too-low) | New budget below minimum | Increase budget amount |
 | [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) | Update violates content policy | Review policy requirements |
 | [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) | Operation not allowed in current state (e.g., updating completed/canceled media buy) | Check campaign status via `get_media_buys` |
@@ -851,7 +856,7 @@ Common errors and resolutions:
 | [`CREATIVE_DEADLINE_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-creative-deadline-exceeded) | Creative change submitted past the package's `creative_deadline` | Check package `creative_deadline` before submitting creative changes |
 | [`BUDGET_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-budget-exceeded) | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
 | [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
-| [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | Adjust the update to fit the current quote, rediscover products/terms, add packages when `add_packages` is available, or create a separate media buy. 3.1 does not define an amendment-quote artifact for `update_media_buy`. Seller's `error.details.envelope_field` names which fields breached. |
+| [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | On 3.2, use optional `error.details.decline_reason` to target a refinement of `accepted_proposal_id`; `envelope_field` names the breached paths and `change_term_id` identifies the governing accepted right. Legacy 3.1 callers adjust the update, rediscover terms, add packages when available, or create a separate buy. |
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Request field values, including a duplicate submitted `creative_id`, violate seller/product business rules | Follow `error.field` and `error.message`; for a duplicate inline creative, use a different package-scoped `creative_id` |
 
 Example error response:

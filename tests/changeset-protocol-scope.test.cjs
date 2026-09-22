@@ -259,6 +259,17 @@ assert.strictEqual(
 
 assert.strictEqual(
   isChangesetStatusExemptMaintenance([
+    { status: 'M', paths: ['.github/workflows/release.yml'] },
+    { status: 'M', paths: ['tests/release-workflow-immutability.test.cjs'] },
+    { status: 'M', paths: ['scripts/check-changeset-protocol-scope.cjs'] },
+    { status: 'M', paths: ['tests/changeset-protocol-scope.test.cjs'] },
+  ]),
+  true,
+  'Release workflow maintenance can bypass changesets status without creating a package release'
+);
+
+assert.strictEqual(
+  isChangesetStatusExemptMaintenance([
     { status: 'M', paths: ['.agents/playbook.md'] },
     { status: 'M', paths: ['server/src/billing/subscription-sync.ts'] },
   ]),

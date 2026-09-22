@@ -27,6 +27,7 @@ import { getPool } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
 import { TRAINING_AGENT_URL, tenantUrlsForModule, type ModuleTenantUrls } from '../../training-agent/config.js';
+import { TOOL_CATALOG } from '../../training-agent/tenants/tool-catalog.js';
 import { ToolError } from '../tool-error.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { stripe } from '../../billing/stripe-client.js';
@@ -56,10 +57,9 @@ function formatCheckpointItems(items: string[]): string {
 /**
  * Format a tenant-URL block for injection into Sage prompts. Single-tenant
  * modules collapse to `agent_url: "..."` (one URL — Sage uses it). Multi-
- * tenant emits a primary URL plus an internal sibling map gated behind an
- * explicit error trigger, so Sage doesn't enumerate URLs to the learner
- * and only switches when a tool call actually fails. Empty pinning falls
- * through to the legacy `/mcp` alias.
+ * tenant emits a proactive per-tool routing table built from TOOL_CATALOG
+ * so Sage sends each tool call to the correct tenant URL without an error
+ * round-trip. Empty pinning falls through to the legacy `/mcp` alias.
  *
  * Tone matches the rest of `buildCertificationContext`: imperative,
  * agent-only-context, no docs prose. The "Internal" tag is load-bearing —
@@ -72,14 +72,30 @@ export function formatTenantBlock(tenants: ModuleTenantUrls): string {
   if (tenants.ids.length <= 1) {
     return `agent_url: "${tenants.primary}"`;
   }
-  const siblings = tenants.ids
-    .map((id, i) => `  - ${id} → ${tenants.all[i]}`)
+
+  // ponytail: proactive routing replaces reactive sibling-switch that broke on non-string errors
+  const tenantToUrl = new Map(tenants.ids.map((id, i) => [id, tenants.all[i]]));
+  const urlToTools = new Map<string, string[]>();
+
+  for (const [tool, toolTenants] of Object.entries(TOOL_CATALOG)) {
+    const serving = toolTenants.filter(t => tenantToUrl.has(t));
+    if (serving.length === 0) continue;
+    const targetId = serving.includes(tenants.ids[0]) ? tenants.ids[0] : serving[0];
+    const url = tenantToUrl.get(targetId)!;
+    const list = urlToTools.get(url) || [];
+    list.push(tool);
+    urlToTools.set(url, list);
+  }
+
+  const routingLines = [...urlToTools.entries()]
+    .map(([url, tools]) => `  - ${url}: ${tools.join(', ')}`)
     .join('\n');
+
   return [
     `agent_url (primary): "${tenants.primary}"`,
-    `**Internal — do not narrate to the learner**: this module also has tools on sibling agents. Default to the primary for every call. Only switch if a tool call returns an "unknown tool" or "not found" error — then GET \`/.well-known/adagents.json\` on the primary, read \`_training_agent_tenants\`, pick the sibling that owns the tool, retry. Do not enumerate siblings to the learner.`,
-    `Siblings (for sibling-switch lookups only):`,
-    siblings,
+    `**Internal — do not narrate to the learner**: this module spans multiple agents. Route each tool call to its assigned URL below. Do not default to the primary for tools assigned elsewhere. Do not enumerate URLs or agent names to the learner.`,
+    `Tool routing:`,
+    routingLines,
   ].join('\n');
 }
 
@@ -607,8 +623,12 @@ function buildShareLinks(
   awardedDate: Date = new Date(),
 ): string[] {
   const lines: string[] = [];
-  const year = awardedDate.getFullYear();
-  const month = awardedDate.getMonth() + 1;
+  // awardedDate is a UTC instant (DB awarded_at / test fixtures use "...T00:00:00.000Z"
+  // literals) - the local accessors return the wrong month (and, near year boundaries, the
+  // wrong year) on any server running a timezone behind UTC, since a UTC-midnight instant is
+  // still the previous local day there.
+  const year = awardedDate.getUTCFullYear();
+  const month = awardedDate.getUTCMonth() + 1;
   let linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME`
     + `&name=${encodeURIComponent(credName)}`
     + `&organizationName=${encodeURIComponent('AgenticAdvertising.org')}`
@@ -1371,8 +1391,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'Context Match and Identity Match', url: `${DOCS_BASE}/docs/trusted-match/context-and-identity` },
     { label: 'TMP Router architecture', url: `${DOCS_BASE}/docs/trusted-match/router-architecture` },
     { label: 'Delivery reporting', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_media_buy_delivery` },
-    { label: 'Implementing reporting.core', url: `${DOCS_BASE}/docs/media-buy/reporting-core-implementation-guide` },
-    { label: 'Reporting status and reconciliation', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_reporting_status` },
+    { label: 'Broadcast measurement-window lifecycle', url: `${DOCS_BASE}/docs/media-buy/media-buys/optimization-reporting#measurement-maturation-windows` },
+    { label: 'Reporting Core obligation lifecycle', url: `${DOCS_BASE}/docs/media-buy/reporting-core-implementation-guide#lifecycle-at-a-glance` },
+    { label: 'Reporting obligation fields and reconciliation', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_reporting_status#reliability-model` },
     { label: 'Reporting lifecycle sandbox probe', url: `${DOCS_BASE}/docs/building/by-layer/L3/comply-test-controller#reporting_core_lifecycle_probe` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
     { label: 'Campaign governance — seller perspective', url: `${DOCS_BASE}/docs/governance/campaign` },
@@ -3054,7 +3075,7 @@ Tell ${codingTool}: "Build a buyer agent using @adcp/sdk that connects to the pu
 
 The SDK handles protocol details — the learner focuses on orchestration logic.
 
-Use the current \`3.2-rc.1\` wire pin with @adcp/sdk@14.0.0-rc.33 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
+Use the current \`3.2-rc.3\` wire pin with @adcp/sdk@14.0.0-rc.40 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
 
 Reference: ${SDKS_URL}
 
@@ -3069,7 +3090,7 @@ Validate in two parts.
 
 1. Run the compatibility buying workflow against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
-npx @adcp/sdk@14.0.0-rc.33 test-mcp get_products '{"adcp_version":"3.2-rc.1","buying_mode":"brief","brief":"<your campaign brief>"}'
+npx @adcp/sdk@14.0.0-rc.40 test-mcp get_products '{"adcp_version":"3.2-rc.3","buying_mode":"brief","brief":"<your campaign brief>"}'
 \`\`\`
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.

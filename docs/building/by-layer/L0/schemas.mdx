@@ -22,6 +22,10 @@ Both sources contain identical schemas. The GitHub repository includes all relea
 
 The `latest` tree and releases cut after this behavior was introduced use canonical HTTPS URIs for root `$id` values and external `$ref` values, for example `https://adcontextprotocol.org/schemas/{version}/core/product.json`. These URIs are stable schema identifiers; a validator does not have to fetch them over the network. Older release directories are immutable and retain their original `/schemas/...` references; for offline use of those releases, select their `bundled/` schemas.
 
+Every generated validation representation of a schema MUST retain the same document identity. Source files use the stable unversioned `/schemas/...` form; published modular schemas, bundled schemas, MCP projections, and MCP validation-profile compound documents MUST expose its exact-version canonical HTTPS URI. In particular, retrieval through a `bundled/` path does not add `bundled/` to the root `$id`, and an embedded schema resource retains the same `$id` it has in the modular tree. Generators MUST resolve relative fragments against the nearest resource identity and MUST NOT remove an embedded `$id` merely to flatten a document. Prompt-only model-context views are not validation representations and omit document metadata.
+
+Canonical, bundled, and MCP artifacts are alternate representations, not separate resources. Register one representation of a given identity in a validator registry at a time. Installed or vendored copies MUST be registered by their declared `$id` values (or by a deterministic URI-to-file mapping), so nested references continue to resolve without network access after relocation.
+
 When using the modular schema tree from a downloaded tarball, configure the validator or code generator to map the canonical `https://adcontextprotocol.org/schemas/{version}/` prefix to the extracted `schemas/` directory. Tools that cannot register URI-to-file mappings should use the corresponding `schemas/bundled/` artifact, which has external `$ref` values resolved inline.
 
 For Python's `jsonschema`, the `referencing` registry can perform that mapping without network access:

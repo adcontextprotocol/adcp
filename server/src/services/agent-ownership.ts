@@ -155,6 +155,34 @@ export async function isOrgOwnerOfAgent(
 }
 
 /**
+ * Mutation-grade ownership check. Unlike read-oriented ownership helpers,
+ * this requires an explicit tenant and an owner/admin organization role.
+ */
+export async function canManageAgentForOrg(
+  orgId: string,
+  userId: string,
+  agentUrl: string,
+): Promise<boolean> {
+  try {
+    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
+    const result = await query(
+      `SELECT 1 FROM member_profiles mp
+       JOIN organization_memberships om
+         ON om.workos_organization_id = mp.workos_organization_id
+       WHERE mp.workos_organization_id = $1
+         AND mp.agents @> $2::jsonb
+         AND om.workos_user_id = $3
+         AND om.role IN ('owner', 'admin')
+       LIMIT 1`,
+      [orgId, JSON.stringify([{ url: lookupAgentUrl }]), userId],
+    );
+    return result.rows.length === 1;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolve the owning organization for an agent operation, honoring an
  * explicit dashboard organization when one was supplied.
  *

@@ -143,6 +143,10 @@ const TARGET_EXCEPTION_DEFINITIONS = {
     disposition: 'documented_exception',
     rationale: 'A channel-only router outage preserves pre-existing baseline self-service and escalation tools plus bounded knowledge fallback, without attaching arbitrary routed mutation domains.',
   },
+  membership_records_with_aggregate: {
+    disposition: 'documented_exception',
+    rationale: 'Membership-record requests retain the exact aggregate analytics tool alongside the capped contact list and existing record operations; including the authenticated baseline gives 13 custom tools.',
+  },
   synthetic_all_sets_maximum: {
     disposition: 'measurement_only',
     rationale: 'This adversarial capacity profile injects every valid router set to measure the absolute legacy channel ceiling; it is not a typical request.',
@@ -180,6 +184,11 @@ function classifyTargetException(input: Pick<Profile,
   }
   if (input.conditional_maximums.includes('router_selected_up_to_two_bounded_domains')) {
     return 'bounded_multi_domain_plan';
+  }
+  if (input.selected_tool_sets?.length === 1
+    && input.selected_tool_sets[0] === 'admin_organization_member_records'
+    && input.custom_tool_count === 13) {
+    return 'membership_records_with_aggregate';
   }
   throw new Error(
     `Undocumented Addie profile above the ${TYPICAL_CUSTOM_TOOL_MAXIMUM}-tool target: ${input.id} (${input.custom_tool_count})`,

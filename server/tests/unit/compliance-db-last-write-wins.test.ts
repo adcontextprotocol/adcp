@@ -172,6 +172,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     const statusRow = { rows: [{ status: 'passing', previous_status: 'passing' }] };
     const client = makeTransactionClient([
       EMPTY,                         // BEGIN
+      EMPTY,                         // per-agent advisory lock
       { rows: [makeRunRow('heartbeat')] },
       statusRow,                     // UPSERT agent_compliance_status
       EMPTY,                         // SAVEPOINT storyboard_upsert
@@ -457,6 +458,42 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     expect(params).toEqual([AGENT_URL, null, null, true]);
   });
 
+  it('getStoryboardStatuses can omit the expensive step-diagnostics join for summary reads', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    await db.getStoryboardStatuses(AGENT_URL, {
+      requireRowsForLatestRun: true,
+      includeDiagnostics: false,
+    });
+
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).not.toContain('agent_compliance_step_diagnostics');
+    expect(sql).toContain('NULL::jsonb AS first_failure_validations_jsonb');
+    expect(params).toEqual([AGENT_URL, null, null, true]);
+  });
+
+  it('getStoryboardStatuses includes step diagnostics by default for drill-down reads', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    await db.getStoryboardStatuses(AGENT_URL);
+
+    const [sql] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('agent_compliance_step_diagnostics');
+    expect(sql).toContain('first_failure_diag.failed_validations_jsonb');
+  });
+
   it('getLatestObservations returns advisory observations only from the latest non-dry run', async () => {
     const observations = [
       {
@@ -494,7 +531,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     await expect(db.getComplianceHistory(AGENT_URL, 10)).resolves.toEqual([]);
 
     const [sql, params] = mockedQuery.mock.calls[0];
-    expect(sql).toContain('($3::boolean OR dry_run = FALSE)');
+    expect(sql).toContain('($3::boolean OR (dry_run = FALSE AND is_authoritative = TRUE))');
     expect(params).toEqual([AGENT_URL, 10, false]);
   });
 

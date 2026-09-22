@@ -2742,6 +2742,7 @@ export function setupAccountRoutes(
           resource_type: "membership",
           resource_id: membershipId,
           details: {
+            ...req.staticAdminAuditDetails,
             target_user_id: userId,
             target_email: membership.email,
             old_role: previousRole,

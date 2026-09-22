@@ -81,6 +81,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
 | `total_budget` | Hard aggregate lifetime budget (in `currency`) |
 | `daily_budget_cap` | Current hard aggregate spend ceiling per calendar day. It limits total buy spend without allocating package amounts. |
+| `frequency_cap` | Current shared MediaBuy-level frequency cap, echoed whenever set. Its counter aggregates exposures across every participating package; each `packages[].targeting_overlay.frequency_cap` remains an independent counter. |
 | `budget_cap_timezone` | Shared IANA calendar-day boundary for every aggregate and package daily cap. Present whenever any daily cap is set. |
 | `budget_allocation` | Fixed or seller-optimized cross-package allocation configuration. Omission means fixed for legacy buys. |
 | `pacing` | Aggregate media-buy pacing strategy |
@@ -90,7 +91,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `cancellation` | Cancellation metadata (present only when `status` is `canceled`). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
 | `revision` | Current revision number. Pass in [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) or the 3.x `update_media_buy` facade for optimistic concurrency. |
 | `valid_actions` | Actions the buyer can perform in the current state (e.g., `["pause", "cancel", "update_budget"]`). See [valid actions mapping](#valid-actions-mapping). |
-| `available_actions` | Canonical routed actions for compact-lifecycle buys, including whether each action uses [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy), proposal refinement, or another task. Required whenever `accepted_proposal` is present. |
+| `available_actions` | Canonical routed actions for compact-lifecycle buys. Package-scoped actions may carry `applicable_package_ids`; omission means all relevant packages. Required whenever `accepted_proposal` is present. |
 | `indicators` | Current buy-level seller indicators. In 3.2, `budget_constrained` is valid here. Sibling evaluation fields define exact type coverage and freshness. |
 | `history` | Revision history entries, most recent first. Only present when `include_history > 0`. Append-only — entries are never modified or deleted. |
 | `webhook_activity` | Recent delivery, health, `indicators.changed`, and `creative.assignment_changed` attempts relevant to this buy. Only present when requested and supported. |

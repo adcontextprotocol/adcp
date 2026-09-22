@@ -20,6 +20,10 @@ import {
   resolveTrainingSalesRequestContext,
   salesCapabilityProjection,
 } from '../v6-sales-platform.js';
+import {
+  TRAINING_AGGREGATE_FREQUENCY_CAPPING,
+  TRAINING_PACKAGE_FREQUENCY_CAPPING,
+} from '../frequency-caps.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import { TRAINING_ACCEPTED_GOVERNANCE_AGENTS } from '../account-handlers.js';
 import {
@@ -58,6 +62,33 @@ const TENANT_PROTOCOLS: Readonly<Record<string, readonly string[]>> = {
   brand: ['brand'],
   si: ['sponsored_intelligence'],
 };
+
+const OPERATOR_UNIT_BRIDGE_TENANTS = new Set([
+  'sales',
+  'signals',
+  'governance',
+  'creative',
+  'creative-builder',
+]);
+const OPERATOR_UNIT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
+
+function isValidOperatorUnit(value: unknown): value is { id: string; name?: string } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const unit = value as Record<string, unknown>;
+  if (Object.keys(unit).some(key => key !== 'id' && key !== 'name')) return false;
+  if (
+    typeof unit.id !== 'string'
+    || unit.id.length === 0
+    || unit.id.length > 255
+    || !OPERATOR_UNIT_ID_RE.test(unit.id)
+  ) return false;
+  return unit.name === undefined
+    || (typeof unit.name === 'string' && unit.name.length > 0 && unit.name.length <= 200);
+}
+
+function explicitlyRequestsPreOperatorUnitVersion(args: Record<string, unknown>): boolean {
+  return typeof args.adcp_version === 'string' && /^3\.(?:0|1)(?:[.-]|$)/.test(args.adcp_version);
+}
 
 function installConflictEnvelopeRedaction(res: Response): void {
   const originalWriteHead = res.writeHead.bind(res);
@@ -440,6 +471,41 @@ function tenantMcpHandler(
         }
       }
 
+      if (
+        storyboardCompat?.version !== '3.0'
+        && OPERATOR_UNIT_BRIDGE_TENANTS.has(resolved.tenantId)
+        && req.body?.method === 'tools/call'
+        && req.body?.params?.name === 'comply_test_controller'
+        && req.body.params.arguments
+        && typeof req.body.params.arguments === 'object'
+      ) {
+        const controllerArgs = req.body.params.arguments as Record<string, unknown>;
+        const account = controllerArgs.account;
+        const ext = controllerArgs.ext && typeof controllerArgs.ext === 'object' && !Array.isArray(controllerArgs.ext)
+          ? { ...controllerArgs.ext as Record<string, unknown> }
+          : {};
+        // @adcp/sdk 14.0.0-rc.35's v6 decisioning wrapper replaces the
+        // controller's extensible account schema with an older strict shape
+        // that predates operator_unit. Preserve the current AccountRef field
+        // through its open `ext` bag, then restore it in the tenant adapter.
+        // Delete any caller-provided bridge value first: only a schema-valid
+        // value moved from the top-level account is trusted by the adapter.
+        delete ext.__training_operator_unit;
+        if (account && typeof account === 'object' && !Array.isArray(account)) {
+          const bridgedAccount = { ...account as Record<string, unknown> };
+          if (
+            isValidOperatorUnit(bridgedAccount.operator_unit)
+            && !explicitlyRequestsPreOperatorUnitVersion(controllerArgs)
+          ) {
+            ext.__training_operator_unit = bridgedAccount.operator_unit;
+            delete bridgedAccount.operator_unit;
+            controllerArgs.account = bridgedAccount;
+          }
+        }
+        if (Object.keys(ext).length > 0) controllerArgs.ext = ext;
+        else delete controllerArgs.ext;
+      }
+
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
         return;
       }
@@ -534,6 +600,24 @@ async function tryHandleLocalComplyScenario(
       || isRejectedGetProductsDirective
     )
   ) return false;
+
+  const bridgeExt = rawArgs.ext && typeof rawArgs.ext === 'object' && !Array.isArray(rawArgs.ext)
+    ? { ...rawArgs.ext as Record<string, unknown> }
+    : undefined;
+  const bridgedUnit = bridgeExt?.__training_operator_unit;
+  if (
+    bridgedUnit
+    && typeof bridgedUnit === 'object'
+    && !Array.isArray(bridgedUnit)
+    && rawArgs.account
+    && typeof rawArgs.account === 'object'
+    && !Array.isArray(rawArgs.account)
+  ) {
+    rawArgs.account = { ...rawArgs.account as Record<string, unknown>, operator_unit: bridgedUnit };
+    delete bridgeExt!.__training_operator_unit;
+    if (Object.keys(bridgeExt!).length > 0) rawArgs.ext = bridgeExt;
+    else delete rawArgs.ext;
+  }
 
   const { context, ...handlerArgs } = rawArgs;
   const versionResolution = resolveServedAdcpVersion(handlerArgs);
@@ -949,6 +1033,14 @@ function projectTenantCapabilities(
       structured.media_buy = {
         ...mediaBuy,
         ...salesProjection,
+        // Package caps: independent counter per package within these
+        // seller-wide units; products inherit omitted structured fields from
+        // this declaration. Root MediaBuy caps are advertised separately as
+        // the complete executable domain (3.2+).
+        frequency_capping: structuredClone(TRAINING_PACKAGE_FREQUENCY_CAPPING),
+        ...(supportsGetProductsRejected(servedVersion) && {
+          aggregate_frequency_capping: structuredClone(TRAINING_AGGREGATE_FREQUENCY_CAPPING),
+        }),
         ...(acceptancePolicyDiscoveryCapability(servedVersion, 'sales') && {
           acceptance_policy_discovery: acceptancePolicyDiscoveryCapability(servedVersion, 'sales'),
         }),
@@ -1018,6 +1110,8 @@ function projectTenantCapabilities(
         canonical_catalog_version: '3.1',
       };
       if (supportsAccountChangeFeed(servedVersion)) {
+        // Account change invalidations are repaired through this creative library.
+        structured.creative.has_creative_library = true;
         const account = structured.account && typeof structured.account === 'object'
           ? structured.account
           : {};

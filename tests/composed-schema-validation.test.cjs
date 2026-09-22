@@ -3815,6 +3815,109 @@ async function runTests() {
     },
     'sync_accounts returns canonical identity and revision while a desired transition awaits approval'
   );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-001' },
+        revision: 4,
+        name: 'Acme — Social',
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts settings-update-mode results echo account instead of requiring brand/operator'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-unreachable' },
+        action: 'failed',
+        errors: [{ code: 'ACCOUNT_NOT_FOUND', message: 'Account does not exist or is not accessible.' }]
+      }]
+    },
+    'sync_accounts settings-update-mode failed results are representable without a resolvable brand/operator tuple, and without an invented status'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        brand: { domain: 'acme-corp.com' },
+        operator: 'acme-corp.com',
+        action: 'failed',
+        status: 'rejected',
+        errors: [{ code: 'BILLING_NOT_SUPPORTED', message: 'Operator billing is not supported.' }]
+      }]
+    },
+    'sync_accounts failed results may still report status when the account was reached and its lifecycle state is known'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-unreachable' },
+        action: 'failed'
+      }]
+    },
+    'sync_accounts failed results are rejected without errors'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-001' },
+        revision: 4,
+        action: 'updated'
+      }]
+    },
+    'sync_accounts non-failed results are rejected without status'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-001' },
+        brand: { domain: 'nova-brands.com' },
+        operator: 'pinnacle-media.com',
+        revision: 4,
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts results are rejected when both account and brand/operator are present — the discriminator is mutually exclusive'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { brand: { domain: 'nova-athletics.example' }, operator: 'pinnacle-media.example' },
+        revision: 2,
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts settings-update-mode results accept a natural-key account reference'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account_id: 'acct-social-001',
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts results with neither account nor brand+operator are rejected — the flat legacy account_id alone does not satisfy the identity discriminator'
+  );
   await testSchemaRejection(
     '/schemas/core/account.json',
     {
@@ -4038,7 +4141,8 @@ async function runTests() {
           blockers: ['The requested operator identity conflicts with another account']
         },
         action: 'failed',
-        status: 'active'
+        status: 'active',
+        errors: [{ code: 'ACCOUNT_IDENTITY_CONFLICT', message: 'The requested operator identity conflicts with another account.' }]
       }]
     },
     'blocked identity previews identify the blocking resource impact'
@@ -4328,6 +4432,7 @@ async function runTests() {
     idempotency_key: 'buy-products-clean-0001',
     account: { account_id: 'account-clean-1' },
     brand: { domain: 'buyer.example' },
+    name: 'Acme direct display buy',
     feed_version: 'feed-version-1',
     pricing_version: 'pricing-version-1',
     purchases: [{
@@ -4361,7 +4466,8 @@ async function runTests() {
       idempotency_key: 'accept-proposal-0001',
       account: { account_id: 'account-clean-1' },
       proposal_id: 'proposal-committed-1',
-      proposal_terms_digest: `sha256:${'A'.repeat(43)}`
+      proposal_terms_digest: `sha256:${'A'.repeat(43)}`,
+      name: 'Acme accepted proposal buy'
     },
     'accept_proposal needs only the committed proposal and execution identity'
   );
@@ -4439,6 +4545,7 @@ async function runTests() {
     {
       status: 'completed',
       media_buy_id: 'media-buy-1',
+      name: 'Acme direct display buy',
       revision: 1,
       accepted_proposal: {
         proposal_id: 'accepted-proposal-1',
@@ -5169,6 +5276,35 @@ async function runTests() {
     'get_products filters.signal_targeting accepts deprecated signal_id during SignalRef migration window'
   );
   await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'refine',
+      refine: [
+        {
+          scope: 'proposal',
+          proposal_id: 'proposal-123',
+          action: 'finalize'
+        }
+      ],
+      idempotency_key: '550e8400-e29b-41d4-a716-446655440000'
+    },
+    'Legacy get_products finalization accepts an idempotency key'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'refine',
+      refine: [
+        {
+          scope: 'proposal',
+          proposal_id: 'proposal-123',
+          action: 'finalize'
+        }
+      ]
+    },
+    'Legacy get_products finalization remains valid without an idempotency key throughout 3.x'
+  );
+  await testSchemaValidation(
     '/schemas/core/wholesale-feed-event.json',
     {
       event_id: '018f4f28-6b5d-7f50-9d57-111111111111',
@@ -5426,7 +5562,8 @@ async function runTests() {
             agent_url: 'https://ads.agency.example.com',
             role: 'media-buy',
             verified_specialisms: ['sales-catalog-driven'],
-            adcp_version: '3.1.0-beta.5'
+            adcp_version: '3.1.0-beta.5',
+            grading_profile: 'spec'
           },
           actor: 'pipeline:compliance-heartbeat',
           created_at: '2026-03-31T10:02:30.000Z'
@@ -5439,7 +5576,8 @@ async function runTests() {
           payload: {
             agent_url: 'https://ads.agency.example.com',
             role: 'media-buy',
-            reason: 'media_buy track failing'
+            reason: 'media_buy track failing',
+            grading_profile: 'spec'
           },
           actor: 'pipeline:compliance-heartbeat',
           created_at: '2026-03-31T10:02:45.000Z'

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-overlay-requirements.json",
   "title": "Targeting Overlay Requirements",
-  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: where a field permits a boolean form, a requirement value of true matches product support true or any valid positive support object, and product support true satisfies every protocol-valid structured requirement except daypart_targets, where true promises inventory_local only. Otherwise, structured product support must contain the structured requirement. For geo_regions and geo_regions_exclude, every requested country must exist; requested all_values requires supported all_values; and requested values must be a subset of supported values unless support declares all_values. For geo_places and geo_places_exclude, every requested system and country key must exist and each requested place-type and system-version array must be a subset of the corresponding product array. Include and exclude fields match independently. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching.",
+  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: where a field permits a boolean form, a requirement value of true matches product support true or any valid positive support object, and product support true satisfies every protocol-valid structured requirement except daypart_targets, where true promises inventory_local only. Otherwise, structured product support must contain the structured requirement. For geo_regions and geo_regions_exclude, every requested country must exist; requested all_values requires supported all_values; and requested values must be a subset of supported values unless support declares all_values. For geo_places and geo_places_exclude, every requested system and country key must exist and each requested place-type and system-version array must be a subset of the corresponding product array. Include and exclude fields match independently. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching. Legacy frequency_cap: true matches only the unchanged broad declaration. frequency_cap_support matches either legacy true or a containing structured declaration; an empty object requests either positive form. A requirement carries at most one of the two.",
   "type": "object",
   "definitions": {
     "required": { "type": "boolean", "const": true },
@@ -187,6 +187,10 @@
       ]
     },
     "frequency_cap": { "$ref": "#/definitions/required" },
+    "frequency_cap_support": {
+      "$ref": "/schemas/core/frequency-cap-requirements.json",
+      "description": "Minimum structured package-cap support. Matches a broad legacy frequency_cap: true or a containing frequency_cap_support object. Mutually exclusive with a frequency_cap: true requirement, which would exclude every constrained product."
+    },
     "property_list": { "$ref": "#/definitions/required" },
     "property_list_exclude": { "$ref": "#/definitions/required" },
     "collection_list": { "$ref": "#/definitions/required" },
@@ -206,5 +210,6 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "minProperties": 1,
+  "not": { "required": ["frequency_cap", "frequency_cap_support"] },
   "additionalProperties": false
 }

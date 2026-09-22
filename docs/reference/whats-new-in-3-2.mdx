@@ -8,18 +8,23 @@ description: "AdCP 3.2 turns a media-buy conversation into an explicit lifecycle
 # What's new in AdCP 3.2
 
 <Warning>
-**3.2 is in release candidate.** RC.1 is the current signed protocol
-checkpoint. TypeScript `@adcp/sdk@14.0.0-rc.33`, Python `adcp==8.0.0b14`, and
-Go `adcp/v3@v3.2.1` embed it exactly; Python and Go higher-level coverage
-remains role-dependent. Use these exact packages for RC.1 staging tests. See the
+**3.2 is in release candidate.** RC.3 is the current signed protocol
+checkpoint. TypeScript `@adcp/sdk@14.0.0-rc.40` embeds RC.3 exactly; Python
+`adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` still embed RC.1, and their
+higher-level coverage remains role-dependent. Use each exact package with the
+checkpoint it embeds for staging tests. See the
 [3.2 prerelease program](/docs/reference/3-2-beta).
 </Warning>
 
 <Info>
-**New in RC.1:** Reliable Reporting 1.0 becomes a named, version-discovered
-experimental capability, with stronger delivery, reach, vendor-metric, and
-reconciliation semantics. The public training seller and all three maintained
-SDKs now expose the exact RC.1 checkpoint.
+**New in RC.3:** the opt-in Reliable Reporting consumer-status loop published
+in RC.2 is hardened — `content_mismatch` with a closed `mismatch_code`, a
+bounded grace window for a `received` overtaken by a seller restatement, a
+buyer posting deadline surfaced through
+`obligation_counts.consumer_status_pending`, issue lifecycle fields, and a
+reserved `authoritative_party`. RC.3 also adds a shared MediaBuy-level
+`frequency_cap`, structured product frequency-cap constraints, and
+request-only targeting inputs with `null`-clear semantics.
 </Info>
 
 AdCP 3.2 turns a media-buy conversation into a commercial lifecycle that
@@ -49,7 +54,8 @@ tools after capability discovery.
     confirmation gates. No membership or setup is required.
   </Card>
   <Card title="Build it" icon="code" href="/docs/building/by-layer/L4/choose-your-sdk">
-    Choose an SDK-backed RC.1 path or use the signed RC.1 bundle directly.
+    Use the signed RC.3 bundle directly, or take an SDK-backed path on the
+    checkpoint your SDK embeds.
   </Card>
   <Card title="Adopt it" icon="route" href="/docs/reference/migration/3-1-to-3-2">
     Add compact lifecycle tools incrementally while keeping 3.1 integrations
@@ -178,8 +184,14 @@ seller's own denominator.
 The model has three explicitly discovered tiers:
 
 - **Core** adds schedule-derived obligations, immutable revisions, explicit
-  post-official adjustments, health, and `get_reporting_status` over reporting
-  transports the seller already offers;
+  post-official adjustments, health, `get_reporting_status` seller readback,
+  and—after the active six-week experimental change notice—
+  `sync_reporting_status` buyer-to-seller consumption status over reporting
+  transports the seller already offers. That loop is two-sided and bounded on
+  both ends: the buyer owes a status for each elapsed period by
+  `expected_at + automated_recovery_window_seconds`, and a buyer whose
+  `received` is overtaken by a seller restatement gets a re-read grace window
+  before the mismatch escalates rather than paging a human immediately;
 - **Managed Delivery** binds durable file, dataset-share, or warehouse
   materializations to exact revisions, destinations, retention, and access;
 - **Reconciled Billing** adds authenticated consumer receipts and canonical
@@ -190,8 +202,23 @@ RC.0 introduced the reporting-status baseline. RC.1 makes Reliable Reporting
 a named, version-discovered experimental capability and adds source-timezone
 schedules, checkpointed repair for missed or out-of-order events, immutable
 billing-purpose evidence, adjustment and receipt reconciliation, and
-evidence-scoped reliability statistics. RC.1 has matched TypeScript, Python,
-and Go SDK pairings. See
+evidence-scoped reliability statistics.
+
+RC.2 publishes the opt-in `sync_reporting_status` consumer-status loop, so a
+buyer's report of what it actually received sits beside the seller's
+obligations in `get_reporting_status` as immutable, buyer-attributed history.
+RC.3 hardens that loop: `content_mismatch` with a closed `mismatch_code`
+names contract-fact disagreements — explicitly not measurement disputes — a
+`received` overtaken by a seller restatement gets a bounded grace window
+before it escalates, an unmet buyer posting deadline is counted in
+`obligation_counts.consumer_status_pending` without ever changing seller
+health, issues carry `opened_at` / `issue_state` / `external_ref` alongside
+optional `consumer_mismatch_escalation_seconds` and `operations_contact`, and
+`authoritative_party: "consumer"` is reserved for a later minor and MUST be
+rejected with `UNSUPPORTED_FEATURE` today. The loop stays opt-in until the
+notice window closes on October 24, 2026, and becomes required Core only in
+the next eligible minor after that date. No maintained SDK embeds RC.2 or
+RC.3 yet, so both are raw-wire or code-generation targets today. See
 [Implementing Reliable Reporting Core](/docs/media-buy/reporting-core-implementation-guide).
 
 ### A durable connection for authenticated principals
@@ -254,10 +281,22 @@ exact package readback — including committed inventory selection:
 collections, the latter materializing concrete selectors even when the
 selection came from collection-list references. Products can also disclose per-package cardinality for
 country inclusion, country exclusion, and proximity targeting before a buyer
-creates or updates a package. Daypart windows now default explicitly to each
+creates or updates a package. On the request-only targeting and
+product-purchase inputs for the compact and established create/update
+surfaces, each targeting dimension distinguishes three cases: omission
+(inherit or preserve), a non-null replacement, and an explicit `null` that
+clears the dimension. Discovery, capability, accepted-commercial-term, and
+readback schemas stay strict and non-null. Daypart windows now default explicitly to each
 inventory unit's seller-assigned local clock and can instead name one IANA
 timezone for a synchronized schedule; products declare the supported modes through
-`overlay_support.daypart_targets`. See [Targeting-aware product discovery](/docs/reference/migration/targeting-aware-discovery).
+`overlay_support.daypart_targets`. Products whose package frequency-cap support
+is limited or create-only declare exact constraints through
+`overlay_support.frequency_cap_support` instead of the broad legacy boolean,
+and buyers preflight them with `required_overlay_support.frequency_cap_support`.
+A root `frequency_cap` on the MediaBuy adds one counter shared across every
+package, advertised through `media_buy.aggregate_frequency_capping` and
+product `media_buy_support`; scope is determined by field location.
+See [Targeting-aware product discovery](/docs/reference/migration/targeting-aware-discovery).
 
 ### Commercial terms and controls are explicit
 
@@ -369,7 +408,10 @@ anomaly limits—without silently breaking baseline 3.x compatibility. Mandatory
 signing across spend-committing operations remains a 4.0 floor.
 
 3.2 also grades OAuth discovery consistency, tightens signed-response verifier
-errors, and requires integer `error.retry_after` values from 3.2 producers.
+errors, requires `error.recovery` on every 3.2 producer error while preserving
+legacy 3.1 decoding, and requires integer `error.retry_after` values from 3.2
+producers. SDKs can pin classification and retry behavior with the versioned
+[error-recovery reference vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/error-recovery/vectors.json).
 
 ### Better convergence and accountability
 
@@ -421,14 +463,14 @@ for the remaining runner and coverage gaps.
 
 | If you are… | Review before advertising 3.2 |
 |---|---|
-| Any seller or service | Advertise `"3.2-rc.1"` only when serving that exact prerelease, echo it on responses, and keep 3.1 traffic on its negotiated contract. |
+| Any seller or service | Advertise `"3.2-rc.3"` — or whichever exact prerelease you serve — only when serving that exact prerelease, echo it on responses, and keep 3.1 traffic on its negotiated contract. |
 | A buyer | Gate compact tools and optional targeting on capabilities; do not infer 3.2 support from a major-only declaration. |
 | A media-buy implementer | Use `media_buy_status` on create/update success payloads; root `status` is the task-envelope state. |
-| A reporting implementer | Treat Reliable Reporting as a separately discovered, versioned experimental capability. Do not infer RC.1 fields from RC.0 or from legacy delivery reporting. |
+| A reporting implementer | Treat Reliable Reporting as a separately discovered, versioned experimental capability. Do not infer RC.3 fields from an earlier checkpoint or from legacy delivery reporting, and advertise `consumer_status_task` only when the loop is implemented. |
 | A signing implementation | Require `content-digest` coverage for every signed body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; retain legacy conversion only at a proven compatibility boundary. |
-| An SDK maintainer | Generate from the signed RC.1 tarball, name the exact supported bundle, and feed accepted protocol corrections into the next prerelease. |
-| A compliance operator | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.33`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain exact package and wire versions end to end, and do not issue a 3.2 badge from a prerelease. |
+| An SDK maintainer | Generate from the signed RC.3 tarball, name the exact supported bundle, and feed accepted protocol corrections into the next prerelease. |
+| A compliance operator | Pair `@adcp/sdk@14.0.0-rc.40` with RC.3. Python `adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` remain paired with RC.1. Retain exact package and wire versions end to end, and do not issue a 3.2 badge from a prerelease. |
 
 ## Start here
 

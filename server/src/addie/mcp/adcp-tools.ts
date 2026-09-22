@@ -34,10 +34,170 @@ import {
   type ProposalNegotiationProfile,
 } from '../../training-agent/types.js';
 import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
-import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
+import {
+  ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
+  withSdkSafeTransport,
+} from '../../utils/sdk-safe-fetch.js';
+import type { StructuredToolResult, ToolHandlerResult, ToolResultStatus, ToolErrorCategory } from '../tool-result-contract.js';
+import { isMutatingTool, validateKeyFormat } from '../../training-agent/idempotency.js';
 
 // Tool handler type (matches claude-client.ts internal type)
-type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+type ToolHandler = (input: Record<string, unknown>) => Promise<ToolHandlerResult>;
+
+const TRANSIENT_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT', 'EAI_AGAIN',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_SOCKET',
+]);
+const MAX_TRANSIENT_RETRY_DELAY_MS = 2_000;
+
+export class AdcpTransientRetryExhaustedError extends Error {
+  readonly attempts = 2;
+  constructor(readonly failure: unknown) {
+    super('AdCP transient transport retry exhausted');
+    this.name = 'AdcpTransientRetryExhaustedError';
+  }
+}
+
+function safeErrorMetadata(error: unknown): { code?: string; status?: number; retryAfterMs?: number } {
+  if (error instanceof AdcpTransientRetryExhaustedError) return safeErrorMetadata(error.failure);
+  if (!error || typeof error !== 'object') return {};
+  const candidate = error as Record<string, unknown>;
+  const code = typeof candidate.code === 'string' ? candidate.code : undefined;
+  const status = typeof candidate.status === 'number'
+    ? candidate.status
+    : typeof candidate.statusCode === 'number' ? candidate.statusCode : undefined;
+  const retryAfterSeconds = typeof candidate.retryAfter === 'number'
+    ? candidate.retryAfter
+    : typeof candidate.retryAfter === 'string' && /^\d+(?:\.\d+)?$/.test(candidate.retryAfter)
+      ? Number(candidate.retryAfter)
+      : undefined;
+  const retryAfterMs = typeof candidate.retryAfterMs === 'number'
+    ? candidate.retryAfterMs
+    : retryAfterSeconds === undefined ? undefined : retryAfterSeconds * 1_000;
+  return { code, status, retryAfterMs };
+}
+
+export function isTypedTransientAdcpFailure(error: unknown): boolean {
+  if (error instanceof AdcpTransientRetryExhaustedError) return isTypedTransientAdcpFailure(error.failure);
+  const { code, status } = safeErrorMetadata(error);
+  return code === ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE
+    || (code !== undefined && TRANSIENT_CODES.has(code))
+    || status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+interface SdkTransientTransportResultMetadata {
+  retryAfterMs?: number;
+}
+
+/**
+ * @adcp/sdk converts most protocol-dispatch exceptions into failed TaskResults.
+ * Retry only the private marker installed by our safe-fetch boundary; a seller
+ * protocol error with `recovery: transient` remains model-visible and is never
+ * automatically replayed here.
+ */
+export function typedSdkTransientTransportResult(
+  result: unknown,
+): SdkTransientTransportResultMetadata | null {
+  if (!result || typeof result !== 'object') return null;
+  const candidate = result as Record<string, unknown>;
+  if (candidate.success !== false || !candidate.adcpError || typeof candidate.adcpError !== 'object') {
+    return null;
+  }
+  const adcpError = candidate.adcpError as Record<string, unknown>;
+  if (
+    adcpError.code !== ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE
+    || adcpError.recovery !== 'transient'
+  ) return null;
+  const retryAfterMs = typeof adcpError.retryAfterMs === 'number'
+    ? adcpError.retryAfterMs
+    : undefined;
+  return { ...(retryAfterMs !== undefined && { retryAfterMs }) };
+}
+
+function adcpRetryIsFenced(task: string, params: Record<string, unknown>): boolean {
+  return !isMutatingTool(task) || validateKeyFormat(params.idempotency_key);
+}
+
+export async function executeWithTransientAdcpRetry<T>(options: {
+  task: string;
+  params: Record<string, unknown>;
+  execute: () => Promise<T>;
+  sleep?: (delayMs: number) => Promise<void>;
+}): Promise<{ value: T; attempts: number }> {
+  const safeToRetry = adcpRetryIsFenced(options.task, options.params);
+  const sleep = options.sleep ?? (delayMs => new Promise(resolve => setTimeout(resolve, delayMs)));
+  let value: T;
+  try {
+    value = await options.execute();
+  } catch (error) {
+    if (!safeToRetry || !isTypedTransientAdcpFailure(error)) throw error;
+    const requestedDelay = safeErrorMetadata(error).retryAfterMs ?? 250;
+    if (!Number.isFinite(requestedDelay) || requestedDelay < 0 || requestedDelay > MAX_TRANSIENT_RETRY_DELAY_MS) throw error;
+    await sleep(requestedDelay);
+    try {
+      return { value: await options.execute(), attempts: 2 };
+    } catch (retryError) {
+      throw new AdcpTransientRetryExhaustedError(retryError);
+    }
+  }
+
+  const resultFailure = typedSdkTransientTransportResult(value);
+  if (!safeToRetry || !resultFailure) return { value, attempts: 1 };
+  const requestedDelay = resultFailure.retryAfterMs ?? 250;
+  if (!Number.isFinite(requestedDelay) || requestedDelay < 0 || requestedDelay > MAX_TRANSIENT_RETRY_DELAY_MS) {
+    return { value, attempts: 1 };
+  }
+  await sleep(requestedDelay);
+  try {
+    return { value: await options.execute(), attempts: 2 };
+  } catch (retryError) {
+    throw new AdcpTransientRetryExhaustedError(retryError);
+  }
+}
+
+function structuredAdcpResult(options: {
+  status: ToolResultStatus;
+  operation: string;
+  modelContext: string;
+  userSummary: string;
+  code?: string;
+  category?: ToolErrorCategory;
+  retryable?: boolean;
+  retryAfterMs?: number;
+  attempts?: number;
+}): StructuredToolResult {
+  return {
+    status: options.status,
+    model_context: options.modelContext,
+    user_summary: options.userSummary,
+    telemetry: {
+      operation: options.operation,
+      ...(options.code && { error_code: options.code }),
+      ...(options.category && { error_category: options.category }),
+      ...(options.retryable !== undefined && { retryable: options.retryable }),
+      ...(options.retryAfterMs !== undefined && { retry_after_ms: options.retryAfterMs }),
+      attempts: options.attempts ?? 1,
+    },
+  };
+}
+
+function safeProtocolJson(value: unknown): string {
+  const redact = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(redact);
+    if (typeof input === 'string') {
+      return input
+        .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [redacted]')
+        .replace(/([?&](?:access_token|token|api_key|key|secret)=)[^&\s]+/gi, '$1[redacted]')
+        .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[redacted-jwt]');
+    }
+    if (!input || typeof input !== 'object') return input;
+    return Object.fromEntries(Object.entries(input as Record<string, unknown>).map(([key, item]) => [
+      key,
+      /token|authorization|cookie|secret|credential|api[_-]?key/i.test(key) ? '[redacted]' : redact(item),
+    ]));
+  };
+  return JSON.stringify(redact(value), null, 2);
+}
 
 /**
  * Base URL for OAuth redirect URLs
@@ -82,6 +242,22 @@ function validateIdempotencyKey(params: Record<string, unknown>): string | null 
   if (typeof params.idempotency_key !== 'string' || !IDEMPOTENCY_KEY_PATTERN.test(params.idempotency_key)) {
     return 'idempotency_key is required and must be 16-255 characters matching [A-Za-z0-9_.:-].';
   }
+  return null;
+}
+
+export function validateGetProductsParams(params: Record<string, unknown>): string | null {
+  const keyError = validateIdempotencyKey(params);
+  if (keyError) return keyError;
+  const mode = params.buying_mode;
+  if (!['brief', 'wholesale', 'refine'].includes(String(mode))) {
+    return 'buying_mode is required and must be "brief", "wholesale", or "refine".';
+  }
+  const hasBrief = typeof params.brief === 'string' && params.brief.trim().length > 0;
+  const hasRefine = Array.isArray(params.refine) && params.refine.length > 0;
+  if (mode === 'brief' && !hasBrief) return 'brief is required when buying_mode is "brief".';
+  if (mode !== 'brief' && params.brief !== undefined) return `brief is not allowed when buying_mode is "${String(mode)}".`;
+  if (mode === 'refine' && !hasRefine) return 'refine is required and must be a non-empty array when buying_mode is "refine".';
+  if (mode !== 'refine' && params.refine !== undefined) return `refine is not allowed when buying_mode is "${String(mode)}".`;
   return null;
 }
 
@@ -208,7 +384,7 @@ export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
   get_products: {
     area: 'media-buy',
     description: 'Discover advertising products from a sales agent using natural language briefs',
-    validate: validateIdempotencyKey,
+    validate: validateGetProductsParams,
   },
   create_media_buy: {
     area: 'media-buy',
@@ -783,7 +959,7 @@ const callAdcpTaskTool: AddieTool = {
           '• buy_products: { adcp_version, adcp_major_version: 3, idempotency_key, account, brand?, feed_version, pricing_version?, purchases: [...], start_time: "asap" | ISO-8601, end_time: ISO-8601 }',
           '• accept_proposal: { adcp_version, adcp_major_version: 3, idempotency_key, account, proposal_id, proposal_terms_digest }',
           '• control_media_buy: { adcp_version, adcp_major_version: 3, idempotency_key, account, media_buy_id, revision, ...control }',
-          '• get_products: { idempotency_key, brief, brand: { domain }, buying_mode?: "brief"|"wholesale"|"refine", filters?: { channels, budget_range } }',
+          '• get_products: prefer the typed call_adcp_get_products tool. This adapter requires a stable idempotency_key. brief is required only in "brief" mode and forbidden in "wholesale"/"refine"; refine is required only in "refine" mode.',
           '• create_media_buy: { idempotency_key, account: { account_id } OR { brand:{domain}, operator: "operator.example" }, brand: { domain }, packages: [...] OR proposal_id + total_budget, start_time: "asap" | "2024-06-01T00:00:00Z", end_time: "2024-06-30T23:59:59Z" }',
           '• update_media_buy: { idempotency_key, account: { account_id } OR { brand:{domain}, operator }, media_buy_id, paused?, canceled?, packages?: [{ package_id, budget? }] }',
           '• sync_creatives: { idempotency_key, creatives: [{ creative_id, format_kind, format_option_ref?, assets }], assignments? }',
@@ -799,6 +975,52 @@ const callAdcpTaskTool: AddieTool = {
       },
     },
     required: ['agent_url', 'task'],
+  },
+};
+
+const callAdcpGetProductsTool: AddieTool = {
+  name: 'call_adcp_get_products',
+  replaySafety: 'external_read',
+  description: [
+    'Execute get_products with a machine-checkable request shape.',
+    'idempotency_key is required by this adapter and must remain identical when correcting or retrying the same logical request.',
+    'For buying_mode="brief", provide brief and omit refine. For "wholesale", omit both brief and refine. For "refine", provide refine and omit brief.',
+  ].join('\n'),
+  usage_hints: 'use instead of call_adcp_task for get_products product discovery',
+  input_schema: {
+    type: 'object',
+    properties: {
+      agent_url: { type: 'string', description: 'The HTTPS agent URL' },
+      idempotency_key: { type: 'string', minLength: 16, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]+$', description: 'Caller-created stable key; reuse unchanged for the same logical request.' },
+      buying_mode: { type: 'string', enum: ['brief', 'wholesale', 'refine'] },
+      brief: { type: 'string', description: 'Required only for brief mode; omit for wholesale/refine.' },
+      refine: { type: 'array', minItems: 1, items: { type: 'object' }, description: 'Non-empty change-request array required only for refine mode; omit for brief/wholesale.' },
+      brand: { type: 'object' },
+      acceptance_context: { type: 'object' },
+      catalog: { type: 'object' },
+      account: { type: 'object' },
+      preferred_delivery_types: { type: 'array', minItems: 1, items: { type: 'string' } },
+      filters: { type: 'object' },
+      targeting_overlay: { type: 'object' },
+      media_buy_frequency_cap: { type: 'object' },
+      required_overlay_support: { type: 'object' },
+      required_media_buy_support: { type: 'object' },
+      property_list: { type: 'object' },
+      fields: { type: 'array', minItems: 1, items: { type: 'string' } },
+      time_budget: { type: 'string', description: 'ISO 8601 duration budget.' },
+      push_notification_config: { type: 'object' },
+      pagination: { type: 'object' },
+      if_wholesale_feed_version: { type: 'string' },
+      if_pricing_version: { type: 'string' },
+      context: { type: 'object' },
+      required_policies: { type: 'array', items: { type: 'string' } },
+      ext: { type: 'object' },
+      adcp_version: { type: 'string' },
+      adcp_major_version: { type: 'integer' },
+      debug: { type: 'boolean' },
+    },
+    required: ['agent_url', 'idempotency_key', 'buying_mode'],
+    additionalProperties: false,
   },
 };
 
@@ -818,7 +1040,7 @@ const getAdcpCapabilitiesTool: AddieTool = {
       debug: { type: 'boolean' },
       adcp_version: {
         type: 'string',
-        description: 'Optional exact release pin, for example "3.2-rc.1" during prerelease testing',
+        description: 'Optional exact release pin, for example "3.2-rc.3" during prerelease testing',
       },
       adcp_major_version: {
         type: 'integer',
@@ -836,6 +1058,7 @@ const getAdcpCapabilitiesTool: AddieTool = {
 export const ADCP_TOOLS: AddieTool[] = [
   askAboutAdcpTaskTool,
   callAdcpTaskTool,
+  callAdcpGetProductsTool,
   getAdcpCapabilitiesTool,
 ];
 
@@ -1016,13 +1239,13 @@ export function createAdcpToolHandlers(
     task: string,
     params: Record<string, unknown>,
     debug: boolean = false
-  ): Promise<string> {
+  ): Promise<StructuredToolResult> {
     const validationError = validateAgentUrl(agentUrl);
     if (validationError) {
-      return `**Error:** ${validationError}`;
+      return structuredAdcpResult({ status: 'invalid_input', operation: task, code: 'INVALID_AGENT_URL', category: 'validation', retryable: false, modelContext: validationError, userSummary: 'The agent URL is invalid.' });
     }
     if (access.trainingAgentOnly && !access.trainingPrincipal && task !== 'get_adcp_capabilities') {
-      return '**Error:** The anonymous sandbox session is unavailable. Start a new chat and try again.';
+      return structuredAdcpResult({ status: 'access_denied', operation: task, code: 'ANONYMOUS_SANDBOX_UNAVAILABLE', category: 'authorization', retryable: false, modelContext: 'The anonymous sandbox session is unavailable. Start a new chat and try again.', userSummary: 'The anonymous sandbox session is unavailable.' });
     }
 
     // Keep the caller-supplied key visible and stable through the training
@@ -1061,29 +1284,30 @@ export function createAdcpToolHandlers(
           : requestParams;
         const result = await executeTrainingAgentTool(task, trainingRequestParams, ctx);
         if (!result.success) {
-          return [
-            `**Task failed:** \`${task}\`\n`,
-            `**Error:** ${result.error}\n`,
-            `**Recovery:** if the error mentions a field shape (oneOf / required / additionalProperties), ` +
-            `read \`adcp_error.issues[].variants[]\` if present and patch the pointers. Reuse the same ` +
-            `\`idempotency_key\` on retry — fresh UUIDs cause duplicates.`,
-          ].join('\n');
+          return structuredAdcpResult({
+            status: 'invalid_input', operation: task, code: 'TRAINING_AGENT_VALIDATION', category: 'validation', retryable: false,
+            modelContext: `Task ${task} failed: ${result.error}\nRecovery: inspect adcp_error.issues[].variants[], correct the same logical request, and reuse the identical idempotency_key.`,
+            userSummary: 'The training agent rejected the request parameters.',
+          });
         }
         const protocolErrors = (result.data as { errors?: Array<{ code?: string; message?: string }> } | undefined)?.errors;
         if (task.startsWith('si_') && Array.isArray(protocolErrors) && protocolErrors.length > 0) {
           const firstError = protocolErrors[0];
-          return [
-            `**Task failed:** \`${task}\`\n`,
-            `**Error:** ${firstError?.code ?? 'SI_TASK_ERROR'}${firstError?.message ? ` — ${firstError.message}` : ''}\n`,
-            '**Recovery:** correct the request and retry. Reuse the same `idempotency_key` only when retrying the same logical request.',
-          ].join('\n');
+          return structuredAdcpResult({
+            status: 'error', operation: task, code: firstError?.code ?? 'SI_TASK_ERROR', category: 'protocol', retryable: false,
+            modelContext: `Task ${task} returned a protocol error: ${firstError?.code ?? 'SI_TASK_ERROR'}${firstError?.message ? ` — ${firstError.message}` : ''}. Correct the request before retrying; preserve the idempotency key for the same logical request.`,
+            userSummary: 'The agent returned a protocol error.',
+          });
         }
-        let output = `**Task:** \`${task}\`\n**Status:** Success (sandbox)\n\n`;
-        output += `**Response:**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
-        return output;
+        return structuredAdcpResult({ status: 'ok', operation: task, modelContext: `Task ${task} succeeded (sandbox).\nResponse:\n${safeProtocolJson(result.data)}`, userSummary: 'The sandbox task completed successfully.' });
       }
     } catch (err) {
-      logger.warn({ error: err, agentUrl, task }, 'Training agent in-process shortcut failed, falling through to HTTP');
+      logger.warn({ error: err, agentUrl, task }, 'Training agent in-process shortcut failed');
+      return structuredAdcpResult({
+        status: 'error', operation: task, code: 'TRAINING_AGENT_EXECUTION_ERROR', category: 'application', retryable: false,
+        modelContext: `The local training-agent execution for ${task} failed. Do not replay the operation automatically; preserve the same idempotency_key for manual reconciliation.`,
+        userSummary: 'The training agent could not complete the request.',
+      });
     }
 
     const authInfo = await getAuthInfo(agentUrl);
@@ -1109,7 +1333,7 @@ export function createAdcpToolHandlers(
         signingProvider = await getRequestSigningProvider();
       } catch (kmsErr) {
         logger.error({ err: kmsErr, agentUrl, task }, 'GCP KMS signing provider init failed');
-        return '**Error:** Outbound AdCP signing is misconfigured. Operator: check structured logs for KMS init failure (gcp-kms-signer module).';
+        return structuredAdcpResult({ status: 'error', operation: task, code: 'SIGNING_CONFIGURATION', category: 'configuration', retryable: false, modelContext: 'Outbound AdCP signing is unavailable. Ask an operator to check the signing configuration.', userSummary: 'The AdCP connection is misconfigured.' });
       }
 
       const agentConfig = {
@@ -1136,36 +1360,43 @@ export function createAdcpToolHandlers(
       const client = multiClient.agent('target');
 
       const executionMode = adcpExecutionMode(task);
-      const result = isCanonicalAdcpTask(task)
-        ? await executeCanonicalAdcpTask(client, task, requestParams, debug)
-        : executionMode === 'legacy'
-          ? await client.executeTaskLegacy(task, requestParams, undefined, { debug })
-          : await client.executeCustomTask(task, requestParams, undefined, { debug });
+      const executed = await executeWithTransientAdcpRetry({
+        task,
+        params: requestParams,
+        execute: () => isCanonicalAdcpTask(task)
+          ? executeCanonicalAdcpTask(client, task, requestParams, debug)
+          : executionMode === 'legacy'
+            ? client.executeTaskLegacy(task, requestParams, undefined, { debug })
+            : client.executeCustomTask(task, requestParams, undefined, { debug }),
+      });
+      const result = executed.value;
 
       if (!result.success) {
-        let output = `**Task failed:** \`${task}\`\n\n**Error:**\n\`\`\`json\n${JSON.stringify(result.error, null, 2)}\n\`\`\``;
-
-        // Include debug logs on failure (always useful for debugging)
-        if (result.debug_logs && result.debug_logs.length > 0) {
-          output += `\n\n**Debug Logs:**\n\`\`\`json\n${JSON.stringify(result.debug_logs, null, 2)}\n\`\`\``;
+        if (result.debug_logs?.length) logger.debug({ agentUrl, task, debugLogCount: result.debug_logs.length }, 'AdCP protocol debug logs captured');
+        const transportFailure = typedSdkTransientTransportResult(result);
+        if (transportFailure) {
+          const retryable = adcpRetryIsFenced(task, requestParams);
+          return structuredAdcpResult({
+            status: 'recoverable_error', operation: task,
+            code: ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE, category: 'transport', retryable,
+            retryAfterMs: transportFailure.retryAfterMs, attempts: executed.attempts,
+            modelContext: executed.attempts > 1
+              ? `Task ${task} could not reach the agent after one bounded retry. Retry later with the identical request and idempotency_key.`
+              : `Task ${task} could not reach the agent. Automatic replay was not safe; preserve the identical request and idempotency_key before retrying.`,
+            userSummary: 'The agent is temporarily unreachable.',
+          });
         }
-
-        return output;
+        const protocolError = result.error as { code?: string } | undefined;
+        return structuredAdcpResult({
+          status: 'error', operation: task, code: protocolError?.code ?? 'ADCP_PROTOCOL_ERROR', category: 'protocol', retryable: false, attempts: executed.attempts,
+          modelContext: `Task ${task} returned an AdCP error:\n${safeProtocolJson(result.error)}\nRecovery: inspect issues and variants, correct the request, and preserve the same idempotency_key for the same logical operation.`,
+          userSummary: 'The agent rejected the protocol request.',
+        });
       }
-
-      let output = `**Task:** \`${task}\`\n**Status:** Success\n\n`;
-      output += `**Response:**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
-
-      // Include debug logs if debug mode is enabled
-      if (debug && result.debug_logs && result.debug_logs.length > 0) {
-        output += `\n\n**Debug Logs:**\n\`\`\`json\n${JSON.stringify(result.debug_logs, null, 2)}\n\`\`\``;
-      }
-
-      return output;
+      if (debug && result.debug_logs?.length) logger.debug({ agentUrl, task, debugLogCount: result.debug_logs.length }, 'AdCP protocol debug logs captured');
+      return structuredAdcpResult({ status: 'ok', operation: task, attempts: executed.attempts, modelContext: `Task ${task} succeeded.\nResponse:\n${safeProtocolJson(result.data)}`, userSummary: 'The AdCP task completed successfully.' });
     } catch (error) {
       logger.warn({ error, agentUrl, task }, `AdCP: ${task} failed`);
-
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
       // Handle AuthenticationRequiredError from @adcp/sdk (includes OAuth metadata)
       if (error instanceof AuthenticationRequiredError) {
@@ -1178,33 +1409,25 @@ export function createAdcpToolHandlers(
             { pendingTask: task, pendingParams: requestParams },
           );
           if (authUrl) {
-            return (
-              `**Task failed:** \`${task}\`\n\n` +
-              `**Error:** OAuth authorization required\n\n` +
-              `The agent at \`${agentUrl}\` requires OAuth authentication.\n\n` +
-              `**[Click here to authorize this agent](${authUrl})**\n\n` +
-              `After you authorize, ask me to run \`${task}\` again.`
-            );
+            return structuredAdcpResult({ status: 'access_denied', operation: task, code: 'OAUTH_AUTHORIZATION_REQUIRED', category: 'authentication', retryable: false, modelContext: `OAuth authorization is required. Ask the user to authorize using this one-time link, then retry ${task}: ${authUrl}`, userSummary: 'Authorize the agent, then try the request again.' });
           }
         }
 
         // OAuth not available or couldn't set up flow
-        return (
-          `**Task failed:** \`${task}\`\n\n` +
-          `**Error:** Authentication required\n\n` +
-          `The agent at \`${agentUrl}\` requires authentication. ` +
-          `Please check with the agent provider for authentication requirements.`
-        );
+        return structuredAdcpResult({ status: 'access_denied', operation: task, code: 'AUTHENTICATION_REQUIRED', category: 'authentication', retryable: false, modelContext: 'The agent requires authentication. Ask the user to connect or authorize the agent before retrying.', userSummary: 'Authentication is required for this agent.' });
       }
-
-      return [
-        `**Task failed:** \`${task}\`\n`,
-        `**Error:** ${errorMessage}\n`,
-        `**Recovery:** if the error envelope includes \`adcp_error.issues[]\`, read it before retrying. ` +
-        `For \`oneOf\` failures, \`issues[].variants[]\` lists the valid shapes — patch the pointers and retry, do not re-guess. ` +
-        `Reuse the **same** \`idempotency_key\` on retry; generating a fresh UUID is how you double-book. ` +
-        `If you need parameter shapes, call \`ask_about_adcp_task\` with the failing field name as the question.`,
-      ].join('\n');
+      const transient = isTypedTransientAdcpFailure(error);
+      const metadata = safeErrorMetadata(error);
+      return structuredAdcpResult({
+        status: transient ? 'recoverable_error' : 'error', operation: task,
+        code: metadata.code ?? (transient ? 'TRANSIENT_TRANSPORT_FAILURE' : 'ADCP_EXECUTION_ERROR'),
+        category: transient ? 'transport' : 'application', retryable: transient,
+        retryAfterMs: metadata.retryAfterMs, attempts: error instanceof AdcpTransientRetryExhaustedError ? 2 : 1,
+        modelContext: transient
+          ? `Task ${task} could not reach the agent after one bounded retry. Retry later with the identical request and idempotency_key.`
+          : `Task ${task} failed unexpectedly. Do not retry blindly; inspect operator logs or protocol guidance and preserve the same idempotency_key for the same logical operation.`,
+        userSummary: transient ? 'The agent is temporarily unreachable.' : 'The AdCP task failed.',
+      });
     }
   }
 
@@ -1222,27 +1445,37 @@ export function createAdcpToolHandlers(
     const params = (input.params as Record<string, unknown>) || {};
     const debug = input.debug as boolean | undefined;
 
-    if (!agentUrl) return '**Error:** agent_url is required.';
-    if (!task) return '**Error:** task is required.';
+    if (!agentUrl) return structuredAdcpResult({ status: 'invalid_input', operation: task || 'unknown', code: 'AGENT_URL_REQUIRED', category: 'validation', retryable: false, modelContext: 'agent_url is required.', userSummary: 'An agent URL is required.' });
+    if (!task) return structuredAdcpResult({ status: 'invalid_input', operation: 'unknown', code: 'TASK_REQUIRED', category: 'validation', retryable: false, modelContext: 'task is required.', userSummary: 'An AdCP operation is required.' });
 
     // Defense-in-depth: fires if the MCP layer skips enum validation.
     // In well-formed requests this branch is unreachable because 'get_adcp_capabilities'
     // is not in TASK_NAMES and will be rejected by the input schema first.
     if (task === 'get_adcp_capabilities') {
-      return '**Error:** `get_adcp_capabilities` is a protocol-layer handshake, not an AdCP task — use the dedicated `get_adcp_capabilities` tool directly.';
+      return structuredAdcpResult({ status: 'invalid_input', operation: task, code: 'USE_CAPABILITIES_TOOL', category: 'validation', retryable: false, modelContext: 'get_adcp_capabilities is a protocol handshake; use the dedicated get_adcp_capabilities tool.', userSummary: 'Use capability discovery for this request.' });
     }
 
     const meta = ADCP_TASK_REGISTRY[task];
     if (!meta) {
-      return `**Error:** Unknown task "${task}". Valid tasks: ${TASK_NAMES.join(', ')}`;
+      return structuredAdcpResult({ status: 'invalid_input', operation: task, code: 'UNKNOWN_TASK', category: 'validation', retryable: false, modelContext: `Unknown task "${task}". Valid tasks: ${TASK_NAMES.join(', ')}`, userSummary: 'The requested AdCP operation is unknown.' });
     }
 
     if (meta.validate) {
       const error = meta.validate(params);
-      if (error) return `**Error:** ${error}`;
+      if (error) return structuredAdcpResult({ status: 'invalid_input', operation: task, code: task === 'get_products' ? 'INVALID_GET_PRODUCTS_REQUEST' : 'INVALID_TASK_INPUT', category: 'validation', retryable: false, modelContext: `${error} Correct the request and, for the same logical operation, retain the caller-provided idempotency_key.`, userSummary: 'The request parameters need correction.' });
     }
 
     return executeTask(agentUrl, task, params, debug);
+  });
+
+  handlers.set('call_adcp_get_products', async (input: Record<string, unknown>) => {
+    const agentUrl = input.agent_url as string;
+    const debug = input.debug as boolean | undefined;
+    const params = Object.fromEntries(Object.entries(input).filter(([key]) => !['agent_url', 'debug'].includes(key)));
+    if (!agentUrl) return structuredAdcpResult({ status: 'invalid_input', operation: 'get_products', code: 'AGENT_URL_REQUIRED', category: 'validation', retryable: false, modelContext: 'agent_url is required.', userSummary: 'An agent URL is required.' });
+    const error = validateGetProductsParams(params);
+    if (error) return structuredAdcpResult({ status: 'invalid_input', operation: 'get_products', code: 'INVALID_GET_PRODUCTS_REQUEST', category: 'validation', retryable: false, modelContext: `${error} Correct the shape and preserve the same idempotency_key for this logical request.`, userSummary: 'The product request parameters need correction.' });
+    return executeTask(agentUrl, 'get_products', params, debug);
   });
 
   // get_adcp_capabilities handler

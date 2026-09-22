@@ -1,3 +1,7 @@
+import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js';
+import type { SupplyPathInput } from '../services/supply-path-contract.js';
+import { domain as supplyPathDomain, agentIdentity as supplyPathAgentIdentity } from '../services/supply-path-input.js';
+import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
 /**
  * Public Registry API routes.
  *
@@ -14,6 +18,7 @@ import {
   findOwnedAgentVisibility,
   findOwnerOrgForUser,
   isOrgOwnerOfAgent,
+  canManageAgentForOrg,
   resolveOwnerOrgForUser,
 } from "../services/agent-ownership.js";
 import { AdCPClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
@@ -42,10 +47,13 @@ import {
 import {
   comply,
   complianceResultToDbInput,
+  redactForDiagnostics,
   isNonExecutableCoverageGapScenario,
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
   computeSpecialismStatus,
+  derivePublicComplianceEligibility,
+  ELIGIBILITY_CRITERIA_VERSION,
   badgeEligibleVersionsForTargetSelection,
   hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
@@ -53,13 +61,29 @@ import {
   selectedComplianceTargetMatchesObservedProfile,
   UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
 } from "../addie/services/compliance-testing.js";
+import { getLatestVerificationProfileAssessment } from "../db/verification-profile-shadow-db.js";
+import {
+  sandboxProfileAssessmentReasons,
+  VERIFICATION_PROFILE_SHADOW_POLICY_VERSION,
+} from "../services/verification-profile-shadow.js";
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from "../services/badge-issuance.js";
+import { deriveVerificationProfileRoleAssessments } from "../services/verification-profile-assessment.js";
+import {
+  getGradingProfileRollout,
+  getEffectiveGradingDecision,
+  getPublicSelectedGradingStatuses,
+  completeGradingProfileProjectionJob,
+  getRoleProfileComparisons,
+  planGradingProfilePublicEffect,
+  selectGradingProfile,
+  GradingProfileConflictError,
+} from "../db/verification-profile-db.js";
 import { notifyVerificationChange } from "../notifications/compliance.js";
 import { resolveOwnerMembership, tierLabel } from "../services/membership-tiers.js";
 import { inferDiagnosticAgentType } from "../lib/diagnostic-agent-type-inference.js";
-import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
+import { isSupportedBadgeVersion, isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
 import { buildAaoVerificationBlock } from "../services/aao-verification-enrichment.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
@@ -70,38 +94,11 @@ import {
   brandResolveCacheControl,
   type BrandResolutionOutcome,
 } from "../services/brand-resolution-cache-policy.js";
-import { verifySupplyPath, parseInventoryPartnerDomains } from "../services/supply-path-verifier.js";
+import { verifySupplyPath } from "../services/supply-path-verifier.js";
 import { canonicalizePublisherDomain } from "../services/publisher-domain.js";
-import { AAO_UA_VALIDATOR } from "../config/user-agents.js";
 
-/**
- * Union of inventorypartnerdomain= declarations from the host's
- * app-ads.txt and ads.txt. Returns null only when neither file could be
- * fetched — distinct from fetched-and-absent (empty array), which the
- * verifier treats as an explicit "not declared".
- */
-async function fetchHostInventoryPartnerDomains(hostDomain: string): Promise<string[] | null> {
-  const partners = new Set<string>();
-  let anyFetched = false;
-  for (const file of ["app-ads.txt", "ads.txt"]) {
-    try {
-      const response = await safeFetchAxiosLike(`https://${hostDomain}/${file}`, {
-        timeoutMs: 10000,
-        maxRedirects: 3,
-        headers: { Accept: "text/plain", "User-Agent": AAO_UA_VALIDATOR },
-      });
-      if (response.status === 200) {
-        anyFetched = true;
-        for (const partner of parseInventoryPartnerDomains(response.data.toString("utf-8"))) {
-          partners.add(partner);
-        }
-      }
-    } catch {
-      // Unreachable file — treated as unavailable unless the other resolves.
-    }
-  }
-  return anyFetched ? [...partners] : null;
-}
+import { fetchHostInventoryPartnerDomains } from '../services/supply-path-evidence.js';
+
 import {
   projectPublicComplianceNotices,
   type PublicComplianceNotice,
@@ -133,6 +130,7 @@ import {
   RegistryMetadataSchema,
   MonitoringSettingsSchema,
   ComplianceRunSchema,
+  ComplianceRunProvenanceSchema,
   ComplianceStepDiagnosticSchema,
   OutboundRequestSchema,
   AgentAuthStatusSchema,
@@ -193,11 +191,10 @@ import { sdkSafeFetch, withSdkSafeTransport } from "../utils/sdk-safe-fetch.js";
 import { getRequestLog, getRequestCount, logOutboundRequest } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
-import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
-import { isBreakGlassAdminEmail } from "../auth/admin-access.js";
-import { getDevUser, isDevModeEnabled } from "../middleware/auth.js";
+import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
+import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
-import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
+import { resolveCallerOrgId, sendCallerOrganizationAuthError } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
 import { buildCreativeCapabilities } from "../creative-agent/task-handlers.js";
 import {
@@ -220,6 +217,11 @@ import {
   type ClaimedComplianceRefreshRequest,
 } from "../db/compliance-refresh-requests-db.js";
 import { ComplianceRefreshQueue } from "../services/compliance-refresh-queue.js";
+
+const RegistryAdminAuthorizationUnavailableSchema = z.object({
+  error: z.literal('admin_authorization_unavailable'),
+  message: z.string(),
+});
 
 type PublisherBrandSummary = {
   name?: string;
@@ -525,6 +527,17 @@ function summarizePlacements(
 import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
 const logger = createLogger("registry-api");
+
+const GRADING_PROFILE_CONFLICT_MESSAGES: Record<GradingProfileConflictError['reason'], string> = {
+  stale_revision: 'The grading selection changed; refresh before retrying',
+  stale_assessment: 'The selected assessment is stale or unavailable',
+  selection_disabled: 'Grading profile selection is disabled',
+  legacy_selection_expired: 'New Legacy selections are no longer available',
+  impact_confirmation_required: 'Confirm the public badge impact before selecting this grading profile',
+  authorization_changed: 'Authorization or agent ownership changed; refresh before retrying',
+  idempotency_mismatch: 'The idempotency key was already used for a different selection',
+  unsupported_version: 'This AdCP version is not enabled for public badge grading',
+};
 const PUBLISHER_LOOKUP_TIMEOUT_MS = 8_000;
 const PUBLISHER_LOOKUP_SLOW_PHASE_MS = 500;
 
@@ -629,6 +642,17 @@ const complianceDb = new ComplianceDatabase();
 const agentSnapshotDb = new AgentSnapshotDatabase();
 const agentContextDb = new AgentContextDatabase();
 
+const HUMAN_REFRESH_AVAILABILITY = {
+  available: false,
+  retryable: false,
+  scope: 'platform' as const,
+  applies_to: 'human_session' as const,
+  code: 'refresh_authorization_provenance_required' as const,
+  notice: 'Recheck & retest is paused platform-wide until durable requester-authorization provenance is supported. Retrying is not expected to help until the platform changes.',
+  alternative_action: 'monitoring_requeue' as const,
+  alternative_description: 'Requeue comply only marks the agent eligible for a future scheduled heartbeat; it does not perform or retry this human refresh and has no guaranteed start time.',
+};
+
 function isStoryboardStatusSchemaUnavailable(err: unknown): boolean {
   if (typeof err !== "object" || err === null || !("code" in err)) return false;
   const code = (err as { code?: unknown }).code;
@@ -708,7 +732,7 @@ interface PublicComplianceObservation {
   message: string;
 }
 
-function toPublicComplianceObservation(obs: unknown): PublicComplianceObservation | null {
+function toPublicComplianceObservation(obs: unknown, includeDiagnostics = false): PublicComplianceObservation | null {
   if (!obs || typeof obs !== "object") return null;
   const record = obs as Record<string, unknown>;
   if (
@@ -721,8 +745,16 @@ function toPublicComplianceObservation(obs: unknown): PublicComplianceObservatio
   return {
     category: record.category,
     severity: record.severity,
-    message: record.message,
+    message: record.severity === 'error' && !includeDiagnostics
+      ? 'Compliance failure recorded. Details are available to the owner or operator.'
+      : String(redactForDiagnostics(record.message)),
   };
+}
+
+function publicComplianceHeadline(status: string, headline: string | null): string | null {
+  if (!headline) return null;
+  return status === 'passing' ? String(redactForDiagnostics(headline))
+    : 'Compliance assessment recorded. Details are available to the owner or operator.';
 }
 
 /** Strip protocol, path, query, and fragment from a URL to extract the domain. */
@@ -1945,17 +1977,17 @@ registry.registerPath({
       },
     },
     503: {
-      description: "Publisher crawl is temporarily busy",
+      description: "Publisher crawl is temporarily busy, or administrator authorization could not be checked",
       headers: z.object({
         "Retry-After": z.string().openapi({ description: "Seconds to wait before retrying" }),
       }),
       content: {
         "application/json": {
-          schema: z.object({
+          schema: z.union([RegistryAdminAuthorizationUnavailableSchema, z.object({
             error: z.string(),
             code: z.literal("publisher_crawl_busy"),
             retry_after: z.number().int().openapi({ description: "Seconds to wait before retrying" }),
-          }),
+          })]),
         },
       },
     },
@@ -1993,6 +2025,11 @@ registry.registerPath({
       },
     },
     500: { description: "Crawl failed", content: { "application/json": { schema: ErrorSchema } } },
+    503: {
+      description: "Administrator authorization could not be checked",
+      headers: z.object({ "Retry-After": z.string() }),
+      content: { "application/json": { schema: RegistryAdminAuthorizationUnavailableSchema } },
+    },
   },
 });
 
@@ -2082,7 +2119,7 @@ const VerifySupplyPathRequestSchema = z.object({
   owner_domain: z.string().min(1).openapi({ description: "Channel owner's publisher domain — where the canonical collection is declared." }),
   host_domain: z.string().min(1).openapi({ description: "Host publisher domain — where the carrying property (e.g. CTV app) is declared." }),
   agent_url: z.string().min(1).openapi({ description: "Sales agent URL the buyer would transact with. Canonicalized server-side." }),
-  collection_id: z.string().min(1).optional().openapi({ description: "Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals)." }),
+  collection_id: z.string().min(1).max(256).refine(value => value.trim().length > 0).optional().openapi({ description: "Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals)." }),
 });
 
 registry.registerPath({
@@ -2110,6 +2147,8 @@ registry.registerPath({
       content: {
         "application/json": {
           schema: z.object({
+            semantics_version: z.literal("1").openapi({ description: "Canonical supply-path evaluator semantics; pinned by the shared supply-path golden vectors." }),
+            resolved_collection_id: z.string().optional().openapi({ description: "Concrete collection chosen for the complete path, including domain-level inquiries." }),
             state: z.enum(["verified_owner_sold", "host_delegated", "owner_attested", "unverified"]),
             legs: z.object({
               owner_collection_declared: SupplyPathLegSchema,
@@ -2123,6 +2162,10 @@ registry.registerPath({
             agent_url: z.string(),
             collection_id: z.string().optional(),
             sources: z.object({
+              owner_fetched_at: z.string().datetime().nullable(),
+              host_fetched_at: z.string().datetime().nullable(),
+              owner_resolved_url: z.string().nullable(),
+              host_resolved_url: z.string().nullable(),
               owner_adagents_url: z.string(),
               host_adagents_url: z.string(),
               cached: z.boolean().openapi({ description: "true: manifests came from the registry's crawl cache. Re-derive from the URLs above for enforcement." }),
@@ -3422,17 +3465,17 @@ registry.registerPath({
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Crawl request not found", content: { "application/json": { schema: ErrorSchema } } },
     503: {
-      description: "Crawl status is temporarily unavailable",
+      description: "Crawl status or administrator authorization is temporarily unavailable",
       headers: z.object({
         "Retry-After": z.string().openapi({ description: "Seconds to wait before retrying" }),
       }),
       content: {
         "application/json": {
-          schema: z.object({
+          schema: z.union([RegistryAdminAuthorizationUnavailableSchema, z.object({
             error: z.string(),
             code: z.literal("crawl_status_unavailable"),
             retry_after: z.number().int(),
-          }),
+          })]),
         },
       },
     },
@@ -3549,7 +3592,7 @@ registry.registerPath({
   operationId: "getAgentCompliance",
   summary: "Get agent compliance detail",
   description:
-    "Returns detailed compliance status for a single agent, including track-level results, storyboard counts, and timestamps.\n\nIf the agent has opted out of compliance monitoring, returns a minimal response with `status: opted_out`.",
+    "Returns detailed compliance status for a single agent, including track-level results, storyboard counts, timestamps, and owner-only grading comparisons. Exact badge-scope rows compare Legacy and Strict Spec grading for one role/version; Sandbox remains preview-only. Reading never contacts the agent.\n\nIf the agent has opted out of compliance monitoring, returns a minimal response with `status: opted_out`.",
   tags: ["Agent Compliance"],
   request: {
     params: z.object({
@@ -3560,6 +3603,56 @@ registry.registerPath({
     200: { description: "Compliance detail", content: { "application/json": { schema: AgentComplianceDetailSchema } } },
     400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: 'put',
+  path: '/api/registry/agents/{encodedUrl}/grading-profile',
+  operationId: 'selectAgentGradingProfile',
+  summary: 'Select an exact badge grading profile',
+  description: 'Selects Legacy or Strict Spec grading for one exact agent role and AdCP version. Requires a current immutable assessment, organization owner/admin authorization, revision compare-and-swap, and an idempotency key. Sandbox is preview-only. The selection itself does not contact the agent.',
+  tags: ['Agent Compliance'],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: 'URL-encoded agent URL' }),
+    }),
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            organization_id: z.string().min(1),
+            role: BadgeRoleSchema,
+            adcp_version: z.string().regex(/^[1-9][0-9]{0,3}\.[0-9]{1,3}$/),
+            selected_profile: z.enum(['legacy', 'spec']),
+            assessment_id: z.string().uuid(),
+            expected_revision: z.number().int().nonnegative(),
+            acknowledge_public_impact: z.boolean().optional(),
+            idempotency_key: z.string().uuid(),
+            admin_override_reason: z.string().min(1).optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Selection committed and audited',
+      content: { 'application/json': { schema: z.object({
+        selected_profile: z.enum(['legacy', 'spec']),
+        revision: z.string(),
+        public_effect: z.enum(['unchanged', 'issue', 'restore', 'regrade', 'degrade', 'revoke']),
+        replayed: z.boolean(),
+        source_run_id: z.string().uuid(),
+        token_refresh: z.enum(['completed', 'scheduled']),
+      }) } },
+    },
+    400: { description: 'Invalid request', content: { 'application/json': { schema: ErrorSchema } } },
+    401: { description: 'Authentication required', content: { 'application/json': { schema: ErrorSchema } } },
+    403: { description: 'Organization owner/admin required', content: { 'application/json': { schema: ErrorSchema } } },
+    409: { description: 'Stale assessment/revision, disabled selection, or impact confirmation required', content: { 'application/json': { schema: ErrorSchema } } },
+    500: { description: 'Server error', content: { 'application/json': { schema: ErrorSchema } } },
   },
 });
 
@@ -3648,6 +3741,7 @@ registry.registerPath({
             agent_url: z.string(),
             role: BadgeRoleSchema,
             verified: z.boolean(),
+            grading_profile: z.enum(['legacy', 'spec']),
             adcp_version: z.string().optional(),
             badge_svg_url: z.string(),
             registry_url: z.string(),
@@ -3708,6 +3802,7 @@ registry.registerPath({
             agent_url: z.string(),
             role: BadgeRoleSchema,
             verified: z.boolean(),
+            grading_profile: z.enum(['legacy', 'spec']),
             adcp_version: z.string(),
             badge_svg_url: z.string(),
             registry_url: z.string(),
@@ -3993,7 +4088,7 @@ registry.registerPath({
   operationId: "requeueAgentForHeartbeat",
   summary: "Requeue agent for compliance heartbeat",
   description:
-    "Clears the agent's last_checked_at timestamp so it is picked up on the next heartbeat cycle (within ~1 hour). This is queued-async; it does not run the compliance suite synchronously or change the current verdict until the heartbeat completes. Requires authentication and ownership.",
+    "Clears the agent's next scheduled check time so it is picked up on the next heartbeat cycle (within ~1 hour). This is queued-async; it does not run the compliance suite synchronously or change the current verdict until the heartbeat completes. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -4037,6 +4132,13 @@ registry.registerPath({
           schema: z.object({
             agent_url: z.string(),
             run_id: z.string().nullable(),
+            completeness: z.enum(['complete', 'timed_out', 'not_completed']).nullable(),
+            is_authoritative: z.boolean(),
+            provenance: ComplianceRunProvenanceSchema.nullable(),
+            storyboard_statuses: z.array(z.any()),
+            observations: z.array(z.unknown()),
+            diagnostics_visibility: z.literal('owner_or_operator'),
+            diagnostics_note: z.string(),
             count: z.number().int(),
             diagnostics: z.array(ComplianceStepDiagnosticSchema),
           }),
@@ -4095,7 +4197,7 @@ registry.registerPath({
   operationId: "refreshAgent",
   summary: "Refresh agent snapshot",
   description:
-    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`. Human submissions are temporarily fenced with HTTP 503 until durable authorization provenance is supported; static admin API key submissions remain available.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -4136,7 +4238,10 @@ registry.registerPath({
             status_url: z.string().optional().openapi({ description: "Durable operation URL, present on recovered responses." }),
             coalesced: z.boolean().optional(),
             compliance: z.object({
-              ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
+              ran: z.boolean().openapi({ description: "True if a compliance run was recorded. Check completeness and is_authoritative before treating its results as the public grade." }),
+              completeness: z.enum(['complete', 'timed_out', 'not_completed']).optional(),
+              is_authoritative: z.boolean().optional().openapi({ description: "Only authoritative runs update the public grade and badge state. Incomplete runs preserve the previous complete assessment." }),
+              provenance: ComplianceRunProvenanceSchema.nullable().optional(),
               run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
               test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
               requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true." }),
@@ -4192,7 +4297,21 @@ registry.registerPath({
     },
     500: { description: "Refresh failed after durable execution", content: { "application/json": { schema: ErrorSchema } } },
     502: { description: "Probe failed (timeout, DNS, OAuth wall, etc.)", content: { "application/json": { schema: ErrorSchema } } },
-    503: { description: "Durable refresh queue unavailable or at capacity", content: { "application/json": { schema: ErrorSchema } } },
+    503: {
+      description: "Refresh queue or authorization unavailable. Human submissions are fenced with refresh_authorization_provenance_required until durable authorization provenance is supported; this response is non-retryable and carries no ETA. Static admin API key submissions remain supported.",
+      content: { "application/json": { schema: z.union([
+        RegistryAdminAuthorizationUnavailableSchema,
+        z.object({
+          error: z.string(),
+          code: z.literal('refresh_authorization_provenance_required'),
+          retryable: z.literal(false),
+          scope: z.literal('platform'),
+          applies_to: z.literal('human_session'),
+          alternative_action: z.literal('monitoring_requeue'),
+          alternative_description: z.string(),
+        }),
+      ]) } },
+    },
   },
 });
 
@@ -4253,7 +4372,7 @@ registry.registerPath({
         },
       },
     },
-    503: { description: "Refresh status temporarily unavailable", content: { "application/json": { schema: ErrorSchema } } },
+    503: { description: "Refresh status or administrator authorization temporarily unavailable", content: { "application/json": { schema: z.union([RegistryAdminAuthorizationUnavailableSchema, ErrorSchema]) } } },
   },
 });
 
@@ -4937,6 +5056,9 @@ registry.registerPath({
             badge_eligible: z.boolean(),
             badge_eligible_adcp_versions: z.array(z.string()),
             run_id: z.string().openapi({ description: "Compliance run id written by this owner-triggered storyboard run." }),
+            completeness: z.enum(['complete', 'timed_out', 'not_completed']),
+            is_authoritative: z.boolean(),
+            provenance: ComplianceRunProvenanceSchema.nullable(),
             storyboard_status: StoryboardRunStatusResponseSchema.openapi({ description: "Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status." }),
             phases: z.any(),
             summary: z.any(),
@@ -6026,6 +6148,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         id: saved.id,
       });
     } catch (error) {
+      if (sendCallerOrganizationAuthError(error, res)) return;
       logger.error({ error }, "Failed to save property");
       return res.status(500).json({ error: "Failed to save property" });
     }
@@ -6067,6 +6190,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           `Origin verification binds this domain to your organization.`,
       });
     } catch (error) {
+      if (sendCallerOrganizationAuthError(error, res)) return;
       logger.error({ error }, 'Failed to issue domain claim');
       return res.status(500).json({ error: 'Failed to issue domain claim' });
     }
@@ -6107,6 +6231,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
       return res.json(outcome);
     } catch (error) {
+      if (sendCallerOrganizationAuthError(error, res)) return;
       logger.error({ error }, 'Origin verification failed');
       return res.status(500).json({ error: 'Origin verification failed' });
     }
@@ -6740,9 +6865,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
                 lifecycle_stage: cs.lifecycle_stage,
                 tracks: cs.tracks_summary_json || {},
                 track_details: cs.track_details_json || [],
+                provenance: cs.provenance_json ?? null,
                 streak_days: cs.streak_days,
                 last_checked_at: cs.last_checked_at?.toISOString() || null,
-                headline: cs.headline,
+                headline: publicComplianceHeadline(cs.status, cs.headline),
                 monitoring_paused: meta?.monitoring_paused ?? false,
                 check_interval_hours: meta?.check_interval_hours ?? 12,
                 verified: agentBadges.length > 0,
@@ -6758,6 +6884,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       res.json({ agents: enriched, count: enriched.length });
     } catch (error) {
+      if (sendCallerOrganizationAuthError(error, res)) return;
       logger.error({ err: error, path: req.path }, "Failed to list agents");
       res.status(500).json({ error: "Failed to list agents" });
     }
@@ -6795,6 +6922,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           lifecycle_stage: metadata.lifecycle_stage || "production",
           compliance_opt_out: true,
           badge_requalification_required: true,
+          refresh_availability: HUMAN_REFRESH_AVAILABILITY,
         });
       }
 
@@ -6805,6 +6933,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           lifecycle_stage: metadata?.lifecycle_stage || "production",
           compliance_opt_out: false,
           badge_requalification_required: metadata?.badge_requalification_required ?? false,
+          refresh_availability: HUMAN_REFRESH_AVAILABILITY,
           tracks: {},
           streak_days: 0,
           last_checked_at: null,
@@ -6822,6 +6951,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         badges = await complianceDb.getBadgesForAgent(agentUrl);
       } catch (err) {
         logger.warn({ err, agentUrl }, "Badge query failed (table may not exist yet)");
+      }
+      let selectedGradingStatuses: Awaited<ReturnType<typeof getPublicSelectedGradingStatuses>> = [];
+      try {
+        selectedGradingStatuses = await getPublicSelectedGradingStatuses(agentUrl);
+      } catch (err) {
+        logger.warn({ err, agentUrl }, 'Selected grading status query failed');
       }
 
       // Declared specialisms from the latest run — surfaces what the agent
@@ -6850,11 +6985,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       // observations (best-practice warnings, suggestions, etc.). Do not merge
       // observations across runs; a fixed field on the wire must clear the
       // advisory as soon as the latest run stops emitting it.
-      let observations: PublicComplianceObservation[] = [];
+      let rawObservations: unknown[] = [];
       try {
-        observations = (await complianceDb.getLatestObservations(agentUrl))
-          .map(toPublicComplianceObservation)
-          .filter((obs): obs is PublicComplianceObservation => obs !== null);
+        rawObservations = await complianceDb.getLatestObservations(agentUrl);
       } catch (err) {
         logger.warn({ err, agentUrl }, "Latest observations query failed");
       }
@@ -6866,7 +6999,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       let specialismStatus: Record<string, string> = {};
       let storyboardStatuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
       try {
-        storyboardStatuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true });
+        storyboardStatuses = await complianceDb.getStoryboardStatuses(agentUrl, {
+          requireRowsForLatestRun: true,
+          includeDiagnostics: false,
+        });
       } catch (err) {
         if (!isStoryboardStatusSchemaUnavailable(err)) throw err;
         logger.warn({ err, agentUrl }, "Storyboard status query skipped because schema is unavailable");
@@ -6919,31 +7055,282 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
 
       const encodedUrl = encodeURIComponent(agentUrl);
+      const includeDiagnostics = ownerMembership.is_owner || isStaticAdminRequest(req);
+      const observations = rawObservations.map(obs => toPublicComplianceObservation(obs, includeDiagnostics))
+        .filter((obs): obs is PublicComplianceObservation => obs !== null);
       const serializedStoryboardStatuses = storyboardStatuses.map(s =>
-        serializeStoryboardStatus(s, { includeDiagnostics: ownerMembership.is_owner }),
+        serializeStoryboardStatus(s, { includeDiagnostics }),
       );
+      const eligibility = derivePublicComplianceEligibility(declaredSpecialisms, storyboardStatuses);
+      const eligibilityOwner = {
+        criteria_version: ELIGIBILITY_CRITERIA_VERSION,
+        eligible: ownerMembership.is_owner ? ownerMembership.is_api_access_tier : null,
+        blockers: ownerMembership.is_owner && !ownerMembership.is_api_access_tier
+          ? [{ code: 'membership_tier_ineligible' as const }]
+          : [],
+      };
+
+      // Phase 1 of owner-selectable grading profiles is comparison-only.
+      // Reuse the same heartbeat evidence and keep Legacy authoritative; no
+      // read on this path contacts the agent or changes public trust state.
+      let gradingProfileComparisons: Array<Record<string, unknown>> = [];
+      if (includeDiagnostics) {
+        try {
+          const assessment = await getLatestVerificationProfileAssessment(
+            agentUrl,
+            VERIFICATION_PROFILE_SHADOW_POLICY_VERSION,
+          );
+          if (!assessment) {
+            gradingProfileComparisons = [{
+              scope: 'agent',
+              availability: 'pending',
+              unavailable_reason: 'No current-policy comparison is available yet. The next completed heartbeat will create one.',
+              selected_profile: 'legacy',
+              selection_enabled: false,
+              compliance_bundle_version: status.adcp_version ?? null,
+              profiles: null,
+            }];
+          } else {
+            const ageMs = Date.now() - new Date(assessment.evaluated_at).getTime();
+            const staleAfterMs = Math.max(24, (metadata?.check_interval_hours ?? 12) * 2) * 60 * 60 * 1000;
+            const assessedAt = new Date(assessment.evaluated_at);
+            const sourceTestedAt = new Date(assessment.source_tested_at);
+            const sourceIsLatest = status.last_run_id !== null
+              && assessment.source_run_id === status.last_run_id;
+            const datesInvalid = !Number.isFinite(ageMs)
+              || Number.isNaN(assessedAt.getTime())
+              || Number.isNaN(sourceTestedAt.getTime());
+            const stale = !sourceIsLatest || datesInvalid || ageMs > staleAfterMs;
+            const specReasons = [
+              assessment.observed_failure_count > 0
+                ? `${assessment.observed_failure_count} observed failure${assessment.observed_failure_count === 1 ? '' : 's'}`
+                : null,
+              assessment.failing_bundle_count > 0
+                ? `${assessment.failing_bundle_count} failing evidence bundle${assessment.failing_bundle_count === 1 ? '' : 's'}`
+                : null,
+              assessment.flat_failure_count > 0
+                ? `${assessment.flat_failure_count} run-level failure record${assessment.flat_failure_count === 1 ? '' : 's'}`
+                : null,
+              assessment.incomplete_bundle_count > 0
+                ? `${assessment.incomplete_bundle_count} incomplete evidence bundle${assessment.incomplete_bundle_count === 1 ? '' : 's'}`
+                : null,
+              assessment.controller_gap_phase_count > 0
+                ? `${assessment.controller_gap_phase_count} controller-gap phase${assessment.controller_gap_phase_count === 1 ? '' : 's'}`
+                : null,
+              assessment.unattributed_failure_count > 0
+                ? `${assessment.unattributed_failure_count} unattributed failure${assessment.unattributed_failure_count === 1 ? '' : 's'}`
+                : null,
+              !assessment.bundle_evidence_present ? 'bundle evidence is missing' : null,
+              !assessment.run_complete ? 'the source run is incomplete' : null,
+            ].filter((reason): reason is string => reason !== null);
+            const sandboxReasons = sandboxProfileAssessmentReasons(assessment);
+            const staleExplanation = !sourceIsLatest
+              ? 'A newer authoritative compliance run exists without a matching comparison. This older result is historical evidence and cannot count as a pass.'
+              : datesInvalid
+                ? 'The comparison has invalid freshness timestamps, so its observed result is historical evidence and cannot count as a pass.'
+                : 'The latest comparison is stale, so its observed result is shown only as historical evidence and cannot count as a pass.';
+            const outcome = (
+              observedStatus: string | null,
+              eligible: boolean,
+              explanation: string,
+            ) => ({
+              available: eligible && !stale,
+              status: eligible && !stale ? observedStatus : null,
+              observed_status: observedStatus,
+              explanation: !eligible ? explanation : stale ? staleExplanation : explanation,
+            });
+            gradingProfileComparisons = [{
+              scope: 'agent',
+              availability: stale ? 'stale' : 'current',
+              unavailable_reason: stale ? staleExplanation : null,
+              selected_profile: 'legacy',
+              selection_enabled: false,
+              source_run_id: assessment.source_run_id,
+              evaluator_policy_version: assessment.policy_version,
+              requested_compliance_target: assessment.requested_compliance_target,
+              compliance_bundle_version: assessment.adcp_version,
+              assessed_at: Number.isNaN(assessedAt.getTime()) ? null : assessedAt.toISOString(),
+              source_tested_at: Number.isNaN(sourceTestedAt.getTime()) ? null : sourceTestedAt.toISOString(),
+              stale,
+              incomplete: assessment.proposed_spec_status === 'partial'
+                || assessment.proposed_sandbox_status === 'partial'
+                || (assessment.sandbox_eligible && assessment.proposed_sandbox_status === null),
+              public_impact: 'None. Legacy remains authoritative during read-only comparison.',
+              profiles: {
+                legacy: outcome(
+                  assessment.current_public_status,
+                  true,
+                  'Current production grading and badge behavior.',
+                ),
+                spec: outcome(
+                  assessment.proposed_spec_status,
+                  true,
+                  assessment.proposed_spec_status === 'passing'
+                    ? 'The run is complete and all required evidence passes strict grading.'
+                    : `${assessment.proposed_spec_status === 'failing' ? 'Strict grading failed' : 'Strict grading is incomplete'}: ${specReasons.join('; ') || 'required evidence is unresolved'}.`,
+                ),
+                sandbox: outcome(
+                  assessment.proposed_sandbox_status,
+                  assessment.sandbox_eligible,
+                  !assessment.sandbox_eligible
+                    ? 'Sandbox grading is available only for production lifecycle agents.'
+                    : assessment.proposed_sandbox_status === 'passing'
+                      ? 'Observable production behavior passes; only catalog-proven controller gaps are excluded.'
+                      : `Sandbox grading ${assessment.proposed_sandbox_status === 'failing' ? 'failed' : 'is incomplete'}: ${sandboxReasons.join('; ') || 'required evidence is unresolved'}.`,
+                ),
+              },
+              evidence: {
+                run_complete: assessment.run_complete,
+                bundle_evidence_present: assessment.bundle_evidence_present,
+                selected_storyboard_count: assessment.selected_storyboard_count,
+                controller_gap_phase_count: assessment.controller_gap_phase_count,
+                observed_failure_count: assessment.observed_failure_count,
+                flat_failure_count: assessment.flat_failure_count,
+                unattributed_failure_count: assessment.unattributed_failure_count,
+                sandbox_unresolved_bundle_count: assessment.sandbox_unresolved_bundle_count,
+              },
+            }];
+          }
+        } catch (err) {
+          logger.warn({ err, agentUrl }, "Verification profile comparison query failed");
+          gradingProfileComparisons = [{
+            scope: 'agent',
+            availability: 'temporarily_unavailable',
+            unavailable_reason: 'Comparison evidence is temporarily unavailable. Legacy remains authoritative.',
+            selected_profile: 'legacy',
+            selection_enabled: false,
+            compliance_bundle_version: status.adcp_version ?? null,
+            profiles: null,
+          }];
+        }
+      }
+
+      // Phase 2 exact-role comparisons supersede the agent-wide preview when
+      // current-policy evidence exists. All three cards come from one source
+      // run; Sandbox is deliberately rendered unavailable/non-selectable.
+      if (includeDiagnostics) {
+        try {
+          const [exactComparisons, gradingRollout] = await Promise.all([
+            getRoleProfileComparisons(agentUrl),
+            getGradingProfileRollout(),
+          ]);
+          if (exactComparisons.length > 0) {
+            gradingProfileComparisons = exactComparisons.map(comparison => {
+              const legacy = comparison.assessments.find(a => a.grading_profile === 'legacy');
+              const sameSource = comparison.assessments.filter(a => a.source_run_id === legacy?.source_run_id);
+              const byProfile = new Map(sameSource.map(a => [a.grading_profile, a]));
+              const sourceTestedAt = legacy ? new Date(legacy.source_tested_at) : null;
+              const stale = !sourceTestedAt
+                || Number.isNaN(sourceTestedAt.getTime())
+                || legacy?.source_is_fresh !== true
+                || legacy?.source_is_latest !== true;
+              const badge = badges.find(b => (
+                b.role === comparison.role && b.adcp_version === comparison.adcp_version
+              ));
+              const outcome = (profile: 'legacy' | 'spec' | 'sandbox') => {
+                const assessment = byProfile.get(profile);
+                const sandbox = profile === 'sandbox';
+                const legacyDeadline = gradingRollout.legacy_selection_allowed_until
+                  ? new Date(gradingRollout.legacy_selection_allowed_until)
+                  : null;
+                const legacySelectionOpen = profile !== 'legacy'
+                  || !legacyDeadline
+                  || legacyDeadline.getTime() > Date.now();
+                const available = !!assessment && !stale && !sandbox && assessment.status !== null;
+                const plan = available && profile !== comparison.selected_profile
+                  ? planGradingProfilePublicEffect({
+                      selectedProfile: profile as 'legacy' | 'spec',
+                      currentProfile: comparison.selected_profile,
+                      assessmentStatus: assessment!.status!,
+                      badgeStatus: badge?.status ?? null,
+                      badgeDegradedAt: badge?.degraded_at ?? null,
+                      specFailureSince: comparison.spec_failure_since,
+                    })
+                  : { publicEffect: 'unchanged' as const, graceDeadline: null };
+                return {
+                  available,
+                  status: available ? assessment!.status : null,
+                  observed_status: assessment?.status ?? null,
+                  explanation: sandbox
+                    ? 'Sandbox grading preview is unavailable until causal bundle data and a public versioned exception catalog ship.'
+                    : stale
+                      ? 'This comparison is stale. Refresh compliance evidence before selecting it.'
+                      : assessment?.status === 'passing'
+                        ? `${profile === 'legacy' ? 'Legacy' : 'Strict Spec'} grading passes for this exact role and AdCP version.`
+                        : assessment?.status === 'failing'
+                          ? `${profile === 'legacy' ? 'Legacy' : 'Strict Spec'} grading fails for this exact role and AdCP version.`
+                          : 'Required evidence is incomplete.',
+                  assessment_id: assessment?.id,
+                  selectable: assessment?.selectable === true
+                    && !stale
+                    && !sandbox
+                    && gradingRollout.selection_enabled
+                    && legacySelectionOpen,
+                  public_effect: plan.publicEffect,
+                  grace_deadline: plan.graceDeadline?.toISOString() ?? null,
+                };
+              };
+              return {
+                scope: 'badge',
+                role: comparison.role,
+                adcp_version: comparison.adcp_version,
+                availability: stale ? 'stale' : 'current',
+                unavailable_reason: stale ? 'Comparison evidence is stale.' : null,
+                selected_profile: comparison.selected_profile,
+                selection_enabled: !stale && gradingRollout.selection_enabled,
+                legacy_selection_allowed_until: gradingRollout.legacy_selection_allowed_until,
+                selection_revision: Number(comparison.revision),
+                source_run_id: legacy?.source_run_id,
+                evaluator_policy_version: legacy?.policy_version,
+                requested_compliance_target: legacy?.requested_compliance_target ?? null,
+                compliance_bundle_version: legacy?.compliance_bundle_version ?? null,
+                assessed_at: legacy?.assessed_at ? new Date(legacy.assessed_at).toISOString() : null,
+                source_tested_at: sourceTestedAt?.toISOString() ?? null,
+                stale,
+                incomplete: sameSource.some(a => a.status === 'partial' || a.status === null),
+                public_impact: 'Selecting a profile updates only this role and AdCP version. Non-passing selection requires explicit confirmation.',
+                first_failing_spec_at: comparison.spec_failure_since?.toISOString() ?? null,
+                profiles: {
+                  legacy: outcome('legacy'),
+                  spec: outcome('spec'),
+                  sandbox: outcome('sandbox'),
+                },
+                evidence: legacy?.evidence ?? {},
+              };
+            });
+          }
+        } catch (err) {
+          logger.warn({ err, agentUrl }, 'Exact grading profile comparison query failed');
+        }
+      }
 
       res.json({
         agent_url: agentUrl,
         requested_compliance_target: status.requested_compliance_target ?? null,
         adcp_version: status.adcp_version ?? null,
         status: status.status,
+        selected_grading_statuses: selectedGradingStatuses,
         lifecycle_stage: metadata?.lifecycle_stage || "production",
         compliance_opt_out: metadata?.compliance_opt_out ?? false,
         badge_requalification_required: metadata?.badge_requalification_required ?? false,
+        refresh_availability: HUMAN_REFRESH_AVAILABILITY,
         tracks: status.tracks_summary_json || {},
         track_details: status.track_details_json || [],
+        provenance: status.provenance_json ?? null,
         streak_days: status.streak_days,
         last_checked_at: status.last_checked_at?.toISOString() || null,
         last_passed_at: status.last_passed_at?.toISOString() || null,
         last_failed_at: status.last_failed_at?.toISOString() || null,
-        headline: status.headline,
+        headline: includeDiagnostics ? redactForDiagnostics(status.headline) : publicComplianceHeadline(status.status, status.headline),
         status_changed_at: status.status_changed_at?.toISOString() || null,
         storyboards_passing: sbCounts.passing,
         storyboards_total: sbCounts.total,
         check_interval_hours: metadata?.check_interval_hours ?? 12,
         declared_specialisms: declaredSpecialisms,
         specialism_status: specialismStatus,
+        // Public machine-readable badge blockers. Membership eligibility is
+        // deliberately excluded and emitted only in eligibility_owner below.
+        eligibility,
         // Public per-storyboard verdicts and aggregate step counts explain
         // storyboards_passing/storyboards_total. First-failure details stay
         // owner-scoped; non-owner entries carry null scalar diagnostics and
@@ -6961,6 +7348,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         membership_tier_label: ownerMembership.membership_tier_label,
         subscription_status: ownerMembership.subscription_status,
         is_api_access_tier: ownerMembership.is_api_access_tier,
+        // Owner-scoped membership leg of badge eligibility. Non-owners get a
+        // null verdict and no blockers, preserving the existing tier boundary.
+        eligibility_owner: eligibilityOwner,
         // `verdict_source` is owner-scoped: operators benefit from seeing
         // whether the current verdict came from their own owner_test vs
         // the scheduled heartbeat (UX cue while iterating on a fix). Non-
@@ -6992,15 +7382,153 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           verified_at: b.verified_at.toISOString(),
           verified_specialisms: b.verified_specialisms,
           verification_modes: b.verification_modes,
+          grading_profile: b.grading_profile ?? 'legacy',
+          grading_profile_revision: Number(b.grading_profile_revision ?? 0),
+          first_failing_spec_at: b.first_failing_spec_at?.toISOString() ?? null,
           verified_protocol_version: b.verified_protocol_version,
           badge_url: `/api/registry/agents/${encodedUrl}/badge/${b.role}.svg`,
         })),
+        // Owner/admin-only comparisons. Anonymous and cross-org callers get
+        // the same key with an empty list so ownership cannot be inferred
+        // from response shape.
+        grading_profile_comparisons: gradingProfileComparisons,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to get compliance status");
       res.status(500).json({ error: "Failed to get compliance status" });
     }
   });
+
+  router.put(
+    "/registry/agents/:encodedUrl/grading-profile",
+    ...(authMiddleware ? [authMiddleware] : []),
+    async (req, res) => {
+      const principal = captureRegistryPrincipal(req);
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateExternalUrl(agentUrl)) {
+          return res.status(400).json({ error: 'Invalid agent URL' });
+        }
+        if (!req.user?.id || isStaticAdminRequest(req)) {
+          return res.status(401).json({ error: 'An authenticated user is required' });
+        }
+
+        const body = req.body ?? {};
+        const role = body.role;
+        const adcpVersion = body.adcp_version;
+        const selectedProfile = body.selected_profile;
+        const organizationId = typeof body.organization_id === 'string' ? body.organization_id.trim() : '';
+        const adminOverrideReason = typeof body.admin_override_reason === 'string'
+          ? body.admin_override_reason.trim()
+          : '';
+        if (!VALID_BADGE_ROLES.includes(role)) {
+          return res.status(400).json(invalidBadgeRoleBody(String(role)));
+        }
+        if (typeof adcpVersion !== 'string' || !VALID_ADCP_VERSION_RE.test(adcpVersion)) {
+          return res.status(400).json({ error: 'adcp_version must be MAJOR.MINOR' });
+        }
+        if (!isSupportedBadgeVersion(adcpVersion)) {
+          return res.status(400).json({ error: 'adcp_version is not enabled for public badge grading' });
+        }
+        if (selectedProfile !== 'legacy' && selectedProfile !== 'spec') {
+          return res.status(400).json({ error: 'selected_profile must be legacy or spec; Sandbox is preview-only' });
+        }
+        if (!organizationId) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!isUuid(body.assessment_id) || !isUuid(body.idempotency_key)) {
+          return res.status(400).json({ error: 'assessment_id and idempotency_key must be UUIDs' });
+        }
+        if (!Number.isSafeInteger(body.expected_revision) || body.expected_revision < 0) {
+          return res.status(400).json({ error: 'expected_revision must be a non-negative integer' });
+        }
+
+        const manager = await canManageAgentForOrg(organizationId, req.user.id, agentUrl);
+        const registryAdmin = await isRegistryAdminRequest(principal);
+        let actorKind: 'organization' | 'registry_admin' = 'organization';
+        if (!manager) {
+          if (!registryAdmin || !adminOverrideReason) {
+            return res.status(403).json({
+              error: 'An owner/admin of the selected organization is required; registry admin overrides require a reason',
+            });
+          }
+          const orgOwnsAgent = await query(
+            `SELECT 1 FROM member_profiles
+             WHERE workos_organization_id = $1 AND agents @> $2::jsonb LIMIT 1`,
+            [organizationId, JSON.stringify([{ url: agentUrl }])],
+          );
+          if (orgOwnsAgent.rowCount !== 1) {
+            return res.status(403).json({ error: 'The selected organization does not own this agent' });
+          }
+          actorKind = 'registry_admin';
+        }
+
+        if (actorKind === 'registry_admin' && !(await isRegistryAdminRequest(principal))) {
+          return res.status(403).json({
+            error: 'An owner/admin of the selected organization is required; registry admin overrides require a reason',
+          });
+        }
+
+        const selection = await selectGradingProfile({
+          agentUrl,
+          role,
+          adcpVersion,
+          selectedProfile,
+          assessmentId: body.assessment_id,
+          expectedRevision: body.expected_revision,
+          acknowledgePublicImpact: body.acknowledge_public_impact === true,
+          idempotencyKey: body.idempotency_key,
+          requestId: String(req.headers['x-request-id'] ?? randomUUID()),
+          actorUserId: actorKind === 'registry_admin' ? principal.user!.id : req.user.id,
+          actorOrgId: organizationId,
+          actorKind,
+          adminOverrideReason: actorKind === 'registry_admin' ? adminOverrideReason : null,
+        });
+
+        let tokenRefresh: 'completed' | 'scheduled' = 'completed';
+        try {
+          const source = await complianceDb.getComplianceRun(agentUrl, selection.source_run_id);
+          const profile = source?.agent_profile_json ?? {};
+          const declaredSpecialisms = Array.isArray(profile.specialisms)
+            ? profile.specialisms.filter((value: unknown): value is string => typeof value === 'string')
+            : [];
+          const supportedVersions = Array.isArray(profile.adcp_supported_versions)
+            ? profile.adcp_supported_versions.filter((value: unknown): value is string => typeof value === 'string')
+            : [];
+          if (declaredSpecialisms.length === 0) throw new Error('Source run has no declared specialisms');
+          await runBadgeFanOut({
+            complianceDb,
+            agentUrl,
+            declaredSpecialisms,
+            runId: selection.source_run_id,
+            adcpVersions: [adcpVersion],
+            supportedVersions,
+            roles: [role],
+            throwOnFailure: true,
+          });
+          await completeGradingProfileProjectionJob({
+            agentUrl, role, adcpVersion, selectionRevision: selection.revision,
+          });
+        } catch (error) {
+          tokenRefresh = 'scheduled';
+          logger.error({ error, agentUrl, role, adcpVersion }, 'Grading selection committed; exact-role token refresh was durably scheduled');
+        }
+
+        return res.json({ ...selection, token_refresh: tokenRefresh });
+      } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
+        if (error instanceof GradingProfileConflictError) {
+          logger.warn({ error, path: req.path, reason: error.reason }, 'Grading profile selection conflict');
+          return res.status(409).json({
+            error: GRADING_PROFILE_CONFLICT_MESSAGES[error.reason],
+            reason: error.reason,
+          });
+        }
+        logger.error({ error, path: req.path }, 'Failed to select grading profile');
+        return res.status(500).json({ error: 'Failed to select grading profile' });
+      }
+    },
+  );
 
   router.get("/registry/agents/:encodedUrl/compliance/history", agentReadRateLimiter, async (req, res) => {
     try {
@@ -7022,10 +7550,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         agent_url: agentUrl,
         runs: history.map(run => ({
           id: run.id,
+          completeness: run.completeness,
+          is_authoritative: run.is_authoritative,
+          provenance: run.provenance_json ?? null,
           requested_compliance_target: run.requested_compliance_target ?? null,
           adcp_version: run.adcp_version ?? null,
           overall_status: run.overall_status,
-          headline: run.headline,
+          headline: publicComplianceHeadline(run.overall_status, run.headline),
           tracks_passed: run.tracks_passed,
           tracks_failed: run.tracks_failed,
           tracks_skipped: run.tracks_skipped,
@@ -7088,6 +7619,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           verified_at: b.verified_at.toISOString(),
           verified_specialisms: b.verified_specialisms,
           verification_modes: b.verification_modes,
+          grading_profile: b.grading_profile ?? 'legacy',
+          grading_profile_revision: Number(b.grading_profile_revision ?? 0),
+          first_failing_spec_at: b.first_failing_spec_at?.toISOString() ?? null,
           verified_protocol_version: b.verified_protocol_version,
           badge_url: `/api/registry/agents/${encodedUrl}/badge/${b.role}.svg`,
         })),
@@ -7140,24 +7674,28 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       // buyers freeze a specific version.
       let modes: string[] = [];
       let adcpVersion: string | undefined;
+      let gradingProfile: 'legacy' | 'spec' = 'legacy';
+      let gradingRevision = '0';
       try {
         const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
         if (badge) {
           modes = badge.verification_modes;
           adcpVersion = badge.adcp_version;
+          gradingProfile = badge.grading_profile ?? 'legacy';
+          gradingRevision = badge.grading_profile_revision ?? '0';
         }
       } catch (error) {
         return badgeStatusUnavailable(res, error, { agentUrl, role });
       }
 
-      const svg = renderBadgeSvg(role, modes, { adcpVersion });
+      const svg = renderBadgeSvg(role, modes, { adcpVersion, gradingProfile });
       // ETag-safe version: filter the DB value through the same shape
       // regex renderBadgeSvg uses. A poisoned row with control characters
       // (CR/LF, NUL) would otherwise crash the response with
       // ERR_INVALID_CHAR when Node serializes the header. Falls back to
       // 'nv' (matching the modes-empty sentinel) for missing/malformed.
       const etagVersion = adcpVersion && /^[1-9][0-9]*\.[0-9]+$/.test(adcpVersion) ? adcpVersion : 'nv';
-      const etag = `"${role}-${etagVersion}-${modes.slice().sort().join('-') || 'nv'}"`;
+      const etag = `"${role}-${etagVersion}-${modes.slice().sort().join('-') || 'nv'}-${gradingProfile}-${gradingRevision}"`;
       setBadgeSvgHeaders(res, etag);
       res.send(svg);
     } catch (error) {
@@ -7186,15 +7724,29 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
 
       let modes: string[] = [];
+      let gradingProfile: 'legacy' | 'spec' = 'legacy';
+      let gradingRevision = '0';
       try {
         const badge = await complianceDb.getActiveBadge(agentUrl, role as any, version);
-        if (badge) modes = badge.verification_modes;
+        if (badge) {
+          modes = badge.verification_modes;
+          gradingProfile = badge.grading_profile ?? 'legacy';
+          gradingRevision = badge.grading_profile_revision ?? '0';
+        } else {
+          const decision = await getEffectiveGradingDecision({
+            agentUrl,
+            role: role as any,
+            adcpVersion: version,
+          });
+          gradingProfile = decision.profile;
+          gradingRevision = decision.revision;
+        }
       } catch (error) {
         return badgeStatusUnavailable(res, error, { agentUrl, role, version });
       }
 
-      const svg = renderBadgeSvg(role, modes, { adcpVersion: version });
-      const etag = `"${role}-${version}-${modes.slice().sort().join('-') || 'nv'}"`;
+      const svg = renderBadgeSvg(role, modes, { adcpVersion: version, gradingProfile });
+      const etag = `"${role}-${version}-${modes.slice().sort().join('-') || 'nv'}-${gradingProfile}-${gradingRevision}"`;
       setBadgeSvgHeaders(res, etag);
       res.send(svg);
     } catch (error) {
@@ -7223,6 +7775,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     altText: string;
     verified: boolean;
     adcpVersion?: string;
+    gradingProfile?: 'legacy' | 'spec';
   }) {
     const baseUrl = process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org';
     const encodedUrl = encodeURIComponent(args.agentUrl);
@@ -7234,6 +7787,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       role: args.role,
       verified: args.verified,
       ...(args.adcpVersion && { adcp_version: args.adcpVersion }),
+      grading_profile: args.gradingProfile ?? 'legacy',
       badge_svg_url: args.badgeSvgUrl,
       registry_url: registryUrl,
       html,
@@ -7254,10 +7808,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       let verified = false;
       let adcpVersion: string | undefined;
+      let gradingProfile: 'legacy' | 'spec' = 'legacy';
       try {
         const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
         verified = !!badge;
         adcpVersion = badge?.adcp_version;
+        gradingProfile = badge?.grading_profile ?? 'legacy';
       } catch (error) {
         return badgeStatusUnavailable(res, error, { agentUrl, role });
       }
@@ -7269,10 +7825,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       // legacy URL auto-upgrades, so a buyer who copies this snippet
       // gets the newest version's image without changing the alt text
       // they pasted into their site.
-      const altText = `AgenticAdvertising.org Verified ${roleLabelForEmbed(role)} Agent`;
+      const altText = `AgenticAdvertising.org Verified ${roleLabelForEmbed(role)} Agent · ${gradingProfile === 'spec' ? 'Strict Spec grading' : 'Legacy grading'}`;
 
       res.setHeader("Cache-Control", "no-store");
-      res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion }));
+      res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion, gradingProfile }));
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to generate embed code");
       res.status(500).json({ error: "Failed to generate embed code" });
@@ -7299,9 +7855,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
 
       let verified = false;
+      let gradingProfile: 'legacy' | 'spec' = 'legacy';
       try {
         const badge = await complianceDb.getActiveBadge(agentUrl, role as any, version);
         verified = !!badge;
+        if (badge) {
+          gradingProfile = badge.grading_profile ?? 'legacy';
+        } else {
+          gradingProfile = (await getEffectiveGradingDecision({
+            agentUrl,
+            role: role as any,
+            adcpVersion: version,
+          })).profile;
+        }
       } catch (error) {
         return badgeStatusUnavailable(res, error, { agentUrl, role, version });
       }
@@ -7309,10 +7875,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const baseUrl = process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org';
       const encodedUrl = encodeURIComponent(agentUrl);
       const badgeSvgUrl = `${baseUrl}/api/registry/agents/${encodedUrl}/badge/${role}/${version}.svg`;
-      const altText = `AgenticAdvertising.org Verified ${roleLabelForEmbed(role)} Agent ${version}`;
+      const altText = `AgenticAdvertising.org Verified ${roleLabelForEmbed(role)} Agent ${version} · ${gradingProfile === 'spec' ? 'Strict Spec grading' : 'Legacy grading'}`;
 
       res.setHeader("Cache-Control", "no-store");
-      res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion: version }));
+      res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion: version, gradingProfile }));
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to generate version-pinned embed code");
       res.status(500).json({ error: "Failed to generate embed code" });
@@ -7327,18 +7893,26 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     return (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
   }
 
-  async function isRegistryAdminRequest(req: Request): Promise<boolean> {
-    if (isStaticAdminRequest(req)) return true;
-    const user = req.user as ({ id?: string; email?: string; isAdmin?: boolean } | undefined);
-    if (!user) return false;
-    if (user.isAdmin === true) return true;
+  type RegistryPrincipal = Readonly<{
+    staticAdmin: boolean;
+    user: Readonly<AAOAdminPrincipal> | null;
+  }>;
 
-    const devUser = isDevModeEnabled() ? getDevUser(req) : null;
-    if (devUser?.isAdmin === true) return true;
+  // Capture authenticated middleware state before the first await. Neither
+  // presentation flags nor later mutation of req.user can change authority.
+  function captureRegistryPrincipal(req: Request): RegistryPrincipal {
+    return Object.freeze({
+      staticAdmin: isStaticAdminRequest(req),
+      user: req.user ? Object.freeze({
+        id: req.user.authWorkosUserId ?? req.user.id,
+        email: req.user.email,
+      }) : null,
+    });
+  }
 
-    if (isBreakGlassAdminEmail(user.email)) return true;
-    if (!user.id) return false;
-    return isWebUserAAOAdmin(user.id);
+  async function isRegistryAdminRequest(principal: RegistryPrincipal): Promise<boolean> {
+    if (principal.staticAdmin) return true;
+    return principal.user ? isAuthenticatedUserAAOAdmin(principal.user) : false;
   }
 
   router.get(
@@ -7753,6 +8327,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   function publicRefreshFailure(code: string | null): { code: string; message: string } {
     switch (code) {
+      case 'authorization_provenance_missing':
+        return { code, message: 'Refresh requester authorization provenance is unavailable' };
       case 'authorization_revoked':
         return { code: 'authorization_revoked', message: 'Access changed before the refresh started' };
       case 'monitoring_paused':
@@ -7793,11 +8369,18 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     request: ClaimedComplianceRefreshRequest,
     lease: { assertValid(): void },
   ): Promise<Record<string, unknown>> {
+    // Legacy rows cannot establish which WorkOS credential authenticated or
+    // its authorization epoch. Never infer either from canonical attribution,
+    // even for an owner, a current admin, or an already checkpointed run.
+    // #7457/591 alone may enable execution with proven durable provenance.
+    if (request.requester_type === 'user') {
+      throw refreshFailure('authorization_provenance_missing',
+        'Refresh requester authorization provenance is unavailable');
+    }
     const agentUrl = request.agent_url;
 
-    // Authorization is checked both when the request is admitted and when a
-    // worker claims it. This closes the queue-time revocation window before
-    // saved owner credentials are resolved.
+    // Preserve the existing additional ownership constraint for any legacy
+    // static-admin row carrying an owner context. User rows never reach it.
     if (request.triggered_by === 'owner_test') {
       if (
         !request.owner_org_id
@@ -7805,18 +8388,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         || !(await isOrgOwnerOfAgent(request.owner_org_id, request.requested_by_user_id, agentUrl))
       ) {
         throw refreshFailure('authorization_revoked', 'Agent ownership changed before the refresh started');
-      }
-    } else if (request.requester_type === 'user') {
-      const isCurrentAdmin = !!request.requested_by_user_id
-        && (
-          await isWebUserAAOAdmin(request.requested_by_user_id)
-          || (
-            isDevModeEnabled()
-            && process.env.DEV_USER_ID === request.requested_by_user_id
-          )
-        );
-      if (!isCurrentAdmin) {
-        throw refreshFailure('authorization_revoked', 'Administrator access changed before the refresh started');
       }
     }
 
@@ -7934,6 +8505,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       badge_eligible?: boolean;
       badge_eligible_adcp_versions?: string[];
       overall_status?: string;
+      completeness?: string;
+      is_authoritative?: boolean;
+      provenance?: unknown;
       storyboards_passing?: number;
       storyboards_total?: number;
       run_id?: string;
@@ -7952,6 +8526,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         requested_compliance_target: run.requested_compliance_target ?? undefined,
         adcp_version: run.adcp_version ?? undefined,
         overall_status: run.overall_status,
+        completeness: run.completeness,
+        is_authoritative: isAuthoritativeComplianceRun(run),
+        provenance: run.provenance_json ?? null,
         storyboards_passing: storyboardStatuses.filter(status => status.status === 'passing').length,
         storyboards_total: storyboardStatuses.length,
         observations_count: Array.isArray(run.observations_json) ? run.observations_json.length : 0,
@@ -7974,26 +8551,33 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
       complianceSummary = {
         ...complianceSummary,
-        ...badgeEligibilityMetadata(badgeVersions),
+        ...badgeEligibilityMetadata(isAuthoritativeComplianceRun(run) ? badgeVersions : []),
       };
       lease.assertValid();
-      if (
-        Array.isArray(profile.specialisms)
-        && profile.specialisms.length > 0
-        && storyboardStatuses.length > 0
-        && badgeVersions.length > 0
-      ) {
-        await runBadgeFanOut({
-          complianceDb,
-          agentUrl,
-          declaredSpecialisms: profile.specialisms,
-          runId: run.id,
-          adcpVersions: badgeVersions,
-          supportedVersions,
-          throwOnFailure: true,
-        });
-      } else {
-        await revokeUnsupportedPublicBadges({ complianceDb, agentUrl, supportedVersions });
+      if (isAuthoritativeComplianceRun(run)) {
+        if (
+          Array.isArray(profile.specialisms)
+          && profile.specialisms.length > 0
+          && storyboardStatuses.length > 0
+          && badgeVersions.length > 0
+        ) {
+          await runBadgeFanOut({
+            complianceDb,
+            agentUrl,
+            declaredSpecialisms: profile.specialisms,
+            runId: run.id,
+            adcpVersions: badgeVersions,
+            supportedVersions,
+            throwOnFailure: true,
+          });
+        } else {
+          await revokeUnsupportedPublicBadges({
+            complianceDb,
+            agentUrl,
+            supportedVersions,
+            sourceRunId: run.id,
+          });
+        }
       }
       lease.assertValid();
     } else if (!probeResult.error && !probeResult.oauth_required) {
@@ -8058,6 +8642,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           dbInput.triggered_org_id = request.owner_org_id;
           dbInput.refresh_operation_id = request.id;
           dbInput.refresh_operation_lease_token = request.lease_token;
+          if (isAuthoritativeComplianceRun(dbInput)) {
+            dbInput.grading_profile_assessments = deriveVerificationProfileRoleAssessments({
+              result: complyResult,
+              lifecycleStage: metadata?.lifecycle_stage || 'production',
+              requestedComplianceTarget: dbInput.requested_compliance_target,
+              storyboardStatuses: dbInput.storyboard_statuses ?? [],
+            });
+          }
           lease.assertValid();
           const { run, storyboardStatuses, replayedExisting } = await complianceDb.recordComplianceRun(dbInput);
           const passing = storyboardStatuses.filter(status => status.status === 'passing').length;
@@ -8067,8 +8659,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
             test_session_id: testSessionId,
             requested_compliance_target: run.requested_compliance_target ?? undefined,
             adcp_version: run.adcp_version ?? undefined,
-            ...(replayedExisting ? {} : badgeEligibilityMetadata(runBadgeEligibleVersions)),
+            ...(replayedExisting ? {} : badgeEligibilityMetadata(isAuthoritativeComplianceRun(run) ? runBadgeEligibleVersions : [])),
             overall_status: run.overall_status,
+            completeness: run.completeness,
+            is_authoritative: isAuthoritativeComplianceRun(run),
+            provenance: run.provenance_json ?? null,
             storyboards_passing: passing,
             storyboards_total: storyboardStatuses.length,
             observations_count: Array.isArray(run.observations_json) ? run.observations_json.length : 0,
@@ -8076,7 +8671,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           };
 
           const declaredSpecialisms = run.agent_profile_json?.specialisms ?? [];
-          if (!replayedExisting) {
+          if (!replayedExisting && isAuthoritativeComplianceRun(run)) {
             if (
               declaredSpecialisms.length > 0
               && storyboardStatuses.length > 0
@@ -8105,6 +8700,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
                   agentUrl,
                   supportedVersions: complyResult.agent_profile?.adcp_supported_versions
                     ?? runTargetSelection.supportedVersions,
+                  sourceRunId: run.id,
                 });
               } catch {
                 throw refreshFailure('badge_update_failed', 'Badge state could not be updated');
@@ -8167,6 +8763,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   );
 
   router.post("/registry/agents/:encodedUrl/refresh", ...complianceWriteMiddleware, capabilityProbeRateLimiter, async (req, res) => {
+    const principal = captureRegistryPrincipal(req);
     const responseDeadline = Date.now() + legacyRefreshWaitMs;
     try {
       const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
@@ -8174,7 +8771,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
       const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
-      if (!req.user) {
+      if (!principal.user && !principal.staticAdmin) {
         return res.status(401).json({ error: "Authentication required" });
       }
 
@@ -8182,37 +8779,58 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       if (!orgSelection.ok) {
         return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
       }
-      const ownerOrgId = await resolveOwnerOrgForUser(
-        req.user.id,
+      const ownerOrgId = principal.user && !principal.staticAdmin ? await resolveOwnerOrgForUser(
+        principal.user.id,
         agentUrl,
         orgSelection.organizationId,
-      );
+      ) : null;
 
-      // Owner OR AAO admin. Admin escape hatch lets staff fix things for
-      // any registered agent (mirrors how admin tools work elsewhere).
-      // Dev-admin fallback is gated behind `isDevModeEnabled()` to match
-      // `requireAdmin`'s pattern in middleware/auth.ts — in production
-      // (no DEV_USER_EMAIL/DEV_USER_ID) this branch never fires.
-      const isStaticAdmin = isStaticAdminRequest(req);
+      const isStaticAdmin = principal.staticAdmin;
       const isOwner = ownerOrgId !== null;
-      const isAaoAdmin = await isWebUserAAOAdmin(req.user.id);
-      const isDevAdmin = isDevModeEnabled() && getDevUser(req)?.isAdmin === true;
-      if (!isOwner && !isAaoAdmin && !isDevAdmin && !isStaticAdmin) {
+      if (!isOwner && !(await isRegistryAdminRequest(principal))) {
         return res.status(403).json({ error: "You do not have permission to refresh this agent" });
+      }
+
+      // #7457 owns durable credential + epoch provenance. This schema cannot
+      // prove any human request, including one currently appearing unlinked.
+      // Do not enqueue work that the worker must deterministically reject.
+      // There is deliberately no environment switch to reopen this path.
+      if (!isStaticAdmin) {
+        logger.warn({ workosUserId: principal.user?.id, code: 'refresh_authorization_provenance_required' },
+          'Refresh admission fenced until durable authorization provenance is supported');
+        res.setHeader('Cache-Control', 'private, no-store');
+        return res.status(503).json({
+          error: HUMAN_REFRESH_AVAILABILITY.notice,
+          code: HUMAN_REFRESH_AVAILABILITY.code,
+          retryable: HUMAN_REFRESH_AVAILABILITY.retryable,
+          scope: HUMAN_REFRESH_AVAILABILITY.scope,
+          applies_to: HUMAN_REFRESH_AVAILABILITY.applies_to,
+          alternative_action: HUMAN_REFRESH_AVAILABILITY.alternative_action,
+          alternative_description: HUMAN_REFRESH_AVAILABILITY.alternative_description,
+        });
       }
       try {
         const operationId = randomUUID();
         const { request, coalesced } = await complianceRefreshQueue.enqueue({
           id: operationId,
           agentUrl,
-          ownerOrgId,
-          requesterType: isStaticAdmin ? 'static_admin' : 'user',
-          requestedByUserId: isStaticAdmin ? null : req.user.id,
-          triggeredBy: ownerOrgId ? 'owner_test' : 'manual',
+          ownerOrgId: null,
+          requesterType: 'static_admin',
+          requestedByUserId: null,
+          triggeredBy: 'manual',
           agentWindowMs: REFRESH_AGENT_RATE_LIMIT_MS,
           requesterWindowMs: REFRESH_USER_WINDOW_MS,
           requesterLimit: REFRESH_USER_LIMIT,
         });
+        logger.info(
+          {
+            ...req.staticAdminAuditDetails,
+            agent_url: agentUrl,
+            refresh_operation_id: request.id,
+            coalesced,
+          },
+          'Static-admin compliance refresh accepted',
+        );
         const statusUrl = `/api/registry/agents/${encodeURIComponent(agentUrl)}/refreshes/${request.id}`;
         res.setHeader('Location', statusUrl);
         res.setHeader('Cache-Control', 'private, no-store');
@@ -8227,7 +8845,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
         if (coalesced && request.status === 'failed') {
           const failure = publicRefreshFailure(request.last_error_code);
-          const status = failure.code === 'authorization_revoked'
+          const status = failure.code === 'authorization_revoked' || failure.code === 'authorization_provenance_missing'
             ? 403
             : failure.code === 'monitoring_paused'
               ? 409
@@ -8254,7 +8872,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           }
           if (terminal?.status === 'failed') {
             const failure = publicRefreshFailure(terminal.last_error_code);
-            const status = failure.code === 'authorization_revoked'
+            const status = failure.code === 'authorization_revoked' || failure.code === 'authorization_provenance_missing'
               ? 403
               : failure.code === 'monitoring_paused'
                 ? 409
@@ -8304,6 +8922,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         throw error;
       }
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error, path: req.path }, "Failed to enqueue agent refresh");
       res.setHeader('Retry-After', '5');
       res.status(503).json({
@@ -8319,6 +8938,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...complianceWriteMiddleware,
     agentReadRateLimiter,
     async (req, res) => {
+      const principal = captureRegistryPrincipal(req);
       try {
         const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
         if (!validateAgentUrlParam(rawAgentUrl)) {
@@ -8328,7 +8948,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         if (!isUuid(req.params.operationId)) {
           return res.status(400).json({ error: "Invalid refresh operation ID" });
         }
-        if (!req.user) {
+        if (!principal.user && !principal.staticAdmin) {
           return res.status(401).json({ error: "Authentication required" });
         }
 
@@ -8336,11 +8956,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         if (!operation || operation.agent_url !== agentUrl) {
           return res.status(404).json({ error: "Refresh operation not found" });
         }
-        const ownsCredentialContext = !!operation.owner_org_id
-          && await isOrgOwnerOfAgent(operation.owner_org_id, req.user.id, agentUrl);
-        const canRead = isStaticAdminRequest(req)
+        const ownsCredentialContext = !!operation.owner_org_id && !!principal.user
+          && await isOrgOwnerOfAgent(operation.owner_org_id, principal.user.id, agentUrl);
+        const canRead = principal.staticAdmin
           || ownsCredentialContext
-          || await isRegistryAdminRequest(req);
+          || await isRegistryAdminRequest(principal);
         if (!canRead) {
           return res.status(404).json({ error: "Refresh operation not found" });
         }
@@ -8365,6 +8985,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           error: failure,
         });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ err: error, path: req.path }, "Failed to read agent refresh operation");
         res.setHeader('Retry-After', '5');
         return res.status(503).json({
@@ -8415,11 +9036,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           limit = Math.min(Math.floor(parsed), 1000);
         }
 
-        const rows = await complianceDb.getStepDiagnostics(agentUrl, { runId: runIdRaw, limit });
+        const run = await complianceDb.getComplianceRun(agentUrl, runIdRaw);
+        const rows = run ? await complianceDb.getStepDiagnostics(agentUrl, { runId: run.id, limit }) : [];
 
         res.json({
           agent_url: agentUrl,
-          run_id: runIdRaw ?? (rows[0]?.run_id ?? null),
+          run_id: run?.id ?? null,
+          completeness: run?.completeness ?? null,
+          is_authoritative: run?.is_authoritative ?? false,
+          provenance: run?.provenance_json ?? null,
+          storyboard_statuses: run?.storyboard_statuses_json ?? [],
+          observations: redactForDiagnostics(run?.observations_json ?? []),
+          diagnostics_visibility: 'owner_or_operator',
+          diagnostics_note: 'Credentials are redacted. Missing wire fields were not captured by the SDK; an absent agent build version is unknown.',
           count: rows.length,
           diagnostics: rows,
         });
@@ -9153,6 +9782,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         const complyOptions = {
           timeout_ms: 90_000,
           storyboards: [req.params.storyboardId],
+          test_session_id: randomUUID(),
           ...(sdkAuth && { auth: sdkAuth }),
         };
         const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(agentUrl);
@@ -9192,11 +9822,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
             error_kind: 'unresolved_compliance_target',
           });
         }
-        const runBadgeEligibleVersions = [
-          ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complyResult.agent_profile),
-        ];
-
-        // Record the run (pass storyboard ID for per-storyboard status materialization).
+        // Record targeted evidence without publishing a partial denominator.
         // Owner-only path (gated above by resolveAgentOwnerOrg), so triggered_by
         // matches evaluate_agent_quality semantics: owner_test, not the legacy
         // 'manual' label.
@@ -9213,36 +9839,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           triggered_org_id: orgId,
         });
 
-        // Fan out badge issuance on the canonical write so an owner who
-        // just fixed a single storyboard sees the badge update on their
-        // next page load. The helper loads ALL latest storyboard statuses
-        // from agent_storyboard_status so this partial run doesn't degrade
-        // badges for storyboards it didn't touch. No notification — the
-        // owner already sees the result in the HTTP response.
-        const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
-        if (declaredSpecialisms.length > 0 && runBadgeEligibleVersions.length > 0) {
-          try {
-            await runBadgeFanOut({
-              complianceDb,
-              agentUrl,
-              declaredSpecialisms,
-              adcpVersions: runBadgeEligibleVersions,
-              supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
-            });
-          } catch (badgeError) {
-            logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after storyboard-run');
-          }
-        } else {
-          try {
-            await revokeUnsupportedPublicBadges({
-              complianceDb,
-              agentUrl,
-              supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
-            });
-          } catch (badgeError) {
-            logger.warn({ err: badgeError, agentUrl }, 'Unsupported public badge revocation failed after storyboard-run');
-          }
-        }
+        // Targeted retests are audit-only. A complete suite establishes the
+        // fixed public denominator and is required before refreshing badges.
 
         const storyboardStatus = dbInput.storyboard_statuses?.find(s => s.storyboard_id === req.params.storyboardId) ?? {
           storyboard_id: req.params.storyboardId,
@@ -9308,8 +9906,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           },
           requested_compliance_target: runTarget.requested,
           adcp_version: complyResult.adcp_version,
-          ...badgeEligibilityMetadata(runBadgeEligibleVersions),
+          ...badgeEligibilityMetadata([]),
           run_id: run.id,
+          completeness: run.completeness,
+          is_authoritative: isAuthoritativeComplianceRun(run),
+          provenance: run.provenance_json ?? null,
           storyboard_status: serializedStoryboardStatus,
           phases: annotatedPhases,
           summary: complyResult.summary,
@@ -9623,6 +10224,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         agents,
       });
     } catch (error) {
+      if (sendCallerOrganizationAuthError(error, res)) return;
       logger.error({ err: error, path: req.path }, "Operator lookup failed");
       res.status(500).json({ error: "Operator lookup failed" });
     }
@@ -10654,45 +11256,35 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     }
   });
 
-  router.post("/registry/verify/supply-path", async (req, res) => {
+  router.post("/registry/verify/supply-path", registryReadRateLimiter, async (req, res) => {
     try {
       const parsed = VerifySupplyPathRequestSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid request", issues: parsed.error.issues });
       }
-      const ownerDomain = canonicalizePublisherDomain(parsed.data.owner_domain);
-      const hostDomain = canonicalizePublisherDomain(parsed.data.host_domain);
-      if (!ownerDomain || !hostDomain) {
-        return res.status(400).json({ error: "owner_domain and host_domain must be valid publisher domains" });
+      const ownerDomain = supplyPathDomain(parsed.data.owner_domain);
+      const hostDomain = supplyPathDomain(parsed.data.host_domain);
+      if (!ownerDomain || !hostDomain || !supplyPathAgentIdentity(parsed.data.agent_url)) {
+        return res.status(400).json({ error: "owner_domain, host_domain, and agent_url must be valid publisher and HTTPS agent identities" });
       }
 
-      const [ownerManifest, hostManifest] = await Promise.all([
-        publisherDb.getCachedAdagentsJson(ownerDomain),
-        publisherDb.getCachedAdagentsJson(hostDomain),
+      const [ownerSnapshot, hostSnapshot] = await Promise.all([
+        publisherDb.getSupplyPathSnapshot(ownerDomain), publisherDb.getSupplyPathSnapshot(hostDomain),
       ]);
-
-      // First pass without ads.txt — the fetch is only needed when the
-      // enforcement-grade host leg fails and the ladder falls through to
-      // host_delegated.
-      let verdict = verifySupplyPath({
-        ownerDomain,
-        hostDomain,
-        agentUrl: parsed.data.agent_url,
-        collectionId: parsed.data.collection_id,
-        ownerManifest,
-        hostManifest,
-        hostInventoryPartnerDomains: null,
-      });
-      if (!verdict.legs.host_authorization.ok) {
-        verdict = verifySupplyPath({
-          ownerDomain,
-          hostDomain,
-          agentUrl: parsed.data.agent_url,
-          collectionId: parsed.data.collection_id,
-          ownerManifest,
-          hostManifest,
-          hostInventoryPartnerDomains: await fetchHostInventoryPartnerDomains(hostDomain),
-        });
+      const [owner, host] = await Promise.all([
+        supplyPathSnapshotEvidence(ownerDomain, ownerSnapshot),
+        supplyPathSnapshotEvidence(hostDomain, hostSnapshot),
+      ]);
+      const input: SupplyPathInput = {
+        ownerDomain, hostDomain, agentUrl: parsed.data.agent_url, collectionId: parsed.data.collection_id,
+        ownerManifest: owner.manifest, hostManifest: host.manifest, hostInventoryPartnerDomains: null,
+        heldRevocations: { owner: owner.held, host: host.held }, requireExplicitHostPublisherDomain: host.explicitPublisher, requireExplicitOwnerPublisherDomain: owner.explicitPublisher,
+      };
+      let verdict = verifySupplyPath(input);
+      if (verdict.legs.host_authorization.ok) {
+        verdict = verifySupplyPath({ ...input, inventoryPartnerDomainEvaluated: false });
+      } else if (verdict.legs.host_authorization.failure !== 'evaluation_limit_exceeded') {
+        verdict = verifySupplyPath({ ...input, hostInventoryPartnerDomainsByFile: await fetchHostInventoryPartnerDomains(input) });
       }
 
       res.json({
@@ -10705,6 +11297,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           owner_adagents_url: `https://${ownerDomain}/.well-known/adagents.json`,
           host_adagents_url: `https://${hostDomain}/.well-known/adagents.json`,
           cached: true,
+          owner_fetched_at: ownerSnapshot.fetchedAt?.toISOString() ?? null,
+          host_fetched_at: hostSnapshot.fetchedAt?.toISOString() ?? null,
+          owner_resolved_url: ownerSnapshot.resolvedUrl,
+          host_resolved_url: hostSnapshot.resolvedUrl,
         },
         checked_at: new Date().toISOString(),
       });
@@ -12140,6 +12736,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     res: import('express').Response,
     rateLimitKey: string,
     domainOverride?: string,
+    memberIdOverride?: string,
   ): Promise<string | null> {
     const domain = domainOverride ?? req.body?.domain;
     if (!domain || typeof domain !== 'string') {
@@ -12156,7 +12753,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       return null;
     }
 
-    const memberId = req.user?.id || 'anonymous';
+    const memberId = memberIdOverride ?? req.user?.id ?? 'anonymous';
 
     // Per-domain rate limit (shared key space for all crawl types on same domain)
     const lastCrawl = crawlRequestRateLimits.get(rateLimitKey);
@@ -12187,9 +12784,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   }
 
   /** Release the reservation when synchronous crawler admission rejects. */
-  function releaseCrawlRateLimit(req: import('express').Request, rateLimitKey: string): void {
+  function releaseCrawlRateLimit(req: import('express').Request, rateLimitKey: string, memberIdOverride?: string): void {
     crawlRequestRateLimits.delete(rateLimitKey);
-    const memberId = req.user?.id || 'anonymous';
+    const memberId = memberIdOverride ?? req.user?.id ?? 'anonymous';
     const memberState = memberCrawlCounts.get(memberId);
     if (!memberState) return;
     if (memberState.count <= 1) {
@@ -12202,12 +12799,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   if (!authMiddleware) throw new Error('requireAuth middleware is required for crawl-request endpoint');
 
   router.post("/registry/publisher/:domain/adagents/revalidate", authMiddleware, async (req, res) => {
-    let reservedDomain: string | null = null;
+    const principal = captureRegistryPrincipal(req);
+    const rateLimitMemberId = principal.user?.id ?? 'anonymous';
+    let reservedRateLimitKey: string | null = null;
     try {
-      if (!req.user && !isStaticAdminRequest(req)) {
+      if (!principal.user && !principal.staticAdmin) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      if (!(await isRegistryAdminRequest(req))) {
+      if (!(await isRegistryAdminRequest(principal))) {
         return res.status(403).json({ error: "Admin access required" });
       }
 
@@ -12218,18 +12817,29 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         return res.status(400).json({ error: "Invalid domain" });
       }
 
-      reservedDomain = await validateAndRateLimitCrawl(req, res, rawDomain, rawDomain);
-      if (!reservedDomain) return;
+      const normalizedDomain = await validateAndRateLimitCrawl(req, res, rawDomain, rawDomain, rateLimitMemberId);
+      if (!normalizedDomain) return;
+      reservedRateLimitKey = rawDomain;
 
+      // DNS validation can suspend the request. Recheck the same credential
+      // immediately before dispatch, including revocation during that wait.
+      if (!(await isRegistryAdminRequest(principal))) {
+        releaseCrawlRateLimit(req, reservedRateLimitKey, rateLimitMemberId);
+        return res.status(403).json({ error: "Admin access required" });
+      }
       const force = req.query.force === 'true' || req.query.force === '1';
-      const result = await crawler.revalidatePublisherAdagents(reservedDomain, { force });
+      const result = await crawler.revalidatePublisherAdagents(normalizedDomain, { force });
       return res.json(result);
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) {
+        if (reservedRateLimitKey) releaseCrawlRateLimit(req, reservedRateLimitKey, rateLimitMemberId);
+        return;
+      }
       const errorCode = error instanceof Error
         ? (error as Error & { code?: string }).code
         : undefined;
       if (errorCode === 'crawl_deferred' || errorCode === 'crawl_execution_lock_lost') {
-        if (reservedDomain) releaseCrawlRateLimit(req, reservedDomain);
+        if (reservedRateLimitKey) releaseCrawlRateLimit(req, reservedRateLimitKey, rateLimitMemberId);
         res.setHeader('Retry-After', '5');
         return res.status(503).json({
           error: "Publisher crawl is temporarily busy",
@@ -12243,11 +12853,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   });
 
   router.post("/registry/brand/:domain/force-crawl", authMiddleware, async (req, res) => {
+    const principal = captureRegistryPrincipal(req);
+    const rateLimitMemberId = principal.user?.id ?? 'anonymous';
+    let reservedRateLimitKey: string | null = null;
     try {
-      if (!req.user && !isStaticAdminRequest(req)) {
+      if (!principal.user && !principal.staticAdmin) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      if (!(await isRegistryAdminRequest(req))) {
+      if (!(await isRegistryAdminRequest(principal))) {
         return res.status(403).json({ error: "Admin access required" });
       }
 
@@ -12263,10 +12876,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         res,
         rawDomain,
         rawDomain,
+        rateLimitMemberId,
       );
       if (!normalizedDomain) return;
+      reservedRateLimitKey = rawDomain;
 
       const previous = await brandDb.getDiscoveredBrandByDomain(normalizedDomain);
+      if (!(await isRegistryAdminRequest(principal))) {
+        releaseCrawlRateLimit(req, reservedRateLimitKey, rateLimitMemberId);
+        return res.status(403).json({ error: "Admin access required" });
+      }
       const crawlResult = await crawler.scanBrandForDomain(normalizedDomain);
       const current = await brandDb.getDiscoveredBrandByDomain(normalizedDomain);
 
@@ -12289,6 +12908,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         checked_at: new Date().toISOString(),
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) {
+        if (reservedRateLimitKey) releaseCrawlRateLimit(req, reservedRateLimitKey, rateLimitMemberId);
+        return;
+      }
       logger.error({ error, path: req.path }, "Failed to force brand.json crawl");
       return res.status(500).json({ error: "Failed to force brand.json crawl" });
     }
@@ -12349,6 +12972,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       logger.info(
         {
+          ...(staticAdmin ? req.staticAdminAuditDetails : {}),
           domain: normalizedDomain,
           crawl_request_id: crawlRequestId,
           crawl_status: "queued",
@@ -12374,25 +12998,26 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   });
 
   router.get("/registry/crawl-request/:crawlRequestId", authMiddleware, async (req, res) => {
+    const principal = captureRegistryPrincipal(req);
     try {
       const crawlRequestId = req.params.crawlRequestId;
       if (!isUuid(crawlRequestId)) {
         return res.status(400).json({ error: "Invalid crawl request ID" });
       }
-      const staticAdmin = isStaticAdminRequest(req);
-      if (!req.user && !staticAdmin) {
+      const staticAdmin = principal.staticAdmin;
+      if (!principal.user && !staticAdmin) {
         return res.status(401).json({ error: "Authentication required" });
       }
 
       const crawlRequest = await crawler.getPublisherCrawlRequest(crawlRequestId);
-      const ownsRequest = !!req.user
+      const ownsRequest = !!principal.user
         && crawlRequest?.requester_type === 'user'
-        && crawlRequest.requested_by_user_id === req.user.id;
+        && crawlRequest.requested_by_user_id === principal.user.id;
       if (!crawlRequest) {
         return res.status(404).json({ error: "Crawl request not found" });
       }
       const canReadAnyRequest = staticAdmin
-        || (!ownsRequest && await isRegistryAdminRequest(req));
+        || (!ownsRequest && await isRegistryAdminRequest(principal));
       if (!ownsRequest && !canReadAnyRequest) {
         return res.status(404).json({ error: "Crawl request not found" });
       }
@@ -12414,6 +13039,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         last_error_code: crawlRequest.last_error_code,
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ error, crawl_request_id: req.params.crawlRequestId }, "Failed to read crawl request");
       res.setHeader('Retry-After', '5');
       return res.status(503).json({

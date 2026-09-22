@@ -1,0 +1,427 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting-input.json",
+  "title": "Targeting Overlay Input",
+  "description": "Request-only targeting mutation input. Each known dimension has three states: omission inherits the product default on create or leaves the stored dimension unchanged on update; null explicitly suppresses the product default on create or clears the stored dimension on update; and a non-null value replaces that dimension and MUST satisfy the corresponding strict targeting.json constraint. Null is a command and MUST NOT appear in discovery criteria, accepted commercial terms, package responses, or package readback. Sellers apply all supplied dimensions atomically and return only the resulting non-null effective targeting state.",
+  "type": "object",
+  "properties": {
+    "geo_countries": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/geo_countries"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "geo_countries_exclude": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/geo_countries_exclude"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "geo_regions": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/geo_regions"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "geo_regions_exclude": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/geo_regions_exclude"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "geo_metros": {
+      "title": "Targeting Geo Metros",
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/geo-metro.json"
+      },
+      "minItems": 1
+    },
+    "geo_metros_exclude": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/geo_metros_exclude"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "geo_postal_areas": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/geo_postal_areas"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "geo_postal_areas_exclude": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/geo_postal_areas_exclude"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "geo_places": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/geo_places"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "geo_places_exclude": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/geo_places_exclude"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "daypart_targets": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/daypart_targets"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "axe_include_segment": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/axe_include_segment"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "axe_exclude_segment": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/axe_exclude_segment"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "audience_include": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/audience_include"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "audience_exclude": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/audience_exclude"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "signal_targeting_groups": {
+      "anyOf": [
+        {
+          "title": "Targeting Signal Groups",
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/package-signal-targeting-groups.json",
+          "description": "Basic Boolean grouping for seller-offered signals. v1 supports a required top-level operator 'all' and child groups with operator 'any' for include groups or 'none' for exclusion groups. Example semantics: group 1 any(A, B) plus group 2 none(C, D) means (A OR B) AND NOT (C OR D). Signal entries reference named signal definitions with signal_ref scope 'product' for product-local signal options or scope 'data_provider' for external signals published in adagents.json signals[]. For simple include-only targeting, send one child group with operator 'any'. Sellers SHOULD reject entries that are not available for the product through inline signal_targeting_options or get_signals, are not active for the account, or exceed the product's signal_targeting_allowed/signal_targeting_rules/product terms. Signal targeting limits are product-scoped, not declared in get_adcp_capabilities, because products may be backed by different ad servers. Sellers MUST echo applied signal_targeting_groups on the resulting package state, including fixed/default selections. Sellers MAY return REQUOTE_REQUIRED when a targeting mutation changes commercial terms."
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "signal_targeting": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "DEPRECATED. Use signal_targeting_groups for package-level signal targeting. Legacy flat signal_targeting remains accepted during the SignalRef migration window but cannot express grouped include/exclude composition or product-scoped pricing.",
+      "deprecated": true,
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/signal-targeting.json"
+      },
+      "minItems": 1
+    },
+    "demographics": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/demographics"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "frequency_cap": {
+      "anyOf": [
+        {
+          "title": "Targeting Frequency Cap",
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/frequency-cap.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "property_list": {
+      "anyOf": [
+        {
+          "title": "Targeting Property List",
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/property-list-ref.json",
+          "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false."
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "property_list_exclude": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/property_list_exclude"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "collection_list": {
+      "anyOf": [
+        {
+          "title": "Targeting Collection List",
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/collection-list-ref.json",
+          "description": "Reference to a collection list for including specific collections (programs, publications, channels) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities."
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "collection_list_exclude": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/collection_list_exclude"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "placement_selection": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/placement_selection"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "collection_selection": {
+      "anyOf": [
+        {
+          "title": "Targeting Collection Selection",
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/collection-selection.json",
+          "description": "Purchased collection selection within the product. On create, mode selected supplies the complete selected set and mode default uses the product's full bundle. On package readback this is the committed selection sellers MUST echo as concrete selectors, materializing any collection_list composition; collection_list fields remain the buyer-managed list mechanism. In request-side Targeting Input, a non-null value replaces this dimension, omission preserves or inherits it, and null clears it when the product permits that broader inventory set."
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "age_restriction": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/age_restriction"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "device_platform": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/device_platform"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "device_platform_exclude": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/device_platform_exclude"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "device_type": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/device_type"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "device_type_exclude": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/device_type_exclude"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "browser": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/browser"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "browser_exclude": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/browser_exclude"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "store_catchments": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/store_catchments"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "geo_proximity": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting.json#/properties/geo_proximity"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "language": {
+      "title": "Targeting Languages",
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "Restrict to users with specific language preferences using canonical BCP 47 language ranges. Each buyer range is evaluated against a user's language-preference tag with RFC 4647 section 3.3.1 Basic Filtering: 'fr' matches 'fr', 'fr-CA', and 'fr-FR', while 'fr-CA' matches 'fr-CA' and more-specific descendants but not 'fr' or 'fr-FR'. Values use OR logic.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/locale-tag.json"
+      },
+      "minItems": 1
+    },
+    "keyword_targets": {
+      "title": "Targeting Keywords",
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Each keyword is identified by the tuple (keyword, match_type) — the same keyword string with different match types are distinct targets. Sellers SHOULD reject duplicate (keyword, match_type) pairs within a single request. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to target"
+          },
+          "match_type": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/enums/match-type.json"
+          },
+          "bid_price": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Per-keyword bid price, denominated in the same currency as the package's pricing option. Overrides the package-level bid_price for this keyword. Inherits the max_bid interpretation from the pricing option: when max_bid is true, this is the keyword's bid ceiling; when false, this is the exact bid. If omitted, the package bid_price applies."
+          }
+        },
+        "required": [
+          "keyword",
+          "match_type"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "negative_keywords": {
+      "title": "Targeting Negative Keywords",
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Each negative keyword is identified by the tuple (keyword, match_type). Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/negative-keyword.json"
+      },
+      "minItems": 1
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting-unknown-age-eligibility-constraint.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/targeting-verified-age-basis-constraint.json"
+    }
+  ],
+  "additionalProperties": true
+}

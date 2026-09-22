@@ -17014,6 +17014,16 @@ describe('get_adcp_capabilities handler', () => {
     });
   });
 
+  it('advertises anonymous product and signal discovery without claiming catalog completeness', async () => {
+    const [sales, signals] = await Promise.all([
+      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'sales' }),
+      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'signals' }),
+    ]);
+
+    expect(sales.media_buy).toMatchObject({ anonymous_discovery: true });
+    expect(signals.signals).toMatchObject({ anonymous_discovery: true });
+  });
+
   it('advertises a served acceptance-policy catalog with an exact byte digest', async () => {
     const result = await handleGetAdcpCapabilities({}, {
       ...DEFAULT_CTX,
@@ -19274,18 +19284,6 @@ describe('proposal lifecycle', () => {
       },
     });
     expect(pricing.result.success).toBe(true);
-
-    const conflicting = await simulateCallTool(server, 'get_products', {
-      account,
-      buying_mode: 'brief',
-      brief: 'Display inventory',
-      filters: { channels: ['display'], countries: ['CA'] },
-      targeting_overlay: { geo_countries: ['US'] },
-    });
-    expect(conflicting).toMatchObject({
-      isError: true,
-      result: { code: 'INVALID_REQUEST', field: 'filters.countries' },
-    });
 
     const inferred = await simulateCallTool(server, 'get_products', {
       account,

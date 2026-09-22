@@ -15,6 +15,8 @@ const RETENTION_MS = 7 * 24 * 60 * 60_000;
 
 function stableFailureMessage(code: string): string {
   switch (code) {
+    case 'authorization_provenance_missing':
+      return 'Refresh requester authorization provenance is unavailable';
     case 'authorization_revoked':
       return 'Authorization changed before the refresh started';
     case 'monitoring_paused':
@@ -30,6 +32,7 @@ function stableFailureMessage(code: string): string {
 
 function stableFailureCode(code: unknown): string {
   return code === 'authorization_revoked'
+    || code === 'authorization_provenance_missing'
     || code === 'monitoring_paused'
     || code === 'probe_failed'
     || code === 'compliance_failed'

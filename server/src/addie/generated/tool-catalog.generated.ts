@@ -39,8 +39,9 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **property_registry_records** — resolve_property, save_property, list_properties, list_missing_properties
 - **property_list_enrichment** — check_property_list, enhance_property
 - **property_identifier_catalog** — resolve_catalog, browse_catalog, dispute_catalog_entry
+- **agent_storyboards** — recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step
 - **agent_conformance** — issue_conformance_token, run_conformance_against_my_agent
-- **adcp_task_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities
+- **adcp_task_operations** — ask_about_adcp_task, call_adcp_task, call_adcp_get_products, get_adcp_capabilities
 - **adcp_agent_management** — save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
 - **sponsored_intelligence_discovery** — get_si_availability, list_si_agents, connect_to_si_agent
 - **sponsored_intelligence_session** — send_to_si_agent, end_si_session, get_si_session_status
@@ -73,7 +74,8 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **admin_group_leadership** *(admin only)* — list_working_groups, get_working_group, add_committee_leader, remove_committee_leader, list_committee_leaders
 - **admin_group_membership** *(admin only)* — list_working_groups, get_working_group, add_working_group_member, remove_working_group_member
 - **admin_organization_integrity** *(admin only)* — merge_organizations, find_duplicate_orgs, check_domain_health, manage_organization_domains
-- **admin_organization_member_records** *(admin only)* — update_org_member_role, list_slack_users_by_org, list_paying_members, update_member_logo, update_member_profile
+- **admin_organization_member_records** *(admin only)* — update_org_member_role, list_slack_users_by_org, list_paying_members, query_admin_analytics, update_member_logo, update_member_profile
+- **admin_escalations** *(admin only)* — resolve_escalation, list_escalations
 - **admin_conversation_review** *(admin only)* — query_admin_analytics, list_flagged_conversations, review_flagged_conversation
 - **admin_followup_tasks** *(admin only)* — set_reminder, my_upcoming_tasks, complete_task, log_conversation
 - **admin_brand_registry_integrity** *(admin only)* — list_missing_brands, list_missing_properties, list_pending_community_mirrors, transfer_brand_ownership, list_orphaned_brands
@@ -82,8 +84,8 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **outreach_contact_management** *(admin only)* — send_outreach, lookup_person, get_account, create_contact
 - **collaboration** — send_member_dm
 - **certification_overview** — list_certification_tracks, get_certification_module, get_learner_progress, check_credentials, set_my_name
-- **certification_learning** — start_certification_module, complete_certification_module, get_learner_progress, checkpoint_teaching_progress, get_build_phase_instructions, save_learner_feedback, set_my_name, check_credentials, find_membership_products, call_adcp_task
-- **certification_assessment** — get_learner_progress, test_out_modules, start_certification_exam, complete_certification_exam, checkpoint_teaching_progress, set_my_name, check_credentials, find_membership_products, call_adcp_task
+- **certification_learning** — start_certification_module, complete_certification_module, get_learner_progress, checkpoint_teaching_progress, get_build_phase_instructions, save_learner_feedback, set_my_name, check_credentials, find_membership_products, call_adcp_task, call_adcp_get_products
+- **certification_assessment** — get_learner_progress, test_out_modules, start_certification_exam, complete_certification_exam, checkpoint_teaching_progress, set_my_name, check_credentials, find_membership_products, call_adcp_task, call_adcp_get_products
 
 ### Always available
 
@@ -97,13 +99,14 @@ resolve_escalation, list_escalations
 
 Conditionally registered (channel- or env-gated). Available when their preconditions are met.
 
-research_domain, diagnose_signin_block, list_invites_for_org, resend_invite, revoke_invite, add_member_to_org, create_committee, update_user_name, ban_entity, unban_entity, list_bans, get_person_memory, get_engagement_plan, get_outreach_health, parse_brand_properties, import_brand_properties, test_adcp_agent, compare_media_kit, recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step, get_member_engagement, search_moltbook, get_moltbook_thread, post_to_moltbook, comment_on_moltbook, get_moltbook_stats, get_moltbook_feed, suggest_newsletter_content, check_portrait_status, offer_portrait_generation
+research_domain, diagnose_signin_block, list_invites_for_org, resend_invite, revoke_invite, add_member_to_org, create_committee, update_user_name, ban_entity, unban_entity, list_bans, get_person_memory, get_engagement_plan, get_outreach_health, parse_brand_properties, import_brand_properties, test_adcp_agent, compare_media_kit, get_member_engagement, search_moltbook, get_moltbook_thread, post_to_moltbook, comment_on_moltbook, get_moltbook_stats, get_moltbook_feed, suggest_newsletter_content, check_portrait_status, offer_portrait_generation
 `;
 
 /** Explicit catalog names for runtime/inventory parity checks. */
 export const ADDIE_TOOL_NAMES = [
   "ask_about_adcp_task",
   "call_adcp_task",
+  "call_adcp_get_products",
   "get_adcp_capabilities",
   "query_admin_analytics",
   "list_pending_invoices",

@@ -26,6 +26,10 @@ import {
   assertClaimableBrandDomain,
   canonicalizeBrandDomain,
 } from '../services/identifier-normalization.js';
+import {
+  verifyAndRefreshWorkosDomain,
+  WorkosDomainOwnershipMismatchError,
+} from '../services/workos-domain-verification.js';
 
 const logger = createLogger('me-organization-domains');
 
@@ -39,8 +43,8 @@ const VERIFY_COOLDOWN_MS = 60_000;
 const VERIFY_COOLDOWN_MAX_ENTRIES = 10_000;
 const verifyAttemptTimes = new Map<string, number>();
 
-function cooldownKey(orgId: string, domain: string) {
-  return `${orgId}:${domain}`;
+function cooldownKey(orgId: string, domain: string, workosDomainId: string) {
+  return `${orgId}:${domain}:${workosDomainId}`;
 }
 
 function trimVerifyAttempts(now: number) {
@@ -472,23 +476,6 @@ export function createMeOrganizationDomainsRouter(
         return res.status(400).json({ error: 'invalid_domain' });
       }
 
-      // 60s cooldown per (org, domain). DNS propagation is minutes-scale,
-      // so a tight retry loop only burns WorkOS quota and gives no new
-      // information. Same guard as brand-claim.ts.
-      const cdKey = cooldownKey(orgId, normalizedDomain);
-      const now = Date.now();
-      const last = verifyAttemptTimes.get(cdKey);
-      if (last !== undefined && now - last < VERIFY_COOLDOWN_MS) {
-        const retryAfterSeconds = Math.ceil((VERIFY_COOLDOWN_MS - (now - last)) / 1000);
-        return res.status(429).json({
-          error: 'still_pending',
-          message: `Hold off — wait ${retryAfterSeconds}s before re-checking. DNS propagation takes minutes; rapid retries don't help.`,
-          retry_after_seconds: retryAfterSeconds,
-        });
-      }
-      trimVerifyAttempts(now);
-      verifyAttemptTimes.set(cdKey, now);
-
       let org;
       try {
         org = await workos.organizations.getOrganization(orgId);
@@ -504,22 +491,54 @@ export function createMeOrganizationDomainsRouter(
         });
       }
 
+      // Resolve the current WorkOS resource before consulting the cooldown.
+      // A challenge can be deleted and recreated for the same (org, domain);
+      // keying only on those two values makes the replacement inherit the old
+      // challenge's negative cache entry. The resource ID changes on recreate.
+      const cdKey = cooldownKey(orgId, normalizedDomain, entry.id);
+      const now = Date.now();
+      const last = verifyAttemptTimes.get(cdKey);
+      if (last !== undefined && now - last < VERIFY_COOLDOWN_MS) {
+        const retryAfterSeconds = Math.ceil((VERIFY_COOLDOWN_MS - (now - last)) / 1000);
+        return res.status(429).json({
+          error: 'still_pending',
+          message: `Hold off — wait ${retryAfterSeconds}s before re-checking. DNS propagation takes minutes; rapid retries don't help.`,
+          retry_after_seconds: retryAfterSeconds,
+        });
+      }
+      trimVerifyAttempts(now);
+      verifyAttemptTimes.set(cdKey, now);
+
       const stateStr = String(entry.state);
       const alreadyVerified = stateStr === 'verified' || stateStr === 'legacy_verified';
       let verifiedState = stateStr;
       if (!alreadyVerified) {
         try {
-          const verified = await workos.organizationDomains.verifyOrganizationDomain(entry.id);
-          verifiedState = String(verified.state);
-        } catch (err: any) {
-          const status = err?.status ?? err?.response?.status;
-          if (status === 422 || status === 400) {
-            const recordName = dnsRecordName(normalizedDomain, entry.verificationPrefix);
+          const outcome = await verifyAndRefreshWorkosDomain({
+            workos,
+            organizationId: orgId,
+            domain: normalizedDomain,
+            domainId: entry.id,
+          });
+          verifiedState = String(outcome.domain.state);
+          if (outcome.status === 'pending') {
+            const recordName = dnsRecordName(
+              normalizedDomain,
+              outcome.domain.verificationPrefix ?? entry.verificationPrefix,
+            );
             return res.status(400).json({
               error: 'still_pending',
               message: `WorkOS could not find a matching DNS TXT record. Make sure ${recordName} is published with the verification token, then retry.`,
-              state: stateStr,
+              state: verifiedState,
               dns_record_name: recordName,
+            });
+          }
+        } catch (err: any) {
+          if (err instanceof WorkosDomainOwnershipMismatchError) {
+            verifyAttemptTimes.delete(cdKey);
+            return res.status(409).json({
+              error: 'domain_ownership_mismatch',
+              message: 'The WorkOS domain challenge changed ownership while it was being verified. Refresh the linked domains and retry.',
             });
           }
           logger.error({ err, orgId, domain: normalizedDomain }, 'verifyOrganizationDomain failed');

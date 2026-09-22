@@ -393,6 +393,8 @@ export interface Impersonator {
 }
 
 export interface WorkOSUser {
+  /** Immutable primary-DB snapshot for this request only; never serialize or cache. */
+  readonly authorizationSnapshot?: import('./db/user-authorization-snapshot-db.js').AuthorizationSnapshot;
   /**
    * The canonical workos_user_id for app-state queries. For singleton
    * identities this equals the authenticated WorkOS user. For non-primary
@@ -1171,6 +1173,7 @@ export interface CommitteeDocumentActivity {
 // Agent Compliance Types
 
 export interface AgentCompliance {
+  provenance?: import('./compliance/run-provenance.js').ComplianceRunProvenance | null;
   status: 'passing' | 'degraded' | 'failing' | 'unknown';
   requested_compliance_target?: string | null;
   adcp_version?: string | null;

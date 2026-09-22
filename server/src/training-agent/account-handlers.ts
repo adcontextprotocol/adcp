@@ -35,6 +35,7 @@ import { emitAccountNotificationWebhook } from './webhooks.js';
 import { clearSharedAccountResources } from './shared-account-resources.js';
 import { isPrivateHostname, normalizeExternalHostname } from '../utils/url-security.js';
 import {
+  UnsupportedReportingFeatureError,
   bindReportingAccountDurably,
   clearReportingReliabilityStore,
   listReportingAccountsDurably,
@@ -489,6 +490,30 @@ export function sandboxBrandDomainForAccountId(
   return account?.sandbox === true ? account.brand.domain.toLowerCase() : undefined;
 }
 
+/** Resolve a principal-owned account id to its natural identity regardless
+ * of sandbox status. Callers that need the sandbox guarantee use
+ * sandboxAccountRefForId; this variant lets read and mutation paths recognize
+ * that an opaque id and a natural reference name the same synced account. */
+export function accountRefForId(
+  accountId: string,
+  principal: string | undefined,
+): AccountRef | undefined {
+  const account = findAccountByIdAcrossSessions(accountId, principal);
+  if (!account) return undefined;
+  return {
+    brand: {
+      domain: account.brand.domain.toLowerCase(),
+      ...(account.brand.brand_id && { brand_id: account.brand.brand_id }),
+      ...(account.brand.countries && { countries: [...account.brand.countries] }),
+    },
+    operator: account.operator.toLowerCase(),
+    ...(account.operatorUnit && { operator_unit: { ...account.operatorUnit } }),
+    ...(account.currency && { currency: account.currency }),
+    ...(account.timezone && { timezone: account.timezone }),
+    ...(account.sandbox && { sandbox: true }),
+  };
+}
+
 /** Resolve a principal-owned account id to its complete sandbox identity. */
 export function sandboxAccountRefForId(
   accountId: string,
@@ -570,6 +595,11 @@ export function clearProcessLocalAccountStore(): void {
   accountChangeAvailableFrom.clear();
   accountChangeVisibilityEpochs.clear();
   clearSharedAccountResources();
+}
+
+/** Clear only the process-local account view owned by one caller session. */
+export function clearAccountStoreForSession(sessionKey: string, principal?: string): void {
+  accountStore.delete(scopedStoreKey(sessionKey, principal));
 }
 
 /** Exported for isolated tests/manual storyboards — clear all account state. */
@@ -667,7 +697,12 @@ function sanitizeNotificationConfigs(configs: NotificationConfigState[]): Array<
   }));
 }
 
-function validationFailure(input: SyncAccountInput, field: string, message: string): Record<string, unknown> {
+function validationFailure(
+  input: SyncAccountInput,
+  field: string,
+  message: string,
+  code = 'VALIDATION_ERROR',
+): Record<string, unknown> {
   return {
     ...(input.account
       ? { account: input.account }
@@ -679,19 +714,29 @@ function validationFailure(input: SyncAccountInput, field: string, message: stri
         }),
     action: 'failed',
     status: 'rejected',
-    errors: [{ code: 'VALIDATION_ERROR', field, message }],
+    errors: [{ code, field, message }],
   };
 }
 
-function reportingConfigurationsAreValid(input: SyncAccountInput): string | undefined {
+/**
+ * A configuration that names a reserved-but-unimplemented capability is a
+ * well-formed request for something this seller does not offer, so it answers
+ * UNSUPPORTED_FEATURE rather than VALIDATION_ERROR.
+ */
+function reportingConfigurationsAreValid(
+  input: SyncAccountInput,
+): { message: string; code: string } | undefined {
   if (input.reporting_delivery_configs === undefined) return undefined;
   if (!Array.isArray(input.reporting_delivery_configs)) {
-    return 'reporting_delivery_configs must be an array';
+    return { message: 'reporting_delivery_configs must be an array', code: 'VALIDATION_ERROR' };
   }
   try {
     validateReportingConfigurations(input.reporting_delivery_configs);
   } catch (error) {
-    return error instanceof Error ? error.message : 'reporting_delivery_configs is invalid';
+    return {
+      message: error instanceof Error ? error.message : 'reporting_delivery_configs is invalid',
+      code: error instanceof UnsupportedReportingFeatureError ? error.code : 'VALIDATION_ERROR',
+    };
   }
   return undefined;
 }
@@ -1601,7 +1646,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       nextAccountState.syncedAt = now;
       const reportingConfigError = reportingConfigurationsAreValid(input);
       if (reportingConfigError) {
-        results.push(validationFailure(input, 'reporting_delivery_configs', reportingConfigError));
+        results.push(validationFailure(input, 'reporting_delivery_configs', reportingConfigError.message, reportingConfigError.code));
         continue;
       }
       let reportingCandidates: ReportingMediaBuyCandidate[] | undefined;
@@ -1853,7 +1898,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
     }
     const reportingConfigError = reportingConfigurationsAreValid(input);
     if (reportingConfigError) {
-      results.push(validationFailure(input, 'reporting_delivery_configs', reportingConfigError));
+      results.push(validationFailure(input, 'reporting_delivery_configs', reportingConfigError.message, reportingConfigError.code));
       continue;
     }
     let reportingCandidates: ReportingMediaBuyCandidate[] | undefined;

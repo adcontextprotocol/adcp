@@ -21,7 +21,7 @@ jobs:
     env:
       PR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8.0.1
         with:
           name: schema-pr-bundle-${{ github.event.workflow_run.head_sha }}
           path: bundle

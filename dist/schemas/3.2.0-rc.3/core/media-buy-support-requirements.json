@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/media-buy-support-requirements.json",
+  "title": "Product Media Buy Support Requirements",
+  "description": "Buyer minimums for product participation in shared MediaBuy-level execution. Missing or unknown required capabilities exclude the product.",
+  "type": "object",
+  "properties": {
+    "frequency_cap": {
+      "type": "boolean",
+      "const": true,
+      "description": "Require product participation in one shared MediaBuy frequency-cap counter."
+    },
+    "frequency_cap_constraints": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/media-buy-frequency-cap-requirement.json"
+    }
+  },
+  "dependencies": {
+    "frequency_cap_constraints": [
+      "frequency_cap"
+    ]
+  },
+  "minProperties": 1,
+  "additionalProperties": false
+}

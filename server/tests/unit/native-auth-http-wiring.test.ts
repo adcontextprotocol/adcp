@@ -2,6 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
 const mocks = vi.hoisted(() => ({
+  query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+  listUsers: vi.fn(),
+  createUser: vi.fn(),
+  updateUser: vi.fn(),
+  deleteUser: vi.fn(),
+  createOrganizationMembership: vi.fn(),
+  updateOrganizationMembership: vi.fn(),
+  deleteOrganizationMembership: vi.fn(),
   getAuthorizationUrl: vi.fn(),
   authenticateWithCode: vi.fn(),
   listOrganizationMemberships: vi.fn(),
@@ -27,6 +35,13 @@ vi.mock('@workos-inc/node', () => ({
   DomainDataState: { Verified: 'verified' },
   WorkOS: class WorkOS {
     userManagement = {
+      listUsers: mocks.listUsers,
+      createUser: mocks.createUser,
+      updateUser: mocks.updateUser,
+      deleteUser: mocks.deleteUser,
+      createOrganizationMembership: mocks.createOrganizationMembership,
+      updateOrganizationMembership: mocks.updateOrganizationMembership,
+      deleteOrganizationMembership: mocks.deleteOrganizationMembership,
       getAuthorizationUrl: mocks.getAuthorizationUrl,
       authenticateWithCode: mocks.authenticateWithCode,
       listOrganizationMemberships: mocks.listOrganizationMemberships,
@@ -49,13 +64,34 @@ vi.mock('../../src/config.js', async () => {
 vi.mock('../../src/db/client.js', () => ({
   initializeDatabase: vi.fn(),
   getPool: vi.fn().mockReturnValue({
-    query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+    query: mocks.query,
   }),
   isDatabaseInitialized: vi.fn().mockReturnValue(false),
   closeDatabase: vi.fn(),
   healthCheck: vi.fn().mockResolvedValue(undefined),
-  query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+  query: mocks.query,
 }));
+
+vi.mock('../../src/db/identity-db.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/db/identity-db.js')>();
+  return {
+    ...actual,
+    withCredentialCreationEventMutation: vi.fn(async (
+      _userId: string,
+      mutation: (client: { query: typeof mocks.query }) => Promise<unknown>,
+    ) => ({
+      applied: true,
+      value: await mutation({ query: mocks.query }),
+    })),
+    upsertWorkosUserInCredentialEvent: vi.fn(async (
+      client: { query: typeof mocks.query },
+      user: { id: string },
+    ) => client.query(
+      'INSERT INTO users (workos_user_id) VALUES ($1) ON CONFLICT DO NOTHING',
+      [user.id],
+    )),
+  };
+});
 
 vi.mock('../../src/db/migrate.js', () => ({
   runMigrations: vi.fn().mockResolvedValue(undefined),
@@ -82,10 +118,17 @@ vi.mock('../../src/db/addie-account-link-correlation-db.js', async (importOrigin
 
 vi.mock('../../src/db/relationship-db.js', () => ({
   resolvePersonId: vi.fn().mockResolvedValue('person-1'),
+  recordPersonMessage: vi.fn().mockResolvedValue(undefined),
+  deriveSentiment: vi.fn().mockResolvedValue({
+    engagementDelta: 0,
+    sentimentDelta: 0,
+  }),
+  evaluateStageTransitions: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../src/db/person-events-db.js', () => ({
   recordEvent: vi.fn().mockResolvedValue(undefined),
+  buildMessageReceivedData: vi.fn().mockReturnValue({}),
 }));
 
 vi.mock('../../src/addie/index.js', async (importOriginal) => {
@@ -340,7 +383,10 @@ describe('native OAuth HTTPServer wiring', () => {
       slack_user_id: 'U123',
       workos_user_id: null,
     } as never);
-    const mapUser = vi.spyOn(SlackDatabase.prototype, 'mapUser').mockResolvedValueOnce(undefined);
+    const mapUser = vi.spyOn(SlackDatabase.prototype, 'mapUser').mockResolvedValueOnce({
+      slack_user_id: 'U123',
+      workos_user_id: 'user_1',
+    } as never);
     server = new HTTPServer();
 
     const response = await request(appFor(server)).get('/auth/callback').query({
@@ -389,7 +435,10 @@ describe('native OAuth HTTPServer wiring', () => {
       slack_user_id: 'U123',
       workos_user_id: null,
     } as never);
-    vi.spyOn(SlackDatabase.prototype, 'mapUser').mockResolvedValueOnce(undefined);
+    vi.spyOn(SlackDatabase.prototype, 'mapUser').mockResolvedValueOnce({
+      slack_user_id: 'U123',
+      workos_user_id: 'user_1',
+    } as never);
     mocks.sendAccountLinkedMessage.mockRejectedValueOnce(new Error('synthetic Slack rejection'));
     server = new HTTPServer();
 
@@ -404,4 +453,45 @@ describe('native OAuth HTTPServer wiring', () => {
     expect(response.status).toBe(302);
     expect(mocks.sendAccountLinkedMessage).toHaveBeenCalledWith(origin, 'Person');
   });
+
+  it.each([
+    ['local', 'user_sam', 'sam.adeyemi@gmail.com', 'user_jordan', 'sam.adeyemi@googlemail.com'],
+    ['provider', 'user_jordan', 'sam.adeyemi@googlemail.com', 'user_sam', 'sam.adeyemi@gmail.com'],
+  ])('only detects aliases during concurrent/replayed OAuth callbacks (%s)', async (location, id, email, otherId, otherEmail) => {
+    mocks.authenticateWithCode.mockResolvedValue({
+      sealedSession: 'test-sealed-session',
+      user: { id, email, firstName: 'Sam', lastName: 'Adeyemi', emailVerified: true,
+        createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+    });
+    mocks.listOrganizationMemberships.mockResolvedValue({ data: [
+      { organizationId: 'org_pinnacle', userId: id, status: 'active' },
+    ] });
+    mocks.listUsers.mockResolvedValue({ data: [{ id: otherId, email: otherEmail }] });
+    mocks.query.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('FROM users u') && sql.includes('user_email_aliases') && location === 'local'
+        ? [{ workos_user_id: otherId, email: otherEmail }] : [],
+      rowCount: 0,
+    }));
+    server = new HTTPServer();
+    const callback = () => request(appFor(server!)).get('/auth/callback').query({
+      code: 'test-code', state: JSON.stringify({ return_to: '/member-hub', consolidate: true }),
+    });
+    const responses = await Promise.all([callback(), callback(), callback()]);
+    responses.push(await callback());
+    for (const response of responses) {
+      expect(response.status).toBe(302);
+      expect(response.headers.location).toBe(`/member-hub?duplicate_email=${encodeURIComponent(otherEmail)}`);
+    }
+    for (const write of [mocks.createUser, mocks.updateUser, mocks.deleteUser,
+      mocks.createOrganizationMembership, mocks.updateOrganizationMembership, mocks.deleteOrganizationMembership]) {
+      expect(write).not.toHaveBeenCalled();
+    }
+    expect(mocks.listOrganizationMemberships.mock.calls.every(([input]) => input.userId === id)).toBe(true);
+    const writes = mocks.query.mock.calls.filter(([sql]) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql));
+    // Ordinary login may upsert the authenticating user. Alias detection must
+    // never synthesize the duplicate or mutate either credential's authority.
+    expect(writes.every(([sql, params]) => sql.trimStart().startsWith('INSERT INTO users ') && params[0] === id)).toBe(true);
+    expect(mocks.query.mock.calls.some(([sql]) => sql.includes('FROM users u') && sql.includes('user_email_aliases'))).toBe(true);
+  });
+
 });

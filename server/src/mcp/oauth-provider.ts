@@ -22,6 +22,11 @@ import { verifyWorkOSJWT } from '../auth/workos-jwt.js';
 import { getAuthorizationUrl, refreshTokenRaw, authenticateWithCodeForTokens } from '../auth/workos-client.js';
 import * as mcpClientsDb from '../db/mcp-clients-db.js';
 import * as mcpOAuthStateDb from '../db/mcp-oauth-state-db.js';
+import {
+  upsertWorkosUserInCredentialEvent,
+  withCredentialCreationEventMutation,
+} from '../db/identity-db.js';
+import { readCredentialAuthorizationLifecycle } from '../db/authorization-epoch-db.js';
 
 const logger = createLogger('mcp-oauth');
 
@@ -47,6 +52,17 @@ async function verifyAccessTokenJWT(token: string): Promise<AuthInfo> {
   } catch (err) {
     logger.warn({ err }, 'MCP OAuth: Token verification failed');
     throw new InvalidTokenError('Invalid or expired token');
+  }
+
+  if (!verified.isM2M && verified.sub) {
+    const lifecycle = await readCredentialAuthorizationLifecycle(verified.sub);
+    if (lifecycle.status !== 'active') {
+      logger.warn(
+        { sub: verified.sub, lifecycle: lifecycle.status },
+        'MCP OAuth: local credential lifecycle rejected token',
+      );
+      throw new InvalidTokenError('Credential is unavailable');
+    }
   }
 
   return {
@@ -253,46 +269,45 @@ export async function handleMCPOAuthCallback(
     return;
   }
 
-  // Upsert the user into our local table so downstream code (REST requireAuth,
-  // /api/me/*, dashboard queries) can find them by workos_user_id. The
-  // cookie-based /auth/callback path does the same upsert; without it,
-  // users who first arrive via the MCP OAuth flow don't exist locally and
-  // REST auth rejects their JWT.
-  //
-  // On failure we log and continue — we still issue the OAuth code so /mcp
-  // works. The user will see a 401 the first time they call /api/*, with a
-  // corresponding warn log ("Bearer JWT verified but user not found in
-  // local DB"). A retry (re-SSO) recovers; a persistent failure indicates
-  // a DB problem that operators need to investigate, not a per-user issue.
-  try {
-    const { getPool } = await import('../db/client.js');
-    const { user } = authResult;
-    await getPool().query(
-      `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-       ON CONFLICT (workos_user_id) DO UPDATE SET
-         email = EXCLUDED.email,
-         first_name = COALESCE(NULLIF(TRIM(users.first_name), ''), EXCLUDED.first_name),
-         last_name = COALESCE(NULLIF(TRIM(users.last_name), ''), EXCLUDED.last_name),
-         email_verified = EXCLUDED.email_verified,
-         workos_updated_at = EXCLUDED.workos_updated_at,
-         updated_at = NOW()`,
-      [user.id, user.email, user.firstName, user.lastName, user.emailVerified, user.createdAt, user.updatedAt],
-    );
-  } catch (upsertErr) {
-    logger.error({ err: upsertErr }, 'MCP OAuth: Failed to upsert user on callback');
-  }
-
-  // Generate local authorization code
+  // Finalize the local credential and MCP authorization code atomically under
+  // the same terminal lifecycle lock used by provider deletion. The WorkOS
+  // exchange above performs provider I/O before lock acquisition. A deletion
+  // that wins during that exchange leaves a tombstone and this finalize emits
+  // no local code.
   const localCode = crypto.randomBytes(32).toString('hex');
-
-  await mcpOAuthStateDb.setAuthCode(localCode, {
-    clientId: pending.clientId,
-    codeChallenge: pending.codeChallenge,
-    redirectUri: pending.redirectUri,
-    accessToken: authResult.accessToken,
-    refreshToken: authResult.refreshToken,
-  });
+  let finalized = false;
+  try {
+    const { user } = authResult;
+    const result = await withCredentialCreationEventMutation(user.id, async (client) => {
+      await upsertWorkosUserInCredentialEvent(client, {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName ?? null,
+        lastName: user.lastName ?? null,
+        emailVerified: user.emailVerified,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      }, 'preserve_existing');
+      await mcpOAuthStateDb.setAuthCode(localCode, {
+        clientId: pending.clientId,
+        codeChallenge: pending.codeChallenge,
+        redirectUri: pending.redirectUri,
+        accessToken: authResult.accessToken,
+        refreshToken: authResult.refreshToken,
+      }, client);
+    });
+    finalized = result.applied;
+  } catch (finalizeErr) {
+    logger.error({ err: finalizeErr }, 'MCP OAuth: Failed closed during local callback finalize');
+  }
+  if (!finalized) {
+    const errorUrl = new URL(pending.redirectUri);
+    errorUrl.searchParams.set('error', 'access_denied');
+    errorUrl.searchParams.set('error_description', 'Local credential is unavailable');
+    if (pending.state) errorUrl.searchParams.set('state', pending.state);
+    res.redirect(errorUrl.toString());
+    return;
+  }
 
   // Redirect to MCP client's callback URL
   const redirectUrl = new URL(pending.redirectUri);

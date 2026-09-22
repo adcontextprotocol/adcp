@@ -1,3 +1,5 @@
+import { complianceRunProvenance } from '../../compliance/run-provenance.js';
+import { isAuthoritativeComplianceRun } from '../../compliance/run-publication.js';
 /**
  * Compliance Heartbeat Job
  *
@@ -18,9 +20,10 @@ import {
   selectedComplianceTargetMatchesObservedProfile,
   type ComplyOptions,
   type ComplianceTargetSelection,
+  type ComplianceResult,
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
-import { query, withDatabaseDeadline } from '../../db/client.js';
+import { query } from '../../db/client.js';
 import { ComplianceRefreshRequestsDatabase } from '../../db/compliance-refresh-requests-db.js';
 import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
@@ -29,7 +32,6 @@ import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
-import { getVerificationProfileShadowRollout } from '../../db/system-settings-db.js';
 import {
   pruneVerificationProfileShadowAssessments,
   recordVerificationProfileShadowAssessment,
@@ -38,6 +40,7 @@ import {
   deriveVerificationProfileShadowAssessment,
   VERIFICATION_PROFILE_SHADOW_POLICY_VERSION,
 } from '../../services/verification-profile-shadow.js';
+import { deriveVerificationProfileRoleAssessments } from '../../services/verification-profile-assessment.js';
 import {
   hostedComplianceTarget,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
@@ -50,13 +53,24 @@ const fallbackComplianceTarget = hostedComplianceTarget();
 
 interface HeartbeatOptions {
   limit?: number;
+  /** Include the bounded admin status snapshot used by the scheduled worker. */
+  includeOperationalDiagnostics?: boolean;
 }
 
-interface HeartbeatResult {
+export interface HeartbeatResult {
   checked: number;
   passed: number;
   failed: number;
   skipped: number;
+  diagnostics?: {
+    eligibleBacklog: number;
+    selectedAgents: string[];
+    runsRecorded: number;
+    skipReasons: HeartbeatSkipReasons;
+    requestedComplianceTarget: string;
+    complianceBundleVersion: string;
+    sdkVersion: string;
+  };
 }
 
 interface HeartbeatSkipReasons {
@@ -64,6 +78,7 @@ interface HeartbeatSkipReasons {
   execution_fence_lost: number;
   target_unconfirmed: number;
   target_superseded: number;
+  audit_only: number;
   pre_target_error: number;
   agent_error: number;
 }
@@ -84,7 +99,11 @@ async function pruneShadowLedgerBestEffort(): Promise<void> {
   }
 }
 
-export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}): Promise<HeartbeatResult> {
+export async function runComplianceHeartbeatJob(
+  options: HeartbeatOptions = {},
+  signal?: AbortSignal,
+): Promise<HeartbeatResult> {
+  signal?.throwIfAborted();
   const limit = options.limit ?? 10;
   const result: HeartbeatResult = { checked: 0, passed: 0, failed: 0, skipped: 0 };
   const skipReasons: HeartbeatSkipReasons = {
@@ -92,6 +111,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     execution_fence_lost: 0,
     target_unconfirmed: 0,
     target_superseded: 0,
+    audit_only: 0,
     pre_target_error: 0,
     agent_error: 0,
   };
@@ -107,16 +127,16 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   );
   const batchStartedAt = Date.now();
   const pendingShadowAssessments: PendingShadowAssessment[] = [];
+  let runsRecorded = 0;
 
   // Mark agents as in-progress to prevent concurrent pickup by overlapping runs.
   // Agents are processed serially, so the lock must outlive the worst-case batch
   // runtime — otherwise an agent late in the loop has its lock expire before the
   // loop reaches it and an overlapping run re-picks it (duplicate assessment,
   // double badge fan-out). Worst case is batchSize × the full-comply budget, plus
-  // headroom for per-agent target selection. recordComplianceRun() stamps the
-  // real last_checked_at on success or failure — this is only a concurrency lock,
-  // so a mid-loop process crash re-queues the agent after this TTL rather than
-  // waiting the full check_interval (default 12 h).
+  // headroom for per-agent target selection. Scheduling lives in registry
+  // metadata; the public last_checked_at always describes authoritative evidence.
+  // A mid-loop crash re-queues the agent after this TTL.
   const urls = agentsDue.map(a => a.agent_url);
   // Each agent has two bounded capability pre-discoveries: target selection,
   // then hosted auth defaults inside comply(). Account for both explicitly so
@@ -125,14 +145,15 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     const perAgentBudgetMs = HOSTED_FULL_COMPLIANCE_TIMEOUT_MS + (2 * HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
     const lockSeconds = urls.length * (perAgentBudgetMs / 1000) + 300;
     await query(
-      `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
-       SELECT unnest($1::text[]), 'unknown', NOW() + make_interval(secs => $2)
-       ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NOW() + make_interval(secs => $2)`,
+      `INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
+       SELECT unnest($1::text[]), NOW() + make_interval(secs => $2)
+       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NOW() + make_interval(secs => $2)`,
       [urls, lockSeconds],
     );
   }
 
   for (const agent of agentsDue) {
+    signal?.throwIfAborted();
     const executionFence = await complianceRefreshDb.acquireAgentExecutionFence(agent.agent_url);
     if (!executionFence) {
       await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
@@ -176,6 +197,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
         storyboard_start_offset: storyboardStartOffset,
+        signal,
       };
       const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(agent.agent_url);
 
@@ -230,9 +252,27 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         'heartbeat',
       );
       dbInput.dry_run = false;
+      if (isAuthoritativeComplianceRun(dbInput)) {
+        dbInput.grading_profile_assessments = deriveVerificationProfileRoleAssessments({
+          result: complianceResult,
+          lifecycleStage: agent.lifecycle_stage as LifecycleStage,
+          requestedComplianceTarget: dbInput.requested_compliance_target,
+          storyboardStatuses: dbInput.storyboard_statuses ?? [],
+        });
+      }
       assertExecutionFence();
       const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+      runsRecorded++;
       assertExecutionFence();
+
+      if (!isAuthoritativeComplianceRun(dbInput)) {
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        result.skipped++;
+        skipReasons.audit_only++;
+        logger.info({ agentUrl: agent.agent_url, runId: run.id, completeness: dbInput.completeness },
+          'Recorded audit-only compliance evidence; authoritative grade and badges preserved');
+        continue;
+      }
 
       result.checked++;
       if (dbInput.overall_status === 'passing') {
@@ -308,6 +348,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             complianceDb,
             agentUrl: agent.agent_url,
             supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+            sourceRunId: run.id,
           });
           assertExecutionFence();
           if (badgeResult.revoked.length > 0) {
@@ -344,6 +385,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         );
       }
     } catch (error) {
+      // A scheduler timeout is a batch-level cancellation, not evidence about
+      // the current agent. Let the job fail after the finally block releases
+      // its execution fence instead of recording a false agent failure and
+      // continuing through the rest of the batch with an aborted transport.
+      signal?.throwIfAborted();
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
       if (error && typeof error === 'object' && 'code' in error && error.code === 'execution_fence_lost') {
@@ -429,13 +475,12 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         error_message: errorMessage,
       });
 
-      // Record failure so stale passing data doesn't persist
+      // A thrown runner error is incomplete audit evidence, not an authoritative verdict.
       try {
         // Recheck the fence before writing: comply() may have thrown while a
         // concurrent owner refresh invalidated the lock. Without this guard the
         // stale heartbeat failure would race with and overwrite the fresher result.
         assertExecutionFence();
-        const badgeEligibleAdcpVersions = [...badgeEligibleVersionsForTargetSelection(runTargetSelection)];
         await complianceDb.recordComplianceRun({
           agent_url: agent.agent_url,
           requested_compliance_target: runTarget.requested,
@@ -451,62 +496,14 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           observations_json: [{ category: observationCategory, severity: observationSeverity, message: observationMessage }],
           triggered_by: 'heartbeat',
           dry_run: false,
+          completeness: 'not_completed',
+          provenance_json: complianceRunProvenance({ adcp_version: runTarget.version, agent_profile: {} as ComplianceResult['agent_profile'] }),
+          is_authoritative: false,
           replace_storyboard_statuses: true,
         });
+        runsRecorded++;
 
-        if (badgeEligibleAdcpVersions.length > 0) {
-          assertExecutionFence();
-          const eligibleBadgeVersions = new Set(badgeEligibleAdcpVersions);
-          const badgeMetadata = await complianceDb.getRegistryMetadata(agent.agent_url);
-          const expectedBadgeGeneration = badgeMetadata?.badge_requalification_generation ?? '0';
-          const existingBadges = await complianceDb.getBadgesForAgent(agent.agent_url);
-          const revoked = [];
-          for (const badge of existingBadges) {
-            if (!eligibleBadgeVersions.has(badge.adcp_version)) continue;
-            const didRevoke = await complianceDb.revokeBadge(
-              agent.agent_url,
-              badge.role,
-              badge.adcp_version,
-              'Authoritative compliance run failed before storyboard verification',
-              expectedBadgeGeneration,
-            );
-            if (!didRevoke) continue;
-            revoked.push({
-              role: badge.role,
-              reason: 'Authoritative compliance run failed',
-              adcp_version: badge.adcp_version,
-            });
-          }
-          if (revoked.length > 0) {
-            try {
-              await notifyVerificationChange({
-                agentUrl: agent.agent_url,
-                issued: [],
-                revoked,
-              });
-            } catch (notifyError) {
-              logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification revocation notification');
-            }
-          }
-        } else if (runTargetSelection.confirmed) {
-          assertExecutionFence();
-          const badgeResult = await revokeUnsupportedPublicBadges({
-            complianceDb,
-            agentUrl: agent.agent_url,
-            supportedVersions: runTargetSelection.supportedVersions,
-          });
-          if (badgeResult.revoked.length > 0) {
-            try {
-              await notifyVerificationChange({
-                agentUrl: agent.agent_url,
-                issued: [],
-                revoked: badgeResult.revoked,
-              });
-            } catch (notifyError) {
-              logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification revocation notification');
-            }
-          }
-        }
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
       } catch (recordError) {
         // Fence loss during failure recording must be handled here directly:
         // we are already inside catch (error), so re-throwing would escape the
@@ -526,24 +523,15 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }
 
-      // Timeouts and capability-config faults are valid per-agent results
-      // (not skips) — they need to surface in checked/failed so the heartbeat
-      // summary reflects reality.
-      if (isAgentTimeout || isSavedAuthConfigError || capsError) {
-        result.checked++;
-        result.failed++;
-      } else {
-        result.skipped++;
-        skipReasons.agent_error++;
-      }
+      result.skipped++;
+      skipReasons.agent_error++;
     } finally {
       await executionFence.release();
     }
   }
 
-  // Shadow persistence is deliberately outside the public heartbeat loop.
-  // Re-check the audited switch with a short deadline before every write so a
-  // disable or automatic expiry takes effect within an already-running batch.
+  // Comparison persistence is deliberately outside the public heartbeat loop.
+  // It reuses the completed run and has no agent traffic or badge side effects.
   const publicProcessingDurationMs = Date.now() - batchStartedAt;
   const shadowFlushStartedAt = Date.now();
   const shadowStats = {
@@ -552,34 +540,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     recorded: 0,
     disabled: 0,
     errors: 0,
-    setting_errors: 0,
     total_write_latency_ms: 0,
     max_write_latency_ms: 0,
   };
   for (const pending of pendingShadowAssessments) {
-    let enabled = false;
-    try {
-      enabled = (await withDatabaseDeadline(
-        Date.now() + 500,
-        () => getVerificationProfileShadowRollout(),
-        // Expiry is an audited compare-and-set write when the 72-hour window
-        // elapses, so this bounded operation cannot use a read-only transaction.
-        { readOnly: false },
-      )).enabled;
-    } catch (settingError) {
-      shadowStats.setting_errors++;
-      shadowStats.errors++;
-      logger.error(
-        { settingError, agentUrl: pending.agentUrl },
-        'Verification profile shadow setting could not be read; collection remains disabled',
-      );
-      continue;
-    }
-    if (!enabled) {
-      shadowStats.disabled++;
-      continue;
-    }
-
     shadowStats.attempted++;
     const writeStartedAt = Date.now();
     try {
@@ -614,8 +578,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     }
   }
   // Emit one aggregate health record for every scheduled heartbeat, including
-  // empty queues and disabled collection. That makes a frozen pre-rollout
-  // baseline and the collection window comparable without exposing endpoints.
+  // empty queues, without exposing endpoint URLs.
   logger.info(
     {
       publicProcessingDurationMs,
@@ -638,6 +601,18 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     'Compliance heartbeat shadow flush completed after public processing',
   );
   await pruneShadowLedgerBestEffort();
+
+  if (options.includeOperationalDiagnostics) {
+    result.diagnostics = {
+      eligibleBacklog,
+      selectedAgents: urls,
+      runsRecorded,
+      skipReasons: { ...skipReasons },
+      requestedComplianceTarget: fallbackComplianceTarget.requested,
+      complianceBundleVersion: fallbackComplianceTarget.version,
+      sdkVersion: LIBRARY_VERSION,
+    };
+  }
 
   return result;
 }

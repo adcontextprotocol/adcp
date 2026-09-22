@@ -44,6 +44,7 @@ import { WorkOS } from '@workos-inc/node';
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const ADMIN_BASE_URL = process.env.ADMIN_BASE_URL?.replace(/\/+$/, '');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+const ADMIN_OPERATOR = process.env.ADMIN_OPERATOR?.trim() || 'script:2026-04-triton-encypher-diagnostic';
 const DATABASE_URL = process.env.DATABASE_URL;
 const WORKOS_API_KEY = process.env.WORKOS_API_KEY;
 const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID;
@@ -74,6 +75,7 @@ async function adminFetch<T = unknown>(path: string): Promise<T | { error: strin
     const res = await fetch(`${ADMIN_BASE_URL}${path}`, {
       headers: {
         Authorization: `Bearer ${ADMIN_API_KEY}`,
+        'X-Admin-Operator': ADMIN_OPERATOR,
         Accept: 'application/json',
       },
     });

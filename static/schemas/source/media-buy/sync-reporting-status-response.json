@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-reporting-status-response.json",
+  "title": "Sync Reporting Status Response",
+  "x-status": "experimental",
+  "description": "Per-statement durable recording results. Successful readback proves that the seller recorded the authenticated consumer's status without treating it as seller-authored reporting evidence.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
+  "properties": {
+    "status": { "type": "string", "const": "completed", "description": "Status batches complete synchronously with one result per submitted statement." },
+    "results": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "title": "Recorded reporting consumer status",
+            "type": "object",
+            "properties": {
+              "result": { "type": "string", "const": "recorded" },
+              "consumer_status": {
+                "allOf": [
+                  { "$ref": "/schemas/core/reporting-consumer-status.json" },
+                  { "required": ["recorded_at"] }
+                ]
+              }
+            },
+            "required": ["result", "consumer_status"],
+            "additionalProperties": false
+          },
+          {
+            "title": "Unchanged reporting consumer status",
+            "type": "object",
+            "properties": {
+              "result": { "type": "string", "const": "unchanged" },
+              "consumer_status": {
+                "allOf": [
+                  { "$ref": "/schemas/core/reporting-consumer-status.json" },
+                  { "required": ["recorded_at"] }
+                ]
+              }
+            },
+            "required": ["result", "consumer_status"],
+            "additionalProperties": false
+          },
+          {
+            "title": "Failed reporting consumer status",
+            "type": "object",
+            "properties": {
+              "result": { "type": "string", "const": "failed" },
+              "reporting_status_id": {
+                "type": "string",
+                "minLength": 16,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+                "x-entity": "reporting_consumer_status"
+              },
+              "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1, "maxItems": 16 }
+            },
+            "required": ["result", "reporting_status_id", "errors"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["status", "results"],
+  "x-adcp-validation": {
+    "result_mapping": "Return exactly one result per submitted statement in request order. An exact batch idempotency replay returns the original response; unchanged is used when the identical immutable reporting_status_id was already recorded through another batch. Reusing either identity with changed content is an idempotency conflict."
+  },
+  "additionalProperties": true
+}

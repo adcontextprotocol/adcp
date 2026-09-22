@@ -148,7 +148,6 @@ describe('POST /api/organizations/:orgId/claim', () => {
     });
     await runMigrations();
     server = new HTTPServer();
-    await server.start(0);
     app = server.app;
   }, 60000);
 
@@ -164,124 +163,18 @@ describe('POST /api/organizations/:orgId/claim', () => {
     userOverride = {};
   });
 
-  it('happy path: claims an unmembered prospect, creates WorkOS membership, writes audit log', async () => {
+  it.each([
+    ['verified', true, TEST_DOMAIN],
+    ['unverified', false, TEST_DOMAIN],
+    ['wrong domain', true, TEST_OTHER_DOMAIN],
+  ])('denies %s claim without grants or audits', async (_label, verified, domain) => {
+    userOverride = { emailVerified: verified as boolean, email: `claimer@${domain}` };
     await seedProspect(pool, { orgId: TEST_ORG_PROSPECT, domain: TEST_DOMAIN });
-
     const res = await request(app).post(`/api/organizations/${TEST_ORG_PROSPECT}/claim`).send({});
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.organization_id).toBe(TEST_ORG_PROSPECT);
-    expect(mockCreateOrganizationMembership).toHaveBeenCalledTimes(1);
-    expect(mockCreateOrganizationMembership).toHaveBeenCalledWith({
-      userId: TEST_USER_ID,
-      organizationId: TEST_ORG_PROSPECT,
-      roleSlug: 'admin',
-    });
-
-    const auditRows = await pool.query(
-      `SELECT action, details FROM registry_audit_log WHERE workos_organization_id = $1`,
-      [TEST_ORG_PROSPECT],
-    );
-    expect(auditRows.rows.length).toBe(1);
-    expect(auditRows.rows[0].action).toBe('organization_claimed');
-    expect(auditRows.rows[0].details).toMatchObject({ claimed_via: 'self_claim', email_domain: TEST_DOMAIN });
-  });
-
-  it('rejects unverified email with 403 (no WorkOS call, no audit row)', async () => {
-    userOverride = { emailVerified: false };
-    await seedProspect(pool, { orgId: TEST_ORG_PROSPECT, domain: TEST_DOMAIN });
-
-    const res = await request(app).post(`/api/organizations/${TEST_ORG_PROSPECT}/claim`).send({});
-
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('Email not verified');
+    expect(res.body.error).toBe('organization_onboarding_disabled');
     expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
-  });
-
-  it('rejects domain mismatch with 403', async () => {
-    userOverride = { email: `attacker@${TEST_OTHER_DOMAIN}` };
-    await seedProspect(pool, { orgId: TEST_ORG_PROSPECT, domain: TEST_DOMAIN });
-
-    const res = await request(app).post(`/api/organizations/${TEST_ORG_PROSPECT}/claim`).send({});
-
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe('Domain mismatch');
-    expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
-  });
-
-  it('rejects org with active subscription with 400', async () => {
-    await seedProspect(pool, {
-      orgId: TEST_ORG_PAYING,
-      domain: TEST_DOMAIN,
-      subscriptionStatus: 'active',
-    });
-
-    const res = await request(app).post(`/api/organizations/${TEST_ORG_PAYING}/claim`).send({});
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Not claimable');
-    expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
-  });
-
-  it('rejects org that already has members with 409 (anti-hijack)', async () => {
-    await seedProspect(pool, {
-      orgId: TEST_ORG_HAS_MEMBER,
-      domain: TEST_DOMAIN,
-      hasMember: true,
-    });
-
-    const res = await request(app).post(`/api/organizations/${TEST_ORG_HAS_MEMBER}/claim`).send({});
-
-    expect(res.status).toBe(409);
-    expect(res.body.error).toBe('Already claimed');
-    expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
-  });
-
-  it('rejects personal org with 400', async () => {
-    await seedProspect(pool, {
-      orgId: TEST_ORG_PERSONAL,
-      domain: TEST_DOMAIN,
-      isPersonal: true,
-    });
-
-    const res = await request(app).post(`/api/organizations/${TEST_ORG_PERSONAL}/claim`).send({});
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Not claimable');
-    expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
-  });
-
-  it('returns 404 when the org does not exist', async () => {
-    const res = await request(app).post(`/api/organizations/org_does_not_exist/claim`).send({});
-
-    expect(res.status).toBe(404);
-    expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
-  });
-
-  it('rolls back local state when WorkOS createOrganizationMembership fails', async () => {
-    mockCreateOrganizationMembership.mockRejectedValueOnce(new Error('WorkOS down'));
-    await seedProspect(pool, { orgId: TEST_ORG_PROSPECT, domain: TEST_DOMAIN });
-
-    const res = await request(app).post(`/api/organizations/${TEST_ORG_PROSPECT}/claim`).send({});
-
-    expect(res.status).toBe(500);
-    const auditRows = await pool.query(
-      `SELECT action FROM registry_audit_log WHERE workos_organization_id = $1`,
-      [TEST_ORG_PROSPECT],
-    );
-    expect(auditRows.rows.length).toBe(0);
-  });
-
-  it('treats organization_membership_already_exists as success (no double audit row)', async () => {
-    const alreadyExistsErr: Error & { code?: string } = new Error('already exists');
-    alreadyExistsErr.code = 'organization_membership_already_exists';
-    mockCreateOrganizationMembership.mockRejectedValueOnce(alreadyExistsErr);
-    await seedProspect(pool, { orgId: TEST_ORG_PROSPECT, domain: TEST_DOMAIN });
-
-    const res = await request(app).post(`/api/organizations/${TEST_ORG_PROSPECT}/claim`).send({});
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
+    expect((await pool.query('SELECT * FROM organization_memberships WHERE workos_organization_id = $1', [TEST_ORG_PROSPECT])).rowCount).toBe(0);
+    expect((await pool.query('SELECT * FROM registry_audit_log WHERE workos_organization_id = $1', [TEST_ORG_PROSPECT])).rowCount).toBe(0);
   });
 });

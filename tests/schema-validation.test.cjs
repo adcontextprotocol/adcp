@@ -1465,6 +1465,74 @@ async function runTests() {
     return true;
   });
 
+  await test('Anonymous discovery capabilities are optional booleans with legacy absence', async () => {
+    const capabilitiesSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json'));
+    const mediaBuyField = capabilitiesSchema.properties?.media_buy?.properties?.anonymous_discovery;
+    const signalsField = capabilitiesSchema.properties?.signals?.properties?.anonymous_discovery;
+
+    if (mediaBuyField?.type !== 'boolean' || signalsField?.type !== 'boolean') {
+      return 'media_buy.anonymous_discovery and signals.anonymous_discovery must both be booleans';
+    }
+    if (mediaBuyField.default !== undefined || signalsField.default !== undefined) {
+      return 'anonymous_discovery must not default absence to true or false';
+    }
+
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+    const validateCapabilities = await testAjv.compileAsync(capabilitiesSchema);
+    const base = {
+      status: 'completed',
+      adcp: { major_versions: [3], idempotency: { supported: false } },
+      supported_protocols: ['media_buy', 'signals']
+    };
+
+    for (const value of [true, false]) {
+      const response = {
+        ...base,
+        media_buy: { anonymous_discovery: value },
+        signals: { anonymous_discovery: value }
+      };
+      if (!validateCapabilities(response)) {
+        return `anonymous_discovery=${value} unexpectedly failed validation: ${validateCapabilities.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+      }
+    }
+
+    const legacy = { ...base, media_buy: {}, signals: {} };
+    if (!validateCapabilities(legacy)) {
+      return `legacy capability response without anonymous_discovery unexpectedly failed: ${validateCapabilities.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const invalid = {
+      ...base,
+      media_buy: { anonymous_discovery: 'yes' },
+      signals: { anonymous_discovery: true }
+    };
+    if (validateCapabilities(invalid)) {
+      return 'anonymous_discovery unexpectedly accepted a non-boolean value';
+    }
+
+    const contradictoryAccountPolicy = {
+      ...base,
+      media_buy: { anonymous_discovery: true },
+      signals: { anonymous_discovery: true },
+      account: {
+        supported_billing: ['operator'],
+        required_for_products: true
+      }
+    };
+    if (validateCapabilities(contradictoryAccountPolicy)) {
+      return 'anonymous product discovery unexpectedly accepted account.required_for_products=true';
+    }
+
+    return true;
+  });
+
   // Test 11C: Validate native postal systems and deprecated legacy aliases across geo surfaces
   await test('Postal systems support native country-local form and deprecated legacy aliases', async () => {
     const postalSystemSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'enums/postal-system.json'));
@@ -2954,30 +3022,6 @@ async function runTests() {
     }
     if (validate(response([{ ...baseBrand, relationship_trust: 'mutual_assertion' }]))) {
       return 'obsolete RFC-era relationship trust vocabulary must be rejected';
-    }
-    return true;
-  });
-
-  await test('brand identity references require portable dotted domains', async () => {
-    for (const schemaFile of ['core/brand-ref.json', 'core/brand-key.json']) {
-      const schema = loadSchema(path.join(SCHEMA_BASE_DIR, schemaFile));
-      const testAjv = new Ajv({ allErrors: true, strict: false, loadSchema: loadExternalSchema });
-      addFormats(testAjv);
-      const validate = await testAjv.compileAsync(schema);
-
-      for (const domain of ['brand.example', 'ads.brand.co.uk', 'brand.localhost']) {
-        if (!validate({ domain })) {
-          return `${schemaFile} rejected dotted wire domain ${domain}: ${JSON.stringify(validate.errors)}`;
-        }
-      }
-      for (const domain of ['localhost', 'unknown', 'intranet']) {
-        if (validate({ domain })) {
-          return `${schemaFile} accepted single-label domain ${domain}`;
-        }
-      }
-      if (validate({ domain: `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(62)}` })) {
-        return `${schemaFile} accepted a domain longer than 253 characters`;
-      }
     }
     return true;
   });

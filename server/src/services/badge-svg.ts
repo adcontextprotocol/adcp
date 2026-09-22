@@ -1,15 +1,17 @@
 /**
  * SVG badge rendering for AAO Verified agents.
  *
- * Generates shields.io-style badges: "AAO Verified | Media Buy Agent 3.0 (Spec)"
- * with the AAO teal color scheme.
+ * Generates shields.io-style badges:
+ * "AAO Verified | Media Buy Agent 3.0 (Spec) · Strict Spec grading" with
+ * the AAO teal color scheme.
  *
  * The version segment between the role and the qualifier conveys *which AdCP
  * release* the badge was issued against (3.0, 3.1, ...). The qualifier in
  * parens conveys *which axes of verification* the agent has earned: (Spec)
  * means protocol storyboards pass, (Live) means AAO has observed real
  * production traffic via canonical campaigns. An agent can have either or
- * both, e.g. "(Spec + Live)". An empty modes array renders "Not Verified".
+ * both, e.g. "(Spec + Live)". The grading suffix is a separate policy axis:
+ * Legacy or Strict Spec. An empty modes array renders "Not Verified".
  */
 
 import { VERIFICATION_MODES, isVerificationMode } from './adcp-taxonomy.js';
@@ -116,12 +118,14 @@ function formatModes(modes: readonly string[]): string {
 export interface RenderBadgeSvgOptions {
   /**
    * AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0').
-   * Embeds in the message as `Media Buy Agent 3.0 (Spec)`. Validated
+   * Embeds in the message as `Media Buy Agent 3.0 (Spec) · Legacy grading`.
+   * Validated
    * against the same regex as the DB CHECK and JWT signer; a malformed
    * value renders without the version segment rather than failing the
    * whole image (#3524 stage 3).
    */
   adcpVersion?: string;
+  gradingProfile?: 'legacy' | 'spec';
 }
 
 export function renderBadgeSvg(
@@ -145,8 +149,9 @@ export function renderBadgeSvg(
     : undefined;
   // Role + optional version: "Media Buy Agent" or "Media Buy Agent 3.0".
   const verifiedRoleSegment = safeVersion ? `${roleLabel} ${safeVersion}` : roleLabel;
+  const gradingLabel = options.gradingProfile === 'spec' ? 'Strict Spec grading' : 'Legacy grading';
   const message = isVerified
-    ? (qualifier ? `${verifiedRoleSegment} (${qualifier})` : verifiedRoleSegment)
+    ? `${qualifier ? `${verifiedRoleSegment} (${qualifier})` : verifiedRoleSegment} · ${gradingLabel}`
     : 'Not Verified';
   const messageBg = isVerified ? AAO_TEAL : NOT_VERIFIED_BG;
   const idSuffix = `${escapeXml(role)}-${isVerified ? 'v' : 'nv'}`;
@@ -155,9 +160,9 @@ export function renderBadgeSvg(
   const msgWidth = measureText(message);
   const totalWidth = labelWidth + msgWidth;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${BADGE_HEIGHT}" role="img" aria-label="${escapeXml(label)}: ${escapeXml(message)}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${BADGE_HEIGHT}" role="img" data-grading-profile="${options.gradingProfile === 'spec' ? 'spec' : 'legacy'}" aria-label="${escapeXml(label)}: ${escapeXml(message)}">
   <title>${escapeXml(label)}: ${escapeXml(message)}</title>
-  <desc>AAO verification badge showing ${escapeXml(message)} status</desc>
+  <desc>AgenticAdvertising.org verification badge showing ${escapeXml(message)}</desc>
   <linearGradient id="s-${idSuffix}" x2="0" y2="100%">
     <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
     <stop offset="1" stop-opacity=".1"/>

@@ -10,8 +10,9 @@
  * bulk PUT path.
  *
  * Auth: WorkOS session OR Bearer API key (`requireAuth` handles both).
- * Multi-org callers may pass `?org=…` to target a non-primary org;
- * verification goes through `resolveUserOrgMembership`.
+ * Human callers must pass `?org=…` to select an existing organization;
+ * a validated WorkOS API key uses its provider-bound organization directly.
+ * Neither path creates an organization.
  *
  * Concurrency: writes go through a `SELECT … FOR UPDATE` on
  * `member_profiles` so two parallel POSTs/PATCHes/DELETEs serialize
@@ -22,7 +23,7 @@
 import { Router } from 'express';
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, type ValidatedApiKey } from '../middleware/auth.js';
 import { brandCreationRateLimiter } from '../middleware/rate-limit.js';
 import { MemberDatabase } from '../db/member-db.js';
 import {
@@ -30,17 +31,13 @@ import {
   hasApiAccess,
   resolveMembershipTier,
 } from '../db/organization-db.js';
-import { resolvePrimaryOrganization } from '../db/users-db.js';
-import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import { getPool } from '../db/client.js';
 import { canonicalizeAgentUrl } from '../db/publisher-db.js';
 import type { AgentConfig } from '../types.js';
 import { isValidAgentType } from '../types.js';
 import { resolveAgentTypes, logResolvedTypeChanges } from './member-profiles.js';
 import { ensureMemberProfileExists } from '../services/member-profile-autopublish.js';
-import { performCreateOrganization } from '../services/organization-bootstrap.js';
-import { isDevModeEnabled, getDevUser } from '../middleware/auth.js';
-import { isFreeEmail, getCompanyDomain } from '../utils/email-domain.js';
 import { validateExternalUrl } from '../utils/url-security.js';
 import {
   gateAgentVisibilityForCaller,
@@ -96,146 +93,73 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
   const { orgDb, workos, invalidateMemberContextCache } = config;
   const router = Router();
 
-  /**
-   * Pick the org to act on. Honors `?org=…` for multi-org callers (matching
-   * the `PUT /api/me/member-profile` pattern); falls back to the user's
-   * primary org when not supplied. Returns null and writes the error
-   * response when the caller has no associated org or asks for an org
-   * they're not a member of.
-   */
+  /** Select one explicit organization and resolve only direct WorkOS authority. */
   async function resolveOrgOrSendError(
     req: import('express').Request,
     res: import('express').Response,
   ): Promise<string | null> {
-    const requestedOrgId =
-      typeof req.query.org === 'string' && req.query.org.length > 0
-        ? req.query.org
-        : null;
-
-    if (requestedOrgId) {
-      const membership = await resolveUserOrgMembership(
-        workos,
-        req.user!.id,
-        requestedOrgId,
-      );
-      if (!membership) {
+    const requestedOrgId = typeof req.query.org === 'string' ? req.query.org : null;
+    const apiKey = (req as typeof req & { apiKey?: ValidatedApiKey }).apiKey;
+    if (apiKey) {
+      if (requestedOrgId && requestedOrgId !== apiKey.organizationId) {
         res.status(403).json({
-          error: 'Not authorized',
-          message: 'User is not a member of the requested organization',
+          error: 'organization_selection_conflict',
+          message: 'The requested organization does not match this API key.',
         });
         return null;
       }
-      return requestedOrgId;
+      const localOrganization = await orgDb.getOrganization(apiKey.organizationId);
+      if (!localOrganization) {
+        res.status(409).json({
+          error: 'api_key_organization_not_provisioned',
+          message: 'This API key has a WorkOS organization, but that organization is not provisioned in the registry. Contact support to reconcile the existing organization; do not create another one.',
+        });
+        return null;
+      }
+      return apiKey.organizationId;
     }
-
-    const orgId = await resolvePrimaryOrganization(req.user!.id);
-    if (!orgId) {
-      res.status(400).json({ error: 'No organization associated with this account' });
+    if (!requestedOrgId) {
+      res.status(400).json({ error: 'An explicit ?org= is required' });
       return null;
     }
-    return orgId;
+    if (!workos) {
+      res.status(503).json({ error: 'Organization membership temporarily unavailable' });
+      return null;
+    }
+    const userId = getOrganizationAuthorizationUserId(req.user!);
+    try {
+      const memberships = await workos.userManagement.listOrganizationMemberships({
+        userId, organizationId: requestedOrgId, statuses: ['active'],
+      });
+      const matching = memberships.data.filter(m => m.userId === userId
+        && m.organizationId === requestedOrgId && m.status === 'active');
+      if (matching.length !== 1 || !['member', 'admin', 'owner'].includes(matching[0].role?.slug ?? '')) {
+        res.status(403).json({ error: 'Not authorized for the requested organization' });
+        return null;
+      }
+      return requestedOrgId;
+    } catch (err) {
+      logger.warn({ err }, 'Exact WorkOS membership lookup unavailable');
+      res.status(503).json({ error: 'Organization membership temporarily unavailable' });
+      return null;
+    }
   }
 
-  /**
-   * Resolve the caller's primary org, auto-bootstrapping a fresh org if the
-   * caller has zero memberships. The auto-bootstrap path is the
-   * "true one-call storefront" experience: a third-party app holding only
-   * a user's OAuth token can `POST /api/me/agents` once and have the org,
-   * member profile, and agent registration all materialize.
-   *
-   * `resolvePrimaryOrganization` already derives from `organization_memberships`
-   * when `users.primary_organization_id` is null, so a `null` return there
-   * means the user truly has zero memberships — that's the only signal we
-   * need to gate auto-bootstrap.
-   *
-   * Returns null and writes the error response on failure.
-   */
-  async function resolveOrAutoBootstrapOrg(
+  /** Explicit organization selection is required; agent writes cannot onboard. */
+  async function resolveExplicitRegistrationOrg(
     req: import('express').Request,
     res: import('express').Response,
   ): Promise<{ orgId: string; orgAutoCreated: boolean } | null> {
-    const requestedOrgId =
-      typeof req.query.org === 'string' && req.query.org.length > 0
-        ? req.query.org
-        : null;
-
-    if (requestedOrgId) {
-      const orgId = await resolveOrgOrSendError(req, res);
-      return orgId ? { orgId, orgAutoCreated: false } : null;
-    }
-
-    const primaryOrgId = await resolvePrimaryOrganization(req.user!.id);
-    if (primaryOrgId) return { orgId: primaryOrgId, orgAutoCreated: false };
-
-    // Fresh-user path: zero memberships → auto-bootstrap.
-    const user = req.user!;
-    const isPersonal = isFreeEmail(user.email);
-    const orgName = deriveDefaultOrgName(user, isPersonal);
-
-    const outcome = await performCreateOrganization(
-      {
-        user: { id: user.id, email: user.email },
-        organization_name: orgName,
-        is_personal: isPersonal,
-        // company_type / revenue_tier / marketing_opt_in: auto-bootstrap has
-        // no UI to capture these. Caller can patch the org later.
-        isDevUser: !!(isDevModeEnabled() && getDevUser(req)),
-        requestContext: {
-          ip: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
-          userAgent: (req.headers['user-agent'] as string) || 'unknown',
-        },
-      },
-      { workos: workos!, orgDb: config.orgDb },
-    );
-
-    if (outcome.kind === 'created' || outcome.kind === 'adopted') {
-      return { orgId: outcome.orgId, orgAutoCreated: true };
-    }
-
-    // Surface the auto-bootstrap failure honestly. None of these should
-    // hit a fresh user in normal flow, but mapping them keeps the contract
-    // legible.
-    if (outcome.kind === 'domain_taken') {
-      res.status(409).json({
-        error: 'Organization exists',
-        message: `An organization for ${outcome.domain} already exists: "${outcome.existingOrgName}". Use the join-request flow instead of registering an agent here.`,
-        existing_org_id: outcome.existingOrgId,
-        existing_org_name: outcome.existingOrgName,
+    const apiKey = (req as typeof req & { apiKey?: ValidatedApiKey }).apiKey;
+    if (!apiKey && (typeof req.query.org !== 'string' || !req.query.org)) {
+      res.status(403).json({
+        error: 'organization_onboarding_disabled',
+        message: 'Select an existing organization explicitly with ?org= to register an agent.',
       });
       return null;
     }
-    if (outcome.kind === 'corporate_email_required') {
-      // Shouldn't happen — `is_personal` is derived from `isFreeEmail`.
-      res.status(400).json({ error: 'Corporate email required' });
-      return null;
-    }
-    res.status(400).json({
-      error: 'Auto-bootstrap failed',
-      message: `Could not auto-create an organization for this user (${outcome.kind}). Call POST /api/organizations explicitly.`,
-    });
-    return null;
-  }
-
-  function deriveDefaultOrgName(
-    user: { email: string; firstName?: string; lastName?: string },
-    isPersonal: boolean,
-  ): string {
-    if (isPersonal) {
-      const suffix = "'s Workspace";
-      const fullName = [user.firstName, user.lastName]
-        .filter(Boolean)
-        .join(' ')
-        .normalize('NFC')
-        .replace(/[^\p{L}\p{N} \-_'.‘’]/gu, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .replace(/^[^\p{L}\p{N}]+/u, '')
-        .substring(0, 100 - suffix.length);
-      return fullName ? `${fullName}${suffix}` : 'Personal Workspace';
-    }
-    const domain = getCompanyDomain(user.email) || '';
-    const root = domain.split('.')[0] || 'Organization';
-    return root.charAt(0).toUpperCase() + root.slice(1);
+    const orgId = await resolveOrgOrSendError(req, res);
+    return orgId ? { orgId, orgAutoCreated: false } : null;
   }
 
   type AgentRegistrationValidation =
@@ -451,7 +375,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
   // POST /api/me/agents — register or update a single agent (idempotent on url)
   router.post('/', requireAuth, brandCreationRateLimiter, async (req, res) => {
     try {
-      const resolved = await resolveOrAutoBootstrapOrg(req, res);
+      const resolved = await resolveExplicitRegistrationOrg(req, res);
       if (!resolved) return;
       const { orgId, orgAutoCreated } = resolved;
 

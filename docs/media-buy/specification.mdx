@@ -118,6 +118,156 @@ create, and update. A selected set exactly equal to the product's complete
 `mode: "included"` set is an inherent restatement and does not require
 `overlay_support.placement_selection`; partial selection does.
 
+### Frequency-cap scope and product support
+
+Pick the field by what you are doing:
+
+| Role | You want to | Use |
+|---|---|---|
+| Buyer | Cap one package with its own counter | `packages[].targeting_overlay.frequency_cap` (or `purchases[]` on `buy_products`); require any package-cap support with `required_overlay_support.frequency_cap: true` |
+| Buyer | Cap the whole buy with one shared counter | root `frequency_cap` on the create, update, or buy request; require support with `required_media_buy_support` |
+| Buyer | Keep a cap editable after creation | `required_overlay_support.frequency_cap_support.mutable_fields` for package caps and `required_media_buy_support.frequency_cap_constraints.mutable_fields` for the root cap at discovery; whether a live buy can change now is `MediaBuy.available_actions` |
+| Buyer | Change the root cap on a live buy | `control_media_buy` with `frequency_cap` (`null` clears it); requires `update_media_buy_frequency_cap` in `available_actions` |
+| Buyer | Add a product to a buy that has a root cap | `update_media_buy.new_packages`; every added product must participate in the shared counter or the whole update is rejected |
+| Seller | Say a product accepts package caps as it always has | `Product.overlay_support.frequency_cap: true` |
+| Seller | Say a product accepts package caps only within limits, or create-only | `Product.overlay_support.frequency_cap_support` |
+| Seller | Say a product can join one counter shared across the buy | `Product.media_buy_support.frequency_cap: true`, plus seller-wide `media_buy.aggregate_frequency_capping` |
+
+Scope is determined by field location. A cap nested in a package
+`targeting_overlay` owns an independent counter for that package. A root
+`frequency_cap` on a MediaBuy request, accepted commercial terms, or MediaBuy
+state owns one counter shared across every package. `FrequencyCap` therefore
+defines no `scope` discriminator; unknown extension fields remain accepted but
+cannot change the scope established by location. When both levels are present,
+an impression is eligible only when both caps permit it. Repeating the same
+package cap on every package does not create a shared counter.
+
+#### Package caps
+
+The legacy package capability remains
+`Product.overlay_support.frequency_cap: true`, with its existing broad meaning
+within seller-wide limits. A product that is constrained or create-only uses
+the separate `frequency_cap_support` field instead:
+
+```json
+{
+  "overlay_support": {
+    "frequency_cap_support": {
+      "mutable_fields": ["max_impressions"],
+      "supported_control_modes": ["max_impressions"],
+      "supported_per_units": ["individuals"],
+      "max_impressions_constraints": {
+        "minimum": 1,
+        "maximum": 10
+      },
+      "window_constraints": [{
+        "unit": "days",
+        "allowed_intervals": [1, 7, 30]
+      }]
+    }
+  }
+}
+```
+
+Older buyers ignore the new field and see no legacy frequency-cap promise,
+which is safe. A product declares one form or the other; the schema rejects
+both together, so a structured declaration is always binding. A structured
+buyer requirement matches either a containing `frequency_cap_support` object
+or the broad legacy declaration, so buyers send `frequency_cap_support` alone;
+a requirement carrying both is likewise rejected, because `frequency_cap: true`
+alone would exclude every constrained product. Legacy `frequency_cap: true`
+promises the broad contract, including changes through `update_frequency_caps`;
+a seller that cannot change a product's cap after creation switches that
+product to `frequency_cap_support` with `mutable_fields: []`.
+
+Each count or duration constraint is either an exhaustive preset list or an
+inclusive range, never both, so a unit-only declaration never implies support
+for every interval or count. A field omitted from `frequency_cap_support`
+inherits the seller-wide `media_buy.frequency_capping` declaration and never
+broadens it: an omitted `supported_per_units` inherits the seller-wide per
+units, and omitted `window_constraints` or `suppression_constraints` inherit
+the seller-wide `supported_window_units` with no interval restriction, so a
+product that needs interval limits must declare them. A product value absent
+from the seller-wide declaration is invalid. A weekly window is
+`{ "interval": 7, "unit": "days" }`; there is no `weeks` unit. `mutable_fields` lists the cap fields that can change after
+creation: `[]` means create-only, `["max_impressions"]` permits a count change
+while keeping `per` and `window` fixed, and omission leaves update support
+undeclared. A product that omits `mutable_fields`, like one declaring legacy
+`frequency_cap: true`, matches any `mutable_fields` requirement because the
+broad legacy meaning applies; `[]` never matches a non-empty requirement.
+Product capability describes implementation support, and a product with a
+non-empty `mutable_fields` SHOULD also list `update_frequency_caps` in its
+`allowed_actions` template; `MediaBuy.available_actions` remains authoritative
+for whether a particular buy can change now.
+
+Discovery matching uses subset containment after inheritance. A requested
+window or suppression unit matches when the product's resolved unit list
+contains it: the product's own `window_constraints` or
+`suppression_constraints` when present, otherwise the seller-wide
+`supported_window_units` (omitted means every unit).
+
+`update_frequency_caps` authorizes package-cap changes. For heterogeneous
+packages, the action carries `applicable_package_ids`; omission means every
+package. A missing action or a package outside that list returns
+`ACTION_NOT_ALLOWED`; a cap shape outside product capability, including a
+change to a field not listed in `mutable_fields`, returns
+`UNSUPPORTED_FEATURE`; a change outside accepted commercial terms returns
+`REQUOTE_REQUIRED`. These checks run in that order: `available_actions`
+authorization first, then product capability, then accepted commercial terms,
+so a request that fails more than one returns the earliest code. Failure
+preserves state.
+
+#### Shared MediaBuy caps
+
+Aggregate support is advertised separately as
+`media_buy.aggregate_frequency_capping`; the legacy `media_buy.frequency_capping`
+object continues to mean package support. Participation is product-scoped as
+`Product.media_buy_support.frequency_cap: true`, optionally narrowed by
+`frequency_cap_constraints`. Every selected product must advertise
+participation and must support the root cap's `per` value; a product mix that
+does not is rejected atomically. Discovery uses `required_media_buy_support`
+when the value is not yet known, and `media_buy_frequency_cap` when the exact
+aggregate value must be executable; the exact value alone suffices because it
+implies participation. In 3.2, root caps are max-impression caps only: duration
+windows are rolling, `campaign` spans the MediaBuy flight, and the units are
+the same as package caps (a weekly window is seven `days`). Suppression remains
+package-only because its legacy value does not identify a counter entity.
+
+A root cap outside the seller-wide capability or any selected product's
+resolved constraints, or a product mix that cannot share it, is rejected with
+`UNSUPPORTED_FEATURE` before any mutation; sellers MUST NOT silently drop,
+soften, or clamp it. A create, update, or buy response that does not echo the
+root cap means the seller did not apply it; buyers MUST treat the buy as
+uncapped and MUST NOT assume the cap is enforced. `media_buy_support.frequency_cap_constraints.mutable_fields`
+declares whether a product's implementation can change the root cap after
+creation, and a product declaring a non-empty list SHOULD also list
+`update_media_buy_frequency_cap` in its `allowed_actions` template;
+`MediaBuy.available_actions` decides whether a live buy can change now. A
+root-cap change inside accepted commercial terms uses `control_media_buy` and
+applies immediately; a change the accepted terms do not permit returns
+`REQUOTE_REQUIRED` and goes through proposal refinement. The same order
+applies to the root cap: a change on a buy whose `available_actions` omits
+`update_media_buy_frequency_cap` returns `ACTION_NOT_ALLOWED` before any
+capability check, a cap the seller-wide domain or a selected product cannot
+execute returns `UNSUPPORTED_FEATURE` before any commercial-terms check, and
+only then does a change outside accepted terms return `REQUOTE_REQUIRED`.
+`frequency_cap_constraints.mutable_fields` governs which fields of an existing
+root cap may change; clearing the cap, or setting one on an uncapped buy, is
+governed by the action alone.
+
+Cross-MediaBuy or cross-order counters require a separately identified grouping
+resource; they are not another value of `FrequencyCap.scope`.
+
+Changing a cap never resets its counter. Prior qualifying exposures in the
+resulting active window continue to count. Adding or removing a package also
+does not reset or subtract aggregate history. A package addition or proposal
+revision whose resulting product mix cannot enforce the root cap is rejected
+atomically; the check applies to the state the request would produce, so an
+update that clears the root cap and adds packages in one request adds them
+uncapped. Proposal refinement uses `remove_media_buy_frequency_cap: true` to
+clear a cap because omission inherits it. Successful creates, updates, and reads
+echo root and package caps at their separate locations.
+
 ### Product identity absence and reach reporting (experimental)
 
 `Product.identity` is an optional, product-scoped declaration for inventory
@@ -129,10 +279,9 @@ seller using this experimental surface lists `media_buy.product_identity` in
 undeclared, not proof of identifier availability.
 
 When `persistent_identifier` is `false`, the product MUST NOT declare
-`overlay_support.frequency_cap`. A seller that cannot enforce a requested cap
-rejects it under the existing exact-apply-or-reject package rule; it never
-accepts and ignores the field. This uses the product's existing
-`overlay_support` contract, not a second seller-wide targeting declaration.
+`overlay_support.frequency_cap`, `overlay_support.frequency_cap_support`, or
+`media_buy_support.frequency_cap`. A seller that cannot enforce a requested cap
+rejects it under the exact-apply-or-reject rule; it never accepts and ignores it.
 
 Delivery for such a product MUST NOT report `reach_unit` as `devices`,
 `accounts`, or `cookies`. `individuals` and `households` remain valid for
@@ -432,7 +581,12 @@ Modify an existing media buy's budget, targeting, or settings.
 **Requirements:**
 - Orchestrators MUST include `media_buy_id`
 - Sales agents MUST accept any `media_buy_id` returned by `get_media_buys` for the authenticated account and MUST NOT refuse updates on the basis that the buy was originally created outside AdCP. Business constraints on specific operations are expressed by omitting them from `valid_actions`. See [Account Ownership vs. Creation Surface](#account-ownership-vs-creation-surface).
-- Sales agents MUST apply PATCH semantics: only specified fields are updated; omitted fields remain unchanged
+- Sales agents MUST apply PATCH semantics: only specified fields are updated;
+  omitted fields remain unchanged. Within a request-side package
+  `targeting_overlay`, this rule applies per dimension: omission preserves the
+  dimension, a non-null value replaces it, and `null` clears it. Successful
+  response and readback schemas contain only the resulting non-null targeting
+  state.
 - When a buyer attempts to cancel a media buy already in `canceled` (`canceled: true` on a `canceled` buy), sales agents MUST reject with `NOT_CANCELLABLE`
 - All other updates to media buys in terminal states (`completed`, `rejected`, `canceled`) — including `canceled: true` attempts against `completed` or `rejected` buys — MUST be rejected with `INVALID_STATE`
 - Orchestrators MAY cancel a media buy by setting `canceled: true` with optional `cancellation_reason`
@@ -609,7 +763,7 @@ Common error codes:
 - `TERMS_REJECTED`: Buyer-proposed `measurement_terms` were rejected by the seller. Error details SHOULD identify which term failed and the seller's acceptable range or supported vendors. Recovery: adjust the proposed terms and retry, or omit `measurement_terms` to accept the product's defaults.
 - `BIDDING_PLACEMENT_CONFLICT`: Media-buy/package bidding scopes cannot be represented by the provider's native campaign, package, or shared-strategy placement. Sellers MUST reject before mutation and identify conflicting scopes where safe.
 - `AMBIGUOUS_BIDDING_POLICY`: Canonical `bidding` and legacy bidding fields are both present on the same effective package. Sellers reject rather than choosing precedence.
-- `REQUOTE_REQUIRED`: An `update_media_buy` request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The `pricing_option` remains locked; the seller is declining the requested shape at that price. Distinct from `TERMS_REJECTED` (measurement) and `POLICY_VIOLATION` (content). Recovery in 3.1 is to adjust the update to fit the current quote, rediscover products/terms, add packages when `add_packages` is available, or create a separate media buy. AdCP 3.1 does not define an amendment-quote artifact that can be attached to `update_media_buy`. Sellers SHOULD populate `error.details.envelope_field` with the field path(s) that breached the envelope (e.g., `packages[0].budget`, `end_time`) so the buyer's agent can autonomously re-discover.
+- `REQUOTE_REQUIRED`: An `update_media_buy` request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The `pricing_option` remains locked; the seller is declining the requested shape at that price. Distinct from `TERMS_REJECTED` (measurement) and `POLICY_VIOLATION` (content). Details SHOULD follow [`error-details/requote-required.json`](https://adcontextprotocol.org/schemas/latest/error-details/requote-required.json): `envelope_field` names the breached paths, `change_term_id` identifies the governing accepted right when present, and `decline_reason` SHOULD classify a structured seller-policy reason when the coarse dimension is safe to disclose. AdCP 3.2 buyers use the reason to inform refinement of `accepted_proposal_id`; some policies still require the buyer-safe message, a free-text `ask`, or human negotiation. Legacy 3.1 callers adjust the update, rediscover products or terms, add packages when available, or create a separate media buy.
 - `VALIDATION_ERROR`: Request format or parameter errors
 - `AUTH_MISSING`: No credentials were presented. Recovery: correctable.
 - `AUTH_INVALID`: Credentials were presented but rejected (expired / revoked / malformed). Recovery: terminal.

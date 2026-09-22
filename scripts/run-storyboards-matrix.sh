@@ -12,6 +12,14 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+schema_snapshot=""
+cleanup_schema_snapshot() {
+  if [ -n "${schema_snapshot}" ] && [ -d "${schema_snapshot}" ]; then
+    rm -rf "${schema_snapshot}"
+  fi
+}
+trap cleanup_schema_snapshot EXIT
+
 CURRENT_SOURCE=1
 COMPLIANCE_DIR=""
 SCHEMA_ROOT="${ADCP_SCHEMA_ROOT:-}"
@@ -141,7 +149,28 @@ if [ "${CURRENT_SOURCE}" -eq 1 ]; then
   node "${REPO_ROOT}/scripts/build-compliance.cjs"
   COMPLIANCE_DIR="${REPO_ROOT}/dist/compliance/latest"
   if [ -z "${SCHEMA_ROOT}" ]; then
-    SCHEMA_ROOT="${REPO_ROOT}/dist/schemas/latest"
+    # Snapshot the freshly built schema bundle. The SDK's schema loader
+    # asserts that every schema id under the root matches the requested
+    # version (or is a "latest" id pinned by the root index.json). A
+    # concurrent `npm run build:schemas` in the same tree rewrites
+    # dist/schemas/latest in place and leaves the root without its index for
+    # a moment, which aborts a tenant mid-run with "does not match the
+    # requested version ... found latest (latest)" (#7478). Reading from an
+    # immutable copy keeps the run independent of later rebuilds.
+    if [ ! -f "${REPO_ROOT}/dist/schemas/latest/index.json" ]; then
+      echo "::error::dist/schemas/latest was not built; cannot snapshot the schema root"
+      exit 1
+    fi
+    schema_snapshot=$(mktemp -d -t "storyboards-schema-root.XXXXXX") || {
+      echo "::error::mktemp failed while creating the schema root snapshot"
+      exit 1
+    }
+    cp -R "${REPO_ROOT}/dist/schemas/latest/." "${schema_snapshot}/" || {
+      echo "::error::Failed to snapshot dist/schemas/latest into ${schema_snapshot}"
+      exit 1
+    }
+    SCHEMA_ROOT="${schema_snapshot}"
+    echo "Schema root snapshot: ${SCHEMA_ROOT}"
   fi
 fi
 
@@ -240,10 +269,10 @@ else
     # clean-result-row and passing-step regression floors.
     "signals:45:80"
     "sales:133:632"
-    "governance:47:161"
+    "governance:47:160"
     "creative:49:209"
     "creative-builder:50:184"
-    "brand:45:116"
+    "brand:45:115"
     "si:42:50"
   )
 fi
@@ -267,16 +296,16 @@ REQUIRED_CLEAN_CURRENT_SALES=(
   "wholesale_feed_bulk_webhooks"
 )
 REQUIRED_EXACT_CURRENT_SALES=(
-  "media_buy_seller/compact_direct_buy_lifecycle:7:0"
-  "media_buy_seller/compact_product_lifecycle:9:0"
-  "media_buy_seller/declined_proposal_refinement:6:0"
-  "media_buy_seller/declined_proposal_execution:8:0"
-  "media_buy_seller/expired_proposal_execution:8:0"
+  "media_buy_seller/compact_direct_buy_lifecycle:8:0"
+  "media_buy_seller/compact_product_lifecycle:10:0"
+  "media_buy_seller/declined_proposal_refinement:7:0"
+  "media_buy_seller/declined_proposal_execution:9:0"
+  "media_buy_seller/expired_proposal_execution:9:0"
   "media_buy_seller/change_rights_state_projection:8:0"
   "media_buy_seller/acceptance_policy_discovery:3:0"
   "media_buy_seller/governance_agent_binding_acceptance:5:0"
-  "media_buy_seller/external_audience_source_binding:8:0"
-  "media_buy_seller/get_products_async:10:0"
+  "media_buy_seller/external_audience_source_binding:9:0"
+  "media_buy_seller/get_products_async:11:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"

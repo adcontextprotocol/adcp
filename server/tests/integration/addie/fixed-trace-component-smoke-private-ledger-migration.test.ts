@@ -39,6 +39,29 @@ function deferred() {
   return { promise, resolve: () => resolve?.() };
 }
 
+async function waitForBarrier(promise: Promise<void>, description: string) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timed out waiting for ${description}`)), 5_000);
+      }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
+async function waitForRowLock(waiterPid: number, blockerPid: number, queryFragment: string) {
+  await expect.poll(async () => (await client!.query(
+    `SELECT state, wait_event_type, wait_event, query, pg_blocking_pids(pid) AS blockers
+       FROM pg_stat_activity WHERE pid = $1`,
+    [waiterPid],
+  )).rows, { timeout: 5_000, interval: 10, message: `backend ${waiterPid} must wait for a row held by ${blockerPid}` }).toEqual([{
+    state: 'active', wait_event_type: 'Lock', wait_event: 'transactionid',
+    query: expect.stringContaining(queryFragment), blockers: expect.arrayContaining([blockerPid]),
+  }]);
+}
+
 async function insertAuthorization(
   subject = client!,
   aggregateAdmissionFingerprint = admission.fingerprints.aggregateAdmission,
@@ -380,6 +403,7 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     const opened = dispatchEntry(21);
     const precheckRead = deferred();
     const releasePrecheck = deferred();
+    const recoveryPlanAcquired = deferred();
     let blocked = false;
     await client!.query('COMMIT');
     const pool = new Pool({ connectionString: databaseUrl, max: 2 });
@@ -389,11 +413,22 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
         const mutable = connection as unknown as { query: (sql: string, values?: readonly unknown[]) => Promise<unknown> };
         const query = mutable.query.bind(connection);
         mutable.query = async (sql, values) => {
+          // This race checks ordering, including recovery's deferred COMMIT
+          // checks. Give only these test transactions room for CI scheduling;
+          // the lock-failure regression below retains the production bounds.
+          if (sql.startsWith('SET LOCAL lock_timeout =')) return query("SET LOCAL lock_timeout = '15s'");
+          if (sql.startsWith('SET LOCAL statement_timeout =')) return query("SET LOCAL statement_timeout = '15s'");
           const output = await query(sql, values);
           if (!blocked && sql.startsWith('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts') && sql.includes("status = 'intent_recorded'")) {
             blocked = true;
             precheckRead.resolve();
-            await releasePrecheck.promise;
+            await waitForBarrier(releasePrecheck.promise, 'precheck release');
+          }
+          if (sql.startsWith('SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan')
+            && sql.includes('ORDER BY assignment_id FOR UPDATE')) {
+            // Signal only after PostgreSQL returned the complete locked plan.
+            // The pending precheck cannot start its own recovery before release.
+            recoveryPlanAcquired.resolve();
           }
           return output;
         };
@@ -401,20 +436,27 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
       },
     };
     const contender = new Client({ connectionString: databaseUrl });
-    await contender.connect();
+    let pendingIntent: ReturnType<PostgresFixedTraceComponentSmokePrivateLedger['recordProviderIntent']> | undefined;
+    let recovery: ReturnType<PostgresFixedTraceComponentSmokePrivateLedger['recordUnknownExposure']> | undefined;
     try {
+      await contender.connect();
       const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(controlledPool as never);
-      const pendingIntent = ledger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId: uniqueAttemptId(), assignmentId: target.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'c'.repeat(64) });
-      await precheckRead.promise;
+      pendingIntent = ledger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId: uniqueAttemptId(), assignmentId: target.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'c'.repeat(64) });
+      await waitForBarrier(precheckRead.promise, 'provider-intent precheck');
       // This committed intent is deliberately injected after the initial
       // precheck but before the target plan lock is acquired.
       await insertIntent(contender, authorizationDigest, opened, uniqueAttemptId().slice('attempt_'.length));
-      const recovery = ledger.recordUnknownExposure(reservationFor(authorizationDigest));
+      recovery = ledger.recordUnknownExposure(reservationFor(authorizationDigest));
+      await waitForBarrier(recoveryPlanAcquired.promise, 'external recovery complete-plan lock');
       releasePrecheck.resolve();
       expect(await recovery).toEqual({ status: 'recorded' });
       expect(await pendingIntent).toEqual({ status: 'refused', reason: 'unknown_exposure' });
       expect((await client!.query("SELECT a.status, count(*) FILTER (WHERE t.status = 'intent_recorded')::int AS open FROM addie_fixed_trace_component_smoke_authorizations a LEFT JOIN addie_fixed_trace_component_smoke_attempts t USING (authorization_digest) WHERE a.authorization_digest = $1 GROUP BY a.status", [authorizationDigest])).rows).toEqual([{ status: 'unknown_exposure', open: 0 }]);
-    } finally { await contender.end(); await pool.end(); await client!.query('BEGIN'); }
+    } finally {
+      releasePrecheck.resolve();
+      await Promise.allSettled([pendingIntent, recovery]);
+      await contender.end(); await pool.end(); await client!.query('BEGIN');
+    }
   });
 
   it('reports recovery lock failure as uncertainty and never claims durable poisoning', async () => {
@@ -468,30 +510,51 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     await client!.query('COMMIT');
     const holder = new Client({ connectionString: databaseUrl });
     const direct = new Client({ connectionString: databaseUrl });
-    const pool = new Pool({ connectionString: databaseUrl, max: 1 });
-    await holder.connect(); await direct.connect();
+    const recoveryConnection = new Client({ connectionString: databaseUrl });
+    const controlledPool = {
+      connect: async () => ({
+        query: (sql: string, values?: unknown[]) => {
+          // Only this recovery transaction needs time for two DB-visible
+          // barriers. The separate 50 ms regression covers real lock failure.
+          if (sql.startsWith('SET LOCAL lock_timeout =')) return recoveryConnection.query("SET LOCAL lock_timeout = '15s'");
+          if (sql.startsWith('SET LOCAL statement_timeout =')) return recoveryConnection.query("SET LOCAL statement_timeout = '15s'");
+          return recoveryConnection.query(sql, values);
+        },
+        release: () => undefined, // Dedicated session is closed in finally.
+      }),
+    };
+    let recovery: ReturnType<PostgresFixedTraceComponentSmokePrivateLedger['recordUnknownExposure']> | undefined;
+    let directInsert: Promise<unknown> | undefined;
     try {
+      await holder.connect(); await direct.connect(); await recoveryConnection.connect();
+      const holderPid = (await holder.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+      const directPid = (await direct.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+      const recoveryPid = (await recoveryConnection.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+      // Bound the direct INSERT too, without changing any other session.
+      await direct.query("SET statement_timeout = '15s'");
       await holder.query('BEGIN');
       await holder.query('SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1 AND assignment_id = $2 FOR UPDATE', [authorizationDigest, held.assignmentId]);
-      const recovery = new PostgresFixedTraceComponentSmokePrivateLedger(pool).recordUnknownExposure(reservationFor(authorizationDigest));
+      recovery = new PostgresFixedTraceComponentSmokePrivateLedger(controlledPool as never).recordUnknownExposure(reservationFor(authorizationDigest));
       let recoverySettled = false;
       void recovery.then(() => { recoverySettled = true; });
-      await new Promise((resolve) => setTimeout(resolve, 75));
+      await waitForRowLock(recoveryPid, holderPid, 'ORDER BY assignment_id FOR UPDATE');
       expect(recoverySettled).toBe(false);
       let directSettled = false;
-      const directInsert = insertIntent(direct, authorizationDigest, inserted, uniqueAttemptId().slice('attempt_'.length))
+      directInsert = insertIntent(direct, authorizationDigest, inserted, uniqueAttemptId().slice('attempt_'.length))
         .then(() => undefined, (error: unknown) => error)
         .then((outcome) => { directSettled = true; return outcome; });
-      await new Promise((resolve) => setTimeout(resolve, 75));
+      await waitForRowLock(directPid, recoveryPid, 'INSERT INTO addie_fixed_trace_component_smoke_attempts');
       expect(directSettled).toBe(false);
       await holder.query('COMMIT');
       expect(await recovery).toEqual({ status: 'recorded' });
       expect(await directInsert).toBeInstanceOf(Error);
+      expect(await directInsert).toMatchObject({ code: 'P0001', message: 'provider assignment is already terminal' });
       expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1', [authorizationDigest])).rows).toEqual([{ status: 'unknown_exposure' }]);
       expect((await client!.query('SELECT count(*)::int AS count FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1', [authorizationDigest])).rows).toEqual([{ count: 0 }]);
     } finally {
       await holder.query('ROLLBACK').catch(() => undefined);
-      await holder.end(); await direct.end(); await pool.end(); await client!.query('BEGIN');
+      await Promise.allSettled([recovery, directInsert]);
+      await holder.end(); await direct.end(); await recoveryConnection.end(); await client!.query('BEGIN');
     }
   });
 
@@ -534,39 +597,65 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     const entry = plan.find((candidate) => candidate.disposition === 'local_terminal')!;
     const recoveryAtPlanSet = deferred();
     const releaseRecovery = deferred();
+    const applicationAtGate = deferred();
+    let applicationGateAcquired = false;
+    let applicationTargetRequested = false;
     let blocked = false;
     await client!.query('COMMIT');
     const pool = new Pool({ connectionString: databaseUrl, max: 2 });
-    const recoveryPool = {
+    const ledgerPool = (isRecovery: boolean) => ({
       connect: async () => {
         const connection = await pool.connect();
         const mutable = connection as unknown as { query: (sql: string, values?: readonly unknown[]) => Promise<unknown> };
         const query = mutable.query.bind(connection);
         mutable.query = async (sql, values) => {
-          if (!blocked && sql.startsWith('SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan')) {
+          // This test proves lock ordering. Production timeout bounds are
+          // covered separately; do not race CI scheduling against 250 ms.
+          if (sql.startsWith('SET LOCAL lock_timeout =')) return query("SET LOCAL lock_timeout = '5s'");
+          if (sql.startsWith('SET LOCAL statement_timeout =')) return query("SET LOCAL statement_timeout = '5s'");
+          if (isRecovery && !blocked && sql.startsWith('SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan')) {
             blocked = true;
             recoveryAtPlanSet.resolve();
             await releaseRecovery.promise;
           }
+          if (!isRecovery && sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN ROW EXCLUSIVE MODE') {
+            const pending = query(sql, values);
+            applicationAtGate.resolve();
+            const result = await pending;
+            applicationGateAcquired = true;
+            return result;
+          }
+          if (!isRecovery && sql.includes('FROM addie_fixed_trace_component_smoke_run_plan')) applicationTargetRequested = true;
           return query(sql, values);
         };
         return connection;
       },
-    };
+    });
+    let recovery: ReturnType<PostgresFixedTraceComponentSmokePrivateLedger['recordUnknownExposure']> | undefined;
+    let application: ReturnType<PostgresFixedTraceComponentSmokePrivateLedger['recordNonDispatchTerminal']> | undefined;
     try {
-      const recoveryLedger = new PostgresFixedTraceComponentSmokePrivateLedger(recoveryPool as never);
-      const applicationLedger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
-      const recovery = recoveryLedger.recordUnknownExposure(reservationFor(authorizationDigest));
-      await recoveryAtPlanSet.promise;
-      let applicationSettled = false;
-      const application = applicationLedger.recordNonDispatchTerminal({ reservation: reservationFor(authorizationDigest), assignmentId: entry.assignmentId, status: 'local_terminal' })
-        .then((outcome) => { applicationSettled = true; return outcome; });
-      await new Promise((resolve) => setTimeout(resolve, 75));
-      expect(applicationSettled).toBe(false);
+      const recoveryLedger = new PostgresFixedTraceComponentSmokePrivateLedger(ledgerPool(true) as never);
+      const applicationLedger = new PostgresFixedTraceComponentSmokePrivateLedger(ledgerPool(false) as never);
+      recovery = recoveryLedger.recordUnknownExposure(reservationFor(authorizationDigest));
+      expect(await Promise.race([
+        recoveryAtPlanSet.promise.then(() => 'paused'), recovery.then(() => 'settled'),
+      ])).toBe('paused');
+      application = applicationLedger.recordNonDispatchTerminal({ reservation: reservationFor(authorizationDigest), assignmentId: entry.assignmentId, status: 'local_terminal' });
+      expect(await Promise.race([
+        applicationAtGate.promise.then(() => 'gate'), application.then(() => 'settled'),
+      ])).toBe('gate');
+      expect(applicationGateAcquired).toBe(false);
+      expect(applicationTargetRequested).toBe(false);
       releaseRecovery.resolve();
       expect(await recovery).toEqual({ status: 'recorded' });
       expect(await application).toEqual({ status: 'refused', reason: 'unknown_exposure' });
-    } finally { await pool.end(); await client!.query('BEGIN'); }
+      expect(applicationGateAcquired).toBe(true);
+    } finally {
+      releaseRecovery.resolve();
+      await Promise.allSettled([recovery, application]);
+      await pool.end();
+      await client!.query('BEGIN');
+    }
   });
 
   it('application terminalizes a known provider failure after its fail-stop transition', async () => {

@@ -21,11 +21,13 @@ const buildTrackCoverageGapNote = context.buildTrackCoverageGapNote as (
 
 const blockerHelperStart = dashboardSource.indexOf('function pickStoryboardBlockingReason');
 const blockerHelperEnd = dashboardSource.indexOf('function finiteCount', blockerHelperStart);
+const gradingProfileStart = dashboardSource.indexOf('function renderGradingProfileComparisons');
 const verificationPanelStart = dashboardSource.indexOf('function renderVerificationPanel');
 const verificationPanelEnd = dashboardSource.indexOf('function timeAgo', verificationPanelStart);
 if (
   blockerHelperStart < 0 ||
   blockerHelperEnd < 0 ||
+  gradingProfileStart < 0 ||
   verificationPanelStart < 0 ||
   verificationPanelEnd < 0
 ) {
@@ -35,8 +37,11 @@ if (
 const verificationContext = vm.createContext({
   buildNoticesSectionHtml: () => '',
   escapeHtml: (value: unknown) => String(value),
+  location: { origin: 'https://agenticadvertising.org' },
+  timeAgo: () => '2h ago',
 });
 vm.runInContext(dashboardSource.slice(blockerHelperStart, blockerHelperEnd), verificationContext);
+vm.runInContext(dashboardSource.slice(gradingProfileStart, verificationPanelStart), verificationContext);
 vm.runInContext(dashboardSource.slice(verificationPanelStart, verificationPanelEnd), verificationContext);
 
 type StoryboardStatus = { status?: string | null };
@@ -47,6 +52,9 @@ const renderVerificationPanel = verificationContext.renderVerificationPanel as (
   complianceStatus: Record<string, unknown> | null,
   agentUrl: string,
   hasAuth: boolean,
+) => string;
+const renderGradingProfileComparisons = verificationContext.renderGradingProfileComparisons as (
+  complianceStatus: Record<string, unknown> | null,
 ) => string;
 
 describe('dashboard track coverage-gap guidance', () => {
@@ -243,5 +251,241 @@ describe('dashboard verification blocker guidance', () => {
     expect(html).toContain('<code>get_adcp_capabilities</code>');
     expect(html).toContain('Badge issuance also requires an API-access membership tier');
     expect(html).not.toContain('before it can earn AAO Verified (Spec)');
+  });
+});
+
+describe('dashboard grading profile comparison', () => {
+  const currentComparison = {
+    scope: 'agent',
+    availability: 'current',
+    selected_profile: 'legacy',
+    compliance_bundle_version: '3.1.20',
+    assessed_at: '2026-09-15T10:00:00.000Z',
+    source_tested_at: '2026-09-15T09:59:00.000Z',
+    source_run_id: '11111111-1111-4111-8111-111111111111',
+    evaluator_policy_version: 'verification-profiles-v3',
+    requested_compliance_target: '3.1',
+    profiles: {
+      legacy: { available: true, status: 'passing', observed_status: 'passing', explanation: 'Legacy passed.' },
+      spec: { available: true, status: 'partial', observed_status: 'partial', explanation: 'One bundle is incomplete.' },
+      sandbox: { available: true, status: 'passing', observed_status: 'passing', explanation: 'Observable behavior passed.' },
+    },
+    evidence: {
+      selected_storyboard_count: 12,
+      observed_failure_count: 0,
+      flat_failure_count: 0,
+      controller_gap_phase_count: 2,
+      sandbox_unresolved_bundle_count: 0,
+    },
+  };
+
+  it('renders agent-wide scope, all profiles, and source provenance', () => {
+    const html = renderGradingProfileComparisons({ grading_profile_comparisons: [currentComparison] });
+    expect(html).toContain('Agent-wide grading preview · 3.1.20');
+    expect(html).toContain('Legacy grading · Current');
+    expect(html).toContain('One bundle is incomplete.');
+    expect(html).toContain('11111111-1111-4111-8111-111111111111');
+    expect(html).toContain('verification-profiles-v3');
+    expect(html).toContain('0 run-level failure records');
+    expect(html).toContain('not an exact badge-role grade');
+  });
+
+  it('never renders a stale observed pass as Passed', () => {
+    const stale = structuredClone(currentComparison);
+    stale.availability = 'stale';
+    stale.profiles.legacy = {
+      available: false,
+      status: null,
+      observed_status: 'passing',
+      explanation: 'The latest comparison is stale.',
+    };
+    const html = renderGradingProfileComparisons({ grading_profile_comparisons: [stale] });
+    expect(html).toContain('Unavailable');
+    expect(html).toContain('Historical observation: passing');
+    expect(html).not.toContain('>Passed<');
+  });
+
+  it('renders missing evidence as explicitly pending', () => {
+    const html = renderGradingProfileComparisons({
+      grading_profile_comparisons: [{
+        availability: 'pending',
+        profiles: null,
+        unavailable_reason: 'No current-policy comparison is available yet.',
+      }],
+    });
+    expect(html).toContain('Agent-wide grading preview');
+    expect(html).toContain('No current-policy comparison is available yet.');
+  });
+
+  it('uses the server-provided public effect and grace deadline for exact-role selection', () => {
+    const exact = structuredClone(currentComparison);
+    exact.scope = 'badge';
+    exact.role = 'media-buy';
+    exact.adcp_version = '3.1';
+    exact.selection_enabled = true;
+    exact.selection_revision = 4;
+    exact.profiles.spec = {
+      available: true,
+      status: 'failing',
+      observed_status: 'failing',
+      explanation: 'Strict Spec fails.',
+      selectable: true,
+      assessment_id: '22222222-2222-4222-8222-222222222222',
+      public_effect: 'degrade',
+      grace_deadline: '2026-09-17T12:00:00.000Z',
+    };
+
+    const html = renderGradingProfileComparisons({
+      agent_url: 'https://agent.example.com',
+      grading_profile_comparisons: [exact],
+    });
+
+    expect(html).toContain('media-buy · AdCP 3.1');
+    expect(html).toContain('Use Strict Spec grading');
+    expect(html).toContain('data-public-effect="degrade"');
+    expect(html).toContain('The public badge will enter its degraded grace period.');
+    expect(html).toContain('Grace deadline:');
+    expect(html).not.toContain('onclick="selectGradingProfileFromComparison(this)">Select</button>');
+  });
+
+  it('labels a change from Strict Spec back to Legacy as a rollback', () => {
+    const exact = structuredClone(currentComparison);
+    exact.scope = 'badge';
+    exact.role = 'media-buy';
+    exact.adcp_version = '3.1';
+    exact.selection_enabled = true;
+    exact.selection_revision = 5;
+    exact.selected_profile = 'spec';
+    exact.profiles.legacy = {
+      available: true,
+      status: 'passing',
+      observed_status: 'passing',
+      explanation: 'Legacy passes.',
+      selectable: true,
+      assessment_id: '33333333-3333-4333-8333-333333333333',
+      public_effect: 'restore',
+      grace_deadline: null,
+    };
+
+    const html = renderGradingProfileComparisons({
+      agent_url: 'https://agent.example.com',
+      grading_profile_comparisons: [exact],
+    });
+
+    expect(html).toContain('Revert to Legacy grading');
+    expect(html).toContain('The public badge will return to active.');
+  });
+
+  it('explains a server-provided regrade without claiming a lifecycle change', () => {
+    const exact = structuredClone(currentComparison);
+    exact.scope = 'badge';
+    exact.role = 'media-buy';
+    exact.adcp_version = '3.1';
+    exact.selection_enabled = true;
+    exact.selection_revision = 2;
+    exact.profiles.spec = {
+      available: true,
+      status: 'passing',
+      observed_status: 'passing',
+      explanation: 'Strict Spec passes.',
+      selectable: true,
+      assessment_id: '44444444-4444-4444-8444-444444444444',
+      public_effect: 'regrade',
+      grace_deadline: null,
+    };
+
+    const html = renderGradingProfileComparisons({
+      agent_url: 'https://agent.example.com',
+      grading_profile_comparisons: [exact],
+    });
+
+    expect(html).toContain('data-public-effect="regrade"');
+    expect(html).toContain('keep its lifecycle status and show the newly selected grading profile');
+  });
+});
+
+describe('dashboard badge grading profile labels', () => {
+  it.each([
+    { grading_profile: 'legacy', expected: 'Legacy grading' },
+    { grading_profile: 'spec', expected: 'Strict Spec grading' },
+  ])('keeps evidence mode separate from $expected', ({ grading_profile, expected }) => {
+    const html = renderVerificationPanel({
+      status: 'verified',
+      verified_badges: [{
+        role: 'media-buy',
+        adcp_version: '3.1',
+        verification_modes: ['spec'],
+        grading_profile,
+        verified_specialisms: ['sales-agent'],
+        badge_url: '/api/registry/agents/example/badge/media-buy.svg',
+      }],
+    }, 'https://agent.example.com', true);
+
+    expect(html).toContain(`Media Buy Agent 3.1 (Spec) · ${expected}`);
+    expect(html).toContain(`alt="AAO Verified Media Buy Agent 3.1 (Spec) · ${expected}"`);
+  });
+
+  const badge = (role: string, adcpVersion: string) => ({
+    role,
+    adcp_version: adcpVersion,
+    verification_modes: ['spec'],
+    grading_profile: 'spec',
+    verified_specialisms: [],
+    badge_url: `/api/registry/agents/example/badge/${role}.svg`,
+  });
+
+  it('groups parallel versions under one role heading without repeating the role in visual labels', () => {
+    const html = renderVerificationPanel({
+      status: 'verified',
+      verified_badges: [badge('media-buy', '3.1'), badge('media-buy', '3.0')],
+    }, 'https://agent.example.com', true);
+
+    expect(html).toContain('<strong>Media Buy Agent</strong>');
+    expect(html).toContain('<span>2 versions</span>');
+    expect(html).toContain('<strong>AdCP 3.1 (Spec) · Strict Spec grading</strong>');
+    expect(html).toContain('<strong>AdCP 3.0 (Spec) · Strict Spec grading</strong>');
+    expect(html).not.toContain('<strong>Media Buy Agent 3.1');
+  });
+
+  it('keeps four badges expanded while still grouping parallel versions', () => {
+    const html = renderVerificationPanel({
+      status: 'verified',
+      verified_badges: [
+        badge('media-buy', '3.1'),
+        badge('media-buy', '3.0'),
+        badge('creative', '3.1'),
+        badge('signals', '3.1'),
+      ],
+    }, 'https://agent.example.com', true);
+
+    expect(html).toContain('4 badges across 3 roles');
+    expect(html).not.toContain('verification-latest-only');
+    expect(html).not.toContain('verification-version-toggle');
+  });
+
+  it('defaults five badges to latest-per-role with an accessible show-all control', () => {
+    const html = renderVerificationPanel({
+      status: 'verified',
+      verified_badges: [
+        badge('media-buy', '3.2'),
+        badge('media-buy', '3.10'),
+        badge('media-buy', '3.1'),
+        badge('creative', '3.1'),
+        badge('signals', '3.1'),
+      ],
+    }, 'https://agent.example.com', true);
+
+    expect(html).toContain('agent-verification-panel verification-latest-only');
+    expect(html).toContain('class="verification-version-toggle"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('Show all versions');
+    expect(html.match(/is-older-version/g)).toHaveLength(2);
+    expect(html.indexOf('AdCP 3.10')).toBeLessThan(html.indexOf('AdCP 3.2'));
+  });
+
+  it('wires the version disclosure to its panel state and ARIA state', () => {
+    expect(dashboardSource).toContain("panel.classList.toggle('verification-latest-only')");
+    expect(dashboardSource).toContain("versionToggle.setAttribute('aria-expanded', String(!latestOnly))");
+    expect(dashboardSource).toContain("versionToggle.textContent = latestOnly ? 'Show all versions' : 'Show latest only'");
   });
 });

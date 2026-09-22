@@ -16,6 +16,28 @@ AdCP answers both with structured terms already on the wire: `measurement_terms.
 
 This page ties those pieces together.
 
+<Note>
+**Billing authority and Reliable Reporting are separate contracts today.**
+[Reliable Reporting](/docs/media-buy/reporting-core-implementation-guide)
+(experimental in 3.2) answers a different question: *did the report I was
+promised arrive, intact, on time?* It gives the seller-produced feed
+obligations, immutable revisions, a binding digest, health states, and — when
+the seller opts in — a buyer-to-seller
+[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status)
+loop. None of that decides whose *count* governs the invoice, which is what
+this page's `billing_measurement` does.
+
+So both surfaces can read green while an invoice is still disputed: a buyer's
+consumer status can be `received` and the seller's health `complete` on a feed
+whose numbers sit outside `max_variance_percent` of the authoritative party's.
+`reporting-delivery-config.json` reserves an `authoritative_party` field
+(`seller` | `consumer`, default `seller`) so the two models can be unified
+additively. In 3.2 the only accepted value is `seller`; sellers MUST reject
+`consumer` with `UNSUPPORTED_FEATURE` because no released minor defines the
+buyer-deposited revision task. Tracked in
+[#7440](https://github.com/adcontextprotocol/adcp/issues/7440).
+</Note>
+
 ## Naming authority
 
 `measurement_terms.billing_measurement` carries:
@@ -31,7 +53,7 @@ Absence is informative: when `billing_measurement` is absent the default is sell
 
 ## Marking numbers as final
 
-Final means **settled for the named measurement window** — not "final forever." A broadcast row marked `is_final: true` for `measurement_window: "c3"` is final for C3; a later `c7` row supersedes it with its own provisional → final lifecycle. Disputes (when AdCP 3.2 adds them) join on `(media_buy_id, reporting_period, measurement_window)`.
+Final means **settled for the named measurement window** — not "final forever." A broadcast row marked `is_final: true` for `measurement_window: "c3"` is final for C3; a later `c7` row supersedes it with its own provisional → final lifecycle. A future structured dispute would join on `(media_buy_id, reporting_period, measurement_window)`; 3.2 does not define one.
 
 ### On `get_media_buy_delivery`
 
@@ -42,6 +64,19 @@ Each row in `media_buy_deliveries[]` carries:
 - Per-package: `by_package[*].is_final`, `by_package[*].finalized_at`, `by_package[*].measurement_window`, `by_package[*].supersedes_window`.
 
 ### On `report_usage`
+
+<Info>
+**Predecessor path.** For media-buy billing, `report_usage` is the
+pre-Reliable-Reporting channel for buyer- and vendor-attested numbers. It has no
+obligations, no immutable revisions, no RFC 8785/JCS binding digest, no
+supersession chain, and no status surface, so a missing or restated settlement
+file is not detectable on the wire the way a missing reporting obligation is.
+It remains the supported path for the buyer-attested and vendor-attested flows
+below until a buyer-deposited revision task exists
+([#7440](https://github.com/adcontextprotocol/adcp/issues/7440)). Non-media-buy
+`report_usage` variants (signals, governance, creative, brand) are unaffected
+and are not superseded by Reliable Reporting.
+</Info>
 
 Each usage record carries:
 
@@ -110,7 +145,14 @@ When numbers disagree beyond `max_variance_percent`, AdCP 3.0–3.1 expects out-
 - Final records on both sides with `finalized_at` timestamps — a full audit trail of who said what was final, when.
 - The original `committed_metrics` and `measurement_terms` captured at `create_media_buy` — what the parties signed up for.
 
-A structured dispute task — opening a dispute on the wire, transitioning it through `under_review` / `seller_proposed_adjustment` / `buyer_accepted` / `unresolved_arbitration`, and recording resolution in the audit log — is targeted for AdCP 3.2. The data shape needed to dispute (final records, attestation, measurement window, makegood menu) is already on the wire in 3.1.
+A structured dispute task — opening a dispute on the wire, transitioning it through `under_review` / `seller_proposed_adjustment` / `buyer_accepted` / `unresolved_arbitration`, and recording resolution in the audit log — does not exist in 3.2 and is not scheduled for it. The data shape needed to dispute (final records, attestation, measurement window, makegood menu) is already on the wire in 3.1, and Reliable Reporting has since added the first piece of the eventual lifecycle: `reporting-status-issue.json` carries `issue_state` (`open` / `acknowledged` / `resolved` / `waived`), `opened_at`, and an inert `external_ref` for correlation with each side's own ticketing. A shared dispute lifecycle built on those fields is tracked in [#7440](https://github.com/adcontextprotocol/adcp/issues/7440).
+
+A variance beyond `max_variance_percent` is **not** a
+`sync_reporting_status` `content_mismatch`. That consumer status is reserved
+for contract facts the accepted reporting configuration generation already
+fixed — a frozen media buy missing from the denominator, a promised metric
+absent, the wrong currency. A disagreement about how many impressions occurred
+is a measurement dispute and stays here, under `makegood_policy`.
 
 ## Worked example: buyer-attested 3PAS reconciliation
 
@@ -180,3 +222,5 @@ Variance: `|5120000 - 5040000| / 5120000 = 1.56%` — well under the 10% thresho
 - [`report_usage`](/docs/accounts/tasks/report_usage) — buyer-side / third-party finality flags
 - [Accountability](/docs/media-buy/advanced-topics/accountability) — performance standards, makegood remedies, cancellation
 - [Reporting capabilities and measurement windows](/docs/media-buy/media-buys/optimization-reporting)
+- [Reliable Reporting: implementing `reporting.core`](/docs/media-buy/reporting-core-implementation-guide) — the operational delivery contract for the seller-produced feed
+- [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status) — buyer-to-seller consumption status, and why it is not a dispute channel
