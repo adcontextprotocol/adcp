@@ -94,10 +94,7 @@ function evaluationSnapshotFingerprint(
   // Keep PostgreSQL's text timestamp: JavaScript Date would truncate microseconds.
   // Every credential write advances updated_at; unrelated row edits may also
   // conservatively start a new generation. No credential bytes enter identity.
-  const domain = selectedMode === 'client_credentials'
-    ? 'oauth-client-credentials'
-    : selectedMode === 'authorization_code' ? 'oauth-authorization-code' : 'static-credential';
-  return agentQualityEvaluationFingerprint(domain, JSON.stringify([rowId, selectedMode, updatedAt]));
+  return agentQualityEvaluationFingerprint('row-generation', JSON.stringify([rowId, selectedMode, updatedAt]));
 }
 
 function oauthClientCredentialsFromRow(

@@ -10,15 +10,15 @@ const storedRepresentation = JSON.stringify(['context-one', 'bearer', '2026-09-2
 describe('keyed evaluation identity', () => {
   it('derives its dedicated key once and is deterministic for the same stored representation', () => {
     expect(encryption.deriveKey).not.toHaveBeenCalled();
-    const digest = agentQualityEvaluationFingerprint('static-credential', storedRepresentation);
+    const digest = agentQualityEvaluationFingerprint('row-generation', storedRepresentation);
     expect(digest).toMatch(/^[a-f0-9]{64}$/);
-    expect(agentQualityEvaluationFingerprint('static-credential', storedRepresentation)).toBe(digest);
+    expect(agentQualityEvaluationFingerprint('row-generation', storedRepresentation)).toBe(digest);
     expect(encryption.deriveKey).toHaveBeenCalledExactlyOnceWith('addie:agent-quality-evaluation:identity:v1');
   });
 
-  it('separates credential modes, auth scopes, and request identities', () => {
+  it('separates row generations, auth scopes, and request identities', () => {
     const domains = [
-      'static-credential', 'oauth-authorization-code', 'oauth-client-credentials', 'auth-scope', 'request',
+      'row-generation', 'auth-scope', 'request',
     ] as const;
     const digests = domains.map(domain => agentQualityEvaluationFingerprint(domain, storedRepresentation));
     expect(new Set(digests).size).toBe(domains.length);
@@ -28,14 +28,14 @@ describe('keyed evaluation identity', () => {
     // Python hmac/hashlib reference vector: 32-byte 0x11 key, UTF-8 JSON
     // [domain, storedRepresentation], compact separators. Detects regression
     // to an unkeyed digest or a changed identity encoding.
-    expect(agentQualityEvaluationFingerprint('static-credential', storedRepresentation))
-      .toBe('697624df998c56fb76de1293f68f1479f04dfd5acbbbe69a1e1e11819ffef798');
+    expect(agentQualityEvaluationFingerprint('row-generation', storedRepresentation))
+      .toBe('4409ca26a3dc0eb4a605ea346b8c373ef5923d8fc11e52d21de6ff15e3126ab9');
   });
 
   it('distinguishes row generations separated by one microsecond', () => {
-    const original = agentQualityEvaluationFingerprint('oauth-authorization-code', storedRepresentation);
+    const original = agentQualityEvaluationFingerprint('row-generation', storedRepresentation);
     const changed = agentQualityEvaluationFingerprint(
-      'oauth-authorization-code',
+      'row-generation',
       JSON.stringify(['context-one', 'bearer', '2026-09-22 12:00:00.123457+00']),
     );
     expect(changed).not.toBe(original);
