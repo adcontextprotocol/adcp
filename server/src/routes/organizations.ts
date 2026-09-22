@@ -789,7 +789,16 @@ export function createOrganizationsRouter(): Router {
   router.post('/', requireAuth, orgCreationRateLimiter, async (req, res) => {
     try {
       const user = req.user!;
-      const { organization_name, is_personal, company_type, revenue_tier, marketing_opt_in } = req.body;
+      const {
+        organization_name,
+        is_personal,
+        company_type,
+        revenue_tier,
+        marketing_opt_in,
+        agreements_accepted,
+        terms_version,
+        privacy_version,
+      } = req.body;
 
       // `membership_tier` and `corporate_domain` are NOT accepted from caller
       // input. Tier is owned exclusively by the Stripe webhook (any value
@@ -812,37 +821,45 @@ export function createOrganizationsRouter(): Router {
 
       const outcome = await performCreateOrganization(
         {
-          user: { id: user.id, email: user.email },
+          user: {
+            id: user.id,
+            authWorkosUserId: user.authWorkosUserId,
+            email: user.email,
+            authorizationSnapshot: user.authorizationSnapshot,
+            impersonator: user.impersonator,
+          },
+          accessToken: req.accessToken,
+          authorizationHeader: req.headers.authorization,
+          isApiKey: !!(req as Request & { apiKey?: unknown }).apiKey,
+          isStaticAdminApiKey:
+            (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true,
           organization_name,
-          is_personal: !!is_personal,
+          is_personal,
           company_type,
           revenue_tier,
           marketing_opt_in,
+          agreements_accepted,
+          terms_version,
+          privacy_version,
+          clientIdempotencyKey:
+            typeof req.headers['idempotency-key'] === 'string'
+              ? req.headers['idempotency-key']
+              : undefined,
           isDevUser: !!(isDevModeEnabled() && getDevUser(req)),
           requestContext: {
             ip: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
             userAgent: (req.headers['user-agent'] as string) || 'unknown',
           },
         },
-        { workos, orgDb },
+        { workos: AUTH_ENABLED ? getAuthorizationEnforcementWorkos() : null },
       );
 
       switch (outcome.kind) {
-        case 'onboarding_disabled':
-          return res.status(403).json({
-            error: 'organization_onboarding_disabled',
-            message: 'Organization creation and adoption are temporarily unavailable.',
-          });
         case 'created':
           return res.json({
             success: true,
             organization: { id: outcome.orgId, name: outcome.name },
-          });
-        case 'adopted':
-          return res.status(200).json({
-            id: outcome.orgId,
-            name: outcome.name,
-            adopted: true,
+            operation_id: outcome.operationId,
           });
         case 'org_limit_reached':
           return res.status(400).json({
@@ -874,17 +891,85 @@ export function createOrganizationsRouter(): Router {
             error: 'Invalid revenue tier',
             message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(', ')}`,
           });
+        case 'invalid_request':
+          return res.status(400).json({
+            error: 'Invalid request',
+            message: outcome.message,
+          });
+        case 'agreement_acceptance_required':
+          return res.status(400).json({
+            error: 'agreement_acceptance_required',
+            message: 'You must accept the current Terms of Use and Privacy Policy before creating an organization.',
+          });
         case 'corporate_email_required':
           return res.status(400).json({
             error: 'Corporate email required',
             message: 'To register a company, you must be signed in with a corporate email address. Personal email domains (Gmail, Yahoo, etc.) cannot be used for company registration.',
           });
+        case 'verified_corporate_email_required':
+          return res.status(403).json({
+            error: 'verified_corporate_email_required',
+            message: 'Verify your current corporate email with the identity provider, then sign in again before registering a company.',
+          });
         case 'domain_taken':
           return res.status(409).json({
             error: 'Organization exists',
-            message: `An organization for ${outcome.domain} already exists: "${outcome.existingOrgName}". Please search for it and request to join instead of creating a new one.`,
+            message: `An organization for ${outcome.domain} already exists: "${outcome.existingOrgName}". Ask an organization owner to invite your exact signed-in email, or contact support.`,
             existing_org_id: outcome.existingOrgId,
             existing_org_name: outcome.existingOrgName,
+          });
+        case 'prospect_adoption_unavailable':
+          return res.status(409).json({
+            error: 'organization_adoption_unavailable',
+            message: `A prospect record for ${outcome.domain} already exists as "${outcome.existingOrgName}". Self-service adoption is not yet available under the new credential-security model. Contact support to verify ownership.`,
+            existing_org_id: outcome.existingOrgId,
+            existing_org_name: outcome.existingOrgName,
+          });
+        case 'invalid_credential':
+          return res.status(401).json({
+            error: 'invalid_credential',
+            message: 'Sign in again with a WorkOS user credential to create an organization.',
+          });
+        case 'impersonation_not_allowed':
+          return res.status(403).json({
+            error: 'impersonation_not_allowed',
+            message: 'End the impersonation session and sign in as the account owner to accept legal terms and create an organization.',
+          });
+        case 'credential_changed':
+          return res.status(409).json({
+            error: 'onboarding_credential_changed',
+            message: 'Your verified identity changed during onboarding. Sign in again and submit a new request.',
+          });
+        case 'authorization_unavailable':
+          return res.status(503).json({
+            error: 'authorization_unavailable',
+            message: 'Your current identity could not be verified. No organization authority was committed; please retry.',
+          });
+        case 'idempotency_mismatch':
+          return res.status(409).json({
+            error: 'idempotency_mismatch',
+            message: 'This Idempotency-Key was already used for a different organization request.',
+          });
+        case 'onboarding_in_progress':
+          return res.status(409).json({
+            error: 'organization_onboarding_in_progress',
+            message: 'This organization request is already in progress. Retry the same request shortly.',
+            retryable: true,
+            ...(outcome.operationId ? { operation_id: outcome.operationId } : {}),
+          });
+        case 'onboarding_retryable':
+          return res.status(503).json({
+            error: 'organization_onboarding_retryable',
+            message: 'The provider did not confirm every onboarding step. Retry with the same Idempotency-Key; the existing operation will be reconciled.',
+            retryable: true,
+            operation_id: outcome.operationId,
+          });
+        case 'onboarding_reconciliation_required':
+          return res.status(503).json({
+            error: 'organization_onboarding_reconciliation_required',
+            message: 'The organization request needs support reconciliation. Do not submit a different request.',
+            retryable: false,
+            operation_id: outcome.operationId,
           });
       }
     } catch (error) {
@@ -1531,9 +1616,9 @@ export function createOrganizationsRouter(): Router {
 
   // First-owner recovery requires a separate explicit, consented operation.
   router.post('/:orgId/claim', requireAuth, async (_req, res) => {
-    return res.status(403).json({
-      error: 'organization_onboarding_disabled',
-      message: 'Organization claiming is temporarily unavailable.',
+    return res.status(409).json({
+      error: 'organization_adoption_unavailable',
+      message: 'Self-service prospect adoption is not yet available under the exact-credential security model. Contact support to verify ownership of this existing organization.',
     });
   });
 

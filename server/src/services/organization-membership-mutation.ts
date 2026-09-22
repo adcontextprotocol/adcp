@@ -9,6 +9,7 @@ import { isInvalidWorkOSJWTError, verifyWorkOSJWT } from '../auth/workos-jwt.js'
 import { DEV_USERS, isDevModeEnabled, invalidateSessionsForUsers } from '../middleware/auth.js';
 import { getSeatLimits, resolveMembershipTier, type SeatType, type MembershipTierRow } from '../db/organization-db.js';
 import { createLogger } from '../logger.js';
+import { lockExactCredentialAuthorizationRows } from './exact-credential-authorization-lock.js';
 
 const logger = createLogger('organization-membership-mutation');
 export type Role = 'owner' | 'admin' | 'member';
@@ -255,13 +256,8 @@ export class OrganizationMembershipMutation {
     // Existing identity/webhook writers take these rows in differing orders.
     // Never wait while holding a competing row: fail closed on contention,
     // rather than forming a cycle after an irreversible provider action.
-    await this.db.query('SELECT workos_user_id FROM users WHERE workos_user_id = ANY($1) ORDER BY workos_user_id FOR UPDATE NOWAIT', [ids]);
-    await this.db.query('SELECT workos_user_id FROM authorization_epochs WHERE workos_user_id = ANY($1) ORDER BY workos_user_id FOR UPDATE NOWAIT', [ids]);
-    await this.db.query('SELECT workos_user_id FROM identity_workos_users WHERE workos_user_id = ANY($1) ORDER BY workos_user_id FOR UPDATE NOWAIT', [ids]);
+    await lockExactCredentialAuthorizationRows(this.db, ids);
     await this.db.query('SELECT workos_user_id FROM organization_memberships WHERE workos_organization_id = $1 ORDER BY workos_user_id FOR UPDATE NOWAIT', [this.orgId]);
-    // Ban insertion has no existing row to lock. This short shared table lock
-    // also covers deletes/expiry updates until the local transaction commits.
-    await this.db.query('LOCK TABLE bans IN SHARE MODE NOWAIT');
     await this.checkProviderAuthority();
     await this.checkTargets();
     this.localPhase = true;
@@ -498,10 +494,7 @@ export async function cancelJoinRequestForExactCredential(req: Request, requestI
       mutationDenied('Authentication state changed; retry the request');
     }
 
-    await db.query('SELECT workos_user_id FROM users WHERE workos_user_id = $1 FOR UPDATE NOWAIT', [actorId]);
-    await db.query('SELECT workos_user_id FROM authorization_epochs WHERE workos_user_id = $1 FOR UPDATE NOWAIT', [actorId]);
-    await db.query('SELECT workos_user_id FROM identity_workos_users WHERE workos_user_id = $1 FOR UPDATE NOWAIT', [actorId]);
-    await db.query('LOCK TABLE bans IN SHARE MODE NOWAIT');
+    await lockExactCredentialAuthorizationRows(db, [actorId]);
     const current = await readCancellationSnapshot(db, actorId, orgId);
     if (current.banned) mutationDenied('Account suspended');
     if (JSON.stringify(current) !== JSON.stringify(snapshot)) mutationDenied('Authorization changed; retry the request');

@@ -295,8 +295,8 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
       const before = (await pool.query('SELECT * FROM organization_memberships WHERE workos_user_id = $1', [USER_ID])).rows;
       const res = await request(app).post('/api/me/agents')
         .send({ url: 'https://agent.boot-corp.test/mcp', type: 'sales', visibility: 'private' });
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe('organization_onboarding_disabled');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('explicit_organization_required');
       expect((await pool.query('SELECT * FROM organization_memberships WHERE workos_user_id = $1', [USER_ID])).rows).toEqual(before);
     });
   });

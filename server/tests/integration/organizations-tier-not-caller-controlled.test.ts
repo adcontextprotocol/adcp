@@ -47,8 +47,8 @@ vi.mock('@workos-inc/node', () => ({
   },
 }));
 
-vi.mock('../../src/auth/workos-client.js', () => ({
-  workos: {
+vi.mock('../../src/auth/workos-client.js', () => {
+  const workos = {
     userManagement: {
       createOrganizationMembership: mockCreateOrganizationMembership,
       listOrganizationMemberships: vi.fn().mockResolvedValue({ data: [] }),
@@ -63,8 +63,9 @@ vi.mock('../../src/auth/workos-client.js', () => ({
     adminPortal: {
       generateLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
     },
-  },
-}));
+  };
+  return { workos, getAuthorizationEnforcementWorkos: () => workos };
+});
 
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
@@ -164,8 +165,8 @@ describe('POST /api/organizations: tier and domain are not caller-controlled', (
         membership_tier: 'company_leader',
       });
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe('organization_onboarding_disabled');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('agreement_acceptance_required');
     expect(mockCreateOrganization).not.toHaveBeenCalled();
     expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
     expect((await pool.query('SELECT * FROM organizations WHERE workos_organization_id = $1', [createdOrgId])).rowCount).toBe(0);
@@ -184,8 +185,8 @@ describe('POST /api/organizations: tier and domain are not caller-controlled', (
         corporate_domain: 'someone-else.example',
       });
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe('organization_onboarding_disabled');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('agreement_acceptance_required');
     expect(mockCreateOrganization).not.toHaveBeenCalled();
     expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
     expect((await pool.query('SELECT * FROM organization_domains WHERE workos_organization_id = $1', [createdOrgId])).rowCount).toBe(0);

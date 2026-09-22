@@ -68,6 +68,8 @@ import { runOrphanOrgAudit, type OrphanOrgAuditResult } from './orphan-org-audit
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
 import { createLogger } from '../../logger.js';
+import { getAuthorizationEnforcementWorkos } from '../../auth/workos-client.js';
+import { runOrganizationOnboardingReconciliationJob } from './organization-onboarding-reconciliation.js';
 
 const logger = createLogger('job-definitions');
 
@@ -131,6 +133,20 @@ async function runContentCuratorJob() {
  * Call this on startup before starting jobs.
  */
 export function registerAllJobs(): void {
+  jobScheduler.register({
+    name: 'organization-onboarding-reconciliation',
+    description: 'Resume fenced exact-credential organization onboarding operations',
+    interval: { value: 1, unit: 'minutes' },
+    initialDelay: { value: 30, unit: 'seconds' },
+    executionTimeoutMs: 3 * 60 * 1000,
+    runner: () => runOrganizationOnboardingReconciliationJob(
+      getAuthorizationEnforcementWorkos(),
+      2,
+      10,
+    ),
+    shouldLogResult: (result) => result.attempted > 0 || result.manualQueued > 0,
+  });
+
   // Document indexer - indexes Google Docs tracked by committees
   jobScheduler.register({
     name: 'document-indexer',
@@ -1012,6 +1028,7 @@ export function registerAllJobs(): void {
  * Job names for conditional startup (e.g., Moltbook jobs only if API key is set)
  */
 export const JOB_NAMES = {
+  ORGANIZATION_ONBOARDING_RECONCILIATION: 'organization-onboarding-reconciliation',
   DOCUMENT_INDEXER: 'document-indexer',
   SUMMARY_GENERATOR: 'summary-generator',
   RELATIONSHIP_ORCHESTRATOR: 'relationship-orchestrator',
