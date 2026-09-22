@@ -506,7 +506,7 @@ Evaluate an agent's live quality and buyer behavior, including protocol quality,
 
 ### `evaluate_agent_quality`
 
-Run protocol compliance evaluation on an AdCP agent and return structured results for coaching. Tests all capability tracks the agent supports (core, products, media buy, creative, governance, signals, etc.) and collects advisory observations about performance, completeness, and best practices. Results include specific actionable observations, not just pass/fail. The public test agent works for any logged-in user with no setup required. For custom agents requiring authentication, use save_agent first.
+Evaluate an AdCP agent across its supported compliance tracks. Identical active requests coalesce across replicas and return running status. Partial receipts retain coverage/findings but cannot support definitive verdict or root-cause claims. Custom authenticated agents require save_agent first.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -574,7 +574,7 @@ Validate if an agent is authorized for a publisher domain by checking their /.we
 
 ### `evaluate_agent_quality`
 
-Run protocol compliance evaluation on an AdCP agent and return structured results for coaching. Tests all capability tracks the agent supports (core, products, media buy, creative, governance, signals, etc.) and collects advisory observations about performance, completeness, and best practices. Results include specific actionable observations, not just pass/fail. The public test agent works for any logged-in user with no setup required. For custom agents requiring authentication, use save_agent first.
+Evaluate an AdCP agent across its supported compliance tracks. Identical active requests coalesce across replicas and return running status. Partial receipts retain coverage/findings but cannot support definitive verdict or root-cause claims. Custom authenticated agents require save_agent first.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
