@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => {
   return {
     sessions: new Map<string, any>(),
     providerMemberships: new Map<string, any>(),
-    sendInvitation: vi.fn(), getInvitation: vi.fn(), revokeInvitation: vi.fn(),
+    sendInvitation: vi.fn(), getInvitation: vi.fn(), acceptInvitation: vi.fn(), revokeInvitation: vi.fn(),
     listUsers: vi.fn(), list: vi.fn(), getUser: vi.fn(), create: vi.fn(), update: vi.fn(),
     createOrg: vi.fn(), invoice: vi.fn(), products: vi.fn(), coupon: vi.fn(),
     slackSync: vi.fn(), slackConfigured: false,
@@ -21,7 +21,8 @@ vi.mock('@workos-inc/node', () => ({ WorkOS: class {
       return { authenticated: true, user, accessToken: `test-access:${user.id}` };
     } }),
     listOrganizationMemberships: mocks.list,
-    sendInvitation: mocks.sendInvitation, getInvitation: mocks.getInvitation, revokeInvitation: mocks.revokeInvitation,
+    sendInvitation: mocks.sendInvitation, getInvitation: mocks.getInvitation,
+    acceptInvitation: mocks.acceptInvitation, revokeInvitation: mocks.revokeInvitation,
     listUsers: mocks.listUsers,
     getUser: mocks.getUser,
     createOrganizationMembership: mocks.create,
@@ -78,14 +79,18 @@ const A = 'user_containment_a';
 const B = 'user_containment_b';
 const ORG = 'org_containment';
 const TOKEN = 'private-containment-token';
-const routes: Array<[string, Record<string, unknown>]> = [
-  ['/api/organizations', { organization_name: 'Acme Containment', is_personal: false }],
-  [`/api/organizations/${ORG}/claim`, {}],
-  ['/api/join-requests', { organization_id: ORG }],
-  ['/api/me/agents', { url: 'https://agent.containment.test/mcp', type: 'sales' }],
-  [`/api/invite/${TOKEN}/accept`, { agreement_version: '999.0', billingAddress: {
-    line1: '1 Example St', city: 'Example', state: 'EX', postal_code: '10000', country: 'US',
-  } }],
+const AGENT_BODY = { url: 'https://agent.containment.test/mcp', type: 'sales' };
+const TOKEN_ACCEPT_PATH = `/api/invite/${TOKEN}/accept`;
+const TOKEN_ACCEPT_BODY = { agreement_version: '999.0', billingAddress: {
+  line1: '1 Example St', city: 'Example', state: 'EX', postal_code: '10000', country: 'US',
+} };
+const routes: Array<[string, Record<string, unknown>, number, string]> = [
+  ['/api/organizations', { organization_name: 'Acme Containment', is_personal: false }, 400, 'agreement_acceptance_required'],
+  [`/api/organizations/${ORG}/claim`, {}, 409, 'organization_adoption_unavailable'],
+  ['/api/join-requests', { organization_id: ORG }, 403, 'organization_join_onboarding_unavailable'],
+  ['/api/invitations/inv_containment/accept', {}, 403, 'organization_invitation_acceptance_unavailable'],
+  ['/api/me/agents', AGENT_BODY, 400, 'explicit_organization_required'],
+  [TOKEN_ACCEPT_PATH, TOKEN_ACCEPT_BODY, 403, 'organization_onboarding_disabled'],
 ];
 let pool: Pool;
 let app: HTTPServer['app'];
@@ -120,7 +125,8 @@ async function link(primary: string, sibling: string) {
   invalidateSessionsForUsers([A, B]);
 }
 function expectNoProviders() {
-  for (const spy of [mocks.create, mocks.update, mocks.createOrg, mocks.sendInvitation, mocks.invoice, mocks.coupon, mocks.products]) {
+  for (const spy of [mocks.create, mocks.update, mocks.createOrg, mocks.sendInvitation,
+    mocks.acceptInvitation, mocks.invoice, mocks.coupon, mocks.products]) {
     expect(spy).not.toHaveBeenCalled();
   }
 }
@@ -326,26 +332,27 @@ describe('mounted implicit onboarding containment', () => {
     expect((await request(app).post(path).send(body)).status).toBe(401);
     expectNoProviders();
   });
-  it.each(routes)('linked B proof never grants canonical A via %s', async (path, body) => {
+  it.each(routes)('linked B proof never grants canonical A via %s', async (path, body, expectedStatus, expectedError) => {
     await link(A, B);
     const before = await snapshot();
     const res = await request(app).post(path).set('Cookie', cookie()).send(body);
     expectNoProviders();
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe('organization_onboarding_disabled');
+    expect(res.status).toBe(expectedStatus);
+    expect(res.body.error).toBe(expectedError);
     expect(await snapshot()).toEqual(before);
   });
   it.each([true, false, 'missing'] as const)('verification %s cannot enable suspended grants', async (verified) => {
-    for (const [path, body] of routes) {
+    for (const [path, body, expectedStatus, expectedError] of routes) {
       const res = await request(app).post(path).set('Cookie', cookie(B, verified)).send(body);
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(expectedStatus);
+      expect(res.body.error).toBe(expectedError);
     }
     expectNoProviders();
   });
   it.each([' B@CONTAINMENT.TEST ', 'b@子.test', 'alias@containment.test', 'a@unrelated.test'])('token email %s does not bypass denial', async (email) => {
     const before = await snapshot();
-    const [path, body] = routes[4];
-    expect((await request(app).post(path).set('Cookie', cookie(B, true, email)).send(body)).status).toBe(403);
+    expect((await request(app).post(TOKEN_ACCEPT_PATH).set('Cookie', cookie(B, true, email))
+      .send(TOKEN_ACCEPT_BODY)).status).toBe(403);
     expect(await snapshot()).toEqual(before);
     expectNoProviders();
   });
@@ -354,8 +361,8 @@ describe('mounted implicit onboarding containment', () => {
     if (status === 'accepted') await pool.query('UPDATE membership_invites SET accepted_at = NOW(), accepted_by_user_id = $2 WHERE token = $1', [TOKEN, B]);
     if (status === 'expired') await pool.query("UPDATE membership_invites SET expires_at = NOW() - interval '1 day' WHERE token = $1", [TOKEN]);
     const before = await snapshot();
-    const [path, body] = routes[4];
-    const results = await Promise.all([A, B].map(id => request(app).post(path).set('Cookie', cookie(id)).send(body)));
+    const results = await Promise.all([A, B].map(id => request(app).post(TOKEN_ACCEPT_PATH)
+      .set('Cookie', cookie(id)).send(TOKEN_ACCEPT_BODY)));
     expect(results.map(r => r.status)).toEqual([403, 403]);
     expect(await snapshot()).toEqual(before);
     expectNoProviders();
@@ -363,9 +370,13 @@ describe('mounted implicit onboarding containment', () => {
   it('opposite linked direction, concurrent independent sessions and unlink preserve zero transferred authority', async () => {
     await link(B, A);
     const before = await snapshot();
-    const requests = routes.flatMap(([path, body]) => [A, B].map(id =>
-      request(app).post(path).set('Cookie', cookie(id)).send(body)));
-    expect((await Promise.all(requests)).every(r => r.status === 403)).toBe(true);
+    const requests = routes.flatMap(([path, body, expectedStatus, expectedError]) => [A, B].map(async id => {
+      const response = await request(app).post(path).set('Cookie', cookie(id)).send(body);
+      expect(response.status).toBe(expectedStatus);
+      expect(response.body.error).toBe(expectedError);
+      return response;
+    }));
+    await Promise.all(requests);
     await pool.query('DELETE FROM identity_workos_users WHERE workos_user_id = $1', [A]);
     invalidateSessionsForUsers([A, B]);
     expect(await snapshot()).toEqual(before);
@@ -375,7 +386,11 @@ describe('mounted implicit onboarding containment', () => {
     mocks.list.mockRejectedValue(new Error('required source unavailable'));
     mocks.getUser.mockRejectedValue(new Error('required source unavailable'));
     const before = await snapshot();
-    for (const [path, body] of routes) expect((await request(app).post(path).set('Cookie', cookie()).send(body)).status).toBe(403);
+    for (const [path, body, expectedStatus, expectedError] of routes) {
+      const response = await request(app).post(path).set('Cookie', cookie()).send(body);
+      expect(response.status).toBe(expectedStatus);
+      expect(response.body.error).toBe(expectedError);
+    }
     expect(await snapshot()).toEqual(before);
     expectNoProviders();
   });
@@ -383,18 +398,19 @@ describe('mounted implicit onboarding containment', () => {
     for (let i = 0; i < count; i++) await pool.query(`INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role)
       VALUES ($1, $2, 'b@containment.test', 'owner')`, [B, `${ORG}_${i}`]);
     const before = await snapshot();
-    const res = await request(app).post('/api/me/agents').set('Cookie', cookie()).send(routes[3][1]);
-    expect(res.status).toBe(403);
+    const res = await request(app).post('/api/me/agents').set('Cookie', cookie()).send(AGENT_BODY);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('explicit_organization_required');
     expect(await snapshot()).toEqual(before);
     expectNoProviders();
   });
   it('explicit agent organization denies canonical sibling membership and reports provider outage as 503', async () => {
     await link(A, B);
     mocks.list.mockResolvedValue({ data: [{ userId: A, organizationId: ORG, status: 'active', role: { slug: 'owner' } }] });
-    expect((await request(app).post('/api/me/agents').query({ org: ORG }).set('Cookie', cookie()).send(routes[3][1])).status).toBe(403);
+    expect((await request(app).post('/api/me/agents').query({ org: ORG }).set('Cookie', cookie()).send(AGENT_BODY)).status).toBe(403);
     expect(mocks.list).toHaveBeenCalledWith({ userId: B, organizationId: ORG, statuses: ['active'] });
     mocks.list.mockRejectedValue(new Error('outage'));
-    expect((await request(app).post('/api/me/agents').query({ org: ORG }).set('Cookie', cookie()).send(routes[3][1])).status).toBe(503);
+    expect((await request(app).post('/api/me/agents').query({ org: ORG }).set('Cookie', cookie()).send(AGENT_BODY)).status).toBe(503);
     expectNoProviders();
   });
   it.each([

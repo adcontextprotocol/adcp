@@ -9077,45 +9077,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       }
     });
 
-    // POST /api/invitations/:invitationId/accept - Accept an invitation
+    // POST /api/invitations/:invitationId/accept - Contained until acceptance
+    // is bound to an exact credential and serialized with membership/audit.
     this.app.post('/api/invitations/:invitationId/accept', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { invitationId } = req.params;
-
-        // Get the invitation to verify it belongs to this user
-        const invitation = await workos!.userManagement.getInvitation(invitationId);
-
-        if (invitation.email.toLowerCase() !== user.email.toLowerCase()) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'This invitation is not for your email address',
-          });
-        }
-
-        if (invitation.state !== 'pending') {
-          return res.status(400).json({
-            error: 'Invalid invitation',
-            message: 'This invitation has already been accepted or has expired',
-          });
-        }
-
-        // Accept the invitation - this creates the membership
-        await workos!.userManagement.acceptInvitation(invitationId);
-
-        logger.info({ userId: user.id, invitationId, orgId: invitation.organizationId }, 'User accepted invitation');
-
-        res.json({
-          success: true,
-          message: 'Invitation accepted successfully',
-          organization_id: invitation.organizationId,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Accept invitation error:');
-        res.status(500).json({
-          error: 'Failed to accept invitation',
-        });
-      }
+      return res.status(403).json({
+        error: 'organization_invitation_acceptance_unavailable',
+        message: 'Self-service invitation acceptance is temporarily unavailable while membership is bound to your exact credential. Ask an organization owner to complete access, or contact support.',
+      });
     });
 
     // GET /api/me/joinable-organizations - Get organizations the user can request to join
@@ -9213,8 +9181,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // proof to the canonical user. Restore through the explicit consent flow.
     this.app.post('/api/join-requests', requireAuth, async (_req, res) => {
       return res.status(403).json({
-        error: 'organization_onboarding_disabled',
-        message: 'Organization join onboarding is temporarily unavailable.',
+        error: 'organization_join_onboarding_unavailable',
+        message: 'Self-service join requests are temporarily unavailable. Ask an organization owner to send a WorkOS invitation, or contact support.',
       });
     });
 
