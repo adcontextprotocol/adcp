@@ -80,7 +80,7 @@ test('request-signing prose codes have one machine-readable recovery authority',
   );
   assert.match(
     securityGuide,
-    /machine-readable authority is \[`request-signing-error-code\.json`\]\(https:\/\/adcontextprotocol\.org\/schemas\/latest\/enums\/request-signing-error-code\.json\)/,
+    /machine-readable authority is \[`request-signing-error-code\.json`\]\(https:\/\/adcontextprotocol\.org\/schemas\/v3\/enums\/request-signing-error-code\.json\)/,
   );
 });
 
