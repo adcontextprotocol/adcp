@@ -1,5 +1,6 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { getClientWithDeadline, query, withDatabaseDeadline } from './client.js';
+import { agentQualityEvaluationFingerprint } from './agent-quality-evaluation-identity.js';
 
 const DB_DEADLINE_MS = 5_000;
 
@@ -52,10 +53,6 @@ export interface AgentQualityEvaluationIdentity {
   authScope: string;
 }
 
-function sha256(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
-}
-
 export function normalizedEvaluationTracks(tracks: readonly string[] | undefined): string[] {
   return [...new Set(tracks ?? [])].sort((a, b) => a.localeCompare(b));
 }
@@ -66,8 +63,8 @@ export function agentQualityEvaluationRequestKey(identity: AgentQualityEvaluatio
   tracks: string[];
 } {
   const tracks = normalizedEvaluationTracks(identity.tracks);
-  const authScopeHash = sha256(identity.authScope);
-  const requestKey = sha256(JSON.stringify({
+  const authScopeHash = agentQualityEvaluationFingerprint('auth-scope', identity.authScope);
+  const requestKey = agentQualityEvaluationFingerprint('request', JSON.stringify({
     version: 1,
     agent_url: identity.agentUrl,
     compliance_target: identity.complianceTarget,

@@ -1,8 +1,8 @@
 import { getClientWithDeadline, query } from './client.js';
 import { AgentQualityEvaluationLeaseLostError } from './agent-quality-evaluation-db.js';
+import { agentQualityEvaluationFingerprint } from './agent-quality-evaluation-identity.js';
 import { encrypt as encryptToken, decrypt as decryptToken } from './encryption.js';
 import { createLogger } from '../logger.js';
-import crypto from 'crypto';
 import { canonicalizeAgentUrl } from './publisher-db.js';
 import type { ResolvedOwnerAuth } from './compliance-db.js';
 import { isCompleteStoredBasicCredential } from '../utils/basic-auth-credentials.js';
@@ -95,7 +95,7 @@ function opaqueCredentialFingerprint(row: Record<string, unknown>): string {
     row.auth_token_encrypted,
     row.auth_token_iv,
   ];
-  return crypto.createHash('sha256').update(JSON.stringify(fields)).digest('hex');
+  return agentQualityEvaluationFingerprint('static-credential', JSON.stringify(fields));
 }
 
 function opaqueOAuthCredentialFingerprint(
@@ -130,7 +130,10 @@ function opaqueOAuthCredentialFingerprint(
         row.oauth_refresh_token_encrypted,
         row.oauth_refresh_token_iv,
       ];
-  return crypto.createHash('sha256').update(JSON.stringify(fields)).digest('hex');
+  return agentQualityEvaluationFingerprint(
+    kind === 'client_credentials' ? 'oauth-client-credentials' : 'oauth-authorization-code',
+    JSON.stringify(fields),
+  );
 }
 
 function oauthClientCredentialsFromRow(

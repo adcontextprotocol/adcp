@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../src/db/client.js', () => ({ query: vi.fn(), getClientWithDeadline: vi.fn() }));
-vi.mock('../../src/db/encryption.js', () => ({ decrypt: vi.fn(), encrypt: vi.fn() }));
+vi.mock('../../src/db/encryption.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../src/db/encryption.js')>(),
+  decrypt: vi.fn(),
+  encrypt: vi.fn(),
+}));
 
 import { AgentContextDatabase } from '../../src/db/agent-context-db.js';
 import { AgentQualityEvaluationLeaseLostError } from '../../src/db/agent-quality-evaluation-db.js';
@@ -93,6 +97,26 @@ describe('evaluation auth snapshot', () => {
     const fallback = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
     expect(fallback?.auth.type).toBe('oauth');
     expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps static generation identity tied to stored ciphertext, never the decrypted token', async () => {
+    const row = {
+      id: 'context-one', auth_type: 'bearer',
+      auth_token_encrypted: 'ciphertext-generation-one', auth_token_iv: 'iv-generation-one',
+    };
+    vi.mocked(query).mockResolvedValue(result([row]) as never);
+    const first = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
+    vi.mocked(decrypt).mockReturnValueOnce('different-decrypted-return-value');
+    const sameStoredGeneration = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
+    expect(sameStoredGeneration?.credentialFingerprint).toBe(first?.credentialFingerprint);
+    expect(sameStoredGeneration?.auth).toEqual({ type: 'bearer', token: 'different-decrypted-return-value' });
+
+    vi.mocked(query).mockResolvedValueOnce(result([{ ...row, auth_token_iv: 'iv-generation-two' }]) as never);
+    const replaced = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
+    expect(replaced?.credentialFingerprint).not.toBe(first?.credentialFingerprint);
+    vi.mocked(query).mockResolvedValueOnce(result([{ ...row, auth_token_encrypted: 'ciphertext-generation-two' }]) as never);
+    const rotated = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
+    expect(rotated?.credentialFingerprint).not.toBe(first?.credentialFingerprint);
   });
 
   it('fails closed on decryption failure and returns no credentials for an absent org row', async () => {
