@@ -5,7 +5,7 @@ vi.mock('../../src/db/encryption.js', () => encryption);
 
 import { agentQualityEvaluationFingerprint } from '../../src/db/agent-quality-evaluation-identity.js';
 
-const storedRepresentation = JSON.stringify(['context-one', 'encrypted-generation-one', 'nonce-one']);
+const storedRepresentation = JSON.stringify(['context-one', 'bearer', '2026-09-22 12:00:00.123456+00']);
 
 describe('keyed evaluation identity', () => {
   it('derives its dedicated key once and is deterministic for the same stored representation', () => {
@@ -29,14 +29,14 @@ describe('keyed evaluation identity', () => {
     // [domain, storedRepresentation], compact separators. Detects regression
     // to an unkeyed digest or a changed identity encoding.
     expect(agentQualityEvaluationFingerprint('static-credential', storedRepresentation))
-      .toBe('323aaf6aaf6afc096a7e5f53c86e44efc505391c1cc0ef6c2b64b2125e8e2558');
+      .toBe('697624df998c56fb76de1293f68f1479f04dfd5acbbbe69a1e1e11819ffef798');
   });
 
-  it('distinguishes changed generation bytes', () => {
+  it('distinguishes row generations separated by one microsecond', () => {
     const original = agentQualityEvaluationFingerprint('oauth-authorization-code', storedRepresentation);
     const changed = agentQualityEvaluationFingerprint(
       'oauth-authorization-code',
-      JSON.stringify(['context-one', 'encrypted-generation-two', 'nonce-two']),
+      JSON.stringify(['context-one', 'bearer', '2026-09-22 12:00:00.123457+00']),
     );
     expect(changed).not.toBe(original);
   });

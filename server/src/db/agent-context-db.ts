@@ -85,55 +85,19 @@ export interface OAuthClientCredentials {
   auth_method?: 'basic' | 'body';
 }
 
-function opaqueCredentialFingerprint(row: Record<string, unknown>): string {
-  // Fingerprint encrypted-at-rest representations, never plaintext secrets.
-  // AES-GCM IVs make this change whenever credentials are replaced, while the
-  // digest remains stable across application replicas reading the same row.
-  const fields = [
-    row.id,
-    row.auth_type,
-    row.auth_token_encrypted,
-    row.auth_token_iv,
-  ];
-  return agentQualityEvaluationFingerprint('static-credential', JSON.stringify(fields));
-}
-
-function opaqueOAuthCredentialFingerprint(
-  row: Record<string, unknown>,
-  kind: 'authorization_code' | 'client_credentials',
+function evaluationSnapshotFingerprint(
+  rowId: string,
+  updatedAt: string,
+  selectedMode: 'bearer' | 'basic' | 'authorization_code' | 'client_credentials',
 ): string {
-  const fields = kind === 'client_credentials'
-    ? [
-        'client_credentials',
-        row.id,
-        row.oauth_cc_token_endpoint,
-        row.oauth_cc_client_id,
-        row.oauth_cc_client_secret_encrypted,
-        row.oauth_cc_client_secret_iv,
-        row.oauth_cc_scope,
-        row.oauth_cc_resource,
-        row.oauth_cc_audience,
-        row.oauth_cc_auth_method,
-      ]
-    : [
-        // SDK refresh is in-memory; persisted tokens represent the saved
-        // authorization grant. Reauthorization must split request identity
-        // even when a public OAuth client has no client secret.
-        'authorization_code',
-        row.id,
-        row.oauth_client_id,
-        row.oauth_client_secret_encrypted,
-        row.oauth_client_secret_iv,
-        row.oauth_registered_redirect_uri,
-        row.oauth_access_token_encrypted,
-        row.oauth_access_token_iv,
-        row.oauth_refresh_token_encrypted,
-        row.oauth_refresh_token_iv,
-      ];
-  return agentQualityEvaluationFingerprint(
-    kind === 'client_credentials' ? 'oauth-client-credentials' : 'oauth-authorization-code',
-    JSON.stringify(fields),
-  );
+  // The same SELECT supplies auth and this non-secret row generation marker.
+  // Keep PostgreSQL's text timestamp: JavaScript Date would truncate microseconds.
+  // Every credential write advances updated_at; unrelated row edits may also
+  // conservatively start a new generation. No credential bytes enter identity.
+  const domain = selectedMode === 'client_credentials'
+    ? 'oauth-client-credentials'
+    : selectedMode === 'authorization_code' ? 'oauth-authorization-code' : 'static-credential';
+  return agentQualityEvaluationFingerprint(domain, JSON.stringify([rowId, selectedMode, updatedAt]));
 }
 
 function oauthClientCredentialsFromRow(
@@ -668,7 +632,7 @@ export class AgentContextDatabase {
   ): Promise<{ token: string; authType: AuthType; credentialFingerprint?: string } | null> {
     const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
     const result = await query(
-      `SELECT id, auth_token_encrypted, auth_token_iv, auth_type
+      `SELECT id, updated_at::text AS evaluation_generation, auth_token_encrypted, auth_token_iv, auth_type
        FROM agent_contexts
        WHERE organization_id = $1 AND agent_url = $2`,
       [organizationId, canonicalUrl]
@@ -683,7 +647,7 @@ export class AgentContextDatabase {
     return {
       token,
       authType: row.auth_type as AuthType,
-      credentialFingerprint: opaqueCredentialFingerprint(row),
+      credentialFingerprint: evaluationSnapshotFingerprint(row.id, row.evaluation_generation, row.auth_type === 'basic' ? 'basic' : 'bearer'),
     };
   }
 
@@ -702,7 +666,7 @@ export class AgentContextDatabase {
   } | null> {
     const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
     const result = await query(
-      `SELECT id, auth_type, auth_token_encrypted, auth_token_iv,
+      `SELECT id, updated_at::text AS evaluation_generation, auth_type, auth_token_encrypted, auth_token_iv,
               oauth_access_token_encrypted, oauth_access_token_iv,
               oauth_refresh_token_encrypted, oauth_refresh_token_iv,
               oauth_token_expires_at, oauth_client_id,
@@ -729,7 +693,7 @@ export class AgentContextDatabase {
           auth: row.auth_type === 'basic'
             ? { type: 'basic', username: decoded.slice(0, separator), password: decoded.slice(separator + 1) }
             : { type: 'bearer', token },
-          credentialFingerprint: opaqueCredentialFingerprint(row),
+          credentialFingerprint: evaluationSnapshotFingerprint(row.id, row.evaluation_generation, row.auth_type === 'basic' ? 'basic' : 'bearer'),
         };
       }
       logger.warn({ organizationId }, 'Ignoring malformed saved Basic auth during evaluation admission');
@@ -758,14 +722,14 @@ export class AgentContextDatabase {
           }),
         };
       }
-      return { source: 'oauth', auth, credentialFingerprint: opaqueOAuthCredentialFingerprint(row, 'authorization_code') };
+      return { source: 'oauth', auth, credentialFingerprint: evaluationSnapshotFingerprint(row.id, row.evaluation_generation, 'authorization_code') };
     }
 
     const credentials = oauthClientCredentialsFromRow(row, organizationId, agentUrl);
     return credentials ? {
       source: 'oauth',
       auth: { type: 'oauth_client_credentials', credentials },
-      credentialFingerprint: opaqueOAuthCredentialFingerprint(row, 'client_credentials'),
+      credentialFingerprint: evaluationSnapshotFingerprint(row.id, row.evaluation_generation, 'client_credentials'),
     } : null;
   }
 

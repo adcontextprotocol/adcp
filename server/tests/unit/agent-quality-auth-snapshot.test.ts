@@ -12,12 +12,15 @@ import { AgentQualityEvaluationLeaseLostError } from '../../src/db/agent-quality
 import { query, getClientWithDeadline } from '../../src/db/client.js';
 import { decrypt } from '../../src/db/encryption.js';
 
+const generationOne = '2026-09-22 15:00:00.123456+00';
+const generationTwo = '2026-09-22 15:00:00.123457+00';
 const orgId = 'org_snapshot';
 const agentUrl = 'https://agent.example.com/mcp';
 const db = new AgentContextDatabase();
 const result = (rows: unknown[] = []) => ({ rows, rowCount: rows.length, command: 'SELECT', oid: 0, fields: [] });
 const oauthRow = {
   id: 'context-one',
+  evaluation_generation: generationOne,
   oauth_access_token_encrypted: 'access-generation-one',
   oauth_access_token_iv: 'access-iv-one',
   oauth_refresh_token_encrypted: 'refresh-generation-one',
@@ -27,6 +30,7 @@ const oauthRow = {
 };
 const ccRow = {
   id: 'context-one',
+  evaluation_generation: generationOne,
   oauth_cc_token_endpoint: 'https://auth.example.com/token',
   oauth_cc_client_id: 'service-client',
   oauth_cc_client_secret_encrypted: 'secret-generation-one',
@@ -40,10 +44,11 @@ beforeEach(() => {
 });
 
 describe('evaluation auth snapshot', () => {
-  it('binds decrypted OAuth tokens and client to their exact single-row snapshot', async () => {
+  it('binds decrypted OAuth auth and its full-precision generation to one row snapshot', async () => {
     vi.mocked(query).mockResolvedValueOnce(result([oauthRow]) as never);
     const first = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
     expect(query).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('updated_at::text AS evaluation_generation'), [orgId, agentUrl]);
     expect(query).toHaveBeenCalledWith(expect.stringContaining('organization_id = $1 AND agent_url = $2'), [orgId, agentUrl]);
     expect(first?.auth).toEqual({
       type: 'oauth',
@@ -53,7 +58,7 @@ describe('evaluation auth snapshot', () => {
     expect(first?.credentialFingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(first?.credentialFingerprint)).not.toContain('decrypted');
 
-    vi.mocked(query).mockResolvedValueOnce(result([{ ...oauthRow, oauth_access_token_encrypted: 'access-generation-two', oauth_access_token_iv: 'access-iv-two' }]) as never);
+    vi.mocked(query).mockResolvedValueOnce(result([{ ...oauthRow, evaluation_generation: generationTwo, oauth_access_token_encrypted: 'access-generation-two', oauth_access_token_iv: 'access-iv-two' }]) as never);
     const rotated = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
     expect(rotated?.credentialFingerprint).not.toBe(first?.credentialFingerprint);
   });
@@ -67,23 +72,27 @@ describe('evaluation auth snapshot', () => {
     expect(second?.credentialFingerprint).toBe(first.credentialFingerprint);
   });
 
-  it('fingerprints authorization-code tokens when both OAuth modes are stored', async () => {
+  it('uses the selected OAuth mode and row generation rather than credential fields', async () => {
     vi.mocked(query).mockResolvedValueOnce(result([{ ...ccRow, ...oauthRow }]) as never);
     const first = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
     expect(first?.auth.type).toBe('oauth');
     vi.mocked(query).mockResolvedValueOnce(result([{ ...ccRow, ...oauthRow, oauth_cc_client_secret_encrypted: 'unused-cc-secret-two' }]) as never);
     const unusedRotation = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
     expect(unusedRotation?.credentialFingerprint).toBe(first?.credentialFingerprint);
-    vi.mocked(query).mockResolvedValueOnce(result([{ ...ccRow, ...oauthRow, oauth_refresh_token_encrypted: 'new-principal-grant' }]) as never);
+    vi.mocked(query).mockResolvedValueOnce(result([{ ...ccRow, ...oauthRow, evaluation_generation: generationTwo, oauth_refresh_token_encrypted: 'new-principal-grant' }]) as never);
     const reauthorized = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
     expect(reauthorized?.credentialFingerprint).not.toBe(first?.credentialFingerprint);
+    vi.mocked(query).mockResolvedValueOnce(result([ccRow]) as never);
+    const otherMode = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
+    expect(otherMode?.auth.type).toBe('oauth_client_credentials');
+    expect(otherMode?.credentialFingerprint).not.toBe(first?.credentialFingerprint);
   });
 
   it('returns CC configuration and changes identity when the saved secret rotates', async () => {
     vi.mocked(query).mockResolvedValueOnce(result([ccRow]) as never);
     const first = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
     expect(first?.auth).toMatchObject({ type: 'oauth_client_credentials', credentials: { client_secret: 'decrypted:secret-generation-one', resource: ['https://agent.example.com/resource'] } });
-    vi.mocked(query).mockResolvedValueOnce(result([{ ...ccRow, oauth_cc_client_secret_iv: 'secret-iv-two' }]) as never);
+    vi.mocked(query).mockResolvedValueOnce(result([{ ...ccRow, evaluation_generation: generationTwo, oauth_cc_client_secret_iv: 'secret-iv-two' }]) as never);
     const second = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
     expect(second?.credentialFingerprint).not.toBe(first?.credentialFingerprint);
   });
@@ -99,24 +108,43 @@ describe('evaluation auth snapshot', () => {
     expect(query).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps static generation identity tied to stored ciphertext, never the decrypted token', async () => {
+  it('uses only row ID, full-precision generation, and selected mode for static identity', async () => {
     const row = {
-      id: 'context-one', auth_type: 'bearer',
+      id: 'context-one', evaluation_generation: generationOne, auth_type: 'bearer',
       auth_token_encrypted: 'ciphertext-generation-one', auth_token_iv: 'iv-generation-one',
     };
     vi.mocked(query).mockResolvedValue(result([row]) as never);
     const first = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
     vi.mocked(decrypt).mockReturnValueOnce('different-decrypted-return-value');
-    const sameStoredGeneration = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
-    expect(sameStoredGeneration?.credentialFingerprint).toBe(first?.credentialFingerprint);
-    expect(sameStoredGeneration?.auth).toEqual({ type: 'bearer', token: 'different-decrypted-return-value' });
+    vi.mocked(query).mockResolvedValueOnce(result([{
+      ...row, auth_token_encrypted: 'different-ciphertext', auth_token_iv: 'different-iv',
+    }]) as never);
+    const sameMarker = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
+    expect(sameMarker?.credentialFingerprint).toBe(first?.credentialFingerprint);
+    expect(sameMarker?.auth).toEqual({ type: 'bearer', token: 'different-decrypted-return-value' });
 
-    vi.mocked(query).mockResolvedValueOnce(result([{ ...row, auth_token_iv: 'iv-generation-two' }]) as never);
-    const replaced = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
-    expect(replaced?.credentialFingerprint).not.toBe(first?.credentialFingerprint);
-    vi.mocked(query).mockResolvedValueOnce(result([{ ...row, auth_token_encrypted: 'ciphertext-generation-two' }]) as never);
+    // One microsecond must distinguish generations even though JavaScript
+    // Date would collapse both values to the same millisecond.
+    vi.mocked(query).mockResolvedValueOnce(result([{ ...row, evaluation_generation: generationTwo }]) as never);
     const rotated = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
     expect(rotated?.credentialFingerprint).not.toBe(first?.credentialFingerprint);
+    vi.mocked(query).mockResolvedValueOnce(result([{ ...row, id: 'context-two' }]) as never);
+    const otherRow = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
+    expect(otherRow?.credentialFingerprint).not.toBe(first?.credentialFingerprint);
+  });
+
+  it('separates static Basic and bearer modes with the same row ID and timestamp', async () => {
+    const row = {
+      id: 'context-one', evaluation_generation: generationOne, auth_type: 'bearer',
+      auth_token_encrypted: 'stored-ciphertext', auth_token_iv: 'stored-iv',
+    };
+    vi.mocked(decrypt).mockReturnValue(Buffer.from('user:password').toString('base64'));
+    vi.mocked(query).mockResolvedValueOnce(result([row]) as never);
+    const bearer = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
+    vi.mocked(query).mockResolvedValueOnce(result([{ ...row, auth_type: 'basic' }]) as never);
+    const basic = await db.getEvaluationAuthByOrgAndUrl(orgId, agentUrl);
+    expect(basic?.auth.type).toBe('basic');
+    expect(basic?.credentialFingerprint).not.toBe(bearer?.credentialFingerprint);
   });
 
   it('fails closed on decryption failure and returns no credentials for an absent org row', async () => {
