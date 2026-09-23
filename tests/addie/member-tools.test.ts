@@ -69,8 +69,11 @@ import { MEMBER_TOOLS, createMemberToolHandlers } from '../../server/src/addie/m
 import { getGitHubAccessToken } from '../../server/src/services/pipes.js';
 import { AgentContextDatabase } from '../../server/src/db/agent-context-db.js';
 import { ComplianceDatabase } from '../../server/src/db/compliance-db.js';
+import { AgentQualityEvaluationDatabase, agentQualityEvaluationRequestKey } from '../../server/src/db/agent-quality-evaluation-db.js';
+import { PUBLIC_TEST_AGENT_URLS } from '../../server/src/config/test-agent.js';
 import { HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS } from '../../server/src/services/hosted-compliance-version.js';
 import { AgentSnapshotDatabase } from '../../server/src/db/agent-snapshot-db.js';
+import * as complianceTesting from '../../server/src/addie/services/compliance-testing.js';
 import * as wgService from '../../server/src/services/working-group-membership-service.js';
 
 beforeEach(() => {
@@ -1136,6 +1139,7 @@ describe('createMemberToolHandlers', () => {
       memberToolMocks.isOrgOwnerOfAgent.mockResolvedValue(true);
       memberToolMocks.recordAgentTestRun.mockResolvedValue(undefined);
       memberToolMocks.runBadgeFanOut.mockResolvedValue({ issued: [], revoked: [], degraded: [], unchanged: [] });
+      vi.spyOn(AgentContextDatabase.prototype, 'getEvaluationAuthByOrgAndUrl').mockResolvedValue(null);
       vi.spyOn(AgentContextDatabase.prototype, 'getAuthInfoByOrgAndUrl').mockResolvedValue(null as never);
       vi.spyOn(AgentContextDatabase.prototype, 'getOAuthTokensByOrgAndUrl').mockResolvedValue(null as never);
       vi.spyOn(ComplianceDatabase.prototype, 'getRegistryMetadata').mockResolvedValue({
@@ -1152,6 +1156,33 @@ describe('createMemberToolHandlers', () => {
         statusTransition: null,
         storyboardStatuses: [],
       } as never);
+      vi.spyOn(AgentQualityEvaluationDatabase.prototype, 'claimOrObserve').mockResolvedValue({
+        owned: true,
+        recoveredExpiredLease: false,
+        evaluation: {
+          id: '10000000-0000-4000-8000-000000000001',
+          request_key: 'a'.repeat(64),
+          agent_url: 'https://seller.example.com/mcp',
+          compliance_target: '3.0->3.0.14',
+          tracks_json: [],
+          auth_scope_hash: 'b'.repeat(64),
+          status: 'running',
+          owner_id: 'replica-a',
+          lease_token: '20000000-0000-4000-8000-000000000001',
+          lease_expires_at: new Date(Date.now() + 120_000),
+          heartbeat_at: new Date(),
+          started_at: new Date(),
+          completed_at: null,
+          receipt_metadata_json: null,
+          failure_code: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      } as never);
+      vi.spyOn(AgentQualityEvaluationDatabase.prototype, 'heartbeat')
+        .mockResolvedValue(new Date(Date.now() + 120_000));
+      vi.spyOn(AgentQualityEvaluationDatabase.prototype, 'markCompleted').mockResolvedValue(true);
+      vi.spyOn(AgentQualityEvaluationDatabase.prototype, 'markFailed').mockResolvedValue(true);
     });
 
     afterEach(() => {
@@ -1175,6 +1206,7 @@ describe('createMemberToolHandlers', () => {
       expect(memberToolMocks.comply).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
+          test_session_id: 'quality-eval-10000000-0000-4000-8000-000000000001',
           timeout_ms: HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS,
         }),
         expect.objectContaining({ requested: '3.0' }),
@@ -1227,9 +1259,273 @@ describe('createMemberToolHandlers', () => {
       });
 
       expect(result).toContain('Track-filtered evaluations are diagnostic slices');
+      expect(result).toContain('**Completeness:** complete');
+      expect(result).toContain('**Evidence status:** NON-AUTHORITATIVE');
+      expect(result).not.toContain('This receipt is incomplete evidence');
       expect(result).not.toContain('This compliance target is diagnostic only for this agent');
       expect(ComplianceDatabase.prototype.recordComplianceRun).not.toHaveBeenCalled();
       expect(memberToolMocks.runBadgeFanOut).not.toHaveBeenCalled();
+    });
+
+    it('treats empty tracks like an omitted full-suite selection', async () => {
+      const result = await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+        tracks: [],
+      });
+
+      expect(AgentQualityEvaluationDatabase.prototype.claimOrObserve).toHaveBeenCalledWith(
+        expect.objectContaining({ tracks: [] }),
+      );
+      expect(memberToolMocks.comply.mock.calls[0][1]).not.toHaveProperty('tracks');
+      expect(ComplianceDatabase.prototype.recordComplianceRun).toHaveBeenCalledTimes(1);
+      expect(result).toContain('**Evidence status:** AUTHORITATIVE');
+    });
+
+    it('uses the same normalized track selection for identity and execution', async () => {
+      const result = await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+        tracks: ['media_buy', 'core', 'media_buy'],
+      });
+
+      expect(AgentQualityEvaluationDatabase.prototype.claimOrObserve).toHaveBeenCalledWith(
+        expect.objectContaining({ tracks: ['core', 'media_buy'] }),
+      );
+      expect(memberToolMocks.comply.mock.calls[0][1].tracks).toEqual(['core', 'media_buy']);
+      expect(result).toContain('**Scope:** selected tracks: core, media_buy');
+      expect(ComplianceDatabase.prototype.recordComplianceRun).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['anonymous', 'https://seller.example.com/mcp'],
+      ['public-test-agent', PUBLIC_TEST_AGENT_URLS.legacy],
+    ])('isolates %s evaluations by the organization that can publish them', async (source, agentUrl) => {
+      const otherContext = {
+        ...ownerContext,
+        organization: { ...ownerContext.organization, workos_organization_id: 'org_other' },
+      } as MemberContext;
+      for (const context of [ownerContext, otherContext]) {
+        await createMemberToolHandlers(context).get('evaluate_agent_quality')!({
+          agent_url: agentUrl,
+          compliance_target: '3.0',
+        });
+      }
+
+      const claims = vi.mocked(AgentQualityEvaluationDatabase.prototype.claimOrObserve).mock.calls.map(([claim]) => claim);
+      expect(claims[0].authScope).toBe(`${source}:organization:org_owner`);
+      expect(claims[1].authScope).toBe(`${source}:organization:org_other`);
+      expect(agentQualityEvaluationRequestKey(claims[0]).requestKey)
+        .not.toBe(agentQualityEvaluationRequestKey(claims[1]).requestKey);
+    });
+
+    it.each([
+      ['https://seller.example.com/mcp?tenant=alpha', 'https://seller.example.com/mcp?tenant=bravo'],
+      ['https://seller.example.com/mcp', 'https://seller.example.com/mcp/'],
+      ['https://seller.example.com/alpha/mcp', 'https://seller.example.com/bravo/mcp'],
+    ])('keeps endpoint identity distinct for %s and %s', async (firstUrl, secondUrl) => {
+      for (const agentUrl of [firstUrl, secondUrl]) {
+        await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+          agent_url: agentUrl,
+          compliance_target: '3.0',
+        });
+      }
+
+      const claims = vi.mocked(AgentQualityEvaluationDatabase.prototype.claimOrObserve).mock.calls.map(([claim]) => claim);
+      expect(claims.map(claim => claim.agentUrl)).toEqual([firstUrl, secondUrl]);
+      expect(memberToolMocks.comply.mock.calls.map(([url]) => url)).toEqual([firstUrl, secondUrl]);
+      expect(agentQualityEvaluationRequestKey(claims[0]).requestKey)
+        .not.toBe(agentQualityEvaluationRequestKey(claims[1]).requestKey);
+    });
+
+    it('redacts the stored display URL while retaining endpoint identity privately', async () => {
+      await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://caller:opaque@seller.example.com/mcp?token=opaque#fragment',
+        compliance_target: '3.0',
+      });
+
+      expect(AgentQualityEvaluationDatabase.prototype.claimOrObserve).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentUrl: 'https://caller:opaque@seller.example.com/mcp?token=opaque',
+          displayAgentUrl: 'https://seller.example.com/mcp',
+        }),
+      );
+    });
+
+    it.each(['database error', 'lease lost'])('preserves a committed canonical receipt after completion %s', async failure => {
+      const completion = vi.mocked(AgentQualityEvaluationDatabase.prototype.markCompleted);
+      if (failure === 'database error') completion.mockRejectedValueOnce(new Error('database unavailable'));
+      else completion.mockResolvedValueOnce(false);
+
+      const result = await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+      });
+
+      expect(result).toContain('**Saved compliance run:** `run_123`');
+      expect(result).toContain('The canonical compliance result was already committed');
+      expect(result).toContain('**Evidence status:** NON-AUTHORITATIVE');
+      expect(result).toContain('All applicable tracks passed');
+      expect(result).not.toContain('did not publish a result');
+      expect(result).not.toContain('**Evidence status:** AUTHORITATIVE');
+      expect(result).toContain(failure === 'database error' ? 'Evaluation completion unconfirmed' : 'Evaluation ownership changed');
+      expect(memberToolMocks.recordAgentTestRun).not.toHaveBeenCalled();
+    });
+
+    it('does not claim public publication for a committed partial audit receipt', async () => {
+      memberToolMocks.comply.mockResolvedValueOnce({
+        ...makeComplianceResult(['3.0']),
+        completeness: 'timed_out',
+      } as never);
+      vi.mocked(AgentQualityEvaluationDatabase.prototype.markCompleted).mockRejectedValueOnce(new Error('database unavailable'));
+
+      const result = await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+      });
+
+      expect(result).toContain('The partial compliance evidence was already committed as an audit-only run');
+      expect(result).not.toContain('The canonical compliance result was already committed');
+      expect(result).toContain('**Completeness:** timed_out');
+      expect(memberToolMocks.runBadgeFanOut).not.toHaveBeenCalled();
+    });
+
+    it('reports ambiguous canonical write acknowledgement without claiming no publication', async () => {
+      vi.mocked(ComplianceDatabase.prototype.recordComplianceRun).mockRejectedValueOnce(new Error('connection lost'));
+      vi.mocked(AgentQualityEvaluationDatabase.prototype.markCompleted).mockRejectedValueOnce(new Error('database unavailable'));
+
+      const result = await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+      });
+
+      expect(result).toContain('A canonical write was attempted, but its commit could not be confirmed');
+      expect(result).not.toContain('did not publish a result');
+      expect(result).not.toContain('**Saved compliance run:**');
+      expect(result).toContain('All applicable tracks passed');
+    });
+
+    it('keeps publication uncertainty visible even when execution completion is recorded', async () => {
+      vi.mocked(ComplianceDatabase.prototype.recordComplianceRun).mockRejectedValueOnce(new Error('connection lost'));
+
+      const result = await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+      });
+
+      expect(result).toContain('A canonical write was attempted, but its commit could not be confirmed');
+      expect(result).toContain('**Evidence status:** NON-AUTHORITATIVE');
+      expect(result).not.toContain('**Evidence status:** AUTHORITATIVE');
+      expect(result).toContain('All applicable tracks passed');
+      expect(AgentQualityEvaluationDatabase.prototype.markCompleted).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String),
+        expect.objectContaining({ authoritative: false, canonical_run_id: null }),
+      );
+    });
+
+    it('retains partial findings and coverage when the observed target changes', async () => {
+      vi.spyOn(complianceTesting, 'selectedComplianceTargetMatchesObservedProfile').mockReturnValueOnce(false);
+      memberToolMocks.comply.mockResolvedValueOnce({
+        ...makeComplianceResult(['3.0']),
+        completeness: 'timed_out',
+        storyboards_executed: ['core_discovery'],
+        summary: {
+          ...makeComplianceResult(['3.0']).summary,
+          headline: 'Discovery completed before the profile changed',
+          steps_passed: 2,
+          steps_failed: 1,
+        },
+      } as never);
+
+      const result = await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+      });
+
+      expect(result).toContain('Compliance target unavailable');
+      expect(result).toContain('**Completeness:** timed_out');
+      expect(result).toContain('**Storyboard coverage:** 1 executed');
+      expect(result).toContain('Discovery completed before the profile changed');
+      expect(ComplianceDatabase.prototype.recordComplianceRun).not.toHaveBeenCalled();
+      expect(AgentQualityEvaluationDatabase.prototype.markCompleted).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String),
+        expect.objectContaining({ authoritative: false, outcome: 'target_changed' }),
+      );
+    });
+
+    it('reports the existing cross-replica evaluation on an identical status follow-up', async () => {
+      const startedAt = new Date(Date.now() - 42_000);
+      vi.mocked(AgentQualityEvaluationDatabase.prototype.claimOrObserve).mockResolvedValueOnce({
+        owned: false,
+        recoveredExpiredLease: false,
+        evaluation: {
+          id: '10000000-0000-4000-8000-000000000002',
+          request_key: 'c'.repeat(64),
+          agent_url: 'https://seller.example.com/mcp',
+          compliance_target: '3.0->3.0.14',
+          tracks_json: [],
+          auth_scope_hash: 'd'.repeat(64),
+          status: 'running',
+          owner_id: 'replica-b',
+          lease_token: '20000000-0000-4000-8000-000000000002',
+          lease_expires_at: new Date(Date.now() + 90_000),
+          heartbeat_at: new Date(),
+          started_at: startedAt,
+          completed_at: null,
+          receipt_metadata_json: null,
+          failure_code: null,
+          created_at: startedAt,
+          updated_at: new Date(),
+        },
+      });
+
+      const result = await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp/',
+        compliance_target: '3.0',
+      });
+
+      expect(result).toContain('Quality evaluation still running');
+      expect(result).toContain('database-recorded start time');
+      expect(result).toContain('No new evaluation was started');
+      expect(memberToolMocks.comply).not.toHaveBeenCalled();
+      expect(memberToolMocks.checkToolRateLimit).not.toHaveBeenCalled();
+    });
+
+    it('marks timed-out receipts incomplete while retaining partial findings and coverage', async () => {
+      memberToolMocks.comply.mockResolvedValueOnce({
+        ...makeComplianceResult(['3.0']),
+        completeness: 'timed_out',
+        storyboards_executed: ['core_discovery'],
+        summary: {
+          ...makeComplianceResult(['3.0']).summary,
+          headline: 'One completed track passed before timeout',
+          steps_passed: 3,
+          steps_failed: 1,
+          steps_skipped: 0,
+          steps_not_selected: 12,
+        },
+      } as never);
+
+      const result = await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+      });
+
+      expect(result).toContain('INCOMPLETE / NON-AUTHORITATIVE');
+      expect(result).toContain('**Completeness:** timed_out');
+      expect(result).toContain('**Storyboard coverage:** 1 executed');
+      expect(result).toContain('3 passed, 1 failed, 0 skipped, 12 not selected');
+      expect(result).toContain('One completed track passed before timeout');
+      expect(result).toContain('do not claim a definitive overall verdict or root cause');
+      expect(ComplianceDatabase.prototype.recordComplianceRun).toHaveBeenCalledWith(
+        expect.objectContaining({ completeness: 'timed_out', is_authoritative: false }),
+      );
+      expect(memberToolMocks.runBadgeFanOut).not.toHaveBeenCalled();
+      expect(AgentQualityEvaluationDatabase.prototype.markCompleted).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({ completeness: 'timed_out', authoritative: false }),
+      );
     });
   });
 

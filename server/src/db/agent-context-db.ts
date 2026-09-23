@@ -1,8 +1,11 @@
-import { query } from './client.js';
+import { getClientWithDeadline, query } from './client.js';
+import { AgentQualityEvaluationLeaseLostError } from './agent-quality-evaluation-db.js';
+import { agentQualityEvaluationFingerprint } from './agent-quality-evaluation-identity.js';
 import { encrypt as encryptToken, decrypt as decryptToken } from './encryption.js';
 import { createLogger } from '../logger.js';
-import crypto from 'crypto';
 import { canonicalizeAgentUrl } from './publisher-db.js';
+import type { ResolvedOwnerAuth } from './compliance-db.js';
+import { isCompleteStoredBasicCredential } from '../utils/basic-auth-credentials.js';
 
 const logger = createLogger('agent-context-db');
 
@@ -82,6 +85,78 @@ export interface OAuthClientCredentials {
   auth_method?: 'basic' | 'body';
 }
 
+function evaluationSnapshotFingerprint(
+  rowId: string,
+  updatedAt: string,
+  selectedMode: 'bearer' | 'basic' | 'authorization_code' | 'client_credentials',
+): string {
+  // The same SELECT supplies auth and this non-secret row generation marker.
+  // Keep PostgreSQL's text timestamp: JavaScript Date would truncate microseconds.
+  // Every credential write advances updated_at; unrelated row edits may also
+  // conservatively start a new generation. No credential bytes enter identity.
+  return agentQualityEvaluationFingerprint('row-generation', JSON.stringify([rowId, selectedMode, updatedAt]));
+}
+
+function oauthClientCredentialsFromRow(
+  row: Record<string, string | null> | undefined,
+  organizationId: string,
+  agentUrl: string,
+): OAuthClientCredentials | null {
+  if (
+    !row ||
+    !row.oauth_cc_token_endpoint ||
+    !row.oauth_cc_client_id ||
+    !row.oauth_cc_client_secret_encrypted ||
+    !row.oauth_cc_client_secret_iv
+  ) {
+    return null;
+  }
+
+  const creds: OAuthClientCredentials = {
+    token_endpoint: row.oauth_cc_token_endpoint,
+    client_id: row.oauth_cc_client_id,
+    client_secret: decryptToken(
+      row.oauth_cc_client_secret_encrypted,
+      row.oauth_cc_client_secret_iv,
+      organizationId
+    ),
+  };
+  if (row.oauth_cc_scope) creds.scope = row.oauth_cc_scope;
+  if (row.oauth_cc_resource) {
+    const raw: string = row.oauth_cc_resource;
+    if (raw.startsWith('v1a:')) {
+      try {
+        const parsed: unknown = JSON.parse(raw.slice(4));
+        creds.resource =
+          Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
+            ? parsed
+            : raw;
+      } catch {
+        creds.resource = raw;
+      }
+    } else if (raw.startsWith('v1s:')) {
+      creds.resource = raw.slice(4);
+    } else {
+      // Untagged row (no v1a:/v1s: prefix) — treat as a legacy bare scalar.
+      // json1: rows from an unreleased draft also fall here; that encoding
+      // never reached main so there are no production array rows to preserve.
+      creds.resource = raw;
+    }
+  }
+  if (row.oauth_cc_audience) creds.audience = row.oauth_cc_audience;
+  if (row.oauth_cc_auth_method === 'basic' || row.oauth_cc_auth_method === 'body') {
+    creds.auth_method = row.oauth_cc_auth_method;
+  } else if (row.oauth_cc_auth_method !== null && row.oauth_cc_auth_method !== undefined) {
+    // Surface unexpected values rather than silently dropping — a write
+    // path bypassed validation if this fires.
+    logger.warn(
+      { agentUrl, organizationId, value: row.oauth_cc_auth_method },
+      'agent-context-db: dropped unrecognized oauth_cc_auth_method',
+    );
+  }
+  return creds;
+}
+
 export interface AgentTestHistory {
   id: string;
   agent_context_id: string;
@@ -131,6 +206,8 @@ function requireCanonicalAgentUrl(agentUrl: string): string {
 
 export interface RecordTestInput {
   agent_context_id: string;
+  agent_quality_evaluation_id?: string;
+  agent_quality_evaluation_lease_token?: string;
   scenario: string;
   overall_passed: boolean;
   steps_passed: number;
@@ -546,10 +623,13 @@ export class AgentContextDatabase {
    * Get auth token and type by org and URL.
    * Used by the AdCP tool passthrough to determine Bearer vs Basic auth.
    */
-  async getAuthInfoByOrgAndUrl(organizationId: string, agentUrl: string): Promise<{ token: string; authType: AuthType } | null> {
+  async getAuthInfoByOrgAndUrl(
+    organizationId: string,
+    agentUrl: string,
+  ): Promise<{ token: string; authType: AuthType; credentialFingerprint?: string } | null> {
     const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
     const result = await query(
-      `SELECT id, auth_token_encrypted, auth_token_iv, auth_type
+      `SELECT id, updated_at::text AS evaluation_generation, auth_token_encrypted, auth_token_iv, auth_type
        FROM agent_contexts
        WHERE organization_id = $1 AND agent_url = $2`,
       [organizationId, canonicalUrl]
@@ -561,7 +641,93 @@ export class AgentContextDatabase {
     }
 
     const token = decryptToken(row.auth_token_encrypted, row.auth_token_iv, organizationId);
-    return { token, authType: row.auth_type as AuthType };
+    return {
+      token,
+      authType: row.auth_type as AuthType,
+      credentialFingerprint: evaluationSnapshotFingerprint(row.id, row.evaluation_generation, row.auth_type === 'basic' ? 'basic' : 'bearer'),
+    };
+  }
+
+  /**
+   * Resolve credentials and their generation from one database snapshot.
+   * The selected auth mode and its fingerprint always refer to the same row
+   * version, including when another request rotates credentials concurrently.
+   */
+  async getEvaluationAuthByOrgAndUrl(
+    organizationId: string,
+    agentUrl: string,
+  ): Promise<{
+    source: 'saved' | 'oauth';
+    auth: ResolvedOwnerAuth;
+    credentialFingerprint: string;
+  } | null> {
+    const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
+    const result = await query(
+      `SELECT id, updated_at::text AS evaluation_generation, auth_type, auth_token_encrypted, auth_token_iv,
+              oauth_access_token_encrypted, oauth_access_token_iv,
+              oauth_refresh_token_encrypted, oauth_refresh_token_iv,
+              oauth_token_expires_at, oauth_client_id,
+              oauth_client_secret_encrypted, oauth_client_secret_iv,
+              oauth_registered_redirect_uri,
+              oauth_cc_token_endpoint, oauth_cc_client_id,
+              oauth_cc_client_secret_encrypted, oauth_cc_client_secret_iv,
+              oauth_cc_scope, oauth_cc_resource, oauth_cc_audience,
+              oauth_cc_auth_method
+         FROM agent_contexts
+        WHERE organization_id = $1 AND agent_url = $2`,
+      [organizationId, canonicalUrl],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+
+    if (row.auth_token_encrypted && row.auth_token_iv) {
+      const token = decryptToken(row.auth_token_encrypted, row.auth_token_iv, organizationId);
+      if (row.auth_type !== 'basic' || isCompleteStoredBasicCredential(token)) {
+        const decoded = row.auth_type === 'basic' ? Buffer.from(token, 'base64').toString() : '';
+        const separator = decoded.indexOf(':');
+        return {
+          source: 'saved',
+          auth: row.auth_type === 'basic'
+            ? { type: 'basic', username: decoded.slice(0, separator), password: decoded.slice(separator + 1) }
+            : { type: 'bearer', token },
+          credentialFingerprint: evaluationSnapshotFingerprint(row.id, row.evaluation_generation, row.auth_type === 'basic' ? 'basic' : 'bearer'),
+        };
+      }
+      logger.warn({ organizationId }, 'Ignoring malformed saved Basic auth during evaluation admission');
+    }
+
+    // Match resolveUserAgentAuth: authorization-code tokens take precedence
+    // when both OAuth credential modes are configured on the same context.
+    if (row.oauth_access_token_encrypted && row.oauth_access_token_iv) {
+      const accessToken = decryptToken(row.oauth_access_token_encrypted, row.oauth_access_token_iv, organizationId);
+      let auth: ResolvedOwnerAuth = { type: 'bearer', token: accessToken };
+      if (row.oauth_refresh_token_encrypted && row.oauth_refresh_token_iv) {
+        auth = {
+          type: 'oauth',
+          tokens: {
+            access_token: accessToken,
+            refresh_token: decryptToken(row.oauth_refresh_token_encrypted, row.oauth_refresh_token_iv, organizationId),
+            ...(row.oauth_token_expires_at && { expires_at: new Date(row.oauth_token_expires_at).toISOString() }),
+          },
+          ...(row.oauth_client_id && {
+            client: {
+              client_id: row.oauth_client_id,
+              ...(row.oauth_client_secret_encrypted && row.oauth_client_secret_iv && {
+                client_secret: decryptToken(row.oauth_client_secret_encrypted, row.oauth_client_secret_iv, organizationId),
+              }),
+            },
+          }),
+        };
+      }
+      return { source: 'oauth', auth, credentialFingerprint: evaluationSnapshotFingerprint(row.id, row.evaluation_generation, 'authorization_code') };
+    }
+
+    const credentials = oauthClientCredentialsFromRow(row, organizationId, agentUrl);
+    return credentials ? {
+      source: 'oauth',
+      auth: { type: 'oauth_client_credentials', credentials },
+      credentialFingerprint: evaluationSnapshotFingerprint(row.id, row.evaluation_generation, 'client_credentials'),
+    } : null;
   }
 
   /**
@@ -918,59 +1084,7 @@ export class AgentContextDatabase {
     );
 
     const row = result.rows[0];
-    if (
-      !row ||
-      !row.oauth_cc_token_endpoint ||
-      !row.oauth_cc_client_id ||
-      !row.oauth_cc_client_secret_encrypted ||
-      !row.oauth_cc_client_secret_iv
-    ) {
-      return null;
-    }
-
-    const creds: OAuthClientCredentials = {
-      token_endpoint: row.oauth_cc_token_endpoint,
-      client_id: row.oauth_cc_client_id,
-      client_secret: decryptToken(
-        row.oauth_cc_client_secret_encrypted,
-        row.oauth_cc_client_secret_iv,
-        organizationId
-      ),
-    };
-    if (row.oauth_cc_scope) creds.scope = row.oauth_cc_scope;
-    if (row.oauth_cc_resource) {
-      const raw: string = row.oauth_cc_resource;
-      if (raw.startsWith('v1a:')) {
-        try {
-          const parsed: unknown = JSON.parse(raw.slice(4));
-          creds.resource =
-            Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
-              ? parsed
-              : raw;
-        } catch {
-          creds.resource = raw;
-        }
-      } else if (raw.startsWith('v1s:')) {
-        creds.resource = raw.slice(4);
-      } else {
-        // Untagged row (no v1a:/v1s: prefix) — treat as a legacy bare scalar.
-        // json1: rows from an unreleased draft also fall here; that encoding
-        // never reached main so there are no production array rows to preserve.
-        creds.resource = raw;
-      }
-    }
-    if (row.oauth_cc_audience) creds.audience = row.oauth_cc_audience;
-    if (row.oauth_cc_auth_method === 'basic' || row.oauth_cc_auth_method === 'body') {
-      creds.auth_method = row.oauth_cc_auth_method;
-    } else if (row.oauth_cc_auth_method !== null && row.oauth_cc_auth_method !== undefined) {
-      // Surface unexpected values rather than silently dropping — a write
-      // path bypassed validation if this fires.
-      logger.warn(
-        { agentUrl, organizationId, value: row.oauth_cc_auth_method },
-        'agent-context-db: dropped unrecognized oauth_cc_auth_method',
-      );
-    }
-    return creds;
+    return oauthClientCredentialsFromRow(row, organizationId, agentUrl);
   }
 
   /**
@@ -1006,57 +1120,93 @@ export class AgentContextDatabase {
    * Record a test run
    */
   async recordTest(input: RecordTestInput): Promise<AgentTestHistory> {
-    // Update the agent context
-    await query(
-      `UPDATE agent_contexts
-       SET
-         last_test_scenario = $1,
-         last_test_passed = $2,
-         last_test_summary = $3,
-         last_tested_at = NOW(),
-         total_tests_run = total_tests_run + 1,
-         updated_at = NOW()
-       WHERE id = $4`,
-      [input.scenario, input.overall_passed, input.summary || null, input.agent_context_id]
-    );
+    const write = async (execute: typeof query): Promise<AgentTestHistory> => {
+      // Update the agent context
+      await execute(
+        `UPDATE agent_contexts
+         SET
+           last_test_scenario = $1,
+           last_test_passed = $2,
+           last_test_summary = $3,
+           last_tested_at = NOW(),
+           total_tests_run = total_tests_run + 1,
+           updated_at = NOW()
+         WHERE id = $4`,
+        [input.scenario, input.overall_passed, input.summary || null, input.agent_context_id]
+      );
 
-    // Insert history record
-    const result = await query(
-      `INSERT INTO agent_test_history (
-        agent_context_id,
-        scenario,
-        overall_passed,
-        steps_passed,
-        steps_failed,
-        total_duration_ms,
-        summary,
-        dry_run,
-        brief,
-        triggered_by,
-        user_id,
-        steps_json,
-        agent_profile_json,
-        completed_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
-      RETURNING *`,
-      [
-        input.agent_context_id,
-        input.scenario,
-        input.overall_passed,
-        input.steps_passed,
-        input.steps_failed,
-        input.total_duration_ms || null,
-        input.summary || null,
-        input.dry_run ?? true,
-        input.brief || null,
-        input.triggered_by || null,
-        input.user_id || null,
-        input.steps_json ? JSON.stringify(input.steps_json) : null,
-        input.agent_profile_json ? JSON.stringify(input.agent_profile_json) : null,
-      ]
-    );
+      // Insert history record
+      const result = await execute(
+        `INSERT INTO agent_test_history (
+          agent_context_id,
+          scenario,
+          overall_passed,
+          steps_passed,
+          steps_failed,
+          total_duration_ms,
+          summary,
+          dry_run,
+          brief,
+          triggered_by,
+          user_id,
+          steps_json,
+          agent_profile_json,
+          completed_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+        RETURNING *`,
+        [
+          input.agent_context_id,
+          input.scenario,
+          input.overall_passed,
+          input.steps_passed,
+          input.steps_failed,
+          input.total_duration_ms || null,
+          input.summary || null,
+          input.dry_run ?? true,
+          input.brief || null,
+          input.triggered_by || null,
+          input.user_id || null,
+          input.steps_json ? JSON.stringify(input.steps_json) : null,
+          input.agent_profile_json ? JSON.stringify(input.agent_profile_json) : null,
+        ]
+      );
 
-    return result.rows[0];
+      return result.rows[0];
+    };
+    const evaluationId = input.agent_quality_evaluation_id;
+    const leaseToken = input.agent_quality_evaluation_lease_token;
+    if (!evaluationId && !leaseToken) return write(query);
+    if (!evaluationId || !leaseToken) throw new AgentQualityEvaluationLeaseLostError();
+
+    const client = await getClientWithDeadline(5_000);
+    try {
+      await client.query('BEGIN');
+      await client.query("SELECT set_config('statement_timeout', '5000ms', true)");
+      await client.query("SELECT set_config('lock_timeout', '2000ms', true)");
+      await client.query("SELECT set_config('idle_in_transaction_session_timeout', '5000ms', true)");
+      const assertLease = async () => {
+        const lease = await client.query(
+          `SELECT 1 FROM addie_agent_quality_evaluations
+            WHERE id = $1 AND status = 'running' AND lease_token = $2
+              AND lease_expires_at > clock_timestamp()
+            FOR UPDATE`,
+          [evaluationId, leaseToken],
+        );
+        if (lease.rowCount !== 1) throw new AgentQualityEvaluationLeaseLostError();
+      };
+      await assertLease();
+      const result = await write(client.query.bind(client));
+      // A blocked context/history write can outlive the lease while the row
+      // lock prevents recovery. Recheck the live clock before publication.
+      await assertLease();
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /**

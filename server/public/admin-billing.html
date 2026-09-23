@@ -338,6 +338,76 @@
       padding: var(--space-1) var(--space-2);
       font-size: var(--text-xs);
     }
+    .customer-search-controls {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) minmax(190px, auto) auto auto;
+      gap: var(--space-2);
+      align-items: center;
+      margin-bottom: var(--space-3);
+    }
+    .customer-search-controls input,
+    .customer-search-controls select {
+      min-height: 38px;
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-surface);
+      color: var(--color-text);
+    }
+    .customer-pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-3);
+      margin-top: var(--space-3);
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+    }
+    .customer-pagination-actions {
+      display: flex;
+      gap: var(--space-2);
+    }
+    .customer-empty {
+      padding: var(--space-5);
+      text-align: center;
+      color: var(--color-text-muted);
+    }
+    .reconciliation-controls {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) auto;
+      gap: var(--space-2);
+      align-items: center;
+    }
+    .reconciliation-controls input {
+      min-height: 38px;
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-surface);
+      color: var(--color-text);
+    }
+    .reconciliation-result {
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+      border-top: var(--border-1) solid var(--color-border);
+    }
+    .reconciliation-result table {
+      width: 100%;
+      margin: var(--space-3) 0;
+      border-collapse: collapse;
+    }
+    .reconciliation-result th,
+    .reconciliation-result td {
+      padding: var(--space-2);
+      border-bottom: var(--border-1) solid var(--color-border);
+      text-align: left;
+    }
+    @media (max-width: 760px) {
+      .customer-search-controls,
+      .reconciliation-controls {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -350,21 +420,37 @@
     <div id="error-message" class="error-message" style="display: none;"></div>
     <div id="success-message" class="success-message" style="display: none;"></div>
 
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Stripe reconciliation</div>
+      </div>
+      <p style="color: var(--color-text-muted); margin-top: 0;">
+        Compare an exact Stripe customer or invoice with local billing state. Refresh only copies Stripe state into the local cache.
+      </p>
+      <form class="reconciliation-controls" id="reconciliation-form">
+        <label class="sr-only" for="reconciliation-id">Stripe customer or invoice ID</label>
+        <input id="reconciliation-id" type="text" maxlength="100"
+               placeholder="cus_… or in_…" autocomplete="off" required />
+        <button class="btn btn-primary" type="submit" id="reconciliation-lookup">Look up</button>
+      </form>
+      <div class="reconciliation-result" id="reconciliation-result" style="display: none;" aria-live="polite"></div>
+    </div>
+
     <div class="stats-row" id="stats-row">
       <div class="stat-card">
-        <div class="stat-label">Total Customers</div>
+        <div class="stat-label">Customers on page</div>
         <div class="stat-value" id="stat-total">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Linked</div>
+        <div class="stat-label">Linked on Page</div>
         <div class="stat-value success" id="stat-linked">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Unlinked</div>
+        <div class="stat-label">Unlinked on Page</div>
         <div class="stat-value" id="stat-unlinked">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Unlinked with Payments</div>
+        <div class="stat-label">Unlinked with Payments on Page</div>
         <div class="stat-value warning" id="stat-unlinked-payments">-</div>
       </div>
       <div class="stat-card" id="conflicts-stat-card" style="display: none;">
@@ -434,11 +520,31 @@
         <button class="btn btn-secondary" onclick="loadCustomers()">Refresh</button>
       </div>
 
-      <div class="filter-toggle">
-        <button class="filter-btn active" data-filter="all" onclick="setFilter('all', this)">All</button>
-        <button class="filter-btn" data-filter="unlinked" onclick="setFilter('unlinked', this)">Unlinked Only</button>
-        <button class="filter-btn" data-filter="unlinked-payments" onclick="setFilter('unlinked-payments', this)">Unlinked with Payments</button>
-      </div>
+      <form class="customer-search-controls" id="customer-search-form">
+        <label class="sr-only" for="customer-search">Search customers</label>
+        <input id="customer-search" type="search" maxlength="100"
+               placeholder="Organization, contact email, or cus_…" autocomplete="off" />
+        <label class="sr-only" for="customer-status">Billing or subscription status</label>
+        <select id="customer-status">
+          <option value="all">All statuses</option>
+          <option value="linked">Linked</option>
+          <option value="unlinked">Unlinked</option>
+          <option value="unlinked-payments">Unlinked with payments</option>
+          <option value="paid">Has paid invoices</option>
+          <option value="open">Has open invoices</option>
+          <option value="active">Active subscription</option>
+          <option value="trialing">Trialing subscription</option>
+          <option value="past_due">Past-due subscription</option>
+          <option value="canceled">Canceled subscription</option>
+          <option value="unpaid">Unpaid subscription</option>
+          <option value="paused">Paused subscription</option>
+          <option value="incomplete">Incomplete subscription</option>
+          <option value="incomplete_expired">Expired incomplete subscription</option>
+          <option value="none">No subscription</option>
+        </select>
+        <button class="btn btn-primary" type="submit">Search</button>
+        <button class="btn btn-secondary" type="button" id="customer-search-clear">Clear</button>
+      </form>
 
       <div id="loading" class="loading">
         <div class="loading-spinner"></div>
@@ -459,6 +565,16 @@
         <tbody id="customers-body">
         </tbody>
       </table>
+      <div class="customer-empty" id="customers-empty" style="display: none;">
+        No Stripe customers match these filters.
+      </div>
+      <div class="customer-pagination" id="customer-pagination" style="display: none;">
+        <span id="customer-page-summary" aria-live="polite"></span>
+        <div class="customer-pagination-actions">
+          <button class="btn btn-secondary" type="button" id="customer-page-previous">Previous</button>
+          <button class="btn btn-secondary" type="button" id="customer-page-next">Next</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -466,7 +582,14 @@
     let allCustomers = [];
     let allConflicts = [];
     let allMismatches = [];
-    let currentFilter = 'all';
+    const initialCustomerParams = new URLSearchParams(window.location.search);
+    let customerQuery = initialCustomerParams.get('q') || '';
+    let currentFilter = initialCustomerParams.get('status') || 'all';
+    let currentCustomerCursor = null;
+    let nextCustomerCursor = null;
+    let customerCursorHistory = [];
+    let customerPage = { count: 0, total: null, has_more: false, next_cursor: null };
+    let reconciliationRecord = null;
 
     const formatCurrency = (cents) => {
       return new Intl.NumberFormat('en-US', {
@@ -503,27 +626,148 @@
       setTimeout(() => { el.style.display = 'none'; }, 5000);
     }
 
+    function formatReconciliationMoney(cents, currency) {
+      if (cents === null || cents === undefined) return '—';
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: (currency || 'usd').toUpperCase(),
+      }).format(cents / 100);
+    }
+
+    function reconciliationValue(value) {
+      return value === null || value === undefined || value === '' ? '—' : escapeHtml(String(value));
+    }
+
+    function comparisonRow(label, localValue, stripeValue, matches) {
+      const matchBadge = matches === null || matches === undefined
+        ? '<span class="badge badge-gray">No local record</span>'
+        : matches
+          ? '<span class="badge badge-success">Matches</span>'
+          : '<span class="badge badge-warning">Different</span>';
+      return `<tr>
+        <th>${escapeHtml(label)}</th>
+        <td>${reconciliationValue(localValue)}</td>
+        <td>${reconciliationValue(stripeValue)}</td>
+        <td>${matchBadge}</td>
+      </tr>`;
+    }
+
+    function renderReconciliation(record) {
+      const result = document.getElementById('reconciliation-result');
+      const organization = record.local.organization;
+      const orgLabel = organization
+        ? `${escapeHtml(organization.name)} <code>${escapeHtml(organization.workos_organization_id)}</code>`
+        : 'Not linked to a local organization';
+      let rows = '';
+
+      if (record.kind === 'customer') {
+        const local = organization || {};
+        const stripeSubscription = record.stripe.subscription || {};
+        rows += comparisonRow('Customer ID', local.stripe_customer_id, record.stripe.id, record.matches?.customer_id);
+        rows += comparisonRow('Subscription ID', local.stripe_subscription_id, stripeSubscription.id, record.matches?.subscription_id);
+        rows += comparisonRow('Subscription status', local.subscription_status, stripeSubscription.status, record.matches?.subscription_status);
+      } else {
+        const localInvoice = record.local.invoice || {};
+        rows += comparisonRow('Customer ID', localInvoice.stripe_customer_id, record.stripe.customer_id, record.matches?.customer_id);
+        rows += comparisonRow('Invoice status', localInvoice.status, record.stripe.status, record.matches?.status);
+        rows += comparisonRow(
+          'Amount due',
+          formatReconciliationMoney(localInvoice.amount_due, localInvoice.currency),
+          formatReconciliationMoney(record.stripe.amount_due, record.stripe.currency),
+          record.matches?.amount_due,
+        );
+        rows += comparisonRow(
+          'Amount paid',
+          formatReconciliationMoney(localInvoice.amount_paid, localInvoice.currency),
+          formatReconciliationMoney(record.stripe.amount_paid, record.stripe.currency),
+          record.matches?.amount_paid,
+        );
+      }
+
+      result.innerHTML = `
+        <div><strong>${record.kind === 'customer' ? 'Customer' : 'Invoice'}:</strong> <code>${escapeHtml(record.stripe.id)}</code></div>
+        <div style="margin-top: var(--space-1);"><strong>Local organization:</strong> ${orgLabel}</div>
+        <table>
+          <thead><tr><th>Field</th><th>Local</th><th>Stripe</th><th>Result</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${record.refresh.available
+          ? '<button class="btn btn-secondary" type="button" id="reconciliation-refresh">Refresh local state</button>'
+          : '<p style="color: var(--color-text-muted); margin-bottom: 0;">Link this customer to an organization before refreshing local state.</p>'}
+      `;
+      result.style.display = 'block';
+      document.getElementById('reconciliation-refresh')?.addEventListener('click', refreshReconciliation);
+    }
+
+    async function lookupReconciliation() {
+      const recordId = document.getElementById('reconciliation-id').value.trim();
+      const button = document.getElementById('reconciliation-lookup');
+      const result = document.getElementById('reconciliation-result');
+      button.disabled = true;
+      button.textContent = 'Looking up…';
+      result.style.display = 'block';
+      result.textContent = 'Loading Stripe and local state…';
+
+      try {
+        const response = await fetch(`/api/admin/stripe-reconciliation/${encodeURIComponent(recordId)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Lookup failed');
+        reconciliationRecord = data;
+        renderReconciliation(data);
+      } catch (error) {
+        reconciliationRecord = null;
+        result.textContent = error.message;
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Look up';
+      }
+    }
+
+    async function refreshReconciliation() {
+      if (!reconciliationRecord?.refresh?.organization_id) return;
+      const button = document.getElementById('reconciliation-refresh');
+      button.disabled = true;
+      button.textContent = 'Refreshing…';
+      try {
+        const response = await fetch(
+          `/api/admin/accounts/${encodeURIComponent(reconciliationRecord.refresh.organization_id)}/sync`,
+          { method: 'POST' },
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || data.message || 'Refresh failed');
+        if (!data.stripe?.success) throw new Error(data.stripe?.message || data.stripe?.error || 'Stripe refresh failed');
+        await lookupReconciliation();
+        showSuccess('Local billing state refreshed from Stripe');
+      } catch (error) {
+        showError(error.message);
+        button.disabled = false;
+        button.textContent = 'Refresh local state';
+      }
+    }
+
     function setFilter(filter, btn) {
       currentFilter = filter;
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderCustomers();
+      if (btn) btn.classList.add('active');
+      document.getElementById('customer-status').value = filter;
+      resetCustomerPaging();
+      loadCustomers();
     }
 
     function getFilteredCustomers() {
-      switch (currentFilter) {
-        case 'unlinked':
-          return allCustomers.filter(c => !c.linked_org);
-        case 'unlinked-payments':
-          return allCustomers.filter(c => !c.linked_org && c.total_paid > 0);
-        default:
-          return allCustomers;
-      }
+      return allCustomers;
     }
 
     function renderCustomers() {
       const tbody = document.getElementById('customers-body');
       const customers = getFilteredCustomers();
+      const empty = document.getElementById('customers-empty');
+
+      empty.textContent = customerPage.has_more
+        ? 'No matching Stripe customers on this page. Try the next page or adjust the filters.'
+        : 'No Stripe customers match these filters.';
+      empty.style.display = customers.length === 0 ? 'block' : 'none';
+      document.getElementById('customers-table').style.display = customers.length === 0 ? 'none' : 'table';
 
       tbody.innerHTML = customers.map(customer => {
         const isLinked = !!customer.linked_org;
@@ -764,12 +1008,11 @@
     }
 
     function updateStats() {
-      const total = allCustomers.length;
       const linked = allCustomers.filter(c => c.linked_org).length;
-      const unlinked = total - linked;
+      const unlinked = allCustomers.length - linked;
       const unlinkedWithPayments = allCustomers.filter(c => !c.linked_org && c.total_paid > 0).length;
 
-      document.getElementById('stat-total').textContent = total;
+      document.getElementById('stat-total').textContent = customerPage.count;
       document.getElementById('stat-linked').textContent = linked;
       document.getElementById('stat-unlinked').textContent = unlinked;
       document.getElementById('stat-unlinked-payments').textContent = unlinkedWithPayments;
@@ -1192,12 +1435,49 @@
       }
     }
 
+    function resetCustomerPaging() {
+      currentCustomerCursor = null;
+      nextCustomerCursor = null;
+      customerCursorHistory = [];
+    }
+
+    function syncCustomerFiltersToUrl() {
+      const url = new URL(window.location.href);
+      if (customerQuery) url.searchParams.set('q', customerQuery);
+      else url.searchParams.delete('q');
+      if (currentFilter !== 'all') url.searchParams.set('status', currentFilter);
+      else url.searchParams.delete('status');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+
+    function renderCustomerPagination() {
+      const pagination = document.getElementById('customer-pagination');
+      const summary = document.getElementById('customer-page-summary');
+      const previous = document.getElementById('customer-page-previous');
+      const next = document.getElementById('customer-page-next');
+      const totalText = customerPage.total === null ? '' : ` of ${customerPage.total}`;
+
+      summary.textContent = `Showing ${customerPage.count}${totalText} customer${customerPage.count === 1 ? '' : 's'}`;
+      previous.disabled = customerCursorHistory.length === 0;
+      next.disabled = !customerPage.has_more || !nextCustomerCursor;
+      pagination.style.display = 'flex';
+    }
+
     async function loadCustomers() {
-      document.getElementById('loading').style.display = 'block';
+      const loading = document.getElementById('loading');
+      loading.innerHTML = '<div class="loading-spinner"></div><p>Loading Stripe customers...</p>';
+      loading.style.display = 'block';
       document.getElementById('customers-table').style.display = 'none';
+      document.getElementById('customers-empty').style.display = 'none';
+      document.getElementById('customer-pagination').style.display = 'none';
+
+      syncCustomerFiltersToUrl();
+      const params = new URLSearchParams({ limit: '25', status: currentFilter });
+      if (customerQuery) params.set('q', customerQuery);
+      if (currentCustomerCursor) params.set('cursor', currentCustomerCursor);
 
       try {
-        const response = await fetch('/api/admin/stripe-customers');
+        const response = await fetch(`/api/admin/stripe-customers?${params}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -1205,15 +1485,65 @@
         }
 
         allCustomers = data.customers;
+        customerPage = data.pagination;
+        nextCustomerCursor = data.pagination.next_cursor;
         updateStats();
         renderCustomers();
+        renderCustomerPagination();
 
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('customers-table').style.display = 'table';
+        loading.style.display = 'none';
       } catch (err) {
-        document.getElementById('loading').innerHTML = `<p style="color: var(--color-error-600);">Error: ${err.message}</p>`;
+        loading.innerHTML = `<p style="color: var(--color-error-600);">Error: ${escapeHtml(err.message)}</p>`;
       }
     }
+
+    const customerStatus = document.getElementById('customer-status');
+    if (![...customerStatus.options].some(option => option.value === currentFilter)) {
+      currentFilter = 'all';
+    }
+    document.getElementById('customer-search').value = customerQuery;
+    customerStatus.value = currentFilter;
+
+    document.getElementById('customer-search-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      customerQuery = document.getElementById('customer-search').value.trim();
+      currentFilter = customerStatus.value;
+      resetCustomerPaging();
+      loadCustomers();
+    });
+
+    document.getElementById('reconciliation-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      lookupReconciliation();
+    });
+
+    customerStatus.addEventListener('change', () => {
+      currentFilter = customerStatus.value;
+      resetCustomerPaging();
+      loadCustomers();
+    });
+
+    document.getElementById('customer-search-clear').addEventListener('click', () => {
+      customerQuery = '';
+      currentFilter = 'all';
+      document.getElementById('customer-search').value = '';
+      customerStatus.value = 'all';
+      resetCustomerPaging();
+      loadCustomers();
+    });
+
+    document.getElementById('customer-page-previous').addEventListener('click', () => {
+      if (customerCursorHistory.length === 0) return;
+      currentCustomerCursor = customerCursorHistory.pop() || null;
+      loadCustomers();
+    });
+
+    document.getElementById('customer-page-next').addEventListener('click', () => {
+      if (!nextCustomerCursor) return;
+      customerCursorHistory.push(currentCustomerCursor);
+      currentCustomerCursor = nextCustomerCursor;
+      loadCustomers();
+    });
 
     // Close dropdowns when clicking outside
     document.addEventListener('click', (e) => {

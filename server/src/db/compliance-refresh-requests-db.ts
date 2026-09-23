@@ -3,6 +3,7 @@ import { getClient, getDedicatedClient, query, withDatabaseDeadline } from './cl
 const DB_DEADLINE_MS = 5_000;
 const EXECUTION_FENCE_KEEPALIVE_MS = 15_000;
 const EXECUTION_FENCE_OPERATION_TIMEOUT_MS = 5_000;
+const OPERATIONAL_DIAGNOSTIC_DEADLINE_MS = 2_000;
 
 export type ComplianceRefreshRequestStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -236,6 +237,45 @@ export class ComplianceRefreshRequestsDatabase {
         [id],
       );
       return result.rows[0] ?? null;
+    });
+  }
+
+  /**
+   * Read-only queue snapshot for audited incident diagnostics. Lease tokens and
+   * stored probe/result payloads are deliberately excluded.
+   */
+  async getOperationalSnapshot(limit: number = 25): Promise<Array<{
+    id: string;
+    agent_url: string;
+    status: ComplianceRefreshRequestStatus;
+    attempts: number;
+    max_attempts: number;
+    available_at: Date;
+    lease_owner: string | null;
+    lease_expires_at: Date | null;
+    heartbeat_at: Date | null;
+    last_attempted_at: Date | null;
+    last_error_code: string | null;
+    last_error: string | null;
+    created_at: Date;
+    started_at: Date | null;
+    updated_at: Date;
+  }>> {
+    return withDatabaseDeadline(Date.now() + OPERATIONAL_DIAGNOSTIC_DEADLINE_MS, async () => {
+      const result = await query(
+        `SELECT id, agent_url, status, attempts, max_attempts, available_at,
+                lease_owner, lease_expires_at, heartbeat_at, last_attempted_at,
+                last_error_code, LEFT(last_error, 300) AS last_error,
+                created_at, started_at, updated_at
+           FROM agent_compliance_refresh_requests
+          WHERE status IN ('queued', 'running')
+             OR (status = 'failed' AND completed_at > NOW() - INTERVAL '24 hours')
+          ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,
+                   updated_at DESC
+          LIMIT $1`,
+        [Math.max(1, Math.min(limit, 100))],
+      );
+      return result.rows;
     });
   }
 

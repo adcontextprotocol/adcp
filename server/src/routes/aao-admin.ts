@@ -64,7 +64,7 @@ export function createAAOAdminRouter(): Router {
     try {
       const membership = await workingGroupDb.grantAAOAdminMembership({
         targetUserId: input.targetUserId,
-        actorUserId: req.user!.id,
+        actorUserId: req.user!.authWorkosUserId ?? req.user!.id,
         actorAuthorizationMechanism,
         reason: input.reason,
       });
@@ -86,7 +86,7 @@ export function createAAOAdminRouter(): Router {
     try {
       const revokedUserId = await workingGroupDb.revokeAAOAdminMembership({
         targetUserId: input.targetUserId,
-        actorUserId: req.user!.id,
+        actorUserId: req.user!.authWorkosUserId ?? req.user!.id,
         actorAuthorizationMechanism,
         reason: input.reason,
       });

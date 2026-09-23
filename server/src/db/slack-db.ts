@@ -7,6 +7,8 @@ import type {
 } from '../slack/types.js';
 import { FREE_EMAIL_PROVIDER_DOMAINS } from '../services/identifier-normalization.js';
 import { splitFullName } from '../utils/resolve-user-name.js';
+import type { PoolClient } from 'pg';
+import { withActiveCredentialEventMutation } from './identity-db.js';
 
 /**
  * Escape LIKE pattern wildcards to prevent SQL injection
@@ -116,8 +118,15 @@ export class SlackDatabase {
     workos_user_id: string;
     mapping_source: SlackMappingSource;
     mapped_by_user_id?: string;
-  }): Promise<SlackUserMapping | null> {
-    const result = await query<SlackUserMapping>(
+  }, externalClient?: PoolClient): Promise<SlackUserMapping | null> {
+    if (!externalClient) {
+      const guarded = await withActiveCredentialEventMutation(
+        input.workos_user_id,
+        (client) => this.mapUser(input, client),
+      );
+      return guarded.applied ? guarded.value ?? null : null;
+    }
+    const result = await externalClient.query<SlackUserMapping>(
       `UPDATE slack_user_mappings
        SET workos_user_id = $1,
            mapping_status = 'mapped',
@@ -146,7 +155,7 @@ export class SlackDatabase {
       const slackName = mapping.slack_real_name || mapping.slack_display_name;
       if (slackName?.trim()) {
         const { firstName, lastName } = splitFullName(slackName);
-        await query(
+        await externalClient.query(
           `UPDATE users
               SET first_name = COALESCE(NULLIF(TRIM(first_name), ''), $1),
                   last_name = COALESCE(NULLIF(TRIM(last_name), ''), $2),

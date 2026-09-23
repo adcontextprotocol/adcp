@@ -42,7 +42,7 @@ function atPath(value: unknown, path: string): unknown {
 describe('product coverage across retained and compact discovery', () => {
   beforeEach(() => { clearSessions(); invalidateCache(); clearTaskStore(); clearIdempotencyCache(); });
 
-  it.each(['3.0', '3.1', '3.2-rc.1'])('preserves the graded legacy query at %s', async version => {
+  it.each(['3.0', '3.1', '3.2-rc.3'])('preserves the graded legacy query at %s', async version => {
     const server = createTrainingAgentServer({ mode: 'open' });
     await seed(server);
     const step = storyboard.phases[0].steps[0];
@@ -58,7 +58,7 @@ describe('product coverage across retained and compact discovery', () => {
     const server = createTrainingAgentServer({ mode: 'open' });
     await seed(server);
     const step = storyboard.phases[1].steps[0];
-    const response = await call(server, step.task, { ...step.sample_request, adcp_version: '3.2-rc.1' });
+    const response = await call(server, step.task, { ...step.sample_request, adcp_version: '3.2-rc.3' });
     expect(response.code, JSON.stringify(response)).toBeUndefined();
     for (const validation of step.validations) {
       if (validation.check === 'field_value') expect(atPath(response, validation.path)).toEqual(validation.value);
@@ -71,7 +71,7 @@ describe('product coverage across retained and compact discovery', () => {
     await seed(server);
     const response = await call(server, 'get_products', {
       ...storyboard.phases[0].steps[0].sample_request,
-      adcp_version: '3.2-rc.1',
+      adcp_version: '3.2-rc.3',
       targeting_overlay: { geo_countries: ['US'] },
     });
     expect(response.code, JSON.stringify(response)).toBeUndefined();
@@ -83,7 +83,7 @@ describe('product coverage across retained and compact discovery', () => {
   it('distinguishes no matches from unsupported coverage evaluation', async () => {
     const server = createTrainingAgentServer({ mode: 'open' });
     await seed(server);
-    const base = { account, buying_mode: 'wholesale', adcp_version: '3.2-rc.1' };
+    const base = { account, buying_mode: 'wholesale', adcp_version: '3.2-rc.3' };
     const empty = await call(server, 'get_products', {
       ...base, filters: { pricing_currencies: ['USD'], countries: ['GB'] },
     });

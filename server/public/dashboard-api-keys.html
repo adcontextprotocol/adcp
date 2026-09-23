@@ -566,16 +566,23 @@
         }
 
         const data = await response.json();
-        const { org, needsSelection } = DashboardNav.resolveOrg(data.organizations);
+        // Key management requires a selection in this request, including for
+        // single-org users. Do not substitute a remembered or primary org.
+        const selectedOrgIds = new URLSearchParams(window.location.search).getAll('org');
+        const organizations = data.organizations || [];
 
-        if (needsSelection) {
+        if (selectedOrgIds.length === 0 && organizations.length > 0) {
           DashboardNav.init({ currentOrgName: 'Select organization' });
-          DashboardNav.renderOrgPicker(data.organizations, document.getElementById('loading'));
+          DashboardNav.renderOrgPicker(organizations, document.getElementById('loading'));
           return;
         }
 
+        const org = selectedOrgIds.length === 1
+          ? organizations.find(candidate => candidate.id === selectedOrgIds[0])
+          : null;
         if (!org) {
-          document.getElementById('loading').innerHTML = 'No organization found. <a href="/dashboard">Go to dashboard</a>';
+          DashboardNav.init({ currentOrgName: 'Select organization' });
+          document.getElementById('loading').textContent = 'The selected organization is unavailable. Choose an organization from the dashboard.';
           return;
         }
 

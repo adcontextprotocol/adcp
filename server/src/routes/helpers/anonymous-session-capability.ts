@@ -35,6 +35,23 @@ function signature(encodedPayload: string): string {
     .digest('base64url');
 }
 
+/**
+ * Derive a purpose-scoped pseudonymous identifier from a verified anonymous
+ * session subject. The domain is caller-owned and versioned so unrelated
+ * surfaces cannot correlate or silently reuse an assignment namespace.
+ */
+export function anonymousSessionSubjectHmac(
+  subject: string,
+  domain: string,
+): string {
+  return crypto
+    .createHmac('sha256', capabilitySecret())
+    .update(domain, 'utf8')
+    .update('\0', 'utf8')
+    .update(subject, 'utf8')
+    .digest('hex');
+}
+
 export function issueAnonymousSessionCapability(
   audience: string,
   subject: string,

@@ -30,6 +30,7 @@
 
 const ADMIN_BASE_URL = process.env.ADMIN_BASE_URL?.replace(/\/+$/, '');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+const ADMIN_OPERATOR = process.env.ADMIN_OPERATOR?.trim() || 'script:2026-05-heal-partial-truth-tier-rows';
 
 if (!ADMIN_BASE_URL) {
   console.error('ADMIN_BASE_URL not set (e.g. https://agenticadvertising.org)');
@@ -66,7 +67,10 @@ interface SyncResponse {
 
 async function adminGet<T>(path: string): Promise<T> {
   const res = await fetch(`${ADMIN_BASE_URL}${path}`, {
-    headers: { Authorization: `Bearer ${ADMIN_API_KEY}` },
+    headers: {
+      Authorization: `Bearer ${ADMIN_API_KEY}`,
+      'X-Admin-Operator': ADMIN_OPERATOR,
+    },
   });
   if (!res.ok) {
     throw new Error(`GET ${path} → ${res.status} ${await res.text()}`);
@@ -77,7 +81,10 @@ async function adminGet<T>(path: string): Promise<T> {
 async function adminPost<T>(path: string): Promise<T> {
   const res = await fetch(`${ADMIN_BASE_URL}${path}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${ADMIN_API_KEY}` },
+    headers: {
+      Authorization: `Bearer ${ADMIN_API_KEY}`,
+      'X-Admin-Operator': ADMIN_OPERATOR,
+    },
   });
   if (!res.ok) {
     throw new Error(`POST ${path} → ${res.status} ${await res.text()}`);

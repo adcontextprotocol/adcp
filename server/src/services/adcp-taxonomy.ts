@@ -47,6 +47,12 @@ export function isSupportedBadgeVersion(value: unknown): value is SupportedBadge
   return typeof value === 'string' && (SUPPORTED_BADGE_VERSIONS as readonly string[]).includes(value);
 }
 
+/** Match an advertised stable MAJOR.MINOR or MAJOR.MINOR.PATCH exactly. */
+export function advertisesStableBadgeLine(value: unknown, line: string): boolean {
+  if (typeof value !== 'string' || !/^[1-9][0-9]*\.[0-9]+(?:\.[0-9]+)?$/.test(value)) return false;
+  return value === line || value.startsWith(`${line}.`);
+}
+
 /**
  * Shape constraint for AdCP version strings (MAJOR.MINOR, e.g. '3.0').
  *
@@ -107,9 +113,12 @@ export type AdcpSpecialism =
   | 'sales-broadcast-tv'
   | 'sales-catalog-driven'
   | 'sales-dooh'
+  | 'sales-exchange'
   | 'sales-guaranteed'
   | 'sales-non-guaranteed'
   | 'sales-proposal-mode'
+  | 'sales-retail-media'
+  | 'sales-streaming-tv'
   | 'sales-social'
   | 'signal-marketplace'
   | 'orchestrator-multi-agent'
@@ -138,9 +147,12 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'sales-broadcast-tv',
   'sales-catalog-driven',
   'sales-dooh',
+  'sales-exchange',
   'sales-guaranteed',
   'sales-non-guaranteed',
   'sales-proposal-mode',
+  'sales-retail-media',
+  'sales-streaming-tv',
   'sales-social',
   'signal-marketplace',
   'orchestrator-multi-agent',

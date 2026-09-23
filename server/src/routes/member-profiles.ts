@@ -19,17 +19,11 @@ import { query, getPool } from "../db/client.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { BrandDatabase, canSurfaceBrandForMember, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
-import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resolveMembershipTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS } from "../db/organization-db.js";
+import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resolveMembershipTier } from "../db/organization-db.js";
 import { canonicalizeAgentUrl } from "../db/publisher-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
-import { linkDomain } from "../db/organization-domains-db.js";
-import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { AAO_HOST } from "../config/aao.js";
-import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
-import { getCompanyDomain } from "../utils/email-domain.js";
-import { emailPrefsDb } from "../db/email-preferences-db.js";
-import { slugify } from "../services/collection-feed-sync.js";
 import {
   verifyAgentHostname,
   buildUnverifiedHostnameMessage,
@@ -42,12 +36,6 @@ import {
   memberProfileBootstrapRateLimiter,
 } from "../middleware/rate-limit.js";
 
-// Membership tiers a caller may set via the REST bootstrap body. Paid tiers
-// (`individual_professional`, `company_*`) require a successful Stripe
-// checkout — accepting them here would let a caller stamp a paid tier on
-// the org row without billing, fooling any downstream gate that reads
-// `membership_tier` directly without also checking `subscription_status`.
-const BOOTSTRAP_ALLOWED_MEMBERSHIP_TIERS = ['individual_academic'] as const;
 import { VALID_MEMBER_OFFERINGS, isValidAgentVisibility, isValidAgentType } from "../types.js";
 import type { MemberBrandInfo, AgentVisibility, AgentConfig, AgentType } from "../types.js";
 import type { CrawlerService } from "../crawler.js";
@@ -257,422 +245,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   const { workos, memberDb, brandDb, orgDb, invalidateMemberContextCache } = config;
   const router = Router();
 
-  // Domain-shape regex for corporate_domain — same coarse "looks-like-a-domain"
-  // check used in the org-creation path. Tighter validation (TLD presence,
-  // length per label) is applied implicitly by the email-domain match below.
-  const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
-
-  // Render the spec MemberProfile shape from the DB profile + organization
-  // rows. This is the response shape documented in
-  // static/openapi/registry.yaml#MemberProfile — distinct from the legacy
-  // dashboard JSON which exposes the raw member_profiles row (display_name,
-  // slug, etc.). Required fields: organization_id, organization_name,
-  // company_type, corporate_domain, created_at, agents.
-  function toSpecMemberProfile(
-    profile: any,
-    org: any,
-    corporateDomain: string,
-    brandPrimaryDomain: string | null,
-  ): Record<string, unknown> {
-    const created = profile?.created_at instanceof Date
-      ? profile.created_at.toISOString()
-      : profile?.created_at;
-    return {
-      organization_id: profile.workos_organization_id,
-      organization_name: org?.name ?? profile.display_name,
-      company_type: org?.company_type ?? null,
-      ...(org?.revenue_tier ? { revenue_tier: org.revenue_tier } : {}),
-      corporate_domain: corporateDomain,
-      // After Stage 2 of #4159, brand-primary lives on
-      // organization_domains.is_primary and is resolved via getBrandPrimaryDomain.
-      // Caller passes the resolved value through so this function stays pure.
-      ...(brandPrimaryDomain ? { primary_brand_domain: brandPrimaryDomain } : {}),
-      ...(org?.membership_tier ? { membership_tier: org.membership_tier } : {}),
-      created_at: created,
-      agents: Array.isArray(profile.agents) ? profile.agents : [],
-    };
-  }
-
-  // Pick a unique slug from the organization name. Mirrors the helper in
-  // services/member-profile-autopublish.ts but kept inline so the bootstrap
-  // path doesn't import a publish-side module.
-  async function pickAvailableSlug(orgName: string): Promise<string> {
-    const base = slugify(orgName) || 'member';
-    if (await memberDb.isSlugAvailable(base)) return base;
-    for (let i = 2; i <= 99; i++) {
-      const candidate = `${base}-${i}`;
-      if (await memberDb.isSlugAvailable(candidate)) return candidate;
-    }
-    return `${base}-${Date.now()}`;
-  }
-
-  // POST /api/me/member-profile bootstrap path. Documented contract in
-  // static/openapi/registry.yaml. Idempotent on the (org, profile) pair:
-  // re-posting against an org that already has a profile returns 200 with
-  // the existing profile and a `profile_already_exists` warning, NOT 409 —
-  // the dashboard create flow returns 409 by design (caller should switch
-  // to PUT), but the REST bootstrap surface is consumed by automation that
-  // benefits from retry-friendly idempotency.
-  async function handleBootstrapMemberProfile(req: any, res: any, startTime: number) {
-    try {
-      const user = req.user!;
-      const requestedOrgId = req.query.org as string | undefined;
-      const {
-        organization_name,
-        company_type,
-        revenue_tier,
-        corporate_domain,
-        marketing_opt_in,
-        membership_tier,
-      } = req.body as Record<string, unknown>;
-      // After Stage 2 of #4159, brand-primary lives on
-      // organization_domains.is_primary, not on the member profile. Members
-      // set it via the Linked Domains UI (PR #4179) or it auto-promotes
-      // from a verified WorkOS email domain. The bootstrap endpoint no
-      // longer accepts primary_brand_domain — silently ignored if old
-      // clients still pass it.
-
-      const trimmedName = typeof organization_name === 'string' ? organization_name.trim() : '';
-      if (!trimmedName || trimmedName.length > 200) {
-        return res.status(400).json({
-          error: 'Invalid organization_name',
-          message: 'organization_name is required and must be 1-200 characters',
-        });
-      }
-      if (typeof company_type !== 'string' || !(COMPANY_TYPE_VALUES as readonly string[]).includes(company_type)) {
-        return res.status(400).json({
-          error: 'Invalid company_type',
-          message: `company_type must be one of: ${COMPANY_TYPE_VALUES.join(', ')}`,
-        });
-      }
-      const corporateDomain = typeof corporate_domain === 'string'
-        ? corporate_domain.toLowerCase().trim()
-        : '';
-      if (!corporateDomain || corporateDomain.length > 253 || !DOMAIN_RE.test(corporateDomain)) {
-        return res.status(400).json({
-          error: 'Invalid corporate_domain',
-          message: 'corporate_domain must be a valid domain like "acme.com"',
-        });
-      }
-      if (revenue_tier !== undefined && (typeof revenue_tier !== 'string' || !(VALID_REVENUE_TIERS as readonly string[]).includes(revenue_tier))) {
-        return res.status(400).json({
-          error: 'Invalid revenue_tier',
-          message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(', ')}`,
-        });
-      }
-      if (membership_tier !== undefined) {
-        if (typeof membership_tier !== 'string' || !(VALID_MEMBERSHIP_TIERS as readonly string[]).includes(membership_tier)) {
-          return res.status(400).json({
-            error: 'Invalid membership_tier',
-            message: `membership_tier must be one of: ${VALID_MEMBERSHIP_TIERS.join(', ')}`,
-          });
-        }
-        // Paid tiers cannot be claimed via this endpoint — they require a
-        // successful Stripe checkout. Accepting `company_leader` etc. here
-        // would write the tier to the org row without billing, and any
-        // downstream gate that reads `membership_tier` directly (rather
-        // than `subscription_status`) could be fooled into granting paid
-        // entitlements. Direct callers to the dashboard /membership page.
-        if (!(BOOTSTRAP_ALLOWED_MEMBERSHIP_TIERS as readonly string[]).includes(membership_tier)) {
-          return res.status(400).json({
-            error: 'Paid tier requires checkout',
-            message: `membership_tier '${membership_tier}' requires a Stripe checkout session — it cannot be claimed via this endpoint. Either omit, set 'individual_academic', or complete checkout via /dashboard/membership and let the webhook stamp the paid tier on the org.`,
-          });
-        }
-      }
-      // Email-domain match. getCompanyDomain returns null for personal-email
-      // domains (gmail.com, yahoo.com, etc.) — those cannot bootstrap a
-      // corporate profile. Mismatch between the verified email domain and
-      // the supplied corporate_domain is also rejected.
-      const userCompanyDomain = getCompanyDomain(user.email);
-      if (!userCompanyDomain) {
-        return res.status(403).json({
-          error: 'Personal email domain',
-          message: 'Personal email domains cannot register a corporate member profile. Sign in with a corporate email and try again.',
-        });
-      }
-      if (userCompanyDomain !== corporateDomain) {
-        return res.status(403).json({
-          error: 'Domain mismatch',
-          message: `corporate_domain must match your email domain (${userCompanyDomain}).`,
-        });
-      }
-
-      // Resolve target org. Mirrors the legacy POST resolver below.
-      let targetOrgId: string;
-      const isDevUserProfile = isDevModeEnabled()
-        && Object.values(DEV_USERS).some(du => du.id === user.id)
-        && requestedOrgId?.startsWith('org_dev_');
-      if (isDevUserProfile) {
-        const localOrg = await orgDb.getOrganization(requestedOrgId!);
-        if (!localOrg) {
-          return res.status(404).json({
-            error: 'Organization not found',
-            message: 'The requested organization does not exist',
-          });
-        }
-        targetOrgId = requestedOrgId!;
-      } else {
-        let memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-        if (linked) {
-          memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-        }
-        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
-        if (!selectedMembership) {
-          return res.status(requestedOrgId ? 403 : 404).json({
-            error: requestedOrgId ? 'Not authorized' : 'No organization',
-            message: requestedOrgId
-              ? 'User is not an active member of the requested organization'
-              : 'User has no active organization membership. Create one via POST /api/organizations first.',
-          });
-        }
-        targetOrgId = selectedMembership.organizationId;
-      }
-
-      // Idempotency: existing profile → 200 with current state and a warning,
-      // not 409. Documented in the spec as the retry-safe behavior.
-      // Source `corporate_domain` for the response from the org's primary
-      // verified domain row, not from whatever the caller sent. A multi-domain
-      // org may legitimately have multiple email-domain memberships; echoing
-      // the caller's value would leak that detail and could mislead the
-      // caller about which domain actually owns their profile.
-      const resolvePrimaryDomain = async (orgId: string, fallback: string): Promise<string> => {
-        const r = await getPool().query<{ domain: string }>(
-          `SELECT domain FROM organization_domains
-           WHERE workos_organization_id = $1 AND is_primary = true AND verified = true
-           ORDER BY domain ASC
-           LIMIT 1`,
-          [orgId],
-        );
-        return r.rows[0]?.domain ?? fallback;
-      };
-
-      const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
-      if (existingProfile) {
-        const existingOrg = await orgDb.getOrganization(targetOrgId);
-        const primaryDomain = await resolvePrimaryDomain(targetOrgId, corporateDomain);
-        const brandPrimaryDomain = await getBrandPrimaryDomain(targetOrgId);
-        logger.info({ userId: user.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile (bootstrap) idempotent hit');
-        return res.status(200).json({
-          profile: toSpecMemberProfile(existingProfile, existingOrg, primaryDomain, brandPrimaryDomain),
-          warnings: [{
-            code: 'profile_already_exists',
-            message: 'Member profile already exists for this organization; no fields were mutated.',
-          }],
-        });
-      }
-
-      // First-time bootstrap: persist the org metadata captured on the form,
-      // then ensure the corporate domain is recorded as verified (so brand
-      // resolution + the agent endpoints work), then create the profile.
-      //
-      // Org metadata writes are first-time-only. If a field is already set
-      // (e.g. an admin set `company_type` via the dashboard, or the org
-      // was bootstrapped in a prior call), we do not overwrite — we surface
-      // a `metadata_unchanged` warning instead so the caller knows their
-      // body value was ignored. Without this gate, any caller with a
-      // matching email domain could clobber org-level fields a workspace
-      // admin had already curated.
-      const existingOrg = await orgDb.getOrganization(targetOrgId);
-      const orgUpdates: Record<string, unknown> = {};
-      const metadataIgnoredApiFields: string[] = [];
-      // Map DB column → public API field name. Callers know about
-      // `organization_name`, not the underlying `organizations.name` column;
-      // the response-side warning must speak the API's vocabulary.
-      const COLUMN_TO_API_FIELD: Record<string, string> = {
-        name: 'organization_name',
-        company_type: 'company_type',
-        revenue_tier: 'revenue_tier',
-        membership_tier: 'membership_tier',
-      };
-      const considerField = (
-        bodyValue: unknown,
-        column: 'name' | 'company_type' | 'revenue_tier' | 'membership_tier',
-      ): void => {
-        if (bodyValue === undefined || bodyValue === null || bodyValue === '') return;
-        const currentValue = existingOrg ? (existingOrg as any)[column] : null;
-        if (currentValue === null || currentValue === undefined || currentValue === '') {
-          (orgUpdates as any)[column] = bodyValue;
-        } else if (currentValue !== bodyValue) {
-          metadataIgnoredApiFields.push(COLUMN_TO_API_FIELD[column]);
-        }
-      };
-      considerField(trimmedName, 'name');
-      considerField(company_type, 'company_type');
-      considerField(revenue_tier, 'revenue_tier');
-      considerField(membership_tier, 'membership_tier');
-      if (Object.keys(orgUpdates).length > 0) {
-        try {
-          await orgDb.updateOrganization(targetOrgId, orgUpdates);
-        } catch (err) {
-          logger.warn({ err, orgId: targetOrgId }, 'Failed to update org metadata during member-profile bootstrap');
-        }
-      }
-
-      // Mirror the email-verified domain insert from the org creation path,
-      // but check for a pre-existing claim explicitly so we can surface a
-      // `domain_already_claimed` warning rather than silently no-op'ing
-      // the link-up. Without this, a caller from acme.com whose domain
-      // is already bound to a different org would walk away with a profile
-      // on this org and no domain link — half-broken state, no signal.
-      // We still create the profile so programmatic callers aren't blocked
-      // on an admin-resolvable issue.
-      let domainConflictOrgId: string | null = null;
-      try {
-        const result = await linkDomain({
-          orgId: targetOrgId,
-          domain: corporateDomain,
-          source: 'email_verification',
-          verified: true,
-          isPrimary: true,
-        });
-        domainConflictOrgId = result.conflictOrgId;
-      } catch (err) {
-        logger.warn({ err, orgId: targetOrgId, domain: corporateDomain }, 'Failed to write organization_domains during bootstrap');
-      }
-
-      const slug = await pickAvailableSlug(trimmedName);
-
-      const profile = await memberDb.createProfile({
-        workos_organization_id: targetOrgId,
-        display_name: trimmedName,
-        slug,
-        // Default privacy posture for a bootstrapped profile is private —
-        // the caller can flip is_public via PUT /api/me/member-profile/visibility
-        // once they have an active subscription. The legacy POST path applies
-        // the same gating; this surface deliberately doesn't accept is_public.
-        is_public: false,
-        show_in_carousel: false,
-      });
-
-      // Best-effort marketing opt-in record. Failures must not block bootstrap.
-      if (typeof marketing_opt_in === 'boolean') {
-        try {
-          await emailPrefsDb.setMarketingOptInIfNotSet({
-            workos_user_id: user.id,
-            email: user.email,
-            optIn: marketing_opt_in,
-          });
-        } catch (err) {
-          logger.warn({ err, userId: user.id }, 'Failed to record marketing opt-in during bootstrap');
-        }
-      }
-
-      // Record Terms-of-Service and Privacy-Policy acceptance from the
-      // request context, mirroring the org-creation flow. The OpenAPI body
-      // documents `marketing_opt_in` as "Independent of Terms of Service
-      // consent (which is required and recorded server-side from the
-      // request context)" — without this block that claim is fiction.
-      // Best-effort; an audit-row failure must not roll back a successful
-      // profile create.
-      try {
-        const tosAgreement = await orgDb.getCurrentAgreementByType('terms_of_service');
-        const privacyAgreement = await orgDb.getCurrentAgreementByType('privacy_policy');
-        const ipAddress = req.ip
-          || (typeof req.headers['x-forwarded-for'] === 'string' ? (req.headers['x-forwarded-for'] as string) : 'unknown');
-        const userAgent = (req.headers['user-agent'] as string) || 'unknown';
-        if (tosAgreement) {
-          await orgDb.recordUserAgreementAcceptance({
-            workos_user_id: user.id,
-            email: user.email,
-            agreement_type: 'terms_of_service',
-            agreement_version: tosAgreement.version,
-            ip_address: ipAddress,
-            user_agent: userAgent,
-            workos_organization_id: targetOrgId,
-          });
-        }
-        if (privacyAgreement) {
-          await orgDb.recordUserAgreementAcceptance({
-            workos_user_id: user.id,
-            email: user.email,
-            agreement_type: 'privacy_policy',
-            agreement_version: privacyAgreement.version,
-            ip_address: ipAddress,
-            user_agent: userAgent,
-            workos_organization_id: targetOrgId,
-          });
-        }
-      } catch (err) {
-        logger.warn({ err, userId: user.id, orgId: targetOrgId }, 'Failed to record ToS / privacy-policy acceptance during bootstrap');
-      }
-
-      // Audit-log the bootstrap so org-level mutations (verified domain
-      // insert, metadata writes) are attributable. Failures here must not
-      // roll back the profile create — the row is already on disk and the
-      // call has materially succeeded — so we log-and-swallow.
-      try {
-        await orgDb.recordAuditLog({
-          workos_organization_id: targetOrgId,
-          workos_user_id: user.id,
-          action: 'member_profile_bootstrapped',
-          resource_type: 'member_profile',
-          resource_id: profile.id,
-          details: {
-            slug,
-            corporate_domain: corporateDomain,
-            updated_fields: Object.keys(orgUpdates),
-            ignored_fields: metadataIgnoredApiFields,
-            domain_conflict_org_id: domainConflictOrgId,
-            ...(typeof company_type === 'string' ? { company_type } : {}),
-            ...(typeof revenue_tier === 'string' ? { revenue_tier } : {}),
-            ...(typeof membership_tier === 'string' ? { membership_tier } : {}),
-            ...(typeof marketing_opt_in === 'boolean' ? { marketing_opt_in } : {}),
-          },
-        });
-      } catch (err) {
-        logger.warn({ err, orgId: targetOrgId, profileId: profile.id }, 'Failed to write audit log for member-profile bootstrap');
-      }
-
-      invalidateMemberContextCache();
-
-      const refreshedOrg = await orgDb.getOrganization(targetOrgId);
-      const primaryDomain = await resolvePrimaryDomain(targetOrgId, corporateDomain);
-      logger.info({
-        profileId: profile.id,
-        orgId: targetOrgId,
-        slug,
-        durationMs: Date.now() - startTime,
-        metadataIgnoredApiFields,
-        domainConflictOrgId,
-      }, 'POST /api/me/member-profile (bootstrap) completed');
-
-      const warnings: Array<Record<string, unknown>> = [];
-      if (metadataIgnoredApiFields.length > 0) {
-        warnings.push({
-          code: 'metadata_unchanged',
-          fields: metadataIgnoredApiFields,
-          message:
-            'Some org metadata fields were already set on the organization and were not overwritten. Update them via the dashboard or PUT /api/organizations/:orgId if you need to change them.',
-        });
-      }
-      if (domainConflictOrgId) {
-        warnings.push({
-          code: 'domain_already_claimed',
-          domain: corporateDomain,
-          message:
-            `corporate_domain '${corporateDomain}' is already linked to a different organization, so it was not attached to this profile's organization. The profile was created, but registry surfaces that resolve via the verified domain (e.g. brand.json publish) won't reflect it. Email support@agenticadvertising.org to resolve the domain ownership.`,
-        });
-      }
-
-      const newBrandPrimaryDomain = await getBrandPrimaryDomain(targetOrgId);
-      return res.status(201).json({
-        profile: toSpecMemberProfile(profile, refreshedOrg, primaryDomain, newBrandPrimaryDomain),
-        ...(warnings.length ? { warnings } : {}),
-      });
-    } catch (error) {
-      logger.error({ err: error, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile (bootstrap) error');
-      return res.status(500).json({
-        error: 'Failed to create member profile',
-      });
-    }
-  }
-
   // GET /api/me/member-profile - Get current user's organization's member profile
   router.get('/', requireAuth, async (req, res) => {
     const startTime = Date.now();
@@ -716,18 +288,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       // Get user's organization memberships
-      let memberships = await workos!.userManagement.listOrganizationMemberships({
+      const memberships = await workos!.userManagement.listOrganizationMemberships({
         userId: user.id,
       });
 
-      // Auto-link any verified-domain orgs the user isn't yet in.
-      // Helper short-circuits when the user is already a cached member.
-      const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-      if (linked) {
-        memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-      }
 
       const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
       if (!selectedMembership) {
@@ -791,7 +355,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     // handler below so /community/profile-edit and /member-profile.html stay
     // wired to the existing semantics (409 on conflict, full profile body).
     if (isMemberProfileBootstrapBody(req.body)) {
-      return handleBootstrapMemberProfile(req, res, startTime);
+      return res.status(403).json({
+        error: 'organization_onboarding_disabled',
+        message: 'Member profile bootstrap is temporarily unavailable.',
+      });
     }
     try {
       const user = req.user!;
@@ -871,18 +438,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         logger.info({ userId: user.id, orgId: targetOrgId }, 'POST /api/me/member-profile: dev mode bypass');
       } else {
         // Get user's organization memberships
-        let memberships = await workos!.userManagement.listOrganizationMemberships({
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
         });
 
-        // Auto-link any verified-domain orgs the user isn't yet in.
-        // Helper short-circuits when the user is already a cached member.
-        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-        if (linked) {
-          memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-        }
 
         const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
         if (!selectedMembership) {
@@ -1187,18 +746,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         logger.info({ userId: user.id, orgId: targetOrgId }, 'PUT /api/me/member-profile: dev mode bypass');
       } else {
         // Get user's organization memberships
-        let memberships = await workos!.userManagement.listOrganizationMemberships({
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
         });
 
-        // Auto-link any verified-domain orgs the user isn't yet in.
-        // Helper short-circuits when the user is already a cached member.
-        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-        if (linked) {
-          memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-        }
 
         const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
         if (!selectedMembership) {

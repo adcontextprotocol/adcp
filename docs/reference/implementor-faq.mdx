@@ -106,6 +106,15 @@ Before close, buyers and sellers derive future periods and `next_expected_at`
 from the installed schedule; they do not use a premature obligation with an
 unresolved denominator.
 
+A `summary` with `health: complete` can still select an active committed
+configuration schedule. When a future scheduled period exists outside that
+closed evaluated scope, the seller MUST return the nearest future period start
+across all active in-scope `delivery_config_generations` as `next_expected_at`.
+The projection preserves `scope.scope_closed: true` and
+`scope.coverage_complete: true`; it MUST NOT create, expose, lease, count, or
+alter an open-period obligation or change the evaluated coverage. See
+[complete-summary future expectations](/docs/media-buy/task-reference/get_reporting_status#future-expectation-on-a-complete-summary).
+
 ### Q: Is the reporting SLA measured from media-buy acceptance?
 
 **A:** No. `expected_at` is always the resolved `period.end` plus the selected

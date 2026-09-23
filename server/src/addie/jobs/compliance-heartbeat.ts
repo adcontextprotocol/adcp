@@ -23,7 +23,7 @@ import {
   type ComplianceResult,
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
-import { query, withDatabaseDeadline } from '../../db/client.js';
+import { query } from '../../db/client.js';
 import { ComplianceRefreshRequestsDatabase } from '../../db/compliance-refresh-requests-db.js';
 import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
@@ -32,7 +32,6 @@ import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
-import { getVerificationProfileShadowRollout } from '../../db/system-settings-db.js';
 import {
   pruneVerificationProfileShadowAssessments,
   recordVerificationProfileShadowAssessment,
@@ -41,6 +40,7 @@ import {
   deriveVerificationProfileShadowAssessment,
   VERIFICATION_PROFILE_SHADOW_POLICY_VERSION,
 } from '../../services/verification-profile-shadow.js';
+import { deriveVerificationProfileRoleAssessments } from '../../services/verification-profile-assessment.js';
 import {
   hostedComplianceTarget,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
@@ -53,13 +53,24 @@ const fallbackComplianceTarget = hostedComplianceTarget();
 
 interface HeartbeatOptions {
   limit?: number;
+  /** Include the bounded admin status snapshot used by the scheduled worker. */
+  includeOperationalDiagnostics?: boolean;
 }
 
-interface HeartbeatResult {
+export interface HeartbeatResult {
   checked: number;
   passed: number;
   failed: number;
   skipped: number;
+  diagnostics?: {
+    eligibleBacklog: number;
+    selectedAgents: string[];
+    runsRecorded: number;
+    skipReasons: HeartbeatSkipReasons;
+    requestedComplianceTarget: string;
+    complianceBundleVersion: string;
+    sdkVersion: string;
+  };
 }
 
 interface HeartbeatSkipReasons {
@@ -88,7 +99,11 @@ async function pruneShadowLedgerBestEffort(): Promise<void> {
   }
 }
 
-export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}): Promise<HeartbeatResult> {
+export async function runComplianceHeartbeatJob(
+  options: HeartbeatOptions = {},
+  signal?: AbortSignal,
+): Promise<HeartbeatResult> {
+  signal?.throwIfAborted();
   const limit = options.limit ?? 10;
   const result: HeartbeatResult = { checked: 0, passed: 0, failed: 0, skipped: 0 };
   const skipReasons: HeartbeatSkipReasons = {
@@ -112,6 +127,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   );
   const batchStartedAt = Date.now();
   const pendingShadowAssessments: PendingShadowAssessment[] = [];
+  let runsRecorded = 0;
 
   // Mark agents as in-progress to prevent concurrent pickup by overlapping runs.
   // Agents are processed serially, so the lock must outlive the worst-case batch
@@ -137,6 +153,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   }
 
   for (const agent of agentsDue) {
+    signal?.throwIfAborted();
     const executionFence = await complianceRefreshDb.acquireAgentExecutionFence(agent.agent_url);
     if (!executionFence) {
       await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
@@ -180,6 +197,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
         storyboard_start_offset: storyboardStartOffset,
+        signal,
       };
       const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(agent.agent_url);
 
@@ -234,8 +252,17 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         'heartbeat',
       );
       dbInput.dry_run = false;
+      if (isAuthoritativeComplianceRun(dbInput)) {
+        dbInput.grading_profile_assessments = deriveVerificationProfileRoleAssessments({
+          result: complianceResult,
+          lifecycleStage: agent.lifecycle_stage as LifecycleStage,
+          requestedComplianceTarget: dbInput.requested_compliance_target,
+          storyboardStatuses: dbInput.storyboard_statuses ?? [],
+        });
+      }
       assertExecutionFence();
       const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+      runsRecorded++;
       assertExecutionFence();
 
       if (!isAuthoritativeComplianceRun(dbInput)) {
@@ -321,6 +348,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             complianceDb,
             agentUrl: agent.agent_url,
             supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+            sourceRunId: run.id,
           });
           assertExecutionFence();
           if (badgeResult.revoked.length > 0) {
@@ -357,6 +385,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         );
       }
     } catch (error) {
+      // A scheduler timeout is a batch-level cancellation, not evidence about
+      // the current agent. Let the job fail after the finally block releases
+      // its execution fence instead of recording a false agent failure and
+      // continuing through the rest of the batch with an aborted transport.
+      signal?.throwIfAborted();
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
       if (error && typeof error === 'object' && 'code' in error && error.code === 'execution_fence_lost') {
@@ -468,6 +501,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           is_authoritative: false,
           replace_storyboard_statuses: true,
         });
+        runsRecorded++;
 
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
       } catch (recordError) {
@@ -496,9 +530,8 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     }
   }
 
-  // Shadow persistence is deliberately outside the public heartbeat loop.
-  // Re-check the audited switch with a short deadline before every write so a
-  // disable or automatic expiry takes effect within an already-running batch.
+  // Comparison persistence is deliberately outside the public heartbeat loop.
+  // It reuses the completed run and has no agent traffic or badge side effects.
   const publicProcessingDurationMs = Date.now() - batchStartedAt;
   const shadowFlushStartedAt = Date.now();
   const shadowStats = {
@@ -507,34 +540,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     recorded: 0,
     disabled: 0,
     errors: 0,
-    setting_errors: 0,
     total_write_latency_ms: 0,
     max_write_latency_ms: 0,
   };
   for (const pending of pendingShadowAssessments) {
-    let enabled = false;
-    try {
-      enabled = (await withDatabaseDeadline(
-        Date.now() + 500,
-        () => getVerificationProfileShadowRollout(),
-        // Expiry is an audited compare-and-set write when the 72-hour window
-        // elapses, so this bounded operation cannot use a read-only transaction.
-        { readOnly: false },
-      )).enabled;
-    } catch (settingError) {
-      shadowStats.setting_errors++;
-      shadowStats.errors++;
-      logger.error(
-        { settingError, agentUrl: pending.agentUrl },
-        'Verification profile shadow setting could not be read; collection remains disabled',
-      );
-      continue;
-    }
-    if (!enabled) {
-      shadowStats.disabled++;
-      continue;
-    }
-
     shadowStats.attempted++;
     const writeStartedAt = Date.now();
     try {
@@ -569,8 +578,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     }
   }
   // Emit one aggregate health record for every scheduled heartbeat, including
-  // empty queues and disabled collection. That makes a frozen pre-rollout
-  // baseline and the collection window comparable without exposing endpoints.
+  // empty queues, without exposing endpoint URLs.
   logger.info(
     {
       publicProcessingDurationMs,
@@ -593,6 +601,18 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     'Compliance heartbeat shadow flush completed after public processing',
   );
   await pruneShadowLedgerBestEffort();
+
+  if (options.includeOperationalDiagnostics) {
+    result.diagnostics = {
+      eligibleBacklog,
+      selectedAgents: urls,
+      runsRecorded,
+      skipReasons: { ...skipReasons },
+      requestedComplianceTarget: fallbackComplianceTarget.requested,
+      complianceBundleVersion: fallbackComplianceTarget.version,
+      sdkVersion: LIBRARY_VERSION,
+    };
+  }
 
   return result;
 }

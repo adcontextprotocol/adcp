@@ -1,3 +1,4 @@
+import { getResponseProviderPolicy, responseProviderId } from '../addie/response-provider-policy.js';
 /**
  * Addie Chat routes module
  *
@@ -22,7 +23,12 @@ import {
   type ExecutionPlan,
   type RoutingContext,
 } from "../addie/router.js";
-import { prepareGeminiDirectTurn, getGeminiDirectResults, geminiDirectAvailable } from "../addie/gemini-direct-experiment.js";
+import {
+  prepareGeminiDirectTurn,
+  getGeminiDirectResults,
+  geminiDirectAvailable,
+  hasAnonymousGeminiDirectAssignment,
+} from "../addie/gemini-direct-experiment.js";
 import { parseWebChatModelPreference, webChatModelInfo, WebChatModelPreferenceError, type WebChatModelInfo } from "../addie/web-chat-model-selection.js";
 import type { CostEvent } from "../addie/claude-cost-tracker.js";
 import { createProductionRouter } from "../addie/router-runtime.js";
@@ -38,6 +44,7 @@ import {
   blockCheckpointedToolReplays,
   buildToolResultCheckpoint,
   reserveToolIntentCheckpoint,
+  storedToolCall,
   type StoredToolCall,
 } from "../addie/stream-tool-checkpoints.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
@@ -79,8 +86,9 @@ import {
 import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
-  isWebUserAAOAdmin,
 } from "../addie/mcp/admin-tools.js";
+import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
+import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
 import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
@@ -158,8 +166,7 @@ import {
 } from "../addie/thread-service.js";
 import { UsersDatabase } from "../db/users-db.js";
 import { isRetriesExhaustedError } from "../utils/anthropic-retry.js";
-import * as relationshipDb from "../db/relationship-db.js";
-import * as personEvents from "../db/person-events-db.js";
+import { scheduleWebRelationshipAnalytics } from "../addie/services/web-relationship-analytics.js";
 import {
   ChatAttachmentValidationError,
   summarizeAttachmentsForMessage,
@@ -182,6 +189,36 @@ export const EMPTY_ASSISTANT_RESPONSE_FALLBACK =
   "I hit a response delivery issue before I could finish. Please try again in a moment.";
 
 const logger = createLogger("addie-chat-routes");
+export const PRE_PROVIDER_STATUS_DELAY_MS = 1_500;
+
+export function startPreProviderStatusTimer(
+  sendEvent: (event: string, data: unknown) => void,
+  delayMs = PRE_PROVIDER_STATUS_DELAY_MS,
+): ReturnType<typeof setTimeout> {
+  const timer = setTimeout(() => {
+    // Content-free by design: this event must never carry identity, prompt,
+    // tool, or partial model output.
+    sendEvent('status', { stage: 'preparing_context' });
+  }, delayMs);
+  timer.unref?.();
+  return timer;
+}
+
+function recordPreProviderStages(
+  experiment: Awaited<ReturnType<typeof prepareGeminiDirectTurn>>['experiment'],
+  stages: Parameters<NonNullable<Awaited<ReturnType<typeof prepareGeminiDirectTurn>>['experiment']>['recordPreProviderStages']>[0],
+): void {
+  experiment?.recordPreProviderStages?.(stages);
+  logger.info({
+    event: 'addie_response_stage',
+    stage: 'pre_provider',
+    relationship_analytics_schedule_ms: stages.relationshipAnalyticsScheduleMs,
+    member_context_ms: stages.memberContextMs,
+    workos_context_ms: stages.workosContextMs,
+    experiment_routing_ms: stages.experimentRoutingMs,
+    pre_provider_ms: stages.preProviderMs,
+  }, 'Addie response preparation completed');
+}
 
 let claudeClient: AddieClaudeClient | null = null;
 let webChatRouter: AddieRouter | null = null;
@@ -196,10 +233,8 @@ function readAnonymousThreadOwner(req: Request): string | null {
 }
 
 function ensureAnonymousThreadOwner(req: Request, res: Response): string {
-  const existing = readAnonymousThreadOwner(req);
-  if (existing) return existing;
-
-  const ownerId = crypto.randomUUID();
+  // Renew the signed capability without rotating its stable owner UUID.
+  const ownerId = readAnonymousThreadOwner(req) ?? crypto.randomUUID();
   const capability = issueAnonymousSessionCapability(
     ADDIE_ANONYMOUS_OWNER_AUDIENCE,
     ownerId,
@@ -424,8 +459,8 @@ export async function selectRoutedWebTools(input: {
 /**
  * Initialize the chat client
  *
- * Anonymous users get Haiku with public read tools and training-agent execution.
- * Authenticated users get Sonnet with full tools (billing, schema, Slack, etc.).
+ * Authorization determines tool access; the global response policy determines
+ * the provider independently of identity or historical experiment assignment.
  */
 async function initializeChatClient(): Promise<void> {
   if (initialized) return;
@@ -436,7 +471,7 @@ async function initializeChatClient(): Promise<void> {
     return;
   }
 
-  // Client defaults to Sonnet; anonymous requests override to Haiku per-request
+  // Retain the Sonnet client as the explicit rollback/emergency backend.
   claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.chat);
   webChatRouter = createProductionRouter(process.env.OPENAI_API_KEY?.trim()).router;
 
@@ -800,6 +835,8 @@ export async function prepareRequestWithMemberTools(
   isAuthenticated: boolean,
   threadId?: string,
   selectedOrganizationId?: string | null,
+  adminPrincipal?: AAOAdminPrincipal,
+  stageObserver?: (stage: 'workos_context', durationMs: number) => void,
 ): Promise<PreparedRequest> {
   const messageToProcess = sanitizedInput;
   let memberContext: MemberContext | null = null;
@@ -809,14 +846,18 @@ export async function prepareRequestWithMemberTools(
   const [memberContextResult, siRetrievalResult] = await Promise.all([
     // Get member context
     (async () => {
+      const startedAt = Date.now();
       try {
         if (userId) {
-          return await getWebMemberContext(userId, selectedOrganizationId);
+          return await getWebMemberContext(userId, selectedOrganizationId, adminPrincipal);
         }
         return null;
       } catch (error) {
+        if (error instanceof AAOAdminLookupUnavailableError) throw error;
         logger.warn({ error, userId }, "Addie Chat: Failed to get member context");
         return null;
+      } finally {
+        stageObserver?.('workos_context', Date.now() - startedAt);
       }
     })(),
     // Retrieve relevant SI agents
@@ -933,7 +974,7 @@ export async function prepareRequestWithMemberTools(
   // Re-register billing with memberContext so org-scoped operations work (overrides baseline)
   const allTools = [...MEMBER_TOOLS, ...DIRECTORY_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS];
   const combinedHandlers = new Map([
-    ...createMemberToolHandlers(memberContext, undefined, trainingModuleContext),
+    ...createMemberToolHandlers(memberContext, undefined, trainingModuleContext, undefined, adminPrincipal),
     ...createDirectoryToolHandlers(memberContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
     ...createAdcpToolHandlers(memberContext, trainingModuleContext),
@@ -981,8 +1022,8 @@ export async function prepareRequestWithMemberTools(
   if (userId) {
     const workingGroupDb = new WorkingGroupDatabase();
     const [userIsAdmin, ledGroups] = await Promise.all([
-      isWebUserAAOAdmin(userId),
-      workingGroupDb.getCommitteesLedByUser(userId),
+      adminPrincipal ? isAuthenticatedUserAAOAdmin(adminPrincipal) : Promise.resolve(false),
+      workingGroupDb.getCommitteesLedByUser(adminPrincipal?.authWorkosUserId ?? adminPrincipal?.id ?? userId),
     ]);
 
     if (userIsAdmin) {
@@ -1015,7 +1056,7 @@ export async function prepareRequestWithMemberTools(
     // Meeting scheduling: admin or committee leader
     if (userIsAdmin || ledGroups.length > 0) {
       allTools.push(...MEETING_TOOLS);
-      for (const [name, handler] of createMeetingToolHandlers(memberContext)) {
+      for (const [name, handler] of createMeetingToolHandlers(memberContext, undefined, undefined, adminPrincipal)) {
         combinedHandlers.set(name, handler);
       }
     }
@@ -1048,7 +1089,7 @@ export async function prepareRequestWithMemberTools(
 
   return {
     messageToProcess,
-    requestContext,
+    requestContext: `${requestContext}\n\n**Platform administrator access**: ${isAAOAdmin ? 'Authorized for this authenticated credential.' : 'Not authorized. Platform-wide escalation listing and resolution require AgenticAdvertising.org platform administrator access; organization ownership does not grant it.'}`,
     memberContext,
     requestTools,
     siRetrievalTimeMs,
@@ -1130,12 +1171,13 @@ export function createAddieChatRouter(options?: {
   // =========================================================================
 
   apiRouter.get('/experiment', optionalAuth, async (req, res) => {
-    if (!req.user || !await isWebUserAAOAdmin(req.user.id)) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
     try {
+      if (!req.user || !await isAuthenticatedUserAAOAdmin(req.user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
       return res.json(await getGeminiDirectResults());
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ error }, 'Failed to load Addie experiment results');
       return res.status(503).json({ error: 'Experiment results unavailable' });
     }
@@ -1234,11 +1276,13 @@ export function createAddieChatRouter(options?: {
 
       let thread;
       let externalId = conversation_id;
+      let anonymousOwnerId: string | undefined;
+      let anonymousOrigin = false;
 
       if (!externalId) {
         // Create new thread - generate a new UUID as external_id
         externalId = crypto.randomUUID();
-        const anonymousOwnerId = userId ? undefined : ensureAnonymousThreadOwner(req, res);
+        anonymousOwnerId = userId ? undefined : ensureAnonymousThreadOwner(req, res);
         thread = await threadService.getOrCreateThread({
           channel: 'web',
           external_id: externalId,
@@ -1268,15 +1312,19 @@ export function createAddieChatRouter(options?: {
           return res.status(404).json({ error: "Conversation not found" });
         }
         if (req.user?.id && thread.user_type === 'anonymous') {
-          const anonymousOwnerId = readAnonymousThreadOwner(req);
+          anonymousOwnerId = readAnonymousThreadOwner(req) ?? undefined;
           thread = anonymousOwnerId
             ? await threadService.claimAnonymousThread(
                 thread.thread_id, anonymousOwnerId, req.user.id, req.user.firstName ?? undefined,
               )
             : null;
           if (!thread) return res.status(404).json({ error: "Conversation not found" });
+          anonymousOrigin = true;
+        } else if (thread.user_type === 'anonymous') {
+          anonymousOwnerId = ensureAnonymousThreadOwner(req, res);
         }
       }
+      anonymousOrigin ||= hasAnonymousGeminiDirectAssignment(thread.context);
 
       // Get conversation history for context
       const threadMessages = await threadService.getThreadMessages(thread.thread_id, { limit: 100 });
@@ -1295,20 +1343,16 @@ export function createAddieChatRouter(options?: {
         message_source: messageSource,
       });
 
-      // Record inbound message in the relationship system
-      if (userId) {
-        try {
-          const personId = await relationshipDb.resolvePersonId({ workos_user_id: userId });
-          await relationshipDb.recordPersonMessage(personId, 'web');
-          await relationshipDb.deriveSentiment(personId);
-          await personEvents.recordEvent(personId, 'message_received', {
-            channel: 'web',
-            data: personEvents.buildMessageReceivedData(inputValidation.sanitized, 'web_chat'),
-          });
-        } catch {
-          // Not all web users have person_relationships records — that's OK
-        }
-      }
+      // Relationship data enriches personalization and analytics, but is not
+      // authorization-bearing. Track it durably for shutdown without holding
+      // model startup behind relationship locks or sentiment processing.
+      const relationshipAnalytics = userId
+        ? scheduleWebRelationshipAnalytics({
+            userId,
+            sanitizedMessage: inputValidation.sanitized,
+            source: 'web_chat',
+          })
+        : null;
 
       // Build context from history, passing tool calls as structured
       // data so they are reconstructed as proper tool_use/tool_result API blocks.
@@ -1329,6 +1373,8 @@ export function createAddieChatRouter(options?: {
       const isAuth = !!req.user;
 
       // Prepare message with member context and per-request tools
+      const memberContextStartedAt = Date.now();
+      let workosContextMs: number | undefined;
       const {
         messageToProcess,
         requestContext,
@@ -1344,8 +1390,13 @@ export function createAddieChatRouter(options?: {
         externalId,
         isAuth,
         thread.thread_id,
-        typeof organization_id === 'string' ? organization_id : null
+        typeof organization_id === 'string' ? organization_id : null,
+        req.user,
+        (stage, durationMs) => {
+          if (stage === 'workos_context') workosContextMs = durationMs;
+        },
       );
+      const memberContextMs = Date.now() - memberContextStartedAt;
       const certificationContext = resolveWebCertificationContext(
         certificationProgress, isAuth ? threadMessages : [], externalId, thread.thread_id,
       );
@@ -1353,6 +1404,7 @@ export function createAddieChatRouter(options?: {
       const activeAgentRegistration = isAuth && hasActiveAgentRegistration(messageToProcess, threadMessages);
       if (isAuth && certificationContext.moduleId) certificationModuleContext.moduleId = certificationContext.moduleId;
       const tieredAccess = buildTieredAccess(memberTools, isAuth, activeCertificationKind !== null);
+      const experimentRoutingStartedAt = Date.now();
       const experimentTurn = await prepareGeminiDirectTurn({
         client: activeChatClient,
         userId: req.user?.id,
@@ -1368,6 +1420,8 @@ export function createAddieChatRouter(options?: {
         baseRequestContext: requestContext,
         evaluation: options?.evaluationMode,
         modelPreference,
+        anonymousOwnerId,
+        anonymousOrigin,
         getControlTools: async () => isAuth
           ? await selectRoutedWebTools({
               message: messageToProcess,
@@ -1388,6 +1442,11 @@ export function createAddieChatRouter(options?: {
           })
         : null,
       });
+      const experimentRoutingMs = Date.now() - experimentRoutingStartedAt;
+      if (relationshipAnalytics && experimentTurn.experiment) {
+        void relationshipAnalytics.completion.then(result =>
+          experimentTurn.experiment?.recordRelationshipAnalytics?.(result));
+      }
       const routedWebTools = experimentTurn.selection;
       const { processOptions } = tieredAccess;
       const effectiveModel = experimentTurn.model ?? tieredAccess.effectiveModel;
@@ -1405,6 +1464,14 @@ export function createAddieChatRouter(options?: {
       const authedScope = req.user?.id
         ? { userId: req.user.id, tier: await resolveUserTierFromDb(req.user.id) }
         : null;
+
+      recordPreProviderStages(experimentTurn.experiment, {
+        relationshipAnalyticsScheduleMs: relationshipAnalytics?.scheduleMs,
+        memberContextMs,
+        workosContextMs,
+        experimentRoutingMs,
+        preProviderMs: Date.now() - startTime,
+      });
 
       // Process with Claude
       let response: AddieResponse;
@@ -1453,7 +1520,7 @@ export function createAddieChatRouter(options?: {
           flagged: true,
           flag_reason: `Error: ${error instanceof Error ? error.message : "Unknown"}`,
           model_execution: {
-            source: 'local', requested_provider: experimentTurn.model ? 'google' : 'anthropic', requested_model: effectiveModel, reason: 'provider_error',
+            source: 'local', requested_provider: options?.evaluationMode ? 'anthropic' : responseProviderId(), requested_model: effectiveModel, reason: 'provider_error',
           },
         };
       }
@@ -1483,21 +1550,14 @@ export function createAddieChatRouter(options?: {
       const latencyMs = Date.now() - startTime;
 
       // Save assistant response with full execution details
+      const persistenceStartedAt = Date.now();
       const assistantMessage = await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'assistant',
         content: outputValidation.sanitized,
         tools_used: response.tools_used.length > 0 ? response.tools_used : undefined,
         tool_calls: response.tool_executions.length > 0
-          ? response.tool_executions.map((exec) => ({
-              name: exec.tool_name,
-              input: exec.parameters,
-              result: exec.result,
-              duration_ms: exec.duration_ms,
-              is_error: exec.is_error,
-              result_status: exec.normalized_result?.status,
-              ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
-            }))
+          ? response.tool_executions.map(storedToolCall)
           : undefined,
         model: effectiveModel,
         model_execution: response.model_execution,
@@ -1519,7 +1579,7 @@ export function createAddieChatRouter(options?: {
         config_version_id: response.config_version_id,
       });
 
-      await experimentTurn.experiment?.finish(response, assistantMessage.message_id);
+      await experimentTurn.experiment?.markDelivery('completed', assistantMessage.message_id, persistenceStartedAt);
 
       // Check for SI session started (from connect_to_si_agent tool)
       const siSession = withSiAnonymousCapability(
@@ -1539,6 +1599,7 @@ export function createAddieChatRouter(options?: {
         si_session: siSession,
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       if (error instanceof WebChatModelPreferenceError) {
         return res.status(error.statusCode).json({
           error: 'Invalid model preference',
@@ -1568,7 +1629,8 @@ export function createAddieChatRouter(options?: {
       ready: (!!injectedChatClient || (initialized && claudeClient !== null)) && isKnowledgeReady(),
       knowledge_ready: isKnowledgeReady(),
       model_selection: {
-        enabled: !!req.user && !options?.evaluationMode,
+        enabled: false,
+        provider: getResponseProviderPolicy().provider,
         gemini_available: !options?.evaluationMode && geminiDirectAvailable(injectedChatClient ?? claudeClient),
       },
     });
@@ -1588,8 +1650,11 @@ export function createAddieChatRouter(options?: {
     // Track connection state
     let connectionClosed = false;
     let heartbeat: ReturnType<typeof setInterval> | null = null;
+    let preProviderStatusTimer: ReturnType<typeof setTimeout> | null = null;
     let claimedTurn: { threadId: string; clientRequestId: string; leaseId: string } | null = null;
     let terminalResponse: AddieResponse | undefined;
+    let activeExperiment: Awaited<ReturnType<typeof prepareGeminiDirectTurn>>['experiment'];
+    let experimentDeliveryCompleted = false;
     let requestedProviderForAttempt: 'anthropic' | 'google' = 'anthropic';
     let requestedModelForAttempt = req.user ? AddieModelConfig.chat : AddieModelConfig.anonymousChat;
 
@@ -1698,10 +1763,12 @@ export function createAddieChatRouter(options?: {
 
       let thread;
       let externalId = conversation_id;
+      let anonymousOwnerId: string | undefined;
+      let anonymousOrigin = false;
 
       if (!externalId) {
         externalId = crypto.randomUUID();
-        const anonymousOwnerId = userId ? undefined : ensureAnonymousThreadOwner(req, res);
+        anonymousOwnerId = userId ? undefined : ensureAnonymousThreadOwner(req, res);
         thread = await threadService.getOrCreateThread({
           channel: 'web',
           external_id: externalId,
@@ -1721,15 +1788,19 @@ export function createAddieChatRouter(options?: {
           return res.status(404).json({ error: "Conversation not found" });
         }
         if (req.user?.id && thread.user_type === 'anonymous') {
-          const anonymousOwnerId = readAnonymousThreadOwner(req);
+          anonymousOwnerId = readAnonymousThreadOwner(req) ?? undefined;
           thread = anonymousOwnerId
             ? await threadService.claimAnonymousThread(
                 thread.thread_id, anonymousOwnerId, req.user.id, req.user.firstName ?? undefined,
               )
             : null;
           if (!thread) return res.status(404).json({ error: "Conversation not found" });
+          anonymousOrigin = true;
+        } else if (thread.user_type === 'anonymous') {
+          anonymousOwnerId = ensureAnonymousThreadOwner(req, res);
         }
       }
+      anonymousOrigin ||= hasAnonymousGeminiDirectAssignment(thread.context);
 
       const requestMessages = clientRequestId
         ? await threadService.getMessagesByClientRequestId(thread.thread_id, clientRequestId)
@@ -1739,9 +1810,9 @@ export function createAddieChatRouter(options?: {
         .reverse()
         .find(m => m.role === 'assistant' && m.delivery_status === 'completed');
 
-      // A retry continues the original turn, even if the selector has since
-      // changed. Stored tool checkpoints and execution policy still apply.
-      if (existingUserMessage) modelPreference = existingUserMessage.model_preference ?? 'default';
+      // A retry retains stored tool checkpoints and execution policy. Preserve
+      // the historical user row; resumed execution follows today's provider policy.
+      if (existingUserMessage) modelPreference = 'default';
 
       if (existingUserMessage && existingUserMessage.content !== messageForStorage) {
         return res.status(409).json({
@@ -1830,6 +1901,7 @@ export function createAddieChatRouter(options?: {
         res.end();
         return;
       }
+      preProviderStatusTimer = startPreProviderStatusTimer(sendEvent);
 
       // Get conversation history
       const threadMessages = await threadService.getThreadMessages(thread.thread_id, { limit: 100 });
@@ -1874,23 +1946,13 @@ export function createAddieChatRouter(options?: {
         });
       }
 
-      // Record inbound message in the relationship system
-      if (userId && !existingUserMessage) {
-        try {
-          const personId = await relationshipDb.resolvePersonId({ workos_user_id: userId });
-          await relationshipDb.recordPersonMessage(personId, 'web');
-          await relationshipDb.deriveSentiment(personId);
-          await personEvents.recordEvent(personId, 'message_received', {
-            channel: 'web',
-            data: personEvents.buildMessageReceivedData(
-              inputValidation.sanitized,
-              'web_chat_stream'
-            ),
-          });
-        } catch {
-          // Not all web users have person_relationships records
-        }
-      }
+      const relationshipAnalytics = userId && !existingUserMessage
+        ? scheduleWebRelationshipAnalytics({
+            userId,
+            sanitizedMessage: inputValidation.sanitized,
+            source: 'web_chat_stream',
+          })
+        : null;
 
       // Build context messages, passing tool calls as structured data
       // Token-aware trimming in processMessageStream handles length; no hard slice here.
@@ -1914,6 +1976,8 @@ export function createAddieChatRouter(options?: {
       const messageForModel = retryRequested
         ? 'Continue the interrupted reply from the stored tool results. Do not repeat any completed action. Give the learner the result and next step.'
         : inputValidation.sanitized;
+      const memberContextStartedAt = Date.now();
+      let workosContextMs: number | undefined;
       const {
         messageToProcess,
         requestContext,
@@ -1929,8 +1993,13 @@ export function createAddieChatRouter(options?: {
         externalId,
         isAuth,
         thread.thread_id,
-        typeof organization_id === 'string' ? organization_id : null
+        typeof organization_id === 'string' ? organization_id : null,
+        req.user,
+        (stage, durationMs) => {
+          if (stage === 'workos_context') workosContextMs = durationMs;
+        },
       );
+      const memberContextMs = Date.now() - memberContextStartedAt;
       const certificationContext = resolveWebCertificationContext(
         certificationProgress, isAuth ? threadMessages : [], externalId, thread.thread_id,
       );
@@ -1939,6 +2008,7 @@ export function createAddieChatRouter(options?: {
       const hasThreadCertCtx = activeCertificationKind !== null;
       if (isAuth && certificationContext.moduleId) certificationModuleContext.moduleId = certificationContext.moduleId;
       const tieredAccess = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
+      const experimentRoutingStartedAt = Date.now();
       const experimentTurn = await prepareGeminiDirectTurn({
         client: activeChatClient,
         userId: req.user?.id,
@@ -1954,6 +2024,8 @@ export function createAddieChatRouter(options?: {
         baseRequestContext: requestContext,
         evaluation: options?.evaluationMode,
         modelPreference,
+        anonymousOwnerId,
+        anonymousOrigin,
         getControlTools: async () => isAuth
           ? await selectRoutedWebTools({
               message: messageToProcess,
@@ -1974,6 +2046,12 @@ export function createAddieChatRouter(options?: {
           })
         : null,
       });
+      activeExperiment = experimentTurn.experiment;
+      const experimentRoutingMs = Date.now() - experimentRoutingStartedAt;
+      if (relationshipAnalytics && experimentTurn.experiment) {
+        void relationshipAnalytics.completion.then(result =>
+          experimentTurn.experiment?.recordRelationshipAnalytics?.(result));
+      }
       const routedWebTools = experimentTurn.selection;
       const { processOptions } = tieredAccess;
       const effectiveModel = experimentTurn.model ?? tieredAccess.effectiveModel;
@@ -1982,7 +2060,7 @@ export function createAddieChatRouter(options?: {
         retryCheckpointToolCalls,
       );
       requestedModelForAttempt = effectiveModel;
-      requestedProviderForAttempt = experimentTurn.model ? 'google' : 'anthropic';
+      requestedProviderForAttempt = options?.evaluationMode ? 'anthropic' : responseProviderId();
       const preTurnCertification = userId && certificationModuleContext.moduleId
         ? await getCertificationModuleExperience(userId, certificationModuleContext.moduleId)
         : null;
@@ -2021,6 +2099,18 @@ export function createAddieChatRouter(options?: {
       const streamAuthedScope = req.user?.id
         ? { userId: req.user.id, tier: await resolveUserTierFromDb(req.user.id) }
         : null;
+
+      if (preProviderStatusTimer) {
+        clearTimeout(preProviderStatusTimer);
+        preProviderStatusTimer = null;
+      }
+      recordPreProviderStages(experimentTurn.experiment, {
+        relationshipAnalyticsScheduleMs: relationshipAnalytics?.scheduleMs,
+        memberContextMs,
+        workosContextMs,
+        experimentRoutingMs,
+        preProviderMs: Date.now() - startTime,
+      });
 
       for await (const event of experimentTurn.client.processMessageStream(messageToProcess, contextMessages, requestTools, {
         ...processOptions,
@@ -2100,6 +2190,7 @@ export function createAddieChatRouter(options?: {
               reason: 'checkpoint_persistence_failed',
               recoverable: false,
             });
+            await experimentTurn.experiment?.markDelivery('interrupted');
             res.end();
             return;
           }
@@ -2123,7 +2214,7 @@ export function createAddieChatRouter(options?: {
           const certification = userId && moduleId
             ? await getCertificationModuleExperience(userId, moduleId)
             : null;
-          await threadService.addMessage({
+          const interruptedMessage = await threadService.addMessage({
             thread_id: thread.thread_id,
             role: 'assistant',
             content: 'Reply interrupted before completion. The learner can safely retry this turn.',
@@ -2138,6 +2229,7 @@ export function createAddieChatRouter(options?: {
             client_turn_lease_id: claimedTurn?.leaseId,
             finalize_client_turn_status: claimedTurn ? 'interrupted' : undefined,
           });
+          await experimentTurn.experiment?.markDelivery('interrupted', interruptedMessage.message_id);
           claimedTurn = null;
           if (userId && moduleId) {
             await recordCertificationExperienceEvent({
@@ -2165,8 +2257,9 @@ export function createAddieChatRouter(options?: {
           response = event.response;
           terminalResponse = event.response;
         } else if (event.type === 'error') {
+          let interruptedMessageId: string | undefined;
           if (claimedTurn) {
-            await threadService.addMessage({
+            const interruptedMessage = await threadService.addMessage({
               thread_id: claimedTurn.threadId,
               role: 'assistant',
               content: 'Reply interrupted before completion. The learner can safely retry this turn.',
@@ -2180,8 +2273,10 @@ export function createAddieChatRouter(options?: {
               client_turn_lease_id: claimedTurn.leaseId,
               finalize_client_turn_status: 'interrupted',
             });
+            interruptedMessageId = interruptedMessage.message_id;
             claimedTurn = null;
           }
+          await experimentTurn.experiment?.markDelivery('interrupted', interruptedMessageId);
           sendEvent("stream_error", { error: event.error, recoverable: true });
           res.end();
           return;
@@ -2193,7 +2288,7 @@ export function createAddieChatRouter(options?: {
         const certification = userId && moduleId
           ? await getCertificationModuleExperience(userId, moduleId)
           : null;
-        await threadService.addMessage({
+        const interruptedMessage = await threadService.addMessage({
           thread_id: thread.thread_id,
           role: 'assistant',
           content: 'Reply interrupted before completion. The learner can safely retry this turn.',
@@ -2209,6 +2304,7 @@ export function createAddieChatRouter(options?: {
           client_turn_lease_id: claimedTurn?.leaseId,
           finalize_client_turn_status: claimedTurn ? 'interrupted' : undefined,
         });
+        await experimentTurn.experiment?.markDelivery('interrupted', interruptedMessage.message_id);
         claimedTurn = null;
         if (userId && moduleId) {
           await recordCertificationExperienceEvent({
@@ -2270,21 +2366,14 @@ export function createAddieChatRouter(options?: {
       const latencyMs = Date.now() - startTime;
 
       // Save assistant response - use tool_executions from response which has duration_ms
+      const persistenceStartedAt = Date.now();
       const assistantMessage = await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'assistant',
         content: outputValidation.sanitized,
         tools_used: toolsUsed.length > 0 ? toolsUsed : undefined,
         tool_calls: response?.tool_executions && response.tool_executions.length > 0
-          ? response.tool_executions.map((exec) => ({
-              name: exec.tool_name,
-              input: exec.parameters,
-              result: exec.result,
-              duration_ms: exec.duration_ms,
-              is_error: exec.is_error,
-              result_status: exec.normalized_result?.status,
-              ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
-            }))
+          ? response.tool_executions.map(storedToolCall)
           : undefined,
         model: effectiveModel,
         model_execution: response.model_execution,
@@ -2309,7 +2398,10 @@ export function createAddieChatRouter(options?: {
         client_turn_lease_id: claimedTurn?.leaseId,
         finalize_client_turn_status: claimedTurn ? 'completed' : undefined,
       });
-      await experimentTurn.experiment?.finish(response, assistantMessage.message_id);
+      if (experimentTurn.experiment) {
+        await experimentTurn.experiment.markDelivery('completed', assistantMessage.message_id, persistenceStartedAt);
+        experimentDeliveryCompleted = true;
+      }
       claimedTurn = null;
 
       const completionExecution = response?.tool_executions?.find(execution =>
@@ -2463,9 +2555,10 @@ export function createAddieChatRouter(options?: {
         });
       }
       logger.error({ err: error }, "Addie Chat Stream: Error handling message");
+      let interruptedMessageId: string | undefined;
       if (claimedTurn) {
         try {
-          await threadService.addMessage({
+          const interruptedMessage = await threadService.addMessage({
             thread_id: claimedTurn.threadId,
             role: 'assistant',
             content: 'Reply interrupted before completion. The learner can safely retry this turn.',
@@ -2482,18 +2575,25 @@ export function createAddieChatRouter(options?: {
             client_turn_lease_id: claimedTurn.leaseId,
             finalize_client_turn_status: 'interrupted',
           });
+          interruptedMessageId = interruptedMessage.message_id;
           claimedTurn = null;
         } catch (statusError) {
           logger.error({ statusError }, 'Failed to release interrupted chat turn lease');
         }
       }
+      if (!experimentDeliveryCompleted) {
+        await activeExperiment?.markDelivery('interrupted', interruptedMessageId);
+      }
       if (!res.headersSent) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         if (error instanceof ChatAttachmentValidationError) {
           return res.status(error.statusCode).json({ error: ATTACHMENT_VALIDATION_CLIENT_MESSAGE });
         }
         return res.status(500).json({ error: "Internal server error" });
       }
-      if (error instanceof ChatAttachmentValidationError) {
+      if (error instanceof AAOAdminLookupUnavailableError) {
+        sendEvent('stream_error', { error: error.message, code: error.code, recoverable: true });
+      } else if (error instanceof ChatAttachmentValidationError) {
         logger.warn({ reason: error.message }, "Addie Chat Stream: Invalid attachment");
         sendEvent("error", { error: ATTACHMENT_VALIDATION_CLIENT_MESSAGE });
       } else {
@@ -2502,6 +2602,7 @@ export function createAddieChatRouter(options?: {
       res.end();
     } finally {
       if (heartbeat) clearInterval(heartbeat);
+      if (preProviderStatusTimer) clearTimeout(preProviderStatusTimer);
     }
     },
   );

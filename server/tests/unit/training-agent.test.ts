@@ -17014,6 +17014,16 @@ describe('get_adcp_capabilities handler', () => {
     });
   });
 
+  it('advertises anonymous product and signal discovery without claiming catalog completeness', async () => {
+    const [sales, signals] = await Promise.all([
+      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'sales' }),
+      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'signals' }),
+    ]);
+
+    expect(sales.media_buy).toMatchObject({ anonymous_discovery: true });
+    expect(signals.signals).toMatchObject({ anonymous_discovery: true });
+  });
+
   it('advertises a served acceptance-policy catalog with an exact byte digest', async () => {
     const result = await handleGetAdcpCapabilities({}, {
       ...DEFAULT_CTX,

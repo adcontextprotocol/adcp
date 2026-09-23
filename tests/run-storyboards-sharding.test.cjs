@@ -276,7 +276,7 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(matrixRunner, /--shard-count 8 --max-parallel 2 --timeout-ms 180000/);
   assert.match(matrixRunner, /orchestrator_failure=1/);
   assert.match(workflow, /wholesale_feed_products_scope_isolation/);
-  assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:7:0/);
+  assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:8:0/);
 });
 
 test('creative-builder uses bounded isolated children in local and CI matrices', () => {

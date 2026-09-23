@@ -6,7 +6,6 @@ on:
       - main
       - '3.1.x'
       - '3.0.x'
-
   workflow_dispatch:
     inputs:
       release_commit:
@@ -33,11 +32,49 @@ jobs:
       contents: read
     outputs:
       relevant: ${{ steps.release-relevance.outputs.relevant }}
+      target_commit: ${{ steps.release-target.outputs.commit }}
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || github.sha }}
           fetch-depth: 0
+
+      - name: Resolve release target
+        id: release-target
+        env:
+          REQUESTED_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${REQUESTED_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Release recovery requires a full lowercase 40-character commit SHA."
+            exit 1
+          fi
+
+          target_commit="$(git rev-parse HEAD)"
+          if [ "${target_commit}" != "${REQUESTED_COMMIT}" ]; then
+            echo "::error::Checked out ${target_commit}, expected ${REQUESTED_COMMIT}."
+            exit 1
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            case "${GITHUB_REF_NAME}" in
+              main|3.1.x|3.0.x) ;;
+              *)
+                echo "::error::Release recovery must run from a supported release branch."
+                exit 1
+                ;;
+            esac
+
+            git fetch --no-tags origin "+${GITHUB_REF}:refs/remotes/origin/${GITHUB_REF_NAME}"
+            if ! git merge-base --is-ancestor "${target_commit}" "refs/remotes/origin/${GITHUB_REF_NAME}"; then
+              echo "::error::Release recovery target ${target_commit} is not on ${GITHUB_REF_NAME}."
+              exit 1
+            fi
+          fi
+
+          echo "commit=${target_commit}" >> "$GITHUB_OUTPUT"
 
       - name: Require current release branch
         run: node scripts/check-release-state.cjs current
@@ -60,7 +97,7 @@ jobs:
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          changed_files="$(git show --first-parent --format= --name-only --no-renames "${GITHUB_SHA}")"
+          changed_files="$(git show --first-parent --format= --name-only --no-renames "${{ steps.release-target.outputs.commit }}")"
           if grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-([^/]+[.]sh|isolated[.]mjs))|[.]github/workflows/(release|training-agent-storyboards|validate-schema-bundle)[.]yml$)' <<< "${changed_files}"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             echo "Release-relevant files changed."
@@ -114,6 +151,8 @@ jobs:
       contents: write
       pull-requests: write
       id-token: write
+    env:
+      RELEASE_COMMIT: ${{ needs.verify-release.outputs.target_commit }}
     steps:
       # Mint the GitHub App installation token only after the long-running
       # verification job succeeds. Installation tokens expire after one hour;
@@ -136,6 +175,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ needs.verify-release.outputs.target_commit }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
@@ -177,6 +217,10 @@ jobs:
             echo "Detected committed release artifact changes for ${VERSION}."
           else
             echo "has_release_artifacts=false" >> "$GITHUB_OUTPUT"
+            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+              echo "::error::Release recovery target ${RELEASE_COMMIT} does not commit artifacts for ${VERSION}."
+              exit 1
+            fi
             echo "No committed release artifacts detected for ${VERSION}."
           fi
 

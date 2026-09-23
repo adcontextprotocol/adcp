@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/error-details/action-not-allowed.json",
   "title": "Action Not Allowed Details",
-  "description": "Details payload for ACTION_NOT_ALLOWED errors. Lets buyer SDKs offer a structured recovery path without a separate get_media_buys round-trip.",
+  "description": "Details payload for ACTION_NOT_ALLOWED errors. Lets buyer SDKs offer a structured recovery path without a separate get_media_buys round-trip. Producer-authored extension values remain buyer-visible and MUST NOT contain vendor identifiers, internal object names, internal IDs, stack traces, or other producer-private implementation details.",
   "type": "object",
   "properties": {
     "attempted_action": {
@@ -20,6 +20,10 @@
         "$ref": "/schemas/core/media-buy-available-action.json"
       },
       "uniqueItems": true
+    },
+    "decline_reason": {
+      "$ref": "/schemas/enums/seller-policy-decline-reason.json",
+      "description": "Coarse seller-policy dimension behind a buy-specific denial. Sellers SHOULD populate this for `reason: not_supported_on_buy` when they have a structured reason and disclosure does not expose private thresholds or enforcement controls. It SHOULD be omitted for structural reasons such as `wrong_status`, `not_supported_on_product`, `mode_mismatch`, and `condition_unresolved`. When present, it MUST be consistent with the enclosing error.recovery classification."
     }
   },
   "required": ["attempted_action", "reason"],

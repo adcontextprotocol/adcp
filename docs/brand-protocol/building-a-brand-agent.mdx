@@ -724,16 +724,15 @@ Implement the [accounts protocol](/docs/accounts/overview) to support this. The 
 
 ```typescript
 async function checkLinkedAccount(extra: any): Promise<boolean> {
-  // The caller's identity comes from your auth middleware.
-  // After sync_accounts links a buyer, store their credentials
-  // and check them on subsequent requests.
-  const sessionId = extra?.sessionId;
-  if (!sessionId) return false;
-  return await db.isLinkedAccount(sessionId);
+  // auth.principalId is populated from recognized per-request credentials by
+  // your authentication middleware. It never comes from Mcp-Session-Id.
+  const principalId = extra?.auth?.principalId;
+  if (!principalId) return false;
+  return await db.isLinkedAccount(principalId);
 }
 ```
 
-How you identify callers depends on your authentication setup. The MCP transport provides session information; your auth middleware maps that to a linked account. See the [authentication guide](/docs/building/by-layer/L2/authentication) for patterns.
+How you identify callers depends on your authentication setup. Your auth middleware maps recognized per-request credentials to a stable principal, and the account link is keyed by that principal. MCP session information may maintain transport continuity but MUST NOT identify or authorize the linked account. See the [authentication guide](/docs/building/by-layer/L2/authentication) for patterns.
 
 ## Rights and creative integration
 

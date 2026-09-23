@@ -53,6 +53,7 @@ function extractStep(name) {
 }
 
 const releaseRelevance = extractStep('Detect release-relevant push');
+const releaseTarget = extractStep('Resolve release target');
 const artifactDetection = extractStep('Detect committed release artifacts');
 const approvalGate = extractStep('Require human approval for committed release artifacts');
 const changesetsStep = extractStep('Create Release Pull Request or Tag Release');
@@ -189,6 +190,25 @@ assert.strictEqual(
 );
 
 assert.strictEqual(
+  workflowConfig.on.workflow_dispatch.inputs.release_commit.required,
+  true,
+  'Manual release recovery must require an explicit release commit.'
+);
+
+assert.strictEqual(
+  verificationJob.outputs.target_commit,
+  '${{ steps.release-target.outputs.commit }}',
+  'The verification job must expose the validated release target to the mutation job.'
+);
+
+assert(
+  releaseTarget.includes('^[0-9a-f]{40}$') &&
+    releaseTarget.includes('git merge-base --is-ancestor "${target_commit}" "refs/remotes/origin/${GITHUB_REF_NAME}"') &&
+    releaseTarget.includes('main|3.1.x|3.0.x'),
+  'Manual recovery must require a full SHA already reachable from a supported release branch.'
+);
+
+assert.strictEqual(
   releaseJob.if,
   "needs.verify-release.outputs.relevant == 'true'",
   'The release mutation job must be skipped for pushes without release-relevant changes.'
@@ -224,6 +244,11 @@ assert.strictEqual(
   '${{ steps.app-token.outputs.token }}',
   'The release checkout must persist the App token used by Changesets git-CLI pushes.'
 );
+assert.strictEqual(
+  releaseCheckout.with.ref,
+  '${{ needs.verify-release.outputs.target_commit }}',
+  'The release job must check out the validated release target.'
+);
 
 assert(
   !artifactDetection.includes('[ -d "dist/schemas/${VERSION}" ]'),
@@ -246,6 +271,18 @@ assert.strictEqual(
   ).run,
   'node scripts/check-release-state.cjs approval',
   'Committed release publication must use the permission and merge-provenance gate.'
+);
+
+assert(
+  artifactDetection.includes('git show --first-parent --format= --name-only --no-renames "${RELEASE_SHA}"') &&
+    uploadStep.includes('--target "${RELEASE_SHA}"'),
+  'Recovery must detect and publish artifacts from the validated release commit.'
+);
+
+assert(
+  artifactDetection.includes('[ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]') &&
+    artifactDetection.includes('does not commit artifacts for ${VERSION}'),
+  'Manual recovery must fail instead of running Changesets when its target has no committed release artifacts.'
 );
 
 assert(

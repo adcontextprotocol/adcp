@@ -11,8 +11,7 @@
     {
       "if": { "properties": { "health": { "const": "complete" } }, "required": ["health"] },
       "then": {
-        "properties": { "scope": { "properties": { "scope_closed": { "const": true }, "coverage_complete": { "const": true } }, "required": ["scope_closed", "coverage_complete"] } },
-        "not": { "required": ["next_expected_at"] }
+        "properties": { "scope": { "properties": { "scope_closed": { "const": true }, "coverage_complete": { "const": true } }, "required": ["scope_closed", "coverage_complete"] } }
       }
     },
     {
@@ -80,7 +79,7 @@
       "allOf": [
         {
           "if": { "properties": { "all_accessible_media_buys": { "const": false } }, "required": ["all_accessible_media_buys"] },
-          "then": { "required": ["media_buy_ids"] }
+          "then": { "required": ["media_buy_ids"], "properties": { "media_buy_ids": {} } }
         }
       ],
       "additionalProperties": false
@@ -88,7 +87,7 @@
     "health": { "$ref": "/schemas/enums/reporting-health.json" },
     "coverage": { "$ref": "/schemas/core/reporting-coverage.json", "description": "Aggregated effective coverage for the exact selected scope. This remains independent of reporting health and finality so a fresh covered subset cannot look like complete campaign reporting." },
     "data_through": { "type": ["string", "null"], "format": "date-time", "description": "Conservative latest included event time across satisfied obligations in scope, or null when unavailable/unknown." },
-    "next_expected_at": { "type": "string", "format": "date-time", "description": "Next obligation due time for an open scope. Omitted for a closed complete scope." },
+    "next_expected_at": { "type": "string", "format": "date-time", "description": "Next obligation due time for an open scope. In a complete summary (view: summary, health: complete), the nearest future period start, strictly after ledger_as_of, across all active committed configuration generations in scope.delivery_config_generations. Sellers MUST populate it when such a scheduled period exists outside the closed evaluated scope, and omit it when none exists. This complete-scope projection applies only to summary responses. It is derived from the configuration schedule and does not represent an open obligation in the evaluated scope; its presence does not indicate that the scope is still open. Projecting it MUST NOT create, expose, lease, count, or alter an obligation whose period has not closed, or change obligation_counts, scope, or coverage. Obligation expected_at remains period.end plus schedule.delivery_sla; get_media_buy_delivery.next_expected_at remains the next webhook notification time." },
     "obligation_counts": {
       "type": "object",
       "properties": {
@@ -127,19 +126,21 @@
       "title": "Summary view",
       "properties": { "view": { "type": "string", "const": "summary" } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "health", "coverage", "data_through", "obligation_counts", "issues"],
-      "not": { "anyOf": [{ "required": ["changes_checkpoint"] }, { "required": ["periods"] }, { "required": ["revisions"] }, { "required": ["adjustments"] }, { "required": ["consumer_statuses"] }, { "required": ["adjustment_receipts"] }, { "required": ["pagination"] }, { "required": ["revision"] }, { "required": ["materializations"] }, { "required": ["receipts"] }] }
+      "not": { "anyOf": [{ "required": ["changes_checkpoint"], "properties": { "changes_checkpoint": {} } }, { "required": ["periods"], "properties": { "periods": {} } }, { "required": ["revisions"], "properties": { "revisions": {} } }, { "required": ["adjustments"], "properties": { "adjustments": {} } }, { "required": ["consumer_statuses"], "properties": { "consumer_statuses": {} } }, { "required": ["adjustment_receipts"], "properties": { "adjustment_receipts": {} } }, { "required": ["pagination"], "properties": { "pagination": {} } }, { "required": ["revision"], "properties": { "revision": {} } }, { "required": ["materializations"], "properties": { "materializations": {} } }, { "required": ["receipts"], "properties": { "receipts": {} } }] }
     },
     {
       "title": "Periods view",
-      "properties": { "view": { "type": "string", "const": "periods" }, "pagination": { "required": ["has_more", "total_count"] } },
+      "properties": { "view": { "type": "string", "const": "periods" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "periods", "revisions", "materializations", "receipts", "pagination"],
-      "not": { "required": ["revision"] }
+      "if": { "properties": { "health": { "const": "complete" } }, "required": ["health"] },
+      "then": { "not": { "required": ["next_expected_at"], "properties": { "next_expected_at": {} } } },
+      "not": { "required": ["revision"], "properties": { "revision": {} } }
     },
     {
       "title": "Revision view",
-      "properties": { "view": { "type": "string", "const": "revision" }, "pagination": { "required": ["has_more", "total_count"] } },
+      "properties": { "view": { "type": "string", "const": "revision" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "revision", "materializations", "receipts", "pagination"],
-      "not": { "anyOf": [{ "required": ["changes_checkpoint"] }, { "required": ["scope"] }, { "required": ["health"] }, { "required": ["periods"] }, { "required": ["revisions"] }] }
+      "not": { "anyOf": [{ "required": ["changes_checkpoint"], "properties": { "changes_checkpoint": {} } }, { "required": ["scope"], "properties": { "scope": {} } }, { "required": ["health"], "properties": { "health": {} } }, { "required": ["periods"], "properties": { "periods": {} } }, { "required": ["revisions"], "properties": { "revisions": {} } }] }
         }
       ]
     },

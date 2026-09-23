@@ -244,9 +244,18 @@ describe('Admin Endpoints Integration Tests', () => {
     });
   });
 
-  describe('DELETE /api/admin/accounts/:orgId', () => {
+  // #6827: administrative force-delete has the same containment as self-service.
+  // The fixtures below keep the former decision inputs (unknown organization,
+  // confirmation text, payment history, active subscription) to prove none of
+  // them change the response or mutate stored rows, and that admin authority is
+  // not an exception.
+  describe('DELETE /api/admin/accounts/:orgId (contained)', () => {
     const DELETE_TEST_ORG_ID = 'org_delete_test';
     const DELETE_TEST_PAID_ORG_ID = 'org_delete_test_paid';
+    const unavailable = {
+      error: 'organization_deletion_unavailable',
+      message: 'Organization deletion is temporarily unavailable.',
+    };
 
     beforeEach(async () => {
       // Create test organizations for delete tests
@@ -275,75 +284,71 @@ describe('Admin Endpoints Integration Tests', () => {
 
     afterEach(async () => {
       // Clean up test data
+      await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [DELETE_TEST_ORG_ID]);
       await pool.query('DELETE FROM revenue_events WHERE workos_organization_id = $1', [DELETE_TEST_PAID_ORG_ID]);
       await pool.query('DELETE FROM organizations WHERE workos_organization_id IN ($1, $2)', [DELETE_TEST_ORG_ID, DELETE_TEST_PAID_ORG_ID]);
     });
 
-    it('should return 404 for non-existent organization', async () => {
+    async function expectContained(orgId: string, body: unknown) {
       const response = await request(app)
-        .delete('/api/admin/accounts/org_nonexistent')
-        .send({ confirmation: 'Some Name' })
-        .expect(404);
+        .delete(`/api/admin/accounts/${orgId}`)
+        .send(body as object)
+        .expect(503);
 
-      expect(response.body.error).toBe('Organization not found');
+      expect(response.body).toEqual(unavailable);
+      return response;
+    }
+
+    async function orgRow(orgId: string) {
+      const result = await pool.query(
+        'SELECT to_jsonb(o) AS row FROM organizations o WHERE workos_organization_id = $1',
+        [orgId]
+      );
+      return result.rows[0]?.row ?? null;
+    }
+
+    it('returns the contained response for a non-existent organization', async () => {
+      // The former 404 leaked organization existence; the contained response does not.
+      const response = await expectContained('org_nonexistent', { confirmation: 'Some Name' });
+      expect(response.body.error).not.toBe('Organization not found');
     });
 
-    it('should require confirmation to delete', async () => {
-      const response = await request(app)
-        .delete(`/api/admin/accounts/${DELETE_TEST_ORG_ID}`)
-        .send({})
-        .expect(400);
+    it('returns the contained response without confirmation and discloses no org data', async () => {
+      const before = await orgRow(DELETE_TEST_ORG_ID);
+      const response = await expectContained(DELETE_TEST_ORG_ID, {});
 
-      expect(response.body.error).toBe('Confirmation required');
-      expect(response.body.requires_confirmation).toBe(true);
-      expect(response.body.organization_name).toBe('Delete Test Org');
+      expect(response.body).not.toHaveProperty('organization_name');
+      expect(response.body).not.toHaveProperty('requires_confirmation');
+      expect(await orgRow(DELETE_TEST_ORG_ID)).toEqual(before);
     });
 
-    it('should reject wrong confirmation name', async () => {
-      const response = await request(app)
-        .delete(`/api/admin/accounts/${DELETE_TEST_ORG_ID}`)
-        .send({ confirmation: 'Wrong Name' })
-        .expect(400);
-
-      expect(response.body.error).toBe('Confirmation required');
+    it('returns the contained response for a wrong confirmation name', async () => {
+      const before = await orgRow(DELETE_TEST_ORG_ID);
+      await expectContained(DELETE_TEST_ORG_ID, { confirmation: 'Wrong Name' });
+      expect(await orgRow(DELETE_TEST_ORG_ID)).toEqual(before);
     });
 
-    it('should prevent deletion of organization with payment history', async () => {
-      const response = await request(app)
-        .delete(`/api/admin/accounts/${DELETE_TEST_PAID_ORG_ID}`)
-        .send({ confirmation: 'Paid Test Org' })
-        .expect(400);
+    it('returns the contained response for an organization with payment history', async () => {
+      const before = await orgRow(DELETE_TEST_PAID_ORG_ID);
+      const response = await expectContained(DELETE_TEST_PAID_ORG_ID, { confirmation: 'Paid Test Org' });
 
-      expect(response.body.error).toBe('Cannot delete paid workspace');
-      expect(response.body.has_payments).toBe(true);
+      expect(response.body).not.toHaveProperty('has_payments');
+      expect(await orgRow(DELETE_TEST_PAID_ORG_ID)).toEqual(before);
 
-      // Verify org still exists
-      const checkResult = await pool.query(
-        'SELECT 1 FROM organizations WHERE workos_organization_id = $1',
+      const revenue = await pool.query(
+        'SELECT COUNT(*)::int AS count FROM revenue_events WHERE workos_organization_id = $1',
         [DELETE_TEST_PAID_ORG_ID]
       );
-      expect(checkResult.rows.length).toBe(1);
+      expect(revenue.rows[0].count).toBe(1);
     });
 
-    it('should successfully delete unpaid organization with correct confirmation', async () => {
-      const response = await request(app)
-        .delete(`/api/admin/accounts/${DELETE_TEST_ORG_ID}`)
-        .send({ confirmation: 'Delete Test Org' })
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.deleted_org_id).toBe(DELETE_TEST_ORG_ID);
-
-      // Verify org is deleted
-      const checkResult = await pool.query(
-        'SELECT 1 FROM organizations WHERE workos_organization_id = $1',
-        [DELETE_TEST_ORG_ID]
-      );
-      expect(checkResult.rows.length).toBe(0);
+    it('does not delete an unpaid organization even with the exact confirmation', async () => {
+      const before = await orgRow(DELETE_TEST_ORG_ID);
+      await expectContained(DELETE_TEST_ORG_ID, { confirmation: 'Delete Test Org' });
+      expect(await orgRow(DELETE_TEST_ORG_ID)).toEqual(before);
     });
 
-    it('should cascade delete related member profiles', async () => {
-      // Create a member profile for the test org
+    it('does not cascade into related member profiles', async () => {
       await pool.query(
         `INSERT INTO member_profiles (workos_organization_id, display_name, slug, created_at, updated_at)
          VALUES ($1, $2, $3, NOW(), NOW())
@@ -351,32 +356,16 @@ describe('Admin Endpoints Integration Tests', () => {
         [DELETE_TEST_ORG_ID, 'Test Profile', 'test-profile']
       );
 
-      // Verify profile exists
-      const beforeResult = await pool.query(
-        'SELECT 1 FROM member_profiles WHERE workos_organization_id = $1',
-        [DELETE_TEST_ORG_ID]
-      );
-      expect(beforeResult.rows.length).toBe(1);
+      await expectContained(DELETE_TEST_ORG_ID, { confirmation: 'Delete Test Org' });
 
-      // Delete the organization
-      await request(app)
-        .delete(`/api/admin/accounts/${DELETE_TEST_ORG_ID}`)
-        .send({ confirmation: 'Delete Test Org' })
-        .expect(200);
-
-      // Verify profile is cascaded deleted
       const afterResult = await pool.query(
         'SELECT 1 FROM member_profiles WHERE workos_organization_id = $1',
         [DELETE_TEST_ORG_ID]
       );
-      expect(afterResult.rows.length).toBe(0);
+      expect(afterResult.rows.length).toBe(1);
     });
 
-    // OrganizationDatabase.getSubscriptionInfo reads subscription_status from the DB row;
-    // mocking the stripe-client import has no effect. Seed the column directly.
-    // The active-subscription guard applies to admin-initiated deletes too; force-deletion
-    // of a subscribed org requires a DB-level intervention (clear subscription_status).
-    it('should prevent deletion of organization with active subscription', async () => {
+    it('returns the contained response for an organization with an active subscription', async () => {
       const SUB_ORG_ID = 'org_delete_test_sub';
       await pool.query(
         `INSERT INTO organizations (workos_organization_id, name, subscription_status, created_at, updated_at)
@@ -385,21 +374,11 @@ describe('Admin Endpoints Integration Tests', () => {
         [SUB_ORG_ID, 'Subscribed Test Org']
       );
 
-      const response = await request(app)
-        .delete(`/api/admin/accounts/${SUB_ORG_ID}`)
-        .send({ confirmation: 'Subscribed Test Org' })
-        .expect(400);
+      const before = await orgRow(SUB_ORG_ID);
+      const response = await expectContained(SUB_ORG_ID, { confirmation: 'Subscribed Test Org' });
 
-      expect(response.body.error).toBe('Cannot delete workspace with active subscription');
-      expect(response.body.has_active_subscription).toBe(true);
-      expect(response.body.subscription_status).toBe('active');
-
-      // Verify org still exists
-      const checkResult = await pool.query(
-        'SELECT 1 FROM organizations WHERE workos_organization_id = $1',
-        [SUB_ORG_ID]
-      );
-      expect(checkResult.rows.length).toBe(1);
+      expect(response.body).not.toHaveProperty('subscription_status');
+      expect(await orgRow(SUB_ORG_ID)).toEqual(before);
 
       // SUB_ORG_ID is not covered by the inner afterEach; clean up inline.
       await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [SUB_ORG_ID]);

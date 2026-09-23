@@ -1,3 +1,5 @@
+import { responseProviderId, responseProviderModel } from './response-provider-policy.js';
+import { responseClient } from './response-client.js';
 /**
  * Addie Bolt App
  *
@@ -176,6 +178,7 @@ import {
   blockCheckpointedToolReplays,
   buildToolResultCheckpoint,
   reserveToolIntentCheckpoint,
+  storedToolCall,
   type StoredToolCall,
 } from './stream-tool-checkpoints.js';
 import type { ToolExecution } from './model-providers/tool-orchestration.js';
@@ -2081,11 +2084,7 @@ async function handleUserMessage({
   const certIterations = activeCertificationKind && !routedTools.isAAOAdmin
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
-  const dmEffectiveModel = routedTools.requiresPrecision
-    ? ModelConfig.precision
-    : routedTools.requiresDepth
-      ? ModelConfig.depth
-      : AddieModelConfig.chat;
+  const dmEffectiveModel = responseProviderModel();
   const toolReplayPolicy = blockCheckpointedToolReplays(unresolvedCheckpointToolCalls);
   // Resolve the cost-cap identity + tier (#2790 / #2945 f/u).
   // Prefers a mapped WorkOS user ID (aao_team for AAO admins,
@@ -2157,14 +2156,14 @@ async function handleUserMessage({
         log: (level, fields, message) => logger[level](fields, message),
       };
 
-      for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, {
+      for await (const event of responseClient(claudeClient, 'slack').processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, {
         ...processOptions,
         reserveSideEffect: async ({ toolName, parameters }) => {
           await reserveToolIntentCheckpoint(threadService, {
             threadId: thread.thread_id,
             toolName,
             parameters,
-            requestedModel: dmEffectiveModel,
+            requestedModel: responseProviderModel(),
           });
         },
       })) {
@@ -2187,7 +2186,7 @@ async function handleUserMessage({
             await threadService.addMessage(buildToolResultCheckpoint({
               threadId: thread.thread_id,
               execution: event.execution,
-              requestedModel: dmEffectiveModel,
+              requestedModel: responseProviderModel(),
             }));
           } catch (checkpointError) {
             logger.error(
@@ -2367,14 +2366,14 @@ async function handleUserMessage({
     } else {
       // Fall back to non-streaming for compatibility
       logger.debug('Addie Bolt: Using non-streaming response (streaming not available)');
-      response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+      response = await responseClient(claudeClient, 'slack').processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
         ...processOptions,
         reserveSideEffect: async ({ toolName, parameters }) => {
           await reserveToolIntentCheckpoint(threadService, {
             threadId: thread.thread_id,
             toolName,
             parameters,
-            requestedModel: dmEffectiveModel,
+            requestedModel: responseProviderModel(),
           });
         },
       });
@@ -2433,7 +2432,7 @@ async function handleUserMessage({
         flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
         model_execution: {
           source: 'local',
-          requested_provider: 'anthropic',
+          requested_provider: responseProviderId(),
           requested_model: dmEffectiveModel,
           reason: 'provider_error',
         },
@@ -2462,7 +2461,7 @@ async function handleUserMessage({
       flag_reason: 'Streaming completed without done event',
       model_execution: {
         source: 'local',
-        requested_provider: 'anthropic',
+        requested_provider: responseProviderId(),
         requested_model: dmEffectiveModel,
         reason: 'no_provider_response',
       },
@@ -2489,7 +2488,7 @@ async function handleUserMessage({
       model: dmEffectiveModel,
       model_execution: {
         source: 'local',
-        requested_provider: 'anthropic',
+        requested_provider: responseProviderId(),
         requested_model: dmEffectiveModel,
         reason: 'stream_interrupted',
       },
@@ -2544,15 +2543,7 @@ async function handleUserMessage({
       role: 'assistant',
       content: outputValidation.sanitized,
       tools_used: response.tools_used,
-      tool_calls: response.tool_executions?.map(exec => ({
-        name: exec.tool_name,
-        input: exec.parameters,
-        result: exec.result,
-        duration_ms: exec.duration_ms,
-        is_error: exec.is_error,
-        result_status: exec.normalized_result?.status,
-        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
-      })),
+      tool_calls: response.tool_executions?.map(storedToolCall),
       model: dmEffectiveModel,
       model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
@@ -2917,13 +2908,12 @@ export async function handleAppMention({
 
   // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
   const mentionIsDepthChannel = isDepthChannel(mentionChannelContext?.viewing_channel_name);
-  const mentionUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || mentionIsDepthChannel;
   const mentionModelOverride = routedTools.requiresPrecision
     ? ModelConfig.precision
     : (routedTools.requiresDepth || mentionIsDepthChannel)
       ? ModelConfig.depth
       : undefined;
-  const mentionEffectiveModel = mentionModelOverride ?? AddieModelConfig.chat;
+  const mentionEffectiveModel = responseProviderModel();
 
   // Admin users get higher iteration limit for bulk operations.
   // Public home-workspace discussions use a bounded community budget;
@@ -2943,14 +2933,14 @@ export async function handleAppMention({
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await activeClaudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+    response = await responseClient(activeClaudeClient, 'slack').processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
         await reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,
-          requestedModel: mentionEffectiveModel,
+          requestedModel: responseProviderModel(),
         });
       },
     });
@@ -2964,7 +2954,7 @@ export async function handleAppMention({
       flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
       model_execution: {
         source: 'local',
-        requested_provider: 'anthropic',
+        requested_provider: responseProviderId(),
         requested_model: mentionEffectiveModel,
         reason: 'provider_error',
       },
@@ -2994,15 +2984,7 @@ export async function handleAppMention({
       role: 'assistant',
       content: outputValidation.sanitized,
       tools_used: response.tools_used,
-      tool_calls: response.tool_executions?.map(exec => ({
-        name: exec.tool_name,
-        input: exec.parameters,
-        result: exec.result,
-        duration_ms: exec.duration_ms,
-        is_error: exec.is_error,
-        result_status: exec.normalized_result?.status,
-        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
-      })),
+      tool_calls: response.tool_executions?.map(storedToolCall),
       model: mentionEffectiveModel,
       model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
@@ -3815,6 +3797,8 @@ export async function buildChannelResponseInvocation(input: {
     : (plan.requires_depth || channelIsDepthChannel)
       ? ModelConfig.depth
       : undefined;
+  // This builder also describes isolated shadow invocations. Live response
+  // execution applies the global policy at the delivery boundary below.
   const effectiveModel = modelOverride ?? AddieModelConfig.chat;
 
   if (officialDocsProfile) {
@@ -4261,11 +4245,7 @@ async function handleDirectMessage(
     .filter(Boolean)
     .join('\n\n');
 
-  const directMessageEffectiveModel = routedTools.requiresPrecision
-    ? ModelConfig.precision
-    : routedTools.requiresDepth
-      ? ModelConfig.depth
-      : AddieModelConfig.chat;
+  const directMessageEffectiveModel = responseProviderModel();
 
   // Admin users get higher iteration limit for bulk operations. DMs
   // remain user-scoped.
@@ -4288,14 +4268,14 @@ async function handleDirectMessage(
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+    response = await responseClient(claudeClient, 'slack').processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
         await reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,
-          requestedModel: directMessageEffectiveModel,
+          requestedModel: responseProviderModel(),
         });
       },
     });
@@ -4309,7 +4289,7 @@ async function handleDirectMessage(
       flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
       model_execution: {
         source: 'local',
-        requested_provider: 'anthropic',
+        requested_provider: responseProviderId(),
         requested_model: directMessageEffectiveModel,
         reason: 'provider_error',
       },
@@ -4340,15 +4320,7 @@ async function handleDirectMessage(
     role: 'assistant' as const,
     content: outputValidation.sanitized,
     tools_used: response.tools_used,
-    tool_calls: response.tool_executions?.map(exec => ({
-      name: exec.tool_name,
-      input: exec.parameters,
-      result: exec.result,
-      duration_ms: exec.duration_ms,
-        is_error: exec.is_error,
-        result_status: exec.normalized_result?.status,
-        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
-      })),
+    tool_calls: response.tool_executions?.map(storedToolCall),
     model: directMessageEffectiveModel,
     model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
@@ -4688,13 +4660,12 @@ async function handleActiveThreadReply({
 
   // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
   const threadIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
-  const threadUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || threadIsDepthChannel;
   const threadModelOverride = routedTools.requiresPrecision
     ? ModelConfig.precision
     : (routedTools.requiresDepth || threadIsDepthChannel)
       ? ModelConfig.depth
       : undefined;
-  const activeThreadEffectiveModel = threadModelOverride ?? AddieModelConfig.chat;
+  const activeThreadEffectiveModel = responseProviderModel();
 
   // Admin users get higher iteration limit. Public home-workspace
   // discussions use a bounded community budget; other channels stay user-scoped.
@@ -4713,14 +4684,14 @@ async function handleActiveThreadReply({
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+    response = await responseClient(claudeClient, 'slack').processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
         await reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,
-          requestedModel: activeThreadEffectiveModel,
+          requestedModel: responseProviderModel(),
         });
       },
     });
@@ -4734,7 +4705,7 @@ async function handleActiveThreadReply({
       flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
       model_execution: {
         source: 'local',
-        requested_provider: 'anthropic',
+        requested_provider: responseProviderId(),
         requested_model: activeThreadEffectiveModel,
         reason: 'provider_error',
       },
@@ -4771,15 +4742,7 @@ async function handleActiveThreadReply({
       role: 'assistant',
       content: outputValidation.sanitized,
       tools_used: response.tools_used,
-      tool_calls: response.tool_executions?.map(exec => ({
-        name: exec.tool_name,
-        input: exec.parameters,
-        result: exec.result,
-        duration_ms: exec.duration_ms,
-        is_error: exec.is_error,
-        result_status: exec.normalized_result?.status,
-        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
-      })),
+      tool_calls: response.tool_executions?.map(storedToolCall),
       model: activeThreadEffectiveModel,
       model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
@@ -5343,7 +5306,7 @@ async function handleChannelMessage({
       ...invocation.processOptions,
       ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
     };
-    const response = await claudeClient.processMessage(
+    const response = await responseClient(claudeClient, 'slack').processMessage(
       messageText,
       undefined,
       invocation.requestTools,
@@ -5355,7 +5318,7 @@ async function handleChannelMessage({
             threadId: thread.thread_id,
             toolName,
             parameters,
-            requestedModel: processOptions.modelOverride ?? AddieModelConfig.chat,
+            requestedModel: responseProviderModel(),
           });
         },
       },
@@ -5380,16 +5343,8 @@ async function handleChannelMessage({
       role: 'assistant',
       content: outputValidation.sanitized,
       tools_used: response.tools_used,
-      tool_calls: response.tool_executions?.map(exec => ({
-        name: exec.tool_name,
-        input: exec.parameters,
-        result: exec.result,
-        duration_ms: exec.duration_ms,
-        is_error: exec.is_error,
-        result_status: exec.normalized_result?.status,
-        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
-      })),
-      model: invocation.effectiveModel,
+      tool_calls: response.tool_executions?.map(storedToolCall),
+      model: responseProviderModel(),
       model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
@@ -6329,14 +6284,14 @@ async function handleReactionAdded({
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await reactionClient.processMessage(userInput, conversationHistory, reactionTools, undefined, {
+    response = await responseClient(reactionClient, 'slack').processMessage(userInput, conversationHistory, reactionTools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
         await reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,
-          requestedModel: AddieModelConfig.chat,
+          requestedModel: responseProviderModel(),
         });
       },
     });
@@ -6349,8 +6304,8 @@ async function handleReactionAdded({
       flagged: false,
       model_execution: {
         source: 'local',
-        requested_provider: 'anthropic',
-        requested_model: AddieModelConfig.chat,
+        requested_provider: responseProviderId(),
+        requested_model: responseProviderModel(),
         reason: 'canned_response',
       },
     };
@@ -6375,16 +6330,8 @@ async function handleReactionAdded({
       role: 'assistant',
       content: response.text,
       tools_used: response.tools_used,
-      tool_calls: response.tool_executions?.map(exec => ({
-        name: exec.tool_name,
-        input: exec.parameters,
-        result: exec.result,
-        duration_ms: exec.duration_ms,
-        is_error: exec.is_error,
-        result_status: exec.normalized_result?.status,
-        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
-      })),
-      model: AddieModelConfig.chat,
+      tool_calls: response.tool_executions?.map(storedToolCall),
+      model: responseProviderModel(),
       model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,

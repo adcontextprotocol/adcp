@@ -597,6 +597,11 @@ export function clearProcessLocalAccountStore(): void {
   clearSharedAccountResources();
 }
 
+/** Clear only the process-local account view owned by one caller session. */
+export function clearAccountStoreForSession(sessionKey: string, principal?: string): void {
+  accountStore.delete(scopedStoreKey(sessionKey, principal));
+}
+
 /** Exported for isolated tests/manual storyboards — clear all account state. */
 export function clearAccountStore(): void {
   clearProcessLocalAccountStore();

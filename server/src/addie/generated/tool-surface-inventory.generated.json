@@ -63,43 +63,43 @@
     }
   },
   "registration_source_sha256": {
-    "server/src/addie/claude-client.ts": "8cae4cd837e8436cd81bdf099589ab2470d4b857a7e5a099ea3e3f89d7fc4b09",
+    "server/src/addie/claude-client.ts": "27cdda3be371dff2793bc1b0556dd58c835d66577fa62eed4c4ee1a068e999e0",
     "server/src/addie/request-tool-assembly.ts": "cf4443d27ec69940f22aa9fcf46fdefd3f444762259c2700ac8fa01554ead4da",
     "server/src/addie/request-tool-replay-binding.ts": "3aed4c0bd18032e4418b8fff7e8deb263936b6c75b27941f9818a2a9a87287f2",
     "server/src/addie/prompts.ts": "3ec621f3e97eb9109fb561b94ff625a0639460c84506aa63aeebd57f683790f4",
     "server/src/addie/tool-wire-shape.ts": "4c5bcb95c32164b153c0f9d36648ea9f885e1df05e9796fdd71684c56162a81e",
     "server/src/addie/prompt-assembly.ts": "6c002ae5a52cdd26e13f424f6e00757dff163b3b273a1b4ab069fdb86f4f375f",
     "server/src/addie/register-baseline-tools.ts": "52893917fa19fa8904e1667857a7c4bfc2dc90bd3341e60d1ff45a40400d17aa",
-    "server/src/addie/bolt-app.ts": "cb1b76808654a295064cbd8b7dc580e17b9c4a54f80e882543cff5c15086632f",
-    "server/src/routes/addie-chat.ts": "be73414bc6a82ef43657adfa82f18f1646887023dd7c3af21cfcb4a4ff7dbd3b",
-    "server/src/routes/tavus.ts": "17321c275f89de1ec3e4996c6d7271bf252f7ff1ab1494dad820b090065d0da4",
-    "server/src/addie/email-conversation-handler.ts": "d6cf6d3c8621a85c69c6b22b86e6aa78f03b0d532ac8d5162fd40ec6c869f70c",
-    "server/src/mcp/chat-tool.ts": "a6bbde38fda11337a899fc92b8cabc3617377ae7c648609f34fae098f138f87e",
+    "server/src/addie/bolt-app.ts": "60b068f6f2e417d14ff9be5f263b5cc0a971199e83614acae1843c186ef53f22",
+    "server/src/routes/addie-chat.ts": "0d2936a0ac58455dfa8e9528e291dbb0bab1f3389e2c5ad99d7ccc4143135303",
+    "server/src/routes/tavus.ts": "2026b89e14588371f6efd9d756c2fb161d6fdeb1c6937ef9cdb1652022711ae6",
+    "server/src/addie/email-conversation-handler.ts": "d4f5090d6f71937fff4ff8774ff516ca814be4bd7b23566b366fa037dcc642f3",
+    "server/src/mcp/chat-tool.ts": "a55a9412eb57ce2560b3cdbf2a63c1c1e9fb71361ff1690fc70d5b37b8158258",
     "server/src/addie/jobs/shadow-replay-cohort.ts": "316d0764cd65e4c631d6efef7d090fd46a6a8fff22d4c917a40b44a7a69eee1f",
-    "server/src/addie/tool-sets.ts": "9b8c87159d6a18021d0cb540732f82a6f6a16ff0d24c8536823948f3bc0e76e2"
+    "server/src/addie/tool-sets.ts": "fc9118bf90dcc70235215f255397e99ab85f757ca6c4f02514736bd490285ddd"
   },
   "routed": {
     "tool_set_count": 69,
     "compatibility_tool_set_count": 19,
-    "unique_tool_count": 222,
+    "unique_tool_count": 223,
     "always_available_tool_count": 6,
     "always_available_admin_tool_count": 2,
     "missing_runtime_definition_count": 0,
     "missing_runtime_definitions": []
   },
   "runtime": {
-    "unique_tool_count": 221,
+    "unique_tool_count": 222,
     "not_declared_to_router_count": 0,
     "not_declared_to_router": [],
     "not_declared_to_router_scope": "Modern routed Slack Bolt profiles only"
   },
   "prompt": {
-    "rules_bytes": 153852,
-    "tool_reference_bytes": 40469,
-    "complete_offline_tool_reference_bytes": 42517,
+    "rules_bytes": 154069,
+    "tool_reference_bytes": 40541,
+    "complete_offline_tool_reference_bytes": 42589,
     "response_style_bytes": 9513,
-    "system_prompt_bytes": 203848,
-    "system_prompt_sha256": "72bc22893f4188dda8c70078711a572f74e28d621d16c2167d94e93cc4379004"
+    "system_prompt_bytes": 204137,
+    "system_prompt_sha256": "ccb91e8e1d4189cc7e5d99a758c30064e6b2acad4fb45c350c8cf0f33cf57060"
   },
   "catalog": {
     "missing_runtime_tool_count": 0,
@@ -297,16 +297,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 25,
+      "custom_tool_count": 26,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 28258,
-      "tool_reference_bytes": 10932,
-      "tool_reference_sha256": "111cd7597a76c890bb6ad724e6f2aa1e2fa01a16d8451b54572108ffc0598a80",
+      "wire_schema_bytes": 30415,
+      "tool_reference_bytes": 10956,
+      "tool_reference_sha256": "44af76c9547f109bfaf0b71873915711a25393322d64184260cff77be4e40f90",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -327,6 +327,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "start_certification_module",
@@ -337,8 +338,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "6a797b29e5de0a1f10dc1c3c4fcdac226883b6fe9dfcdfa6e2a3009713df8080",
-      "wire_schema_sha256": "6aafa612f88b83f354d0efab631f73a0dfad0c46c19988f7250f3ef2969c45d5",
+      "ordered_tool_names_sha256": "d00ec5109797d2e3b8adb52f8a76f606988e3e538786efbafbcb6aa92a9396a2",
+      "wire_schema_sha256": "9c024c7c33d79f176834806bf94769082883a4f341fb178a79e2916c00751ac0",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -357,16 +358,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 30,
+      "custom_tool_count": 31,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 33133,
-      "tool_reference_bytes": 10389,
-      "tool_reference_sha256": "0facc2995e2d13ee0b676e0981dec54c8e11b4b18aa2feb85756275931937a2f",
+      "wire_schema_bytes": 35080,
+      "tool_reference_bytes": 10413,
+      "tool_reference_sha256": "5dd5d324afda23ec07ad43c8be34d029720f417e81f4caae1aefa2f3da868377",
       "overridden_tool_count": 1,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -388,6 +389,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "grade_agent_signing",
         "diagnose_agent_auth",
         "list_escalations",
@@ -402,8 +404,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "7d36f54196c7f9797937fd307a1b6d6365af061a473f90a2f34735a168584e64",
-      "wire_schema_sha256": "005739751219a8eec05f9d1675230aa4113b83788b090877efe67435d1e6c8c8",
+      "ordered_tool_names_sha256": "73abab5089ccb852acc97e2fb69990e5e9f4ac728f5bde8a45e3ea111e80243c",
+      "wire_schema_sha256": "080e811778e39cbb8d7e2169c500a8762a61e827b55ce8bfc57ff683832201af",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -533,16 +535,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 23,
+      "custom_tool_count": 24,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 25965,
-      "tool_reference_bytes": 10864,
-      "tool_reference_sha256": "c1c660ec26e128b9aedfa96fe0c1b85588c45a7221f7b9a141e2f0aa9fa0b174",
+      "wire_schema_bytes": 28122,
+      "tool_reference_bytes": 10888,
+      "tool_reference_sha256": "d378c8c6fb880a83738050d9ec8c8e6ea2c9ceb1f92f74459e9ad8a4df6150e9",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -563,6 +565,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "start_certification_module",
         "complete_certification_module",
         "get_learner_progress",
@@ -571,8 +574,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "bc9f123436d9760c4603abb2386e0a63c7a9f53e4c0d65adbb0041de8bf1177f",
-      "wire_schema_sha256": "7bcc5517a1af44cce605df3e17b8e10b9276c299a4cd12918c5e61226a02d0cd",
+      "ordered_tool_names_sha256": "0a731e7336c428b895d1bb5dfc74f02217d9e7ae9fe9a2c9f46253a044d67c23",
+      "wire_schema_sha256": "8d6b44466e5fdf9d567878d47b64edf3275b145d6d1da49f59f0720e865cfc7e",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -591,16 +594,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 28,
+      "custom_tool_count": 29,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 30840,
-      "tool_reference_bytes": 10321,
-      "tool_reference_sha256": "c345073241bbb0aa78ef7366d2c97b3f776183a69a3acab73fed9bba457eb861",
+      "wire_schema_bytes": 32787,
+      "tool_reference_bytes": 10345,
+      "tool_reference_sha256": "ac5a6aa8355228d26ad1a9a443f94a528fafa857da3ca05098c34234d1d7f202",
       "overridden_tool_count": 1,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -622,6 +625,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "grade_agent_signing",
         "diagnose_agent_auth",
         "resolve_brand",
@@ -634,8 +638,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "9e5d653068e798450e6ec1d154f075d580807f8ca567abb56644ecefe15c3ba3",
-      "wire_schema_sha256": "83e72e59f7426d4db729dc7518aa7378fdf07fc439ac9fb1f196901c3102b23e",
+      "ordered_tool_names_sha256": "df467c098799dcca23efc3b2f2c2ee195f182324f30d9940d353362b39bbaee0",
+      "wire_schema_sha256": "0bdede508e3835d859dc07fbec9c50c76beb0901449522e30e51abe484ae3993",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -764,16 +768,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 22,
+      "custom_tool_count": 23,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 25492,
-      "tool_reference_bytes": 10846,
-      "tool_reference_sha256": "cae71d21b7a57c9b000e8812ca4e216ebfab078bf8e57d9c7eee912d283bbca6",
+      "wire_schema_bytes": 27649,
+      "tool_reference_bytes": 10870,
+      "tool_reference_sha256": "d2e46b8a12fac67fa0da5bc2c4eefa354fee8766efa1607e14b1741574b9db81",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -793,6 +797,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "start_certification_module",
         "complete_certification_module",
         "get_learner_progress",
@@ -801,8 +806,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "38d30f79339ad15a17e2391466ada38f3ca0b7625d7f9a86ff778a94526a01cd",
-      "wire_schema_sha256": "cef800475dee7b2419ea8c0ffaeb98091f260e8039079121243600040699cd0b",
+      "ordered_tool_names_sha256": "3cfd40709629e6b088f7a2a237c562667580d0c6c0401ec4e5892fdd0a4df3b2",
+      "wire_schema_sha256": "31c4753e6cd7f34208b0f92f3b4b61a60fcdacf4838627bba6b652bdcdd1f790",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -821,16 +826,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 27,
+      "custom_tool_count": 28,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 30367,
-      "tool_reference_bytes": 10303,
-      "tool_reference_sha256": "0ab1524fa73fa8fb1e4b833814e017daaa7e3dea02bc532df55d3439be0e0fb7",
+      "wire_schema_bytes": 32314,
+      "tool_reference_bytes": 10327,
+      "tool_reference_sha256": "35f6b70e5f6f60a214f5ddcbbd8da0d57b03755733024870833db594f4a8ca69",
       "overridden_tool_count": 1,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -851,6 +856,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "grade_agent_signing",
         "diagnose_agent_auth",
         "resolve_brand",
@@ -863,8 +869,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "394038825f34d36a9462cdac8b23bb6e2fba0549ef90c1f8edd16a55d4b2f671",
-      "wire_schema_sha256": "848a56613cbfc6cfa291b8b199d0941302bed77f3ba488da88f868a617edcd32",
+      "ordered_tool_names_sha256": "a42710087f34067b1b24becd7853d7f300b42dc72c08fff32fb6cdf385540548",
+      "wire_schema_sha256": "e1ef1a9ef8ac5af236a5fb86ccc193099365aa51aa8e5146066d912dd42abb29",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -993,16 +999,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 22,
+      "custom_tool_count": 23,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 25492,
-      "tool_reference_bytes": 10846,
-      "tool_reference_sha256": "cae71d21b7a57c9b000e8812ca4e216ebfab078bf8e57d9c7eee912d283bbca6",
+      "wire_schema_bytes": 27649,
+      "tool_reference_bytes": 10870,
+      "tool_reference_sha256": "d2e46b8a12fac67fa0da5bc2c4eefa354fee8766efa1607e14b1741574b9db81",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -1022,6 +1028,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "start_certification_module",
         "complete_certification_module",
         "get_learner_progress",
@@ -1030,8 +1037,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "38d30f79339ad15a17e2391466ada38f3ca0b7625d7f9a86ff778a94526a01cd",
-      "wire_schema_sha256": "cef800475dee7b2419ea8c0ffaeb98091f260e8039079121243600040699cd0b",
+      "ordered_tool_names_sha256": "3cfd40709629e6b088f7a2a237c562667580d0c6c0401ec4e5892fdd0a4df3b2",
+      "wire_schema_sha256": "31c4753e6cd7f34208b0f92f3b4b61a60fcdacf4838627bba6b652bdcdd1f790",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -1050,16 +1057,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 27,
+      "custom_tool_count": 28,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 30367,
-      "tool_reference_bytes": 10303,
-      "tool_reference_sha256": "0ab1524fa73fa8fb1e4b833814e017daaa7e3dea02bc532df55d3439be0e0fb7",
+      "wire_schema_bytes": 32314,
+      "tool_reference_bytes": 10327,
+      "tool_reference_sha256": "35f6b70e5f6f60a214f5ddcbbd8da0d57b03755733024870833db594f4a8ca69",
       "overridden_tool_count": 1,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -1080,6 +1087,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "grade_agent_signing",
         "diagnose_agent_auth",
         "resolve_brand",
@@ -1092,8 +1100,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "394038825f34d36a9462cdac8b23bb6e2fba0549ef90c1f8edd16a55d4b2f671",
-      "wire_schema_sha256": "848a56613cbfc6cfa291b8b199d0941302bed77f3ba488da88f868a617edcd32",
+      "ordered_tool_names_sha256": "a42710087f34067b1b24becd7853d7f300b42dc72c08fff32fb6cdf385540548",
+      "wire_schema_sha256": "e1ef1a9ef8ac5af236a5fb86ccc193099365aa51aa8e5146066d912dd42abb29",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -1159,16 +1167,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 30,
+      "custom_tool_count": 31,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 31007,
-      "tool_reference_bytes": 10503,
-      "tool_reference_sha256": "73434a9095de331507ba5543a5a5ba851b369d768b70a0f0cea2e7d4cd831d11",
+      "wire_schema_bytes": 33164,
+      "tool_reference_bytes": 10527,
+      "tool_reference_sha256": "38bf6105b213c38fd8fa3db662b03b01fd506122cdab45fefd92419816181a3d",
       "overridden_tool_count": 4,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -1194,6 +1202,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "search_image_library",
@@ -1204,8 +1213,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "21e70235e9926708cae72c4a9dc96ce633dfce1a5da5fa3afed7c9689d1994c0",
-      "wire_schema_sha256": "278e961ca9a77c0feb016e8c4a8fa0031c9ff892ed7425386ffcdbf0242b58e3",
+      "ordered_tool_names_sha256": "89fba85c499754c11b98720274322e9b26465d5c89df264ac3529cc3c7478689",
+      "wire_schema_sha256": "832e1d633d1a3b4d6c78a0d0be948dea40280ce0fd2568ef224e9b0a7240c8cb",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -1225,16 +1234,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 31,
+      "custom_tool_count": 32,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 31910,
-      "tool_reference_bytes": 11740,
-      "tool_reference_sha256": "fd82df8cbdbdd90c9f7677e42bf4a5fd9411f1e23bd4d1f8edc00ecc778d0367",
+      "wire_schema_bytes": 34067,
+      "tool_reference_bytes": 11764,
+      "tool_reference_sha256": "f86b8cfaf5ec687f73a4131141378f152a092edd92bc8788175ec1f94405d0d3",
       "overridden_tool_count": 4,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -1260,6 +1269,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "search_image_library",
@@ -1271,8 +1281,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "c3aea0dcbab6e98c77df077d96b724466d2c6987bc8bf0e5ba75fb5d286eddde",
-      "wire_schema_sha256": "02b386af119d795251250cebca9e5fe5a59a9ba2736631b7b22a0c39f264a443",
+      "ordered_tool_names_sha256": "978bbd84849790b8912cdef9f0c4aeeb824987ac28a6014af86e267634887454",
+      "wire_schema_sha256": "c1fe659696c44e42e94d280a235cb16aad6a107399ed184b17586f4d51bba153",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -1293,16 +1303,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 34,
+      "custom_tool_count": 35,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 34359,
-      "tool_reference_bytes": 13895,
-      "tool_reference_sha256": "8d1eda7acbbe258a2cabc13314e87c8cba8d4c602a4a0fd545cc569d31babbf9",
+      "wire_schema_bytes": 36516,
+      "tool_reference_bytes": 13943,
+      "tool_reference_sha256": "7b9644ac730bd38e2081d3fef758237bac2f02cb9d011b88733bb196bef5164e",
       "overridden_tool_count": 4,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -1328,6 +1338,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "search_image_library",
@@ -1342,8 +1353,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "2188ff25e360a838ca7f609753e1fa05b04925711d41dffa10d1b2c2c463af6c",
-      "wire_schema_sha256": "727e7a6fcafec9b34e69af81efc5cb42175e4d8ab6972c3b1706da1814193267",
+      "ordered_tool_names_sha256": "9a78003e345d898b8e8e2c7f7d83f1b7f4f27f4b58a2fd3b2781e7f4718d0544",
+      "wire_schema_sha256": "a717753c280b87fff5fdafb6ba8fe16ecff75358b0d7d9f11194743b6603a59b",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -1433,16 +1444,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 25,
+      "custom_tool_count": 26,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 28258,
-      "tool_reference_bytes": 10932,
-      "tool_reference_sha256": "111cd7597a76c890bb6ad724e6f2aa1e2fa01a16d8451b54572108ffc0598a80",
+      "wire_schema_bytes": 30415,
+      "tool_reference_bytes": 10956,
+      "tool_reference_sha256": "44af76c9547f109bfaf0b71873915711a25393322d64184260cff77be4e40f90",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -1463,6 +1474,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "start_certification_module",
@@ -1473,8 +1485,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "6a797b29e5de0a1f10dc1c3c4fcdac226883b6fe9dfcdfa6e2a3009713df8080",
-      "wire_schema_sha256": "6aafa612f88b83f354d0efab631f73a0dfad0c46c19988f7250f3ef2969c45d5",
+      "ordered_tool_names_sha256": "d00ec5109797d2e3b8adb52f8a76f606988e3e538786efbafbcb6aa92a9396a2",
+      "wire_schema_sha256": "9c024c7c33d79f176834806bf94769082883a4f341fb178a79e2916c00751ac0",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -1495,16 +1507,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 30,
+      "custom_tool_count": 31,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 33133,
-      "tool_reference_bytes": 10389,
-      "tool_reference_sha256": "0facc2995e2d13ee0b676e0981dec54c8e11b4b18aa2feb85756275931937a2f",
+      "wire_schema_bytes": 35080,
+      "tool_reference_bytes": 10413,
+      "tool_reference_sha256": "5dd5d324afda23ec07ad43c8be34d029720f417e81f4caae1aefa2f3da868377",
       "overridden_tool_count": 1,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -1526,6 +1538,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "grade_agent_signing",
         "diagnose_agent_auth",
         "list_escalations",
@@ -1540,8 +1553,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "7d36f54196c7f9797937fd307a1b6d6365af061a473f90a2f34735a168584e64",
-      "wire_schema_sha256": "005739751219a8eec05f9d1675230aa4113b83788b090877efe67435d1e6c8c8",
+      "ordered_tool_names_sha256": "73abab5089ccb852acc97e2fb69990e5e9f4ac728f5bde8a45e3ea111e80243c",
+      "wire_schema_sha256": "080e811778e39cbb8d7e2169c500a8762a61e827b55ce8bfc57ff683832201af",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -1603,16 +1616,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 10,
+      "custom_tool_count": 11,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 14048,
-      "tool_reference_bytes": 6378,
-      "tool_reference_sha256": "6f40fffb21d3be25b7651e53dd9c9555d8b6e844e0ada398314863d004ece8c6",
+      "wire_schema_bytes": 16205,
+      "tool_reference_bytes": 6402,
+      "tool_reference_sha256": "3eb9a07576ee110817346222f3294c8bdf35b9620c618ba0b88b410b2fe51c2e",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -1624,12 +1637,13 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "07d619635ece821a834856c3c589ae9b3fc571ad61b993c621cc54a1d488360d",
-      "wire_schema_sha256": "b2dfa86715f69bc5b8b3338831b4bbb26086517cd7745c593d14bb59936f1ca4"
+      "ordered_tool_names_sha256": "a2ad9c40b494c955d808e7b800623f6d3ef84937617f1e67f67deffd0ab4c10c",
+      "wire_schema_sha256": "a072628b190783e857dcdc811aeb70711221e2d775d09d0c8361df639c37687a"
     },
     {
       "id": "slack_bolt:admin_dm:routed:admin_billing_account",
@@ -2528,7 +2542,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 19955,
+      "wire_schema_bytes": 19745,
       "tool_reference_bytes": 6636,
       "tool_reference_sha256": "d02b3eff67be7a38f952ebe0196ddb996dc932aa9e501167b0b1d71e454da1e4",
       "overridden_tool_count": 1,
@@ -2554,7 +2568,7 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "85c84ea52a5aa43067389e7e17605be6a93ddcf1ba596f619729779fccbe10bc",
-      "wire_schema_sha256": "c65369ed0be06c627c30e7660fe34dcd35b44bcd7fd0efbc83c9d46a89f7ebed",
+      "wire_schema_sha256": "68cef7404a35b2ab37ffcf6da6614ca0d87d9031e0082d384984dbfca6892dc0",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -2623,7 +2637,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 14792,
+      "wire_schema_bytes": 14582,
       "tool_reference_bytes": 6139,
       "tool_reference_sha256": "ecf8f60600a263d6a3120321ab1f65e138a08b082a96153eed01d1968552a91f",
       "overridden_tool_count": 0,
@@ -2642,7 +2656,7 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "f527be89fee5e5536b0b51b8c6c72924fbb8d3d9f3fee080986890437ae83065",
-      "wire_schema_sha256": "bdbb976ec254c38b6b61bf6fc8ecebad00121dd99d3839b9e979678434071ee9"
+      "wire_schema_sha256": "26cef72bd0370eff694a3d69f46691059f7ea1953f2c38fcff8467229de08990"
     },
     {
       "id": "slack_bolt:admin_dm:routed:agent_registry",
@@ -2838,16 +2852,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 16,
+      "custom_tool_count": 17,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 19857,
-      "tool_reference_bytes": 6920,
-      "tool_reference_sha256": "8c278765ad621dd11f89ff7b35d60af9f51ae88d569155f91733a06a4a51aab5",
+      "wire_schema_bytes": 22014,
+      "tool_reference_bytes": 6944,
+      "tool_reference_sha256": "c1f21524eac2c07a8eeb3a9da700a666f52fe87d6d0bf3f4f6a0b7f46a3a6397",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -2860,6 +2874,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "get_learner_progress",
@@ -2869,8 +2884,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "b8820aebc73fe700321e75a7bafc7ff346e38040ea64c833f6e87f88609e9ff2",
-      "wire_schema_sha256": "ba8dcb00ca31b40a21634b5f0680b68bbc39dd047c4defa162189b5c7ad5dcb0",
+      "ordered_tool_names_sha256": "4aff877de7ac5e5d389cde5966e80222b72d7799e5d3cf0bcf6a6324d2d59257",
+      "wire_schema_sha256": "b616525d944e04b44e335d9ca02db4b704af31f8bb8ceca9778d563744e66e1a",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -2888,16 +2903,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 17,
+      "custom_tool_count": 18,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 20760,
-      "tool_reference_bytes": 8157,
-      "tool_reference_sha256": "488a0f80dc27b82e9d7a04226a70a00d8dddb18c5801dba7d287839e9f70315d",
+      "wire_schema_bytes": 22917,
+      "tool_reference_bytes": 8181,
+      "tool_reference_sha256": "6b1d56975fc035a1adf768dad67b9406bf6720797cfbb7e95bb49d8e6433a8be",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -2910,6 +2925,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "start_certification_module",
@@ -2920,8 +2936,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "8df8d830c1370944e4768efb235cad21d4c923181157a047b167d528e599800c",
-      "wire_schema_sha256": "1cbafd61ac1a1a34c12358007addf4d9d61e440dbe608f5752a4c57783c55df1",
+      "ordered_tool_names_sha256": "6885cd3eee5a3bb0cc79ca2122b9aff58a09afe02614027fc11ffba01ec568bd",
+      "wire_schema_sha256": "d16ea9b2b015333875b2b75ccca17d2008f5272592555d194473d7e44fe4a78c",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -4706,16 +4722,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 10,
+      "custom_tool_count": 11,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 14048,
-      "tool_reference_bytes": 6378,
-      "tool_reference_sha256": "6f40fffb21d3be25b7651e53dd9c9555d8b6e844e0ada398314863d004ece8c6",
+      "wire_schema_bytes": 16205,
+      "tool_reference_bytes": 6402,
+      "tool_reference_sha256": "3eb9a07576ee110817346222f3294c8bdf35b9620c618ba0b88b410b2fe51c2e",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -4727,12 +4743,13 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "07d619635ece821a834856c3c589ae9b3fc571ad61b993c621cc54a1d488360d",
-      "wire_schema_sha256": "b2dfa86715f69bc5b8b3338831b4bbb26086517cd7745c593d14bb59936f1ca4"
+      "ordered_tool_names_sha256": "a2ad9c40b494c955d808e7b800623f6d3ef84937617f1e67f67deffd0ab4c10c",
+      "wire_schema_sha256": "a072628b190783e857dcdc811aeb70711221e2d775d09d0c8361df639c37687a"
     },
     {
       "id": "slack_bolt:admin_working_group:admin_billing_account",
@@ -5631,7 +5648,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 19955,
+      "wire_schema_bytes": 19745,
       "tool_reference_bytes": 6636,
       "tool_reference_sha256": "d02b3eff67be7a38f952ebe0196ddb996dc932aa9e501167b0b1d71e454da1e4",
       "overridden_tool_count": 1,
@@ -5657,7 +5674,7 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "85c84ea52a5aa43067389e7e17605be6a93ddcf1ba596f619729779fccbe10bc",
-      "wire_schema_sha256": "c65369ed0be06c627c30e7660fe34dcd35b44bcd7fd0efbc83c9d46a89f7ebed",
+      "wire_schema_sha256": "68cef7404a35b2ab37ffcf6da6614ca0d87d9031e0082d384984dbfca6892dc0",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -5726,7 +5743,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 14792,
+      "wire_schema_bytes": 14582,
       "tool_reference_bytes": 6139,
       "tool_reference_sha256": "ecf8f60600a263d6a3120321ab1f65e138a08b082a96153eed01d1968552a91f",
       "overridden_tool_count": 0,
@@ -5745,7 +5762,7 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "f527be89fee5e5536b0b51b8c6c72924fbb8d3d9f3fee080986890437ae83065",
-      "wire_schema_sha256": "bdbb976ec254c38b6b61bf6fc8ecebad00121dd99d3839b9e979678434071ee9"
+      "wire_schema_sha256": "26cef72bd0370eff694a3d69f46691059f7ea1953f2c38fcff8467229de08990"
     },
     {
       "id": "slack_bolt:admin_working_group:agent_registry",
@@ -5919,16 +5936,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 221,
+      "custom_tool_count": 222,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 174812,
-      "tool_reference_bytes": 40307,
-      "tool_reference_sha256": "de3bb91fc152a573a8ba16b230aa4fc0eeddf9753bf81b6f4a7ed7c0310b3e8f",
+      "wire_schema_bytes": 176759,
+      "tool_reference_bytes": 40379,
+      "tool_reference_sha256": "e29d9ad879206c971e260e8e9b2d5d622e22a6912c64b971d63b695a847a4c89",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -6025,6 +6042,7 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "grade_agent_signing",
         "diagnose_agent_auth",
@@ -6155,8 +6173,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
-      "wire_schema_sha256": "b059e1b7c3b9ce974045eaaebad6fd55747ff1634cddf469fd68dd4f3645a7f8",
+      "ordered_tool_names_sha256": "ffd97c28755c02acca5bd0e8b405d6cc8d6543c91e5d002bf5725aab1deb7c86",
+      "wire_schema_sha256": "1cc34417a0cbac565235d5a1314b626898ad4f0baacf6b35762d5f362520cfca",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -6264,16 +6282,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 16,
+      "custom_tool_count": 17,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 19857,
-      "tool_reference_bytes": 6920,
-      "tool_reference_sha256": "8c278765ad621dd11f89ff7b35d60af9f51ae88d569155f91733a06a4a51aab5",
+      "wire_schema_bytes": 22014,
+      "tool_reference_bytes": 6944,
+      "tool_reference_sha256": "c1f21524eac2c07a8eeb3a9da700a666f52fe87d6d0bf3f4f6a0b7f46a3a6397",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -6286,6 +6304,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "get_learner_progress",
@@ -6295,8 +6314,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "b8820aebc73fe700321e75a7bafc7ff346e38040ea64c833f6e87f88609e9ff2",
-      "wire_schema_sha256": "ba8dcb00ca31b40a21634b5f0680b68bbc39dd047c4defa162189b5c7ad5dcb0",
+      "ordered_tool_names_sha256": "4aff877de7ac5e5d389cde5966e80222b72d7799e5d3cf0bcf6a6324d2d59257",
+      "wire_schema_sha256": "b616525d944e04b44e335d9ca02db4b704af31f8bb8ceca9778d563744e66e1a",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -6314,16 +6333,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 17,
+      "custom_tool_count": 18,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 20760,
-      "tool_reference_bytes": 8157,
-      "tool_reference_sha256": "488a0f80dc27b82e9d7a04226a70a00d8dddb18c5801dba7d287839e9f70315d",
+      "wire_schema_bytes": 22917,
+      "tool_reference_bytes": 8181,
+      "tool_reference_sha256": "6b1d56975fc035a1adf768dad67b9406bf6720797cfbb7e95bb49d8e6433a8be",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -6336,6 +6355,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "start_certification_module",
@@ -6346,8 +6366,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "8df8d830c1370944e4768efb235cad21d4c923181157a047b167d528e599800c",
-      "wire_schema_sha256": "1cbafd61ac1a1a34c12358007addf4d9d61e440dbe608f5752a4c57783c55df1",
+      "ordered_tool_names_sha256": "6885cd3eee5a3bb0cc79ca2122b9aff58a09afe02614027fc11ffba01ec568bd",
+      "wire_schema_sha256": "d16ea9b2b015333875b2b75ccca17d2008f5272592555d194473d7e44fe4a78c",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -8098,16 +8118,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 28,
+      "custom_tool_count": 29,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 28714,
-      "tool_reference_bytes": 10435,
-      "tool_reference_sha256": "5c2c2d615bbec18e17501a7dddf9cafb9b8e379b3fb25a8ec8932b5a198f252e",
+      "wire_schema_bytes": 30871,
+      "tool_reference_bytes": 10459,
+      "tool_reference_sha256": "3ef2e0422fa1ae5a0cbde6713203c3e9b41e5e1143dffde4082a2e9e70f14f1a",
       "overridden_tool_count": 4,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -8133,6 +8153,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "search_image_library",
         "get_learner_progress",
         "check_credentials",
@@ -8141,8 +8162,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "26b6cc3a42587a710c7baa1a374ce45cfe41c97040fffeebc1c464c7a8e2f415",
-      "wire_schema_sha256": "286f643899d7ae1e77013984ae0326b681f9333d597f0ba172ef8b91d55734fa",
+      "ordered_tool_names_sha256": "012edefcd4950b7caf360918ad81832c5053581f25a5231752a0432e6f76f3c7",
+      "wire_schema_sha256": "5b317f6a55e395195e3444972a56bd8fb12095fa12f969178a53efacc0f0e7f7",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -8162,16 +8183,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 29,
+      "custom_tool_count": 30,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 29617,
-      "tool_reference_bytes": 11672,
-      "tool_reference_sha256": "b70024ce69d5774ef0b18573e0df152dd02ee2c0cbe5cced7d1a4e638b43228c",
+      "wire_schema_bytes": 31774,
+      "tool_reference_bytes": 11696,
+      "tool_reference_sha256": "eee8ff9bd5aa27d12297db8ba67b6f3c015e32f045b87efa57ef2830b25170e2",
       "overridden_tool_count": 4,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -8197,6 +8218,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "search_image_library",
         "start_certification_module",
         "complete_certification_module",
@@ -8206,8 +8228,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "3fea176c7247ff2d3f96cfbc3bb1d8586d83c37c1dc090253111c1fa67c78d06",
-      "wire_schema_sha256": "df05265a6a3c9f4ff2db8eedab215a1c8f2301ba0141b9b08c002354903c7486",
+      "ordered_tool_names_sha256": "48cc6cc6f6dc3caf2c790385ac64cbb61b52d50de77a5aa6a6dd311ad0192562",
+      "wire_schema_sha256": "ee76758799ce73c291e83302056d898e995feba6cc3ed1be67a3b6c5bec3a2b4",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -8228,16 +8250,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 32,
+      "custom_tool_count": 33,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 32066,
-      "tool_reference_bytes": 13827,
-      "tool_reference_sha256": "c1d970e8a838ab127d4f716b5261ddae5690e4d0d8d643b08bd8ee7225fdce4c",
+      "wire_schema_bytes": 34223,
+      "tool_reference_bytes": 13875,
+      "tool_reference_sha256": "ac109b4c1cb2e657bb54de8953d9bb6abe982293cafd39bf1fa6fbf2f597ca10",
       "overridden_tool_count": 4,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -8263,6 +8285,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "search_image_library",
         "start_certification_module",
         "complete_certification_module",
@@ -8275,8 +8298,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "ecb4a361ac31c3fdca960be469fd56589b0538d5c5e135811326b45943f17cf2",
-      "wire_schema_sha256": "cbbeaef80532980bf7e8b80694e34b2e8f6adae12409f1b883b875b0cf9f779f",
+      "ordered_tool_names_sha256": "21ee3ac0c2d1e0878d240d090322de29f9ddf4fbc91fecf69039755fe8776757",
+      "wire_schema_sha256": "2e89cc917a58eef6c5671675be6fd1af18de034d5e999ba85b3e9f4f96fe32e5",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -8364,16 +8387,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 23,
+      "custom_tool_count": 24,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 25965,
-      "tool_reference_bytes": 10864,
-      "tool_reference_sha256": "c1c660ec26e128b9aedfa96fe0c1b85588c45a7221f7b9a141e2f0aa9fa0b174",
+      "wire_schema_bytes": 28122,
+      "tool_reference_bytes": 10888,
+      "tool_reference_sha256": "d378c8c6fb880a83738050d9ec8c8e6ea2c9ceb1f92f74459e9ad8a4df6150e9",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -8394,6 +8417,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "start_certification_module",
         "complete_certification_module",
         "get_learner_progress",
@@ -8402,8 +8426,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "bc9f123436d9760c4603abb2386e0a63c7a9f53e4c0d65adbb0041de8bf1177f",
-      "wire_schema_sha256": "7bcc5517a1af44cce605df3e17b8e10b9276c299a4cd12918c5e61226a02d0cd",
+      "ordered_tool_names_sha256": "0a731e7336c428b895d1bb5dfc74f02217d9e7ae9fe9a2c9f46253a044d67c23",
+      "wire_schema_sha256": "8d6b44466e5fdf9d567878d47b64edf3275b145d6d1da49f59f0720e865cfc7e",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -8424,16 +8448,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 28,
+      "custom_tool_count": 29,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 30840,
-      "tool_reference_bytes": 10321,
-      "tool_reference_sha256": "c345073241bbb0aa78ef7366d2c97b3f776183a69a3acab73fed9bba457eb861",
+      "wire_schema_bytes": 32787,
+      "tool_reference_bytes": 10345,
+      "tool_reference_sha256": "ac5a6aa8355228d26ad1a9a443f94a528fafa857da3ca05098c34234d1d7f202",
       "overridden_tool_count": 1,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -8455,6 +8479,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "grade_agent_signing",
         "diagnose_agent_auth",
         "resolve_brand",
@@ -8467,8 +8492,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "9e5d653068e798450e6ec1d154f075d580807f8ca567abb56644ecefe15c3ba3",
-      "wire_schema_sha256": "83e72e59f7426d4db729dc7518aa7378fdf07fc439ac9fb1f196901c3102b23e",
+      "ordered_tool_names_sha256": "df467c098799dcca23efc3b2f2c2ee195f182324f30d9940d353362b39bbaee0",
+      "wire_schema_sha256": "0bdede508e3835d859dc07fbec9c50c76beb0901449522e30e51abe484ae3993",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -8528,16 +8553,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 8,
+      "custom_tool_count": 9,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 11755,
-      "tool_reference_bytes": 6310,
-      "tool_reference_sha256": "04603aeb0ae569596b5ee5fd6be628303bece3bf65625633a68f9e6e2879d538",
+      "wire_schema_bytes": 13912,
+      "tool_reference_bytes": 6334,
+      "tool_reference_sha256": "8298515c3def07b180ad18a4bf063aea8f77a425b68b37b8c532b73018aa8bf6",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -8549,10 +8574,11 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities"
       ],
-      "ordered_tool_names_sha256": "29439abce5e792eca86c1ba105cd40eb03da5b67c1d77aa7808478a7f6817236",
-      "wire_schema_sha256": "7474c9abc30ab1714ffacdf911cf38b29cbf346e15bbf9c7c6068b6a42b14b5b"
+      "ordered_tool_names_sha256": "e62fe858a0bc7a61b663cfb6127fc6f9bed091029850d984897f3ee284170bb5",
+      "wire_schema_sha256": "62f9e025b6cfa248cbf61b409843ca0a562658b32efa8d34cdbdeb5edba7f629"
     },
     {
       "id": "slack_bolt:member_dm:routed:agent_authentication",
@@ -8656,7 +8682,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17662,
+      "wire_schema_bytes": 17452,
       "tool_reference_bytes": 6568,
       "tool_reference_sha256": "724c570df0c1afbfc5474f247fa2d289e56582171e19ca033a263bf4a38a8591",
       "overridden_tool_count": 1,
@@ -8680,7 +8706,7 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "01a4e47a1d56a06a49d88c67cef7541d40b7a79d196a034be57130c9182aec3a",
-      "wire_schema_sha256": "6afb8588ca2c5e02009d4a1a32f0cda3e013daa9acda61c3e7f3ccd3703ae544",
+      "wire_schema_sha256": "56470f9bad4a34a5d2623bf5e02ba59f0699552904df92e884f4e1314eba1ac6",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -8747,7 +8773,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 12499,
+      "wire_schema_bytes": 12289,
       "tool_reference_bytes": 6071,
       "tool_reference_sha256": "815eb22df22b1d8f37c869018b9c5e49c83178001b26f1e7523ce09aec7b230e",
       "overridden_tool_count": 0,
@@ -8764,7 +8790,7 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "32ee638aa5b9177bbea802803498f87f715d059b195e4d0492e56312ff6c9cbe",
-      "wire_schema_sha256": "a1d8c157b5a199141179bc09a30808ecde2c99bd7975c39ef01f6aa21dc55634"
+      "wire_schema_sha256": "273901657b2837ba639c44f99507b950491304891461d680a6b6c60d75466ef5"
     },
     {
       "id": "slack_bolt:member_dm:routed:agent_registry",
@@ -8952,16 +8978,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 14,
+      "custom_tool_count": 15,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17564,
-      "tool_reference_bytes": 6852,
-      "tool_reference_sha256": "414adb08a79ac4142a2967f857c3abb49345cd48daad70100e6a1762b980779a",
+      "wire_schema_bytes": 19721,
+      "tool_reference_bytes": 6876,
+      "tool_reference_sha256": "f490bc9195d9ae2066592ead53806e98d0222b6db3736f9921c3b03fa4ce0a8e",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -8974,6 +9000,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_learner_progress",
         "check_credentials",
         "test_out_modules",
@@ -8981,8 +9008,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "790df4634084e2fb5c430ea95d47b4aad105e5cad065f2ab1b3694405e550c02",
-      "wire_schema_sha256": "0b3889df9d691e023e2b17a45e8c42fa2bfc6e75a90db8afc0aaa43aa894a651",
+      "ordered_tool_names_sha256": "82377a617c69bb6d626b6244cada16458415decd547e0579a801b72d6c0ac23d",
+      "wire_schema_sha256": "44ea149b7c41b4c0f365fb8171d1aebf05f57b2ca09c3cc2e85159b4d8f87cce",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -9000,16 +9027,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 15,
+      "custom_tool_count": 16,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 18467,
-      "tool_reference_bytes": 8089,
-      "tool_reference_sha256": "346659796dfa0cb862a77cb3dbe215b925a8c59aa3c0296e22a0af15cf384ba6",
+      "wire_schema_bytes": 20624,
+      "tool_reference_bytes": 8113,
+      "tool_reference_sha256": "6884c999e478478b5e26f665be27109f44572b8d6eb401d98f36c9e16dbc7dca",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -9022,6 +9049,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "start_certification_module",
         "complete_certification_module",
         "get_learner_progress",
@@ -9030,8 +9058,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "463fa4659a702b7f1c65e0598b3c1d0340c915ba31ad3efd626031cc85c502ab",
-      "wire_schema_sha256": "480faf32e4985700bc768db1fd7c08c691713b9ad363d36240983a299174440c",
+      "ordered_tool_names_sha256": "e87675520ac2df14f40f8c5e7809163d2c3d02abc6dd0226c524e7a8de64f585",
+      "wire_schema_sha256": "3e13ca9b3016262c1659360b3900fd1a2223c29f577594568df8c78a4972984f",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -10657,16 +10685,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 10,
+      "custom_tool_count": 11,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 14048,
-      "tool_reference_bytes": 6378,
-      "tool_reference_sha256": "6f40fffb21d3be25b7651e53dd9c9555d8b6e844e0ada398314863d004ece8c6",
+      "wire_schema_bytes": 16205,
+      "tool_reference_bytes": 6402,
+      "tool_reference_sha256": "3eb9a07576ee110817346222f3294c8bdf35b9620c618ba0b88b410b2fe51c2e",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -10678,12 +10706,13 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "07d619635ece821a834856c3c589ae9b3fc571ad61b993c621cc54a1d488360d",
-      "wire_schema_sha256": "b2dfa86715f69bc5b8b3338831b4bbb26086517cd7745c593d14bb59936f1ca4"
+      "ordered_tool_names_sha256": "a2ad9c40b494c955d808e7b800623f6d3ef84937617f1e67f67deffd0ab4c10c",
+      "wire_schema_sha256": "a072628b190783e857dcdc811aeb70711221e2d775d09d0c8361df639c37687a"
     },
     {
       "id": "slack_bolt:private_channel_admin:admin_billing_account",
@@ -11582,7 +11611,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 19955,
+      "wire_schema_bytes": 19745,
       "tool_reference_bytes": 6636,
       "tool_reference_sha256": "d02b3eff67be7a38f952ebe0196ddb996dc932aa9e501167b0b1d71e454da1e4",
       "overridden_tool_count": 1,
@@ -11608,7 +11637,7 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "85c84ea52a5aa43067389e7e17605be6a93ddcf1ba596f619729779fccbe10bc",
-      "wire_schema_sha256": "c65369ed0be06c627c30e7660fe34dcd35b44bcd7fd0efbc83c9d46a89f7ebed",
+      "wire_schema_sha256": "68cef7404a35b2ab37ffcf6da6614ca0d87d9031e0082d384984dbfca6892dc0",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -11677,7 +11706,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 14792,
+      "wire_schema_bytes": 14582,
       "tool_reference_bytes": 6139,
       "tool_reference_sha256": "ecf8f60600a263d6a3120321ab1f65e138a08b082a96153eed01d1968552a91f",
       "overridden_tool_count": 0,
@@ -11696,7 +11725,7 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "f527be89fee5e5536b0b51b8c6c72924fbb8d3d9f3fee080986890437ae83065",
-      "wire_schema_sha256": "bdbb976ec254c38b6b61bf6fc8ecebad00121dd99d3839b9e979678434071ee9"
+      "wire_schema_sha256": "26cef72bd0370eff694a3d69f46691059f7ea1953f2c38fcff8467229de08990"
     },
     {
       "id": "slack_bolt:private_channel_admin:agent_registry",
@@ -11870,16 +11899,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 221,
+      "custom_tool_count": 222,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 174812,
-      "tool_reference_bytes": 40307,
-      "tool_reference_sha256": "de3bb91fc152a573a8ba16b230aa4fc0eeddf9753bf81b6f4a7ed7c0310b3e8f",
+      "wire_schema_bytes": 176759,
+      "tool_reference_bytes": 40379,
+      "tool_reference_sha256": "e29d9ad879206c971e260e8e9b2d5d622e22a6912c64b971d63b695a847a4c89",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -11976,6 +12005,7 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "grade_agent_signing",
         "diagnose_agent_auth",
@@ -12106,8 +12136,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
-      "wire_schema_sha256": "b059e1b7c3b9ce974045eaaebad6fd55747ff1634cddf469fd68dd4f3645a7f8",
+      "ordered_tool_names_sha256": "ffd97c28755c02acca5bd0e8b405d6cc8d6543c91e5d002bf5725aab1deb7c86",
+      "wire_schema_sha256": "1cc34417a0cbac565235d5a1314b626898ad4f0baacf6b35762d5f362520cfca",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -12215,16 +12245,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 16,
+      "custom_tool_count": 17,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 19857,
-      "tool_reference_bytes": 6920,
-      "tool_reference_sha256": "8c278765ad621dd11f89ff7b35d60af9f51ae88d569155f91733a06a4a51aab5",
+      "wire_schema_bytes": 22014,
+      "tool_reference_bytes": 6944,
+      "tool_reference_sha256": "c1f21524eac2c07a8eeb3a9da700a666f52fe87d6d0bf3f4f6a0b7f46a3a6397",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -12237,6 +12267,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "get_learner_progress",
@@ -12246,8 +12277,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "b8820aebc73fe700321e75a7bafc7ff346e38040ea64c833f6e87f88609e9ff2",
-      "wire_schema_sha256": "ba8dcb00ca31b40a21634b5f0680b68bbc39dd047c4defa162189b5c7ad5dcb0",
+      "ordered_tool_names_sha256": "4aff877de7ac5e5d389cde5966e80222b72d7799e5d3cf0bcf6a6324d2d59257",
+      "wire_schema_sha256": "b616525d944e04b44e335d9ca02db4b704af31f8bb8ceca9778d563744e66e1a",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -12265,16 +12296,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 17,
+      "custom_tool_count": 18,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 20760,
-      "tool_reference_bytes": 8157,
-      "tool_reference_sha256": "488a0f80dc27b82e9d7a04226a70a00d8dddb18c5801dba7d287839e9f70315d",
+      "wire_schema_bytes": 22917,
+      "tool_reference_bytes": 8181,
+      "tool_reference_sha256": "6b1d56975fc035a1adf768dad67b9406bf6720797cfbb7e95bb49d8e6433a8be",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -12287,6 +12318,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "start_certification_module",
@@ -12297,8 +12329,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "8df8d830c1370944e4768efb235cad21d4c923181157a047b167d528e599800c",
-      "wire_schema_sha256": "1cbafd61ac1a1a34c12358007addf4d9d61e440dbe608f5752a4c57783c55df1",
+      "ordered_tool_names_sha256": "6885cd3eee5a3bb0cc79ca2122b9aff58a09afe02614027fc11ffba01ec568bd",
+      "wire_schema_sha256": "d16ea9b2b015333875b2b75ccca17d2008f5272592555d194473d7e44fe4a78c",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -14089,16 +14121,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 8,
+      "custom_tool_count": 9,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 11755,
-      "tool_reference_bytes": 6310,
-      "tool_reference_sha256": "04603aeb0ae569596b5ee5fd6be628303bece3bf65625633a68f9e6e2879d538",
+      "wire_schema_bytes": 13912,
+      "tool_reference_bytes": 6334,
+      "tool_reference_sha256": "8298515c3def07b180ad18a4bf063aea8f77a425b68b37b8c532b73018aa8bf6",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -14110,10 +14142,11 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities"
       ],
-      "ordered_tool_names_sha256": "29439abce5e792eca86c1ba105cd40eb03da5b67c1d77aa7808478a7f6817236",
-      "wire_schema_sha256": "7474c9abc30ab1714ffacdf911cf38b29cbf346e15bbf9c7c6068b6a42b14b5b"
+      "ordered_tool_names_sha256": "e62fe858a0bc7a61b663cfb6127fc6f9bed091029850d984897f3ee284170bb5",
+      "wire_schema_sha256": "62f9e025b6cfa248cbf61b409843ca0a562658b32efa8d34cdbdeb5edba7f629"
     },
     {
       "id": "slack_bolt:private_channel_member:agent_authentication",
@@ -14217,7 +14250,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17662,
+      "wire_schema_bytes": 17452,
       "tool_reference_bytes": 6568,
       "tool_reference_sha256": "724c570df0c1afbfc5474f247fa2d289e56582171e19ca033a263bf4a38a8591",
       "overridden_tool_count": 1,
@@ -14241,7 +14274,7 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "01a4e47a1d56a06a49d88c67cef7541d40b7a79d196a034be57130c9182aec3a",
-      "wire_schema_sha256": "6afb8588ca2c5e02009d4a1a32f0cda3e013daa9acda61c3e7f3ccd3703ae544",
+      "wire_schema_sha256": "56470f9bad4a34a5d2623bf5e02ba59f0699552904df92e884f4e1314eba1ac6",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -14308,7 +14341,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 12499,
+      "wire_schema_bytes": 12289,
       "tool_reference_bytes": 6071,
       "tool_reference_sha256": "815eb22df22b1d8f37c869018b9c5e49c83178001b26f1e7523ce09aec7b230e",
       "overridden_tool_count": 0,
@@ -14325,7 +14358,7 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "32ee638aa5b9177bbea802803498f87f715d059b195e4d0492e56312ff6c9cbe",
-      "wire_schema_sha256": "a1d8c157b5a199141179bc09a30808ecde2c99bd7975c39ef01f6aa21dc55634"
+      "wire_schema_sha256": "273901657b2837ba639c44f99507b950491304891461d680a6b6c60d75466ef5"
     },
     {
       "id": "slack_bolt:private_channel_member:agent_registry",
@@ -14475,16 +14508,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 155,
+      "custom_tool_count": 156,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 132372,
-      "tool_reference_bytes": 35659,
-      "tool_reference_sha256": "74717adf1dad240fa68a4bff04a7c1509ecf87374aaa1fac63ba7305bf6bf75e",
+      "wire_schema_bytes": 134319,
+      "tool_reference_bytes": 35731,
+      "tool_reference_sha256": "86f1bdcae1b000fdd32f5bbcf1d21c55c5edaee1cf9ff9483f7e65641e4d68c7",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -14581,6 +14614,7 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "grade_agent_signing",
         "diagnose_agent_auth",
@@ -14645,8 +14679,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "4fc973c9b78d787ca4756ed97ae615fdb6e138f4928329a9bda312060d614af9",
-      "wire_schema_sha256": "9bcded4b37c1708b2ea085b324cc08ccf1da2258429b64928e62bdbbb581c028",
+      "ordered_tool_names_sha256": "9052b3eed416dc212756329cd4b31b2b0a90da22fc8eb6d93b45923df728e62a",
+      "wire_schema_sha256": "ef69e02edda82502079a09dd095e96f1914b1c871f89cdf634673d4bc0e6eb5e",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -14750,16 +14784,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 14,
+      "custom_tool_count": 15,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17564,
-      "tool_reference_bytes": 6852,
-      "tool_reference_sha256": "414adb08a79ac4142a2967f857c3abb49345cd48daad70100e6a1762b980779a",
+      "wire_schema_bytes": 19721,
+      "tool_reference_bytes": 6876,
+      "tool_reference_sha256": "f490bc9195d9ae2066592ead53806e98d0222b6db3736f9921c3b03fa4ce0a8e",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -14772,6 +14806,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_learner_progress",
         "check_credentials",
         "test_out_modules",
@@ -14779,8 +14814,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "790df4634084e2fb5c430ea95d47b4aad105e5cad065f2ab1b3694405e550c02",
-      "wire_schema_sha256": "0b3889df9d691e023e2b17a45e8c42fa2bfc6e75a90db8afc0aaa43aa894a651",
+      "ordered_tool_names_sha256": "82377a617c69bb6d626b6244cada16458415decd547e0579a801b72d6c0ac23d",
+      "wire_schema_sha256": "44ea149b7c41b4c0f365fb8171d1aebf05f57b2ca09c3cc2e85159b4d8f87cce",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -14798,16 +14833,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 15,
+      "custom_tool_count": 16,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 18467,
-      "tool_reference_bytes": 8089,
-      "tool_reference_sha256": "346659796dfa0cb862a77cb3dbe215b925a8c59aa3c0296e22a0af15cf384ba6",
+      "wire_schema_bytes": 20624,
+      "tool_reference_bytes": 8113,
+      "tool_reference_sha256": "6884c999e478478b5e26f665be27109f44572b8d6eb401d98f36c9e16dbc7dca",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -14820,6 +14855,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "start_certification_module",
         "complete_certification_module",
         "get_learner_progress",
@@ -14828,8 +14864,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "463fa4659a702b7f1c65e0598b3c1d0340c915ba31ad3efd626031cc85c502ab",
-      "wire_schema_sha256": "480faf32e4985700bc768db1fd7c08c691713b9ad363d36240983a299174440c",
+      "ordered_tool_names_sha256": "e87675520ac2df14f40f8c5e7809163d2c3d02abc6dd0226c524e7a8de64f585",
+      "wire_schema_sha256": "3e13ca9b3016262c1659360b3900fd1a2223c29f577594568df8c78a4972984f",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -16489,16 +16525,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 25,
+      "custom_tool_count": 26,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 28258,
-      "tool_reference_bytes": 10932,
-      "tool_reference_sha256": "111cd7597a76c890bb6ad724e6f2aa1e2fa01a16d8451b54572108ffc0598a80",
+      "wire_schema_bytes": 30415,
+      "tool_reference_bytes": 10956,
+      "tool_reference_sha256": "44af76c9547f109bfaf0b71873915711a25393322d64184260cff77be4e40f90",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -16519,6 +16555,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "start_certification_module",
@@ -16529,8 +16566,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "6a797b29e5de0a1f10dc1c3c4fcdac226883b6fe9dfcdfa6e2a3009713df8080",
-      "wire_schema_sha256": "6aafa612f88b83f354d0efab631f73a0dfad0c46c19988f7250f3ef2969c45d5",
+      "ordered_tool_names_sha256": "d00ec5109797d2e3b8adb52f8a76f606988e3e538786efbafbcb6aa92a9396a2",
+      "wire_schema_sha256": "9c024c7c33d79f176834806bf94769082883a4f341fb178a79e2916c00751ac0",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -16551,16 +16588,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 30,
+      "custom_tool_count": 31,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 33133,
-      "tool_reference_bytes": 10389,
-      "tool_reference_sha256": "0facc2995e2d13ee0b676e0981dec54c8e11b4b18aa2feb85756275931937a2f",
+      "wire_schema_bytes": 35080,
+      "tool_reference_bytes": 10413,
+      "tool_reference_sha256": "5dd5d324afda23ec07ad43c8be34d029720f417e81f4caae1aefa2f3da868377",
       "overridden_tool_count": 1,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -16582,6 +16619,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "grade_agent_signing",
         "diagnose_agent_auth",
         "list_escalations",
@@ -16596,8 +16634,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "7d36f54196c7f9797937fd307a1b6d6365af061a473f90a2f34735a168584e64",
-      "wire_schema_sha256": "005739751219a8eec05f9d1675230aa4113b83788b090877efe67435d1e6c8c8",
+      "ordered_tool_names_sha256": "73abab5089ccb852acc97e2fb69990e5e9f4ac728f5bde8a45e3ea111e80243c",
+      "wire_schema_sha256": "080e811778e39cbb8d7e2169c500a8762a61e827b55ce8bfc57ff683832201af",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -16659,16 +16697,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 10,
+      "custom_tool_count": 11,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 14048,
-      "tool_reference_bytes": 6378,
-      "tool_reference_sha256": "6f40fffb21d3be25b7651e53dd9c9555d8b6e844e0ada398314863d004ece8c6",
+      "wire_schema_bytes": 16205,
+      "tool_reference_bytes": 6402,
+      "tool_reference_sha256": "3eb9a07576ee110817346222f3294c8bdf35b9620c618ba0b88b410b2fe51c2e",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -16680,12 +16718,13 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "07d619635ece821a834856c3c589ae9b3fc571ad61b993c621cc54a1d488360d",
-      "wire_schema_sha256": "b2dfa86715f69bc5b8b3338831b4bbb26086517cd7745c593d14bb59936f1ca4"
+      "ordered_tool_names_sha256": "a2ad9c40b494c955d808e7b800623f6d3ef84937617f1e67f67deffd0ab4c10c",
+      "wire_schema_sha256": "a072628b190783e857dcdc811aeb70711221e2d775d09d0c8361df639c37687a"
     },
     {
       "id": "slack_bolt:private_mention_admin:routed:admin_billing_account",
@@ -17584,7 +17623,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 19955,
+      "wire_schema_bytes": 19745,
       "tool_reference_bytes": 6636,
       "tool_reference_sha256": "d02b3eff67be7a38f952ebe0196ddb996dc932aa9e501167b0b1d71e454da1e4",
       "overridden_tool_count": 1,
@@ -17610,7 +17649,7 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "85c84ea52a5aa43067389e7e17605be6a93ddcf1ba596f619729779fccbe10bc",
-      "wire_schema_sha256": "c65369ed0be06c627c30e7660fe34dcd35b44bcd7fd0efbc83c9d46a89f7ebed",
+      "wire_schema_sha256": "68cef7404a35b2ab37ffcf6da6614ca0d87d9031e0082d384984dbfca6892dc0",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -17679,7 +17718,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 14792,
+      "wire_schema_bytes": 14582,
       "tool_reference_bytes": 6139,
       "tool_reference_sha256": "ecf8f60600a263d6a3120321ab1f65e138a08b082a96153eed01d1968552a91f",
       "overridden_tool_count": 0,
@@ -17698,7 +17737,7 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "f527be89fee5e5536b0b51b8c6c72924fbb8d3d9f3fee080986890437ae83065",
-      "wire_schema_sha256": "bdbb976ec254c38b6b61bf6fc8ecebad00121dd99d3839b9e979678434071ee9"
+      "wire_schema_sha256": "26cef72bd0370eff694a3d69f46691059f7ea1953f2c38fcff8467229de08990"
     },
     {
       "id": "slack_bolt:private_mention_admin:routed:agent_registry",
@@ -17894,16 +17933,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 16,
+      "custom_tool_count": 17,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 19857,
-      "tool_reference_bytes": 6920,
-      "tool_reference_sha256": "8c278765ad621dd11f89ff7b35d60af9f51ae88d569155f91733a06a4a51aab5",
+      "wire_schema_bytes": 22014,
+      "tool_reference_bytes": 6944,
+      "tool_reference_sha256": "c1f21524eac2c07a8eeb3a9da700a666f52fe87d6d0bf3f4f6a0b7f46a3a6397",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -17916,6 +17955,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "get_learner_progress",
@@ -17925,8 +17965,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "b8820aebc73fe700321e75a7bafc7ff346e38040ea64c833f6e87f88609e9ff2",
-      "wire_schema_sha256": "ba8dcb00ca31b40a21634b5f0680b68bbc39dd047c4defa162189b5c7ad5dcb0",
+      "ordered_tool_names_sha256": "4aff877de7ac5e5d389cde5966e80222b72d7799e5d3cf0bcf6a6324d2d59257",
+      "wire_schema_sha256": "b616525d944e04b44e335d9ca02db4b704af31f8bb8ceca9778d563744e66e1a",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -17944,16 +17984,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 17,
+      "custom_tool_count": 18,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 20760,
-      "tool_reference_bytes": 8157,
-      "tool_reference_sha256": "488a0f80dc27b82e9d7a04226a70a00d8dddb18c5801dba7d287839e9f70315d",
+      "wire_schema_bytes": 22917,
+      "tool_reference_bytes": 8181,
+      "tool_reference_sha256": "6b1d56975fc035a1adf768dad67b9406bf6720797cfbb7e95bb49d8e6433a8be",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -17966,6 +18006,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "list_escalations",
         "resolve_escalation",
         "start_certification_module",
@@ -17976,8 +18017,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "8df8d830c1370944e4768efb235cad21d4c923181157a047b167d528e599800c",
-      "wire_schema_sha256": "1cbafd61ac1a1a34c12358007addf4d9d61e440dbe608f5752a4c57783c55df1",
+      "ordered_tool_names_sha256": "6885cd3eee5a3bb0cc79ca2122b9aff58a09afe02614027fc11ffba01ec568bd",
+      "wire_schema_sha256": "d16ea9b2b015333875b2b75ccca17d2008f5272592555d194473d7e44fe4a78c",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -19788,16 +19829,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 23,
+      "custom_tool_count": 24,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 25965,
-      "tool_reference_bytes": 10864,
-      "tool_reference_sha256": "c1c660ec26e128b9aedfa96fe0c1b85588c45a7221f7b9a141e2f0aa9fa0b174",
+      "wire_schema_bytes": 28122,
+      "tool_reference_bytes": 10888,
+      "tool_reference_sha256": "d378c8c6fb880a83738050d9ec8c8e6ea2c9ceb1f92f74459e9ad8a4df6150e9",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -19818,6 +19859,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "start_certification_module",
         "complete_certification_module",
         "get_learner_progress",
@@ -19826,8 +19868,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "bc9f123436d9760c4603abb2386e0a63c7a9f53e4c0d65adbb0041de8bf1177f",
-      "wire_schema_sha256": "7bcc5517a1af44cce605df3e17b8e10b9276c299a4cd12918c5e61226a02d0cd",
+      "ordered_tool_names_sha256": "0a731e7336c428b895d1bb5dfc74f02217d9e7ae9fe9a2c9f46253a044d67c23",
+      "wire_schema_sha256": "8d6b44466e5fdf9d567878d47b64edf3275b145d6d1da49f59f0720e865cfc7e",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -19848,16 +19890,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 28,
+      "custom_tool_count": 29,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 30840,
-      "tool_reference_bytes": 10321,
-      "tool_reference_sha256": "c345073241bbb0aa78ef7366d2c97b3f776183a69a3acab73fed9bba457eb861",
+      "wire_schema_bytes": 32787,
+      "tool_reference_bytes": 10345,
+      "tool_reference_sha256": "ac5a6aa8355228d26ad1a9a443f94a528fafa857da3ca05098c34234d1d7f202",
       "overridden_tool_count": 1,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -19879,6 +19921,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "grade_agent_signing",
         "diagnose_agent_auth",
         "resolve_brand",
@@ -19891,8 +19934,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "9e5d653068e798450e6ec1d154f075d580807f8ca567abb56644ecefe15c3ba3",
-      "wire_schema_sha256": "83e72e59f7426d4db729dc7518aa7378fdf07fc439ac9fb1f196901c3102b23e",
+      "ordered_tool_names_sha256": "df467c098799dcca23efc3b2f2c2ee195f182324f30d9940d353362b39bbaee0",
+      "wire_schema_sha256": "0bdede508e3835d859dc07fbec9c50c76beb0901449522e30e51abe484ae3993",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -19952,16 +19995,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 8,
+      "custom_tool_count": 9,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 11755,
-      "tool_reference_bytes": 6310,
-      "tool_reference_sha256": "04603aeb0ae569596b5ee5fd6be628303bece3bf65625633a68f9e6e2879d538",
+      "wire_schema_bytes": 13912,
+      "tool_reference_bytes": 6334,
+      "tool_reference_sha256": "8298515c3def07b180ad18a4bf063aea8f77a425b68b37b8c532b73018aa8bf6",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -19973,10 +20016,11 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities"
       ],
-      "ordered_tool_names_sha256": "29439abce5e792eca86c1ba105cd40eb03da5b67c1d77aa7808478a7f6817236",
-      "wire_schema_sha256": "7474c9abc30ab1714ffacdf911cf38b29cbf346e15bbf9c7c6068b6a42b14b5b"
+      "ordered_tool_names_sha256": "e62fe858a0bc7a61b663cfb6127fc6f9bed091029850d984897f3ee284170bb5",
+      "wire_schema_sha256": "62f9e025b6cfa248cbf61b409843ca0a562658b32efa8d34cdbdeb5edba7f629"
     },
     {
       "id": "slack_bolt:private_mention_member:routed:agent_authentication",
@@ -20080,7 +20124,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17662,
+      "wire_schema_bytes": 17452,
       "tool_reference_bytes": 6568,
       "tool_reference_sha256": "724c570df0c1afbfc5474f247fa2d289e56582171e19ca033a263bf4a38a8591",
       "overridden_tool_count": 1,
@@ -20104,7 +20148,7 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "01a4e47a1d56a06a49d88c67cef7541d40b7a79d196a034be57130c9182aec3a",
-      "wire_schema_sha256": "6afb8588ca2c5e02009d4a1a32f0cda3e013daa9acda61c3e7f3ccd3703ae544",
+      "wire_schema_sha256": "56470f9bad4a34a5d2623bf5e02ba59f0699552904df92e884f4e1314eba1ac6",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -20171,7 +20215,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 12499,
+      "wire_schema_bytes": 12289,
       "tool_reference_bytes": 6071,
       "tool_reference_sha256": "815eb22df22b1d8f37c869018b9c5e49c83178001b26f1e7523ce09aec7b230e",
       "overridden_tool_count": 0,
@@ -20188,7 +20232,7 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "32ee638aa5b9177bbea802803498f87f715d059b195e4d0492e56312ff6c9cbe",
-      "wire_schema_sha256": "a1d8c157b5a199141179bc09a30808ecde2c99bd7975c39ef01f6aa21dc55634"
+      "wire_schema_sha256": "273901657b2837ba639c44f99507b950491304891461d680a6b6c60d75466ef5"
     },
     {
       "id": "slack_bolt:private_mention_member:routed:agent_registry",
@@ -20376,16 +20420,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 14,
+      "custom_tool_count": 15,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17564,
-      "tool_reference_bytes": 6852,
-      "tool_reference_sha256": "414adb08a79ac4142a2967f857c3abb49345cd48daad70100e6a1762b980779a",
+      "wire_schema_bytes": 19721,
+      "tool_reference_bytes": 6876,
+      "tool_reference_sha256": "f490bc9195d9ae2066592ead53806e98d0222b6db3736f9921c3b03fa4ce0a8e",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -20398,6 +20442,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_learner_progress",
         "check_credentials",
         "test_out_modules",
@@ -20405,8 +20450,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "790df4634084e2fb5c430ea95d47b4aad105e5cad065f2ab1b3694405e550c02",
-      "wire_schema_sha256": "0b3889df9d691e023e2b17a45e8c42fa2bfc6e75a90db8afc0aaa43aa894a651",
+      "ordered_tool_names_sha256": "82377a617c69bb6d626b6244cada16458415decd547e0579a801b72d6c0ac23d",
+      "wire_schema_sha256": "44ea149b7c41b4c0f365fb8171d1aebf05f57b2ca09c3cc2e85159b4d8f87cce",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -20424,16 +20469,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 15,
+      "custom_tool_count": 16,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 18467,
-      "tool_reference_bytes": 8089,
-      "tool_reference_sha256": "346659796dfa0cb862a77cb3dbe215b925a8c59aa3c0296e22a0af15cf384ba6",
+      "wire_schema_bytes": 20624,
+      "tool_reference_bytes": 8113,
+      "tool_reference_sha256": "6884c999e478478b5e26f665be27109f44572b8d6eb401d98f36c9e16dbc7dca",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -20446,6 +20491,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "start_certification_module",
         "complete_certification_module",
         "get_learner_progress",
@@ -20454,8 +20500,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "463fa4659a702b7f1c65e0598b3c1d0340c915ba31ad3efd626031cc85c502ab",
-      "wire_schema_sha256": "480faf32e4985700bc768db1fd7c08c691713b9ad363d36240983a299174440c",
+      "ordered_tool_names_sha256": "e87675520ac2df14f40f8c5e7809163d2c3d02abc6dd0226c524e7a8de64f585",
+      "wire_schema_sha256": "3e13ca9b3016262c1659360b3900fd1a2223c29f577594568df8c78a4972984f",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -22078,16 +22124,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 7,
+      "custom_tool_count": 8,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 11282,
-      "tool_reference_bytes": 6292,
-      "tool_reference_sha256": "754c3f7fd5bb236bc471a91ea08aa03d2f37efc145c55f416e1fb4ecfd86f22d",
+      "wire_schema_bytes": 13439,
+      "tool_reference_bytes": 6316,
+      "tool_reference_sha256": "72916f7b1d79ec099d56e611d238cd93ead70cab4ec5e38c4a794bbf682490dc",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -22098,10 +22144,11 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities"
       ],
-      "ordered_tool_names_sha256": "2884fe21fddd17bd7e9237c361ae09175436ea6bc4053ac7d5ec6052232ab69e",
-      "wire_schema_sha256": "62be844dcaf364007af54ce5debba844f002e0ce786d5192b2be6d85c3adcff1"
+      "ordered_tool_names_sha256": "019056dcaad2e48caf021ca96f34c6522b32e07d59e6d728de0a201cc77a0b51",
+      "wire_schema_sha256": "a7da480d6a4516aed0809c27e0989d2a8334396308bcbfcfc93ace845397af42"
     },
     {
       "id": "slack_bolt:public_channel_admin:admin_billing_account",
@@ -22928,7 +22975,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17189,
+      "wire_schema_bytes": 16979,
       "tool_reference_bytes": 6550,
       "tool_reference_sha256": "0ab8109a2f0f25348122080fb7f64fe305ccfad798a7b74533903b50fb916084",
       "overridden_tool_count": 1,
@@ -22951,7 +22998,7 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "0e5db57c4d45f9244087dbefbe8cbdc0427aa9c4367b7f64d7bef050db0f61de",
-      "wire_schema_sha256": "fcfbe4c39f756891281285e4ca50e35ae701e743668f15889aeb2b6a8d9b75d8",
+      "wire_schema_sha256": "bf02048d357d252cb0e91d91dea2de3f5820a63c3ccf659b16a90f89a611ab29",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -23017,7 +23064,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 12026,
+      "wire_schema_bytes": 11816,
       "tool_reference_bytes": 6053,
       "tool_reference_sha256": "623c78700d4c24b2b99574e33c8af9cd61c60f6fcf74b1ac59f49ca20eb8a164",
       "overridden_tool_count": 0,
@@ -23033,7 +23080,7 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "22b683ae113338a0d0437c1172eca780abe22103df94c4c4addf2dca3f6da300",
-      "wire_schema_sha256": "fd9882a730a2a2cf119d36449f9dd3d6289e82ea818176bbf9a1d630e4280735"
+      "wire_schema_sha256": "39bfd5319983010b9adbba0dd6045c57607af939d56521431c8756d1b2051e70"
     },
     {
       "id": "slack_bolt:public_channel_admin:agent_registry",
@@ -23201,16 +23248,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 204,
+      "custom_tool_count": 205,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 162139,
-      "tool_reference_bytes": 38965,
-      "tool_reference_sha256": "ad344a07b56eb179bdb20ad73e04026ba21b3d641a4d73d97b83b9c40260b757",
+      "wire_schema_bytes": 164086,
+      "tool_reference_bytes": 39037,
+      "tool_reference_sha256": "3027551ef1cb14e96a9f7e48fb55ee1526a82a6b2dbe76701b7877fda4697a2b",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -23302,6 +23349,7 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "grade_agent_signing",
         "diagnose_agent_auth",
@@ -23420,8 +23468,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "994762fb69bac61435ef563bcc4ae6996f89006a6b897bae32b260896b12ec88",
-      "wire_schema_sha256": "bbbfbef0c2159ae3dcc73c3c4348ad5af96eb508b204129f68072f77a050687d",
+      "ordered_tool_names_sha256": "2e00c4c22c4e8bf5855f5ce7daf7845cf71801389a2c6b6f3f0a1f82c16beb56",
+      "wire_schema_sha256": "887cbece7ee1e2a144414b803346850a50c8b75da212a811ab87d17a67e9967a",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -23523,16 +23571,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 13,
+      "custom_tool_count": 14,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17091,
-      "tool_reference_bytes": 6834,
-      "tool_reference_sha256": "00100bad072964a6ff52407a77807af70d49e3e3d7ad7a643578276cbed84f63",
+      "wire_schema_bytes": 19248,
+      "tool_reference_bytes": 6858,
+      "tool_reference_sha256": "f76e5b77bd03ad58aed96e9912e3663f2282277b36cc79aa5447720c08b8ecc5",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -23544,6 +23592,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_learner_progress",
         "check_credentials",
         "test_out_modules",
@@ -23551,8 +23600,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "8ac4c56c1525cdc7dc33c1dce45e8192c4e2ef35a3534be78ea1e573a45b7a51",
-      "wire_schema_sha256": "87ebdf040b68368e09a1db6900fb2f3f9cd8fe0f1020a6e5fa8635fb9ac7eb1d",
+      "ordered_tool_names_sha256": "476bbe3c408035b8233e6b23735dda1455fd0422083059054c5070e2b19674b9",
+      "wire_schema_sha256": "6455ecfc73eeebbbfcf2d4248eace7c5f9d9b2680d1981aaf6df84c573c5892a",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -23570,16 +23619,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 14,
+      "custom_tool_count": 15,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17994,
-      "tool_reference_bytes": 8071,
-      "tool_reference_sha256": "09c17f2d7be8670598cee0d28be64d0030eeb7a23653120ad573ee12e0b1f602",
+      "wire_schema_bytes": 20151,
+      "tool_reference_bytes": 8095,
+      "tool_reference_sha256": "cf781e9c2987fe490e6a1085a2c4560ff8ebd4d33434c28ea8e0aefa18fc9fde",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -23591,6 +23640,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "start_certification_module",
         "complete_certification_module",
         "get_learner_progress",
@@ -23599,8 +23649,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "c48ea42b9e2155bd3f7e2071d4b9e0a73a62009e45239a0a93d2b1b1ad3fb904",
-      "wire_schema_sha256": "ee70bc45858def844b6b0e232eefe9596ede8870de2cc197a326a25e541e7546",
+      "ordered_tool_names_sha256": "8f9d38185d1a21a483b23dec68389c198fbfe4c54ec708693c9ab64909591e02",
+      "wire_schema_sha256": "370f8ac8a5a4b4b012b7523baceb4988102367458aa1f731bfc50429c83af679",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -25268,16 +25318,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 7,
+      "custom_tool_count": 8,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 11282,
-      "tool_reference_bytes": 6292,
-      "tool_reference_sha256": "754c3f7fd5bb236bc471a91ea08aa03d2f37efc145c55f416e1fb4ecfd86f22d",
+      "wire_schema_bytes": 13439,
+      "tool_reference_bytes": 6316,
+      "tool_reference_sha256": "72916f7b1d79ec099d56e611d238cd93ead70cab4ec5e38c4a794bbf682490dc",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -25288,10 +25338,11 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities"
       ],
-      "ordered_tool_names_sha256": "2884fe21fddd17bd7e9237c361ae09175436ea6bc4053ac7d5ec6052232ab69e",
-      "wire_schema_sha256": "62be844dcaf364007af54ce5debba844f002e0ce786d5192b2be6d85c3adcff1"
+      "ordered_tool_names_sha256": "019056dcaad2e48caf021ca96f34c6522b32e07d59e6d728de0a201cc77a0b51",
+      "wire_schema_sha256": "a7da480d6a4516aed0809c27e0989d2a8334396308bcbfcfc93ace845397af42"
     },
     {
       "id": "slack_bolt:public_channel_member:agent_authentication",
@@ -25393,7 +25444,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17189,
+      "wire_schema_bytes": 16979,
       "tool_reference_bytes": 6550,
       "tool_reference_sha256": "0ab8109a2f0f25348122080fb7f64fe305ccfad798a7b74533903b50fb916084",
       "overridden_tool_count": 1,
@@ -25416,7 +25467,7 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "0e5db57c4d45f9244087dbefbe8cbdc0427aa9c4367b7f64d7bef050db0f61de",
-      "wire_schema_sha256": "fcfbe4c39f756891281285e4ca50e35ae701e743668f15889aeb2b6a8d9b75d8",
+      "wire_schema_sha256": "bf02048d357d252cb0e91d91dea2de3f5820a63c3ccf659b16a90f89a611ab29",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -25482,7 +25533,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 12026,
+      "wire_schema_bytes": 11816,
       "tool_reference_bytes": 6053,
       "tool_reference_sha256": "623c78700d4c24b2b99574e33c8af9cd61c60f6fcf74b1ac59f49ca20eb8a164",
       "overridden_tool_count": 0,
@@ -25498,7 +25549,7 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "22b683ae113338a0d0437c1172eca780abe22103df94c4c4addf2dca3f6da300",
-      "wire_schema_sha256": "fd9882a730a2a2cf119d36449f9dd3d6289e82ea818176bbf9a1d630e4280735"
+      "wire_schema_sha256": "39bfd5319983010b9adbba0dd6045c57607af939d56521431c8756d1b2051e70"
     },
     {
       "id": "slack_bolt:public_channel_member:agent_registry",
@@ -25646,16 +25697,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 150,
+      "custom_tool_count": 151,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 129099,
-      "tool_reference_bytes": 34787,
-      "tool_reference_sha256": "2e53eb61045adf3313fdd1eadc58a4d31d8276151c91c531def8a5d6e742be34",
+      "wire_schema_bytes": 131046,
+      "tool_reference_bytes": 34859,
+      "tool_reference_sha256": "665e824afa7c27b745f7fcf414b1d5188b8aef6530fcb400079a97a6d70982f4",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -25747,6 +25798,7 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "grade_agent_signing",
         "diagnose_agent_auth",
@@ -25811,8 +25863,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "84cac510d8fc1d54538414851a13522cd600507fa95cde28520cd3e2a38ea2c7",
-      "wire_schema_sha256": "957017fc6fe90ecb884aff174df2c79df2a5d96ce5e2d630fef9a51ce63d108e",
+      "ordered_tool_names_sha256": "f379a084a6410c744dd492a778c4735a6d3330785bdfe101f514dd189be48bf6",
+      "wire_schema_sha256": "78eba64b5725e9fb7e6089f5003f4846229554c6db2190ca0d1f147ccada6233",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -25914,16 +25966,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 13,
+      "custom_tool_count": 14,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17091,
-      "tool_reference_bytes": 6834,
-      "tool_reference_sha256": "00100bad072964a6ff52407a77807af70d49e3e3d7ad7a643578276cbed84f63",
+      "wire_schema_bytes": 19248,
+      "tool_reference_bytes": 6858,
+      "tool_reference_sha256": "f76e5b77bd03ad58aed96e9912e3663f2282277b36cc79aa5447720c08b8ecc5",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -25935,6 +25987,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_learner_progress",
         "check_credentials",
         "test_out_modules",
@@ -25942,8 +25995,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "8ac4c56c1525cdc7dc33c1dce45e8192c4e2ef35a3534be78ea1e573a45b7a51",
-      "wire_schema_sha256": "87ebdf040b68368e09a1db6900fb2f3f9cd8fe0f1020a6e5fa8635fb9ac7eb1d",
+      "ordered_tool_names_sha256": "476bbe3c408035b8233e6b23735dda1455fd0422083059054c5070e2b19674b9",
+      "wire_schema_sha256": "6455ecfc73eeebbbfcf2d4248eace7c5f9d9b2680d1981aaf6df84c573c5892a",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -25961,16 +26014,16 @@
         "member_content_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 14,
+      "custom_tool_count": 15,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17994,
-      "tool_reference_bytes": 8071,
-      "tool_reference_sha256": "09c17f2d7be8670598cee0d28be64d0030eeb7a23653120ad573ee12e0b1f602",
+      "wire_schema_bytes": 20151,
+      "tool_reference_bytes": 8095,
+      "tool_reference_sha256": "cf781e9c2987fe490e6a1085a2c4560ff8ebd4d33434c28ea8e0aefa18fc9fde",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -25982,6 +26035,7 @@
         "get_escalation_status",
         "capture_learning",
         "call_adcp_task",
+        "call_adcp_get_products",
         "start_certification_module",
         "complete_certification_module",
         "get_learner_progress",
@@ -25990,8 +26044,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "c48ea42b9e2155bd3f7e2071d4b9e0a73a62009e45239a0a93d2b1b1ad3fb904",
-      "wire_schema_sha256": "ee70bc45858def844b6b0e232eefe9596ede8870de2cc197a326a25e541e7546",
+      "ordered_tool_names_sha256": "8f9d38185d1a21a483b23dec68389c198fbfe4c54ec708693c9ab64909591e02",
+      "wire_schema_sha256": "370f8ac8a5a4b4b012b7523baceb4988102367458aa1f731bfc50429c83af679",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -27705,7 +27759,7 @@
         "get_adcp_capabilities"
       ],
       "ordered_tool_names_sha256": "b83d8016282784ac17b7726b69dc26851775940ecc4587d3ca753dc57aac2c09",
-      "wire_schema_sha256": "78f07ca3835d66ae1b4fe397e14d90dd59502f7158385db8da434942e9b64d2e"
+      "wire_schema_sha256": "d0ca77482928f1ce49e62ee7c2059a8065798c80eb4b441ea94807b79396bf5a"
     },
     {
       "id": "slack_bolt:public_mention_admin:routed:admin_billing_account",
@@ -30100,7 +30154,7 @@
         "get_adcp_capabilities"
       ],
       "ordered_tool_names_sha256": "b83d8016282784ac17b7726b69dc26851775940ecc4587d3ca753dc57aac2c09",
-      "wire_schema_sha256": "78f07ca3835d66ae1b4fe397e14d90dd59502f7158385db8da434942e9b64d2e"
+      "wire_schema_sha256": "d0ca77482928f1ce49e62ee7c2059a8065798c80eb4b441ea94807b79396bf5a"
     },
     {
       "id": "slack_bolt:public_mention_member:routed:agent_authentication",
@@ -31754,16 +31808,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 221,
+      "custom_tool_count": 222,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 174812,
-      "tool_reference_bytes": 40307,
-      "tool_reference_sha256": "de3bb91fc152a573a8ba16b230aa4fc0eeddf9753bf81b6f4a7ed7c0310b3e8f",
+      "wire_schema_bytes": 176759,
+      "tool_reference_bytes": 40379,
+      "tool_reference_sha256": "e29d9ad879206c971e260e8e9b2d5d622e22a6912c64b971d63b695a847a4c89",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -31860,6 +31914,7 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "grade_agent_signing",
         "diagnose_agent_auth",
@@ -31990,8 +32045,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
-      "wire_schema_sha256": "b059e1b7c3b9ce974045eaaebad6fd55747ff1634cddf469fd68dd4f3645a7f8",
+      "ordered_tool_names_sha256": "ffd97c28755c02acca5bd0e8b405d6cc8d6543c91e5d002bf5725aab1deb7c86",
+      "wire_schema_sha256": "1cc34417a0cbac565235d5a1314b626898ad4f0baacf6b35762d5f362520cfca",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -32077,16 +32132,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 221,
+      "custom_tool_count": 222,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 174812,
-      "tool_reference_bytes": 40307,
-      "tool_reference_sha256": "de3bb91fc152a573a8ba16b230aa4fc0eeddf9753bf81b6f4a7ed7c0310b3e8f",
+      "wire_schema_bytes": 176759,
+      "tool_reference_bytes": 40379,
+      "tool_reference_sha256": "e29d9ad879206c971e260e8e9b2d5d622e22a6912c64b971d63b695a847a4c89",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -32183,6 +32238,7 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "grade_agent_signing",
         "diagnose_agent_auth",
@@ -32313,8 +32369,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
-      "wire_schema_sha256": "b059e1b7c3b9ce974045eaaebad6fd55747ff1634cddf469fd68dd4f3645a7f8",
+      "ordered_tool_names_sha256": "ffd97c28755c02acca5bd0e8b405d6cc8d6543c91e5d002bf5725aab1deb7c86",
+      "wire_schema_sha256": "1cc34417a0cbac565235d5a1314b626898ad4f0baacf6b35762d5f362520cfca",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -32400,16 +32456,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 221,
+      "custom_tool_count": 222,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 174812,
-      "tool_reference_bytes": 40434,
-      "tool_reference_sha256": "982ac80a72ceec04be2ef36a6ebdd9a5bc4e1646ff8616b36d0bf017dedde9f7",
+      "wire_schema_bytes": 176759,
+      "tool_reference_bytes": 40506,
+      "tool_reference_sha256": "a5dd0947915ea29698a6e99c6b81c40506eb9e7663c531176e47521bd149a659",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -32506,6 +32562,7 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "grade_agent_signing",
         "diagnose_agent_auth",
@@ -32636,8 +32693,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
-      "wire_schema_sha256": "b059e1b7c3b9ce974045eaaebad6fd55747ff1634cddf469fd68dd4f3645a7f8",
+      "ordered_tool_names_sha256": "ffd97c28755c02acca5bd0e8b405d6cc8d6543c91e5d002bf5725aab1deb7c86",
+      "wire_schema_sha256": "1cc34417a0cbac565235d5a1314b626898ad4f0baacf6b35762d5f362520cfca",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -32722,16 +32779,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 221,
+      "custom_tool_count": 222,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 174812,
-      "tool_reference_bytes": 40307,
-      "tool_reference_sha256": "de3bb91fc152a573a8ba16b230aa4fc0eeddf9753bf81b6f4a7ed7c0310b3e8f",
+      "wire_schema_bytes": 176759,
+      "tool_reference_bytes": 40379,
+      "tool_reference_sha256": "e29d9ad879206c971e260e8e9b2d5d622e22a6912c64b971d63b695a847a4c89",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -32828,6 +32885,7 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "grade_agent_signing",
         "diagnose_agent_auth",
@@ -32958,8 +33016,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
-      "wire_schema_sha256": "b059e1b7c3b9ce974045eaaebad6fd55747ff1634cddf469fd68dd4f3645a7f8",
+      "ordered_tool_names_sha256": "ffd97c28755c02acca5bd0e8b405d6cc8d6543c91e5d002bf5725aab1deb7c86",
+      "wire_schema_sha256": "1cc34417a0cbac565235d5a1314b626898ad4f0baacf6b35762d5f362520cfca",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -33046,16 +33104,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 221,
+      "custom_tool_count": 222,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 174812,
-      "tool_reference_bytes": 40469,
-      "tool_reference_sha256": "7c28a9703f9524acc20bb873d0da506bd4b77375630a26e9cb4eb0c48c5f53de",
+      "wire_schema_bytes": 176759,
+      "tool_reference_bytes": 40541,
+      "tool_reference_sha256": "8fe3961f518611ffdaa6232f859ecce925d5c025720ac62b0d1d6e2dbcef7e0c",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -33152,6 +33210,7 @@
         "capture_learning",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "grade_agent_signing",
         "diagnose_agent_auth",
@@ -33282,8 +33341,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
-      "wire_schema_sha256": "b059e1b7c3b9ce974045eaaebad6fd55747ff1634cddf469fd68dd4f3645a7f8",
+      "ordered_tool_names_sha256": "ffd97c28755c02acca5bd0e8b405d6cc8d6543c91e5d002bf5725aab1deb7c86",
+      "wire_schema_sha256": "1cc34417a0cbac565235d5a1314b626898ad4f0baacf6b35762d5f362520cfca",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -33602,9 +33661,9 @@
       "id": "tavus_voice:committee_leader:maximum_wire_schema_bytes",
       "runtime": "tavus_voice",
       "audience": "committee_leader",
-      "route": "adcp_agent_management+meeting_full_administration",
+      "route": "adcp_task_operations+meeting_full_administration",
       "selected_tool_sets": [
-        "adcp_agent_management",
+        "adcp_task_operations",
         "meeting_full_administration"
       ],
       "conditional_maximums": [
@@ -33617,19 +33676,19 @@
       "maximum_provider_tool_names": [],
       "maximum_provider_tool_wire_bytes": 2,
       "maximum_provider_tool_wire_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "wire_schema_bytes": 22997,
-      "tool_reference_bytes": 6692,
-      "tool_reference_sha256": "706a805cf5b4d54ef3e8fb30350da8889c9d06873b5f68dd50397846c552c1ea",
+      "wire_schema_bytes": 24029,
+      "tool_reference_bytes": 6764,
+      "tool_reference_sha256": "103b083fa312c63ab6450c9821e9fd7508964888d4ad4c758d6073b2f818f9f9",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
       "ordered_tool_names": [
         "get_account_link",
-        "save_agent",
-        "list_saved_agents",
-        "remove_saved_agent",
-        "setup_test_agent",
         "set_outreach_preference",
+        "ask_about_adcp_task",
+        "call_adcp_task",
+        "call_adcp_get_products",
+        "get_adcp_capabilities",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -33645,8 +33704,8 @@
         "update_topic_subscriptions",
         "manage_committee_topics"
       ],
-      "ordered_tool_names_sha256": "222164e32e7a6b1aa2716bd843776345d05afafa44563c3673b982d9d43354ef",
-      "wire_schema_sha256": "76b9cd0fde65381cf7c62eae1a25279ba0295874f7eaaffd44f69ef77ee2bed2",
+      "ordered_tool_names_sha256": "fcc9b5c12e08c8f3ad32b0416638c359b15f89397c9bac9da4515ca3bfa226a7",
+      "wire_schema_sha256": "6859e98834034f81f1f4e67278cde8ee5f108da0bf8a07b5938e430c2107bfb6",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -33791,44 +33850,43 @@
       "id": "tavus_voice:member:maximum_wire_schema_bytes",
       "runtime": "tavus_voice",
       "audience": "member",
-      "route": "member_company_profile+adcp_agent_management",
+      "route": "adcp_task_operations+adcp_agent_management",
       "selected_tool_sets": [
-        "member_company_profile",
+        "adcp_task_operations",
         "adcp_agent_management"
       ],
       "conditional_maximums": [
         "router_selected_up_to_two_bounded_domains",
         "moltbook_configured"
       ],
-      "custom_tool_count": 14,
+      "custom_tool_count": 13,
       "maximum_provider_tool_count": 0,
       "maximum_provider_tool_names": [],
       "maximum_provider_tool_wire_bytes": 2,
       "maximum_provider_tool_wire_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "wire_schema_bytes": 19243,
-      "tool_reference_bytes": 8676,
-      "tool_reference_sha256": "1f3212562bf75d7ce8ebfdc03ce8926736dd73492f1ea3cb47a5b3c9e795a991",
+      "wire_schema_bytes": 20368,
+      "tool_reference_bytes": 6958,
+      "tool_reference_sha256": "b24640ac6859f2f7d77cfea436b8d0bc125bfd17c8c2a7e33ed503d8253090ae",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
       "ordered_tool_names": [
-        "get_company_listing",
-        "update_company_listing",
-        "update_company_logo",
-        "request_brand_domain_challenge",
-        "verify_brand_domain_challenge",
         "get_account_link",
         "save_agent",
         "list_saved_agents",
         "remove_saved_agent",
         "setup_test_agent",
         "set_outreach_preference",
+        "ask_about_adcp_task",
+        "call_adcp_task",
+        "call_adcp_get_products",
+        "get_adcp_capabilities",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning"
       ],
-      "ordered_tool_names_sha256": "db378d93a19c58579e5f63a382d5ffe24b0d12be939adb55dca8a41568f197ec",
-      "wire_schema_sha256": "fa5a32132d3bbd2221f340d5b0d17d2fa6f074e8158b0e85a5f4b35267ccf0ba",
+      "ordered_tool_names_sha256": "850143bde871b76e47bbb5d0b7875095211118d935cf226d5e9fb813dd5174e9",
+      "wire_schema_sha256": "b6ebeb3141bec9aa5f31454dbff7333ad2758254fb5bff72c2b3e5685d10a044",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -33960,16 +34018,16 @@
         "active_certification_session",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 28,
+      "custom_tool_count": 29,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 29839,
-      "tool_reference_bytes": 10396,
-      "tool_reference_sha256": "db9a08024ac032c8d1cb3b6461ba2c93400186150a367607c6ba25bd88c874a9",
+      "wire_schema_bytes": 31996,
+      "tool_reference_bytes": 10420,
+      "tool_reference_sha256": "ac470f5442cc061c33aaea2c06c8883d7a0204b26195780ca5a7e7026ed9f457",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -33987,6 +34045,7 @@
         "get_account_link",
         "set_outreach_preference",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -34003,8 +34062,8 @@
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "bd72ada800be89b75c9934f22d39da2716d408cfd7082d78250a5d8ba518170c",
-      "wire_schema_sha256": "d2524da124606c6ed4137fa940075ea591c1ba7e9f3141a0db6f834f4bb0daa3",
+      "ordered_tool_names_sha256": "0da689798be0c50a185de8badd49dfbc5d86bf4b6ed704778b1a831b2cf57340",
+      "wire_schema_sha256": "5ff210a8ab86ee28a38b87163141b4ac478011630c4f194a2a090f3676d7b884",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -34022,16 +34081,16 @@
         "active_certification_session",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 29,
+      "custom_tool_count": 30,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 30742,
-      "tool_reference_bytes": 11633,
-      "tool_reference_sha256": "1bd37ffb44301d475e80aa305ffd4e4d3440ca40680e6dadc354df7c954b711c",
+      "wire_schema_bytes": 32899,
+      "tool_reference_bytes": 11657,
+      "tool_reference_sha256": "9a6ea4b4fb5941f63da99490811293fbf4c0d4cee92d0aaa26e840379fb730e6",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -34049,6 +34108,7 @@
         "get_account_link",
         "set_outreach_preference",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -34066,8 +34126,8 @@
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "35d65076ecee4d988204088ee64422da183fe75da2c59e606217e62e228e1024",
-      "wire_schema_sha256": "b2b31b3fd45025e708394d87ab76a4229ca03e424075e2a55f6fda6afa8c88df",
+      "ordered_tool_names_sha256": "48452579832a6d7063284d27d832ec02034bd2cedae80c9f214ce0a8b7b7850f",
+      "wire_schema_sha256": "1ba0c96eda70767a691f0d60a7fefe127b276950bad66b5a9b33f91da161f8a8",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -34086,16 +34146,16 @@
         "active_certification_session",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 32,
+      "custom_tool_count": 33,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 33191,
-      "tool_reference_bytes": 13788,
-      "tool_reference_sha256": "65b93b7217131d1a8eb7b9d8a848e22c9ad6e717060b059ea5feebe50ed943e3",
+      "wire_schema_bytes": 35348,
+      "tool_reference_bytes": 13836,
+      "tool_reference_sha256": "4f25a569c8efdc0e5ccb7943e916f9a415b68d5ae75afe44a40bd9e849bbd290",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -34113,6 +34173,7 @@
         "get_account_link",
         "set_outreach_preference",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -34133,8 +34194,8 @@
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "6c5ec13ab1e04229284b2416d75b4b9ad7f06ff570821cea95cffa4c972ff8c6",
-      "wire_schema_sha256": "70c9b1c99e41c797a1f1fdee2ad55bf33fd73693dd872cc94f37594372b5b43b",
+      "ordered_tool_names_sha256": "992c5ba369c7f01b8576c383ccc1eccd4fab4f46b204cbaec6e37bf07c3de0a3",
+      "wire_schema_sha256": "e1373c1ca5bc4c452aeffc1fa14baac3f85064ff9eb79b1e438099e2b53f15a8",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -34151,16 +34212,16 @@
         "active_sponsored_intelligence_session",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 30,
+      "custom_tool_count": 31,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 33133,
-      "tool_reference_bytes": 10389,
-      "tool_reference_sha256": "0facc2995e2d13ee0b676e0981dec54c8e11b4b18aa2feb85756275931937a2f",
+      "wire_schema_bytes": 35080,
+      "tool_reference_bytes": 10413,
+      "tool_reference_sha256": "5dd5d324afda23ec07ad43c8be34d029720f417e81f4caae1aefa2f3da868377",
       "overridden_tool_count": 1,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -34180,6 +34241,7 @@
         "end_si_session",
         "get_si_session_status",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -34196,8 +34258,8 @@
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "149c1f71cfc348258d03be4fc30163baeb808ea9370dd73a34c04d8e7a27e49d",
-      "wire_schema_sha256": "5ade14a4c4303a09cb8b00e91970d89cbbbb14f66b87daefbdb421b6e175269e",
+      "ordered_tool_names_sha256": "035d6c5c0b1f63eb610c9cfda234f3e362dab45a806d0b63b3498833b937e77a",
+      "wire_schema_sha256": "4d9bbf650bc1d195f519ebf85499fe31b768e55212376dd743aa7514679cd710",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -34279,16 +34341,16 @@
         "active_sponsored_intelligence_session",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 25,
+      "custom_tool_count": 26,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 28258,
-      "tool_reference_bytes": 10932,
-      "tool_reference_sha256": "111cd7597a76c890bb6ad724e6f2aa1e2fa01a16d8451b54572108ffc0598a80",
+      "wire_schema_bytes": 30415,
+      "tool_reference_bytes": 10956,
+      "tool_reference_sha256": "44af76c9547f109bfaf0b71873915711a25393322d64184260cff77be4e40f90",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -34305,6 +34367,7 @@
         "end_si_session",
         "get_si_session_status",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -34319,8 +34382,8 @@
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "158c453937b60e693b2cfbd41179126ca0ef97f4c9507f25ef4cbbb26fb520f3",
-      "wire_schema_sha256": "9940dcf82ce96952d71211ba819f690b0ad83643ea05a312490f4ce658493c76",
+      "ordered_tool_names_sha256": "6766597a1cce425ae5816e2844d4fdb2e45c192f813bc1bd75863bae62b63510",
+      "wire_schema_sha256": "ab2bf5ed2e4f5308dba1627a5eef39efb07faa35358ea20f55021e25f5a621c6",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -34374,16 +34437,16 @@
         "router_selected_bounded_domain",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 10,
+      "custom_tool_count": 11,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 14048,
-      "tool_reference_bytes": 6378,
-      "tool_reference_sha256": "6f40fffb21d3be25b7651e53dd9c9555d8b6e844e0ada398314863d004ece8c6",
+      "wire_schema_bytes": 16205,
+      "tool_reference_bytes": 6402,
+      "tool_reference_sha256": "3eb9a07576ee110817346222f3294c8bdf35b9620c618ba0b88b410b2fe51c2e",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -34392,6 +34455,7 @@
         "set_outreach_preference",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "escalate_to_admin",
         "get_escalation_status",
@@ -34399,8 +34463,8 @@
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "ec7ac19895cfe76a47ceb18f70d93c022d19ad3e2290decbadb56c0047588e75",
-      "wire_schema_sha256": "0630d0a57cf432cf574228c7c61570e3e557e59107033e68e068a0e6d11b10f6"
+      "ordered_tool_names_sha256": "0d5c5ca2aab7a804b721591af057c40d61846e9a6d606cf968273be1dec1c059",
+      "wire_schema_sha256": "d3decc334af94f35201299ece55d2817bed7cbc4e2fe6cdd7692b2b0065e7fb4"
     },
     {
       "id": "web_chat:authenticated_admin:routed:admin_billing_account",
@@ -35219,7 +35283,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 19955,
+      "wire_schema_bytes": 19745,
       "tool_reference_bytes": 6636,
       "tool_reference_sha256": "d02b3eff67be7a38f952ebe0196ddb996dc932aa9e501167b0b1d71e454da1e4",
       "overridden_tool_count": 1,
@@ -35245,7 +35309,7 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "38cc0a34bdeb0b27e32fc731aab76c06cd76603a03930b877377db96c6605530",
-      "wire_schema_sha256": "db85b47be7be64c904f0a81ab382e0de8254a603fd02d8c1f991966751ffc045",
+      "wire_schema_sha256": "de705e71ab9e89366bd45b4dd3ccc2f9920c6d82cba97400d9b6842ec64ab09d",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -35306,7 +35370,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 14792,
+      "wire_schema_bytes": 14582,
       "tool_reference_bytes": 6139,
       "tool_reference_sha256": "ecf8f60600a263d6a3120321ab1f65e138a08b082a96153eed01d1968552a91f",
       "overridden_tool_count": 0,
@@ -35325,7 +35389,7 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "f527be89fee5e5536b0b51b8c6c72924fbb8d3d9f3fee080986890437ae83065",
-      "wire_schema_sha256": "bdbb976ec254c38b6b61bf6fc8ecebad00121dd99d3839b9e979678434071ee9"
+      "wire_schema_sha256": "26cef72bd0370eff694a3d69f46691059f7ea1953f2c38fcff8467229de08990"
     },
     {
       "id": "web_chat:authenticated_admin:routed:agent_registry",
@@ -35502,16 +35566,16 @@
         "router_selected_bounded_domain",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 16,
+      "custom_tool_count": 17,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 19857,
-      "tool_reference_bytes": 6920,
-      "tool_reference_sha256": "8c278765ad621dd11f89ff7b35d60af9f51ae88d569155f91733a06a4a51aab5",
+      "wire_schema_bytes": 22014,
+      "tool_reference_bytes": 6944,
+      "tool_reference_sha256": "c1f21524eac2c07a8eeb3a9da700a666f52fe87d6d0bf3f4f6a0b7f46a3a6397",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -35520,6 +35584,7 @@
         "get_account_link",
         "set_outreach_preference",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -35533,8 +35598,8 @@
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "67f49b83d4e4b07b7f7910ff2f50557ab03f385f30eeb8fe41232923a99894f8",
-      "wire_schema_sha256": "1d3a1fd763368f9cce51004ae8b917d103b3ad8dc97ad9e768932902d45196fc",
+      "ordered_tool_names_sha256": "01c1d8dbc028e385ecd185e5f9cd3b7ed5b7cec1772a12bf30862f72082fcf97",
+      "wire_schema_sha256": "4a9b9edfe575c331b526ea8a95444989c6650857fa6941d85b4435b510faa894",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -35548,16 +35613,16 @@
         "router_selected_bounded_domain",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 17,
+      "custom_tool_count": 18,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 20760,
-      "tool_reference_bytes": 8157,
-      "tool_reference_sha256": "488a0f80dc27b82e9d7a04226a70a00d8dddb18c5801dba7d287839e9f70315d",
+      "wire_schema_bytes": 22917,
+      "tool_reference_bytes": 8181,
+      "tool_reference_sha256": "6b1d56975fc035a1adf768dad67b9406bf6720797cfbb7e95bb49d8e6433a8be",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -35566,6 +35631,7 @@
         "get_account_link",
         "set_outreach_preference",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -35580,8 +35646,8 @@
         "list_escalations",
         "resolve_escalation"
       ],
-      "ordered_tool_names_sha256": "bd3ab369c155ab0c39e4eb0daa1a025adb8543612053db25490c4704861b54f6",
-      "wire_schema_sha256": "701c1e358b9461dab27e868f64bab394c6488540ea4d0f95889398d486185c28",
+      "ordered_tool_names_sha256": "054c3929c373c8f48a1416c80582150b85258677668f7fd4b28a431b2f44ea63",
+      "wire_schema_sha256": "e2df52608cefc6e4e7b81506628bf66348c610f1a67ef2508a60e41aa8e847b1",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -37181,16 +37247,16 @@
         "active_certification_session",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 26,
+      "custom_tool_count": 27,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 27546,
-      "tool_reference_bytes": 10328,
-      "tool_reference_sha256": "cc07c52a8da0fd78de071cdb373fb3735cbf5e8379321279ac2b7e8282db60a3",
+      "wire_schema_bytes": 29703,
+      "tool_reference_bytes": 10352,
+      "tool_reference_sha256": "19d64681dbbb6b23c7ed983655b047578ffb4458211534496e3ac082d90db9ea",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -37208,6 +37274,7 @@
         "get_account_link",
         "set_outreach_preference",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -37222,8 +37289,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "d5fede9abe22dc9e9881c02a0273f7c97d12f14b898f6a95124633edf174fb03",
-      "wire_schema_sha256": "03652c4850d0a96b8473008a8c8e7e8fd9b55fa2ce0581f70d6611fdc92f79b0",
+      "ordered_tool_names_sha256": "198d0ab6126038d5e4142845e7980a9c8d08816e8832df079bb99bbffa546660",
+      "wire_schema_sha256": "82def9711eabd1fdb34493995313a4753539e413a1d7e70e17cac37366a5b27f",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -37241,16 +37308,16 @@
         "active_certification_session",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 27,
+      "custom_tool_count": 28,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 28449,
-      "tool_reference_bytes": 11565,
-      "tool_reference_sha256": "91d965f37e957a399cdc8f029246edafe50162d525bc724a197415692cb1d094",
+      "wire_schema_bytes": 30606,
+      "tool_reference_bytes": 11589,
+      "tool_reference_sha256": "1118ab0542ffcfea20f7264f5bc3355aeb23a0afcf60e045d14cbdfc4df5596f",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -37268,6 +37335,7 @@
         "get_account_link",
         "set_outreach_preference",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -37283,8 +37351,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "bab8226b2b5de31430f15b50111a74fb4c48b6c740a6acb7cd827244d1f65c6e",
-      "wire_schema_sha256": "20c51206600bc24eaf93ff6995532574808bac988b0a2dddb1c63d422aaa7d86",
+      "ordered_tool_names_sha256": "b3db1ff4edaa775da19751b51f92cee60db76ed3b97cde6c150648e47ce674ed",
+      "wire_schema_sha256": "d14f280f133f7be54f6ce1310b59f69a9ade1f673a18661c6d174b964dcef56d",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -37303,16 +37371,16 @@
         "active_certification_session",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 30,
+      "custom_tool_count": 31,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 30898,
-      "tool_reference_bytes": 13720,
-      "tool_reference_sha256": "70a32380ba0df6d668c2ab945a52ee381ae5d9eedceee3b62fb3dfc56fec902c",
+      "wire_schema_bytes": 33055,
+      "tool_reference_bytes": 13768,
+      "tool_reference_sha256": "0f470e0f92219943989b62bad6c154c12aaf6d1c11e5417a9f6e0c53e3043cb5",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -37330,6 +37398,7 @@
         "get_account_link",
         "set_outreach_preference",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -37348,8 +37417,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "409043ee299e0fb5f20b8a94de341fc6e92f1dc0c6f010a74777841984b8542b",
-      "wire_schema_sha256": "572550032dc1a12cb68b73b5a37cf35b3090a610b21b359b999090d7758626e5",
+      "ordered_tool_names_sha256": "0ecaea525bfde3b15dc46f7f41b78effb294da617482b8390f1d0e3666952c40",
+      "wire_schema_sha256": "8da88ed02f31774c596d526c882932455bcf9a72817e89ac269eef4f78baba1d",
       "target_exception_category": "trusted_certification_session"
     },
     {
@@ -37366,16 +37435,16 @@
         "active_sponsored_intelligence_session",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 28,
+      "custom_tool_count": 29,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 30840,
-      "tool_reference_bytes": 10321,
-      "tool_reference_sha256": "c345073241bbb0aa78ef7366d2c97b3f776183a69a3acab73fed9bba457eb861",
+      "wire_schema_bytes": 32787,
+      "tool_reference_bytes": 10345,
+      "tool_reference_sha256": "ac5a6aa8355228d26ad1a9a443f94a528fafa857da3ca05098c34234d1d7f202",
       "overridden_tool_count": 1,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -37395,6 +37464,7 @@
         "end_si_session",
         "get_si_session_status",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -37409,8 +37479,8 @@
         "grade_agent_signing",
         "diagnose_agent_auth"
       ],
-      "ordered_tool_names_sha256": "239aa781dc2bbad4cafae408369b09c33c17594e28af7dccd89b8c7e335f6ad4",
-      "wire_schema_sha256": "80fbb1ebe318cc3ff4ea751cad4db8845c2d78a394d51e1be6b49be216f27355",
+      "ordered_tool_names_sha256": "54bb29cdfed132a628339b1ea52dd208dd7b9ab7200cdb05de82053913899542",
+      "wire_schema_sha256": "95443f59a987e049163085e5a31bcfdeaa105f771af85d6043aaff137363fcde",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -37490,16 +37560,16 @@
         "active_sponsored_intelligence_session",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 23,
+      "custom_tool_count": 24,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 25965,
-      "tool_reference_bytes": 10864,
-      "tool_reference_sha256": "c1c660ec26e128b9aedfa96fe0c1b85588c45a7221f7b9a141e2f0aa9fa0b174",
+      "wire_schema_bytes": 28122,
+      "tool_reference_bytes": 10888,
+      "tool_reference_sha256": "d378c8c6fb880a83738050d9ec8c8e6ea2c9ceb1f92f74459e9ad8a4df6150e9",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -37516,6 +37586,7 @@
         "end_si_session",
         "get_si_session_status",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -37528,8 +37599,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "55dda212adc074b6c5ce79b60bee4cfc91f773942e3195ccd82a12710479a121",
-      "wire_schema_sha256": "bd1d18f4b69143b2a11ff2edbcfbb084f1ed0e3d3920a5cd2a094e021c597cae",
+      "ordered_tool_names_sha256": "f35c72c6b51e39cd72948465f8ad63ddeeb7c6571efafa543471cdcc4eb553ac",
+      "wire_schema_sha256": "27b2e53340f11dd4e9cf80d19a5f96ccc14e5e60c6553304f9ed33e6b85c559a",
       "target_exception_category": "bounded_multi_domain_plan"
     },
     {
@@ -37581,16 +37652,16 @@
         "router_selected_bounded_domain",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 8,
+      "custom_tool_count": 9,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 11755,
-      "tool_reference_bytes": 6310,
-      "tool_reference_sha256": "04603aeb0ae569596b5ee5fd6be628303bece3bf65625633a68f9e6e2879d538",
+      "wire_schema_bytes": 13912,
+      "tool_reference_bytes": 6334,
+      "tool_reference_sha256": "8298515c3def07b180ad18a4bf063aea8f77a425b68b37b8c532b73018aa8bf6",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -37599,13 +37670,14 @@
         "set_outreach_preference",
         "ask_about_adcp_task",
         "call_adcp_task",
+        "call_adcp_get_products",
         "get_adcp_capabilities",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning"
       ],
-      "ordered_tool_names_sha256": "fbefd58db9c1a6ac0d4d459d4e9a2d858510f067ecd58d8eedf377145d606e4e",
-      "wire_schema_sha256": "0509753330ff45280c152536091b3b4a8746f773c6c0a4e6a7a01082f4c0c45f"
+      "ordered_tool_names_sha256": "aba3ddc781b37db9bb753c6e5b4960de1a9dc8542ebeb0cd7548fc0b2f36166c",
+      "wire_schema_sha256": "5c00f74617b71f86ae11ba0cd31047459d64734a918aaa0e916efe6e4f52a75e"
     },
     {
       "id": "web_chat:authenticated_member:routed:agent_authentication",
@@ -37703,7 +37775,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17662,
+      "wire_schema_bytes": 17452,
       "tool_reference_bytes": 6568,
       "tool_reference_sha256": "724c570df0c1afbfc5474f247fa2d289e56582171e19ca033a263bf4a38a8591",
       "overridden_tool_count": 1,
@@ -37727,7 +37799,7 @@
         "diagnose_agent_auth"
       ],
       "ordered_tool_names_sha256": "fca82ce62ad0b9e6ae281a723c4fde4a64f62054db1fed015fedbd24cccf44c4",
-      "wire_schema_sha256": "149d55d3b06e85506f57ecde732301ea374e7506bf30f0b5154db9157eb0f33c",
+      "wire_schema_sha256": "95402513441d9cfdc014a42d663861b1fa5909661611615add9a58a702348b21",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -37786,7 +37858,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 12499,
+      "wire_schema_bytes": 12289,
       "tool_reference_bytes": 6071,
       "tool_reference_sha256": "815eb22df22b1d8f37c869018b9c5e49c83178001b26f1e7523ce09aec7b230e",
       "overridden_tool_count": 0,
@@ -37803,7 +37875,7 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "32ee638aa5b9177bbea802803498f87f715d059b195e4d0492e56312ff6c9cbe",
-      "wire_schema_sha256": "a1d8c157b5a199141179bc09a30808ecde2c99bd7975c39ef01f6aa21dc55634"
+      "wire_schema_sha256": "273901657b2837ba639c44f99507b950491304891461d680a6b6c60d75466ef5"
     },
     {
       "id": "web_chat:authenticated_member:routed:agent_registry",
@@ -37974,16 +38046,16 @@
         "router_selected_bounded_domain",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 14,
+      "custom_tool_count": 15,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 17564,
-      "tool_reference_bytes": 6852,
-      "tool_reference_sha256": "414adb08a79ac4142a2967f857c3abb49345cd48daad70100e6a1762b980779a",
+      "wire_schema_bytes": 19721,
+      "tool_reference_bytes": 6876,
+      "tool_reference_sha256": "f490bc9195d9ae2066592ead53806e98d0222b6db3736f9921c3b03fa4ce0a8e",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -37992,6 +38064,7 @@
         "get_account_link",
         "set_outreach_preference",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -38003,8 +38076,8 @@
         "complete_certification_exam",
         "checkpoint_teaching_progress"
       ],
-      "ordered_tool_names_sha256": "2f5d84296b8040bca96f4c1ca4c53d58e97027ea93c417b146adbf080e05f05d",
-      "wire_schema_sha256": "6fa1f6ac48b01a93056affec31b8b171e70e71602a26388bfc7c8acbfe0906b7",
+      "ordered_tool_names_sha256": "fd8c04425e1299e9a5ae2c8ac451cc854811b7674edb8abfc30eee3bbe062044",
+      "wire_schema_sha256": "8fdf8dab6f5e1e6ad8db5a05f9bf6ff43bf5199b1601733baffe1de0e6c22f96",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -38018,16 +38091,16 @@
         "router_selected_bounded_domain",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 15,
+      "custom_tool_count": 16,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 18467,
-      "tool_reference_bytes": 8089,
-      "tool_reference_sha256": "346659796dfa0cb862a77cb3dbe215b925a8c59aa3c0296e22a0af15cf384ba6",
+      "wire_schema_bytes": 20624,
+      "tool_reference_bytes": 8113,
+      "tool_reference_sha256": "6884c999e478478b5e26f665be27109f44572b8d6eb401d98f36c9e16dbc7dca",
       "overridden_tool_count": 0,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -38036,6 +38109,7 @@
         "get_account_link",
         "set_outreach_preference",
         "call_adcp_task",
+        "call_adcp_get_products",
         "escalate_to_admin",
         "get_escalation_status",
         "capture_learning",
@@ -38048,8 +38122,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "05e6751604e0664016472e3f20c46d2e22ba5dffd0a557e34418a0b88daccb29",
-      "wire_schema_sha256": "32f6fc42055aaec5afca0222ca919a447b33f629533d1268b4f78d2cd4e8d640",
+      "ordered_tool_names_sha256": "099a5978c151cde68d2b7e8a114c2b2b3ffc74d2e933217cc006762f406b485d",
+      "wire_schema_sha256": "9d4a00e9f3aff4ae36c43477dd1a4a0d7e92a31d2a86db70d57a85ae991b1bb5",
       "target_exception_category": "explicit_multi_step_workflow"
     },
     {
@@ -39517,44 +39591,44 @@
       "web_authenticated_admin_tools": 235
     },
     "deltas": {
-      "routed_unique_tools": 22,
-      "runtime_unique_tools": -31,
+      "routed_unique_tools": 23,
+      "runtime_unique_tools": -30,
       "runtime_tools_not_declared_to_router": -18,
       "routed_tools_missing_runtime_definition": -1,
       "maximum_conflicting_tool_overrides": 0,
       "runtime_tools_missing_prompt_catalog": -8,
       "prompt_catalog_tools_missing_runtime": -2,
       "always_available_tools": -13,
-      "tool_reference_bytes": -3324,
-      "system_prompt_bytes": 1817,
-      "maximum_slack_member_tools": -115,
-      "maximum_slack_admin_tools": -182,
-      "maximum_slack_public_tools": -4,
-      "maximum_slack_member_schema_bytes": -92096,
-      "maximum_slack_admin_schema_bytes": -131761,
-      "maximum_slack_public_schema_bytes": 2022,
+      "tool_reference_bytes": -3252,
+      "system_prompt_bytes": 2106,
+      "maximum_slack_member_tools": -114,
+      "maximum_slack_admin_tools": -181,
+      "maximum_slack_public_tools": -3,
+      "maximum_slack_member_schema_bytes": -89939,
+      "maximum_slack_admin_schema_bytes": -129604,
+      "maximum_slack_public_schema_bytes": 3969,
       "web_anonymous_tools": 0,
-      "web_authenticated_admin_tools": -203
+      "web_authenticated_admin_tools": -202
     }
   },
   "budgets": {
     "maximums": {
-      "routed_unique_tools": 222,
-      "runtime_unique_tools": 221,
+      "routed_unique_tools": 223,
+      "runtime_unique_tools": 222,
       "runtime_tools_not_declared_to_router": 18,
       "routed_tools_missing_runtime_definition": 0,
       "maximum_conflicting_tool_overrides": 0,
       "runtime_tools_missing_prompt_catalog": 0,
       "prompt_catalog_tools_missing_runtime": 0,
       "always_available_tools": 6,
-      "tool_reference_bytes": 40469,
-      "system_prompt_bytes": 204066,
+      "tool_reference_bytes": 40541,
+      "system_prompt_bytes": 204137,
       "maximum_slack_member_tools": 33,
       "maximum_slack_admin_tools": 35,
-      "maximum_slack_public_tools": 204,
-      "maximum_slack_member_schema_bytes": 32732,
-      "maximum_slack_admin_schema_bytes": 35026,
-      "maximum_slack_public_schema_bytes": 162566,
+      "maximum_slack_public_tools": 205,
+      "maximum_slack_member_schema_bytes": 34223,
+      "maximum_slack_admin_schema_bytes": 36516,
+      "maximum_slack_public_schema_bytes": 164296,
       "web_anonymous_tools": 13,
       "web_authenticated_admin_tools": 35
     },
@@ -39579,55 +39653,55 @@
       },
       "slack_bolt:admin_dm": {
         "custom_tool_count": 35,
-        "wire_schema_bytes": 35026,
+        "wire_schema_bytes": 36516,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:admin_working_group": {
-        "custom_tool_count": 221,
-        "wire_schema_bytes": 175240,
+        "custom_tool_count": 222,
+        "wire_schema_bytes": 176969,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:member_dm": {
         "custom_tool_count": 33,
-        "wire_schema_bytes": 32732,
+        "wire_schema_bytes": 34223,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:private_channel_admin": {
-        "custom_tool_count": 221,
-        "wire_schema_bytes": 175240,
+        "custom_tool_count": 222,
+        "wire_schema_bytes": 176969,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:private_channel_member": {
-        "custom_tool_count": 155,
-        "wire_schema_bytes": 132799,
+        "custom_tool_count": 156,
+        "wire_schema_bytes": 134529,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:private_mention_admin": {
         "custom_tool_count": 35,
-        "wire_schema_bytes": 34783,
+        "wire_schema_bytes": 35290,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:private_mention_member": {
         "custom_tool_count": 33,
-        "wire_schema_bytes": 32489,
+        "wire_schema_bytes": 32997,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:public_channel_admin": {
-        "custom_tool_count": 204,
-        "wire_schema_bytes": 162566,
+        "custom_tool_count": 205,
+        "wire_schema_bytes": 164296,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:public_channel_member": {
-        "custom_tool_count": 150,
-        "wire_schema_bytes": 129526,
+        "custom_tool_count": 151,
+        "wire_schema_bytes": 131256,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
@@ -39644,32 +39718,32 @@
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:system_channel_admin": {
-        "custom_tool_count": 221,
-        "wire_schema_bytes": 175240,
+        "custom_tool_count": 222,
+        "wire_schema_bytes": 176969,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt_reaction:admin": {
         "custom_tool_count": 35,
-        "wire_schema_bytes": 34783,
+        "wire_schema_bytes": 35290,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt_reaction:member": {
         "custom_tool_count": 33,
-        "wire_schema_bytes": 32489,
+        "wire_schema_bytes": 32997,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt_reaction:public_channel": {
         "custom_tool_count": 32,
-        "wire_schema_bytes": 32016,
+        "wire_schema_bytes": 32524,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt_reaction:public_channel_admin": {
         "custom_tool_count": 32,
-        "wire_schema_bytes": 32016,
+        "wire_schema_bytes": 32524,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
@@ -39705,23 +39779,23 @@
       },
       "web_chat:authenticated_admin": {
         "custom_tool_count": 35,
-        "wire_schema_bytes": 34783,
+        "wire_schema_bytes": 35348,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "web_chat:authenticated_member": {
         "custom_tool_count": 33,
-        "wire_schema_bytes": 32489,
+        "wire_schema_bytes": 33055,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       }
     },
     "profile_ids_sha256": "5c4b3378b3d01fbcf75aeb0a40a6b83f460060fbc3e7ec37dc8444647d804faa",
-    "profile_contract_sha256": "56da2960d3bd6b643a5e355e1190cfbd5786fbec2068cd669c2734adf589f20c",
+    "profile_contract_sha256": "fa02ef059c10205435c321aa041e0dd8ad1e01d73a01f048057359bfbfd6f821",
     "status": "within_budget"
   },
   "profile_contract": {
     "profile_ids_sha256": "5c4b3378b3d01fbcf75aeb0a40a6b83f460060fbc3e7ec37dc8444647d804faa",
-    "profile_contract_sha256": "56da2960d3bd6b643a5e355e1190cfbd5786fbec2068cd669c2734adf589f20c"
+    "profile_contract_sha256": "fa02ef059c10205435c321aa041e0dd8ad1e01d73a01f048057359bfbfd6f821"
   }
 }

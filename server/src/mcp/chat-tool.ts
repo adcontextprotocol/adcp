@@ -1,3 +1,4 @@
+import { responseClient } from '../addie/response-client.js';
 /**
  * Chat with Addie MCP Tool
  *
@@ -99,8 +100,8 @@ function getChatClient(): AddieClaudeClient {
     chatClient = new AddieClaudeClient(apiKey, AddieModelConfig.chat);
 
     // Register knowledge + directory tools for MCP callers.
-    // MCP chat_with_addie keeps knowledge tools because MCP partners use Sonnet,
-    // unlike web chat anonymous users who get Haiku (see addie-chat.ts).
+    // MCP keeps its existing anonymous-safe knowledge and directory surface.
+    // Response provider policy does not change caller authorization.
     //
     // MCP chat_with_addie is invoked without a per-call auth context, so all
     // callers here are treated as anonymous — handlers are scoped to exclude
@@ -271,7 +272,7 @@ export async function handleChatTool(
       ? { costScope: { userId: `mcp:${sub}`, tier: 'anonymous' as const } }
       : { uncapped: true as const };
 
-    const response = await client.processMessage(
+    const response = await responseClient(client, 'mcp').processMessage(
       message,
       threadContext,
       undefined, // No request-specific tools for anonymous

@@ -3,6 +3,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -10,6 +11,7 @@ const AjvDraft07 = require('ajv');
 const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
 const yaml = require('js-yaml');
+const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 const {
   normalizeSubstitutions,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
@@ -33,6 +35,7 @@ const {
   measureSchema,
   projectDraft07Node,
   projectMcpDiscoveryInputSchema,
+  projectSourceSchema,
   pruneUnusedRootDefinitions,
   selectRuntimeToolNames,
   stripPresentationAnnotations,
@@ -122,6 +125,35 @@ function createValidator(AjvClass) {
   addFormats(ajv);
   return ajv;
 }
+
+test('complete reporting summary vectors agree across canonical, bundled, and MCP profiles', async t => {
+  const schemaPath = 'media-buy/get-reporting-status-response.json';
+  const variants = [
+    [schemaPath, AjvDraft07],
+    [`bundled/${schemaPath}`, AjvDraft07],
+    [`mcp/${MCP_PROTOCOL_VERSION}/${schemaPath}`, Ajv2020],
+    [`mcp/${MCP_PROTOCOL_VERSION}/profiles/production/${schemaPath}`, Ajv2020],
+    [`mcp/${MCP_PROTOCOL_VERSION}/profiles/media-buy/${schemaPath}`, Ajv2020],
+  ];
+  for (const [relativePath, AjvClass] of variants) {
+    await t.test(relativePath, async () => {
+      const ajv = new AjvClass({
+        strict: false,
+        allErrors: true,
+        loadSchema: async uri => {
+          const prefix = 'https://adcontextprotocol.org/schemas/latest/';
+          assert.ok(uri.startsWith(prefix), `Unexpected generated reference: ${uri}`);
+          return readJson(path.join(LATEST_DIR, uri.slice(prefix.length)));
+        },
+      });
+      addFormats(ajv);
+      const validate = await ajv.compileAsync(readJson(path.join(LATEST_DIR, relativePath)));
+      for (const { name, valid, response } of reportingSummaryCases()) {
+        assert.equal(validate(response), valid, `${name}: ${JSON.stringify(validate.errors)}`);
+      }
+    });
+  }
+});
 
 function walkYamlFiles(directory) {
   const files = [];
@@ -682,6 +714,62 @@ test('compact bundling reuses external schemas and keeps local refs resolvable',
   assert.equal(accountRefs.length, 1);
   assert.deepEqual(collectExternalRefs(compact), []);
   assert.ok(assertLocalRefsResolve(projectDraft07Node(compact)) > 0);
+});
+
+test('MCP compound schemas preserve canonical embedded identities offline', () => {
+  const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-mcp-identities-'));
+  try {
+    const childPath = path.join(sourceDir, 'core', 'child.json');
+    const rootPath = path.join(sourceDir, 'media-buy', 'identity-response.json');
+    fs.mkdirSync(path.dirname(childPath), { recursive: true });
+    fs.mkdirSync(path.dirname(rootPath), { recursive: true });
+    fs.writeFileSync(childPath, JSON.stringify({
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/core/child.json',
+      type: 'object',
+      definitions: {
+        Name: { type: 'string', minLength: 1 },
+      },
+      properties: {
+        name: { $ref: '#/definitions/Name' },
+      },
+      required: ['name'],
+    }));
+    fs.writeFileSync(rootPath, JSON.stringify({
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/media-buy/identity-response.json',
+      type: 'object',
+      properties: {
+        child: { $ref: '/schemas/core/child.json' },
+      },
+      required: ['child'],
+    }));
+
+    for (const annotationMode of ['full', 'structural']) {
+      const projection = projectSourceSchema(
+        readJson(rootPath),
+        rootPath,
+        sourceDir,
+        '3.2.1',
+        'media-buy/identity-response.json',
+        annotationMode,
+      );
+      const child = projection.$defs['external:core/child.json'];
+      assert.equal(
+        child.$id,
+        'https://adcontextprotocol.org/schemas/3.2.1/core/child.json',
+        annotationMode,
+      );
+      assert.deepEqual(collectExternalRefs(projection), [], annotationMode);
+      assert.ok(assertLocalRefsResolve(projection) >= 2, annotationMode);
+
+      const validate = createValidator(Ajv2020).compile(projection);
+      assert.equal(validate({ child: { name: 'preserved' } }), true, annotationMode);
+      assert.equal(validate({ child: { name: '' } }), false, annotationMode);
+    }
+  } finally {
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+  }
 });
 
 test('compact lifecycle routes every operational control and declares cross-item invariants', () => {

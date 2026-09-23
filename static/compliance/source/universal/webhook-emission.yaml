@@ -1,5 +1,5 @@
 id: webhook_emission
-version: "1.4.1"
+version: "1.4.2"
 title: "Webhook emission — outbound webhook conformance (operation ID + signing + idempotency + sync silence)"
 category: core
 summary: "Any agent that emits webhooks MUST echo the caller-supplied operation_id in every payload, carry a stable idempotency_key across retries, avoid duplicate webhook side effects on request replay, and — when the buyer has not opted into the deprecated HMAC fallback — MUST sign deliveries under the RFC 9421 webhook profile. Sellers MUST NOT emit task webhooks for inline terminal responses; any future sync-completion notification mode would be explicit and capability-advertised. Graded by a runner hosting a webhook receiver during storyboard execution."
@@ -104,6 +104,7 @@ caller:
   example: "AdCP Verified runner with webhook receiver capability"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The runner MUST be configured with a webhook receiver per the contract at
     `test-kits/webhook-receiver-runner.yaml`. The receiver operates in one of
@@ -126,6 +127,29 @@ prerequisites:
     directly; agents without published signing keys fail
     `webhook_signing_keys_unpublished` before the signature phase runs.
   test_kit: "test-kits/webhook-receiver-runner.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_ee4507f31e2e"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-webhook_emission-904960ed"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_55020b495426"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-webhook_emission-904960ed"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -163,6 +187,48 @@ phases:
             path: "supported_protocols"
             description: "Agent declares its supported AdCP protocols"
 
+      - id: get_products_discovery
+        title: "Discover a product for webhook trigger steps"
+        narrative: |
+          Sales-agent triggers need a real catalog product and its pricing option.
+          Capture both before create_media_buy; an empty catalog or missing
+          pricing option fails setup instead of sending placeholder identifiers.
+          Brief discovery may complete inline or asynchronously. The
+          task_completion captures wait for a submitted/working task to finish
+          before binding IDs, and also accept an inline completed response.
+          Retain product metadata so request enrichment can honor auction floors.
+          Agents without get_products skip this sales-specific setup step.
+        task: get_products
+        requires_tool: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#webhook_emission_get_products_discovery"
+          buying_mode: "brief"
+          brief: "Advertising inventory for Acme Outdoor's outdoor gear campaign."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-webhook_emission-904960ed"
+        context_outputs:
+          - path: "task_completion.products"
+            key: "products"
+          - path: "task_completion.products[0].product_id"
+            key: "product_id"
+          - path: "task_completion.products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Discovery response matches get-products-response.json"
+        expected: |
+          Complete discovery with at least one product and pricing option.
+          All sales-agent webhook triggers use the captured product and pricing
+          option IDs only after discovery reaches a successful result.
+
   - id: idempotency_key_presence
     title: "Every webhook payload carries idempotency_key"
     narrative: |
@@ -188,12 +254,27 @@ phases:
           `authentication` block (9421 is the baseline for conformance).
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
-        schema_ref: "$test_kit.schemas.primary_request"
-        response_schema_ref: "$test_kit.schemas.primary_response"
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_trigger
         stateful: false
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-webhook_emission-904960ed"
+          # The runner rolls elapsed sample dates to a fresh seven-day flight.
+          start_time: "2025-01-01T00:00:00Z"
+          end_time: "2025-01-08T00:00:00Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 1000
           push_notification_config:
             url: "{{runner.webhook_url:trigger_webhook_operation}}"
             operation_id: "op_webhook_presence_explicit"
@@ -253,12 +334,27 @@ phases:
           payload echo must come from the explicit operation_id field.
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
-        schema_ref: "$test_kit.schemas.primary_request"
-        response_schema_ref: "$test_kit.schemas.primary_response"
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_operation_id_echo_trigger
         stateful: false
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-webhook_emission-904960ed"
+          # The runner rolls elapsed sample dates to a fresh seven-day flight.
+          start_time: "2025-01-01T00:00:00Z"
+          end_time: "2025-01-08T00:00:00Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 1000
           push_notification_config:
             url: "{{runner.webhook_url:trigger_operation_id_echo}}"
             operation_id: "op_storyboard_echo_123"
@@ -321,12 +417,27 @@ phases:
           duplicate.
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
-        schema_ref: "$test_kit.schemas.primary_request"
-        response_schema_ref: "$test_kit.schemas.primary_response"
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_idempotency_replay_trigger
         stateful: true
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-webhook_emission-904960ed"
+          # The runner rolls elapsed sample dates to a fresh seven-day flight.
+          start_time: "2025-01-01T00:00:00Z"
+          end_time: "2025-01-08T00:00:00Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 1000
           push_notification_config:
             url: "{{runner.webhook_url:trigger_idempotent_webhook_initial}}"
             operation_id: "op_webhook_idempotency_replay"
@@ -346,12 +457,27 @@ phases:
           webhook for the replay.
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
-        schema_ref: "$test_kit.schemas.primary_request"
-        response_schema_ref: "$test_kit.schemas.primary_response"
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_idempotency_replay_trigger
         stateful: true
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-webhook_emission-904960ed"
+          # The runner rolls elapsed sample dates to a fresh seven-day flight.
+          start_time: "2025-01-01T00:00:00Z"
+          end_time: "2025-01-08T00:00:00Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 1000
           push_notification_config:
             url: "{{runner.webhook_url:trigger_idempotent_webhook_initial}}"
             operation_id: "op_webhook_idempotency_replay"
@@ -438,6 +564,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-webhook_emission-904960ed"
           push_notification_config:
             url: "{{runner.webhook_url:sync_get_products_with_webhook_config_success}}"
             operation_id: "op_sync_get_products_no_webhook"
@@ -518,6 +646,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-webhook_emission-904960ed"
           push_notification_config:
             url: "{{runner.webhook_url:sync_get_products_with_webhook_config_reject}}"
             operation_id: "op_sync_get_products_no_webhook"
@@ -581,12 +711,27 @@ phases:
           will retry on each 5xx and eventually succeed.
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
-        schema_ref: "$test_kit.schemas.primary_request"
-        response_schema_ref: "$test_kit.schemas.primary_response"
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_retry_trigger
         stateful: false
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-webhook_emission-904960ed"
+          # The runner rolls elapsed sample dates to a fresh seven-day flight.
+          start_time: "2025-01-01T00:00:00Z"
+          end_time: "2025-01-08T00:00:00Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 1000
           push_notification_config:
             url: "{{runner.webhook_url:trigger_retry_scenario}}"
             operation_id: "op_webhook_retry_explicit"
@@ -715,12 +860,27 @@ phases:
           forcing 9421 signing per the baseline rule.
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
-        schema_ref: "$test_kit.schemas.primary_request"
-        response_schema_ref: "$test_kit.schemas.primary_response"
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_signed_trigger
         stateful: false
         sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-webhook_emission-904960ed"
+          # The runner rolls elapsed sample dates to a fresh seven-day flight.
+          start_time: "2025-01-01T00:00:00Z"
+          end_time: "2025-01-08T00:00:00Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 1000
           push_notification_config:
             url: "{{runner.webhook_url:trigger_signed_webhook}}"
             operation_id: "op_webhook_signed_explicit"

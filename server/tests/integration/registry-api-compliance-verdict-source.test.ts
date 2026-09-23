@@ -164,9 +164,9 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
       `INSERT INTO agent_compliance_runs (
          agent_url, lifecycle_stage, overall_status, headline,
          tracks_json, tracks_passed, tracks_failed, tracks_skipped, tracks_partial,
-         triggered_by, dry_run, tested_at
+         triggered_by, dry_run, tested_at, adcp_version, requested_compliance_target
        ) VALUES ($1, 'production', 'passing', 'all clear',
-                 '[]'::jsonb, 0, 0, 0, 0, 'owner_test', false, NOW())
+                 '[]'::jsonb, 0, 0, 0, 0, 'owner_test', false, NOW(), '3.1.20', '3.1')
        RETURNING id`,
       [AGENT_URL],
     );
@@ -174,16 +174,50 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     await pool.query(
       `INSERT INTO agent_compliance_status (
          agent_url, status, last_checked_at, last_passed_at,
-         tracks_summary_json, headline, status_changed_at, updated_at
+         tracks_summary_json, headline, status_changed_at, updated_at,
+         adcp_version, requested_compliance_target
        ) VALUES ($1, 'passing', NOW(), NOW(),
-                 '{}'::jsonb, 'all clear', NOW(), NOW())
+                 '{}'::jsonb, 'all clear', NOW(), NOW(), '3.1.20', '3.1')
        ON CONFLICT (agent_url) DO UPDATE
          SET status = EXCLUDED.status,
              last_checked_at = NOW(),
              last_passed_at = NOW(),
              headline = EXCLUDED.headline,
+             adcp_version = EXCLUDED.adcp_version,
+             requested_compliance_target = EXCLUDED.requested_compliance_target,
              updated_at = NOW()`,
       [AGENT_URL],
+    );
+    await pool.query(
+      `INSERT INTO verification_profile_shadow_assessments (
+         source_run_id, agent_url, lifecycle_stage, adcp_version, policy_version,
+         current_public_status, proposed_spec_status, proposed_sandbox_status,
+         sandbox_eligible, recommended_profile, run_complete,
+         bundle_evidence_present, failing_bundle_count,
+         incomplete_bundle_count, sandbox_unresolved_bundle_count,
+         unattributed_failure_count,
+         selected_storyboard_count, applicable_phase_count,
+         controller_gap_phase_count, controller_gap_step_count,
+         controller_cascade_step_count, observed_failure_count,
+         sandbox_observable_failure_count, non_controller_gap_step_count,
+         controller_missing_storyboard_count, other_missing_storyboard_count,
+         mixed_controller_failure_phase_count,
+         unattributed_flat_failure_count, unexplained_phase_failure_count,
+         sandbox_unresolved_executed_bundle_count,
+         sandbox_unresolved_missing_tools_bundle_count,
+         sandbox_unresolved_unknown_bundle_count,
+         source_tested_at, requested_compliance_target
+       ) VALUES (
+         $1, $2, 'production', '3.1.20', 'verification-profiles-v3',
+         'passing', 'partial', 'passing',
+         TRUE, 'sandbox', TRUE,
+         TRUE, 0, 1, 0, 0,
+         12, 10, 1, 1, 1, 0,
+         0, 0, 1, 0, 0,
+         0, 0, 0, 0, 0,
+         NOW(), '3.1'
+       )`,
+      [complianceRunId, AGENT_URL],
     );
     await pool.query(
       `INSERT INTO agent_storyboard_status (
@@ -276,9 +310,9 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         first_failed_step_title: options.includeDiagnostics ? 'Debug step' : null,
         first_failed_step_task: options.includeDiagnostics ? 'get_products' : null,
         first_failure_message: options.includeDiagnostics ? 'debug failure' : null,
-        first_failure_validations: options.includeDiagnostics
-          ? [{ field: 'products', message: 'must not be empty' }]
-          : [],
+        // The card endpoint never loads the separate diagnostics table. Owner
+        // callers still see the denormalized first-failure fields above.
+        first_failure_validations: [],
       }),
     ]);
     expect(body.storyboards_passing).toBe(0);
@@ -300,6 +334,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     expect(res.body.membership_tier_label).toBeNull();
     expect(res.body.subscription_status).toBeNull();
     expect(res.body.is_api_access_tier).toBe(false);
+    expect(res.body.grading_profile_comparisons).toEqual([]);
     expectPublicStoryboardStatus(res.body);
   });
 
@@ -315,6 +350,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     expect(res.body.membership_tier_label).toBeNull();
     expect(res.body.subscription_status).toBeNull();
     expect(res.body.is_api_access_tier).toBe(false);
+    expect(res.body.grading_profile_comparisons).toEqual([]);
     expectPublicStoryboardStatus(res.body);
   });
 
@@ -326,7 +362,84 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     expect(res.body.membership_tier).toBe('company_standard');
     expect(res.body.subscription_status).toBe('active');
     expect(res.body.is_api_access_tier).toBe(true);
+    expect(res.body.refresh_availability).toMatchObject({
+      available: false,
+      retryable: false,
+      scope: 'platform',
+      applies_to: 'human_session',
+      code: 'refresh_authorization_provenance_required',
+      alternative_action: 'monitoring_requeue',
+    });
+    expect(res.body.grading_profile_comparisons).toEqual([
+      expect.objectContaining({
+        scope: 'agent',
+        availability: 'current',
+        selected_profile: 'legacy',
+        selection_enabled: false,
+        source_run_id: complianceRunId,
+        evaluator_policy_version: 'verification-profiles-v3',
+        requested_compliance_target: '3.1',
+          compliance_bundle_version: '3.1.20',
+          stale: false,
+          evidence: expect.objectContaining({ flat_failure_count: 0 }),
+          profiles: {
+          legacy: expect.objectContaining({ available: true, status: 'passing' }),
+          spec: expect.objectContaining({ available: true, status: 'partial' }),
+          sandbox: expect.objectContaining({ available: true, status: 'passing' }),
+        },
+      }),
+    ]);
+    // The card summary omits the expensive step-diagnostics join even for an
+    // owner. The member-only /storyboard-status drill-down remains the source
+    // for validation details.
     expectPublicStoryboardStatus(res.body, { includeDiagnostics: true });
+  });
+
+  it('static admin API key sees the same read-only agent-wide comparison', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const res = await request(app).get(endpoint);
+    expect(res.status).toBe(200);
+    expect(res.body.grading_profile_comparisons).toEqual([
+      expect.objectContaining({
+        scope: 'agent',
+        availability: 'current',
+        source_run_id: complianceRunId,
+        selection_enabled: false,
+      }),
+    ]);
+  });
+
+  it('fails closed when the latest public heartbeat has no matching comparison', async () => {
+    const newerRun = await pool.query<{ id: string }>(
+      `INSERT INTO agent_compliance_runs (
+         agent_url, lifecycle_stage, overall_status, headline, tracks_json,
+         triggered_by, dry_run, tested_at, adcp_version, requested_compliance_target
+       ) VALUES (
+         $1, 'production', 'passing', 'newer heartbeat', '[]'::jsonb,
+         'heartbeat', FALSE, NOW() + INTERVAL '1 minute', '3.1.20', '3.1'
+       ) RETURNING id`,
+      [AGENT_URL],
+    );
+    try {
+      currentUserId = OWNER_USER_ID;
+      const res = await request(app).get(endpoint);
+      expect(res.status).toBe(200);
+      expect(res.body.grading_profile_comparisons).toEqual([
+        expect.objectContaining({
+          availability: 'stale',
+          source_run_id: complianceRunId,
+          stale: true,
+          unavailable_reason: expect.stringContaining('newer authoritative compliance run'),
+          profiles: {
+            legacy: expect.objectContaining({ available: false, status: null, observed_status: 'passing' }),
+            spec: expect.objectContaining({ available: false, status: null, observed_status: 'partial' }),
+            sandbox: expect.objectContaining({ available: false, status: null, observed_status: 'passing' }),
+          },
+        }),
+      ]);
+    } finally {
+      await pool.query('DELETE FROM agent_compliance_runs WHERE id = $1', [newerRun.rows[0].id]);
+    }
   });
 
   it('owner of a free-tier org still sees verdict_source (is_owner is broader than is_api_access_tier)', async () => {
@@ -475,7 +588,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         const response = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics?run_id=${run.id}`);
         expect(response.status).toBe(200);
         expect(response.body).toMatchObject({ run_id: run.id, completeness: 'timed_out', is_authoritative: false,
-          provenance: { compliance_bundle_version: '3.1.20', sdk_version: '14.0.0-rc.35', agent_build_version: 'build-immutable-42', agent_library_version: 'seller-sdk-2' },
+          provenance: { compliance_bundle_version: '3.1.20', sdk_version: '14.0.0-rc.40', agent_build_version: 'build-immutable-42', agent_library_version: 'seller-sdk-2' },
           diagnostics_visibility: 'owner_or_operator' });
         expect(response.body.diagnostics[0].error_text).toBe('Expected products array');
         expect(JSON.stringify(response.body)).not.toContain('fixture-secret-value');

@@ -460,6 +460,16 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           });
         }
 
+        // API-key Widgets would reopen the mutation path contained by the REST
+        // routes. Do not delegate it until membership revocation and key
+        // mutation share a provider-enforced authorization fence.
+        if (requestedScope === "widgets:api-keys:manage") {
+          return res.status(503).json({
+            error: "API key mutations unavailable",
+            message: "API key creation and revocation are disabled until membership changes can be fenced.",
+          });
+        }
+
         const token = await workos.widgets.createToken({
           organizationId,
           // Widgets are bound to a specific WorkOS user as auth credential —

@@ -8,6 +8,8 @@ import { AdAgentsManager, type AdAgentsValidationResult } from "./adagents-manag
 import { BrandManager, type BrandValidationResult, type HousePortfolioVariant } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
 import {
+  AdagentsManifestProvenanceError,
+  AdagentsManifestRollbackError,
   PublisherCrawlLeaseLostError,
   PublisherDatabase,
   adagentsChangedFields,
@@ -15,6 +17,7 @@ import {
   type AdagentsManifest,
   type AdagentsAuthorizedAgent,
 } from "./db/publisher-db.js";
+import { SupplyPathAuthorityChangeUnconfirmedError } from './services/supply-path-authority-state.js';
 import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
@@ -1235,14 +1238,13 @@ export class CrawlerService {
         try {
           const validation = await this.adAgentsManager.validateDomain(pubConfig.domain);
           assertExecutionLock();
-          processedDomains.add(pubConfig.domain);
 
           if (validation.valid && validation.raw_data?.authorized_agents) {
             const agentCount = validation.raw_data.authorized_agents.length;
             const propCount = validation.raw_data.properties?.length || 0;
             log.debug({ domain: pubConfig.domain, agentCount, propCount }, 'Domain crawled');
 
-            await this.cacheAdagentsManifest(
+            const cachePersisted = await this.cacheAdagentsManifest(
               pubConfig.domain,
               validation.raw_data as AdagentsManifest,
               {
@@ -1253,6 +1255,10 @@ export class CrawlerService {
                 managerDomain: validation.manager_domain,
               },
             );
+            if (!cachePersisted) {
+              continue;
+            }
+            processedDomains.add(pubConfig.domain);
 
             // Record agents
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
@@ -1327,18 +1333,20 @@ export class CrawlerService {
           // Check if domain has valid adagents.json
           const validation = await this.adAgentsManager.validateDomain(domain);
           assertExecutionLock();
-          await this.federatedIndex.recordPublisherFromAgent(
-            domain,
-            agent.url,
-            validation.valid
-          );
+          if (!validation.valid || !validation.raw_data?.authorized_agents) {
+            await this.federatedIndex.recordPublisherFromAgent(domain, agent.url, false);
+            continue;
+          }
+          // A prior successful cache admission is the only reason a processed
+          // domain may accept another agent claim without repeating the write.
+          if (processedDomains.has(domain)) {
+            await this.federatedIndex.recordPublisherFromAgent(domain, agent.url, true);
+            continue;
+          }
 
           // If valid and not already processed, record agents and properties from adagents.json
-          if (validation.valid && validation.raw_data?.authorized_agents && !processedDomains.has(domain)) {
-            await this.federatedIndex.markPublisherHasValidAdagents(domain);
-            processedDomains.add(domain);
-
-            await this.cacheAdagentsManifest(
+          {
+            const cachePersisted = await this.cacheAdagentsManifest(
               domain,
               validation.raw_data as AdagentsManifest,
               {
@@ -1349,6 +1357,10 @@ export class CrawlerService {
                 managerDomain: validation.manager_domain,
               },
             );
+            if (!cachePersisted) continue;
+            await this.federatedIndex.recordPublisherFromAgent(domain, agent.url, true);
+            await this.federatedIndex.markPublisherHasValidAdagents(domain);
+            processedDomains.add(domain);
 
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
               assertExecutionLock();
@@ -1399,22 +1411,27 @@ export class CrawlerService {
           try {
             const validation = await this.adAgentsManager.validateDomain(domain);
             assertExecutionLock();
-            // Always write the agent_claim row so this discovered agent's authorization
-            // edge is recorded even when the domain was already processed by step 1/2.
-            await this.federatedIndex.recordPublisherFromAgent(domain, da.agent_url, validation.valid);
-            if (processedDomains.has(domain)) continue;
+            if (!validation.valid || !validation.raw_data?.authorized_agents) {
+              await this.federatedIndex.recordPublisherFromAgent(domain, da.agent_url, false);
+              continue;
+            }
+            if (processedDomains.has(domain)) {
+              await this.federatedIndex.recordPublisherFromAgent(domain, da.agent_url, true);
+              continue;
+            }
 
-            if (validation.valid && validation.raw_data?.authorized_agents) {
-              await this.federatedIndex.markPublisherHasValidAdagents(domain);
-              processedDomains.add(domain);
-
-              await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest, {
+            {
+              const cachePersisted = await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest, {
                 statusCode: validation.status_code,
                 responseBytes: validation.response_bytes,
                 resolvedUrl: validation.resolved_url,
                 discoveryMethod: validation.discovery_method,
                 managerDomain: validation.manager_domain,
               });
+              if (!cachePersisted) continue;
+              await this.federatedIndex.recordPublisherFromAgent(domain, da.agent_url, true);
+              await this.federatedIndex.markPublisherHasValidAdagents(domain);
+              processedDomains.add(domain);
 
               for (const authorizedAgent of validation.raw_data.authorized_agents) {
                 assertExecutionLock();
@@ -1915,6 +1932,11 @@ export class CrawlerService {
     } catch (err) {
       if (err instanceof CrawlExecutionLockLostError) throw err;
       if (err instanceof PublisherCrawlLeaseLostError) throw err;
+      // Security admission failures must stop every caller before any legacy
+      // or federated projection outside the cache transaction can run.
+      if (err instanceof SupplyPathAuthorityChangeUnconfirmedError) throw err;
+      if (err instanceof AdagentsManifestProvenanceError) throw err;
+      if (err instanceof AdagentsManifestRollbackError) throw err;
       log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
       return false;
     }
@@ -3506,7 +3528,7 @@ export class CrawlerService {
       return false;
     }
 
-    await this.cacheAdagentsManifest(
+    const cachePersisted = await this.cacheAdagentsManifest(
       domain,
       validation.raw_data as AdagentsManifest,
       {
@@ -3519,6 +3541,7 @@ export class CrawlerService {
         eventSource: 'catalog_crawl',
       },
     );
+    if (!cachePersisted) return false;
 
     for (const authorizedAgent of validation.raw_data.authorized_agents) {
       assertExecutionLock();

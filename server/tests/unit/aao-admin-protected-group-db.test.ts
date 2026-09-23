@@ -18,6 +18,28 @@ describe('protected AAO site-admin generic database mutation boundary', () => {
     mocks.query.mockResolvedValue({ rows: [{ slug: 'aao-admin' }], rowCount: 1 });
   });
 
+  it('resolves an authorization group ID with one narrow query', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [{ id: 'wg_aao_admin' }], rowCount: 1 });
+
+    await expect(new WorkingGroupDatabase().getWorkingGroupIdBySlug('aao-admin'))
+      .resolves.toBe('wg_aao_admin');
+
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+    expect(mocks.query).toHaveBeenCalledWith(
+      'SELECT id FROM working_groups WHERE slug = $1',
+      ['aao-admin'],
+    );
+  });
+
+  it('returns null from the narrow ID lookup without fetching leaders', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await expect(new WorkingGroupDatabase().getWorkingGroupIdBySlug('missing'))
+      .resolves.toBeNull();
+
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects a generic rename of the protected group before its UPDATE', async () => {
     await expect(new WorkingGroupDatabase().updateWorkingGroup('wg_aao_admin', {
       name: 'Renamed authority group',

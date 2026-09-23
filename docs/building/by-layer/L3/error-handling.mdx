@@ -12,11 +12,11 @@ Sellers can adopt error handling incrementally. Each level builds on the previou
 
 | Level | What to implement | What agents can do |
 |-------|-------------------|-------------------|
-| **Level 1** | Return `code` + `message` on every error | Agents match on error code to classify failures |
-| **Level 2** | Add `recovery`, `retry_after`, `field`, and `suggestion` | Agents auto-retry transient errors and self-correct correctable ones |
+| **Level 1** | Return `code` + `message` on every error | Agents match on error code to classify failures; this is the 3.1 compatibility baseline |
+| **Level 2** | Add `recovery`, plus optional `retry_after`, `field`, and `suggestion` | Agents auto-retry transient errors and self-correct correctable ones; 3.2 producers must implement `recovery` |
 | **Level 3** | Use [transport bindings](/docs/building/operating/transport-errors) to put errors in `structuredContent` (MCP) or artifact `DataPart` (A2A) | Programmatic clients get typed errors without parsing text |
 
-**Level 1** is the minimum for a conformant implementation. **Level 2** is where agent-driven recovery becomes possible — without `recovery`, agents must guess from the error code. **Level 3** is where client libraries like `@adcp/sdk` can provide fully typed error objects.
+**Level 1** is the shared-schema minimum and remains valid input from 3.1 and earlier producers. A conformant **3.2 producer** implements the `recovery` portion of **Level 2** on every error; the other Level 2 fields remain optional. **Level 3** is where client libraries like `@adcp/sdk` can provide fully typed error objects.
 
 ## Error Categories
 
@@ -132,7 +132,7 @@ These fields are defined by the [`error.json`](https://adcontextprotocol.org/sch
 | `code` | string | Yes | Machine-readable error code from the [standard vocabulary](#standard-error-codes) or a seller-specific code |
 | `message` | string | Yes | Human-readable error description |
 | `buyer_reason` | object | No | Buyer-actionable `{ code, message }` classification. `code` comes from the open [buyer reason vocabulary](#buyer-actionable-reasons); `message` must be safe to show across the buyer trust boundary. |
-| `recovery` | string | No | Agent recovery classification: `transient`, `correctable`, or `terminal`. Senders SHOULD populate it on every 3.1+ error; it is required when `buyer_reason` is present and classifies that reason, not an upstream wrapper. |
+| `recovery` | string | 3.2: Yes; ≤3.1: No | Agent recovery classification: `transient`, `correctable`, or `terminal`. AdCP 3.2 producers MUST populate it on every error; 3.1 producers SHOULD. The shared 3.x schema keeps it optional so legacy errors remain valid. It is required whenever `buyer_reason` is present and classifies that reason, not an upstream wrapper. |
 | `retry_after` | number | No | Seconds to wait before retrying. AdCP 3.2 producers emit whole seconds from 1 through 3600; consumers continue accepting legacy fractional values. |
 | `field` | string | No | Field path in JSONPath-lite format (e.g., `packages[0].targeting`). When `issues` is present, sellers MUST set this to `issues[0].pointer` translated from RFC 6901 to JSONPath-lite (e.g., `/packages/0/targeting` → `packages[0].targeting`). Will be deprecated in a future major version. |
 | `issues` | array | No | Structured list of validation failures. Each entry carries `pointer` (RFC 6901), `message`, `keyword` (JSON Schema keyword that rejected — `required` / `type` / `format` / etc.), and optionally `schema_id`, `schemaPath`, `discriminator`. See [Validator-internals fields](#validator-internals-fields-on-issues) for the `schema_id` / `schemaPath` / `discriminator` semantics, the production-emit rules, and the resolution path for `schema_id`. |
@@ -204,11 +204,13 @@ Standard error codes are defined in [`error-code.json`](https://adcontextprotoco
 
 1. Treat the response as well-formed — MUST NOT reject the envelope, throw a deserialization exception, or downgrade to a generic protocol error.
 2. Recover the recovery classification from `error.recovery` (top-level field on the error envelope) when present. `error.recovery` is the normative carrier; the `enumMetadata.recovery` in `error-code.json` is the documentary mirror.
-3. When `error.recovery` is absent (legacy senders), apply a conservative default. `transient` is the safe default for unknown codes — retry-with-backoff cannot do worse than terminal classification, and the manifest's [`error_code_policy.default_unknown_recovery`](https://adcontextprotocol.org/schemas/v3/manifest.schema.json) documents this as the canonical fallback. The `transient` default is **bounded** by the retry rules in [§ Retry Logic](#retry-logic) — receivers MUST apply `maxRetries` and the jittered exponential-backoff schedule, and MUST NOT loop indefinitely on a `transient` default. A hostile or buggy sender cannot induce unbounded retries against a conformant client; the open-enum decoding rule does not exempt receivers from the retry budget.
+3. When `error.recovery` is absent on a legacy error, use the registered `enumMetadata.recovery` classification when the code is known to the receiver. For an unknown code, apply the conservative `transient` default documented by the manifest's [`error_code_policy.default_unknown_recovery`](https://adcontextprotocol.org/schemas/v3/manifest.schema.json). That default is **bounded** by [§ Retry Logic](#retry-logic): receivers MUST apply `maxRetries` and the jittered exponential-backoff schedule and MUST NOT loop indefinitely. A hostile or buggy sender cannot induce unbounded retries against a conformant client; the open-enum decoding rule does not exempt receivers from the retry budget.
 
 **Senders MAY emit codes outside the receiver's pinned vocabulary.** A sender emitting a 3.1-era code (e.g., [`PROPOSAL_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-proposal-not-found)) to a 3.0-pinned receiver does not violate the spec — the receiver is required by the rule above to handle it. When a sender knows the receiver's pinned version (via `adcp_version` envelope echo or capability discovery), senders SHOULD prefer a code from that version's vocabulary when an equivalent exists; senders MAY emit newer or platform-specific codes when no equivalent is available.
 
-**Senders MUST populate `error.recovery` on every error.** This is the normative carrier of recovery semantics across version skew — receivers cannot reliably classify a code they don't know, but they can always read `error.recovery`. Omitting it defeats the forward-compat rule.
+**Producer requirements are version-gated.** AdCP 3.2 producers **MUST** populate `error.recovery` on every error; 3.1 producers **SHOULD** populate it. This is the normative carrier of recovery semantics across version skew. The field remains schema-optional in the shared 3.x schema so consumers can decode previously valid retained responses and live responses from older peers. A 3.2 producer that omits it is non-conformant, but a consumer still decodes the error using the legacy fallback above.
+
+SDKs can exercise this decision table against the versioned [error-recovery reference vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/error-recovery/vectors.json). Pin `/compliance/{version}/test-vectors/error-recovery/vectors.json` when testing a released protocol artifact rather than relying on the moving `latest` alias.
 
 **Why this matters.** Forward-compatible decoding is the wire-level invariant that lets future maintenance lines (3.1.x, 4.0.x, …) ship new error codes additively without breaking older receivers. Without it, every new code is a wire change held to the next minor — the current drift-lint policy on 3.0.x. With it in 3.1+, new codes can register during a maintenance line's lifetime, which matters as adopters' real-world rejection paths surface new codes.
 
@@ -523,9 +525,13 @@ The wire-level `recovery: "correctable"` on the sandbox-only path is the registe
 | [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired) | correctable | Referenced proposal has passed its `expires_at` | Call [`request_proposals`](/docs/media-buy/task-reference/request_proposals), then finalize a fresh proposal |
 | `PROPOSAL_NOT_FOUND` | correctable | `proposal_id` is unknown to the seller (never issued, wrong tenant, or evicted from cache) | Request and finalize a fresh proposal, then retry |
 | [`MULTI_FINALIZE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-multi-finalize-unsupported) | correctable | A legacy `get_products` request attempted to finalize multiple proposals where the seller cannot guarantee atomic commitment | Sequence single-proposal legacy `get_products` finalize calls |
-| [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) | correctable | Requested update falls outside the envelope (budget, dates, volume, targeting) the original quote was priced against; `pricing_option` remains locked | Adjust the update to fit the current quote, rediscover products/terms, add packages when available, or create a separate media buy. 3.1 does not define an amendment-quote artifact for [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy). |
+| [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) | correctable | Requested update falls outside the envelope (budget, dates, volume, targeting) the original quote was priced against; `pricing_option` remains locked | In 3.2, use optional `error.details.decline_reason` to inform refinement of `accepted_proposal_id`; legacy 3.1 callers adjust or rediscover. |
 | `SIGNAL_NOT_FOUND` | correctable | Referenced signal does not exist in the catalog | Verify `signal_id` via [`get_signals`](/docs/signals/tasks/get_signals), or confirm availability from this agent |
 | [`AUDIENCE_TOO_SMALL`](/docs/building/verification/compliance-catalog#error-code-audience-too-small) | correctable | Audience segment below minimum size | Broaden targeting or upload more audience members |
+
+For `REQUOTE_REQUIRED`, details SHOULD follow [`error-details/requote-required.json`](https://adcontextprotocol.org/schemas/latest/error-details/requote-required.json). For [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) with `reason: "not_supported_on_buy"`, the existing [`error-details/action-not-allowed.json`](https://adcontextprotocol.org/schemas/v3/error-details/action-not-allowed.json) shape also permits `decline_reason`. Sellers SHOULD emit the coarse reason when they have a structured seller-policy classification and disclosure does not expose private thresholds or enforcement controls. Buyers MUST tolerate its absence and MUST NOT infer that an undisclosed policy does not exist. Structural action denials SHOULD omit it.
+
+**Implementation note (non-normative).** Repeated out-of-envelope controls can be used to map a seller's exact share-of-voice, notice-window, frequency, or commitment thresholds. Consider rate-limiting these deterministic probes using the same posture as [`refine_proposals`](/docs/media-buy/product-discovery/proposal-negotiation#log-for-audit-without-leaking-terms), and omit `decline_reason` when even the coarse category would disclose sensitive enforcement logic.
 
 ### Budget and Creative
 
@@ -549,7 +555,7 @@ The wire-level `recovery: "correctable"` on the sandbox-only path is the registe
 
 ## Recovery Classification
 
-Use the `recovery` field to determine how to handle errors:
+Use the `recovery` field to determine how to handle errors. When a legacy error omits it, use the registered classification for a known code and `transient` for an unknown code:
 
 | Recovery | Meaning | Action |
 |----------|---------|--------|
@@ -560,19 +566,18 @@ Use the `recovery` field to determine how to handle errors:
 For unknown `recovery` values (forward compatibility), treat as `terminal`.
 
 ```javascript
-function isRetryable(error) {
-  // Use recovery field when available
-  if (error.recovery) {
-    return error.recovery === 'transient';
+function recoveryFor(error, knownRecoveryByCode) {
+  if (['transient', 'correctable', 'terminal'].includes(error.recovery)) {
+    return error.recovery;
   }
-
-  // Network errors are retryable
-  if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-    return true;
+  if (error.recovery !== undefined) {
+    return 'terminal'; // Unknown future recovery value: fail closed
   }
+  return knownRecoveryByCode[error.code] ?? 'transient';
+}
 
-  // Fall back to error code matching
-  return ['RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'CONFLICT'].includes(error.code);
+function isRetryable(error, knownRecoveryByCode) {
+  return recoveryFor(error, knownRecoveryByCode) === 'transient';
 }
 ```
 
@@ -580,14 +585,15 @@ function isRetryable(error) {
 
 The rules in this section bound every `transient`-classified error a caller may retry, including the `transient` default applied to unknown error codes under [§ Forward-compatible decoding](#forward-compatible-decoding-normative). A receiver that decodes an unknown code and falls back to `transient` MUST apply `maxRetries` and the jittered exponential-backoff schedule below; the open-enum decoding rule does not exempt receivers from the retry budget. A hostile or buggy sender emitting `code=GO_FOREVER, recovery=transient` cannot induce unbounded retries against a conformant client.
 
-### Normative throttling behavior
+### Normative retry scheduling
 
-These rules apply when a caller receives a throttling-category error ([`RATE_LIMITED`](/docs/building/verification/compliance-catalog#error-code-rate-limited), or any error whose `recovery` is `transient` and whose `details` conform to the [`rate-limited`](https://adcontextprotocol.org/schemas/v3/error-details/rate-limited.json) detail shape):
+Classification happens before scheduling. `retry_after` specifies when a retry may run; it never changes whether the error is retryable.
 
-- Callers **MUST** honor `retry_after` when present and **MUST NOT** retry the same request sooner than the indicated delay. AdCP 3.2 producers **MUST** emit an integer. A caller that receives a legacy finite fractional value **MUST** round it up before clamping to `[1, 3600]`.
-- Callers **SHOULD** use exponential backoff with jitter when `retry_after` is absent. A base of 2 seconds, a cap of 60 seconds, and ±25% jitter is a safe default.
-- Callers **MUST NOT** treat non-throttling errors (e.g., [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request), [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected)) as if they were throttled. Retrying a rejected-for-other-reasons response at backoff cadence is a bug, not a defensive posture.
-- Callers **SHOULD** surface repeated throttling to their operator rather than retrying indefinitely; a persistent `RATE_LIMITED` response is a capacity or policy signal, not a transient blip.
+- Callers **MUST NOT** automatically retry an error whose effective recovery is `correctable` or `terminal`, even when `retry_after` is present. A delay is not permission to repeat an uncorrected request or bypass required human action.
+- When automatically retrying a `transient` error with `retry_after`, callers **MUST NOT** retry sooner than the indicated delay. AdCP 3.2 producers **MUST** emit an integer. A caller that receives a legacy finite fractional value **MUST** round it up before clamping to `[1, 3600]` so it never schedules earlier than intended.
+- Callers retrying a `transient` error without `retry_after` **SHOULD** use exponential backoff with jitter. A base of 2 seconds, a cap of 60 seconds, and ±25% jitter is a safe default.
+- Every automatic retry path **MUST** consume the caller's bounded retry budget, including retries selected from a known-code classification or the unknown-code `transient` fallback.
+- Callers **SHOULD** surface repeated throttling to their operator rather than retrying indefinitely; a persistent [`RATE_LIMITED`](/docs/building/verification/compliance-catalog#error-code-rate-limited) response is a capacity or policy signal, not a transient blip.
 - Sellers **SHOULD** return `RATE_LIMITED` with a populated `retry_after` rather than silently queuing or dropping requests, so well-behaved callers can back off intentionally.
 - Sellers **MAY** populate the [`rate-limited`](https://adcontextprotocol.org/schemas/v3/error-details/rate-limited.json) detail shape (`limit`, `remaining`, `window_seconds`, `scope`) to let callers plan ahead rather than react per-429.
 
@@ -596,7 +602,7 @@ These rules apply when a caller receives a throttling-category error ([`RATE_LIM
 Implement exponential backoff for retryable errors:
 
 ```javascript
-async function retryWithBackoff(fn, options = {}) {
+async function retryWithBackoff(fn, knownRecoveryByCode, options = {}) {
   const {
     maxRetries = 3,
     baseDelay = 1000,
@@ -607,17 +613,19 @@ async function retryWithBackoff(fn, options = {}) {
     try {
       return await fn();
     } catch (error) {
-      if (!isRetryable(error) || attempt === maxRetries) {
+      if (!isRetryable(error, knownRecoveryByCode) || attempt === maxRetries) {
         throw error;
       }
 
-      // Use retry_after when available, otherwise exponential backoff
-      const retryAfter = error.retry_after ||
-        Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
-
-      // Add jitter to prevent thundering herd
-      const jitter = retryAfter * (0.75 + Math.random() * 0.5);
-      await sleep(jitter);
+      let delay;
+      if (Number.isFinite(error.retry_after)) {
+        const seconds = Math.min(3600, Math.max(1, Math.ceil(error.retry_after)));
+        delay = seconds * 1000;
+      } else {
+        const backoff = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+        delay = backoff * (0.75 + Math.random() * 0.5);
+      }
+      await sleep(delay);
     }
   }
 }
@@ -626,17 +634,24 @@ async function retryWithBackoff(fn, options = {}) {
 ### Rate Limit Handling
 
 ```javascript
-async function handleRateLimit(error, retryFn) {
-  if (error.recovery !== 'transient' &&
-      error.code !== 'RATE_LIMITED') {
+async function handleRateLimit(error, knownRecoveryByCode, retryState, retryFn) {
+  if (recoveryFor(error, knownRecoveryByCode) !== 'transient') {
+    throw error;
+  }
+  if (retryState.retriesAttempted >= retryState.maxRetries) {
     throw error;
   }
 
-  const retryAfter = error.retry_after || 60;
+  const retryAfter = Number.isFinite(error.retry_after)
+    ? Math.min(3600, Math.max(1, Math.ceil(error.retry_after)))
+    : 60;
   console.log(`Rate limited. Waiting ${retryAfter} seconds...`);
 
   await sleep(retryAfter * 1000);
-  return retryFn();
+  return retryFn({
+    ...retryState,
+    retriesAttempted: retryState.retriesAttempted + 1,
+  });
 }
 ```
 
@@ -645,15 +660,21 @@ async function handleRateLimit(error, retryFn) {
 ### Basic Error Handler
 
 ```javascript
-async function handleAdcpError(error) {
-  // Use recovery classification when available
-  switch (error.recovery) {
-    case 'transient':
-      const delay = error.retry_after
-        ? error.retry_after * 1000
+async function handleAdcpError(error, knownRecoveryByCode, retryState) {
+  switch (recoveryFor(error, knownRecoveryByCode)) {
+    case 'transient': {
+      if (retryState.retriesAttempted >= retryState.maxRetries) {
+        throw error;
+      }
+      const delay = Number.isFinite(error.retry_after)
+        ? Math.min(3600, Math.max(1, Math.ceil(error.retry_after))) * 1000
         : 5000;
       await sleep(delay);
-      return retry();
+      return retry({
+        ...retryState,
+        retriesAttempted: retryState.retriesAttempted + 1,
+      });
+    }
 
     case 'correctable':
       // Surface suggestion so the request can be fixed

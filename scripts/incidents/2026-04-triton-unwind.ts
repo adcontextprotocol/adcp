@@ -40,6 +40,7 @@ import Stripe from 'stripe';
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const ADMIN_BASE_URL = process.env.ADMIN_BASE_URL?.replace(/\/+$/, '');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+const ADMIN_OPERATOR = process.env.ADMIN_OPERATOR?.trim() || 'script:2026-04-triton-unwind';
 
 if (!STRIPE_SECRET_KEY) {
   console.error('STRIPE_SECRET_KEY not set');
@@ -66,6 +67,7 @@ async function adminFetch<T = unknown>(path: string, init?: RequestInit): Promis
     ...init,
     headers: {
       Authorization: `Bearer ${ADMIN_API_KEY}`,
+      'X-Admin-Operator': ADMIN_OPERATOR,
       Accept: 'application/json',
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...(init?.headers as Record<string, string> | undefined),

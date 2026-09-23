@@ -8,7 +8,7 @@
  * - Multi-turn threading
  */
 
-import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Thread, ThreadMessage, CreateMessageInput } from '../../server/src/addie/thread-service.js';
 
 // --- Track calls for assertions ---
@@ -38,6 +38,8 @@ const mockThreadService = vi.hoisted(() => ({
 }));
 
 const mockClaudeClient = vi.hoisted(() => ({
+  getRegisteredTools: () => ['search_docs'],
+  forkForGeminiDirect: () => mockClaudeClient,
   processMessage: vi.fn<any>().mockResolvedValue({
     text: 'Thanks for reaching out! Here is what I found.',
     tools_used: ['search_docs'],
@@ -47,6 +49,8 @@ const mockClaudeClient = vi.hoisted(() => ({
     config_version_id: 1,
     timing: { system_prompt_ms: 10, total_llm_ms: 500, total_tool_execution_ms: 100, iterations: 1 },
     usage: { input_tokens: 100, output_tokens: 50 },
+    model_execution: { source: 'provider', requested_provider: 'google', requested_model: 'gemini-3.7-flash',
+      provider: 'google', model: 'gemini-3.7-flash', model_resolution: 'exact', fallback_reason: null },
   }),
 }));
 
@@ -198,7 +202,11 @@ function baseInput(overrides: Partial<EmailConversationInput> = {}): EmailConver
 // --- Tests ---
 
 describe('email conversation flow', () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'gemini');
+    vi.stubEnv('ADDIE_RESPONSE_AUTOMATIC_FALLBACK', 'false');
+    vi.stubEnv('GEMINI_API_KEY', 'unused');
     vi.clearAllMocks();
     state.addedMessages = [];
     state.sentEmails = [];
@@ -277,7 +285,7 @@ describe('email conversation flow', () => {
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.email_message_id).toMatch(/^resend_/);
       expect(assistantMsg!.tools_used).toEqual(['search_docs']);
-      expect(assistantMsg!.model).toBe('claude-sonnet-4-20250514');
+      expect(assistantMsg!.model).toBe('gemini-3.7-flash');
     });
 
     test('strips quoted content from user message', async () => {
@@ -411,7 +419,7 @@ On Mon, Apr 1, 2026 at 3:00 PM Addie wrote:
       const result = await handleEmailConversation(baseInput());
 
       expect(result.responded).toBe(false);
-      expect(result.error).toBe('Claude API timeout');
+      expect(result.error).toBe('Addie response provider unavailable');
     });
 
     test('returns error when thread creation fails', async () => {
@@ -545,7 +553,7 @@ On Mon, Apr 1, 2026 at 3:00 PM Addie wrote:
       expect(result.responded).toBe(true);
       expect(state.sentEmails).toHaveLength(1);
       // Always anonymous-tier (email is unverified)
-      expect(state.addedMessages.find(m => m.role === 'assistant')?.model).toBe('claude-sonnet-4-20250514');
+      expect(state.addedMessages.find(m => m.role === 'assistant')?.model).toBe('gemini-3.7-flash');
     });
 
     test('newsletter reply: someone replies to a newsletter email', async () => {

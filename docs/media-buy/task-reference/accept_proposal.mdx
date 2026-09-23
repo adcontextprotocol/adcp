@@ -24,7 +24,8 @@ The proposal already carries the commercial terms, so the request does not repea
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441011",
   "account": { "account_id": "account_123" },
   "proposal_id": "proposal_committed_456",
-  "proposal_terms_digest": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  "proposal_terms_digest": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "name": "Acme summer launch"
 }
 ```
 
@@ -33,6 +34,16 @@ For scalable proposals, include `total_budget`. Acceptance may also set a hard a
 If the proposal belongs to an `opportunity`, acceptance closes that planning cycle with `accepted_with_seller`; callers may repeat the matching opportunity ID explicitly, while the accepted proposal retains the association.
 
 Success returns the resulting MediaBuy identity, the proposal with `proposal_status: "accepted"`, and `purchase_bindings[]` mapping proposal purchase positions to package IDs for later creative assignment. Acceptance is idempotent. The seller atomically verifies `proposal_id`, `proposal_terms_digest`, expiry, and any `base_media_buy_revision`; stale or mismatched acceptance never applies different terms.
+
+The optional `name` is buyer-authored MediaBuy display metadata, not a
+commercial proposal term. A supplied request value wins over `proposal.name`,
+is persisted unchanged, and is echoed outside `accepted_proposal`; it is not
+covered by `proposal_terms_digest` or the accepted snapshot's `terms_digest`.
+When an acceptance creates a MediaBuy and the request omits `name`, the seller
+may seed it from `proposal.name` only when that value already satisfies the
+MediaBuy constraints: non-whitespace and no longer than 255 characters. The
+seller must not silently truncate or rewrite a proposal name to make it fit. A
+seeded name is then persisted and reported like any other name.
 
 A completed acceptance MAY include `warnings[]` for non-blocking observations at the commitment boundary. Each warning identifies its package through the returned `media_buy_id` and `purchase_bindings[].package_id`; a continuing condition is also readable as an indicator through [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). The seller may instead return `input-required` before consuming the proposal. Warnings never appear on failed or submitted arms.
 

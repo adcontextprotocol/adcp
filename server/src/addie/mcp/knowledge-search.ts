@@ -13,6 +13,7 @@
  * not add to a private store.
  */
 
+import { createHash } from 'node:crypto';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('addie-knowledge-search');
@@ -47,6 +48,51 @@ import { queueWebSearchResult } from '../services/content-curator.js';
 import { findChannelWithAccess, getAccessiblePrivateChannelIds } from '../../slack/client.js';
 
 const addieDb = new AddieDatabase();
+
+const GET_DOC_PAGE_MAX_CHARS = 4000;
+const GET_DOC_CURSOR_PREFIX = 'get-doc-cursor:';
+
+interface GetDocCursor {
+  version: 1;
+  doc_id: string;
+  offset: number;
+  fingerprint: string;
+}
+
+function getDocFingerprint(docId: string, content: string): string {
+  return createHash('sha256')
+    .update(docId)
+    .update('\0')
+    .update(content)
+    .digest('base64url');
+}
+
+function encodeGetDocCursor(cursor: GetDocCursor): string {
+  return `${GET_DOC_CURSOR_PREFIX}${Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url')}`;
+}
+
+function decodeGetDocCursor(value: string): GetDocCursor | null {
+  if (!value.startsWith(GET_DOC_CURSOR_PREFIX)) return null;
+  try {
+    const encoded = value.slice(GET_DOC_CURSOR_PREFIX.length);
+    if (encoded.length === 0 || encoded.length > 2048 || !/^[A-Za-z0-9_-]+$/.test(encoded)) return null;
+    const decoded = Buffer.from(encoded, 'base64url');
+    if (decoded.toString('base64url') !== encoded) return null;
+    const parsed = JSON.parse(decoded.toString('utf8')) as Partial<GetDocCursor>;
+    if (
+      parsed.version !== 1
+      || typeof parsed.doc_id !== 'string'
+      || !Number.isSafeInteger(parsed.offset)
+      || (parsed.offset ?? -1) < 0
+      || typeof parsed.fingerprint !== 'string'
+    ) {
+      return null;
+    }
+    return parsed as GetDocCursor;
+  } catch {
+    return null;
+  }
+}
 
 let initialized = false;
 let initializationPromise: Promise<void> | null = null;
@@ -651,8 +697,13 @@ ${excerpt}
   });
 
   handlers.set('get_doc', async (input) => {
-    const docId = input.doc_id as string;
+    const requestedDocId = input.doc_id as string;
     const requestedVersion = input.version as string | undefined;
+    const cursor = decodeGetDocCursor(requestedDocId);
+    if (requestedDocId.startsWith(GET_DOC_CURSOR_PREFIX) && !cursor) {
+      return 'Invalid or stale documentation continuation. Restart get_doc with the document ID from search_docs.';
+    }
+    const docId = cursor?.doc_id ?? requestedDocId;
 
     if (!isDocsIndexReady()) {
       return 'Documentation index not ready.';
@@ -668,12 +719,39 @@ ${excerpt}
       return `Document not found: "${docId}". Use search_docs to find available documents.`;
     }
 
-    // Return full content (but cap at 4000 chars to prevent massive responses)
-    const maxLength = 4000;
-    let content = doc.content;
-    if (content.length > maxLength) {
-      content = content.substring(0, maxLength) + '\n\n... [content truncated at 4000 chars]';
+    const fingerprint = getDocFingerprint(doc.id, doc.content);
+    const offset = cursor?.offset ?? 0;
+    if (cursor) {
+      if (
+        cursor.doc_id !== doc.id
+        || cursor.fingerprint !== fingerprint
+        || cursor.offset >= doc.content.length
+      ) {
+        return `Invalid or stale documentation continuation for document: "${docId}". Restart get_doc with the document ID from search_docs.`;
+      }
     }
+
+    let endOffset = Math.min(offset + GET_DOC_PAGE_MAX_CHARS, doc.content.length);
+    // JavaScript offsets are UTF-16 code units. Never split a surrogate pair
+    // between pages, because doing so would corrupt non-BMP characters when a
+    // caller concatenates the returned content.
+    if (
+      endOffset < doc.content.length
+      && endOffset > offset
+      && /[\uD800-\uDBFF]/.test(doc.content[endOffset - 1])
+      && /[\uDC00-\uDFFF]/.test(doc.content[endOffset])
+    ) {
+      endOffset -= 1;
+    }
+    const content = doc.content.slice(offset, endOffset);
+    const nextCursor = endOffset < doc.content.length
+      ? encodeGetDocCursor({
+          version: 1,
+          doc_id: doc.id,
+          offset: endOffset,
+          fingerprint,
+        })
+      : null;
 
     const versionLabel = doc.version && doc.artifactVersion
       ? `${doc.version} (snapshot ${doc.artifactVersion})`
@@ -684,8 +762,13 @@ ${excerpt}
 **Source:** ${doc.sourceUrl}
 **Category:** ${doc.category}
 **Version:** ${versionLabel}
+**Content range:** ${offset}-${endOffset} of ${doc.content.length} characters
 
-${content}`;
+${content}${nextCursor ? `
+
+---
+**next_doc_id:** \`${nextCursor}\`
+Call \`get_doc\` again with this value as \`doc_id\` to continue.` : ''}`;
   });
 
   handlers.set('search_repos', async (input) => {
