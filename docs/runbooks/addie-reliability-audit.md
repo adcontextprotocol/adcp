@@ -1,3 +1,9 @@
+---
+title: Addie reliability audit follow-up
+description: "Receipt-backed certification and support claims, recovery telemetry, evaluation lifecycle logs, and deployment guidance for Addie."
+"og:title": "AdCP — Addie reliability audit follow-up"
+---
+
 # Addie reliability audit follow-up
 
 This change starts at `0f4512093` on main, after #7649. No production queries,
