@@ -44,7 +44,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
     const client = await pool.connect();
     const schema = `publication_backfill_${randomUUID().replaceAll('-', '')}`;
     const migration = readFileSync(new URL('../../src/db/migrations/589_compliance_run_publication.sql', import.meta.url), 'utf8');
-    const requeueMigration = readFileSync(new URL('../../src/db/migrations/605_agent_registry_requeued_at.sql', import.meta.url), 'utf8');
+    const requeueMigration = readFileSync(new URL('../../src/db/migrations/608_agent_registry_requeued_at.sql', import.meta.url), 'utf8');
     const querySpy = vi.spyOn(databaseClient, 'query');
     try {
       await client.query('BEGIN');
