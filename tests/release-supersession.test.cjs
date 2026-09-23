@@ -38,6 +38,9 @@ function fixture(t) {
   write('scripts/check-release-supersession.cjs', fs.readFileSync(
     path.join(repositoryRoot, 'scripts', 'check-release-supersession.cjs'),
   ));
+  write('scripts/check-release-state.cjs', fs.readFileSync(
+    path.join(repositoryRoot, 'scripts', 'check-release-state.cjs'),
+  ));
   write('package.json', '{"version":"3.2.0-rc.4"}\n');
   write('.changeset/pre.json', '{"mode":"pre","tag":"rc"}\n');
   git('init', '-q');
@@ -94,7 +97,23 @@ exit 1
       },
     },
   );
-  return { root, git, run, changeset };
+  const runPending = (extra = {}) => spawnSync(
+    process.execPath,
+    ['scripts/check-release-state.cjs', 'pending'],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${path.join(root, 'bin')}:${process.env.PATH}`,
+        GITHUB_REPOSITORY: 'adcontextprotocol/adcp',
+        PUBLICATION_BRANCH: 'main',
+        TESTED_SHA: git('rev-parse', 'HEAD'),
+        ...extra,
+      },
+    },
+  );
+  return { root, git, run, runPending, changeset };
 }
 
 test('reviewed supersession verifies immutable unpublished RC and exact changesets', (t) => {
@@ -119,3 +138,19 @@ test('reviewed supersession verifies immutable unpublished RC and exact changese
   assert.match(tagged.stderr, /Tag v3\.2\.0-rc\.5 already exists/);
 });
 
+test('pending release fence accepts artifacts only through the reviewed supersession proof', (t) => {
+  const f = fixture(t);
+  const accepted = f.runPending();
+  assert.equal(accepted.status, 0, accepted.stderr);
+
+  fs.appendFileSync(path.join(f.root, '.changeset/fix.md'), 'Tampered.\n');
+  const tampered = f.runPending();
+  assert.notEqual(tampered.status, 0);
+  assert.match(tampered.stderr, /Pending changesets differ/);
+  fs.writeFileSync(path.join(f.root, '.changeset/fix.md'), f.changeset);
+
+  fs.unlinkSync(path.join(f.root, '.changeset/release-supersession.json'));
+  const unreviewed = f.runPending();
+  assert.notEqual(unreviewed.status, 0);
+  assert.match(unreviewed.stderr, /git ls-remote --exit-code/);
+});

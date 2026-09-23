@@ -148,6 +148,20 @@ function recovery(source) {
     );
 }
 
+function reviewedSupersession(version) {
+  const markerPath = path.join(".changeset", "release-supersession.json");
+  if (!fs.existsSync(markerPath)) return false;
+  const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+  if (marker?.version !== version)
+    throw new Error("Supersession marker does not match the pending release version.");
+  run(process.execPath, [
+    path.join("scripts", "check-release-supersession.cjs"),
+    "verify",
+  ]);
+  current();
+  return true;
+}
+
 function provenance(source, head) {
   if (!shaPattern.test(source || "") || !shaPattern.test(head || ""))
     throw new Error(
@@ -330,7 +344,11 @@ try {
         (suffix) => `dist/protocol/${version}.tgz${suffix}`,
       ),
     ];
-    if (surfaces.some((surface) => fs.existsSync(surface))) published(version);
+    if (
+      surfaces.some((surface) => fs.existsSync(surface)) &&
+      !reviewedSupersession(version)
+    )
+      published(version);
   } else if (mode === "recovery") recovery(argument);
   else if (mode === "approval") approval();
   else if (mode === "provenance") {
