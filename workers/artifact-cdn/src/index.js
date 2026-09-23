@@ -535,6 +535,7 @@ function legacyTmpFallbackKey(key) {
 }
 
 function contentTypeForKey(key) {
+  if (key.endsWith(".jsonl")) return "application/x-ndjson; charset=utf-8";
   if (key.endsWith(".json")) return "application/json; charset=utf-8";
   if (key.endsWith(".yaml") || key.endsWith(".yml")) return "application/yaml; charset=utf-8";
   if (key.endsWith(".md") || key.endsWith(".mdx")) return "text/markdown; charset=utf-8";

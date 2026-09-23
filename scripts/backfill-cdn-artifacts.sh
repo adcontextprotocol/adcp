@@ -419,6 +419,7 @@ sync_compliance_tree() {
   local cache_control="$3"
   sync_filtered "$root" "$dest_prefix" "$cache_control" "application/yaml; charset=utf-8" "*.yaml" "*.yml"
   sync_filtered "$root" "$dest_prefix" "$cache_control" "application/json; charset=utf-8" "*.json"
+  sync_filtered "$root" "$dest_prefix" "$cache_control" "application/x-ndjson; charset=utf-8" "*.jsonl"
   sync_filtered "$root" "$dest_prefix" "$cache_control" "text/markdown; charset=utf-8" "*.md" "*.mdx"
   sync_filtered "$root" "$dest_prefix" "$cache_control" "text/plain; charset=utf-8" "*.txt"
 }
@@ -429,6 +430,7 @@ cp_compliance_tree() {
   local cache_control="$3"
   cp_filtered_recursive "$root" "$dest_prefix" "$cache_control" "application/yaml; charset=utf-8" "*.yaml" "*.yml"
   cp_filtered_recursive "$root" "$dest_prefix" "$cache_control" "application/json; charset=utf-8" "*.json"
+  cp_filtered_recursive "$root" "$dest_prefix" "$cache_control" "application/x-ndjson; charset=utf-8" "*.jsonl"
   cp_filtered_recursive "$root" "$dest_prefix" "$cache_control" "text/markdown; charset=utf-8" "*.md" "*.mdx"
   cp_filtered_recursive "$root" "$dest_prefix" "$cache_control" "text/plain; charset=utf-8" "*.txt"
 }
