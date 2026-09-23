@@ -55,6 +55,7 @@ fixtures:
         brand:
           domain: "acmeoutdoor.example"
         operator: "pinnacle-agency.example"
+        sandbox: true
       status: "active"
       currency: "USD"
       total_budget: 5000
@@ -97,6 +98,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "legacy_package_correlation_buy"
           context:
