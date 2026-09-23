@@ -1,0 +1,235 @@
+id: reliable_reporting_managed_delivery
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Reliable Reporting: Managed Delivery"
+category: capability_discovery
+summary: "Validates the Managed Delivery tier's explicit capability, atomic managed offering, resource retention, and authorization-revocation contract."
+track: reporting
+required_tools:
+  - get_adcp_capabilities
+  - get_reporting_status
+
+requires:
+  - controller
+
+requires_all_capabilities:
+  - path: "media_buy.reporting_delivery.reliable_reporting_version"
+    equals: "1.0"
+  - path: "media_buy.reporting_delivery.managed_delivery"
+    equals: true
+
+narrative: |
+  Reliable Reporting is discovered explicitly rather than inferred from a
+  generic file export or another protocol. A seller claiming Managed Delivery
+  must publish at least one atomic offering with a managed method and must
+  disclose resource-retention and authorization-revocation bounds. The
+  capability schema's conditional contains rule verifies the managed offering
+  even when it is not first in the catalog.
+
+agent:
+  interaction_model: any
+  capabilities:
+    - "media_buy.reporting_delivery"
+  examples:
+    - "Seller agent offering durable files, dataset shares, or warehouse relations"
+
+caller:
+  role: buyer_agent
+  example: "Compliance harness acting as an authorized buyer"
+
+prerequisites:
+  description: |
+    The seller advertises Reliable Reporting 1.0 and managed_delivery: true.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: managed_delivery_declaration
+    title: "Discover Managed Delivery guarantees"
+    steps:
+      - id: get_reliable_reporting_managed_capabilities
+        title: "Read the Managed Delivery declaration"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "reliable_reporting_managed_delivery--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Capability response enforces an atomic offering containing method"
+          - check: field_value
+            path: "media_buy.reporting_delivery.reliable_reporting_version"
+            value: "1.0"
+            description: "Seller explicitly claims Reliable Reporting 1.0"
+          - check: field_value
+            path: "media_buy.reporting_delivery.managed_delivery"
+            value: true
+            description: "Managed Delivery tier is explicitly supported"
+          - check: field_present
+            path: "media_buy.reporting_delivery.resource_retention_days"
+            description: "Exact resources have a disclosed minimum retention"
+          - check: field_present
+            path: "media_buy.reporting_delivery.authorization_revocation_seconds"
+            description: "Managed access has a disclosed revocation bound"
+
+  - id: managed_delivery_lifecycle
+    title: "Recover and retire one verified managed materialization"
+    narrative: |
+      The controller creates an exact managed destination and available
+      materialization. The buyer proves readiness through the authoritative
+      status read even though the readiness doorbell is suppressed, then the
+      probe advances within retention and revokes seller-controlled access
+      within the advertised bound while retaining immutable ledger metadata.
+    steps:
+      - id: prepare_managed_materialization
+        title: "Prepare a verified managed destination"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reliable_reporting_managed_delivery_probe
+        stateful: true
+        context_outputs:
+          - name: reliable_reporting_managed_revision_id
+            path: "simulated.reporting_revision_id"
+          - name: reliable_reporting_managed_materialization_id
+            path: "simulated.reporting_materialization_id"
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          scenario: "reliable_reporting_managed_delivery_probe"
+          params:
+            operation: "prepare"
+          context:
+            correlation_id: "reliable_reporting_managed--prepare"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Managed destination and materialization were prepared"
+          - check: field_present
+            path: "simulated.destination_ref"
+            description: "The resource is bound to an exact caller-owned destination"
+
+      - id: suppress_managed_readiness
+        title: "Suppress the optional readiness doorbell"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reliable_reporting_managed_delivery_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          scenario: "reliable_reporting_managed_delivery_probe"
+          params:
+            operation: "suppress_readiness"
+          context:
+            correlation_id: "reliable_reporting_managed--suppress-readiness"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_value
+            path: "simulated.readiness_notification_suppressed"
+            value: true
+            description: "Fixture proves polling recovery without push"
+
+      - id: recover_managed_materialization_by_status
+        title: "Discover readiness through authoritative status"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        comply_scenario: reliable_reporting_managed_delivery_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          view: "revision"
+          reporting_revision_id: "$context.reliable_reporting_managed_revision_id"
+          context:
+            correlation_id: "reliable_reporting_managed--status-repair"
+        validations:
+          - check: response_schema
+            description: "Revision response is schema-valid"
+          - check: field_equals_context
+            path: "materializations[0].reporting_materialization_id"
+            context_key: "reliable_reporting_managed_materialization_id"
+            description: "Status discovers the exact suppressed-readiness materialization"
+          - check: field_value
+            path: "materializations[0].status"
+            value: "available"
+            description: "Materialization is ready for the buyer"
+          - check: field_present
+            path: "materializations[0].verification.verified_at"
+            description: "Readiness is backed by verification evidence"
+          - check: field_present
+            path: "materializations[0].resource.expires_at"
+            description: "Exact resource exposes its retention boundary"
+          - check: field_present
+            path: "adjustments"
+            description: "Managed Delivery retains the shared Core correction surface"
+
+      - id: prove_resource_retention
+        title: "Keep the exact resource readable inside retention"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reliable_reporting_managed_delivery_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          scenario: "reliable_reporting_managed_delivery_probe"
+          params:
+            operation: "advance_within_retention"
+          context:
+            correlation_id: "reliable_reporting_managed--retention"
+        validations:
+          - check: response_schema
+            description: "Retention probe response is schema-valid"
+          - check: field_value
+            path: "simulated.resource_readable"
+            value: true
+            description: "Resource remains readable before the advertised expiry"
+          - check: field_equals_context
+            path: "simulated.reporting_materialization_id"
+            context_key: "reliable_reporting_managed_materialization_id"
+            description: "Probe reads the exact original materialization"
+
+      - id: revoke_managed_access
+        title: "Revoke seller-controlled access within the declared bound"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reliable_reporting_managed_delivery_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          scenario: "reliable_reporting_managed_delivery_probe"
+          params:
+            operation: "revoke_access"
+          context:
+            correlation_id: "reliable_reporting_managed--revoke"
+        validations:
+          - check: response_schema
+            description: "Revocation probe response is schema-valid"
+          - check: field_value
+            path: "simulated.access_revoked"
+            value: true
+            description: "Seller-controlled transport grant was removed"
+          - check: field_value
+            path: "simulated.historical_metadata_retained"
+            value: true
+            description: "Revocation does not erase immutable ledger history"
+          - check: field_present
+            path: "simulated.revocation_elapsed_seconds"
+            description: "Probe reports the elapsed revocation interval for comparison to the capability bound"

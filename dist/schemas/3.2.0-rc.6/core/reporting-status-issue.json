@@ -1,0 +1,188 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/reporting-status-issue.json",
+  "title": "Reporting Status Issue",
+  "x-status": "experimental",
+  "description": "Structured reporting condition that explains delayed or action_required health without exposing credentials, provider response bodies, or internal stack traces.",
+  "type": "object",
+  "definitions": {
+    "ReportingStatusSeverity": {
+      "title": "Reporting Status Severity",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": [
+        "delayed",
+        "action_required"
+      ]
+    }
+  },
+  "properties": {
+    "issue_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "description": "Seller-issued stable identifier for this logical issue: re-emissions and later polls of the same unresolved condition reuse it, and resolution retires it, so consumers can project AdCP reporting issues into durable work items. A recurrence after resolution receives a new id."
+    },
+    "code": {
+      "type": "string",
+      "enum": [
+        "REPORT_OVERDUE",
+        "PRODUCTION_FAILED",
+        "DELIVERY_FAILED",
+        "ACCESS_REQUIRED",
+        "CONFIGURATION_REQUIRED",
+        "REPORTING_COVERAGE_INCOMPLETE",
+        "RESOURCE_EXPIRED",
+        "READER_INCOMPATIBLE",
+        "HISTORY_UNAVAILABLE",
+        "RECEIPT_REQUIRED",
+        "RECEIPT_REJECTED",
+        "ADJUSTMENT_RECEIPT_REQUIRED",
+        "ADJUSTMENT_RECEIPT_REJECTED",
+        "CONSUMER_STATUS_MISMATCH"
+      ]
+    },
+    "severity": {
+      "$ref": "#/definitions/ReportingStatusSeverity"
+    },
+    "opened_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller first observed this logical condition, carried unchanged across every re-emission until the issue is retired. It anchors the escalation clock advertised as consumer_mismatch_escalation_seconds and lets a consumer age an issue without keeping its own first-seen table. Required when code is CONSUMER_STATUS_MISMATCH."
+    },
+    "issue_state": {
+      "type": "string",
+      "enum": [
+        "open",
+        "acknowledged",
+        "resolved",
+        "waived"
+      ],
+      "description": "Optional seller-maintained lifecycle for this issue_id. open is the default when omitted. acknowledged means a human on responsible_party has taken it up but the condition persists. resolved means the underlying condition no longer holds; a recurrence uses a new issue_id. waived means the parties agreed off-protocol to disregard this exact issue even though its underlying condition may still hold. Only open and acknowledged issues appear in issues[]; retiring an issue removes it from the projection rather than publishing it at resolved or waived, so a reader that treats a nonempty issues[] as degradation stays correct. A CONSUMER_STATUS_MISMATCH waiver follows the bilateral, exact-scope requirements in consumer_mismatch_lifecycle."
+    },
+    "external_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+      "description": "Optional opaque, non-secret correlation string for the party's own tracker — a ticket key, incident ID, or case number. Untrusted display text only. The character class excludes whitespace and the solidus, so the value cannot express a URL or a sentence; receivers compare, store, and display it as inert text and never dereference, resolve, or execute it. It confers no authorization and MUST NOT be used to look up state across accounts or callers."
+    },
+    "responsible_party": {
+      "type": "string",
+      "enum": [
+        "buyer",
+        "seller",
+        "provider"
+      ]
+    },
+    "recommended_action": {
+      "type": "string",
+      "enum": [
+        "wait_for_retry",
+        "contact_buyer",
+        "contact_seller",
+        "contact_provider",
+        "repair_access",
+        "update_configuration",
+        "change_reporting_scope",
+        "use_supported_reader"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Untrusted display text only. SDKs and agents dispatch exclusively on closed code/recommended_action values and never execute embedded links or instructions."
+    },
+    "reporting_obligation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_obligation"
+    },
+    "reporting_status_id": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "x-entity": "reporting_consumer_status",
+      "description": "Current authenticated consumer status statement that caused this mismatch."
+    },
+    "delivery_config_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_delivery_config"
+    },
+    "delivery_config_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "feed_purpose": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/reporting-coverage.json#/definitions/ReportingMediaBuyId"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "package_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/reporting-coverage.json#/definitions/ReportingPackageId"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "period_start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "period_end": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expected_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "issue_id",
+    "code",
+    "severity",
+    "responsible_party",
+    "recommended_action"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "CONSUMER_STATUS_MISMATCH"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "required": [
+          "opened_at",
+          "reporting_status_id"
+        ]
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "issue_lifecycle": "issue_id identifies one logical condition. opened_at is fixed at first emission and MUST NOT advance while the same issue_id is re-emitted, even across ledger snapshots, health transitions, or a severity change from delayed to action_required. issue_state, when supported, moves only forward through open, acknowledged, and then resolved or waived; a recurrence after retirement receives a new issue_id and a new opened_at. external_ref is inert correlation text with no protocol meaning; a seller MUST NOT reuse one external_ref across callers on a caller-scoped issue, because that would leak the blast radius of a seller-side incident between tenants.",
+    "consumer_mismatch_lifecycle": "resolved requires a superseding agreeing consumer statement or a seller projection that no longer conflicts. waived is terminal only when consumer and seller explicitly agree off-protocol to disregard the exact caller/account mismatch identified by issue_id, causing reporting_status_id, and diagnosed conflict; a seller MUST NOT act unilaterally. Waiver leaves the consumer statement unchanged and not seller evidence. The seller retains a private audit, retires the issue from issues[], and projects underlying seller health even while the immutable statement remains current and visible in consumer_statuses[]. A later statement or different conflict is evaluated independently and receives a new issue_id if conflicting. A health change fires the advertised reporting.status_changed recovery transition with issue_ids empty or absent; otherwise no health-transition notification is required and polling remains authoritative.",
+    "consumer_mismatch_escalation": "A CONSUMER_STATUS_MISMATCH issue MUST carry opened_at and the reporting_status_id that caused it. When the seller advertises consumer_mismatch_escalation_seconds, an open or acknowledged issue still unresolved at opened_at plus that window MUST be emitted at severity action_required with a recommended_action in the contact_ family — contact_buyer, contact_seller, or contact_provider — naming the diagnosed responsible_party, and the seller MUST advertise operations_contact so the named party is reachable. wait_for_retry MUST NOT survive the escalation boundary: an unattended mismatch is an escalation, not a retry. This escalation takes precedence over the stale-received grace window in get-reporting-status-response.json: when the two windows overlap, the escalation boundary wins and the issue is action_required even if the grace window has not closed. An issue already retired under consumer_mismatch_lifecycle is not subject to this rule, because it is no longer in issues[]."
+  },
+  "additionalProperties": false
+}
