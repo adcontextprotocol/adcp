@@ -1,0 +1,823 @@
+id: media_buy_seller/reach_buy_flow
+version: "1.0.0"
+title: "Seller fulfills a media buy with a reach optimization goal"
+category: media_buy_seller
+summary: "Verifies that a seller advertising reach in supported_optimization_metrics can accept a media buy whose metric-kind optimization_goal targets unique reach with a buyer-supplied reach_unit, reject reach_unit values not in the product's metric_optimization.supported_reach_units, and report reach + frequency on delivery. Sibling to the performance buy scenarios on the brand-reach side: sellers that don't advertise reach as an optimization metric (most pure performance DSPs, retail-media networks) grade not_applicable."
+track: media_buy
+
+# Gate: scenario runs only when the seller declares reach in
+# media_buy.supported_optimization_metrics (proposed in #4669). Sellers
+# whose products optimize for clicks / conversions / views but not unique
+# reach grade `not_applicable`, not failing. Reach as an optimization
+# metric is upper-funnel-shaped — broadcast TV, CTV, social brand
+# campaigns, audio — and gating on the explicit metric in
+# supported_optimization_metrics avoids over-claiming against the
+# performance-tracking community. Requires runner support for the
+# `contains:` matcher (adcp-client >= 7.70).
+requires_capability:
+  path: media_buy.supported_optimization_metrics
+  contains: "reach"
+
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buy_delivery
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  A "reach buy" is a media buy whose optimization_goal is metric-kind with
+  metric: reach and a buyer-supplied reach_unit naming the units of the
+  count (individuals / households / devices / accounts / cookies / custom).
+  Optionally the buyer specifies a target_frequency band — the seller treats
+  impressions toward entities already within [min, max] as lower-value and
+  prioritizes fresh reach. This is the upper-funnel optimization shape
+  (broadcast TV, CTV, social brand campaigns, audio) that's distinct from
+  the performance / conversion-tracking shapes.
+
+  Discriminating behaviors this scenario verifies:
+  1. create_media_buy with metric: reach, a reach_unit value declared in
+     the product's metric_optimization.supported_reach_units, and an optional
+     target_frequency band is accepted.
+  2. create_media_buy with a reach_unit value NOT in the product's
+     supported_reach_units is rejected with INVALID_REQUEST. error.field
+     points at the offending reach_unit path. Silent acceptance with
+     unit-coercion would create cross-platform comparison errors because
+     reach in cookies is not reach in households.
+  3. get_media_buy_delivery surfaces totals.reach (the unique-count value)
+     and totals.frequency (average exposures per reach unit over the
+     declared reach_window). reach_unit on delivery aligns with the
+     reach_unit declared on the optimization goal — the unit declaration is
+     load-bearing for cross-platform comparison.
+
+  Per-window reach-window breakdown (cumulative vs period vs rolling
+  semantics declared in delivery-metrics.json's reach_window block) is
+  asserted in dedicated follow-up phases after the base reach delivery
+  check. The omission case remains an advisory because reach_window is
+  schema-valid to omit, but buyers must treat omitted-window reach rows
+  as unsafe to sum or average across reporting periods.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+  examples:
+    - "Broadcast TV / CTV sellers optimizing for unique households"
+    - "Social platforms with reach optimization (Meta Reach & Frequency, TikTok Reach)"
+    - "Audio sellers optimizing for unique listeners"
+    - "OOH / DOOH sellers optimizing for unique passers-by"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must implement comply_test_controller with simulate_delivery
+    (already required for delivery_reporting). simulate_delivery injects
+    impressions, reach, and frequency values so get_media_buy_delivery has
+    something to surface for the reach-optimized buy.
+
+    The buyer fixture supplies a brand, an operator, and reach targeting
+    parameters sufficient to exercise the reach_unit binding contract and
+    the unsupported-unit rejection.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "reach_ctv_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+      metric_optimization:
+        supported_metrics: ["reach"]
+        supported_reach_units: ["households", "individuals"]
+  pricing_options:
+    - product_id: "reach_ctv_q2"
+      pricing_option_id: "auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 18.00
+
+phases:
+
+  - id: setup
+    title: "Establish account and discover products"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#reach_buy_flow_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_for_reach
+        title: "Discover products that support reach optimization"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return at least one product whose metric_optimization capabilities
+          include reach as an optimization metric and declare
+          supported_reach_units. The buyer selects a unit from that list for
+          the create_media_buy call below.
+        sample_request:
+          buying_mode: "brief"
+          brief: "CTV video, US adults 25-54. Q2 brand flight ~$50K, optimizing for unique household reach with a target frequency cap."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+
+  - id: create_reach_buy
+    title: "Create a reach-optimized buy with a supported reach_unit"
+    narrative: |
+      The buyer creates a media buy whose package carries a metric-kind
+      optimization_goal with metric: reach, reach_unit: households (explicitly
+      declared in the product fixture's supported_reach_units), and
+      a target_frequency band of 1–3 over a 7-day rolling window. The seller
+      should accept and return a media_buy_id used for subsequent delivery
+      checks.
+
+    steps:
+      - id: create_media_buy_reach
+        title: "Create media buy with metric-kind reach goal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create the media buy. Response carries a media_buy_id used for
+          subsequent get_media_buy_delivery calls.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "reach_ctv_q2"
+              budget: 50000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "metric"
+                  metric: "reach"
+                  reach_unit: "households"
+                  target_frequency:
+                    window:
+                      interval: 7
+                      unit: "days"
+                    min: 1
+                    max: 3
+                  priority: 1
+          idempotency_key: "$generate:uuid_v4#reach_buy_flow_create_reach_buy_create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+  - id: rejection_unsupported_reach_unit
+    title: "Reject a reach goal whose reach_unit is not in supported_reach_units"
+    narrative: |
+      Silent acceptance of a reach_unit value not declared in the product's
+      metric_optimization.supported_reach_units is a façade — the seller
+      either coerces the unit (creating cross-platform comparison errors)
+      or runs without a unit (delivery reach values become uncomparable).
+      The seller MUST reject with INVALID_REQUEST and set error.field to the
+      offending reach_unit path. Same shape as the unbound event_source_id
+      rejection in performance_buy_flow and the unbound audience_id
+      rejection in audience_buy_flow.
+
+      "devices" is chosen because it is a valid spec-defined reach_unit enum
+      value that the reach_ctv_q2 product fixture deliberately omits from
+      supported_reach_units (which declares only "households" and
+      "individuals"). Using a valid enum value satisfies
+      negative_path: payload_well_formed (the request is schema-valid),
+      while the fixture exclusion ensures the rejection must come from the
+      seller's capability-checking logic rather than schema validation.
+      Sellers that silently accept "devices" are demonstrating they don't
+      validate reach_unit against their product capability declarations.
+
+    steps:
+      - id: create_media_buy_with_unsupported_reach_unit
+        title: "Submit a reach goal whose reach_unit is not in supported_reach_units"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with INVALID_REQUEST. error.field points at the offending
+          reach_unit path. media_buy_id is not allocated.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "reach_ctv_q2"
+              budget: 10000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "metric"
+                  metric: "reach"
+                  reach_unit: "devices"
+          idempotency_key: "$generate:uuid_v4#reach_buy_flow_rejection_unsupported_reach_unit"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST"]
+            description: "Seller rejects the unsupported reach_unit with INVALID_REQUEST"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].optimization_goals[0].reach_unit"
+            description: "Error.field points at the offending reach_unit path (core/error.json defines field as deterministic JSONPath-lite — literal equality)"
+
+  - id: reach_delivery
+    title: "Delivery reporting carries reach and frequency"
+    narrative: |
+      The discriminating assertion of the reach buy mode: delivery reporting
+      MUST surface reach and frequency at the buy level — not just
+      impressions and spend. The runner injects simulated impressions,
+      reach, and frequency via the test controller, then verifies
+      get_media_buy_delivery returns reach + frequency on totals.
+
+      Per-row reach_window semantics (cumulative vs period vs rolling — see
+      delivery-metrics.json) are deliberately not asserted at this layer.
+      The scenario asserts the discriminating fields are present at the
+      buy level; reach_window correctness is asserted by the schema
+      validation alongside the totals payload.
+
+    steps:
+      - id: simulate_reach_delivery
+        title: "Inject impressions + reach + frequency"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 750000
+            reach: 250000
+            frequency: 3.0
+            reported_spend:
+              amount: 14000.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation succeeds"
+
+      - id: get_reach_delivery
+        title: "Get delivery and verify reach + frequency metrics"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery response includes totals.reach (the unique-count value
+          in the declared reach_unit) and totals.frequency (average
+          exposures per reach unit over the declared reach_window). These
+          two fields are the discriminating output of reach optimization
+          and are required on reach-optimized buys.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.reach"
+            description: "Reach count surfaced at the buy level (in the declared reach_unit)"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.frequency"
+            description: "Frequency surfaced at the buy level — average exposures per reach unit"
+
+  - id: reach_window_cumulative
+    title: "Delivery row carries reach_window.kind cumulative"
+    narrative: |
+      A cumulative reach_window declares that the reach value represents
+      unique audiences since campaign start. Each successive delivery row
+      supersedes the prior one — buyers MUST NOT sum cumulative rows to
+      compute campaign reach, since each later row already includes all
+      prior audiences. No period field is required for cumulative.
+
+      This phase injects a delivery row with reach_window.kind cumulative
+      and verifies that the seller surfaces the window semantics on the
+      delivery response. Sellers that omit reach_window on a reach-optimized
+      buy force buyers to guess the window — creating silent double-counting
+      when buyers aggregate across reporting periods.
+
+    steps:
+      - id: create_media_buy_cumulative_reach
+        title: "Create media buy for cumulative reach-window delivery"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create a fresh reach-optimized media buy so the cumulative
+          reach_window assertion is not contaminated by prior delivery
+          simulation calls.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "reach_ctv_q2"
+              budget: 10000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "metric"
+                  metric: "reach"
+                  reach_unit: "households"
+                  priority: 1
+          idempotency_key: "$generate:uuid_v4#reach_buy_flow_reach_window_cumulative_create_media_buy"
+        context_outputs:
+          - name: cumulative_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+      - id: simulate_cumulative_reach
+        title: "Inject delivery with cumulative reach_window"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery with a
+          cumulative reach_window.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.cumulative_media_buy_id"
+            impressions: 1200000
+            reach: 400000
+            frequency: 3.0
+            reach_window:
+              kind: "cumulative"
+            reported_spend:
+              amount: 22000.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation with cumulative reach_window succeeds"
+
+      - id: get_cumulative_reach_delivery
+        title: "Verify reach_window.kind cumulative on delivery row"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery row carries reach_window with kind: cumulative. No period
+          field is expected — cumulative reach is campaign-to-date and the
+          window is implicit. The row's reach value is the total unique count
+          since campaign start; each subsequent cumulative row supersedes
+          this one.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.cumulative_media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.reach_window"
+            description: "Seller populates reach_window on the delivery row"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.reach_window.kind"
+            allowed_values: ["cumulative"]
+            description: "reach_window.kind is cumulative as injected"
+
+  - id: reach_window_period
+    title: "Delivery row carries reach_window.kind period with period field"
+    narrative: |
+      A period reach_window declares that the reach value covers a single
+      non-overlapping reporting period (e.g., one calendar day). Adjacent
+      period rows do not share audiences by construction — the same person
+      MAY appear across multiple periods — so buyers MUST NOT sum period
+      rows to compute campaign reach. The period field is REQUIRED for
+      kind: period and declares the snapshot length (e.g., 1 day).
+
+      This phase injects a delivery row with reach_window.kind period and
+      period: {interval:1, unit:"days"} and verifies the seller surfaces
+      both the kind and the period duration on the delivery response.
+
+    steps:
+      - id: create_media_buy_period_reach
+        title: "Create media buy for period reach-window delivery"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create a fresh reach-optimized media buy so the period
+          reach_window assertion is isolated from cumulative or rolling
+          delivery simulations.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "reach_ctv_q2"
+              budget: 10000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "metric"
+                  metric: "reach"
+                  reach_unit: "households"
+                  priority: 1
+          idempotency_key: "$generate:uuid_v4#reach_buy_flow_reach_window_period_create_media_buy"
+        context_outputs:
+          - name: period_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+      - id: simulate_period_reach
+        title: "Inject delivery with period reach_window"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery with a
+          period reach_window carrying a 1-day period.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.period_media_buy_id"
+            impressions: 175000
+            reach: 140000
+            frequency: 1.25
+            reach_window:
+              kind: "period"
+              period:
+                interval: 1
+                unit: "days"
+            reported_spend:
+              amount: 3200.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation with period reach_window succeeds"
+
+      - id: get_period_reach_delivery
+        title: "Verify reach_window.kind period and period duration on delivery row"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery row carries reach_window with kind: period and a period
+          duration of 1 day. The period field is required for kind: period —
+          its absence would leave buyers unable to determine the snapshot
+          length, making cross-period reach comparisons unreliable.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.period_media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.reach_window"
+            description: "Seller populates reach_window on the delivery row"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.reach_window.kind"
+            allowed_values: ["period"]
+            description: "reach_window.kind is period as injected"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.reach_window.period"
+            description: "period field is present — required for kind: period"
+
+  - id: reach_window_rolling
+    title: "Delivery row carries reach_window.kind rolling with period field"
+    narrative: |
+      A rolling reach_window declares that the reach value covers a trailing
+      window ending at the row's reporting timestamp (e.g., trailing-7-day
+      unique reach). Adjacent rolling rows overlap — each row stands alone
+      and MUST NOT be summed; summing rolling rows double-counts audiences
+      seen in multiple windows. The period field is REQUIRED for kind: rolling
+      and declares the trailing-window length (e.g., 7 days).
+
+      This phase injects a delivery row with reach_window.kind rolling and
+      period: {interval:7, unit:"days"} and verifies the seller surfaces
+      both the kind and the window duration. A trailing-7-day reach window
+      is the canonical frequency-cap companion — buyers reading this value
+      know exactly which audiences are within the 7-day dedup window.
+
+    steps:
+      - id: create_media_buy_rolling_reach
+        title: "Create media buy for rolling reach-window delivery"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create a fresh reach-optimized media buy so the rolling
+          reach_window assertion is isolated from period or cumulative
+          delivery simulations.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "reach_ctv_q2"
+              budget: 10000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "metric"
+                  metric: "reach"
+                  reach_unit: "households"
+                  priority: 1
+          idempotency_key: "$generate:uuid_v4#reach_buy_flow_reach_window_rolling_create_media_buy"
+        context_outputs:
+          - name: rolling_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+      - id: simulate_rolling_reach
+        title: "Inject delivery with rolling reach_window"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery with a
+          rolling reach_window carrying a 7-day trailing window.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.rolling_media_buy_id"
+            impressions: 450000
+            reach: 210000
+            frequency: 2.1
+            reach_window:
+              kind: "rolling"
+              period:
+                interval: 7
+                unit: "days"
+            reported_spend:
+              amount: 8500.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation with rolling reach_window succeeds"
+
+      - id: get_rolling_reach_delivery
+        title: "Verify reach_window.kind rolling and period duration on delivery row"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery row carries reach_window with kind: rolling and a period
+          of 7 days. The period field is required for kind: rolling — without
+          it, buyers cannot determine the trailing window length and cannot
+          safely use the reach value for frequency optimization.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.rolling_media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.reach_window"
+            description: "Seller populates reach_window on the delivery row"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.reach_window.kind"
+            allowed_values: ["rolling"]
+            description: "reach_window.kind is rolling as injected"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.reach_window.period"
+            description: "period field is present — required for kind: rolling"
+
+  - id: reach_window_absent_advisory
+    title: "Advisory: delivery row with reach but no reach_window is schema-valid but sum-unsafe"
+    narrative: |
+      Reach/frequency rows with `reach_window` omitted are schema-valid —
+      the schema marks the field SHOULD (not MUST) populate it. However,
+      buyers MUST NOT treat omitted-window rows as sum-safe: the value may
+      be a daily snapshot, a cumulative total, or something else. Summing
+      reach values across rows without a declared window silently
+      double-counts audiences.
+
+      This phase simulates a delivery row without reach_window and issues
+      an advisory (not a conformance fail) when the seller returns reach
+      without the window declaration. Advisory grading: sellers that do
+      not populate reach_window on reach-optimized buys are warned but
+      not failed — the omission is spec-valid. Sellers should treat this
+      advisory as a signal to add reach_window to their delivery responses
+      for 3.1+ buyers.
+
+    steps:
+      - id: create_media_buy_reach_no_window
+        title: "Create media buy for omitted reach-window advisory"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create a fresh reach-optimized media buy so the omitted-window
+          advisory observes a delivery row whose reach_window was never
+          populated by earlier simulation calls.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "reach_ctv_q2"
+              budget: 10000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "metric"
+                  metric: "reach"
+                  reach_unit: "households"
+                  priority: 1
+          idempotency_key: "$generate:uuid_v4#reach_buy_flow_reach_window_absent_create_media_buy"
+        context_outputs:
+          - name: no_window_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+      - id: simulate_reach_no_window
+        title: "Inject delivery with reach but no reach_window"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller injects a delivery row with reach and frequency
+          but no reach_window. This is a valid operation — the scenario
+          tests the advisory behavior, not a rejection.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.no_window_media_buy_id"
+            impressions: 300000
+            reach: 180000
+            frequency: 1.67
+            reported_spend:
+              amount: 5800.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation without reach_window succeeds"
+
+      - id: get_delivery_reach_no_window
+        title: "Verify advisory when reach is present but reach_window is absent"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery row contains reach without reach_window. Schema-valid —
+          this is a SHOULD, not a MUST. The advisory validation below fires
+          when reach_window is absent, surfacing the omission for the seller
+          to address in future delivery responses.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.no_window_media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.reach_window"
+            severity: advisory
+            permanent_advisory:
+              reason: "delivery-metrics.json declares reach_window as SHOULD (not MUST) for 3.1. Omitting it is schema-valid but prevents buyers from determining the measurement window, making the reach value sum-unsafe across reporting periods. Sellers on the 3.1 track should populate reach_window on all reach-bearing delivery rows. This advisory is permanent: promotion to required is a 4.0 breaking change and will be tracked separately."
+            description: "reach_window populated on reach-bearing delivery row (advisory — SHOULD per 3.1 spec)"
