@@ -274,6 +274,7 @@ describe('managed reporting status contract', () => {
   let validateAdjustmentReceipt;
   let validateReliabilityStatistics;
   let validateLedgerWebhook;
+  let validateStatusWebhook;
   let validateConsumerStatus;
   let validateStatusSyncRequest;
   let validateStatusSyncResponse;
@@ -281,7 +282,7 @@ describe('managed reporting status contract', () => {
   let canonicalize;
 
   before(async () => {
-    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition, validateCoverage, validateProductReportingCapabilities, validateControlTotal, validateAdjustment, validateAdjustmentReceipt, validateReliabilityStatistics, validateLedgerWebhook, validateConsumerStatus, validateStatusSyncRequest, validateStatusSyncResponse, validateStatusIssue] = await Promise.all([
+    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition, validateCoverage, validateProductReportingCapabilities, validateControlTotal, validateAdjustment, validateAdjustmentReceipt, validateReliabilityStatistics, validateLedgerWebhook, validateStatusWebhook, validateConsumerStatus, validateStatusSyncRequest, validateStatusSyncResponse, validateStatusIssue] = await Promise.all([
       compile('/schemas/core/reporting-delivery-config.json'),
       compile('/schemas/media-buy/get-reporting-status-request.json'),
       compile('/schemas/media-buy/get-reporting-status-response.json'),
@@ -309,6 +310,7 @@ describe('managed reporting status contract', () => {
       compile('/schemas/core/reporting-adjustment-receipt.json'),
       compile('/schemas/core/reporting-reliability-statistics.json'),
       compile('/schemas/core/reporting-ledger-changed-webhook.json'),
+      compile('/schemas/core/reporting-status-changed-webhook.json'),
       compile('/schemas/core/reporting-consumer-status.json'),
       compile('/schemas/media-buy/sync-reporting-status-request.json'),
       compile('/schemas/media-buy/sync-reporting-status-response.json'),
@@ -1187,15 +1189,122 @@ describe('managed reporting status contract', () => {
       readSchema('/schemas/core/reporting-status-issue.json')['x-adcp-validation'].consumer_mismatch_escalation,
       /the escalation boundary wins and the issue is action_required even if the grace window has not closed/,
     );
-    // A seller must not be able to retire a live buyer-attributed conflict.
+    // Resolution requires agreement in the underlying states. A waiver is the
+    // deliberately narrower bilateral escape hatch for one exact disagreement.
     assert.match(
       readSchema('/schemas/core/reporting-status-issue.json')['x-adcp-validation'].consumer_mismatch_lifecycle,
-      /MUST NOT retire a CONSUMER_STATUS_MISMATCH out of a degraded projection while the consumer statement that caused it is still that consumer's current unsuperseded leaf/,
+      /resolved requires a superseding agreeing consumer statement/,
     );
     assert.match(
       readSchema('/schemas/core/reporting-status-issue.json')['x-adcp-validation'].consumer_mismatch_lifecycle,
-      /waived .*MUST NOT by itself return the period to healthy or complete/,
+      /waived is terminal only when consumer and seller explicitly agree off-protocol to disregard the exact caller\/account mismatch/,
     );
+    assert.match(
+      readSchema('/schemas/core/reporting-status-issue.json')['x-adcp-validation'].consumer_mismatch_lifecycle,
+      /projects underlying seller health.*immutable statement remains current and visible in consumer_statuses\[\]/,
+    );
+    assert.match(
+      statusResponseSchema['x-adcp-validation'].consumer_status_projection,
+      /restores the underlying seller health in both summary counts and each period projection/,
+    );
+    assert.match(
+      readSchema('/schemas/core/reporting-obligation.json')['x-adcp-validation'].consumer_mismatch,
+      /restores this obligation's underlying seller health even while current_consumer_status_id continues to name the immutable causing statement/,
+    );
+    assert.match(
+      readSchema('/schemas/core/reporting-status-changed-webhook.json')['x-adcp-validation'].waived_mismatch_transition,
+      /recovery health transition.*issue_ids empty or absent/,
+    );
+
+    // #7657: after a valid waiver, the immutable disagreement stays current and
+    // auditable while both the period and summary return to the seller's
+    // underlying complete projection with no public issue.
+    const waivedPeriod = {
+      reporting_obligation_id: 'robl_20260826_daily',
+      delivery_config_id: obligationMissing.delivery_config_id,
+      delivery_config_version: obligationMissing.delivery_config_version,
+      report_definition_id: obligationMissing.report_definition_id,
+      feed_purpose: 'analytics',
+      reporting_profile: revision.reporting_profile,
+      account_id: 'acc_123',
+      media_buy_ids: ['mb_123'],
+      scope_resolved_at: '2026-08-27T00:00:00Z',
+      coverage: fullCoverage,
+      period: obligationMissing.period,
+      expected_at: '2026-08-27T04:00:00Z',
+      schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
+      required_finality: 'snapshot',
+      reconciliation_mode: 'delivery_only',
+      reconciliation_status: 'not_required',
+      health: 'complete',
+      production_status: 'published',
+      revision_count: 1,
+      adjustment_count: 0,
+      consumer_status_count: 1,
+      current_consumer_status_id: obligationMissing.reporting_status_id,
+      issues: [],
+    };
+    assert.equal(validateObligation(waivedPeriod), true, JSON.stringify(validateObligation.errors));
+
+    const waivedSummary = {
+      status: 'completed',
+      view: 'summary',
+      ledger_snapshot_id: 'ledger_waived_mismatch_001',
+      ledger_as_of: '2026-08-28T12:00:00Z',
+      account_id: 'acc_123',
+      scope: {
+        period_start: '2026-08-26T00:00:00Z',
+        period_end: '2026-08-27T00:00:00Z',
+        scope_closed: true,
+        all_accessible_media_buys: false,
+        media_buy_ids: ['mb_123'],
+        delivery_config_generations: [{ delivery_config_id: 'daily-share', delivery_config_version: 1, feed_purpose: 'analytics' }],
+        feed_purposes: ['analytics'],
+        finality: ['snapshot'],
+        ledger_retained_from: '2026-07-29T00:00:00Z',
+        coverage_complete: true,
+      },
+      health: 'complete',
+      coverage: fullCoverage,
+      data_through: '2026-08-27T00:00:00Z',
+      obligation_counts: { total: 1, waiting: 0, healthy: 0, delayed: 0, action_required: 0, complete: 1 },
+      issues: [],
+    };
+    assert.equal(validateResponse(waivedSummary), true, JSON.stringify(validateResponse.errors));
+
+    const waivedPeriods = {
+      status: 'completed',
+      view: 'periods',
+      ledger_snapshot_id: 'ledger_waived_mismatch_001',
+      ledger_as_of: '2026-08-28T12:00:00Z',
+      changes_checkpoint: 'checkpoint_waived_mismatch_001',
+      account_id: 'acc_123',
+      scope: waivedSummary.scope,
+      periods: [waivedPeriod],
+      revisions: [revision],
+      adjustments: [],
+      consumer_statuses: [obligationMissing],
+      materializations: [],
+      receipts: [],
+      pagination: { has_more: false, total_count: 3 },
+    };
+    assert.equal(validateResponse(waivedPeriods), true, JSON.stringify(validateResponse.errors));
+
+    assert.equal(validateStatusWebhook({
+      idempotency_key: 'waived-mismatch-recovery-0001',
+      notification_id: 'waived-mismatch-recovery',
+      notification_type: 'reporting.status_changed',
+      fired_at: '2026-08-28T12:00:01Z',
+      subscriber_id: 'reporting-health',
+      account_id: 'acc_123',
+      delivery_config_id: 'daily-share',
+      delivery_config_version: 1,
+      feed_purpose: 'analytics',
+      reporting_obligation_id: waivedPeriod.reporting_obligation_id,
+      health: 'complete',
+      previous_health: 'action_required',
+      issue_ids: [],
+    }), true, JSON.stringify(validateStatusWebhook.errors));
     assert.match(
       statusResponseSchema['x-adcp-validation'].consumer_status_deadline,
       /expected_at plus automated_recovery_window_seconds/,

@@ -243,9 +243,12 @@ digest is intentionally retained).
    one `issue_id` and one `opened_at` across the transition. If you advertise
    `consumer_mismatch_escalation_seconds`, also advertise `operations_contact`
    and switch `recommended_action` to a `contact_*` value once the window
-   elapses; that boundary wins when it overlaps the grace window. Never retire a
-   mismatch out of a degraded projection while the statement that caused it is
-   still the buyer's current leaf.
+   elapses; that boundary wins when it overlaps the grace window. Resolve a
+   mismatch only when the underlying conflict ends. Waive one only after an
+   explicit bilateral agreement covering that exact caller/account issue and
+   causing status. A valid waiver retires the issue, restores the underlying
+   seller health while retaining the immutable consumer statement, and triggers
+   an offered `reporting.status_changed` recovery fire when health changes.
 8. **Count silence; do not act on it.** A buyer that misses its
    `expected_at + automated_recovery_window_seconds` status deadline is counted
    in `obligation_counts.consumer_status_pending` and nothing else. Missing

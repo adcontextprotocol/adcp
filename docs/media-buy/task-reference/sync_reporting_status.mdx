@@ -200,10 +200,17 @@ with their own ticketing systems without inventing a parallel identity.
 `consumer_commit_ref`, so it cannot express a URL or a sentence, and a seller
 must not reuse one value across callers on a caller-scoped issue.
 
-Retiring an issue is not a way to discharge a live disagreement: a seller must
-not take a `CONSUMER_STATUS_MISMATCH` out of a degraded projection while the
-statement that caused it is still your current unsuperseded leaf. Only
-`open` and `acknowledged` issues appear in `issues[]`.
+Only `open` and `acknowledged` issues appear in `issues[]`. `resolved` means the
+underlying disagreement ended. `waived` is the distinct terminal disposition
+for an exact disagreement that you and the seller explicitly agreed
+off-protocol to disregard; the seller cannot waive it unilaterally. A valid
+waiver retires the issue and restores the underlying seller health even while
+your immutable causing statement remains the current unsuperseded leaf and
+stays readable in `consumer_statuses[]`. It does not make that statement seller
+evidence. A later statement or materially different conflict is evaluated
+independently. When the waiver changes health, an offered
+`reporting.status_changed` channel carries the recovery transition with no open
+issue IDs.
 
 ## Buyer behavior
 
