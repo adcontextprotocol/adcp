@@ -13,6 +13,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const yaml = require('js-yaml');
+const { ADCP_ENVELOPE_FIELDS } = require('@adcp/sdk');
 
 const {
   lintAll,
@@ -137,6 +138,52 @@ test('create_media_buy sample requests avoid concrete 2026 flight dates', () => 
     assert.fail(
       `${violations.length} create_media_buy sample_request flight date value(s) hard-code 2026 outside explicit temporal negative tests.\n` +
         'Use start_time: "asap" and far-future end_time values for durable positive-path samples, or far-future reversed dates for temporal negatives:\n' +
+        violations.map((v) => `  ${v}`).join('\n'),
+    );
+  }
+});
+
+// Universal storyboards run against every agent, including media-buy agents
+// that implement media-buy/list-creative-formats-request.json. The runner
+// strips any request field that is neither an AdCP envelope field nor declared
+// by that schema, and reports it as an input_schema_field_stripped notice.
+// The pagination storyboard sends `account`, which
+// media-buy/list-creative-formats-request.json does not declare. Whether to
+// drop it from the storyboard or declare it in the schema is undecided, so
+// those steps are exempt.
+const MEDIA_BUY_UNDECLARED_FIELD_EXCEPTIONS = new Set([
+  'universal/pagination-integrity-creative-formats.yaml#pagination_walk/first_page:account',
+  'universal/pagination-integrity-creative-formats.yaml#pagination_walk/terminal_page:account',
+]);
+
+test('universal list_creative_formats sample requests only send fields a media-buy agent declares', () => {
+  const mediaBuySchema = JSON.parse(
+    fs.readFileSync(
+      path.resolve(STORYBOARD_DIR, '..', '..', 'schemas', 'source', 'media-buy', 'list-creative-formats-request.json'),
+      'utf8',
+    ),
+  );
+  const declared = new Set([...Object.keys(mediaBuySchema.properties), ...ADCP_ENVELOPE_FIELDS]);
+  const violations = [];
+  for (const file of storyboardFiles(path.join(STORYBOARD_DIR, 'universal'))) {
+    const rel = path.relative(STORYBOARD_DIR, file);
+    const doc = yaml.load(fs.readFileSync(file, 'utf8'));
+    for (const phase of doc?.phases || []) {
+      for (const step of phase?.steps || []) {
+        if (step?.task !== 'list_creative_formats') continue;
+        const stripped = Object.keys(step.sample_request || {}).filter(
+          (field) =>
+            !declared.has(field) && !MEDIA_BUY_UNDECLARED_FIELD_EXCEPTIONS.has(`${rel}#${phase.id}/${step.id}:${field}`),
+        );
+        if (stripped.length > 0) {
+          violations.push(`${rel} :: ${phase.id}/${step.id} sends ${stripped.join(', ')}`);
+        }
+      }
+    }
+  }
+  if (violations.length > 0) {
+    assert.fail(
+      `${violations.length} universal list_creative_formats step(s) send fields that media-buy agents do not declare, so the runner strips them:\n` +
         violations.map((v) => `  ${v}`).join('\n'),
     );
   }
