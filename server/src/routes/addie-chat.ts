@@ -16,6 +16,7 @@ import cors from "cors";
 import { createLogger } from "../logger.js";
 import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { optionalAuth } from "../middleware/auth.js";
+import { chatRequestCorrelation, correlateChatStreamError } from '../middleware/chat-request-correlation.js';
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { AddieClaudeClient, type AddieResponse, type RequestTools } from "../addie/claude-client.js";
 import {
@@ -1117,8 +1118,8 @@ const chatCorsOptions: cors.CorsOptions = {
   ],
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['X-Conversation-Id', 'RateLimit-Limit', 'RateLimit-Remaining'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+  exposedHeaders: ['X-Conversation-Id', 'RateLimit-Limit', 'RateLimit-Remaining', 'X-Request-ID'],
 };
 
 export function createAddieChatRouter(options?: {
@@ -1142,6 +1143,7 @@ export function createAddieChatRouter(options?: {
 
   // Enable CORS for all API routes (for native app support)
   apiRouter.use(cors(chatCorsOptions));
+  apiRouter.use(chatRequestCorrelation);
 
   // Initialize client after server starts (deferred to avoid blocking startup with sync I/O)
   if (!injectedChatClient) {
@@ -1507,7 +1509,7 @@ export function createAddieChatRouter(options?: {
           logger.warn({ error }, "Addie Chat: Conversation exceeded context limit");
           errorMessage = "This conversation is too long for me to process. Please start a new conversation and I'll be happy to help!";
         } else {
-          logger.error({ error }, "Addie Chat: Error processing message");
+          logger.error({ error, request_id: res.locals.chatRequestId }, "Addie Chat: Error processing message");
           errorMessage = isRetriesExhaustedError(error)
             ? `${error.reason}. Please try again in a moment.`
             : "I'm sorry, I encountered an error. Please try again.";
@@ -1613,7 +1615,7 @@ export function createAddieChatRouter(options?: {
           message: ATTACHMENT_VALIDATION_CLIENT_MESSAGE,
         });
       }
-      logger.error({ err: error }, "Addie Chat: Error handling message");
+      logger.error({ err: error, request_id: res.locals.chatRequestId }, "Addie Chat: Error handling message");
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to process message",
@@ -1666,6 +1668,9 @@ export function createAddieChatRouter(options?: {
 
     // Helper to send SSE events (checks if connection is still open)
     const sendEvent = (event: string, data: unknown) => {
+      if (event === 'error' || event === 'stream_error') {
+        data = correlateChatStreamError(res, data);
+      }
       if (connectionClosed) return;
       try {
         res.write(`event: ${event}\n`);
@@ -2554,7 +2559,7 @@ export function createAddieChatRouter(options?: {
           message: error.statusCode === 403 ? 'Sign in to choose a model.' : 'This model selection is unavailable for the request.',
         });
       }
-      logger.error({ err: error }, "Addie Chat Stream: Error handling message");
+      logger.error({ err: error, request_id: res.locals.chatRequestId }, "Addie Chat Stream: Error handling message");
       let interruptedMessageId: string | undefined;
       if (claimedTurn) {
         try {

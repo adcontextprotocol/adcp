@@ -5242,8 +5242,85 @@
         });
 
         panel.append(title, detail, retryButton);
+        appendChatRequestReference(panel, options.requestId);
         contentDiv.appendChild(panel);
         appendCertificationStatus(contentDiv, options.certification);
+      }
+
+      function validChatRequestId(value) {
+        return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+          ? value.toLowerCase() : null;
+      }
+
+      function appendChatRequestReference(container, requestId) {
+        const id = validChatRequestId(requestId);
+        if (!id) return;
+        const reference = document.createElement('div');
+        reference.className = 'chat-request-reference';
+        reference.textContent = `Support reference: ${id}`;
+        container.appendChild(reference);
+      }
+
+      function chatRequestError(payload, status, requestId, streaming = false) {
+        const data = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+        const nested = data.error && typeof data.error === 'object' && !Array.isArray(data.error) ? data.error : {};
+        const code = typeof data.code === 'string' ? data.code
+          : typeof data.error === 'string' ? data.error
+          : typeof nested.code === 'string' ? nested.code : '';
+        const publicErrors = new Map([
+          ['Invalid session', 'Your session has expired. Sign in again, then retry your message.'],
+          ['An unambiguous organization selection is required', 'Your organization selection could not be verified. Choose your organization again or sign in again, then retry your message.'],
+          ['CSRF validation failed', 'Your security token could not be verified. Refresh this page, then retry your message.'],
+          ['Authentication service temporarily unavailable', 'Sign-in is temporarily unavailable. Please try again shortly.'],
+          ['Authorization service temporarily unavailable', 'Your access could not be verified right now. Please try again shortly.'],
+          ['Conversation not found', 'This conversation is unavailable for your current session. Sign in again or start a new chat.'],
+          ['checkpoint_persistence_failed', 'An action completed, but its result could not be safely saved. Review the action before trying again.'],
+        ]);
+        let message = publicErrors.get(code) || publicErrors.get(data.reason);
+        // `message` is the API's public prose field. Never show arbitrary error
+        // objects, provider errors/reasons, HTML responses or 5xx diagnostics.
+        const suppliedMessage = typeof data.message === 'string' ? data.message : nested.message;
+        if (!message && status >= 400 && status < 500 && typeof suppliedMessage === 'string'
+            && suppliedMessage.trim().length > 0 && suppliedMessage.length <= 400
+            && !/[<>\r\n\u0000-\u001f]/.test(suppliedMessage)
+            && !/\b(?:stack|exception|postgres|bearer)\b|https?:\/\/|\bat \w+\(/i.test(suppliedMessage)) {
+          message = suppliedMessage.trim();
+        }
+        if (!message) {
+          message = status === 401 ? 'Sign in again, then retry your message.'
+            : status === 403 ? 'This request is not allowed for your current session. Check your account and organization, then try again.'
+            : status === 429 ? 'You have reached the message limit. Please try again later.'
+            : streaming ? 'The reply was interrupted before completion.'
+            : 'Addie could not complete this request. Please try again.';
+        }
+        const error = new Error(message);
+        if (status) error.httpStatus = status;
+        error.serverCode = /^[a-z][a-z0-9_]{0,63}$/.test(code) ? code : '';
+        error.requestId = validChatRequestId(data.request_id) || validChatRequestId(requestId);
+        if (typeof data.recoverable === 'boolean') error.recoverable = data.recoverable;
+        if (code === 'turn_in_progress') error.recoverable = true;
+        error.certification = data.certification || null;
+        return error;
+      }
+
+      function showChatRequestError(error) {
+        // Keep the support reference available after the transient toast would
+        // have disappeared. Server text is always rendered as text, never HTML.
+        const messageDiv = addMessage('', 'assistant');
+        const panel = document.createElement('div');
+        panel.className = 'chat-request-error';
+        panel.setAttribute('role', 'alert');
+        const detail = document.createElement('div');
+        detail.textContent = error.message;
+        panel.appendChild(detail);
+        if (error.httpStatus === 401) {
+          const link = document.createElement('a');
+          link.href = '/auth/login?return_to=/chat';
+          link.textContent = 'Sign in again';
+          panel.appendChild(link);
+        }
+        appendChatRequestReference(panel, error.requestId);
+        messageDiv.querySelector('.message-content').appendChild(panel);
       }
 
       // Send message with streaming
@@ -5294,39 +5371,38 @@
         let pendingSiSession = null;
         let pendingSiAgents = null;
         let pendingModelInfo = null;
+        // A transport attempt gets its own correlation ID; clientRequestId
+        // remains the stable logical turn ID used by safe continuation.
+        let requestId = crypto.randomUUID();
 
         try {
+          const selectedOrganizationId = getSelectedOrganizationId();
           const response = await authFetch('/api/addie/chat/stream', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'X-Request-ID': requestId,
             },
             body: JSON.stringify({
               message,
               conversation_id: conversationId,
               message_source: messageSource,
               model_preference: selectedModel,
-              organization_id: getSelectedOrganizationId(),
+              ...(typeof selectedOrganizationId === 'string' && selectedOrganizationId.trim()
+                ? { organization_id: selectedOrganizationId.trim() } : {}),
               attachments: buildAttachmentPayload(attachmentsToSend),
               client_request_id: clientRequestId,
               retry: retrying,
             }),
           });
+          requestId = validChatRequestId(response.headers.get('X-Request-ID')) || requestId;
 
           if (!response.ok) {
-            // Surface server error messages (e.g., rate limit "daily limit reached")
-            let errorMsg = 'Failed to send message';
-            let errorCode = '';
+            let errorData = null;
             try {
-              const errorData = await response.json();
-              if (errorData.message) errorMsg = errorData.message;
-              if (errorData.error) errorCode = errorData.error;
+              errorData = await response.json();
             } catch (e) { /* ignore parse errors */ }
-            const httpError = new Error(errorMsg);
-            httpError.httpStatus = response.status;
-            httpError.serverCode = errorCode;
-            httpError.recoverable = errorCode === 'turn_in_progress';
-            throw httpError;
+            throw chatRequestError(errorData, response.status, requestId);
           }
 
           // Show remaining message count for anonymous users (when running low)
@@ -5406,13 +5482,12 @@
                     pendingSiAgents = data.si_agents;
                   }
                 } else if (currentEventType === 'stream_error') {
-                  streamFailure = data.reason || 'Reply interrupted';
-                  const streamError = new Error(streamFailure);
-                  streamError.recoverable = data.recoverable === true;
-                  streamError.certification = data.certification || null;
+                  const streamError = chatRequestError(data, 0, requestId, true);
+                  streamFailure = streamError.message;
+                  streamError.recoverable = streamError.recoverable === true;
                   throw streamError;
                 } else if (currentEventType === 'error') {
-                  throw new Error(data.error || 'Unknown error');
+                  throw chatRequestError(data, 0, requestId, true);
                 }
                 // tool_start and tool_end events are informational, could show status
                 currentEventType = '';
@@ -5503,9 +5578,10 @@
         } catch (error) {
           // Network EOFs do not carry an SSE error event, but once the server
           // assigned a conversation the same client request can be continued.
-          if (!error.recoverable && !error.httpStatus && conversationId && clientRequestId) {
+          if (typeof error.recoverable !== 'boolean' && !error.httpStatus && conversationId && clientRequestId) {
             error.recoverable = true;
           }
+          error.requestId = validChatRequestId(error.requestId) || requestId;
           if (error.recoverable) {
             console.warn('Addie reply interrupted; offering a safe continuation:', error.message);
           } else {
@@ -5522,9 +5598,13 @@
               clientRequestId,
               modelPreference: selectedModel,
               certification: error.certification,
+              requestId: error.requestId,
             });
           } else {
-            showError(error.message || 'Failed to send message. Please try again.');
+            // Network/parser exceptions may contain browser or transport internals.
+            const visibleError = error.serverCode !== undefined ? error
+              : chatRequestError(null, 0, error.requestId);
+            showChatRequestError(visibleError);
           }
 
           // Clear loading state on error

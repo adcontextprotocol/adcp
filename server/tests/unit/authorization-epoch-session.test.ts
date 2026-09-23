@@ -48,6 +48,7 @@ vi.mock('../../src/db/session-refresh-db.js', () => ({
 import { AuthorizationSnapshotUnavailableError } from '../../src/db/user-authorization-snapshot-db.js';
 import { invalidateBanCache, optionalAuth, requireAuth, stopAuthTimers } from '../../src/middleware/auth.js';
 import { csrfProtection } from '../../src/middleware/csrf.js';
+import { chatRequestCorrelation } from '../../src/middleware/chat-request-correlation.js';
 
 const AUTHENTICATED_ID = 'user_epoch_authenticated';
 const PROVIDER_USER = {
@@ -55,6 +56,28 @@ const PROVIDER_USER = {
   emailVerified: true, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 };
 let sequence = 0;
+
+it.each([
+  [{ message: 'Hello' }, 200],
+  [{ message: 'Hello', organization_id: null }, 403],
+  [{ message: 'Hello', organization_id: 'org_other' }, 403],
+  [{ message: 'Hello', organization_id: 'org_pinnacle' }, 200],
+])('preserves exact-credential chat authorization for body %j', async (body, status) => {
+  mocks.authenticate.mockResolvedValue({ authenticated: true, user: { ...PROVIDER_USER }, accessToken: 'access-token', organizationId: 'org_pinnacle' });
+  const app = express();
+  app.use(chatRequestCorrelation);
+  app.use(express.json());
+  app.use((req, _res, next) => { req.cookies = { 'wos-session': `chat-org-${++sequence}` }; next(); });
+  app.post('/api/addie/chat/stream', optionalAuth, (_req, res) => res.json({ ok: true }));
+  const response = await supertest(app).post('/api/addie/chat/stream').send(body);
+  expect(response.status).toBe(status);
+  if (status === 403) {
+    expect(response.body).toMatchObject({ error: 'An unambiguous organization selection is required', request_id: response.headers['x-request-id'] });
+    expect(mocks.loadAuthorizationSnapshot).not.toHaveBeenCalled();
+  } else {
+    expect(mocks.loadAuthorizationSnapshot).toHaveBeenCalledWith(AUTHENTICATED_ID, 'org_pinnacle');
+  }
+});
 function snapshot(overrides: Partial<AuthorizationSnapshot> = {}): AuthorizationSnapshot {
   return {
     authenticatedUserId: AUTHENTICATED_ID, canonicalUserId: AUTHENTICATED_ID,

@@ -792,6 +792,8 @@ describe('Addie chat conversation object authorization', () => {
       });
       expect(response.status).toBe(200);
       expect(response.text).toContain('event: stream_error');
+      expect(response.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+      expect(response.text).toContain(`"request_id":"${response.headers['x-request-id']}"`);
       expect(markDelivery).toHaveBeenCalledWith('interrupted', 'message_assistant');
     } finally {
       prepare.mockRestore();

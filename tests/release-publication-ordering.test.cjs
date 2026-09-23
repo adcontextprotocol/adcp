@@ -647,6 +647,7 @@ test("main advancing during GitHub staging leaves a draft and publishes no R2 ob
 });
 test("workflow wiring binds tested SHA, approval, exact recovery, and publication order", () => {
   const ds = deploy.jobs.deploy.steps;
+  assert.equal(ds.find((s) => s.name === "Checkout").with["fetch-depth"], 0);
   assert.ok(
     ds.findIndex(
       (s) => s.name === "Require committed version to have a complete release",
