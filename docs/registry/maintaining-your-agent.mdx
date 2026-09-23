@@ -33,14 +33,23 @@ AAO continuously re-evaluates your agent's conformance on an approximately **1-h
 
 The heartbeat is not a registry crawl. A crawl re-reads your `adagents.json` or capability snapshot and updates registry metadata. The heartbeat runs protocol storyboards against your live endpoint and determines your verification status. The two are independent operations.
 
-### Verified (Spec) vs Verified (Sandbox)
+### Grading profiles and verification modes
 
-Both qualifiers run the same storyboards on the same ~1h heartbeat. The difference is where the runner targets:
+The agent dashboard can compare three grading profiles from the same completed heartbeat evidence:
 
-| Qualifier | Runner targets | What it attests |
-|---|---|---|
-| **(Spec)** | Any endpoint you register — test deployment, local dev, sandbox-only stack | AdCP wire format and protocol semantics are correct |
-| **(Sandbox)** | Your registered **production** `agent_url`, using natural-key references with `sandbox: true` or preverified sandbox `account_id` references | Your production code path keeps sandbox accounts isolated with zero real-world side effects |
+| Grading profile | Meaning |
+|---|---|
+| **Legacy grading** | The compatibility evaluator used by existing badges and by every role/version with no explicit selection. |
+| **Strict Spec grading** | Requires complete universal, role-protocol, and declared-specialism evidence. Missing or ambiguous evidence never counts as a pass. |
+| **Sandbox grading preview** | A non-selectable preview. It remains unavailable until the runner exposes causal bundle data and AgenticAdvertising.org publishes a versioned exception catalog. |
+
+This comparison is passive. Opening the dashboard and selecting a saved result do not contact your agent or enqueue another compliance run. Selection enqueues only a database-backed badge and token projection retry from that immutable result. For each exact agent role and AdCP version, an organization owner or admin can select Legacy grading or Strict Spec grading from a current completed run. The selection is authenticated, revision-checked, reversible, and recorded in an append-only audit. New roles and versions independently default to Legacy.
+
+If a selected result is non-passing, the dashboard requires an explicit public-impact confirmation. An active badge degrades and enters the existing 48-hour grace period; selection never creates a badge from non-passing evidence. The first failing Strict Spec timestamp survives Legacy/Spec toggles and clears only after a passing Strict Spec assessment, so toggling cannot restart grace.
+
+Grading profiles are separate from badge **evidence modes**. `verification_modes` values such as `spec` and `live` describe what kind of evidence a badge carries; `live` remains independent. A badge token's `grading_profile` claim identifies Legacy or Strict Spec grading. Older claim-less tokens are historical Legacy evidence. Offline copies may remain cryptographically valid for their existing 30-day lifetime after a selection changes, so use the registry API for real-time status.
+
+Legacy has no automatic migration. Six months after selection general availability is a review point only. Any retirement is a separate working-group decision, cannot occur before 12 months, requires at least 90 days' notice and a safe selectable profile for production agents, and would make remaining Legacy identities unverified rather than silently relabeling them Strict Spec.
 
 See [AAO Verified](/docs/building/verification/aao-verified) for complete eligibility and attestation details.
 
@@ -52,7 +61,7 @@ The agent dashboard at [agenticadvertising.org/dashboard/agents](https://agentic
 |---|---|---|
 | **Active** | All storyboards are passing on the current heartbeat. Your AAO Verified badge is live and auto-renewing. | No action needed. Monitor for regressions after deploys. |
 | **Degraded** | At least one storyboard started failing. The badge **continues to render** while a 48-hour grace period runs. | Investigate immediately — check the comply report, reproduce locally with `@adcp/sdk/testing`, and fix the regression before the grace period expires. |
-| **Revoked** | 48 hours of continuous storyboard failure elapsed without recovery. The qualifier has dropped from the badge. (Sandbox), if separately held, is unaffected — the two axes are independent. | Fix the underlying conformance issue, then wait for the next heartbeat cycle to restore the badge automatically. |
+| **Revoked** | 48 hours of continuous storyboard failure elapsed without recovery. The verification qualifier has dropped from the badge. | Fix the underlying conformance issue, then wait for the next heartbeat cycle to restore the badge automatically. |
 | **Recovery** | Storyboards are passing again after a prior failure. The badge qualifier reissues automatically. | No action needed beyond confirming the fix is stable. |
 
 <Note>

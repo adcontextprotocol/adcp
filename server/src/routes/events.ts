@@ -1,3 +1,4 @@
+import { respondToAdminAuthorizationError } from '../auth/admin-authorization-response.js';
 /**
  * Events routes module
  *
@@ -40,8 +41,7 @@ import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { createChannel, setChannelPurpose, sendDirectMessage } from "../slack/client.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { EmailPreferencesDatabase } from "../db/email-preferences-db.js";
-import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
-import { isBreakGlassAdminEmail } from "../auth/admin-access.js";
+import { isAuthenticatedUserAAOAdmin } from "../addie/admin-status-lookup.js";
 import { getWorkos } from "../auth/workos-client.js";
 import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 
@@ -1741,10 +1741,7 @@ export function createEventsRouter(): {
       let isDraftPreview = false;
       if (!["published", "completed"].includes(event.status)) {
         const user = req.user;
-        const isAdmin = !!user && (
-          isBreakGlassAdminEmail(user.email) ||
-          await isWebUserAAOAdmin(user.id)
-        );
+        const isAdmin = !!user && await isAuthenticatedUserAAOAdmin(user);
         if (!isAdmin) {
           return res.status(404).json({
             error: "Event not found",
@@ -1859,6 +1856,7 @@ export function createEventsRouter(): {
         draft_preview: isDraftPreview,
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, "Error getting event");
       res.status(500).json({
         error: "Failed to get event",

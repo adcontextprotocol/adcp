@@ -9,10 +9,12 @@ Reliable Reporting is experimental in 3.2. `reporting.core` is its required
 tier; `managed_delivery` and `reconciled_billing` are separately advertised
 optional tiers.
 
-The consumer-status loop is additive and opt-in in current source. Sellers
-advertise `consumer_status_task` only when implemented. The active notice makes
-it required Core in the next eligible minor after October 24, 2026; RC.1 and the
-current public training seller remain unchanged.
+The consumer-status loop is additive and opt-in. It is published in
+`3.2.0-rc.2` and hardened in `3.2.0-rc.3`, and it stays opt-in until the notice
+window closes on October 24, 2026. Sellers advertise `consumer_status_task`
+only when implemented. The active notice makes it required Core in the next
+eligible minor after that date; RC.1 and the current public training seller
+remain unchanged.
 </Warning>
 
 Every buyer eventually asks one question: **"do I have definitive reporting
@@ -73,6 +75,16 @@ start a separate reporting SLA. Before a period closes, both sides can derive
 its boundary and `next_expected_at`, but the seller cannot freeze an
 `all_media_buys` denominator yet. At the period boundary, the obligation
 becomes part of the authoritative ledger whether or not source data exists.
+
+A closed, complete summary can still have an active configuration schedule.
+The seller MUST populate `next_expected_at` with the nearest future period
+start across its active in-scope `delivery_config_generations` when such a
+period exists outside the evaluated scope, and omit it when none exists.
+This summary projection preserves both complete-health scope guards and MUST
+NOT create, expose, lease, count, or alter an open-period obligation or change
+the scope's coverage. See
+[future expectations on complete summaries](/docs/media-buy/task-reference/get_reporting_status#future-expectation-on-a-complete-summary)
+for the selection rule and its distinction from obligation and webhook deadlines.
 
 ```mermaid
 %%{init: {"sequence": {"showSequenceNumbers": true}}}%%
@@ -299,7 +311,8 @@ digest is intentionally retained).
   received.
 
 Reliable Reporting 1.0 is published in the RC wire bundles; the consumer-status
-loop lands in `3.2.0-rc.2`. The public training sales agent serves whichever
+loop is published in `3.2.0-rc.2` and hardened in `3.2.0-rc.3`. The public
+training sales agent serves whichever
 prerelease contract its deployment advertises, which may trail the newest
 published bundle. Read the advertised version from
 `get_adcp_capabilities` and put that exact negotiated value on every

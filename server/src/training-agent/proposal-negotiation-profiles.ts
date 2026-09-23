@@ -4,6 +4,7 @@ import type {
   ProposalCommercialTerms,
   ProposalEvaluationContext,
   ProposalPurchase,
+  ProposalResolvedPricing,
   ProposalRefinementCapabilities,
   ProposalRefinementResult,
 } from "@adcp/sdk";
@@ -145,13 +146,16 @@ function applyCpmConstraint(
   const floor = profile === "constrained-seller" ? 8 : 2;
   if (constraint.currency !== "USD" || constraint.max < floor) return false;
   for (const purchase of terms.purchases) {
-    purchase.pricing = {
+    const pricing: ProposalResolvedPricing = {
       ...purchase.pricing,
+      pricing_option_id:
+        purchase.pricing?.pricing_option_id ?? purchase.pricing_option_id,
       pricing_model: "cpm",
       currency: "USD",
       fixed_price: floor,
     };
-    delete purchase.pricing.floor_price;
+    delete pricing.floor_price;
+    purchase.pricing = pricing;
   }
   return true;
 }

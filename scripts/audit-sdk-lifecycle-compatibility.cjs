@@ -34,7 +34,7 @@ async function routingMatrix() {
   const { InMemoryTransport } = sdkRequire('@modelcontextprotocol/sdk/inMemory.js');
   const latestSchemas = JSON.parse(fs.readFileSync(
     path.join(__dirname, '..', 'dist', 'schemas', 'latest.json'), 'utf8'));
-  const versions = ['3.0.25', latestSchemas.latest_stable, '3.2.0-rc.1'];
+  const versions = ['3.0.25', latestSchemas.latest_stable, '3.2.0-rc.3'];
   const rows = [];
   for (const buyerVersion of versions) {
     for (const [index, sellerVersion] of versions.entries()) {
@@ -113,7 +113,7 @@ function makeAgent(version, { feed = false, versionMetadata = true } = {}) {
   const calls = [];
   const agent = new AgentClient(
     { id: 'audit-seller', name: 'Audit seller', agent_uri: 'https://seller.example/mcp', protocol: 'mcp' },
-    { adcpVersion: '3.2.0-rc.1', validateFeatures: false }
+    { adcpVersion: '3.2.0-rc.3', validateFeatures: false }
   );
   agent.getCapabilities = async () => ({
     version: 'v3',

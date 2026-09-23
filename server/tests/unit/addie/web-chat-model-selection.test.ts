@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseWebChatModelPreference, webChatModelInfo } from '../../../src/addie/web-chat-model-selection.js';
 
 const execution = {
@@ -9,15 +9,23 @@ const execution = {
 };
 
 describe('Web chat model choice and evidence', () => {
+  afterEach(() => vi.unstubAllEnvs());
   it('accepts named choices only for authenticated production requests', () => {
     expect(parseWebChatModelPreference(undefined, false)).toBe('default');
-    expect(parseWebChatModelPreference('sonnet', true)).toBe('sonnet');
-    expect(parseWebChatModelPreference('gemini', true)).toBe('gemini');
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'gemini');
+    expect(() => parseWebChatModelPreference('sonnet', true)).toThrow('response provider policy');
+    expect(parseWebChatModelPreference('gemini', true)).toBe('default');
     expect(() => parseWebChatModelPreference('gemini', false)).toThrow('Sign in');
     expect(() => parseWebChatModelPreference('gemini', true, true)).toThrow('evaluation');
     for (const invalid of [null, {}, [], 'gemini-arbitrary']) {
       expect(() => parseWebChatModelPreference(invalid, true)).toThrow('model_preference');
     }
+  });
+
+  it('lets operator rollback override stale browser choices without recording a manual experiment choice', () => {
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'sonnet');
+    expect(parseWebChatModelPreference('sonnet', true)).toBe('default');
+    expect(parseWebChatModelPreference('gemini', true)).toBe('default');
   });
 
   it('uses actual provider evidence for a handoff instead of the requested model', () => {

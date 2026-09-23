@@ -132,6 +132,27 @@
       "if": {
         "properties": {
           "scenario": {
+            "const": "force_media_buy_purge"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "media_buy_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
             "const": "force_create_media_buy_arm"
           }
         }
@@ -296,6 +317,56 @@
                     "task_id"
                   ]
                 }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_get_creative_features_arm"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "oneOf": [
+              {
+                "properties": {
+                  "arm": {
+                    "const": "submitted"
+                  }
+                },
+                "required": [
+                  "arm",
+                  "task_id",
+                  "evaluation_id"
+                ]
+              },
+              {
+                "properties": {
+                  "arm": {
+                    "const": "completed"
+                  },
+                  "result": {
+                    "type": "object",
+                    "required": [
+                      "evaluation_id",
+                      "results"
+                    ]
+                  }
+                },
+                "required": [
+                  "arm",
+                  "result"
+                ]
               }
             ]
           }
@@ -819,7 +890,7 @@
             "required": ["operation"],
             "properties": {
               "operation": {
-                "enum": ["prepare", "advance_time", "publish_zero_row", "publish_nonempty", "restate_snapshot", "restate_after_received", "omit_obligation"]
+                "enum": ["prepare", "advance_time", "publish_zero_row", "publish_nonempty", "restate_snapshot", "restate_after_received", "omit_obligation", "advance_past_status_deadline", "advance_past_escalation"]
               }
             },
             "allOf": [
@@ -863,7 +934,7 @@
   "properties": {
     "scenario": {
       "type": "string",
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'reporting_core_lifecycle_probe' installs a caller/account-scoped Core fixture whose first elapsed obligation is visible before any report, advances its virtual clock into delayed or action_required, and can publish deterministic zero-row or non-empty revisions, restate a provisional revision, or restate one the caller already received, without waiting for wall-clock boundaries. Other scenarios provide deterministic sandbox probes for their documented lifecycle checks. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'reporting_core_lifecycle_probe' installs a caller/account-scoped Core fixture whose first elapsed obligation is visible before any report, advances its virtual clock into delayed or action_required, and can publish deterministic zero-row or non-empty revisions, restate a provisional revision, restate one the caller already received, or cross the consumer-status deadline and consumer-mismatch escalation boundaries, without waiting for wall-clock boundaries. Other scenarios provide deterministic sandbox probes for their documented lifecycle checks. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
     },
     "params": {
       "type": "object",
@@ -881,7 +952,7 @@
         },
         "media_buy_id": {
           "type": "string",
-          "description": "Media buy to transition (force_media_buy_status, simulate_delivery, simulate_budget_spend) or seed (seed_media_buy).",
+          "description": "Media buy to transition or purge (force_media_buy_status, force_media_buy_purge), simulate (simulate_delivery, simulate_budget_spend), or seed (seed_media_buy).",
           "x-entity": "media_buy"
         },
         "session_id": {
@@ -921,8 +992,8 @@
         },
         "operation": {
           "type": "string",
-          "enum": ["seed_inaccessible_item", "query_eligibility", "advance_time", "recreate_catalog", "prepare", "expire_proposal", "publish_zero_row", "publish_nonempty", "restate_snapshot", "restate_after_received", "omit_obligation", "publish_official_adjustment", "probe_scheduler_dst", "suppress_readiness", "advance_within_retention", "revoke_access", "publish_adjustment"],
-          "description": "Scenario-specific probe operation. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, and omit_obligation to exercise obligation availability, health deadlines, explicit reporting, provisional restatement, stale-received grace, and buyer-side missing-obligation detection. restate_snapshot publishes a new snapshot revision that immediately supersedes the current snapshot for the same logical slice and is invalid when the current revision is official. restate_after_received does the same restatement but only against the revision named in received_reporting_revision_id, so the stale-received grace projection can be graded live; it returns the grace deadline and advance_to positions the virtual clock inside or past it. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence."
+          "enum": ["seed_inaccessible_item", "query_eligibility", "advance_time", "recreate_catalog", "prepare", "expire_proposal", "publish_zero_row", "publish_nonempty", "restate_snapshot", "restate_after_received", "omit_obligation", "advance_past_status_deadline", "advance_past_escalation", "publish_official_adjustment", "probe_scheduler_dst", "suppress_readiness", "advance_within_retention", "revoke_access", "publish_adjustment"],
+          "description": "Scenario-specific probe operation. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, omit_obligation, advance_past_status_deadline, and advance_past_escalation to exercise obligation availability, health deadlines, explicit reporting, provisional restatement, stale-received grace, buyer-side missing-obligation detection, counted consumer-status silence, and consumer-mismatch escalation. advance_past_status_deadline moves the clock strictly past expected_at plus the advertised automated_recovery_window_seconds without recording any consumer status, so obligation_counts.consumer_status_pending is gradable; advance_past_escalation moves it strictly past the open CONSUMER_STATUS_MISMATCH issue opened_at plus the advertised consumer_mismatch_escalation_seconds and returns both that boundary and any still-future stale_received_grace_deadline, so the escalation precedence rule is gradable. restate_snapshot publishes a new snapshot revision that immediately supersedes the current snapshot for the same logical slice and is invalid when the current revision is official. restate_after_received does the same restatement but only against the revision named in received_reporting_revision_id, so the stale-received grace projection can be graded live; it returns the grace deadline and advance_to positions the virtual clock inside or past it. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence."
         },
         "target_health": {
           "type": "string",
@@ -1201,10 +1272,11 @@
           "type": "string",
           "enum": [
             "submitted",
+            "completed",
             "input-required",
             "rejected"
           ],
-          "description": "Response arm for the next forced operation call. Used by force_create_media_buy_arm, force_get_products_arm, and force_get_signals_arm. 'submitted' is supported for all three operations; create_media_buy also supports 'input-required'; get_products also supports 'rejected'. 'completed' is covered by force_task_completion after a submitted task exists; 'working' is an out-of-band progress signal, not an initial response arm."
+          "description": "Response arm for the next forced operation call. Used by force_create_media_buy_arm, force_get_products_arm, force_get_signals_arm, and force_get_creative_features_arm. 'submitted' is supported for all four operations; get_creative_features also supports 'completed' with a deterministic result; create_media_buy also supports 'input-required'; get_products also supports 'rejected'. Async completion after a submitted task is covered by force_task_completion; 'working' is an out-of-band progress signal, not an initial response arm."
         },
         "task_id": {
           "type": "string",
@@ -1212,10 +1284,17 @@
           "description": "Deterministic task handle the seller MUST emit verbatim on the next forced operation response when arm is 'submitted'. The seller MUST accept this exact value on subsequent tasks/get or get_task_status calls within the same authenticated sandbox account + principal pair and MUST return REFERENCE_NOT_FOUND for the same task_id under any other account or principal. Sandbox task_ids are caller-opaque strings - the seller's production task-id format rules do not apply.",
           "x-entity": "task"
         },
+        "evaluation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Deterministic provider evaluation identity the seller MUST emit on the next forced get_creative_features submitted acknowledgement and preserve on its terminal completion result.",
+          "x-entity": "creative_evaluation"
+        },
         "message": {
           "type": "string",
           "maxLength": 2000,
-          "description": "Optional human-readable explanation surfaced on the next forced operation response. Used by force_create_media_buy_arm, force_get_products_arm, and force_get_signals_arm for the submitted arm. Plain text only."
+          "description": "Optional human-readable explanation surfaced on the next forced operation response. Used by force_create_media_buy_arm, force_get_products_arm, force_get_signals_arm, and force_get_creative_features_arm for the submitted arm. Plain text only."
         },
         "reason": {
           "type": "string",
@@ -1277,7 +1356,7 @@
         },
         "result": {
           "$ref": "/schemas/compliance/task-completion-data.json",
-          "description": "Completion payload to record against the task. force_task_completion supports the bounded get_products, get_signals, and create_media_buy completion union; polling and production SDKs resolve all task results through the originating task's manifest response mapping instead of embedding a global result union. The seller MUST deliver this verbatim to the buyer's push_notification_config.url, preserving caller-supplied fields. Sellers MUST emit INVALID_PARAMS when the payload does not match the original task response branch and MAY reject payloads exceeding 256 KB."
+          "description": "Deterministic result payload. force_get_creative_features_arm uses it when arm is completed and returns it on the next matching operation call. force_task_completion records it against an existing task and supports the bounded get_products, get_signals, create_media_buy, and get_creative_features completion union; polling and production SDKs resolve all task results through the originating task's manifest response mapping instead of embedding a global result union. The seller MUST preserve caller-supplied fields. Sellers MUST emit INVALID_PARAMS when the payload does not match the required response branch and MAY reject payloads exceeding 256 KB."
         }
       },
       "additionalProperties": true

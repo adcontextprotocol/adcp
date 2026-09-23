@@ -101,6 +101,45 @@ describe('CrawlerService single-domain profile rebuild', () => {
     expect(ctx.crawling).toBe(false);
   });
 
+  it('does not treat a failed publisher cache write as a successful admission', async () => {
+    const domain = 'publisher.example';
+    const recordPublisherFromAgent = vi.fn();
+    const recordAgentFromAdagentsJson = vi.fn();
+    const ctx = Object.create((CrawlerService as any).prototype);
+    Object.assign(ctx, {
+      memberDb: {
+        listProfiles: vi.fn().mockResolvedValue([{ publishers: [{ domain, is_public: true }] }]),
+      },
+      adAgentsManager: {
+        validateDomain: vi.fn().mockResolvedValue({
+          valid: true,
+          raw_data: { authorized_agents: [{ url: 'https://agent.example/mcp' }], properties: [] },
+          resolved_url: `https://${domain}/.well-known/adagents.json`,
+          discovery_method: 'direct',
+        }),
+      },
+      cacheAdagentsManifest: vi.fn().mockResolvedValue(false),
+      federatedIndex: {
+        listDiscoveredAgents: vi.fn().mockResolvedValue([]),
+        recordPublisherFromAgent,
+        recordAgentFromAdagentsJson,
+        getStats: vi.fn().mockRejectedValue(new Error('stats unavailable')),
+      },
+      recordPropertiesForAgent: vi.fn(),
+      fanOutPublisherPropertiesAuthorizations: vi.fn(),
+      reconcileLegacyAdagentsAgents: vi.fn(),
+      refreshAgentSnapshots: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const admitted = await ctx.populateFederatedIndex([]);
+
+    expect(admitted).toEqual(new Set());
+    expect(recordPublisherFromAgent).not.toHaveBeenCalled();
+    expect(recordAgentFromAdagentsJson).not.toHaveBeenCalled();
+    expect(ctx.recordPropertiesForAgent).not.toHaveBeenCalled();
+    expect(ctx.reconcileLegacyAdagentsAgents).not.toHaveBeenCalled();
+  });
+
   it('admits only one in-process full-crawl coordination attempt', async () => {
     const ctx = Object.create((CrawlerService as any).prototype);
     let resolveIntent!: (value: boolean) => void;

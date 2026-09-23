@@ -114,15 +114,13 @@ import {
   type MembershipInvite,
 } from "../../db/membership-invites-db.js";
 import { sendMembershipInviteEmail } from "../../notifications/email.js";
+import { previewMerge } from "../../db/org-merge-db.js";
 import {
-  mergeOrganizations,
-  previewMerge,
-  type StripeCustomerResolution,
-} from "../../db/org-merge-db.js";
+  ORGANIZATION_MERGE_UNAVAILABLE_ERROR,
+  ORGANIZATION_MERGE_UNAVAILABLE_MESSAGE,
+} from "../../db/org-merge-containment.js";
 import { getWorkos } from "../../auth/workos-client.js";
 import {
-  getSlackAdminStatusCache,
-  getWebAdminStatusCache,
   invalidateSlackAdminStatusCache,
   invalidateWebAdminStatusCache,
 } from "../admin-status-cache.js";
@@ -184,6 +182,7 @@ import {
   getGoogleEmailAliases,
   normalizeEmail,
 } from "../../utils/email-domain.js";
+import { AAOAdminLookupUnavailableError } from "../admin-status-lookup.js";
 
 const logger = createLogger("addie-admin-tools");
 const orgDb = new OrganizationDatabase();
@@ -198,89 +197,87 @@ const AAO_ADMIN_WORKING_GROUP_SLUG = "aao-admin";
 // The slug for the kitchen cabinet management group
 const KITCHEN_CABINET_SLUG = "kitchen-cabinet";
 
-// Cache for admin status checks - admin status rarely changes
-// Site-admin membership can be revoked on another replica. Keep successful
-// membership decisions short-lived so every replica rechecks within a minute.
-const ADMIN_POSITIVE_CACHE_TTL_MS = 60 * 1000;
-const ADMIN_NEGATIVE_CACHE_TTL_MS = 5 * 60 * 1000;
 const COUNCIL_CACHE_TTL_MS = 30 * 60 * 1000;
-// Shared cache module — invalidators can be called without dragging the
-// rest of admin-tools (and its Anthropic-instantiating dependencies)
-// into unrelated import graphs.
-const adminStatusCache = getSlackAdminStatusCache();
 
 /**
  * Check if a Slack user is an admin
  * Looks up their WorkOS user ID via Slack mapping and checks membership in aao-admin working group
- * Positive results are cached for at most 60 seconds so a revoke propagates
- * across replicas without a shared cache invalidation channel.
+ * Authorization results are not cached, so grants and revocations are visible
+ * across replicas on the next request.
  */
-export async function isSlackUserAAOAdmin(
+export type SlackAAOAdminAccessDecision =
+  | { status: "authorized"; workosUserId: string }
+  | { status: "forbidden"; reason: "unmapped" | "not_member"; workosUserId?: string }
+  | { status: "unavailable"; stage: "mapping" | "authority_group" | "membership"; cause: unknown };
+
+/**
+ * Resolve Slack platform-admin authority without collapsing infrastructure
+ * failure into a durable denial. Callers which assemble privileged tools must
+ * propagate `unavailable` as retryable instead of silently reducing access.
+ */
+export async function resolveSlackUserAAOAdminAccess(
   slackUserId: string,
-): Promise<boolean> {
-  // Check cache first
-  const cached = adminStatusCache.get(slackUserId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.isAdmin;
-  }
-
+): Promise<SlackAAOAdminAccessDecision> {
+  let mapping: Awaited<ReturnType<SlackDatabase["getBySlackUserId"]>>;
   try {
-    // Look up the Slack user mapping to get their WorkOS user ID
-    const mapping = await slackDb.getBySlackUserId(slackUserId);
-
-    if (!mapping?.workos_user_id) {
-      logger.debug(
-        { slackUserId },
-        "Admin check: no WorkOS mapping for Slack user",
-      );
-      adminStatusCache.set(slackUserId, {
-        isAdmin: false,
-        expiresAt: Date.now() + ADMIN_NEGATIVE_CACHE_TTL_MS,
-      });
-      return false;
-    }
-
-    // Get the aao-admin working group
-    const adminGroup = await wgDb.getWorkingGroupBySlug(
-      AAO_ADMIN_WORKING_GROUP_SLUG,
-    );
-
-    if (!adminGroup) {
-      logger.warn("Admin check: aao-admin working group not found in DB");
-      // Cache the negative result for a shorter time to avoid repeated DB lookups
-      adminStatusCache.set(slackUserId, {
-        isAdmin: false,
-        expiresAt: Date.now() + 5 * 60 * 1000,
-      });
-      return false;
-    }
-
-    // Check if the user is a member of the admin working group
-    const isAdmin = await wgDb.isMember(adminGroup.id, mapping.workos_user_id);
-
-    // Cache the result
-    adminStatusCache.set(slackUserId, {
-      isAdmin,
-      expiresAt: Date.now() + (isAdmin ? ADMIN_POSITIVE_CACHE_TTL_MS : ADMIN_NEGATIVE_CACHE_TTL_MS),
-    });
-
-    logger.info(
-      {
-        slackUserId,
-        workosUserId: mapping.workos_user_id,
-        isAdmin,
-        adminGroupId: adminGroup.id,
-      },
-      "Admin status check result",
-    );
-    return isAdmin;
+    mapping = await slackDb.getBySlackUserId(slackUserId);
   } catch (error) {
-    logger.error(
-      { error, slackUserId },
-      "Error checking if Slack user is admin",
-    );
-    return false;
+    return { status: "unavailable", stage: "mapping", cause: error };
   }
+
+  if (!mapping?.workos_user_id) {
+    logger.debug({ slackUserId }, "Admin check: no WorkOS mapping for Slack user");
+    return { status: "forbidden", reason: "unmapped" };
+  }
+
+  let adminGroupId: Awaited<ReturnType<WorkingGroupDatabase["getWorkingGroupIdBySlug"]>>;
+  try {
+    adminGroupId = await wgDb.getWorkingGroupIdBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
+  } catch (error) {
+    return { status: "unavailable", stage: "authority_group", cause: error };
+  }
+  if (!adminGroupId) {
+    return {
+      status: "unavailable",
+      stage: "authority_group",
+      cause: new Error("Platform administrator authority group is missing"),
+    };
+  }
+
+  let isAdmin: boolean;
+  try {
+    isAdmin = await wgDb.isMember(adminGroupId, mapping.workos_user_id);
+  } catch (error) {
+    return { status: "unavailable", stage: "membership", cause: error };
+  }
+
+  logger.info({
+    slackUserId,
+    workosUserId: mapping.workos_user_id,
+    isAdmin,
+    adminGroupId,
+  }, "Admin status check result");
+  return isAdmin
+    ? { status: "authorized", workosUserId: mapping.workos_user_id }
+    : { status: "forbidden", reason: "not_member", workosUserId: mapping.workos_user_id };
+}
+
+/**
+ * Boolean adapter for existing Slack authorization gates. Confirmed denials
+ * remain false; an unavailable authority source is a retryable setup failure.
+ */
+export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean> {
+  const decision = await resolveSlackUserAAOAdminAccess(slackUserId);
+  if (decision.status === "unavailable") {
+    logger.error({
+      error: decision.cause,
+      slackUserId,
+      stage: decision.stage,
+      code: "admin_authorization_unavailable",
+    }, "Slack administrator authorization lookup unavailable");
+    throw new AAOAdminLookupUnavailableError({ cause: decision.cause });
+  }
+  return decision.status === "authorized";
 }
 
 // Re-export Slack/web admin invalidators from the shared cache module so
@@ -292,15 +289,10 @@ export {
   invalidateWebAdminStatusCache,
 };
 
-// Cache for web user admin status (keyed by WorkOS user ID)
-const webAdminStatusCache = getWebAdminStatusCache();
-
 /**
- * Invalidate all admin caches (both Slack and web)
+ * Invalidate the separately cached council status.
  */
 export function invalidateAllAdminCaches(): void {
-  adminStatusCache.clear();
-  webAdminStatusCache.clear();
   webCouncilStatusCache.clear();
 }
 
@@ -7202,14 +7194,12 @@ Use add_committee_leader to assign a leader.`;
 
   // Merge organizations
   handlers.set("merge_organizations", async (input) => {
-    const workos = getWorkos();
-
     const primaryOrgId = input.primary_org_id as string;
     const secondaryOrgId = input.secondary_org_id as string;
     const preview = input.preview !== false; // Default to preview mode for safety
-    const stripeCustomerResolution = input.stripe_customer_resolution as
-      | StripeCustomerResolution
-      | undefined;
+    // stripe_customer_resolution is still accepted by the tool schema but is
+    // only meaningful to merge execution, which is contained (#6827). Preview
+    // reports the conflict; nothing resolves it.
 
     if (!primaryOrgId || !secondaryOrgId) {
       return "❌ Both primary_org_id and secondary_org_id are required.";
@@ -7221,7 +7211,11 @@ Use add_committee_leader to assign a leader.`;
 
     try {
       if (preview) {
-        // Preview mode - show what would be merged
+        // Preview mode - show what would be merged.
+        // #6827: the WorkOS client is acquired here, inside the read-only
+        // branch, and not at handler entry. The contained execution path must
+        // not so much as construct or initialize a provider client.
+        const workos = getWorkos();
         const previewResult = await previewMerge(primaryOrgId, secondaryOrgId);
 
         // Also check WorkOS memberships
@@ -7267,11 +7261,11 @@ Use add_committee_leader to assign a leader.`;
         if (workosCheckFailed) {
           response += `⚠️ Could not check WorkOS memberships\n`;
         } else if (workosUserCount > 0) {
-          response += `- ${workosUserCount} user(s) will be added to the primary org in WorkOS\n`;
-          response += `- Secondary org will be deleted from WorkOS\n`;
+          response += `- ${workosUserCount} user(s) would be added to the primary org in WorkOS\n`;
+          response += `- Secondary org would be deleted from WorkOS\n`;
         } else {
           response += `- No new users to migrate in WorkOS\n`;
-          response += `- Secondary org will be deleted from WorkOS\n`;
+          response += `- Secondary org would be deleted from WorkOS\n`;
         }
 
         // Stripe customer conflict section
@@ -7304,227 +7298,44 @@ Use add_committee_leader to assign a leader.`;
         }
 
         response += `\n---\n`;
-        if (stripeConflict.requires_resolution) {
-          response += `_This is a preview. To execute the merge, call merge_organizations with preview=false and stripe_customer_resolution set._`;
-        } else {
-          response += `_This is a preview. To execute the merge, call merge_organizations again with preview=false._`;
-        }
+        // #6827: preview is read-only and stays available, but it must not
+        // instruct anyone to run the contained execution path.
+        response += `_This is a read-only preview. Merge execution is temporarily unavailable (\`${ORGANIZATION_MERGE_UNAVAILABLE_ERROR}\`, #6827), so calling with preview=false will refuse without moving data or deleting anything._`;
 
         return response;
       } else {
-        // Execute the merge
-        logger.info(
+        // #6827: merge EXECUTION is contained. Refuse before step 1's WorkOS
+        // membership reads, before the database transaction, before the
+        // provider membership writes and before the two provider organization
+        // deletes this handler used to perform. mergeOrganizations refuses
+        // again at the shared service boundary, so this early return is the
+        // honest message rather than the only guard.
+        logger.warn(
           {
             primaryOrgId,
             secondaryOrgId,
-            mergedBy: memberContext?.workos_user?.workos_user_id,
+            requestedBy: memberContext?.workos_user?.workos_user_id,
           },
-          "Admin executing org merge via Addie",
+          "Refused contained organization merge execution via Addie",
         );
 
-        // Step 1: Get users from secondary org in WorkOS before merge
-        let workosUsersToMigrate: string[] = [];
-        let workosErrors: string[] = [];
-        let secondaryRoles = new Map<string, string>();
-
-        try {
-          // Get all memberships from the secondary org in WorkOS
-          const memberships =
-            await workos.userManagement.listOrganizationMemberships({
-              organizationId: secondaryOrgId,
-              limit: 100,
-            });
-
-          // Warn if there are more than 100 members (pagination not implemented)
-          if (memberships.listMetadata?.after) {
-            workosErrors.push(
-              "Secondary org has more than 100 members - only first 100 will be migrated. Manual WorkOS cleanup may be needed.",
-            );
-          }
-
-          // Check which users are NOT already in the primary org
-          const primaryMemberships =
-            await workos.userManagement.listOrganizationMemberships({
-              organizationId: primaryOrgId,
-              limit: 100,
-            });
-          const primaryUserIds = new Set(
-            primaryMemberships.data.map((m) => m.userId),
-          );
-
-          const usersToMigrate = memberships.data.filter(
-            (m) => m.status === "active" && !primaryUserIds.has(m.userId),
-          );
-          workosUsersToMigrate = usersToMigrate.map((m) => m.userId);
-          // Preserve roles from secondary org so owners/admins keep their role
-          secondaryRoles = new Map(
-            usersToMigrate.map((m) => [m.userId, m.role?.slug || "member"]),
-          );
-
-          logger.info(
-            { count: workosUsersToMigrate.length, secondaryOrgId },
-            "Found WorkOS users to migrate",
-          );
-        } catch (err) {
-          logger.warn(
-            { error: err, secondaryOrgId },
-            "Failed to fetch WorkOS memberships (will continue with DB merge)",
-          );
-          workosErrors.push(
-            "Could not fetch WorkOS memberships - manual WorkOS cleanup may be needed",
-          );
-        }
-
-        // Step 2: Execute the database merge
-        const mergedBy =
-          memberContext?.workos_user?.workos_user_id || "addie-admin";
-        const result = await mergeOrganizations(
-          primaryOrgId,
-          secondaryOrgId,
-          mergedBy,
-          workos,
-          stripeCustomerResolution ? { stripeCustomerResolution } : undefined,
-        );
-
-        // Step 3: Add users to primary org in WorkOS
-        let workosAdded = 0;
-        let workosSkipped = 0;
-
-        for (const userId of workosUsersToMigrate) {
-          try {
-            const roleSlug = secondaryRoles.get(userId) || "member";
-            await workos.userManagement.createOrganizationMembership({
-              userId,
-              organizationId: primaryOrgId,
-              roleSlug,
-            });
-            workosAdded++;
-            logger.debug(
-              { userId, primaryOrgId },
-              "Added user to primary org in WorkOS",
-            );
-          } catch (err: any) {
-            // User might already be in org (race condition) or other error
-            if (err?.code === "organization_membership_already_exists") {
-              workosSkipped++;
-            } else {
-              logger.warn(
-                { error: err, userId },
-                "Failed to add user to primary org in WorkOS",
-              );
-              workosErrors.push(`Failed to add user ${userId} to WorkOS org`);
-            }
-          }
-        }
-
-        // Step 4: Delete the secondary org from WorkOS
-        let workosOrgDeleted = false;
-        try {
-          await workos.organizations.deleteOrganization(secondaryOrgId);
-          workosOrgDeleted = true;
-          logger.info({ secondaryOrgId }, "Deleted secondary org from WorkOS");
-        } catch (err) {
-          logger.warn(
-            { error: err, secondaryOrgId },
-            "Failed to delete secondary org from WorkOS",
-          );
-          workosErrors.push(
-            `Failed to delete secondary org from WorkOS (ID: ${secondaryOrgId}) - manual cleanup required`,
-          );
-        }
-
-        let response = `## Merge Complete ✅\n\n`;
-        response += `Successfully merged **${result.secondary_org_id}** into **${result.primary_org_id}**.\n\n`;
-
-        response += `### Data Moved\n`;
-        const totalMoved = result.tables_merged.reduce(
-          (sum, t) => sum + t.rows_moved,
-          0,
-        );
-        const totalSkipped = result.tables_merged.reduce(
-          (sum, t) => sum + (t.rows_skipped_duplicate ?? 0),
-          0,
-        );
-
-        for (const table of result.tables_merged) {
-          const skipped = table.rows_skipped_duplicate ?? 0;
-          if (table.rows_moved > 0 || skipped > 0) {
-            response += `- **${table.table_name}**: ${table.rows_moved} moved`;
-            if (skipped > 0) {
-              response += ` (${skipped} skipped as duplicates)`;
-            }
-            response += `\n`;
-          }
-        }
-
-        response += `\n**Total:** ${totalMoved} rows moved, ${totalSkipped} duplicates skipped\n`;
-
-        // WorkOS sync results
-        if (
-          workosUsersToMigrate.length > 0 ||
-          workosOrgDeleted ||
-          workosErrors.length > 0
-        ) {
-          response += `\n### WorkOS Sync\n`;
-          if (workosAdded > 0) {
-            response += `- ✅ Added ${workosAdded} user(s) to primary org in WorkOS\n`;
-          }
-          if (workosSkipped > 0) {
-            response += `- ⏭️ Skipped ${workosSkipped} user(s) (already in primary org)\n`;
-          }
-          if (workosOrgDeleted) {
-            response += `- 🗑️ Deleted secondary org from WorkOS\n`;
-          }
-        }
-
-        // Stripe customer action
-        if (
-          result.stripe_customer_action &&
-          result.stripe_customer_action !== "none"
-        ) {
-          response += `\n### Stripe\n`;
-          switch (result.stripe_customer_action) {
-            case "kept_primary":
-              response += `- ✅ Kept primary org's Stripe customer\n`;
-              break;
-            case "moved_from_secondary":
-              response += `- 🔄 Moved Stripe customer from secondary to primary org\n`;
-              break;
-            case "conflict_unresolved":
-              response += `- ⚠️ Both Stripe customers were unlinked - manual linking required\n`;
-              break;
-          }
-        }
-
-        if (result.prospect_notes_merged) {
-          response += `\n📝 Prospect notes were merged.\n`;
-        }
-
-        if (result.enrichment_data_preserved) {
-          response += `📊 Enrichment data was preserved from the secondary organization.\n`;
-        }
-
-        // Combine all warnings
-        const allWarnings = [...result.warnings, ...workosErrors];
-        if (allWarnings.length > 0) {
-          response += `\n### Warnings\n`;
-          for (const warning of allWarnings) {
-            response += `⚠️ ${warning}\n`;
-          }
-        }
-
-        response += `\nThe secondary organization has been deleted.`;
+        let response = `❌ ${ORGANIZATION_MERGE_UNAVAILABLE_MESSAGE} (\`${ORGANIZATION_MERGE_UNAVAILABLE_ERROR}\`, #6827)\n\n`;
+        response += `Merging deletes the secondary organization, and that lifecycle is unavailable until it has a durable operation journal and an exact reconciliation contract (#6827). No data was moved, no organization was deleted and nothing was left half-applied.\n\n`;
+        response += `Preview still works: call \`merge_organizations\` with \`preview=true\` to see what a merge would move.\n\n`;
+        response += `Do not substitute a manual database edit, a direct WorkOS deletion or any other workaround — each reproduces the split provider/local state this containment exists to prevent. Escalate duplicate-organization cleanup to the engineering owner of #6827 instead.`;
 
         return response;
       }
     } catch (error) {
+      // Only the read-only preview branch can throw now; the contained
+      // execution branch returns its refusal without calling anything.
       logger.error(
         { error, primaryOrgId, secondaryOrgId },
-        "Error merging organizations",
+        "Error previewing organization merge",
       );
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
-      return `❌ Failed to merge organizations: ${errorMessage}`;
+      return `❌ Failed to preview the organization merge: ${errorMessage}`;
     }
   });
 
@@ -11267,21 +11078,6 @@ Use add_committee_leader to assign a leader.`;
   // MEMBERSHIP INVITE HANDLERS
   // ============================================
 
-  function actionToHeader(action: string): string {
-    switch (action) {
-      case "invited":
-        return "Invitation sent";
-      case "member_added":
-        return "Added to org";
-      case "role_updated":
-        return "Role updated";
-      case "no_change":
-        return "No change";
-      default:
-        return "Done";
-    }
-  }
-
   function formatRelativeDays(d: Date): string {
     const diffMs = d.getTime() - Date.now();
     const days = Math.round(diffMs / 86400000);
@@ -11545,126 +11341,11 @@ Use add_committee_leader to assign a leader.`;
     }
   });
 
-  handlers.set("add_member_to_org", async (input) => {
-    const email = ((input.email as string) || "").trim().toLowerCase();
-    const orgId = input.org_id as string;
-    const role = (input.role as string) ?? "member";
-    const seatType = (input.seat_type as string) ?? "community_only";
-
-    if (!email || !email.includes("@")) {
-      return "❌ email is required (a valid email address).";
-    }
-    if (!orgId || !orgId.startsWith("org_")) {
-      return "❌ org_id is required (org_…).";
-    }
-    if (!["member", "admin", "owner"].includes(role)) {
-      return `❌ role must be one of: member, admin, owner (got: ${role}).`;
-    }
-    if (!["contributor", "community_only"].includes(seatType)) {
-      return `❌ seat_type must be one of: contributor, community_only (got: ${seatType}).`;
-    }
-
-    const adminUser = memberContext?.workos_user;
-    if (!adminUser) {
-      return "❌ Cannot add member — no signed-in admin context.";
-    }
-
-    const apiKey = process.env.ADMIN_API_KEY;
-    if (!apiKey) {
-      return "❌ ADMIN_API_KEY is not configured on the server.";
-    }
-    // Match the base-URL precedence used by member-tools.ts:getBaseUrl —
-    // BASE_URL (production) wins; otherwise PORT/CONDUCTOR_PORT for local.
-    const baseUrl =
-      process.env.BASE_URL ||
-      `http://localhost:${
-        process.env.PORT || process.env.CONDUCTOR_PORT || "3000"
-      }`;
-    const endpoint = `${baseUrl}/api/organizations/${encodeURIComponent(
-      orgId,
-    )}/members/by-email`;
-
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({ email, role, seat_type: seatType }),
-        signal: AbortSignal.timeout(10000),
-      });
-      const data = (await response.json().catch(() => ({}))) as Record<
-        string,
-        unknown
-      >;
-      if (!response.ok) {
-        const errorMsg =
-          (data.message as string) ||
-          (data.error as string) ||
-          `HTTP ${response.status}`;
-        logger.warn(
-          { status: response.status, orgId, email, error: errorMsg },
-          "add_member_to_org route returned non-OK",
-        );
-        return `❌ Failed to add ${email} to ${orgId}: ${errorMsg}`;
-      }
-
-      const action = data.action as string;
-      logger.info(
-        {
-          orgId,
-          email,
-          action,
-          role,
-          seatType,
-          adminUserId: adminUser.workos_user_id,
-        },
-        "Addie called add_member_to_org",
-      );
-
-      // Mirror the route's response shape rather than reflecting the input —
-      // e.g. the route may keep an existing seat_type when adding to an org
-      // the user already has a seat in.
-      const responseSeatType =
-        (data.seat_type as string | undefined) ?? seatType;
-
-      let md = `## ${actionToHeader(action)}\n\n`;
-      md += `**Email:** ${email}\n`;
-      md += `**Org:** ${orgId}\n`;
-
-      if (action === "invited") {
-        const invitation = data.invitation as
-          | Record<string, unknown>
-          | undefined;
-        const expiresAt = invitation?.expires_at as string | undefined;
-        md += `**Invited as:** member (must be promoted after acceptance for higher roles)\n`;
-        md += `**Requested role:** ${role}\n`;
-        md += `**Seat type:** ${responseSeatType}\n`;
-        if (expiresAt) md += `**Invite expires:** ${expiresAt.slice(0, 10)}\n`;
-        if (invitation?.accept_invitation_url) {
-          md += `\nThey'll receive an email with a sign-up link.\n`;
-        }
-      } else if (action === "member_added") {
-        md += `**Role:** ${role}\n`;
-        md += `**Seat type:** ${responseSeatType}\n`;
-        md += `\nThey already had a WorkOS account; added directly to the org.\n`;
-      } else if (action === "role_updated") {
-        const previousRole = data.previous_role as string | null | undefined;
-        md += `**New role:** ${role}\n`;
-        md += `**Previous role:** ${previousRole ?? "(none)"}\n`;
-      } else if (action === "no_change") {
-        md += `\nNo change — they already have role ${role}.\n`;
-      } else {
-        md += `**Action:** ${action ?? "unknown"}\n`;
-      }
-      return md;
-    } catch (error) {
-      logger.error({ error, orgId, email }, "Error calling members/by-email");
-      return `❌ Failed to add member: ${
-        error instanceof Error ? error.message : "Unknown error"
-      }`;
-    }
+  // The old HTTP adapter replaced its human caller with ADMIN_API_KEY.
+  // MemberContext supplies canonical person metadata, not an immutable exact
+  // credential/organization/epoch proof. Do not launder that into admin writes.
+  handlers.set("add_member_to_org", async () => {
+    return "❌ Organization membership changes require the signed-in organization management page. Addie cannot forward an exact authenticated actor for this operation.";
   });
 
   handlers.set("diagnose_signin_block", async (input) => {

@@ -13,6 +13,26 @@ import {
 } from '../../../src/addie/tool-result-contract.js';
 
 describe('Addie tool result contract', () => {
+  it('labels a visibility-limited registry miss as empty without asserting absence', () => {
+    const raw = JSON.stringify({ error: 'Agent https://sales.streamhaus.example/mcp not found or not visible to the caller', visibility_scope: ['public', 'members_only'] });
+    const result = normalizeToolResult('get_agent', raw);
+    expect(result.status).toBe('empty');
+    expect(result.presentation.source).toBe('classified');
+    expect(result.presentation.user_summary).toContain('does not establish whether a private registration exists');
+    expect(result.model_context).toBe(raw);
+  });
+
+  it.each([
+    ['get_agent', { error: 'url is required' }, 'invalid_input'],
+    ['lookup_domain', { error: 'domain is required' }, 'invalid_input'],
+    ['validate_agent', { error: 'domain and agent_url are required' }, 'invalid_input'],
+    ['get_member', { error: 'Directory unavailable' }, 'error'],
+    ['get_agent', { name: 'Agent', description: 'Example error message', metadata: { error: 'test' } }, 'ok'],
+    ['unrelated_tool', { error: 'A field in a diagnostic result' }, 'ok'],
+  ])('classifies only directory-owned top-level negative envelopes: %s', (tool, result, expected) => {
+    expect(normalizeToolResult(tool, JSON.stringify(result)).status).toBe(expected);
+  });
+
   it.each([
     ['call_adcp_task', '**Task failed:** `get_products`\n\n**Error:** Invalid get_products request at buying_mode: Invalid input', 'error'],
     ['call_adcp_task', '**Task failed:** `si_initiate_session`\n\n**Error:** Unknown tool: si_initiate_session', 'error'],
@@ -54,6 +74,32 @@ describe('Addie tool result contract', () => {
     expect(isToolResultError(status)).toBe(
       ['access_denied', 'invalid_input', 'recoverable_error', 'error'].includes(status),
     );
+  });
+
+  it('retains only allowlisted structured operational telemetry', () => {
+    const normalized = normalizeToolResult('call_adcp_task', {
+      status: 'recoverable_error',
+      model_context: 'Retry later with the same key.',
+      user_summary: 'The agent is temporarily unavailable.',
+      telemetry: {
+        operation: 'get_products',
+        error_code: 'ECONNRESET',
+        error_category: 'transport',
+        retryable: true,
+        retry_after_ms: 250,
+        attempts: 2,
+        credential: 'must-not-survive',
+      },
+    });
+
+    expect(normalized.presentation.telemetry).toEqual({
+      operation: 'get_products',
+      error_code: 'ECONNRESET',
+      error_category: 'transport',
+      retryable: true,
+      retry_after_ms: 250,
+      attempts: 2,
+    });
   });
 
   it('exposes machine fields only through explicit audience allowlists', () => {

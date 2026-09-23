@@ -53,6 +53,7 @@ function extractStep(name) {
 }
 
 const releaseRelevance = extractStep('Detect release-relevant push');
+const releaseTarget = extractStep('Resolve release target');
 const artifactDetection = extractStep('Detect committed release artifacts');
 const approvalGate = extractStep('Require human approval for committed release artifacts');
 const changesetsStep = extractStep('Create Release Pull Request or Tag Release');
@@ -189,6 +190,25 @@ assert.strictEqual(
 );
 
 assert.strictEqual(
+  workflowConfig.on.workflow_dispatch.inputs.release_commit.required,
+  true,
+  'Manual release recovery must require an explicit release commit.'
+);
+
+assert.strictEqual(
+  verificationJob.outputs.target_commit,
+  '${{ steps.release-target.outputs.commit }}',
+  'The verification job must expose the validated release target to the mutation job.'
+);
+
+assert(
+  releaseTarget.includes('^[0-9a-f]{40}$') &&
+    releaseTarget.includes('git merge-base --is-ancestor "${target_commit}" "refs/remotes/origin/${GITHUB_REF_NAME}"') &&
+    releaseTarget.includes('main|3.1.x|3.0.x'),
+  'Manual recovery must require a full SHA already reachable from a supported release branch.'
+);
+
+assert.strictEqual(
   releaseJob.if,
   "needs.verify-release.outputs.relevant == 'true'",
   'The release mutation job must be skipped for pushes without release-relevant changes.'
@@ -224,6 +244,11 @@ assert.strictEqual(
   '${{ steps.app-token.outputs.token }}',
   'The release checkout must persist the App token used by Changesets git-CLI pushes.'
 );
+assert.strictEqual(
+  releaseCheckout.with.ref,
+  '${{ needs.verify-release.outputs.target_commit }}',
+  'The release job must check out the validated release target.'
+);
 
 assert(
   !artifactDetection.includes('[ -d "dist/schemas/${VERSION}" ]'),
@@ -240,18 +265,24 @@ assert(
   'Human approval must be required whenever a commit contains release artifacts.'
 );
 
-assert(
-  approvalGate.includes('/commits/${GITHUB_SHA}/pulls') &&
-    approvalGate.includes('.base.ref == $base') &&
-    approvalGate.includes('.merged_at != null'),
-  'The approval gate must resolve the merged PR associated with the release commit and branch.'
+assert.strictEqual(
+  workflowConfig.jobs.release.steps.find(
+    step => step.name === 'Require human approval for committed release artifacts'
+  ).run,
+  'node scripts/check-release-state.cjs approval',
+  'Committed release publication must use the permission and merge-provenance gate.'
 );
 
 assert(
-  approvalGate.includes('select(.user.type == "User")') &&
-    approvalGate.includes('map(last)') &&
-    approvalGate.includes('select(.state == "APPROVED" and .commit_id == $head)'),
-  'Only human approvals submitted against the final release PR head may authorize publication.'
+  artifactDetection.includes('git show --first-parent --format= --name-only --no-renames "${RELEASE_SHA}"') &&
+    uploadStep.includes('--target "${RELEASE_SHA}"'),
+  'Recovery must detect and publish artifacts from the validated release commit.'
+);
+
+assert(
+  artifactDetection.includes('[ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]') &&
+    artifactDetection.includes('does not commit artifacts for ${VERSION}'),
+  'Manual recovery must fail instead of running Changesets when its target has no committed release artifacts.'
 );
 
 assert(
@@ -277,18 +308,20 @@ assert.deepStrictEqual(
     name: 'Create Release Pull Request or Tag Release',
     if: "steps.release-artifacts.outputs.has_release_artifacts != 'true'",
     id: 'changesets',
+    'timeout-minutes': 40,
     uses: `changesets/action@${changesetsActionSha}`,
     with: {
-      'github-token': '${{ steps.app-token.outputs.token }}',
+      'github-token': '${{ steps.changesets-token.outputs.token }}',
       'version-script': 'npm run version',
-      'publish-script': 'npx --no-install changeset git-tag',
       'commit-message': 'Version Packages',
       'pr-title': 'Version Packages',
-      'create-github-releases': true,
+      'pr-draft': 'always',
+      'create-github-releases': false,
       'push-with-git-cli': true,
     },
     env: {
       HUSKY: '0',
+      GH_TOKEN: '${{ steps.changesets-token.outputs.token }}',
     },
   },
   'Release automation must preserve the pinned Changesets v2.1.2 input contract and git-CLI push mode.'

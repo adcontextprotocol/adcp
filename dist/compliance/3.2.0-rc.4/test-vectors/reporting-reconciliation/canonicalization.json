@@ -1,0 +1,26 @@
+{
+  "contract_version": "1.0",
+  "media_type": "application/vnd.adcp.reporting-canonicalization+json",
+  "algorithm": "adcp_jcs_rows_v1",
+  "schema_sha256": "a76b10957579a086c3b8cb800b884a72fcec039b496947982f2f1068c0178103",
+  "primary_keys": ["media_buy_id", "date"],
+  "golden_vectors": {
+    "empty_report": {
+      "name": "empty",
+      "purpose": "empty_report",
+      "input_rows": [],
+      "canonical_utf8_base64": "W10=",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "ordering_encoding": {
+      "name": "ordering",
+      "purpose": "ordering_encoding",
+      "input_rows": [
+        { "media_buy_id": "buy-2", "spend": "4.50", "date": "2026-08-26", "impressions": "3" },
+        { "spend": "3.50", "media_buy_id": "buy-1", "impressions": "2", "date": "2026-08-26" }
+      ],
+      "canonical_utf8_base64": "W3siZGF0ZSI6IjIwMjYtMDgtMjYiLCJpbXByZXNzaW9ucyI6IjIiLCJtZWRpYV9idXlfaWQiOiJidXktMSIsInNwZW5kIjoiMy41MCJ9LHsiZGF0ZSI6IjIwMjYtMDgtMjYiLCJpbXByZXNzaW9ucyI6IjMiLCJtZWRpYV9idXlfaWQiOiJidXktMiIsInNwZW5kIjoiNC41MCJ9XQ==",
+      "sha256": "bcd079902f3c8edb4315dbbdaf9b4e37f6fd5af33c80d1fe6ac8c655581342d4"
+    }
+  }
+}

@@ -5249,7 +5249,7 @@
       // Send message with streaming
       async function sendMessage(sendOptions = {}) {
         const retrying = sendOptions.retry === true;
-        const selectedModel = isAuthenticated
+        const selectedModel = isAuthenticated && modelSelectionAvailable
           ? normalizePreference(retrying ? sendOptions.modelPreference : modelPreference)
           : 'default';
         const message = retrying ? sendOptions.message : chatInput.value.trim();

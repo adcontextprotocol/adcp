@@ -1,0 +1,252 @@
+# Signed Brand Responses Runner — Harness Contract Test Kit
+#
+# Applies to:
+#   - protocols/brand/scenarios/signed_response_envelope_vectors.yaml
+#
+# This is a consumer-conformance contract. It is intentionally separate from
+# signed-requests-runner.yaml: request signing grades an agent's HTTP verifier,
+# while this kit grades a caller that consumes designated-task JWS payload
+# envelopes returned by verify_brand_claim and verify_brand_claims.
+
+id: signed_responses_runner
+applies_to:
+  protocol_scenarios:
+    - signed_response_envelope_vectors
+
+description: |
+  Coordination contract between a black-box runner and a signed-brand-response
+  consumer under test. The runner hosts a sandbox fixture brand agent and a
+  result observation endpoint. For each dispatch it signs the fixture response
+  dynamically, relative to one captured evaluation time, then the consumer
+  applies the designated-task response verifier checklist and posts its
+  decision to the observation endpoint.
+
+  Dynamic signing is required: a permanently published "fresh" envelope would
+  eventually expire or tempt a consumer to special-case fixture bytes. The
+  public private component below exists only so independent runners and SDKs
+  can reproduce the fixture signature. It MUST NOT be installed as a production
+  trust root or used to answer a real brand claim.
+
+endpoint_scope: sandbox
+harness_mode: black_box
+
+fixture_agent:
+  brand_domain: "streamhaus.example"
+  agent_url: "https://signed-response-fixture.example/mcp"
+  jwks_uri: "https://signed-response-fixture.example/.well-known/jwks.json"
+  caller_identity: "https://verified-runner.example"
+  expected_tenant: "streamhaus.example"
+  mismatched_tenant: "other-streamhaus-brand.example"
+  result_observation_endpoint:
+    url: "https://runner.example/signed-brand-response/result"
+    method: POST
+
+test_key:
+  warning: "PUBLIC TEST KEY WITH PUBLISHED PRIVATE COMPONENT. Never use as a production trust anchor."
+  kid: "test-brand-response-2026"
+  kty: "OKP"
+  crv: "Ed25519"
+  x: "-LwUo2jhzfaPN3zxBKg4eL5GCho_GsuxB8LXE2aedrI"
+  alg: "EdDSA"
+  use: "sig"
+  key_ops: ["verify"]
+  adcp_use: "response-signing"
+  _private_d_for_test_only: "aj3thrvcUzEmUtm_qmgJNn5H0Ln5Rqhmt8B9A5SAkH0"
+
+time_contract:
+  capture_once_per_matrix: true
+  clock_skew_seconds: 60
+  fresh_iat_offset_seconds: -30
+  fresh_exp_offset_seconds: 300
+  expired_iat_offset_seconds: -600
+  expired_exp_offset_seconds: -61
+  description: |
+    The runner captures `evaluation_now` once before generating a four-vector
+    matrix. The expired vector's exp is strictly earlier than
+    `evaluation_now - clock_skew_seconds`; every other vector uses the fresh
+    offsets. The consumer evaluates the same captured instant so scheduler
+    jitter cannot move a vector across the boundary.
+
+request_fixtures:
+  single:
+    task: verify_brand_claim
+    request:
+      claim_type: property
+      claim:
+        property:
+          type: website
+          identifier: "streamhaus.example"
+      context:
+        correlation_id: "signed-response-single-original"
+    replay_request:
+      claim_type: property
+      claim:
+        property:
+          type: website
+          identifier: "different-property.example"
+      context:
+        correlation_id: "signed-response-single-replay"
+    response:
+      claim_type: property
+      verification_status: owned
+      details:
+        property_domain: "streamhaus.example"
+
+  batch:
+    task: verify_brand_claims
+    request:
+      claims:
+        - claim_type: property
+          claim:
+            property:
+              type: website
+              identifier: "streamhaus.example"
+        - claim_type: trademark
+          claim:
+            mark: "STREAMHAUS"
+            countries: ["US"]
+      context:
+        correlation_id: "signed-response-batch-original"
+    replay_request:
+      claims:
+        - claim_type: property
+          claim:
+            property:
+              type: website
+              identifier: "different-property.example"
+        - claim_type: trademark
+          claim:
+            mark: "STREAMHAUS"
+            countries: ["US"]
+      context:
+        correlation_id: "signed-response-batch-replay"
+    response:
+      results:
+        - claim_type: property
+          status: owned
+          details:
+            property_domain: "streamhaus.example"
+        - claim_type: trademark
+          status: owned
+          details:
+            mark: "STREAMHAUS"
+            countries: ["US"]
+
+vector_contract:
+  fresh_valid:
+    request_sent: original
+    request_hashed: original
+    payload_brand_domain: expected_tenant
+    time_profile: fresh
+    expected_decision: accept
+    expected_error_code: null
+
+  envelope_expired:
+    request_sent: original
+    request_hashed: original
+    payload_brand_domain: expected_tenant
+    time_profile: expired
+    expected_decision: reject
+    expected_error_code: SIGNED_RESPONSE_ENVELOPE_EXPIRED
+
+  replayed_request_hash_mismatch:
+    description: |
+      The fixture signs a response whose request_hash binds the original
+      request, then serves that cryptographically valid envelope while the
+      consumer is evaluating replay_request. The signature remains valid;
+      checklist step 8 is the first failing binding check.
+    request_sent: replay_request
+    request_hashed: original
+    payload_brand_domain: expected_tenant
+    time_profile: fresh
+    expected_decision: reject
+    expected_error_code: SIGNED_RESPONSE_REQUEST_HASH_MISMATCH
+
+  tenant_mismatch:
+    description: |
+      The fixture computes request_hash using the payload's mismatched tenant
+      so checklist step 8 passes, while the controller supplies
+      expected_tenant independently. Checklist step 9 is therefore the first
+      failing binding check.
+    request_sent: original
+    request_hashed: original
+    payload_brand_domain: mismatched_tenant
+    request_hash_brand_domain: mismatched_tenant
+    expected_brand_domain: expected_tenant
+    time_profile: fresh
+    expected_decision: reject
+    expected_error_code: SIGNED_RESPONSE_TENANT_MISMATCH
+
+signing_contract:
+  protected_header:
+    alg: EdDSA
+    kid: test-brand-response-2026
+    typ: adcp-response-payload+jws
+  payload_required_fields:
+    - typ
+    - task
+    - brand_domain
+    - agent_url
+    - request_hash
+    - iat
+    - exp
+    - response
+  payload_typ: adcp-response-payload+jws
+  request_hash: "sha256:base64url_no_pad(SHA-256(JCS({ task, brand_domain, agent_url, caller_identity, request })))"
+  signing_input: "BASE64URL(UTF8(JSON(protected_header))) + '.' + BASE64URL(UTF8(JCS(payload)))"
+  outer_response_rule: |
+    The unsigned outer task-body fields exactly equal payload.response for every
+    vector. This keeps checklist step 10 satisfied so each negative vector
+    isolates its named earlier check.
+
+consumer_test_controller_scenario:
+  name: evaluate_signed_brand_response
+  request_shape:
+    scenario: evaluate_signed_brand_response
+    params:
+      task: "verify_brand_claim | verify_brand_claims"
+      profile: "single | batch"
+      fixture_agent_url: "https://signed-response-fixture.example/mcp"
+      expected_brand_domain: "streamhaus.example"
+      vector_selectors: "named map whose values are an ordered subset of vector_contract keys"
+      result_endpoint: "https://runner.example/signed-brand-response/result"
+  expected_consumer_behavior:
+    - Send the profile's request to the fixture agent separately for each vector.
+    - Resolve the fixture response-signing JWK through the advertised jwks_uri.
+    - Apply response verifier checklist steps 1-10 in order.
+    - Use the controller-provided expected_brand_domain for the tenant-binding decision.
+    - Post exactly one result report per requested vector value.
+    - Never report a negative vector as accepted merely because its signature verifies.
+
+result_report_contract:
+  content_type: "application/json"
+  exactly_once_per_vector: true
+  required_fields:
+    task: "verify_brand_claim | verify_brand_claims"
+    vector_id: "fresh_valid | envelope_expired | replayed_request_hash_mismatch | tenant_mismatch"
+    decision: "accept | reject"
+    error_code: "null on accept; exact registered signed-response error code on reject"
+
+scope:
+  in_scope: |
+    - Online freshness at the advertised clock-skew boundary.
+    - Exact request-hash replay protection.
+    - Expected-tenant binding.
+    - Single and batch task parity.
+    - Cryptographically valid envelopes whose only failing property is the
+      named binding check.
+  out_of_scope: |
+    - General RFC 9421 response transport signing.
+    - The additive 3.2 brand-agent authorization cross-check, which has its own
+      brand-authorization-cross-check vectors.
+    - Production key storage, rotation, or trust-root configuration.
+    - Audit-mode treatment of expired historical evidence; this kit grades
+      online decisions only.
+
+references:
+  protocol_scenario: static/compliance/source/protocols/brand/scenarios/signed_response_envelope_vectors.yaml
+  verifier_checklist: /docs/building/by-layer/L1/security.mdx#verifier-checklist-responses
+  envelope_schema: /schemas/core/response-payload-jws-envelope.json
+  single_response_schema: /schemas/brand/verify-brand-claim-response.json
+  batch_response_schema: /schemas/brand/verify-brand-claims-response.json
+  error_codes: /schemas/enums/error-code.json

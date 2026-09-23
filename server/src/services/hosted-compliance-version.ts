@@ -7,7 +7,7 @@ import type {
   TestOptions,
 } from '@adcp/sdk/testing';
 import { isComplianceVersionSupported } from '@adcp/sdk/testing';
-import { SUPPORTED_BADGE_VERSIONS } from './adcp-taxonomy.js';
+import { advertisesStableBadgeLine, SUPPORTED_BADGE_VERSIONS } from './adcp-taxonomy.js';
 
 export const DEFAULT_HOSTED_COMPLIANCE_LINE = '3.0';
 export const HOSTED_COMPLIANCE_TARGET_PREFERENCE = [
@@ -484,11 +484,7 @@ export function agentAdvertisesBadgeEligibleHostedComplianceTarget(
     return false;
   }
 
-  return supportedVersions.some(version => {
-    if (version.includes('-')) return false;
-    const line = complianceReleaseLine(version);
-    return line === requestedLine;
-  });
+  return supportedVersions.some(version => advertisesStableBadgeLine(version, requestedLine));
 }
 
 function assertHostedArtifacts(version: string): void {

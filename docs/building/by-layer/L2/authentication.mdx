@@ -5,21 +5,21 @@ description: "AdCP authentication guide: public vs authenticated operations, sta
 ---
 
 
-AdCP uses a tiered authentication model where some operations are publicly accessible while others require authentication.
+AdCP uses a tiered authentication model where capability discovery is public, catalog discovery may be public, and protected reads and mutations require authentication.
 
 ## When Authentication is Required
 
 ### Public Operations (No Authentication Required)
 
-These operations work without credentials to enable discovery and evaluation:
+This operation works without credentials to bootstrap discovery:
 
 - **`get_adcp_capabilities`** - Discover agent capabilities, portfolio, and supported features
-- **`get_adcp_capabilities`** - Browse public creative capabilities
-- **`get_products`** - Discover inventory (returns limited results without auth)
 
 **Rationale**: Publishers want potential buyers to discover their capabilities before establishing a business relationship.
 
-**Important**: Unauthenticated `get_products` may return:
+Product and signal discovery are seller-variable. Read `media_buy.anonymous_discovery` before calling `list_products` or `get_products` in discovery mode, and read `signals.anonymous_discovery` before calling `get_signals`. `true` means the call may succeed anonymously; `false` means credentials are required; absence means unspecified legacy behavior and the caller handles `AUTH_MISSING` if an anonymous probe is rejected.
+
+An anonymous discovery response is authoritative only for that anonymous request. It may contain:
 - Partial catalog (standard products only)
 - No pricing information or CPM details
 - No custom product offerings
@@ -27,9 +27,8 @@ These operations work without credentials to enable discovery and evaluation:
 
 ### Authenticated Operations (Credentials Required)
 
-These operations require valid credentials:
+Every mutation and every read of private or account-scoped state requires valid credentials. Examples include:
 
-- **`get_products`** (full access) - Complete catalog with pricing and custom products
 - **`create_media_buy`** - Create advertising campaigns
 - **`update_media_buy`** - Modify existing campaigns
 - **`sync_creatives`** - Upload creative assets

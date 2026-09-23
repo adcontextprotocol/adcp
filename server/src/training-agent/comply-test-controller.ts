@@ -43,6 +43,7 @@ import {
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
 } from './types.js';
 import {
+  clearSession,
   findSessionsMatching,
   findSessionMatching,
   controllerFixturePrincipal,
@@ -52,6 +53,7 @@ import {
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import {
+  clearAccountStoreForSession,
   emitAccountChangeRecordedWebhook,
   expireAccountChangeCursors,
   getAccountNotificationSubscribers,
@@ -61,6 +63,7 @@ import {
   sandboxAccountRefForId,
   seedAccountFixture,
 } from './account-handlers.js';
+import { clearCatalogEventStoresForSession } from './catalog-event-handlers.js';
 import {
   canonicalizeAccountRef,
   normalizeControllerAccountRef,
@@ -93,6 +96,8 @@ import {
   type TrainingTaskRegistryScope,
 } from './task-registry-scope.js';
 import {
+  advancePastConsumerMismatchEscalationProbe,
+  advancePastConsumerStatusDeadlineProbe,
   advanceReportingCoreLifecycleProbe,
   omitReportingCoreObligationProbe,
   prepareReportingCoreLifecycleProbe,
@@ -1458,6 +1463,7 @@ function createStore(
  * entry in place during the transition; remove once a release has landed and the
  * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = [
+  'reset_state',
   'expire_account_change_cursor',
   'force_create_media_buy_arm',
   'force_get_products_arm',
@@ -1758,6 +1764,20 @@ async function handleReportingCoreLifecycleProbe(
         message: 'Prepared a deliberately omitted elapsed obligation for buyer-side denominator reconciliation.',
       };
     }
+    if (operation === 'advance_past_status_deadline') {
+      return {
+        success: true,
+        simulated: advancePastConsumerStatusDeadlineProbe(ctx.principal, accountId),
+        message: 'Advanced past the buyer consumer-status deadline without recording any statement.',
+      };
+    }
+    if (operation === 'advance_past_escalation') {
+      return {
+        success: true,
+        simulated: advancePastConsumerMismatchEscalationProbe(ctx.principal, accountId),
+        message: 'Advanced past the open consumer-status mismatch escalation boundary.',
+      };
+    }
   } catch (error) {
     return {
       success: false,
@@ -1768,7 +1788,7 @@ async function handleReportingCoreLifecycleProbe(
   return {
     success: false,
     error: 'INVALID_PARAMS',
-    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, or omit_obligation',
+    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, omit_obligation, advance_past_status_deadline, or advance_past_escalation',
   };
   }, account);
 }
@@ -2060,7 +2080,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const scenario = rawArgs.scenario;
   const targetsGetProductsState = scenario === 'force_get_products_arm'
     || (scenario === 'force_upstream_unavailable' && params.tool === 'get_products');
-  const targetsControllerFixtureState = scenario === 'seed_product'
+  const targetsControllerFixtureState = scenario === 'reset_state'
+    || scenario === 'seed_product'
     || scenario === 'seed_pricing_option'
     || scenario === 'seed_measurement_catalog'
     || (
@@ -2149,6 +2170,18 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       ctx.moduleId,
       targetsControllerFixtureState ? controllerFixturePrincipal(ctx.principal) : undefined,
     );
+  if (scenario === 'reset_state') {
+    // These stores intentionally use the same keys as their public handlers,
+    // which differ from the principal-aware controller-fixture session above.
+    const accountSessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
+    const catalogSessionKey = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+    await clearSession(sessionKey);
+    clearAccountStoreForSession(accountSessionKey, ctx.principal);
+    clearCatalogEventStoresForSession(catalogSessionKey);
+    clearForcedTaskCompletionsForScope(ctx.taskRegistryScope);
+    SEED_CACHES.delete(sessionKey);
+    return { success: true };
+  }
   let session = await getSession(sessionKey);
   if (
     scenario === 'simulate_delivery'
@@ -2435,7 +2468,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   // doesn't return UNKNOWN_SCENARIO. Idempotency (same ID + same fixture
   // succeeds; same ID + different fixture → INVALID_STATE) is enforced
   // inline to match the guarantee handleTestControllerRequest provides for
-  // the other seed_* scenarios via SEED_CACHE. agent_url is stamped at
+  // the other seed_* scenarios via the session-scoped seed cache. agent_url is stamped at
   // write time so any future reader gets a schema-valid format_id without
   // knowing the agent's URL.
   if (scenario === 'seed_creative_format') {
@@ -2518,7 +2551,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     args.account,
     controllerAccountId,
   );
-  const sdkResponse = await handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
+  const sdkResponse = await handleTestControllerRequest(store, rawArgs, {
+    seedCache: seedCacheForSession(sessionKey),
+  });
 
   if (
     scenario === 'simulate_delivery'
@@ -3366,6 +3401,25 @@ export function clearForcedTaskCompletions(): void {
   PENDING_FORCED_TASK_COMPLETIONS.clear();
 }
 
+function clearForcedTaskCompletionsForScope(
+  scope: TrainingContext['taskRegistryScope'],
+): void {
+  if (!scope) return;
+  const matches = (candidate: TrainingTaskRegistryScope): boolean =>
+    candidate.registryNamespace === scope.registryNamespace
+      && candidate.accountId === scope.accountId
+      && candidate.ownerScope === scope.ownerScope;
+  for (const [key, completed] of FORCED_TASK_COMPLETIONS) {
+    if (matches(completed.scope)) FORCED_TASK_COMPLETIONS.delete(key);
+  }
+  for (const [key, pending] of PENDING_FORCED_TASK_COMPLETIONS) {
+    if (!matches(pending.scope)) continue;
+    clearTimeout(pending.timeout);
+    pending.reject(new Error('Forced task completion state was reset'));
+    PENDING_FORCED_TASK_COMPLETIONS.delete(key);
+  }
+}
+
 /** Test-only: read the forced-completion pool. */
 export function getForcedTaskCompletions(): ReadonlyMap<string, ForcedTaskCompletionRecord> {
   return FORCED_TASK_COMPLETIONS;
@@ -3508,10 +3562,19 @@ function handleQueryProvenanceAuditObservations(session: SessionState, rawArgs: 
   };
 }
 
-// Module-level seed-fixture cache enforces the spec's same-ID-different-
-// fixture rejection rule across all seed calls in the process. Scoping per-
-// process keeps it aligned with the CONTROLLER_SCENARIOS list being static.
-const SEED_CACHE = createSeedFixtureCache();
+// Seed-fixture equivalence is scoped to the same caller session as the seeded
+// entities. A reset can therefore discard one run without touching another.
+const SEED_CACHES = new Map<string, ReturnType<typeof createSeedFixtureCache>>();
+
+function seedCacheForSession(sessionKey: string): ReturnType<typeof createSeedFixtureCache> {
+  let cache = SEED_CACHES.get(sessionKey);
+  if (!cache) {
+    enforceMapCap(SEED_CACHES, sessionKey, 'seed fixture sessions');
+    cache = createSeedFixtureCache();
+    SEED_CACHES.set(sessionKey, cache);
+  }
+  return cache;
+}
 
 // Process-global pool for seed_creative_format. list_creative_formats has no
 // tenant identity in its request schema (it's a global catalog read), so a

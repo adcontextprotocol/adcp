@@ -38,6 +38,20 @@ describe('WorkOS client request budgets', () => {
     });
   });
 
+  it('bounds exact-credential provider reads without automatic retries', async () => {
+    const { getAuthorizationEnforcementWorkos } = await import('../../src/auth/workos-client.js');
+
+    getAuthorizationEnforcementWorkos();
+    getAuthorizationEnforcementWorkos();
+
+    expect(mocks.constructWorkOS).toHaveBeenCalledOnce();
+    expect(mocks.constructWorkOS).toHaveBeenCalledWith('sk_test_timeout', {
+      clientId: 'client_test_timeout',
+      timeout: 5_000,
+      maxRetries: 0,
+    });
+  });
+
   it('does not change retry or timeout policy for the general shared client', async () => {
     const { getWorkos } = await import('../../src/auth/workos-client.js');
 

@@ -39,6 +39,37 @@ function claimedRequest(): ClaimedComplianceRefreshRequest {
 }
 
 describe('ComplianceRefreshQueue', () => {
+  it.each(['manual', 'owner_test'] as const)('terminalizes missing provenance for %s without retrying', async (triggeredBy) => {
+    const request = { ...claimedRequest(), triggered_by: triggeredBy };
+    const release = vi.fn().mockResolvedValue(undefined);
+    const markFailed = vi.fn().mockResolvedValue(true);
+    const requeueAfterFailure = vi.fn();
+    const markSucceeded = vi.fn();
+    const db = {
+      claimDue: vi.fn().mockResolvedValue({ requests: [request], terminalizedExpired: 0 }),
+      acquireExecutionFence: vi.fn().mockResolvedValue({ isValid: () => true, release }),
+      heartbeat: vi.fn(),
+      requeueAfterFailure,
+      markSucceeded,
+      markFailed,
+      deleteTerminalBefore: vi.fn().mockResolvedValue(0),
+    } as unknown as ComplianceRefreshRequestsDatabase;
+    const queue = new ComplianceRefreshQueue(async () => {
+      throw Object.assign(new Error('untrusted upstream diagnostics'), { code: 'authorization_provenance_missing' });
+    }, db, 'worker-test');
+
+    await expect(queue.processQueue()).resolves.toEqual({ claimed: 1, succeeded: 0, failed: 1, lostLease: 0 });
+    expect(markFailed).toHaveBeenCalledExactlyOnceWith(
+      request.id,
+      request.lease_token,
+      'authorization_provenance_missing',
+      'Refresh requester authorization provenance is unavailable',
+    );
+    expect(requeueAfterFailure).not.toHaveBeenCalled();
+    expect(markSucceeded).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   it('never persists or logs arbitrary exception codes and messages', async () => {
     const request = claimedRequest();
     const markFailed = vi.fn().mockResolvedValue(true);

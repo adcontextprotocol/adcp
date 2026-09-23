@@ -2,10 +2,22 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
-import { GetReportingStatusResponseSchema } from '@adcp/sdk/schemas';
 import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
+
+/**
+ * Validate the Reliable Reporting wire shape against the in-repo source
+ * schemas. The pinned `@adcp/sdk` generates its strict zod projection from an
+ * older published bundle that predates the RC.3 consumer-status fields, so it
+ * rejects a conformant current-source response. Swap back to the SDK
+ * projection once the SDK is regenerated from RC.3 schemas.
+ */
+function expectReliableReportingWireShape(response: unknown): void {
+  const validation = validateSourceSchema('media-buy/get-reporting-status-response.json', response);
+  expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
+  expect(validation.valid).toBe(true);
+}
 import {
   TRAINING_REPORTING_CANONICALIZATION_BYTES,
   clearReportingReliabilityStore,
@@ -315,7 +327,7 @@ describe('sales training-agent reporting Core exercise', () => {
           }),
         })],
       });
-      expect(GetReportingStatusResponseSchema.safeParse(waitingPayload).success).toBe(true);
+      expectReliableReportingWireShape(waitingPayload);
 
       const delayed = await call(url, 6, 'comply_test_controller', {
         account,
@@ -392,7 +404,7 @@ describe('sales training-agent reporting Core exercise', () => {
         periods: [],
         revisions: [],
       });
-      expect(GetReportingStatusResponseSchema.safeParse(missing.result?.structuredContent).success).toBe(true);
+      expectReliableReportingWireShape(missing.result?.structuredContent);
     } finally {
       await close();
     }

@@ -262,6 +262,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
               ? 'brand_builder_owner_upload'
               : 'community_logo_upload',
           provenance: {
+            ...req.staticAdminAuditDetails,
             approval_path: isStaticAdmin
               ? 'static_admin_support_action'
               : isOwner

@@ -11,21 +11,21 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ## Version 3.2.0
 
-**Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.1 is the current signed protocol checkpoint. It completes the experimental Reliable Reporting 1.0 contract and hardens delivery, reach, and vendor-metric semantics. TypeScript `@adcp/sdk@14.0.0-rc.35`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` embed RC.1 exactly; Python and Go higher-level coverage remains role-dependent. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
+**Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.3 is the current signed protocol checkpoint. It hardens the experimental Reliable Reporting consumer-status loop, adds a shared MediaBuy-level frequency cap with structured product frequency-cap constraints, and adds request-only targeting inputs with `null`-clear semantics. TypeScript `@adcp/sdk@14.0.0-rc.40` embeds RC.3 exactly; Python `adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` still embed RC.1, with role-dependent higher-level coverage. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
 <Warning>
 **Reliable Reporting breaking-change notice — published September 12, 2026.**
-Current source adds opt-in `sync_reporting_status` so a buyer can report missing,
+RC.2 publishes opt-in `sync_reporting_status` so a buyer can report missing,
 unreadable, contradictory, or exactly received reporting back to the seller; the
 seller can then detect when a received revision becomes stale after restatement.
-The loop is hardened for RC.2: a stale `received` gets a bounded re-read grace
+RC.3 hardens the loop: a stale `received` gets a bounded re-read grace
 window before it escalates, buyers owe a status by
 `expected_at + automated_recovery_window_seconds` (counted in
 `obligation_counts.consumer_status_pending`, never in health), issues carry
 `opened_at` / `issue_state` / `external_ref` with an optional
 `consumer_mismatch_escalation_seconds` and `operations_contact`, and
 `content_mismatch` names contract-fact disagreements through a closed
-`mismatch_code`. `reporting-delivery-config.json` also reserves
+`mismatch_code`. RC.3's `reporting-delivery-config.json` also reserves
 `authoritative_party`; sellers MUST reject `consumer` with `UNSUPPORTED_FEATURE`
 until a later minor defines the buyer-deposited revision task
 ([#7440](https://github.com/adcontextprotocol/adcp/issues/7440)). Sellers advertise
@@ -51,7 +51,9 @@ See the [migration guide](/docs/reference/migration/reliable-reporting-status-lo
 | `3.2.0-beta.10` | Add managed reporting delivery, authenticated principals, audio VAST and DOOH support, programmed channel collections, committed collection selection, and expanded conformance coverage | Previous protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.28` and exact Python schema/type support in `adcp==8.0.0b11` |
 | `3.2.0-beta.11` | Add `get_principal` to the MCP media-buy role profile and align the public training agent with the latest beta bundle | Previous protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.29` and exact Python schema/type support in `adcp==8.0.0b12` |
 | `3.2.0-rc.0` | Publish the first 3.2 release candidate after beta integration fixes and expand reporting lifecycle conformance | Previous checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.31` and exact Python schema/type support in `adcp==8.0.0b13` |
-| `3.2.0-rc.1` | Complete the experimental Reliable Reporting 1.0 contract and harden delivery currency, aggregate reach, vendor-metric identity, and integration behavior | Current signed protocol checkpoint with exact TypeScript, Python, and Go SDK pairings |
+| `3.2.0-rc.1` | Complete the experimental Reliable Reporting 1.0 contract and harden delivery currency, aggregate reach, vendor-metric identity, and integration behavior | Previous checkpoint with exact Python support in `adcp==8.0.0b14` and exact Go support in `adcp/v3@v3.2.1` |
+| `3.2.0-rc.2` | Add the opt-in experimental Reliable Reporting `sync_reporting_status` consumer-status loop, buyer and orchestrator storyboards with a buyer-orchestrator compliance track, cursor pagination for truncated `get_media_buy_delivery` breakdowns, sub-country product coverage filters, and restored `canonical-forecast-point` constraints | Previous checkpoint. No maintained SDK embeds it; test it from the signed bundle |
+| `3.2.0-rc.3` | Harden the consumer-status loop (`content_mismatch` and `mismatch_code`, a bounded grace window for a stale `received`, the buyer posting deadline and `obligation_counts.consumer_status_pending`, issue lifecycle fields, `operations_contact`, and the reserved `authoritative_party`), add a shared MediaBuy-level `frequency_cap` with structured product frequency-cap constraints, add request-only targeting with `null`-clear semantics, and retire superseded beta artifacts | Current signed protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-rc.40`; Python and Go remain on RC.1 |
 
 Each prerelease is immutable. The `3.2-rc` documentation selector advances to the latest release candidate; the `3.2-beta` selector remains frozen at beta.11. Pinned protocol, schema, compliance, and documentation artifacts remain available. See the [3.2 prerelease program](/docs/reference/3-2-beta).
 
@@ -59,33 +61,37 @@ Each prerelease is immutable. The `3.2-rc` documentation selector advances to th
 
 - **Media buying:** compact listing, immutable proposal negotiation, direct purchase, proposal acceptance, operational control, seller-optimized budgets and bidding, atomic total-budget changes, revenue-share pricing, creative rotation, warnings, and durable indicators.
 - **Identity and connections:** an experimental authenticated-principal layer for caller-scoped webhooks, reusable reporting destinations, asynchronous capability declarations, optimistic replacement, and `principal.changed` repair.
-- **Targeting and audiences:** targeting-aware discovery, portable demographic predicates, named places, value-aware regions, browser families, property exclusions, audience evidence, and exact package readback.
+- **Targeting and audiences:** targeting-aware discovery, portable demographic predicates, named places, value-aware regions, browser families, property exclusions, audience evidence, exact package readback, and request-only targeting inputs where each dimension distinguishes omission, a non-null replacement, and an explicit `null` that clears it.
+- **Frequency management:** a shared MediaBuy-level `frequency_cap` counted once across every package, advertised through `media_buy.aggregate_frequency_capping` and product `media_buy_support`, plus structured product frequency-cap constraints on `overlay_support.frequency_cap_support` and the `update_media_buy_frequency_cap` action.
 - **Inventory identity:** first-class programmed channel collections, including FAST and virtual linear streams, with host-property carriage mapping and collection-scoped host attestation for owner-sold avails.
 - **Creative:** canonical capability discovery, image pixel density and rendition sets, localization, async preview opt-in, audio loudness, VAST 4.3 and validation levels, accessibility detail, and synthetic depiction provenance.
 - **Security and evidence:** required body binding for 3.2 request-signing profiles, OAuth discovery grading, portable attestations, rights and signal evidence, signed brand-response verification, and safer secured asset access.
+- **Errors and recovery:** required `error.recovery` emission for 3.2 producers with schema-compatible 3.1 decoding, bounded unknown-code fallback, and reference vectors for classification and `retry_after` scheduling.
 - **Operations and measurement:** capability/account change notifications, snapshot-and-log repair, demographic and spot delivery, metric accountability, deterministic filters, fixture resolution, and capability-selected runtime projections.
-- **Reliable Reporting:** a separately discovered, versioned experimental three-tier contract for expected-period obligations, immutable official revisions, managed materializations, authenticated receipts, correction ledgers, and repairable status. RC.1 completes Reliable Reporting 1.0.
+- **Reliable Reporting:** a separately discovered, versioned experimental three-tier contract for expected-period obligations, immutable official revisions, managed materializations, authenticated receipts, correction ledgers, and repairable status. RC.1 completes Reliable Reporting 1.0; RC.2 adds the opt-in two-sided `sync_reporting_status` consumer-status loop; RC.3 hardens that loop and reserves `authoritative_party` for a later minor.
 - **Experimental surfaces:** cross-role campaign governance revisions and Trusted Match authentication, routing, attribution, and creative-data cleanup under their existing experimental declarations.
 
 ### Adopter action
 
 | If you are… | Before advertising or sending 3.2 |
 |---|---|
-| A buyer | Discover the exact prerelease, gate every compact tool and optional field on capabilities, and keep a 3.1 route during prerelease. |
-| A seller or service | Advertise and echo the exact prerelease served, emit canonical status/retry shapes, and declare only capabilities actually implemented. |
+| A buyer | Discover the exact prerelease, gate every compact tool and optional field on capabilities, keep a 3.1 route during prerelease, and retain bounded recovery fallback for legacy errors. |
+| A seller or service | Advertise and echo the exact prerelease served, populate `error.recovery` on every 3.2 error, emit canonical status/retry shapes, and declare only capabilities actually implemented. |
 | A signing implementation | Require `content-digest` coverage for every signed request body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; isolate named-format conversion at compatibility boundaries. |
-| An SDK maintainer | Generate from the current signed RC.1 tarball, publish an exact support statement, and route accepted protocol corrections into a later prerelease. |
-| A compliance operator | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.35`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain exact package and wire versions and do not issue a 3.2 badge from a prerelease checkpoint. |
+| An SDK maintainer | Generate from the current signed RC.3 tarball, publish an exact support statement, and route accepted protocol corrections into a later prerelease. |
+| A compliance operator | Pair `@adcp/sdk@14.0.0-rc.40` with RC.3. Python `adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` remain paired with RC.1. Retain exact package and wire versions and do not issue a 3.2 badge from a prerelease checkpoint. |
 
 ### Required 3.2 migrations
 
 - `create_media_buy` and `update_media_buy` success bodies use `media_buy_status`; root `status` is the task-envelope state. See [Migrating to `media_buy_status`](/docs/reference/migration/media-buy-status).
 - A 3.2 request-signing profile advertises `covers_content_digest: "required"`; every accepted signature on a body-bearing request covers the digest.
 - 3.2 request `Signature` and `Content-Digest` values use RFC 8941 padded standard Base64 `sf-binary`, not the 3.0/3.1 unpadded Base64URL override. Webhook v1 retains its separately routed legacy encoding.
+- 3.2 producers populate `error.recovery` on every error. The shared schema remains permissive for 3.1 compatibility; SDK consumers should qualify against the [error-recovery reference vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/error-recovery/vectors.json).
 - 3.2 producers emit integer `error.retry_after` seconds.
 - A 3.2 verification claim requires release advertisement and response echo even though those fields remain schema-optional for 3.x compatibility.
 - Idempotency replay is required for state-mutating requests, not pure reads. Read wrappers must tolerate an optional `idempotency_key`, but may ignore it; buyers cannot infer read-response replay from `adcp.idempotency.supported: true`.
+- Product and signal agents may declare `anonymous_discovery` in their respective capability block. `true` permits an anonymous discovery response without claiming catalog completeness; `false` requires an authenticated principal; absence preserves legacy probe-and-handle behavior. Mutations and private or account-scoped reads remain authenticated by protocol rule rather than seller-variable capability.
 
 ### Compact product and MediaBuy lifecycle (#6115)
 
@@ -149,6 +155,29 @@ See [`list_creative_formats`](/docs/creative/task-reference/list_creative_format
 3.1.3 added `filters.publisher_domain` to the stable `get_products` request schema in a patch release. New stable protocol fields are minor-version changes under the AdCP release contract. The reference implementation also accepted `publisher_domains[]` on products even though the product schema explicitly permits only singular `publisher_domain` selectors.
 
 The `v3.1.3` tag, schemas, compliance bundles, protocol tarball, signatures, and checksums remain available and immutable for auditability. Public release guidance points back to 3.1.2. A corrected publisher-domain discovery design may return in a future minor release.
+
+---
+
+## Version 3.1.22
+
+**Status:** Published September 13, 2026 at 12:56 UTC — emergency privacy/security correction for the experimental Trusted Match Protocol (`trusted_match.core`). The stable wire negotiation value remains `"3.1"`.
+
+Version 3.1.22 corrected two public Context Match privacy/security issues:
+
+- [#7396](https://github.com/adcontextprotocol/adcp/pull/7396) prohibits dense embeddings derived from non-public content attributable to a single user or session and requires privacy reduction for other free-form context signals.
+- [#7397](https://github.com/adcontextprotocol/adcp/pull/7397) replaces placement-only response caching with request-aware partitioning by `{provider_id, context_hash}`, rewrites `request_id` on cache hits, and keeps request-derived cache material out of observability surfaces.
+
+The generated v3.1.22 changelog included #7396 but omitted #7397 because the 3.1.x backport did not carry its own changeset. Version 3.1.23 supplies that missing release coverage. The published [v3.1.22 release](https://github.com/adcontextprotocol/adcp/releases/tag/v3.1.22), tag, package, and versioned `dist` artifacts remain immutable.
+
+### Immediate Context Match cache action
+
+Context Match router operators affected by unsafe response caching MUST bypass or disable that caching until the router implements both request-aware partitioning and a trusted namespace for every result-affecting security and provider-configuration context. This includes authenticated principal or tenant, authorization and entitlement revision, active-package generation, provider endpoint and configuration, deployed model, and targeting or rules generation.
+
+The request-aware `{provider_id, context_hash}` rule is the v3.1.22 correction. The additional `cache_namespace` conformance contract in main [#7446](https://github.com/adcontextprotocol/adcp/pull/7446) is 3.2-only and effective October 25, 2026; it is not retroactive 3.1 conformance. Until a router can establish both dimensions safely, bypassing cache lookup, coalescing, and insertion is the safe operational posture.
+
+### Emergency notice exception
+
+The v3.1.22 corrections shipped immediately as an emergency security exception to the normal six-week notice process for breaking changes to experimental surfaces. This records the exception; it does not change the general [experimental notice contract](/docs/reference/experimental-status#contract-for-experimental-surfaces). Corrections to the release record are carried forward in current-source documentation and the next patch rather than by rewriting published v3.1.22 artifacts.
 
 ---
 
@@ -285,7 +314,7 @@ A seller may voluntarily cache keyed reads, but buyers cannot rely on that behav
 
 **MCP tool wrappers MUST tolerate schema-admitted envelope fields (#4399).** FastMCP/Pydantic strict signatures, Zod `.strict()`, and OpenAPI codegen with `additionalProperties: false` injected into otherwise-open input models are non-conformant. An admitted request-body `context_id` is accepted and ignored for compatibility. See [mcp-guide.mdx § Server-side tool wrappers](/docs/building/by-layer/L0/mcp-guide#server-side-tool-wrappers-must-tolerate-envelope-fields).
 
-**`error.code` decoding is forward-compatible by contract (#4227).** Receivers MUST treat unknown `error.code` values as valid, read `error.recovery` (the normative wire carrier from 3.1 onward) for the recovery class, default to `transient` when absent (bounded by §Retry Logic). Senders SHOULD populate `error.recovery` on every error from 3.1 onward — receivers across version skew can't rely on `enumMetadata.recovery` for codes they don't know. Sellers upgrading 3.0.x → 3.1 SHOULD audit error-emit paths before bumping the advertised `adcp_version`. See [error-handling.mdx § Forward-compatible decoding](/docs/building/by-layer/L3/error-handling#forward-compatible-decoding-normative).
+**`error.code` decoding is forward-compatible by contract (#4227).** Receivers MUST treat unknown `error.code` values as valid and read `error.recovery` (the normative wire carrier from 3.1 onward) when present. When a legacy error omits it, receivers use the registered classification for a known code and the bounded `transient` fallback for an unknown code. AdCP 3.1 senders SHOULD populate `error.recovery` on every error; 3.2 makes that a producer MUST. Sellers upgrading 3.0.x → 3.1 SHOULD audit error-emit paths before bumping the advertised `adcp_version`. See [error-handling.mdx § Forward-compatible decoding](/docs/building/by-layer/L3/error-handling#forward-compatible-decoding-normative).
 
 **Idempotency replay returns historical snapshots, not current state (#4371).** Rule 2's immutable-cache invariant extended explicitly to synchronous-success responses: state-tracking fields in cached payloads (`status`, `packages`, `affected_packages`, etc.) MUST NOT refresh on replay. Buyers reading state from a `replayed: true` response MUST re-read via the resource's read endpoint (`get_media_buys`, `list_accounts`, etc.) before acting on it.
 
@@ -307,7 +336,7 @@ A seller may voluntarily cache keyed reads, but buyers cannot rely on that behav
 | A seller emitting `create_media_buy` synchronous-success responses with embedded `status` | Nothing changes. Existing byte-stable replay already conforms; the rule was silent on this case before, now it's explicit. |
 | A buyer agent reading `status` from a mutation response | Add a `replayed: true` guard: if set, call the resource's read endpoint (`get_media_buys`, `list_accounts`, etc.) before any state-dependent action. Without the guard, you'll hit `NOT_CANCELLABLE` and similar state-machine bugs against replayed responses. |
 | A seller emitting unsigned webhooks or claiming the deprecated `signed-requests` specialism | Read the new `notices` field on runner-output-contract — your conformance dashboards will start surfacing `request_signing_required_in_4_0` / `legacy_hmac_fallback_removed_in_4_0` / `signed_requests_specialism_deprecated`. Behavior is unchanged in 3.1; the advisories are forward-readiness for 4.0. |
-| A seller currently emitting unknown error codes (platform-specific or pre-3.1 additions) | Add `error.recovery` to every error envelope before bumping advertised `adcp_version` to 3.1. Receivers default to `transient` when absent, which is safe but suboptimal — populating the field correctly is the spec-compliant path. |
+| A seller currently emitting unknown error codes (platform-specific or pre-3.1 additions) | Add `error.recovery` to every error envelope when adopting 3.1. This is a 3.1 SHOULD, so omission remains wire-valid; 3.2 producers MUST populate it. Receivers use the bounded `transient` fallback when an unknown code omits the field. |
 | An adopter with strict-validator test fixtures or codegen against `core/protocol-envelope.json` | Refresh fixtures and decoders. The schema drops `required: [status, payload]` (#2911) — strict validators that asserted "envelope MUST reject responses missing `payload`" will start accepting envelopes they used to reject. SDK consumers using OpenAPI / quicktype / Pydantic codegen against the envelope will see `status` and `payload` flip from required to optional in generated types; audit downstream decoders that depended on those being present at the schema level. A2A consumers carry `status` via `task.status.state`; MCP/REST consumers reading the envelope as a pure JSON Schema decoder are the affected set. The new normative serialization rules in the envelope's `notes` describe what wire shape to expect per transport. |
 
 The 3.1 posture is additive over 3.0 and formalizes behavior shipping SDKs already implement. AdCP 3.2 resolves the overloaded product-discovery surface additively.

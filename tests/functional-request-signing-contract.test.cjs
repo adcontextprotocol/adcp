@@ -87,3 +87,34 @@ test('functional signing contract remains sandbox-only and preserves seller veri
   assert.match(schema, /Never fall back to unsigned dispatch/);
   assert.match(betaGuide, /Do not weaken production authentication/);
 });
+
+test('unsigned MCP session ids cannot carry AdCP authority', () => {
+  const securityGuide = fs.readFileSync(
+    path.join(ROOT, 'docs/building/by-layer/L1/security.mdx'),
+    'utf8'
+  );
+  const mcpGuide = fs.readFileSync(
+    path.join(ROOT, 'docs/building/by-layer/L0/mcp-guide.mdx'),
+    'utf8'
+  );
+  const brandGuide = fs.readFileSync(
+    path.join(ROOT, 'docs/brand-protocol/building-a-brand-agent.mdx'),
+    'utf8'
+  );
+
+  assert.match(securityGuide, /MCP transport sessions are non-authoritative/);
+  assert.match(securityGuide, /`Mcp-Session-Id` is not a\s+covered component/);
+  assert.match(
+    securityGuide,
+    /MUST NOT attribute identity, authorization, account selection,\s+resource access, or task ownership/s
+  );
+  assert.match(securityGuide, /does not\s+include recognized per-request credential channels such as `Authorization`/s);
+  assert.match(securityGuide, /when request signing\s+applies/s);
+  assert.match(securityGuide, /additionally keyed by the authenticated principal and\s+account/s);
+  assert.match(securityGuide, /Rebinding.*MUST NOT\s+change the principal/s);
+  assert.match(mcpGuide, /bind every task to the authenticated principal and account/);
+  assert.match(mcpGuide, /`sessionId` may be retained only as secondary transport metadata/);
+  assert.doesNotMatch(mcpGuide, /filters by `sessionId` on every operation/);
+  assert.match(brandGuide, /extra\?\.auth\?\.principalId/);
+  assert.doesNotMatch(brandGuide, /db\.isLinkedAccount\(sessionId\)/);
+});

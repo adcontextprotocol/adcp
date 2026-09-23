@@ -175,6 +175,181 @@ describe('JobScheduler', () => {
     scheduler.stopAll();
   });
 
+  it('aborts timed-out jobs and releases their concurrency slots', async () => {
+    vi.useFakeTimers();
+
+    const scheduler = new JobScheduler();
+    let observedSignal: AbortSignal | undefined;
+    scheduler.register({
+      name: 'wedged-job',
+      description: 'Wedged job',
+      interval: { value: 1, unit: 'hours' },
+      initialDelay: { value: 1, unit: 'seconds' },
+      executionTimeoutMs: 5_000,
+      passExecutionContext: true,
+      runner: async (_options, context) => {
+        observedSignal = context.signal;
+        await new Promise<void>((resolve) => {
+          context.signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+      },
+    });
+
+    scheduler.start('wedged-job');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(scheduler.getPoolStatus()).toMatchObject({
+      activeJobs: 1,
+      queuedJobs: 0,
+      maxConcurrency: 5,
+    });
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(observedSignal?.aborted).toBe(true);
+    expect(scheduler.getPoolStatus()).toMatchObject({
+      activeJobs: 0,
+      queuedJobs: 0,
+      maxConcurrency: 5,
+    });
+    expect(scheduler.getStatus()[0]).toMatchObject({
+      executing: false,
+      executionTimeoutMs: 5_000,
+      lastError: 'Wedged job timed out after 5000ms',
+      consecutiveFailures: 1,
+    });
+    scheduler.stopAll();
+  });
+
+  it('reports jobs waiting for the shared concurrency pool', async () => {
+    vi.useFakeTimers();
+
+    const scheduler = new JobScheduler();
+    const blockers: ReturnType<typeof deferred>[] = [];
+    for (let i = 0; i < 6; i++) {
+      const blocker = deferred();
+      blockers.push(blocker);
+      scheduler.register({
+        name: `pool-job-${i}`,
+        description: `Pool job ${i}`,
+        interval: { value: 1, unit: 'hours' },
+        initialDelay: { value: 1, unit: 'seconds' },
+        runner: async () => blocker.promise,
+      });
+    }
+
+    scheduler.startAll();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(scheduler.getPoolStatus()).toMatchObject({
+      activeJobs: 5,
+      queuedJobs: 1,
+      maxConcurrency: 5,
+    });
+
+    for (const blocker of blockers) blocker.resolve();
+    await flushMicrotasks(10);
+    expect(scheduler.getPoolStatus()).toMatchObject({
+      activeJobs: 0,
+      queuedJobs: 0,
+      maxConcurrency: 5,
+    });
+    scheduler.stopAll();
+  });
+
+  it('starts the execution deadline while queued and preserves job identities', async () => {
+    vi.useFakeTimers();
+
+    const scheduler = new JobScheduler();
+    const blockers: ReturnType<typeof deferred>[] = [];
+    for (let i = 0; i < 5; i++) {
+      const blocker = deferred();
+      blockers.push(blocker);
+      scheduler.register({
+        name: `blocking-job-${i}`,
+        description: `Blocking job ${i}`,
+        interval: { value: 1, unit: 'hours' },
+        initialDelay: { value: 1, unit: 'seconds' },
+        runner: async () => blocker.promise,
+      });
+    }
+    const queuedRunner = vi.fn(async () => undefined);
+    scheduler.register({
+      name: 'bounded-queued-job',
+      description: 'Bounded queued job',
+      interval: { value: 1, unit: 'hours' },
+      initialDelay: { value: 1, unit: 'seconds' },
+      executionTimeoutMs: 5_000,
+      runner: queuedRunner,
+    });
+
+    scheduler.startAll();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(scheduler.getPoolStatus()).toMatchObject({ activeJobs: 5, queuedJobs: 1 });
+    expect(scheduler.getPoolStatus().activeJobDetails.map(job => job.name)).toEqual([
+      'blocking-job-0', 'blocking-job-1', 'blocking-job-2', 'blocking-job-3', 'blocking-job-4',
+    ]);
+    expect(scheduler.getPoolStatus().queuedJobDetails.map(job => job.name)).toEqual(['bounded-queued-job']);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(queuedRunner).not.toHaveBeenCalled();
+    expect(scheduler.getPoolStatus()).toMatchObject({ activeJobs: 5, queuedJobs: 0 });
+    expect(scheduler.getStatus().find(job => job.name === 'bounded-queued-job')).toMatchObject({
+      executing: false,
+      lastError: 'Bounded queued job timed out after 5000ms',
+    });
+
+    for (const blocker of blockers) blocker.resolve();
+    await flushMicrotasks(10);
+    scheduler.stopAll();
+  });
+
+  it('retains a bounded result snapshot when validation marks zero progress unhealthy', async () => {
+    vi.useFakeTimers();
+    const scheduler = new JobScheduler();
+    scheduler.register({
+      name: 'observable-heartbeat',
+      description: 'Observable heartbeat',
+      interval: { value: 1, unit: 'hours' },
+      initialDelay: { value: 1, unit: 'seconds' },
+      runner: async () => ({ checked: 0, diagnostics: { eligibleBacklog: 35 } }),
+      statusResult: result => result.diagnostics,
+      validateResult: result => {
+        if (result.checked === 0) throw new Error('no authoritative progress');
+      },
+    });
+
+    scheduler.start('observable-heartbeat');
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(scheduler.getStatus()[0]).toMatchObject({
+      lastResult: { eligibleBacklog: 35 },
+      lastError: 'no authoritative progress',
+      consecutiveFailures: 1,
+    });
+    scheduler.stopAll();
+  });
+
+  it('does not pass scheduler context into legacy dependency-injection arguments', async () => {
+    vi.useFakeTimers();
+
+    const scheduler = new JobScheduler();
+    let observedDependencies: { testDependency?: boolean } | undefined;
+    scheduler.register({
+      name: 'legacy-runner',
+      description: 'Legacy runner',
+      interval: { value: 1, unit: 'hours' },
+      initialDelay: { value: 1, unit: 'seconds' },
+      runner: async (_options, dependencies?: { testDependency?: boolean }) => {
+        observedDependencies = dependencies;
+      },
+    });
+
+    scheduler.start('legacy-runner');
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(observedDependencies).toBeUndefined();
+    scheduler.stopAll();
+  });
+
   it('records and logs the memory delta for each completed job', async () => {
     vi.useFakeTimers();
     const memorySpy = vi.spyOn(process, 'memoryUsage')

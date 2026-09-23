@@ -6,7 +6,7 @@ describe('renderBadgeSvg', () => {
     const svg = renderBadgeSvg('media-buy', ['spec']);
 
     expect(svg).toContain('AAO Verified');
-    expect(svg).toContain('Media Buy Agent (Spec)');
+    expect(svg).toContain('Media Buy Agent (Spec) · Legacy grading');
     expect(svg).toContain('xmlns="http://www.w3.org/2000/svg"');
     expect(svg).toContain('#076D63'); // AAO teal (WCAG AA compliant)
     expect(svg).not.toContain('Not Verified');
@@ -15,7 +15,7 @@ describe('renderBadgeSvg', () => {
   it('renders a verified (Spec + Live) badge with both qualifiers', () => {
     const svg = renderBadgeSvg('media-buy', ['spec', 'live']);
 
-    expect(svg).toContain('Media Buy Agent (Spec + Live)');
+    expect(svg).toContain('Media Buy Agent (Spec + Live) · Legacy grading');
     expect(svg).toContain('#076D63');
   });
 
@@ -23,8 +23,8 @@ describe('renderBadgeSvg', () => {
     const svgA = renderBadgeSvg('media-buy', ['live', 'spec']);
     const svgB = renderBadgeSvg('media-buy', ['spec', 'live']);
 
-    expect(svgA).toContain('Media Buy Agent (Spec + Live)');
-    expect(svgB).toContain('Media Buy Agent (Spec + Live)');
+    expect(svgA).toContain('Media Buy Agent (Spec + Live) · Legacy grading');
+    expect(svgB).toContain('Media Buy Agent (Spec + Live) · Legacy grading');
   });
 
   it('renders a verified (Live) badge without (Spec) when only live is set', () => {
@@ -84,8 +84,18 @@ describe('renderBadgeSvg', () => {
   it('includes accessibility attributes', () => {
     const svg = renderBadgeSvg('media-buy', ['spec']);
     expect(svg).toContain('role="img"');
-    expect(svg).toContain('aria-label="AAO Verified: Media Buy Agent (Spec)"');
-    expect(svg).toContain('<title>AAO Verified: Media Buy Agent (Spec)</title>');
+    expect(svg).toContain('aria-label="AAO Verified: Media Buy Agent (Spec) · Legacy grading"');
+    expect(svg).toContain('<title>AAO Verified: Media Buy Agent (Spec) · Legacy grading</title>');
+  });
+
+  it('makes Legacy and Strict Spec grading visibly distinct', () => {
+    const legacy = renderBadgeSvg('media-buy', ['spec'], { gradingProfile: 'legacy' });
+    const strict = renderBadgeSvg('media-buy', ['spec'], { gradingProfile: 'spec' });
+
+    expect(legacy).toContain('>Media Buy Agent (Spec) · Legacy grading</text>');
+    expect(strict).toContain('>Media Buy Agent (Spec) · Strict Spec grading</text>');
+    expect(strict).toContain('aria-label="AAO Verified: Media Buy Agent (Spec) · Strict Spec grading"');
+    expect(strict).not.toContain('>Media Buy Agent (Spec) · Legacy grading</text>');
   });
 });
 
@@ -93,7 +103,7 @@ describe('renderBadgeSvg — adcp_version segment (#3524 stage 3)', () => {
   it('embeds the version between the role and the qualifier', () => {
     const svg = renderBadgeSvg('media-buy', ['spec'], { adcpVersion: '3.0' });
     expect(svg).toContain('Media Buy Agent 3.0 (Spec)');
-    expect(svg).toContain('aria-label="AAO Verified: Media Buy Agent 3.0 (Spec)"');
+    expect(svg).toContain('aria-label="AAO Verified: Media Buy Agent 3.0 (Spec) · Legacy grading"');
   });
 
   it('renders Media Buy Agent 3.1 (Spec + Live)', () => {

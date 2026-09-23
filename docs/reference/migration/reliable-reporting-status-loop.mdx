@@ -8,8 +8,9 @@ description: "Breaking-change notice and migration guide for sync_reporting_stat
 **Experimental breaking-change notice published September 12, 2026.** Under
 AdCP's six-week experimental-surface notice policy, the Core requirement
 described here must not appear in an immutable release before October 24,
-2026. `3.2.0-rc.2` publishes the task as opt-in; making it *required* is what
-the notice window governs. Published `3.2.0-rc.1` remains unchanged.
+2026. `3.2.0-rc.2` publishes the task as opt-in and `3.2.0-rc.3` hardens it;
+making it *required* is what the notice window governs. Published
+`3.2.0-rc.1` remains unchanged.
 </Warning>
 
 Reliable Reporting RC.1 lets a seller publish its obligation/revision state and
@@ -19,9 +20,9 @@ or unreadable. A seller can therefore project `healthy` while the buyer's
 webhook, exact revision read, or destination access is failing.
 
 `3.2.0-rc.2` closes that loop additively with opt-in
-[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status).
-A seller advertises `consumer_status_task` only when the task and readback are
-implemented. The requirement itself lands only in the next eligible minor
+[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status),
+and `3.2.0-rc.3` hardens it. A seller advertises `consumer_status_task` only
+when the task and readback are implemented. The requirement itself lands only in the next eligible minor
 after the notice window. Both changes remain inside the experimental
 `media_buy.reporting_delivery` surface.
 
@@ -43,8 +44,8 @@ Before (`3.2.0-rc.1`):
 }
 ```
 
-Current opt-in form, and required form in the next eligible minor after the
-notice window:
+Current opt-in form (`3.2.0-rc.3`), and required form in the next eligible
+minor after the notice window:
 
 ```json
 {
@@ -183,8 +184,9 @@ billing-feed constraints. Tracked in
 `reporting_status_id` are now required on that issue code. The code itself
 shipped in RC.1's `reporting-status-issue.json` enum, so an RC.1 seller that
 already emits it must add `opened_at` — fixed at first emission, never advanced
-on re-emission — before validating against current source. No other issue code
-is affected.
+on re-emission — before validating against
+[`3.2.0-rc.3`](https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/reporting-status-issue.json).
+No other issue code is affected.
 </Note>
 
 ## Verifying the loop
@@ -192,9 +194,24 @@ is affected.
 Sellers advertising `consumer_status_task` run the capability-gated
 `reporting_consumer_status` storyboard. It uses the
 [`reporting_core_lifecycle_probe`](/docs/building/by-layer/L3/comply-test-controller#reporting_core_lifecycle_probe)
-controller fixture, including the `restate_after_received` operation that
-restates a revision the caller already reported as `received` and returns the
-`stale_received_grace_deadline`, so both sides of the grace boundary are graded
-live rather than only in a seller's own integration tests. Cross-principal
-non-disclosure still requires an integration test — see
+controller fixture, which supplies every boundary the projection depends on:
+
+- `restate_after_received` restates a revision the caller already reported as
+  `received` and returns the `stale_received_grace_deadline`, so both sides of
+  the grace boundary are graded live rather than only in a seller's own
+  integration tests.
+- `advance_past_status_deadline` crosses `expected_at +
+  automated_recovery_window_seconds` without recording any statement, so the
+  storyboard can check that `obligation_counts.consumer_status_pending` rises,
+  that it clears on any posted leaf, and that neither transition moves `health`
+  or any other count.
+- `advance_past_escalation` crosses the open issue's `opened_at` plus
+  `consumer_mismatch_escalation_seconds` while the grace window is still open,
+  so the precedence rule is graded rather than assumed — and the returned
+  `issue_id` and `issue_opened_at` prove the window is anchored to the issue
+  rather than to the poll.
+
+The storyboard also grades each closed `mismatch_code`, rejection of a
+`content_mismatch` that omits it, and the advertised `operations_contact`.
+Cross-principal non-disclosure still requires an integration test — see
 [known limitations](/docs/reference/known-limitations#conformance-and-testing).

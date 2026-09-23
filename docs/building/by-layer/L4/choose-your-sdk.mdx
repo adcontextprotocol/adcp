@@ -23,21 +23,25 @@ For the layered model behind this — what each layer contains and what an SDK a
 
 What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide).
 
-*Last updated: 2026-09-11.*
+*Last updated: 2026-09-19.*
 
 | SDK | Current package | 3.2 RC support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TypeScript) | `14.0.0-rc.35` | Exact `3.2.0-rc.1` support | ✅ | ✅ | ✅ | ✅ |
+| **`@adcp/sdk`** (TypeScript) | `14.0.0-rc.40` | Exact `3.2.0-rc.3` support | ✅ | ✅ | ✅ | ✅ |
 | **`adcp`** (Python) | `8.0.0b14` | Exact `3.2.0-rc.1` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **`adcp/v3`** (Go) | `v3.2.1` | Exact `3.2.0-rc.1` generated schemas and types; higher layers remain role-dependent | ✅ | ⚠️ | ⚠️ | ⚠️ |
 
 Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. The L0–L3 columns describe the current package, not a 3.2 support claim.
 
+The current `rc` npm tag of `@adcp/sdk` matches this checkpoint and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`). Python and Go remain pinned to RC.1 until their next SDK wave.
+
 <Warning>
-**All three maintained SDKs now embed RC.1.** Pin the exact package and wire
-versions shown here for development and staging. This is not a GA signal:
-production integrations should remain on 3.1 until 3.2 is released. See the
-[3.2 prerelease program](/docs/reference/3-2-beta).
+**The TypeScript SDK embeds RC.3, the current protocol checkpoint.** Python
+and Go still embed `3.2.0-rc.1`. Pin the exact package and matching wire
+version shown here for development and staging. Raw-wire and code-generation
+workflows can also use RC.3's [signed bundle](/docs/reference/3-2-beta#use-the-rc-3-artifact-directly).
+This is not a GA signal: production integrations should remain on 3.1 until
+3.2 is released. See the [3.2 prerelease program](/docs/reference/3-2-beta).
 </Warning>
 
 The TypeScript SDK currently provides the broadest L0–L3 surface. Python is a
@@ -89,7 +93,7 @@ documents coordinator options, continuation storage, and supported projections.
 [![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/sdk@14.0.0-rc.35
+npm install @adcp/sdk@14.0.0-rc.40
 ```
 
 ```javascript
@@ -103,7 +107,7 @@ const client = createSingleAgentClient({
 });
 
 const products = await client.listProducts({
-  adcp_version: '3.2-rc.1',
+  adcp_version: '3.2-rc.3',
   account: { account_id: 'account_123' },
   criteria: {
     offer_filters: { channels: ['ctv'] },
@@ -198,12 +202,16 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ### JavaScript CLI
 
 ```bash
-npx @adcp/sdk@14.0.0-rc.35 --help
-npx @adcp/sdk@14.0.0-rc.35 --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@14.0.0-rc.35 my-agent list_products '{"adcp_version":"3.2-rc.1","account":{"account_id":"account_123"}}'
+npx @adcp/sdk@14.0.0-rc.40 --help
+npx @adcp/sdk@14.0.0-rc.40 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@14.0.0-rc.40 my-agent list_products '{"adcp_version":"3.2-rc.3","account":{"account_id":"account_123"}}'
 # or against the built-in public test agent:
-npx @adcp/sdk@14.0.0-rc.35 test-mcp list_products '{"adcp_version":"3.2-rc.1"}'
+npx @adcp/sdk@14.0.0-rc.40 test-mcp list_products '{"adcp_version":"3.2-rc.3"}'
 ```
+
+The `adcp_version` in the payload is a wire pin the CLI passes through, so it
+can name a checkpoint other than the one the SDK embeds. Request and response
+validation still uses the SDK's embedded bundle.
 
 The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`adcp grade`), and registry diagnostics. See `--help` for the full surface.
 

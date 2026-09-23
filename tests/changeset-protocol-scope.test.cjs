@@ -75,6 +75,27 @@ assert.strictEqual(isProtocolScopedPath('docs/registry/index.mdx'), false);
 assert.strictEqual(isProtocolScopedPath('scripts/run-storyboards-isolated.mjs'), true);
 assert.strictEqual(isProtocolScopedPath('server/src/billing/subscription-sync.ts'), false);
 assert.strictEqual(isProtocolScopedPath('.changeset/billing-fix.md'), false);
+assert.strictEqual(isProtocolScopedPath('.github/workflows/release.yml'), false);
+assert.strictEqual(isProtocolScopedPath('.github/workflows/training-agent-storyboards.yml'), true);
+assert.strictEqual(isProtocolScopedPath('scripts/build-protocol-tarball.cjs'), true);
+assert.strictEqual(
+  hasProtocolScopedChanges([
+    { status: 'M', paths: ['.github/workflows/release.yml'] },
+    { status: 'M', paths: ['scripts/backfill-cdn-artifacts.sh'] },
+    { status: 'A', paths: ['scripts/check-release-state.cjs'] },
+  ]),
+  false,
+  'Release publication controls do not schedule a protocol release'
+);
+assert.strictEqual(
+  hasProtocolScopedChanges([
+    { status: 'M', paths: ['.github/workflows/release.yml'] },
+    { status: 'M', paths: ['static/schemas/source/core/product.json'] },
+  ]),
+  true,
+  'A publication workflow change must not exempt accompanying protocol content'
+);
+
 assert.strictEqual(
   hasProtocolScopedChanges([{ status: 'M', paths: ['server/src/billing/subscription-sync.ts'] }]),
   false,
@@ -255,6 +276,17 @@ assert.strictEqual(
   ]),
   true,
   'Policy-only maintenance can bypass changesets status even when no changeset file is touched'
+);
+
+assert.strictEqual(
+  isChangesetStatusExemptMaintenance([
+    { status: 'M', paths: ['.github/workflows/release.yml'] },
+    { status: 'M', paths: ['tests/release-workflow-immutability.test.cjs'] },
+    { status: 'M', paths: ['scripts/check-changeset-protocol-scope.cjs'] },
+    { status: 'M', paths: ['tests/changeset-protocol-scope.test.cjs'] },
+  ]),
+  true,
+  'Release workflow maintenance can bypass changesets status without creating a package release'
 );
 
 assert.strictEqual(

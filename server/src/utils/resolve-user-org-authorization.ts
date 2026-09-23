@@ -1,19 +1,24 @@
 import type { WorkOS } from "@workos-inc/node";
 import type { OrgAuthorizationPrincipal } from "../auth/organization-principal.js";
 import { getOrganizationAuthorizationUserId } from "../auth/organization-principal.js";
-import { query } from "../db/client.js";
+import {
+  loadAuthorizationSnapshot,
+  sameAuthorizationIdentity,
+  sameAuthorizationSnapshot,
+  type AuthorizationSnapshot,
+} from "../db/user-authorization-snapshot-db.js";
 import { createLogger } from "../logger.js";
 import { resolveUserRole } from "./resolve-user-role.js";
 
 const logger = createLogger("resolve-user-org-authorization");
 
 export type MembershipRole = "owner" | "admin" | "member";
-export type OrgAuthorizationSource = "workos" | "credential_grant";
+export type OrgAuthorizationSource = "workos" | "credential_grant" | "authorization_snapshot";
 
 export interface UserOrgAuthorizationMembership {
   organizationId: string;
   role: MembershipRole;
-  source: OrgAuthorizationSource;
+  source: "workos" | "credential_grant";
 }
 
 export type UserOrgAuthorizationResolution =
@@ -52,7 +57,34 @@ export async function resolveUserOrgAuthorization(
   principal: OrgAuthorizationPrincipal,
   organizationId: string
 ): Promise<UserOrgAuthorizationResolution> {
+  const forbidden: UserOrgAuthorizationResolution = {
+    status: "forbidden", complete: true, unavailableSources: [],
+  };
+  const unavailable = {
+    status: "unavailable", complete: false, unavailableSources: ["authorization_snapshot"],
+  } satisfies UserOrgAuthorizationResolution;
+  // Signing in alone does not select an organization or confer tenant access.
+  if (!organizationId?.trim()) return forbidden;
   const userId = getOrganizationAuthorizationUserId(principal);
+  let snapshot: AuthorizationSnapshot | null;
+  try {
+    snapshot = await loadAuthorizationSnapshot(userId, organizationId);
+  } catch (err) {
+    logger.warn({ err }, "Primary authorization snapshot unavailable");
+    return unavailable;
+  }
+  if (!snapshot) return forbidden;
+  const previous = principal.authorizationSnapshot;
+  if (previous) {
+    // A sign-in with no org can bind an explicit route selection here. Once
+    // selected, a context belongs to that org and grant: replay cannot switch
+    // it or silently upgrade a revoked/replaced grant without a fresh request.
+    const current = previous.selectedOrganizationId === null
+      ? sameAuthorizationIdentity(previous, snapshot)
+      : sameAuthorizationSnapshot(previous, snapshot);
+    if (!current) return forbidden;
+  }
+
   let directMembership: UserOrgAuthorizationMembership | null = null;
   let workosAvailable = false;
 
@@ -64,7 +96,7 @@ export async function resolveUserOrgAuthorization(
           organizationId,
         });
       const matchingMemberships = memberships.data.filter(
-        (membership) => membership.organizationId === organizationId
+        (membership) => membership.userId === userId && membership.organizationId === organizationId
       );
       const activeRow = matchingMemberships.find(
         (membership) => membership.status === "active"
@@ -88,32 +120,25 @@ export async function resolveUserOrgAuthorization(
     logger.warn("WorkOS client unavailable; checking explicit credential grant");
   }
 
-  let grantAvailable = false;
-  let grantMembership: UserOrgAuthorizationMembership | null = null;
+  // WorkOS is an asynchronous authority source. Reject this decision if the
+  // persisted identity, epoch, selection or grant moved while it was in flight.
+  // In particular, never combine a pre-change provider decision with a new grant.
   try {
-    const grant = await query<{ workos_organization_id: string; role: string }>(
-      `SELECT workos_organization_id, role
-         FROM organization_credential_grants
-        WHERE workos_user_id = $1
-          AND workos_organization_id = $2
-          AND revoked_at IS NULL
-          AND effective_from <= NOW()
-          AND (effective_until IS NULL OR effective_until > NOW())
-        LIMIT 1`,
-      [userId, organizationId]
-    );
-    grantAvailable = true;
-    const row = grant.rows[0];
-    if (row && VALID_ROLES.has(row.role)) {
-      grantMembership = {
-        organizationId: row.workos_organization_id,
-        role: row.role as MembershipRole,
-        source: "credential_grant",
-      };
+    const current = await loadAuthorizationSnapshot(userId, organizationId);
+    if (!current || !sameAuthorizationSnapshot(snapshot, current)) {
+      return forbidden;
     }
   } catch (err) {
-    logger.warn({ err }, "Credential grant lookup failed");
+    logger.warn({ err }, "Primary authorization snapshot revalidation unavailable");
+    return unavailable;
   }
+  const grantMembership: UserOrgAuthorizationMembership | null = snapshot.credentialGrant
+    ? {
+        organizationId: snapshot.credentialGrant.organizationId,
+        role: snapshot.credentialGrant.role,
+        source: "credential_grant",
+      }
+    : null;
 
   let membership = directMembership;
   if (
@@ -126,7 +151,6 @@ export async function resolveUserOrgAuthorization(
 
   const unavailableSources: OrgAuthorizationSource[] = [];
   if (!workosAvailable) unavailableSources.push("workos");
-  if (!grantAvailable) unavailableSources.push("credential_grant");
 
   if (membership) {
     return {

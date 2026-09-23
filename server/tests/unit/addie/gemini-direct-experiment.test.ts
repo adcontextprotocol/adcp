@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GenerateContentParameters, GenerateContentResponse, Part } from '@google/genai';
 
-const mocks = vi.hoisted(() => ({ query: vi.fn(), recordCost: vi.fn(), checkCostCap: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  query: vi.fn(), recordCost: vi.fn(), checkCostCap: vi.fn(), notifyToolError: vi.fn(),
+}));
 vi.mock('../../../src/db/client.js', () => ({ query: mocks.query }));
 vi.mock('../../../src/db/addie-db.js', () => ({ AddieDatabase: class {} }));
-vi.mock('../../../src/addie/error-notifier.js', () => ({ notifySystemError: vi.fn(), notifyToolError: vi.fn() }));
+vi.mock('../../../src/addie/error-notifier.js', () => ({
+  notifySystemError: vi.fn(), notifyToolError: mocks.notifyToolError,
+}));
 vi.mock('../../../src/addie/config-version.js', () => ({ getCurrentConfigVersionId: vi.fn().mockResolvedValue(123) }));
 vi.mock('../../../src/addie/rules/index.js', () => ({
   loadCoreRules: () => 'You are Addie.', loadScopedRules: () => '',
@@ -21,10 +25,17 @@ import { AddieClaudeClient, type AddieResponse, type ProcessMessageOptions, type
 import { GoogleGenerateContentProvider, GOOGLE_ROUTER_MODEL } from '../../../src/addie/model-providers/google-generate-content-provider.js';
 import { collectModelResponse } from '../../../src/addie/model-providers/events.js';
 import { createGeminiDirectTools } from '../../../src/addie/gemini-direct-tools.js';
-import { geminiDirectAssignment, prepareGeminiDirectTurn } from '../../../src/addie/gemini-direct-experiment.js';
+import {
+  GEMINI_PRIMARY_POLICY,
+  geminiAnonymousWebAssignment,
+  geminiDirectAssignment,
+  getGeminiDirectResults,
+  prepareGeminiDirectTurn,
+} from '../../../src/addie/gemini-direct-experiment.js';
 import { AddieModelConfig } from '../../../src/config/models.js';
 import { ADMIN_ANALYTICS_TOOL } from '../../../src/addie/mcp/admin-analytics.js';
 import { getToolsForSets, getValidToolSetNames, TOOL_SETS } from '../../../src/addie/tool-sets.js';
+import { MAX_OUTPUT_LENGTH } from '../../../src/addie/security.js';
 
 function receipt(parts: Part[], id = 'google-response'): GenerateContentResponse {
   return {
@@ -33,8 +44,8 @@ function receipt(parts: Part[], id = 'google-response'): GenerateContentResponse
     usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 10, thoughtsTokenCount: 5 },
   } as GenerateContentResponse;
 }
-const call = (name: string, args: Record<string, unknown> = {}): Part => ({
-  functionCall: { id: `call-${name}`, name, args }, thoughtSignature: 'opaque-signature',
+const call = (name: string, args: Record<string, unknown> = {}, id = `call-${name}`): Part => ({
+  functionCall: { id, name, args }, thoughtSignature: 'opaque-signature',
 });
 const answer: AddieResponse = {
   text: 'The full workflow answered.', tools_used: [], tool_executions: [],
@@ -74,8 +85,13 @@ function fixture(responses: (GenerateContentResponse | GenerateContentResponse[]
   return { client, fork, provider, dispatch, handlers, control, input, getControlTools };
 }
 
-async function run(input: Parameters<typeof prepareGeminiDirectTurn>[0], overrides: ProcessMessageOptions = {}) {
+async function run(
+  input: Parameters<typeof prepareGeminiDirectTurn>[0],
+  overrides: ProcessMessageOptions = {},
+  stages?: { relationshipAnalyticsScheduleMs?: number; memberContextMs: number; workosContextMs?: number; experimentRoutingMs: number; preProviderMs: number },
+) {
   const turn = await prepareGeminiDirectTurn(input);
+  if (stages) turn.experiment?.recordPreProviderStages(stages);
   const events: StreamEvent[] = [];
   for await (const event of turn.client.processMessageStream('Help with AdCP.', [], turn.selection?.requestTools, {
     ...options, allowedToolNames: turn.selection?.allowedToolNames, selectedToolSetNames: turn.selection?.selectedToolSets, ...overrides,
@@ -84,15 +100,21 @@ async function run(input: Parameters<typeof prepareGeminiDirectTurn>[0], overrid
 }
 
 beforeEach(() => {
+  vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'gemini');
+  vi.stubEnv('ADDIE_RESPONSE_AUTOMATIC_FALLBACK', 'true');
   vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'staff');
   vi.stubEnv('GEMINI_API_KEY', 'unused');
+  vi.stubEnv('ANONYMOUS_SESSION_CAPABILITY_SECRET', 'test-anonymous-assignment-secret-that-is-at-least-32-bytes');
   mocks.recordCost.mockReset().mockResolvedValue(undefined);
   mocks.checkCostCap.mockReset().mockResolvedValue({ ok: true });
+  mocks.notifyToolError.mockReset();
   const assignments = new Map<string, unknown>();
   mocks.query.mockReset().mockImplementation(async (sql: string, parameters: unknown[]) => {
     if (sql.startsWith('UPDATE addie_threads')) {
       const thread = String(parameters[0]);
-      if (!assignments.has(thread)) assignments.set(thread, JSON.parse(String(parameters[2])));
+      if (!assignments.has(thread) && parameters[2] !== null) {
+        assignments.set(thread, JSON.parse(String(parameters[2])));
+      }
       return { rows: [{ assignment: assignments.get(thread) }] };
     }
     return { rows: [] };
@@ -101,6 +123,50 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Gemini Direct production integration', () => {
+  it('reports preparation and recovered versus unrecovered tool errors to staff', async () => {
+    await getGeminiDirectResults();
+    const sql = String(mocks.query.mock.calls.at(-1)?.[0]);
+    expect(sql).toContain('median_pre_provider_ms');
+    expect(sql).toContain('p95_provider_ms');
+    expect(sql).toContain('relationship_analytics_pending');
+    expect(sql).toContain('recovered_tool_errors');
+    expect(sql).toContain('unrecovered_tool_errors');
+  });
+
+  it('persists preparation, provider, tool, and relationship stage timing separately', async () => {
+    const f = fixture([receipt([{ text: 'Prepared response.' }])]);
+    const stages = { relationshipAnalyticsScheduleMs: 2, memberContextMs: 91, workosContextMs: 55, experimentRoutingMs: 13, preProviderMs: 140 };
+    const result = await run(f.input, {}, stages);
+    await result.turn.experiment?.recordRelationshipAnalytics({ outcome: 'completed', processingMs: 109_000 });
+
+    const finish = mocks.query.mock.calls.find(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns SET\n        completed_at'))!;
+    expect(finish[1].slice(22, 29)).toEqual([2, 91, 55, 13, 140, expect.any(Number), expect.any(Number)]);
+    const relationship = mocks.query.mock.calls.find(([sql]) => sql.includes('relationship_analytics_processing_ms'))!;
+    expect(relationship[1]).toEqual([expect.any(String), 109_000, 'completed']);
+  });
+
+  it('keeps registration available after loading a different tool group during intake', async () => {
+    const f = fixture([
+      receipt([call('load_tool_group', { group: 'industry_research' })]),
+      receipt([call('save_agent', { agent_url: 'https://sales.streamhaus.example/mcp', type: 'sales', configure_auth_in_dashboard: true })]),
+      receipt([{ text: 'Registered. Enter credentials on your agent card.' }]),
+    ]);
+    const save = vi.fn().mockResolvedValue('Saved agent registration. Configure authentication on the dashboard.');
+    const reserve = vi.fn();
+    const result = await run({ ...f.input, isAdmin: false, modelPreference: 'gemini', activeAgentRegistration: true,
+      requestTools: {
+        tools: [{ name: 'save_agent', description: 'Register', input_schema: { type: 'object', properties: {} } }],
+        handlers: new Map([['save_agent', save]]),
+      },
+    }, { reserveSideEffect: reserve });
+    expect(JSON.stringify(f.dispatch.mock.calls[0][0].config?.tools)).toContain('save_agent');
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ configure_auth_in_dashboard: true }));
+    expect(reserve).toHaveBeenCalledWith(expect.objectContaining({ toolName: 'save_agent' }));
+    expect(result.response?.tool_executions?.find(execution => execution.tool_name === 'save_agent')?.is_error).toBe(false);
+    expect(f.getControlTools).not.toHaveBeenCalled();
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
   it('lists and resolves an authorized escalation on Gemini without routing or Sonnet', async () => {
     const f = fixture([
       receipt([call('list_escalations', { status: 'open' })]),
@@ -128,6 +194,7 @@ describe('Gemini Direct production integration', () => {
   });
 
   it('includes the Luna router cost in a complete Sonnet comparison record', async () => {
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'sonnet');
     const f = fixture([]);
     f.getControlTools.mockResolvedValue({
       requestTools: { tools: [], handlers: new Map() }, selectedToolSets: ['knowledge'],
@@ -146,7 +213,7 @@ describe('Gemini Direct production integration', () => {
     ]));
   });
 
-  it('allows a non-admin to choose Gemini in staff mode without enrolling their thread', async () => {
+  it('applies global Gemini to a non-admin without enrolling their thread or granting admin tools', async () => {
     const f = fixture([receipt([call('query_admin_analytics')]), receipt([{ text: 'Admin access required.' }])]);
     const analytics = vi.fn();
     const result = await run({ ...f.input, isAdmin: false, modelPreference: 'gemini',
@@ -156,37 +223,38 @@ describe('Gemini Direct production integration', () => {
     expect(f.getControlTools).not.toHaveBeenCalled();
     expect(mocks.query.mock.calls.some(([sql]) => sql.startsWith('UPDATE addie_threads'))).toBe(false);
     expect(mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))?.[1].slice(4, 7))
-      .toEqual(['gemini', 'manual', null]);
+      .toEqual(['gemini', 'eligible', null]);
   });
 
-  it('switches to Sonnet and back to Default without replacing the randomized assignment', async () => {
+  it('rolls back to Sonnet and resumes Gemini without replacing the historical assignment', async () => {
     const f = fixture([receipt([{ text: 'First Gemini answer.' }]), receipt([{ text: 'Default Gemini answer.' }])]);
     await run(f.input);
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'sonnet');
     const sonnet = await run({ ...f.input, hasPriorAssistant: true, modelPreference: 'sonnet' });
     expect(sonnet.response?.model_execution.provider).toBe('anthropic');
     expect(f.control).toHaveBeenCalledOnce();
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'gemini');
     const restored = await run({ ...f.input, hasPriorAssistant: true, modelPreference: 'default' });
     expect(restored.response?.model_execution.provider).toBe('google');
-    expect(mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_threads'))).toHaveLength(2);
+    expect(mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_threads'))).toHaveLength(0);
     expect(mocks.query.mock.calls.filter(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))
-      .map(([, args]) => args.slice(4, 6))).toEqual([['gemini', 'staff'], ['control', 'manual'], ['gemini', 'staff']]);
+      .map(([, args]) => args.slice(4, 6))).toEqual([['gemini', 'eligible'], ['control', 'existing'], ['gemini', 'existing']]);
   });
 
-  it.each(['off', 'missing_key'])('honors the Gemini kill switch for explicit choices: %s', async mode => {
-    if (mode === 'off') vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'off');
+  it.each(['rollback', 'missing_key'])('honors global rollback or enabled emergency fallback: %s', async mode => {
+    if (mode === 'rollback') vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'sonnet');
     else vi.stubEnv('GEMINI_API_KEY', '');
     const f = fixture([]);
     const result = await run({ ...f.input, modelPreference: 'gemini' });
     expect(result.response?.model_execution.provider).toBe('anthropic');
     expect(f.dispatch).not.toHaveBeenCalled();
     expect(f.client.forkForGeminiDirect).not.toHaveBeenCalled();
-    expect(mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))?.[1].slice(4, 7))
-      .toEqual(['gemini', 'manual', 'gemini_unavailable']);
+    expect(result.response?.model_execution.model_resolution).toBe(mode === 'rollback' ? 'exact' : 'fallback');
   });
 
-  it.each([{ userId: undefined }, { evaluation: true }])('does not allow manual selection to enroll anonymous or evaluation traffic: %j', async override => {
+  it('leaves isolated evaluation execution outside the global response policy', async () => {
     const f = fixture([]);
-    await run({ ...f.input, ...override, modelPreference: 'gemini' });
+    await run({ ...f.input, evaluation: true, modelPreference: 'gemini' });
     expect(f.dispatch).not.toHaveBeenCalled();
     expect(mocks.query).not.toHaveBeenCalled();
   });
@@ -229,6 +297,49 @@ describe('Gemini Direct production integration', () => {
     ]));
   });
 
+  it('records provider output limits without classifying the experiment turn as failed', async () => {
+    const partial = receipt([{ text: 'A useful partial answer.' }], 'provider-output-limit');
+    partial.candidates![0].finishReason = 'MAX_TOKENS';
+    const f = fixture([partial]);
+
+    const result = await run(f.input);
+
+    expect(result.response).toMatchObject({
+      flagged: false,
+      flag_reason: 'Response truncated: MAX_TOKENS',
+      output_truncation: {
+        source: 'provider_output_limit',
+        provider_reason: 'MAX_TOKENS',
+      },
+    });
+    const outcome = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns'))
+      .at(-1)?.[1];
+    expect(outcome[10]).toBe(false);
+    expect(outcome.slice(18, 22)).toEqual([
+      'provider_output_limit', 'MAX_TOKENS', 24, 58,
+    ]);
+  });
+
+  it('persists local character shaping as a distinct typed truncation', async () => {
+    const original = `${'A'.repeat(MAX_OUTPUT_LENGTH - 20)}. ${'B'.repeat(100)}.`;
+    const f = fixture([receipt([{ text: original }], 'local-output-limit')]);
+
+    const result = await run(f.input);
+
+    expect(result.response?.output_truncation).toMatchObject({
+      source: 'local_character_limit',
+      original_length: original.length,
+    });
+    const outcome = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns'))
+      .at(-1)?.[1];
+    expect(outcome[18]).toBe('local_character_limit');
+    expect(outcome[19]).toBeNull();
+    expect(outcome[20]).toBe(original.length);
+    expect(outcome[21]).toBeLessThanOrEqual(MAX_OUTPUT_LENGTH);
+  });
+
   it('executes real shared-loop tools with production accounting and skips the router', async () => {
     const f = fixture([receipt([call('search_docs')]), receipt([{ text: 'A verified fact.' }], 'answer')]);
     const result = await run(f.input);
@@ -236,12 +347,138 @@ describe('Gemini Direct production integration', () => {
     expect(f.handlers.get('search_docs')).toHaveBeenCalledOnce();
     expect(f.dispatch).toHaveBeenCalledTimes(2);
     expect(f.dispatch.mock.calls[0][0].config?.thinkingConfig?.thinkingLevel).toBe('LOW');
+    expect(f.dispatch.mock.calls[0][0].config?.maxOutputTokens).toBe(8_192);
     expect(f.getControlTools).not.toHaveBeenCalled();
     expect(f.control).not.toHaveBeenCalled();
     expect(mocks.recordCost).toHaveBeenCalledExactlyOnceWith('user-test', expect.objectContaining({ provider: 'google', usage: { inputTokens: 40, outputTokens: 30, reasoningTokens: 10 } }));
     const second = f.dispatch.mock.calls[1][0] as GenerateContentParameters;
+    expect(second.config?.systemInstruction).toBe(f.dispatch.mock.calls[0][0].config?.systemInstruction);
+    expect(second.config?.tools).toEqual(f.dispatch.mock.calls[0][0].config?.tools);
     expect(JSON.stringify(second.contents)).toContain('opaque-signature');
     expect(JSON.stringify(second.contents)).toContain('functionResponse');
+  });
+
+  it('extends only while tools make progress, then reserves a final answer at the hard ceiling', async () => {
+    const successfulToolTurns = Array.from({ length: 16 }, (_, index) => receipt([
+      call('search_docs', { query: `term-${index}` }, `call-search-docs-${index}`),
+    ], `tool-${index}`));
+    const f = fixture([
+      ...successfulToolTurns,
+      receipt([{ text: 'The completed lookups support this answer.' }], 'final-answer'),
+    ]);
+
+    const result = await run(f.input);
+
+    expect(f.dispatch).toHaveBeenCalledTimes(17);
+    expect(f.handlers.get('search_docs')).toHaveBeenCalledTimes(16);
+    expect(result.response).toMatchObject({
+      text: 'The completed lookups support this answer.',
+      flagged: false,
+      timing: { iterations: 17 },
+    });
+    const finalRequest = f.dispatch.mock.calls[16][0];
+    expect(finalRequest.config?.tools).toBeUndefined();
+    expect(finalRequest.config?.maxOutputTokens).toBe(8_192);
+    expect(finalRequest.config?.systemInstruction).toContain('The bounded tool budget is exhausted.');
+    expect(f.control).not.toHaveBeenCalled();
+    const outcome = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns SET\n        completed_at'))
+      .at(-1)?.[1];
+    expect(outcome.slice(14, 18)).toEqual([17, 6, 1, 0]);
+  });
+
+  it('uses the reserved synthesis turn after progress stalls at an extended boundary', async () => {
+    const f = fixture([
+      receipt([call('search_docs')], 'successful-tool'),
+      receipt([call('tool_not_in_catalog')], 'blocked-tool'),
+      receipt([{ text: 'The first lookup succeeded; the later step could not be completed.' }], 'final-answer'),
+    ]);
+
+    const result = await run(f.input, { maxIterations: 1 });
+
+    expect(f.dispatch).toHaveBeenCalledTimes(3);
+    expect(f.handlers.get('search_docs')).toHaveBeenCalledOnce();
+    expect(f.dispatch.mock.calls[2][0].config?.tools).toBeUndefined();
+    expect(result.response).toMatchObject({
+      text: 'The first lookup succeeded; the later step could not be completed.',
+      flagged: false,
+      timing: { iterations: 3 },
+    });
+  });
+
+  it('reserves final synthesis without a progress extension after the processing budget is spent', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fixture([
+        receipt([call('search_docs')], 'successful-slow-tool'),
+        receipt([{ text: 'The completed slow lookup supports this answer.' }], 'final-answer'),
+      ]);
+      f.handlers.get('search_docs')!.mockImplementationOnce(async () => {
+        vi.advanceTimersByTime(60_000);
+        return 'A verified fact.';
+      });
+
+      const result = await run(f.input, { maxIterations: 1 });
+
+      expect(f.dispatch).toHaveBeenCalledTimes(2);
+      expect(f.handlers.get('search_docs')).toHaveBeenCalledOnce();
+      expect(f.dispatch.mock.calls[1][0].config?.tools).toBeUndefined();
+      expect(result.response).toMatchObject({
+        text: 'The completed slow lookup supports this answer.',
+        flagged: false,
+        timing: { iterations: 2 },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not extend the loop when its last tool request made no successful progress', async () => {
+    const f = fixture([
+      receipt([call('tool_not_in_catalog')], 'blocked-tool'),
+    ]);
+
+    const result = await run(f.input, { maxIterations: 1 });
+
+    expect(f.dispatch).toHaveBeenCalledOnce();
+    expect(result.response).toMatchObject({
+      flagged: true,
+      flag_reason: 'Max tool iterations reached',
+      timing: { iterations: 1 },
+    });
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it('rejects a tool request returned during the earned final-answer opportunity', async () => {
+    const successfulToolTurns = Array.from({ length: 7 }, (_, index) => receipt([
+      call('search_docs', {}, `call-search-docs-${index}`),
+    ], `tool-${index}`));
+    const f = fixture([
+      ...successfulToolTurns,
+      receipt([call('search_docs')], 'forbidden-final-tool'),
+    ]);
+
+    const result = await run(f.input, { maxIterations: 1 });
+
+    expect(f.dispatch).toHaveBeenCalledTimes(8);
+    expect(f.handlers.get('search_docs')).toHaveBeenCalledTimes(7);
+    expect(f.dispatch.mock.calls[7][0].config?.tools).toBeUndefined();
+    expect(result.response).toMatchObject({
+      flagged: true,
+      flag_reason: 'Max tool iterations reached',
+      timing: { iterations: 8 },
+    });
+    expect(result.response?.tool_executions).toHaveLength(8);
+    expect(result.response?.tool_executions.at(-1)).toMatchObject({
+      tool_name: 'search_docs',
+      is_error: true,
+      blocked_by_policy: true,
+    });
+    expect(mocks.notifyToolError).not.toHaveBeenCalled();
+    const outcome = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns SET\n        completed_at'))
+      .at(-1)?.[1];
+    expect(outcome.slice(14, 18)).toEqual([8, 6, 1, 1]);
   });
 
   it('loads authorized domains on demand without admitting an unbound admin handler', async () => {
@@ -330,7 +567,7 @@ describe('Gemini Direct production integration', () => {
     expect(f.getControlTools).toHaveBeenCalledOnce();
     expect(f.control).toHaveBeenCalledOnce();
     expect(result.response?.model_execution).toMatchObject({ requested_provider: 'google', provider: 'anthropic', model_resolution: 'fallback', fallback_reason: 'primary_unavailable' });
-    expect(f.control.mock.calls[0][3]).toMatchObject({ modelOverride: undefined, directToolSession: undefined, allowedToolNames: ['search_docs'] });
+    expect(f.control.mock.calls[0][3]).toMatchObject({ modelOverride: AddieModelConfig.chat, directToolSession: undefined, allowedToolNames: ['search_docs'] });
     const outcome = mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns')).at(-1)?.[1];
     expect(outcome[7]).toBe('provider_error');
     expect(outcome[6]).toBe(false);
@@ -539,6 +776,125 @@ describe('assignment and rollback', () => {
     expect(geminiDirectAssignment('user-42', false, false, env)).toEqual(assignments[42]);
   });
 
+  it('uses a separate deterministic 25% HMAC cohort for anonymous web owners', () => {
+    const env = {
+      ADDIE_GEMINI_DIRECT_MODE: 'eligible',
+      ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED: 'true',
+      ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT: '25',
+    };
+    const assignments = Array.from({ length: 1000 }, (_, index) =>
+      geminiAnonymousWebAssignment(`00000000-0000-4000-8000-${String(index).padStart(12, '0')}`, false, env));
+    const treated = assignments.filter(value => value?.arm === 'gemini').length;
+    expect(treated).toBeGreaterThan(190);
+    expect(treated).toBeLessThan(310);
+    expect(geminiAnonymousWebAssignment('anonymous-owner', false, env))
+      .toEqual(geminiAnonymousWebAssignment('anonymous-owner', false, env));
+    expect(geminiAnonymousWebAssignment('anonymous-owner', true, env)).toMatchObject({
+      arm: 'control', cohort: 'existing',
+    });
+    expect(geminiAnonymousWebAssignment('anonymous-owner', false, {
+      ...env, ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED: 'false',
+    })).toBeNull();
+  });
+
+  it('records anonymous global policy metadata without storing the owner UUID or rewriting assignments', async () => {
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
+    const f = fixture([]);
+    const ownerId = '11111111-1111-4111-8111-111111111111';
+
+    const turn = await prepareGeminiDirectTurn({
+      ...f.input, userId: undefined, isAdmin: false, anonymousOwnerId: ownerId,
+    });
+
+    expect(turn.model).toBe(GOOGLE_ROUTER_MODEL);
+    expect(mocks.query.mock.calls.some(([sql]) => sql.startsWith('UPDATE addie_threads'))).toBe(false);
+    const insert = mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))!;
+    expect(insert[1][1]).toBe(GEMINI_PRIMARY_POLICY);
+    expect(insert[1][3]).toMatch(/^anonymous:[0-9a-f]{64}$/);
+    expect(insert[1][3]).not.toContain(ownerId);
+    expect(insert[1].slice(4, 12)).toEqual([
+      'gemini', 'eligible', null, expect.any(Date),
+      'web', 'anonymous', 'anonymous_owner', 'global_gemini_v1',
+    ]);
+  });
+
+  it('retains concurrent anonymous assignments across percentage changes', async () => {
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
+    const f = fixture([]);
+    const input = { ...f.input, userId: undefined, isAdmin: false, anonymousOwnerId: 'anonymous-owner' };
+
+    const [first, concurrent] = await Promise.all([
+      prepareGeminiDirectTurn(input), prepareGeminiDirectTurn(input),
+    ]);
+    expect(first.model).toBe(GOOGLE_ROUTER_MODEL);
+    expect(concurrent.model).toBe(GOOGLE_ROUTER_MODEL);
+
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '0');
+    const later = await prepareGeminiDirectTurn({ ...input, hasPriorAssistant: true });
+    expect(later.model).toBe(GOOGLE_ROUTER_MODEL);
+  });
+
+  it('supersedes the old anonymous surface switch without erasing a stored assignment', async () => {
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
+    const f = fixture([]);
+    const input = { ...f.input, userId: undefined, isAdmin: false, anonymousOwnerId: 'anonymous-owner' };
+    expect((await prepareGeminiDirectTurn(input)).model).toBe(GOOGLE_ROUTER_MODEL);
+
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'false');
+    const disabled = await prepareGeminiDirectTurn({ ...input, hasPriorAssistant: true });
+    expect(disabled.model).toBe(GOOGLE_ROUTER_MODEL);
+    const assignmentWrites = mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_threads'));
+    expect(assignmentWrites).toHaveLength(0);
+    const insert = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))
+      .at(-1)!;
+    expect(insert[1].slice(4, 7)).toEqual(['gemini', 'existing', null]);
+  });
+
+  it('preserves an anonymous assignment after sign-in and reports auth_transition', async () => {
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
+    const f = fixture([]);
+    await prepareGeminiDirectTurn({
+      ...f.input, userId: undefined, isAdmin: false, anonymousOwnerId: 'anonymous-owner',
+    });
+
+    const transitioned = await prepareGeminiDirectTurn({
+      ...f.input, userId: 'signed-in-user', isAdmin: false,
+      anonymousOrigin: true, hasPriorAssistant: true,
+    });
+
+    expect(transitioned.model).toBe(GOOGLE_ROUTER_MODEL);
+    const insert = mocks.query.mock.calls
+      .filter(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))
+      .at(-1)!;
+    expect(insert[1][3]).toBe('signed-in-user');
+    expect(insert[1].slice(8, 12)).toEqual([
+      'web', 'auth_transition', 'anonymous_owner', 'global_gemini_v1',
+    ]);
+  });
+
+  it('moves an existing unassigned anonymous thread to Gemini', async () => {
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED', 'true');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT', '100');
+    const f = fixture([]);
+    const turn = await prepareGeminiDirectTurn({
+      ...f.input, userId: undefined, isAdmin: false,
+      anonymousOwnerId: 'anonymous-owner', hasPriorAssistant: true,
+    });
+    expect(turn.model).toBe(GOOGLE_ROUTER_MODEL);
+    const insert = mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))!;
+    expect(insert[1].slice(4, 6)).toEqual(['gemini', 'existing']);
+  });
+
   it('atomically retains an existing thread assignment during concurrent requests and rollout changes', async () => {
     const f = fixture([]);
     const [first, concurrent] = await Promise.all([prepareGeminiDirectTurn(f.input), prepareGeminiDirectTurn(f.input)]);
@@ -548,23 +904,24 @@ describe('assignment and rollback', () => {
     vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
     const later = await prepareGeminiDirectTurn({ ...f.input, hasPriorAssistant: true });
     expect(later.model).toBe(GOOGLE_ROUTER_MODEL);
-    expect(mocks.query.mock.calls[0][0]).toContain('CASE WHEN context ? $2');
+    expect(mocks.query.mock.calls.some(([sql]) => sql.startsWith('UPDATE addie_threads'))).toBe(false);
   });
 
-  it('kill switch and evaluation mode use control without experiment writes', async () => {
+  it('ignores the old kill switch while leaving evaluation outside global policy accounting', async () => {
     const f = fixture([]);
     vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'off');
-    expect((await prepareGeminiDirectTurn(f.input)).model).toBeUndefined();
+    expect((await prepareGeminiDirectTurn(f.input)).model).toBe(GOOGLE_ROUTER_MODEL);
     vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'staff');
+    mocks.query.mockClear();
     expect((await prepareGeminiDirectTurn({ ...f.input, evaluation: true })).model).toBeUndefined();
     expect(mocks.query).not.toHaveBeenCalled();
   });
 
-  it('keeps pre-existing conversations on control and fails closed on assignment persistence errors', async () => {
+  it('uses Gemini on pre-existing conversations even when telemetry persistence fails', async () => {
     const f = fixture([]);
-    expect((await prepareGeminiDirectTurn({ ...f.input, hasPriorAssistant: true })).model).toBeUndefined();
+    expect((await prepareGeminiDirectTurn({ ...f.input, hasPriorAssistant: true })).model).toBe(GOOGLE_ROUTER_MODEL);
     mocks.query.mockRejectedValue(new Error('Database unavailable'));
-    expect((await prepareGeminiDirectTurn(f.input)).model).toBeUndefined();
+    expect((await prepareGeminiDirectTurn(f.input)).model).toBe(GOOGLE_ROUTER_MODEL);
   });
 
   it('does not expose groups whose user-scoped handlers are absent', () => {

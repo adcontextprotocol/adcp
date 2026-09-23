@@ -446,7 +446,7 @@ test('online media-buy governance proofs do not apply to signed-context-only sel
   assert.equal(signedOnly.phases[0].steps[0].skip_reason, 'capability_unsupported');
 });
 
-test('billing gate skips per-agent phases when agent billing is not supported', () => {
+test('billing gate skips phases when account capabilities are absent', async () => {
   const storyboardPath = path.join(
     __dirname,
     '..',
@@ -458,6 +458,18 @@ test('billing gate skips per-agent phases when agent billing is not supported', 
   );
   const storyboard = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
   const perAgentPhases = storyboard.phases.filter(phase => phase.id.startsWith('per_agent_gate_'));
+  const capabilityDiscovery = storyboard.phases.find(phase => phase.id === 'capability_discovery');
+
+  assert.deepEqual(
+    {
+      optional: capabilityDiscovery.optional,
+      requires_capability: capabilityDiscovery.requires_capability,
+    },
+    {
+      optional: true,
+      requires_capability: { path: 'account', present: true },
+    }
+  );
 
   assert.deepEqual(
     perAgentPhases.map(phase => [phase.id, phase.requires_capability]),
@@ -472,6 +484,40 @@ test('billing gate skips per-agent phases when agent billing is not supported', 
       ],
     ]
   );
+
+  const dispatchedTasks = [];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const result = await runStoryboard('https://agent.example/mcp', storyboard, {
+    _profile: {
+      tools,
+      raw_capabilities: { media_buy: {} },
+    },
+    agentTools: tools,
+    skip_controller_seeding: true,
+    _client: {
+      resetContext() {},
+      async getAdcpCapabilities() {
+        dispatchedTasks.push('get_adcp_capabilities');
+        throw new Error('account-gated discovery must not execute');
+      },
+      async syncAccounts() {
+        dispatchedTasks.push('sync_accounts');
+        throw new Error('dependent billing gates must not execute');
+      },
+    },
+  });
+
+  assert.deepEqual(dispatchedTasks, []);
+  const phases = Object.fromEntries(result.phases.map(phase => [phase.phase_id, phase]));
+  assert.equal(phases.capability_discovery.steps[0].skip_reason, 'not_applicable');
+  for (const phaseId of [
+    'capability_gate_operator',
+    'capability_gate_agent',
+    'capability_gate_advertiser',
+  ]) {
+    assert.equal(phases[phaseId].steps[0].skip_reason, 'not_applicable');
+    assert.equal(phases[phaseId].steps[0].skip.reason, 'not_applicable');
+  }
 });
 
 test('create_media_buy async storyboard requires its advertised controller scenario', async () => {

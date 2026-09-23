@@ -509,6 +509,16 @@
       "pullRequestNo": 2861,
       "comment_id": 5602338499,
       "comment_url": "https://github.com/adcontextprotocol/adcp-client/pull/2861#issuecomment-5602338499"
+    },
+    {
+      "name": "idemidenko",
+      "id": 13537987,
+      "created_at": "2026-09-22T11:09:08Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 7646,
+      "comment_id": 5775385884,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7646#issuecomment-5775385884"
     }
   ]
 }

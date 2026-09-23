@@ -27,7 +27,8 @@ const PROTOCOL_SCOPED_PATHS = [
   /^dist\/protocol\/[^/]+[.]tgz(?:[.](?:sha256|sig|crt))?$/,
   /^scripts\/(?:build-schemas|build-compliance|build-protocol-tarball|sign-protocol-tarball|update-schema-versions|verify-version-sync|patch-3-0-compat-bundle)[.](?:cjs|mjs|sh)$/,
   /^scripts\/run-storyboards-(?:[^/]+[.]sh|isolated[.]mjs)$/,
-  /^[.]github\/workflows\/(?:release|training-agent-storyboards)[.]yml$/,
+  // Publication orchestration is operational; protocol generators above remain scoped.
+  /^[.]github\/workflows\/training-agent-storyboards[.]yml$/,
 ];
 
 const CHANGESET_POLICY_CODE_PATHS = new Set([
@@ -38,6 +39,7 @@ const CHANGESET_POLICY_CODE_PATHS = new Set([
 
 const CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS = new Set([
   ...CHANGESET_POLICY_CODE_PATHS,
+  '.github/workflows/release.yml',
   '.agents/playbook.md',
   '.agents/routines/context-refresh-prompt.md',
   '.agents/routines/triage-prompt.md',
@@ -48,6 +50,7 @@ const CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS = new Set([
   '.agents/shortcuts/prep-for-pr.md',
   'docs/reference/changelog.mdx',
   'docs/spec-guidelines.md',
+  'tests/release-workflow-immutability.test.cjs',
 ]);
 
 function normalizePath(filePath) {

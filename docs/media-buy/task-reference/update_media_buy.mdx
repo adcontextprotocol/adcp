@@ -58,7 +58,7 @@ must reject the field before mutation.
 
 ## Action vocabulary and field mapping
 
-Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative for current routing) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). Accepted proposal `commercial_terms.change_terms[]` are the contractual ceiling: current `available_actions[]` may narrow a right because of state or a stated condition, but cannot broaden it or silently replace its mode, SLA, constraints, conditions, or contract reference. When both action fields are present, consumers MUST prefer `available_actions[]` — it carries the resolved `mode`, optional `sla`, and in 3.2 an optional `change_term_id` that the flat string array cannot represent. Deprecated 3.1 `terms_ref` remains an opaque compatibility pointer and MUST NOT be assumed to identify a proposal term. When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`.
+Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative for current routing) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). Accepted proposal `commercial_terms.change_terms[]` are the contractual ceiling: current `available_actions[]` may narrow a right because of state or a stated condition, but cannot broaden it or silently replace its mode, SLA, constraints, conditions, or contract reference. When both action fields are present, consumers MUST prefer `available_actions[]` — it carries the resolved `mode`, optional `sla`, and in 3.2 an optional `change_term_id` that the flat string array cannot represent. Deprecated 3.1 `terms_ref` remains an opaque compatibility pointer and MUST NOT be assumed to identify a proposal term. When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`. For a buy-specific seller-policy denial (`reason: "not_supported_on_buy"`), the seller SHOULD also populate `decline_reason` when it has a structured reason and can disclose the coarse policy dimension safely; structural denials SHOULD omit it.
 
 The mapping is normative — sellers and SDKs MUST use this table to translate between request fields and action identifiers so the surface is consistent across implementations. Machine-readable bindings live in `media-buy-valid-action.json#/enumMetadata` for legacy values and `core/media-buy-available-action-id.json#/enumMetadata` for structured-only actions such as `update_media_buy_frequency_cap`.
 
@@ -772,11 +772,14 @@ The body-level `media_buy_status` is the canonical field for the buy's lifecycle
 {
   "errors": [{
     "code": "REQUOTE_REQUIRED",
-    "message": "Doubling budget and extending end_time into Q4 changes the pricing basis of the current buy",
+    "message": "The requested package budget exceeds the seller's share-of-voice policy for the current flight",
+    "recovery": "correctable",
     "details": {
-      "envelope_field": ["packages[0].budget", "end_time"]
+      "envelope_field": ["packages[0].budget"],
+      "change_term_id": "right_increase_budget",
+      "decline_reason": "share_of_voice"
     },
-    "suggestion": "Adjust the update to stay within the current quote envelope, rediscover products/terms, add packages when available, or create a separate media buy"
+    "suggestion": "Refine the accepted proposal with a lower package budget"
   }]
 }
 ```
@@ -843,7 +846,7 @@ Common errors and resolutions:
 |------------|-------------|------------|
 | [`MEDIA_BUY_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-media-buy-not-found) | Media buy doesn't exist | Verify `media_buy_id`; for legacy correlation use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) + `context.internal_campaign_id` |
 | [`PACKAGE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-package-not-found) | Package doesn't exist | Verify `package_id`; for legacy package correlation use `get_media_buys` + package `context.buyer_ref` |
-| [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) | Field cannot be changed | See "What Can Be Updated" above |
+| [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) | Field cannot be changed | Branch on `error.details.reason`; for `not_supported_on_buy`, use optional `decline_reason` to inform renegotiation |
 | [`BUDGET_TOO_LOW`](/docs/building/verification/compliance-catalog#error-code-budget-too-low) | New budget below minimum | Increase budget amount |
 | [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) | Update violates content policy | Review policy requirements |
 | [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) | Operation not allowed in current state (e.g., updating completed/canceled media buy) | Check campaign status via `get_media_buys` |
@@ -853,7 +856,7 @@ Common errors and resolutions:
 | [`CREATIVE_DEADLINE_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-creative-deadline-exceeded) | Creative change submitted past the package's `creative_deadline` | Check package `creative_deadline` before submitting creative changes |
 | [`BUDGET_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-budget-exceeded) | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
 | [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
-| [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | Adjust the update to fit the current quote, rediscover products/terms, add packages when `add_packages` is available, or create a separate media buy. 3.1 does not define an amendment-quote artifact for `update_media_buy`. Seller's `error.details.envelope_field` names which fields breached. |
+| [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | On 3.2, use optional `error.details.decline_reason` to target a refinement of `accepted_proposal_id`; `envelope_field` names the breached paths and `change_term_id` identifies the governing accepted right. Legacy 3.1 callers adjust the update, rediscover terms, add packages when available, or create a separate buy. |
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Request field values, including a duplicate submitted `creative_id`, violate seller/product business rules | Follow `error.field` and `error.message`; for a duplicate inline creative, use a different package-scoped `creative_id` |
 
 Example error response:

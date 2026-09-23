@@ -37,6 +37,37 @@ after fully consuming a periods read, persist `changes_checkpoint` and pass it
 as `changes_after` to repair missed, duplicate, or out-of-order events without
 re-reading the entire retained history.
 
+### Q: Can I reuse a published SDK reporting ledger instead of hand-rolling one?
+
+**A:** Partly, and the honest answer depends on which contract version the SDK
+ledger targets. The hard parts of a seller-side Reliable Reporting
+implementation are reusable and worth taking from a library rather than
+rewriting: half-open period generation over IANA civil days including both DST
+transitions, ISO 8601 duration resolution for `schedule.delivery_sla` and the
+`expected_at` it implies, the fixed RFC 8785/JCS revision-binding digest, the
+flat pagination union with a pinned `ledger_snapshot_id` and a gapless
+`changes_checkpoint`, the five health states and their issue invariants, and
+the coverage aggregation rules. (The reference training agent recognizes only
+the two `delivery_sla` spellings its own offerings advertise; a general
+implementation needs a real duration parser.)
+
+What is *not* safely reusable across contract versions is the consumer-status
+projection, because its hardening landed after the first published ledger
+shape. A ledger built against `3.2.0-rc.2` predates `content_mismatch` and its
+closed `mismatch_code`, `obligation_counts.consumer_status_pending`, issue
+`opened_at` / `issue_state` / `external_ref`, the
+`operations_contact` and `consumer_mismatch_escalation_seconds` capability
+fields, and the rule that the escalation boundary takes precedence over the
+stale-`received` grace window. Adopting such a ledger for those specific
+behaviors would silently regress a seller that already implements them.
+
+Practical guidance: take the scheduler, canonicalization, pagination, and
+checkpoint machinery from the SDK, and keep your own consumer-status projection
+until the SDK ledger you depend on states that it implements the current
+contract. The reference training agent follows exactly that split — see
+[the implementation guide](/docs/media-buy/reporting-core-implementation-guide)
+for the build order and the storyboards that grade each part.
+
 ### Q: Can a seller hide poor performance behind a long delivery SLA?
 
 **A:** A long SLA remains part of the atomic offering, but capability
@@ -74,6 +105,15 @@ expose the derived future `next_expected_at` instead.
 Before close, buyers and sellers derive future periods and `next_expected_at`
 from the installed schedule; they do not use a premature obligation with an
 unresolved denominator.
+
+A `summary` with `health: complete` can still select an active committed
+configuration schedule. When a future scheduled period exists outside that
+closed evaluated scope, the seller MUST return the nearest future period start
+across all active in-scope `delivery_config_generations` as `next_expected_at`.
+The projection preserves `scope.scope_closed: true` and
+`scope.coverage_complete: true`; it MUST NOT create, expose, lease, count, or
+alter an open-period obligation or change the evaluated coverage. See
+[complete-summary future expectations](/docs/media-buy/task-reference/get_reporting_status#future-expectation-on-a-complete-summary).
 
 ### Q: Is the reporting SLA measured from media-buy acceptance?
 

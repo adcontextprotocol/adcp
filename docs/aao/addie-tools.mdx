@@ -506,7 +506,7 @@ Evaluate an agent's live quality and buyer behavior, including protocol quality,
 
 ### `evaluate_agent_quality`
 
-Run protocol compliance evaluation on an AdCP agent and return structured results for coaching. Tests all capability tracks the agent supports (core, products, media buy, creative, governance, signals, etc.) and collects advisory observations about performance, completeness, and best practices. Results include specific actionable observations, not just pass/fail. The public test agent works for any logged-in user with no setup required. For custom agents requiring authentication, use save_agent first.
+Evaluate an AdCP agent across its supported compliance tracks. Identical active requests coalesce across replicas and return running status. Partial receipts retain coverage/findings but cannot support definitive verdict or root-cause claims. Custom authenticated agents require save_agent first.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -574,7 +574,7 @@ Validate if an agent is authorized for a publisher domain by checking their /.we
 
 ### `evaluate_agent_quality`
 
-Run protocol compliance evaluation on an AdCP agent and return structured results for coaching. Tests all capability tracks the agent supports (core, products, media buy, creative, governance, signals, etc.) and collects advisory observations about performance, completeness, and best practices. Results include specific actionable observations, not just pass/fail. The public test agent works for any logged-in user with no setup required. For custom agents requiring authentication, use save_agent first.
+Evaluate an AdCP agent across its supported compliance tracks. Identical active requests coalesce across replicas and return running status. Partial receipts retain coverage/findings but cannot support definitive verdict or root-cause claims. Custom authenticated agents require save_agent first.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -735,6 +735,14 @@ Full buyer rules: ask_about_adcp_task with area="buyer".
 
 *Source: `server/src/addie/mcp/adcp-tools.ts`*
 
+### `call_adcp_get_products`
+
+Execute get_products with a machine-checkable request shape.
+idempotency_key is required by this adapter and must remain identical when correcting or retrying the same logical request.
+For buying_mode="brief", provide brief and omit refine. For "wholesale", omit both brief and refine. For "refine", provide refine and omit brief.
+
+*Source: `server/src/addie/mcp/adcp-tools.ts`*
+
 ### `get_adcp_capabilities`
 
 Discover an agent's AdCP protocol support and capabilities. Returns supported tasks, domains, features, and configuration.
@@ -747,7 +755,7 @@ Register, list, remove, or set up saved AdCP agents.
 
 ### `save_agent`
 
-Register an agent in the AgenticAdvertising.org registry on behalf of the current organization, or an explicitly selected active organization via `organization_id` / `organization_name`. Adds the agent to the org's member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AgenticAdvertising.org members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AgenticAdvertising.org tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard's **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent's `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AgenticAdvertising.org Registry" section of the rules for the intake script.
+Register an agent for the current organization or an explicitly selected active organization (organization_id / organization_name). Appears in /dashboard/agents, initially members_only: visible to paying AgenticAdvertising.org members (Professional, Builder, Member, Leader). Public visibility is a separate dashboard action requiring one of those tiers and a primary brand domain. Require the owner’s declared type and auth-mode choice; never guess type. Capability probes establish verified type separately. Auth: none, encrypted bearer/basic, or OAuth client credentials. Prefer configure_auth_in_dashboard for secure credential entry outside chat. Interactive OAuth uses the agent card’s Authorize flow after saving without credentials. health_check_url provides fallback liveness for authenticated or path-prefixed endpoints; it does not establish capability or compliance. Follow the registration intake rules.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -2201,6 +2209,14 @@ Full buyer rules: ask_about_adcp_task with area="buyer".
 
 *Source: `server/src/addie/mcp/adcp-tools.ts`*
 
+### `call_adcp_get_products`
+
+Execute get_products with a machine-checkable request shape.
+idempotency_key is required by this adapter and must remain identical when correcting or retrying the same logical request.
+For buying_mode="brief", provide brief and omit refine. For "wholesale", omit both brief and refine. For "refine", provide refine and omit brief.
+
+*Source: `server/src/addie/mcp/adcp-tools.ts`*
+
 ## certification_assessment
 
 AdCP Academy placement assessments and specialist capstones — test out modules, run exams, checkpoint, and complete credentials
@@ -2265,6 +2281,14 @@ Two rules a search round-trip cannot rescue you from after a mutating call:
 • On adcp_error: read issues[].variants[] before retrying. It lists the exact valid shape — do not re-guess.
 
 Full buyer rules: ask_about_adcp_task with area="buyer".
+
+*Source: `server/src/addie/mcp/adcp-tools.ts`*
+
+### `call_adcp_get_products`
+
+Execute get_products with a machine-checkable request shape.
+idempotency_key is required by this adapter and must remain identical when correcting or retrying the same logical request.
+For buying_mode="brief", provide brief and omit refine. For "wholesale", omit both brief and refine. For "refine", provide refine and omit brief.
 
 *Source: `server/src/addie/mcp/adcp-tools.ts`*
 

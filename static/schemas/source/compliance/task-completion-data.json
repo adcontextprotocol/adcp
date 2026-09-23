@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/compliance/task-completion-data.json",
   "title": "Compliance Task Completion Data",
-  "description": "Bounded completion union for the legacy async tasks supported by force_task_completion. Polling and production task-result resolution use the originating task's manifest response schema rather than embedding the global async union.",
+  "description": "Bounded completion union for the async tasks supported by force_task_completion. Polling and production task-result resolution use the originating task's manifest response schema rather than embedding the global async union.",
   "anyOf": [
     {
       "title": "GetProductsCompletion",
@@ -15,6 +15,10 @@
     {
       "title": "CreateMediaBuyCompletion",
       "$ref": "/schemas/media-buy/create-media-buy-response.json#/oneOf/0"
+    },
+    {
+      "title": "GetCreativeFeaturesCompletion",
+      "$ref": "/schemas/compliance/get-creative-features-completion.json"
     }
   ]
 }
