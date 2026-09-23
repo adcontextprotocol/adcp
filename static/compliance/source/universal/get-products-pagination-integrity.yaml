@@ -67,7 +67,7 @@ fixtures:
       publisher_properties:
         - publisher_domain: "acmeoutdoor.example"
       format_ids:
-        - agent_url: "https://compliance.adcontextprotocol.org"
+        - agent_url: "https://compliance.adcontextprotocol.org/"
           id: "get_products_pagination_integrity_display"
     - product_id: "get_products_pagination_product_2"
       name: "Get Products Pagination Test Product 2"
@@ -77,7 +77,7 @@ fixtures:
       publisher_properties:
         - publisher_domain: "acmeoutdoor.example"
       format_ids:
-        - agent_url: "https://compliance.adcontextprotocol.org"
+        - agent_url: "https://compliance.adcontextprotocol.org/"
           id: "get_products_pagination_integrity_display"
   pricing_options:
     - product_id: "get_products_pagination_product_1"
@@ -166,7 +166,7 @@ phases:
             operator: "pinnacle-agency.example"
           filters:
             format_ids:
-              - agent_url: "https://compliance.adcontextprotocol.org"
+              - agent_url: "https://compliance.adcontextprotocol.org/"
                 id: "get_products_pagination_integrity_display"
           pagination:
             max_results: 1
@@ -188,7 +188,7 @@ phases:
           - check: field_contains
             path: "products[0].format_ids[*]"
             value:
-              agent_url: "https://compliance.adcontextprotocol.org"
+              agent_url: "https://compliance.adcontextprotocol.org/"
               id: "get_products_pagination_integrity_display"
             description: "The returned product satisfies the requested test format filter"
           - check: field_absent
@@ -239,7 +239,7 @@ phases:
             operator: "pinnacle-agency.example"
           filters:
             format_ids:
-              - agent_url: "https://compliance.adcontextprotocol.org"
+              - agent_url: "https://compliance.adcontextprotocol.org/"
                 id: "get_products_pagination_integrity_display"
           pagination:
             cursor: "$context.products_next_cursor"
@@ -262,7 +262,7 @@ phases:
           - check: field_contains
             path: "products[0].format_ids[*]"
             value:
-              agent_url: "https://compliance.adcontextprotocol.org"
+              agent_url: "https://compliance.adcontextprotocol.org/"
               id: "get_products_pagination_integrity_display"
             description: "The terminal-page product satisfies the requested test format filter"
           - check: field_absent
