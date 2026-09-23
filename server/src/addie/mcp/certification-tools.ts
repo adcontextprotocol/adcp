@@ -2763,7 +2763,7 @@ export function createCertificationToolHandlers(
           }
 
           const expectedCredential = await getCredentialForModule(capstoneMod.id);
-          const lines: string[] = [CAPSTONE_COMPLETED_PREFIX, ''];
+          const lines: string[] = [CAPSTONE_COMPLETED_PREFIX, `Module ${capstoneMod.id} completed!`, ''];
           lines.push('The capstone was already recorded, so I rechecked module completion and credential issuance.');
 
           try {
@@ -2915,6 +2915,7 @@ export function createCertificationToolHandlers(
         // Mark the capstone module as completed
         try {
           await certDb.completeModule(userId, capstoneMod.id, scores);
+          lines.push(`Module ${capstoneMod.id} completed!`);
         } catch (modError) {
           logger.error({ error: modError, userId, moduleId: capstoneMod.id }, 'Failed to record module completion after attempt passed');
         }

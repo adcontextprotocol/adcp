@@ -4793,6 +4793,16 @@ export function createMemberToolHandlers(
         ownerId: agentQualityEvaluationOwnerId,
         leaseMs: AGENT_QUALITY_EVALUATION_LEASE_MS,
       });
+      // Observations do not create rows, so admissions must be visible in logs
+      // to distinguish coalescing from a lack of duplicate organic requests.
+      // IDs and categorical outcomes suffice; omit URLs and credential identity.
+      logger.info({
+        event: 'agent_quality_evaluation',
+        phase: 'admission',
+        evaluationId: claim.evaluation.id,
+        outcome: claim.owned ? 'owned' : 'coalesced',
+        recoveredExpiredLease: claim.recoveredExpiredLease,
+      }, 'evaluate_agent_quality: admission');
       if (!claim.owned) return formatRunningAgentQualityEvaluation(claim.evaluation);
       evaluationLease = new AgentQualityEvaluationLease(
         agentQualityEvaluationDb,
@@ -4820,8 +4830,21 @@ export function createMemberToolHandlers(
     let canonicalPublication: { runId: string; authoritative: boolean } | undefined;
     let observedUnconfirmedEvidence: string | undefined;
     let evaluationFinalized = false;
+    const publicationLogFields = () => ({
+      event: 'agent_quality_evaluation',
+      evaluationId: evaluationLease!.evaluation.id,
+      publication: canonicalPublication
+        ? canonicalPublication.authoritative ? 'canonical_committed' : 'audit_only_committed'
+        : canonicalPublicationAttempted ? 'unconfirmed' : 'not_attempted',
+      canonicalRunId: canonicalPublication?.runId ?? null,
+    });
     const finalizationUncertainMessage = (error: unknown, observedEvidence?: string): string => {
       const leaseLost = error instanceof AgentQualityEvaluationLeaseLostError || evaluationLease!.signal.aborted;
+      logger.warn({
+        ...publicationLogFields(),
+        phase: 'finalization',
+        outcome: leaseLost ? 'lease_lost' : 'unconfirmed',
+      }, 'evaluate_agent_quality: finalization unconfirmed');
       let message = leaseLost
         ? '**Evaluation ownership changed**\n\nThis worker no longer has a confirmed execution lease.\n\n'
         : '**Evaluation completion unconfirmed**\n\nThe database completion receipt could not be confirmed. This does not establish that execution ownership changed.\n\n';
@@ -4850,6 +4873,11 @@ export function createMemberToolHandlers(
       try {
         await evaluationLease!.complete(receiptMetadata);
         evaluationFinalized = true;
+        logger.info({
+          ...publicationLogFields(),
+          phase: 'finalization',
+          outcome: 'completed',
+        }, 'evaluate_agent_quality: completed');
         return message;
       } catch (error) {
         logger.warn({ error, agentUrl: displayAgentUrl }, 'evaluate_agent_quality: completion unconfirmed');
@@ -4859,6 +4887,14 @@ export function createMemberToolHandlers(
     const finishFailed = async (message: string, failureCode: string): Promise<string> => {
       try {
         const recorded = await evaluationLease!.fail(failureCode);
+        if (recorded) {
+          logger.info({
+            ...publicationLogFields(),
+            phase: 'finalization',
+            outcome: 'failed',
+            failureCode,
+          }, 'evaluate_agent_quality: failed');
+        }
         return recorded ? message : finalizationUncertainMessage(new AgentQualityEvaluationLeaseLostError(), message);
       } catch (error) {
         logger.warn({ error, agentUrl: displayAgentUrl }, 'evaluate_agent_quality: failure transition failed');
@@ -5016,6 +5052,11 @@ export function createMemberToolHandlers(
               canonicalPublicationAttempted = true;
               const { run } = await complianceDb.recordComplianceRun(dbInput);
               canonicalPublication = { runId: run.id, authoritative: isAuthoritativeComplianceRun(dbInput) };
+              logger.info({
+                ...publicationLogFields(),
+                phase: 'publication',
+                outcome: 'committed',
+              }, 'evaluate_agent_quality: publication committed');
               // notifyComplianceChange intentionally omitted: owner test runs are
               // exploratory; compliance-change notifications fire on heartbeat
               // transitions only to prevent iteration-loop spam.
@@ -5300,6 +5341,12 @@ export function createMemberToolHandlers(
         return finalizationUncertainMessage(finalizationError);
       }
       if (!failureRecorded) return finalizationUncertainMessage(new AgentQualityEvaluationLeaseLostError());
+      logger.info({
+        ...publicationLogFields(),
+        phase: 'finalization',
+        outcome: 'failed',
+        failureCode: 'evaluation_failed',
+      }, 'evaluate_agent_quality: failed');
       throw new ToolError(`Failed to evaluate agent quality for ${resolved.resolvedUrl}: ${msg}`);
     }
   });

@@ -19,6 +19,12 @@ const memberToolMocks = vi.hoisted(() => ({
   getComplianceStoryboardById: vi.fn(),
   runStoryboard: vi.fn(),
   runStoryboardStep: vi.fn(),
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock('../../server/src/logger.js', async (importOriginal) => ({
+  ...await importOriginal() as Record<string, unknown>,
+  createLogger: () => memberToolMocks.logger,
 }));
 
 vi.mock('../../server/src/services/pipes.js', () => ({
@@ -80,6 +86,7 @@ beforeEach(() => {
   memberToolMocks.getComplianceStoryboardById.mockReset();
   memberToolMocks.runStoryboard.mockReset();
   memberToolMocks.runStoryboardStep.mockReset();
+  for (const log of Object.values(memberToolMocks.logger)) log.mockClear();
 });
 
 describe('MEMBER_TOOLS definitions', () => {
@@ -1350,6 +1357,15 @@ describe('createMemberToolHandlers', () => {
           displayAgentUrl: 'https://seller.example.com/mcp',
         }),
       );
+      const lifecycleFields = memberToolMocks.logger.info.mock.calls
+        .map(([fields]) => fields)
+        .filter(fields => fields.event === 'agent_quality_evaluation');
+      expect(lifecycleFields).toEqual([
+        expect.objectContaining({ phase: 'admission', outcome: 'owned', recoveredExpiredLease: false }),
+        expect.objectContaining({ phase: 'publication', publication: 'canonical_committed', canonicalRunId: 'run_123' }),
+        expect.objectContaining({ phase: 'finalization', outcome: 'completed', publication: 'canonical_committed' }),
+      ]);
+      expect(JSON.stringify(lifecycleFields)).not.toMatch(/opaque|seller\.example|lease.token|auth.scope|request.key/i);
     });
 
     it.each(['database error', 'lease lost'])('preserves a committed canonical receipt after completion %s', async failure => {
@@ -1370,6 +1386,13 @@ describe('createMemberToolHandlers', () => {
       expect(result).not.toContain('**Evidence status:** AUTHORITATIVE');
       expect(result).toContain(failure === 'database error' ? 'Evaluation completion unconfirmed' : 'Evaluation ownership changed');
       expect(memberToolMocks.recordAgentTestRun).not.toHaveBeenCalled();
+      expect(memberToolMocks.logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'agent_quality_evaluation',
+        phase: 'finalization',
+        outcome: failure === 'database error' ? 'unconfirmed' : 'lease_lost',
+        publication: 'canonical_committed',
+        canonicalRunId: 'run_123',
+      }), expect.any(String));
     });
 
     it('does not claim public publication for a committed partial audit receipt', async () => {
@@ -1388,6 +1411,9 @@ describe('createMemberToolHandlers', () => {
       expect(result).not.toContain('The canonical compliance result was already committed');
       expect(result).toContain('**Completeness:** timed_out');
       expect(memberToolMocks.runBadgeFanOut).not.toHaveBeenCalled();
+      expect(memberToolMocks.logger.info).toHaveBeenCalledWith(expect.objectContaining({
+        phase: 'publication', publication: 'audit_only_committed', canonicalRunId: 'run_123',
+      }), expect.any(String));
     });
 
     it('reports ambiguous canonical write acknowledgement without claiming no publication', async () => {
@@ -1403,6 +1429,9 @@ describe('createMemberToolHandlers', () => {
       expect(result).not.toContain('did not publish a result');
       expect(result).not.toContain('**Saved compliance run:**');
       expect(result).toContain('All applicable tracks passed');
+      expect(memberToolMocks.logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+        phase: 'finalization', outcome: 'unconfirmed', publication: 'unconfirmed', canonicalRunId: null,
+      }), expect.any(String));
     });
 
     it('keeps publication uncertainty visible even when execution completion is recorded', async () => {
@@ -1488,7 +1517,54 @@ describe('createMemberToolHandlers', () => {
       expect(result).toContain('database-recorded start time');
       expect(result).toContain('No new evaluation was started');
       expect(memberToolMocks.comply).not.toHaveBeenCalled();
+      expect(memberToolMocks.logger.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'agent_quality_evaluation',
+        phase: 'admission',
+        evaluationId: '10000000-0000-4000-8000-000000000002',
+        outcome: 'coalesced',
+        recoveredExpiredLease: false,
+      }), expect.any(String));
+      expect(memberToolMocks.logger.info.mock.calls.filter(([fields]) =>
+        fields.event === 'agent_quality_evaluation')).toHaveLength(1);
       expect(memberToolMocks.checkToolRateLimit).not.toHaveBeenCalled();
+    });
+
+    it('distinguishes a recovered expired lease from a coalesced observation before a safety rejection', async () => {
+      const claim = vi.mocked(AgentQualityEvaluationDatabase.prototype.claimOrObserve);
+      const owned = await claim({} as never);
+      claim.mockClear();
+      claim.mockResolvedValueOnce({ ...owned, owned: true, recoveredExpiredLease: true } as never);
+      memberToolMocks.checkToolRateLimit.mockResolvedValueOnce({ ok: false, retryAfterMs: 1_000 });
+
+      const result = await createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+      });
+
+      expect(result).toContain('Rate limit exceeded');
+      expect(memberToolMocks.comply).not.toHaveBeenCalled();
+      expect(memberToolMocks.logger.info).toHaveBeenCalledWith(expect.objectContaining({
+        phase: 'admission', outcome: 'owned', recoveredExpiredLease: true,
+      }), expect.any(String));
+      expect(memberToolMocks.logger.info).toHaveBeenCalledWith(expect.objectContaining({
+        phase: 'finalization', outcome: 'failed', failureCode: 'rate_limited', publication: 'not_attempted',
+      }), expect.any(String));
+    });
+
+    it('records a terminal lifecycle event for a persisted runner failure', async () => {
+      memberToolMocks.comply.mockRejectedValueOnce(new Error('Runner stopped unexpectedly'));
+
+      await expect(createMemberToolHandlers(ownerContext).get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+      })).rejects.toThrow('Failed to evaluate agent quality');
+
+      expect(AgentQualityEvaluationDatabase.prototype.markFailed).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), 'evaluation_failed',
+      );
+      expect(memberToolMocks.logger.info).toHaveBeenCalledWith(expect.objectContaining({
+        phase: 'finalization', outcome: 'failed', failureCode: 'evaluation_failed', publication: 'not_attempted',
+      }), expect.any(String));
     });
 
     it('marks timed-out receipts incomplete while retaining partial findings and coverage', async () => {

@@ -694,11 +694,14 @@ describe('AddieToolExecutionLedger', () => {
     expect(ledger.executions[1]?.normalized_result?.telemetry?.recovered_by_later_success).toBeUndefined();
   });
 
-  it('does not let another agent success recover a failed target with the same operation', async () => {
+  it.each([
+    ['another agent', 'https://agent-b.example', 'same-products-request-key'],
+    ['another logical request', 'https://agent-a.example', 'a-different-products-key'],
+  ])('does not let %s success recover a failed target with the same operation', async (_label, agentUrl, idempotencyKey) => {
     const ledger = new AddieToolExecutionLedger();
     const calls = [
       { ...call({ agent_url: 'https://agent-a.example', task: 'get_products', params: { idempotency_key: 'same-products-request-key' } }), id: 'call_error', name: 'call_adcp_task' },
-      { ...call({ agent_url: 'https://agent-b.example', idempotency_key: 'same-products-request-key', buying_mode: 'wholesale' }), id: 'call_success', name: 'call_adcp_get_products' },
+      { ...call({ agent_url: agentUrl, idempotency_key: idempotencyKey, buying_mode: 'wholesale' }), id: 'call_success', name: 'call_adcp_get_products' },
     ];
     let invocation = 0;
     const execute = vi.fn(async (toolCall: ModelToolCallContent, sequence: number) => {

@@ -5,6 +5,7 @@
  * with tool reference always appended from code.
  */
 
+import { enforceOutcomeClaims, outcomeClaimContext } from './outcome-claims.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { createHash, createHmac } from 'node:crypto';
 import { createLogger } from '../logger.js';
@@ -334,9 +335,9 @@ export const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTo
   { pattern: /(?:I'?ve\s+|I\s+)?(?:created|generated|sent)\s+(?:a\s+)?payment\s+link/i, expectedTools: ['create_payment_link'] },
   { pattern: /(?:I'?ve\s+|I\s+)?(?:sent|delivered)\s+(?:a\s+)?(?:DM|direct message|notification)/i, expectedTools: ['send_member_dm', 'resolve_escalation'] },
   { pattern: /(?:I'?ve\s+|I\s+)?added\s+\S+(?:\s+\S+){0,5}\s+to\s+the\s+(?:meeting|call|series)/i, expectedTools: ['add_meeting_attendee'] },
-  // Fake-escalation patterns. `escalate_to_admin` is in the always-available
-  // tool set, so claiming an escalation/notification was made without firing
-  // it is the same class of fabrication as the rest. Real GitHub-issue tools
+  // Fake-escalation monitoring complements the receipt-bound delivery guard.
+  // Escalation availability depends on the authenticated surface. Claiming
+  // escalation without a successful receipt is fabrication. Real GitHub-issue tools
   // count too because Addie sometimes describes filing a ticket as creating
   // an issue.
   //
@@ -498,6 +499,7 @@ function finalizeAssistantText(
   githubIssueRetryReceipts: readonly GithubIssueRetryReceipt[] = [],
   clientRequestId: string | undefined,
   forceTruncation: boolean = false,
+  conversationContext: string = question,
 ): FinalizedAssistantText {
   // This list is supplied only by the same client-request retry path.
   const retryExecutions = rehydratedGithubIssueRetryExecutions(githubIssueRetryReceipts, clientRequestId);
@@ -522,9 +524,13 @@ function finalizeAssistantText(
       'Addie: Replaced unsupported provider prose after failed source lookups',
     );
   }
+  const outcome = enforceOutcomeClaims(evidenceBoundary.text, toolExecutions, conversationContext);
+  if (outcome.reason) {
+    logger.warn({ event: 'addie_unconfirmed_outcome_replaced', reason: outcome.reason }, 'Addie: Replaced unsupported outcome claim');
+  }
   const processed = applyResponsePipelineWithEmptyMonitoring(
     question,
-    evidenceBoundary.text,
+    outcome.text,
     toolExecutions,
   );
   const lengthExceeded = processed.text.length > MAX_OUTPUT_LENGTH;
@@ -532,7 +538,7 @@ function finalizeAssistantText(
   return {
     text: truncated ? formatTruncatedOutput(processed.text) : processed.text,
     emptyReason: processed.reason,
-    localReplacementReason: githubIssueOutcome.reason ?? evidenceBoundary.reason,
+    localReplacementReason: githubIssueOutcome.reason ?? evidenceBoundary.reason ?? outcome.reason,
     lengthExceeded,
   };
 }
@@ -890,6 +896,7 @@ function grantGeminiDirectBoundaryOpportunity(input: Readonly<{
 
 interface TerminalAddieResponseCommon {
   userMessage: string;
+  conversationContext?: string;
   githubIssueCreationRequested: boolean;
   clientRequestId?: string;
   githubIssueRetryReceipts?: readonly GithubIssueRetryReceipt[];
@@ -937,6 +944,7 @@ function buildTerminalAddieResponse(input: TerminalAddieResponseInput): Terminal
     input.githubIssueRetryReceipts,
     input.clientRequestId,
     input.kind === 'provider' && input.disposition === 'truncated',
+    input.conversationContext,
   );
   const terminalExecutions = [
     ...rehydratedGithubIssueRetryExecutions(input.githubIssueRetryReceipts ?? [], input.clientRequestId),
@@ -2054,6 +2062,7 @@ export class AddieClaudeClient {
           kind: 'provider',
           disposition: 'truncated',
           userMessage,
+          conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
           githubIssueCreationRequested,
           clientRequestId: options?.clientRequestId,
           githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2107,6 +2116,7 @@ export class AddieClaudeClient {
           kind: 'provider',
           disposition: 'complete',
           userMessage,
+          conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
           githubIssueCreationRequested,
           clientRequestId: options?.clientRequestId,
           githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2170,6 +2180,7 @@ export class AddieClaudeClient {
     const terminal = buildTerminalAddieResponse({
       kind: 'max_iterations',
       userMessage,
+      conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
       githubIssueCreationRequested,
       clientRequestId: options?.clientRequestId,
       githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2871,6 +2882,7 @@ export class AddieClaudeClient {
             kind: 'provider',
             disposition: 'truncated',
             userMessage,
+            conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
             githubIssueCreationRequested,
             clientRequestId: options?.clientRequestId,
             githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2927,6 +2939,7 @@ export class AddieClaudeClient {
             kind: 'provider',
             disposition: 'complete',
             userMessage,
+            conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
             githubIssueCreationRequested,
             clientRequestId: options?.clientRequestId,
             githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2987,6 +3000,7 @@ export class AddieClaudeClient {
       const terminal = buildTerminalAddieResponse({
         kind: 'max_iterations',
         userMessage,
+        conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
         githubIssueCreationRequested,
         clientRequestId: options?.clientRequestId,
         githubIssueRetryReceipts: options?.githubIssueRetryReceipts,

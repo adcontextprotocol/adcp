@@ -123,14 +123,60 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Gemini Direct production integration', () => {
-  it('reports preparation and recovered versus unrecovered tool errors to staff', async () => {
-    await getGeminiDirectResults();
+  it('reports exact recovery, observed containment, unresolved errors, and historical coverage separately', async () => {
+    const results = await getGeminiDirectResults();
     const sql = String(mocks.query.mock.calls.at(-1)?.[0]);
     expect(sql).toContain('median_pre_provider_ms');
     expect(sql).toContain('p95_provider_ms');
     expect(sql).toContain('relationship_analytics_pending');
     expect(sql).toContain('recovered_tool_errors');
     expect(sql).toContain('unrecovered_tool_errors');
+    expect(sql).toContain('SUM(contained_tool_errors)::int AS contained_tool_errors');
+    expect(sql).toContain('SUM(unrecovered_tool_errors - contained_tool_errors)::int AS unresolved_tool_errors');
+    expect(sql).toContain('SUM(tool_errors - recovered_tool_errors) FILTER (WHERE contained_tool_errors IS NULL)');
+    expect(sql).toContain('tool_recovery_classified_turns');
+    expect(results.tool_recovery_definitions.contained_tool_errors).toContain('not original-operation success');
+  });
+
+  it.each([
+    ['complete answer', {}, false, 1],
+    ['flagged answer', { flagged: true }, false, 0],
+    ['empty answer', { text: ' ' }, false, 0],
+    ['truncated answer', { output_truncation: { source: 'provider_output_limit' as const } }, false, 0],
+    ['failed turn', {}, true, 0],
+  ])('persists conservative containment for a %s', async (_label, overrides, failed, expectedContained) => {
+    const f = fixture([]);
+    const turn = await prepareGeminiDirectTurn(f.input);
+    const toolExecutions: AddieResponse['tool_executions'] = [
+      {
+        tool_name: 'call_adcp_task', parameters: { task: 'request_proposals', agent_url: 'https://agent.example/mcp' },
+        result: 'Unsupported.', is_error: true, duration_ms: 1, sequence: 1,
+        normalized_result: { status: 'invalid_input', user_summary: 'Unsupported.', source: 'structured',
+          telemetry: { operation: 'request_proposals', error_category: 'validation' } },
+      },
+      {
+        tool_name: 'call_adcp_task', parameters: { task: 'get_products', agent_url: 'https://agent.example/mcp' },
+        result: 'Products.', is_error: false, duration_ms: 1, sequence: 2,
+        normalized_result: { status: 'ok', user_summary: 'Products.', source: 'structured', telemetry: { operation: 'get_products' } },
+      },
+    ];
+    await turn.experiment?.finish({ ...answer, tool_executions: toolExecutions, ...overrides }, undefined, failed);
+    const finish = mocks.query.mock.calls.find(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns SET\n        completed_at'))!;
+    expect(finish[1][11]).toBe(1); // total errors
+    expect(finish[1].slice(29, 32)).toEqual([0, 1, expectedContained]); // exact, unrecovered, contained
+  });
+
+  it('keeps exactly recovered errors out of the contained/unresolved partition', async () => {
+    const f = fixture([]);
+    const turn = await prepareGeminiDirectTurn(f.input);
+    await turn.experiment?.finish({ ...answer, tool_executions: [{
+      tool_name: 'call_adcp_task', parameters: { task: 'get_products', agent_url: 'https://agent.example/mcp' },
+      result: 'Correct the request.', is_error: true, duration_ms: 1, sequence: 1,
+      normalized_result: { status: 'invalid_input', user_summary: 'Correct the request.', source: 'structured',
+        telemetry: { operation: 'get_products', error_category: 'validation', recovered_by_later_success: true } },
+    }] });
+    const finish = mocks.query.mock.calls.find(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns SET\n        completed_at'))!;
+    expect(finish[1].slice(29, 32)).toEqual([1, 0, 0]);
   });
 
   it('persists preparation, provider, tool, and relationship stage timing separately', async () => {

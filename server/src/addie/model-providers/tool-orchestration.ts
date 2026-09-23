@@ -304,6 +304,51 @@ function toolRecoveryIdentity(execution: ToolExecution): string | null {
 }
 
 /**
+ * Containment is an observation of continued work, not operation recovery or
+ * proof that the user's request was fulfilled. Only a validation rejection
+ * followed by a successful AdCP read against the same literal agent target
+ * qualifies, and only when the turn produced a complete, usable answer.
+ * Transport/auth/mutation ambiguity and unrelated successes remain unresolved.
+ */
+export function countContainedToolErrors(
+  executions: readonly ToolExecution[],
+  hasCompleteAnswer: boolean,
+): number {
+  if (!hasCompleteAnswer) return 0;
+  return executions.filter((failed, index) => {
+    const presentation = failed.normalized_result;
+    const agentUrl = failed.parameters.agent_url;
+    if (
+      !failed.is_error
+      || failed.blocked_by_policy
+      || presentation?.status !== 'invalid_input'
+      || presentation.telemetry?.error_category !== 'validation'
+      || presentation.telemetry.recovered_by_later_success === true
+      || !isAdcpExecution(failed)
+      || typeof agentUrl !== 'string'
+      || !agentUrl.trim()
+    ) return false;
+    return executions.slice(index + 1).some(later => (
+      !later.is_error
+      && !later.blocked_by_policy
+      && later.normalized_result?.status === 'ok'
+      && later.parameters.agent_url === agentUrl
+      && isAdcpExecution(later)
+      && /^(?:get|list)_/.test(later.normalized_result.telemetry?.operation ?? '')
+      && !isSideEffectToolCall(later.tool_name, later.parameters)
+    ));
+  }).length;
+}
+
+function isAdcpExecution(execution: ToolExecution): boolean {
+  const operation = execution.normalized_result?.telemetry?.operation;
+  if (!operation) return false;
+  return (execution.tool_name === 'call_adcp_task' && execution.parameters.task === operation)
+    || (execution.tool_name === 'call_adcp_get_products' && operation === 'get_products')
+    || (execution.tool_name === 'get_adcp_capabilities' && operation === 'get_adcp_capabilities');
+}
+
+/**
  * Apply one accepted provider-neutral turn to Addie's shared tool and message
  * state. Delivery adapters consume the emitted events for logging/UI only;
  * this boundary owns provider receipts, sequential custom-tool execution, and

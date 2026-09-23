@@ -1295,3 +1295,123 @@ describe('AddieClaudeClient isolated execution policy', () => {
     expect(prospects.system_blocks[2].sha256).toBe(organizations.system_blocks[2].sha256);
   });
 });
+
+describe('persisted outcome delivery guard', () => {
+  it.each(['streaming', 'non_streaming'] as const)('preserves ordinary identifier conclusions on %s delivery', async delivery => {
+    const client = new AddieClaudeClient('unused');
+    const text = 'Your Q4 campaign is complete. The V2 migration is done.';
+    const options: ProcessMessageOptions = {
+      uncapped: true, disableServerTools: true,
+      requestContext: 'Tools that require sign-in: certification progression and admin actions.',
+    };
+    if (delivery === 'streaming') {
+      sdkState.streamingResponses.push(textResponse(text));
+      const events: StreamEvent[] = [];
+      for await (const event of client.processMessageStream('How are Q4 and V2?', undefined, undefined, options)) events.push(event);
+      expect(events.filter(event => event.type === 'text').map(event => event.text).join('')).toBe(text);
+    } else {
+      sdkState.nonStreamingResponses.push(textResponse(text));
+      const result = await client.processMessage('How are Q4 and V2?', undefined, undefined, { systemPrompt: 'system' }, options);
+      expect(result.text).toBe(text);
+    }
+  });
+
+  it.each(['streaming', 'non_streaming'] as const)('contains rejected completion and a later no-retry claim before %s delivery', async delivery => {
+    const handler = vi.fn().mockResolvedValue('NOT COMPLETED — module B2 is not recorded as complete. Only 3/4 conversation exchanges detected.');
+    const scoped = requestTools([tool('complete_certification_module', 'mutation')], [['complete_certification_module', handler]]);
+    const client = new AddieClaudeClient('unused');
+    const queue = delivery === 'streaming' ? sdkState.streamingResponses : sdkState.nonStreamingResponses;
+    const replies = [
+      toolUseResponse([{ id: 'complete-b2', name: 'complete_certification_module', input: { module_id: 'B2' } }]),
+      textResponse('One more example will help. Why does discovery precede buying?'),
+      textResponse('B2 is concluded. How would you use those products in a plan?'),
+    ];
+    queue.push(...replies);
+    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true, reserveSideEffect: async () => {} };
+    if (delivery === 'streaming') {
+      const first = [];
+      for await (const event of client.processMessageStream('Finish B2', undefined, scoped, options)) first.push(event);
+      const next: StreamEvent[] = [];
+      for await (const event of client.processMessageStream('I would discover products first.', [
+        { user: 'Addie', text: 'Module B2 needs another exchange; completion was not recorded.' },
+      ], scoped, options)) next.push(event);
+      const emitted = next.filter(event => event.type === 'text').map(event => event.text).join('');
+      const final = next.find(event => event.type === 'done');
+      expect(emitted).not.toContain('B2 is concluded');
+      expect(final?.type === 'done' && final.response.text).toContain("haven't confirmed a saved completion");
+      expect(final?.type === 'done' && final.response.text).toContain('How would you use those products');
+    } else {
+      await client.processMessage('Finish B2', undefined, scoped, { systemPrompt: 'system' }, options);
+      const next = await client.processMessage('I would discover products first.', [
+        { user: 'Addie', text: 'Module B2 needs another exchange; completion was not recorded.' },
+      ], scoped, { systemPrompt: 'system' }, options);
+      expect(next.text).not.toContain('B2 is concluded');
+      expect(next.text).toContain("haven't confirmed a saved completion");
+      expect(next.text).toContain('How would you use those products');
+    }
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['streaming', 'non_streaming'] as const)('requires an actual escalation receipt on %s delivery', async delivery => {
+    const client = new AddieClaudeClient('unused');
+    const reply = textResponse("I'll flag this registration problem for the team.");
+    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true };
+    if (delivery === 'streaming') {
+      sdkState.streamingResponses.push(reply);
+      const events: StreamEvent[] = [];
+      for await (const event of client.processMessageStream('Registration is broken.', undefined, undefined, options)) events.push(event);
+      const emitted = events.filter(event => event.type === 'text').map(event => event.text).join('');
+      const final = events.find(event => event.type === 'done');
+      expect(emitted).not.toContain("I'll flag");
+      expect(final?.type === 'done' && final.response.text).toContain('support@agenticadvertising.org');
+    } else {
+      sdkState.nonStreamingResponses.push(reply);
+      const response = await client.processMessage('Registration is broken.', undefined, undefined, { systemPrompt: 'system' }, options);
+      expect(response.text).not.toContain("I'll flag");
+      expect(response.text).toContain('support@agenticadvertising.org');
+    }
+  });
+
+  it('delivers confirmed completion from the real executor receipt', async () => {
+    const handler = vi.fn().mockResolvedValue('Module B2 completed! The learner has demonstrated mastery of all learning objectives.');
+    sdkState.nonStreamingResponses.push(
+      toolUseResponse([{ id: 'complete-b2', name: 'complete_certification_module', input: { module_id: 'B2' } }]),
+      textResponse('You have mastered B2.'),
+    );
+    const result = await new AddieClaudeClient('unused').processMessage('Finish B2', undefined,
+      requestTools([tool('complete_certification_module', 'mutation')], [['complete_certification_module', handler]]),
+      { systemPrompt: 'system' }, { uncapped: true, disableServerTools: true, reserveSideEffect: async () => {} });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe('B2 is recorded as complete.');
+    expect(result.flagged).toBe(false);
+  });
+
+  it.each(['streaming', 'non_streaming'] as const)('delivers a generic credential success and its saved share link on %s delivery', async delivery => {
+    const shareUrl = 'https://credsverse.com/credentials/abc-b2';
+    const handler = vi.fn().mockResolvedValue(`Module B2 completed!\n**Credential earned: AdCP Practitioner!**\n- [View and share your credential](${shareUrl})`);
+    const scoped = requestTools([tool('complete_certification_module', 'mutation')], [['complete_certification_module', handler]]);
+    const queue = delivery === 'streaming' ? sdkState.streamingResponses : sdkState.nonStreamingResponses;
+    queue.push(
+      toolUseResponse([{ id: 'award-b2', name: 'complete_certification_module', input: { module_id: 'B2' } }]),
+      textResponse('Congratulations, you earned your certificate!'),
+    );
+    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true, reserveSideEffect: async () => {} };
+    const client = new AddieClaudeClient('unused');
+    let text: string;
+    if (delivery === 'streaming') {
+      const events: StreamEvent[] = [];
+      for await (const event of client.processMessageStream('Finish module B2', undefined, scoped, options)) events.push(event);
+      text = events.filter(event => event.type === 'text').map(event => event.text).join('');
+      const done = events.find(event => event.type === 'done');
+      expect(done?.type === 'done' && done.response.flagged).toBe(false);
+    } else {
+      const result = await client.processMessage('Finish module B2', undefined, scoped, { systemPrompt: 'system' }, options);
+      text = result.text;
+      expect(result.flagged).toBe(false);
+    }
+    expect(text).toContain('Credential earned: AdCP Practitioner.');
+    expect(text).toContain(`[View and share your credential](${shareUrl})`);
+    expect(text).not.toContain('haven\'t confirmed');
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
