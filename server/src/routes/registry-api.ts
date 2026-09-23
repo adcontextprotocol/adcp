@@ -528,6 +528,51 @@ import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
 const logger = createLogger("registry-api");
 
+const COMPLIANCE_CARD_READ_CONCURRENCY = 2;
+const COMPLIANCE_CARD_READ_DEADLINE_MS = 8_000;
+
+type SettledTaskResults<
+  Tasks extends readonly (() => Promise<unknown>)[],
+> = {
+  [Index in keyof Tasks]: PromiseSettledResult<
+    Awaited<ReturnType<Tasks[Index]>>
+  >;
+};
+
+async function allSettledWithConcurrency<
+  const Tasks extends readonly (() => Promise<unknown>)[],
+>(
+  tasks: Tasks,
+  concurrency: number,
+): Promise<SettledTaskResults<Tasks>> {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error("Settled task concurrency must be a positive integer");
+  }
+  const results: PromiseSettledResult<unknown>[] = new Array(tasks.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= tasks.length) return;
+      try {
+        results[index] = {
+          status: "fulfilled",
+          value: await tasks[index]!(),
+        };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(concurrency, tasks.length) },
+      () => worker(),
+    ),
+  );
+  return results as unknown as SettledTaskResults<Tasks>;
+}
+
 const GRADING_PROFILE_CONFLICT_MESSAGES: Record<GradingProfileConflictError['reason'], string> = {
   stale_revision: 'The grading selection changed; refresh before retrying',
   stale_assessment: 'The selected assessment is stale or unavailable',
@@ -6950,31 +6995,44 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       // storyboard sets, serial round trips can exceed the dashboard's entire
       // request budget even when every individual query is healthy.
       const userId = req.user?.id;
-      const ownerMembershipPromise = resolveOwnerMembership(userId, agentUrl, {
-        resolveOwnerOrgId: resolveAgentOwnerOrg,
-        fetchOrgMembership: async (orgId) => {
-          const orgRow = await query<{ membership_tier: string | null; subscription_status: string | null }>(
-            `SELECT membership_tier, subscription_status
-             FROM organizations
-             WHERE workos_organization_id = $1
-             LIMIT 1`,
-            [orgId],
-          );
-          return orgRow.rows[0] ?? null;
-        },
-      });
-      const supplementalResults = await Promise.allSettled([
-        complianceDb.getBadgesForAgent(agentUrl),
-        getPublicSelectedGradingStatuses(agentUrl),
-        complianceDb.getLatestDeclaredSpecialisms(agentUrl),
-        complianceDb.getLatestNotices(agentUrl),
-        complianceDb.getLatestObservations(agentUrl),
-        complianceDb.getStoryboardStatuses(agentUrl, {
-          requireRowsForLatestRun: true,
-          includeDiagnostics: false,
-        }),
-        ownerMembershipPromise,
-      ] as const);
+      const supplementalTasks = [
+        () => complianceDb.getBadgesForAgent(agentUrl),
+        () => getPublicSelectedGradingStatuses(agentUrl),
+        () => complianceDb.getLatestDeclaredSpecialisms(agentUrl),
+        () => complianceDb.getLatestNotices(agentUrl),
+        () => complianceDb.getLatestObservations(agentUrl),
+        () =>
+          complianceDb.getStoryboardStatuses(agentUrl, {
+            requireRowsForLatestRun: true,
+            includeDiagnostics: false,
+          }),
+        () =>
+          resolveOwnerMembership(userId, agentUrl, {
+            resolveOwnerOrgId: resolveAgentOwnerOrg,
+            fetchOrgMembership: async (orgId) => {
+              const orgRow = await query<{
+                membership_tier: string | null;
+                subscription_status: string | null;
+              }>(
+                `SELECT membership_tier, subscription_status
+                 FROM organizations
+                 WHERE workos_organization_id = $1
+                 LIMIT 1`,
+                [orgId],
+              );
+              return orgRow.rows[0] ?? null;
+            },
+          }),
+      ] as const;
+      const complianceCardReadDeadline =
+        Date.now() + COMPLIANCE_CARD_READ_DEADLINE_MS;
+      const supplementalResults = await withDatabaseDeadline(
+        complianceCardReadDeadline,
+        () => allSettledWithConcurrency(
+          supplementalTasks,
+          COMPLIANCE_CARD_READ_CONCURRENCY,
+        ),
+      );
 
       const [
         badgesResult,

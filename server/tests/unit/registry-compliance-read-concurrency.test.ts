@@ -7,8 +7,10 @@ const routeSource = readFileSync(
 );
 
 describe('registry compliance read concurrency', () => {
-  it('fans out independent compliance-card projections in one settled batch', () => {
-    const batchStart = routeSource.indexOf('const supplementalResults = await Promise.allSettled([');
+  it('bounds independent compliance-card projections within one database deadline', () => {
+    expect(routeSource).toContain('const COMPLIANCE_CARD_READ_CONCURRENCY = 2;');
+    expect(routeSource).toContain('const COMPLIANCE_CARD_READ_DEADLINE_MS = 8_000;');
+    const batchStart = routeSource.indexOf('const supplementalTasks = [');
     const batchEnd = routeSource.indexOf('] as const);', batchStart);
 
     expect(batchStart).toBeGreaterThan(-1);
@@ -20,7 +22,11 @@ describe('registry compliance read concurrency', () => {
     expect(batch).toContain('getLatestNotices(agentUrl)');
     expect(batch).toContain('getLatestObservations(agentUrl)');
     expect(batch).toContain('getStoryboardStatuses(agentUrl');
-    expect(batch).toContain('ownerMembershipPromise');
+    expect(batch).toContain('resolveOwnerMembership(userId, agentUrl');
+    expect(routeSource).toContain('withDatabaseDeadline(\n        complianceCardReadDeadline,');
+    expect(routeSource).toContain(
+      'allSettledWithConcurrency(\n          supplementalTasks,\n          COMPLIANCE_CARD_READ_CONCURRENCY',
+    );
   });
 
   it('indexes the latest-run storyboard lookup used by both slow routes', () => {
