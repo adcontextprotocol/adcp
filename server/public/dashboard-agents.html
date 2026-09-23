@@ -1329,7 +1329,7 @@
     // Fetches compliance + history + auth for a single agent. Always returns
     // an object — on failure, loadError is populated so the renderer can
     // distinguish "server says unknown" from "we couldn't load".
-    async function fetchAgentState(agent, organizationId) {
+    async function fetchAgentState(agent, organizationId, onPartial) {
       const encoded = encodeURIComponent(agent.url);
       const orgQuery = organizationId ? `?org=${encodeURIComponent(organizationId)}` : '';
       const endpoints = [
@@ -1337,8 +1337,15 @@
         `/api/registry/agents/${encoded}/compliance/history?limit=10`,
         `/api/registry/agents/${encoded}/auth-status${orgQuery}`,
       ];
-      const settled = await Promise.allSettled(
-        endpoints.map(u => fetchWithRetry(u, { credentials: 'include' })),
+      // Start all three requests together, but do not make the fast history
+      // and auth projections wait for the heavier compliance card response.
+      // A partial render keeps owner actions reachable even if compliance is
+      // slow or eventually crosses the page-level request budget.
+      const settledRequests = endpoints.map(u =>
+        fetchWithRetry(u, { credentials: 'include' }).then(
+          value => ({ status: 'fulfilled', value }),
+          reason => ({ status: 'rejected', reason }),
+        )
       );
 
       const parseOrError = async (s, source) => {
@@ -1381,11 +1388,22 @@
         }
       };
 
-      const [statusResult, historyResult, authResult] = await Promise.all([
-        parseOrError(settled[0], 'compliance'),
-        parseOrError(settled[1], 'history'),
-        parseOrError(settled[2], 'auth'),
+      const [historyResult, authResult] = await Promise.all([
+        settledRequests[1].then(s => parseOrError(s, 'history')),
+        settledRequests[2].then(s => parseOrError(s, 'auth')),
       ]);
+
+      if (typeof onPartial === 'function') {
+        onPartial({
+          url: agent.url,
+          status: null,
+          history: historyResult.data,
+          authStatus: authResult.data,
+          loadError: null,
+        });
+      }
+
+      const statusResult = await settledRequests[0].then(s => parseOrError(s, 'compliance'));
 
       // Only the compliance endpoint determines the primary card state.
       // History and auth errors are logged but don't block rendering.
@@ -1496,7 +1514,11 @@
               const agent = queue.shift();
               if (!agent) break;
               try {
-                const state = await fetchAgentState(agent, currentOrgId);
+                const state = await fetchAgentState(agent, currentOrgId, partialState => {
+                  if (cancellation.cancelled) return;
+                  agentCompliance.set(partialState.url, partialState);
+                  swapAgentCard(partialState.url);
+                });
                 if (cancellation.cancelled) break;
                 agentCompliance.set(state.url, state);
                 swapAgentCard(state.url);
@@ -1982,6 +2004,7 @@
         const authInfo = data?.authStatus;
         const loadError = data?.loadError;
         const hasData = cs && cs.status && cs.status !== 'unknown';
+        const hasPartialData = Boolean(data && !cs);
         const hasAuth = authInfo?.has_auth;
         const refreshAvailability = cs?.refresh_availability;
         const refreshUnavailable = refreshAvailability?.available === false;
@@ -2097,7 +2120,7 @@
               <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
                 <span class="agent-status-dot agent-status-dot--unknown"></span>
                 <span class="agent-hostname">${escapeHtml(hostname)}</span>
-                <span class="agent-status-label" style="color: var(--color-text-secondary);">not yet checked</span>
+                <span class="agent-status-label" style="color: var(--color-text-secondary);">${hasPartialData ? 'loading compliance…' : 'not yet checked'}</span>
               </div>
             </div>
             ${hasAuth
@@ -2108,13 +2131,18 @@
             <div class="agent-meta-row">
               <span></span>
               <div class="agent-meta-row-actions">
+                ${hasAuth ? `<button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">Update auth</button>` : ''}
+                ${hasPartialData ? `<button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">History</button>` : ''}
                 <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}"${refreshButtonState || ' title="Re-detect supported AdCP versions, refresh registry status, and run compliance now"'}>${refreshButtonLabel}</button>
+                ${hasPartialData ? `<button class="agent-requeue-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Mark this agent eligible for a future scheduled compliance heartbeat. This is not a human refresh and has no guaranteed start time.">Requeue comply</button>` : ''}
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
                 <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
               </div>
             </div>
             ${refreshNoticeHtml}
+            ${hasAuth ? `<div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">${buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}</div>` : ''}
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
+            ${hasPartialData ? `<div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>` : ''}
           </div>`;
         }
 

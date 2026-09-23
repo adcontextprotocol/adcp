@@ -81,7 +81,7 @@ import {
   GradingProfileConflictError,
 } from "../db/verification-profile-db.js";
 import { notifyVerificationChange } from "../notifications/compliance.js";
-import { resolveOwnerMembership, tierLabel } from "../services/membership-tiers.js";
+import { resolveOwnerMembership, tierLabel, type OwnerMembership } from "../services/membership-tiers.js";
 import { inferDiagnosticAgentType } from "../lib/diagnostic-agent-type-inference.js";
 import { isSupportedBadgeVersion, isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
 import { buildAaoVerificationBlock } from "../services/aao-verification-enrichment.js";
@@ -6945,67 +6945,102 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       const sbCounts = statusWithCounts?.storyboardCounts ?? { passing: 0, total: 0 };
 
-      // Verification badges — supplementary, don't fail the response
-      let badges: Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>> = [];
-      try {
-        badges = await complianceDb.getBadgesForAgent(agentUrl);
-      } catch (err) {
-        logger.warn({ err, agentUrl }, "Badge query failed (table may not exist yet)");
+      // These reads all project the same already-authoritative run and have no
+      // dependency on each other. Keep them concurrent: on agents with large
+      // storyboard sets, serial round trips can exceed the dashboard's entire
+      // request budget even when every individual query is healthy.
+      const userId = req.user?.id;
+      const ownerMembershipPromise = resolveOwnerMembership(userId, agentUrl, {
+        resolveOwnerOrgId: resolveAgentOwnerOrg,
+        fetchOrgMembership: async (orgId) => {
+          const orgRow = await query<{ membership_tier: string | null; subscription_status: string | null }>(
+            `SELECT membership_tier, subscription_status
+             FROM organizations
+             WHERE workos_organization_id = $1
+             LIMIT 1`,
+            [orgId],
+          );
+          return orgRow.rows[0] ?? null;
+        },
+      });
+      const supplementalResults = await Promise.allSettled([
+        complianceDb.getBadgesForAgent(agentUrl),
+        getPublicSelectedGradingStatuses(agentUrl),
+        complianceDb.getLatestDeclaredSpecialisms(agentUrl),
+        complianceDb.getLatestNotices(agentUrl),
+        complianceDb.getLatestObservations(agentUrl),
+        complianceDb.getStoryboardStatuses(agentUrl, {
+          requireRowsForLatestRun: true,
+          includeDiagnostics: false,
+        }),
+        ownerMembershipPromise,
+      ] as const);
+
+      const [
+        badgesResult,
+        selectedGradingStatusesResult,
+        declaredSpecialismsResult,
+        noticesResult,
+        observationsResult,
+        storyboardStatusesResult,
+        ownerMembershipResult,
+      ] = supplementalResults;
+
+      // Verification badges and public projections are supplementary. Preserve
+      // the existing fail-soft contract for their independently deployed tables.
+      const badges = badgesResult.status === 'fulfilled' ? badgesResult.value : [];
+      if (badgesResult.status === 'rejected') {
+        logger.warn({ err: badgesResult.reason, agentUrl }, "Badge query failed (table may not exist yet)");
       }
-      let selectedGradingStatuses: Awaited<ReturnType<typeof getPublicSelectedGradingStatuses>> = [];
-      try {
-        selectedGradingStatuses = await getPublicSelectedGradingStatuses(agentUrl);
-      } catch (err) {
-        logger.warn({ err, agentUrl }, 'Selected grading status query failed');
+      const selectedGradingStatuses = selectedGradingStatusesResult.status === 'fulfilled'
+        ? selectedGradingStatusesResult.value
+        : [];
+      if (selectedGradingStatusesResult.status === 'rejected') {
+        logger.warn({ err: selectedGradingStatusesResult.reason, agentUrl }, 'Selected grading status query failed');
       }
 
       // Declared specialisms from the latest run — surfaces what the agent
       // told us via get_adcp_capabilities so the dashboard can answer
       // "did my agent declare what I think it did?" without re-running
       // compliance.
-      let declaredSpecialisms: string[] = [];
-      try {
-        declaredSpecialisms = await complianceDb.getLatestDeclaredSpecialisms(agentUrl);
-      } catch (err) {
-        logger.warn({ err, agentUrl }, "Latest declared specialisms query failed");
+      const declaredSpecialisms = declaredSpecialismsResult.status === 'fulfilled'
+        ? declaredSpecialismsResult.value
+        : [];
+      if (declaredSpecialismsResult.status === 'rejected') {
+        logger.warn({ err: declaredSpecialismsResult.reason, agentUrl }, "Latest declared specialisms query failed");
       }
 
-      // Advisory notices from the latest run — forward-looking migration
-      // advisories emitted by the runner (e.g., deprecated specialism names,
-      // future-required capabilities). Forward-compat: unknown codes/severities
-      // are passed through verbatim; callers MUST NOT filter on these values.
-      let notices: PublicComplianceNotice[] = [];
-      try {
-        notices = projectPublicComplianceNotices(await complianceDb.getLatestNotices(agentUrl));
-      } catch (err) {
-        logger.warn({ err, agentUrl }, "Notices query failed (column may not exist yet)");
+      // Advisory notices and observations are also fail-soft, but are always
+      // taken from one run so fixed findings disappear immediately.
+      const notices: PublicComplianceNotice[] = noticesResult.status === 'fulfilled'
+        ? projectPublicComplianceNotices(noticesResult.value)
+        : [];
+      if (noticesResult.status === 'rejected') {
+        logger.warn({ err: noticesResult.reason, agentUrl }, "Notices query failed (column may not exist yet)");
       }
-
-      // Advisory observations from the latest run — these are per-run runner
-      // observations (best-practice warnings, suggestions, etc.). Do not merge
-      // observations across runs; a fixed field on the wire must clear the
-      // advisory as soon as the latest run stops emitting it.
-      let rawObservations: unknown[] = [];
-      try {
-        rawObservations = await complianceDb.getLatestObservations(agentUrl);
-      } catch (err) {
-        logger.warn({ err, agentUrl }, "Latest observations query failed");
+      const rawObservations: unknown[] = observationsResult.status === 'fulfilled'
+        ? observationsResult.value
+        : [];
+      if (observationsResult.status === 'rejected') {
+        logger.warn({ err: observationsResult.reason, agentUrl }, "Latest observations query failed");
       }
 
       // Per-specialism status — the dashboard renders pass/fail/untested
       // dots so the developer can see which declared specialism is the
       // cause of an overall `failing` status without cross-referencing
-      // the storyboard track pills.
+      // the storyboard track pills. Unlike the supplementary projections,
+      // preserve the existing hard failure for unexpected query errors.
       let specialismStatus: Record<string, string> = {};
       let storyboardStatuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
-      try {
-        storyboardStatuses = await complianceDb.getStoryboardStatuses(agentUrl, {
-          requireRowsForLatestRun: true,
-          includeDiagnostics: false,
-        });
-      } catch (err) {
-        if (!isStoryboardStatusSchemaUnavailable(err)) throw err;
-        logger.warn({ err, agentUrl }, "Storyboard status query skipped because schema is unavailable");
+      if (storyboardStatusesResult.status === 'fulfilled') {
+        storyboardStatuses = storyboardStatusesResult.value;
+      } else if (isStoryboardStatusSchemaUnavailable(storyboardStatusesResult.reason)) {
+        logger.warn(
+          { err: storyboardStatusesResult.reason, agentUrl },
+          "Storyboard status query skipped because schema is unavailable",
+        );
+      } else {
+        throw storyboardStatusesResult.reason;
       }
       if (declaredSpecialisms.length > 0) {
         specialismStatus = computeSpecialismStatus(
@@ -7027,24 +7062,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       // instead of asking the developer to guess. The four fields are
       // always emitted (with `null`/`false` defaults) so a non-owner can't
       // detect ownership via `Object.keys()` shape comparison.
-      const userId = req.user?.id;
-      let ownerMembership;
-      try {
-        ownerMembership = await resolveOwnerMembership(userId, agentUrl, {
-          resolveOwnerOrgId: resolveAgentOwnerOrg,
-          fetchOrgMembership: async (orgId) => {
-            const orgRow = await query<{ membership_tier: string | null; subscription_status: string | null }>(
-              `SELECT membership_tier, subscription_status
-               FROM organizations
-               WHERE workos_organization_id = $1
-               LIMIT 1`,
-              [orgId],
-            );
-            return orgRow.rows[0] ?? null;
-          },
-        });
-      } catch (err) {
-        logger.error({ err, agentUrl, userId }, "Owner membership lookup failed");
+      let ownerMembership: OwnerMembership;
+      if (ownerMembershipResult.status === 'fulfilled') {
+        ownerMembership = ownerMembershipResult.value;
+      } else {
+        logger.error({ err: ownerMembershipResult.reason, agentUrl, userId }, "Owner membership lookup failed");
         ownerMembership = {
           is_owner: false,
           membership_tier: null,
@@ -7944,15 +7966,25 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           return res.json({ agent_url: agentUrl, status: "opted_out", storyboards: [] });
         }
 
+        const [statusesResult, includeDiagnosticsResult] = await Promise.allSettled([
+          complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true }),
+          canViewAgentDebugData(req, agentUrl),
+        ] as const);
         let statuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
-        try {
-          statuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true });
-        } catch (err) {
-          if (!isStoryboardStatusSchemaUnavailable(err)) throw err;
-          logger.warn({ err, agentUrl }, "Storyboard status query skipped because schema is unavailable");
+        if (statusesResult.status === 'fulfilled') {
+          statuses = statusesResult.value;
+        } else if (isStoryboardStatusSchemaUnavailable(statusesResult.reason)) {
+          logger.warn(
+            { err: statusesResult.reason, agentUrl },
+            "Storyboard status query skipped because schema is unavailable",
+          );
+        } else {
+          throw statusesResult.reason;
         }
-
-        const includeDiagnostics = await canViewAgentDebugData(req, agentUrl);
+        if (includeDiagnosticsResult.status === 'rejected') {
+          throw includeDiagnosticsResult.reason;
+        }
+        const includeDiagnostics = includeDiagnosticsResult.value;
         const enriched = statuses.map(s => serializeStoryboardStatus(s, { includeDiagnostics }));
 
         res.json({
