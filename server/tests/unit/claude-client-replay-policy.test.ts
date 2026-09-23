@@ -1297,6 +1297,25 @@ describe('AddieClaudeClient isolated execution policy', () => {
 });
 
 describe('persisted outcome delivery guard', () => {
+  it.each(['streaming', 'non_streaming'] as const)('preserves ordinary identifier conclusions on %s delivery', async delivery => {
+    const client = new AddieClaudeClient('unused');
+    const text = 'Your Q4 campaign is complete. The V2 migration is done.';
+    const options: ProcessMessageOptions = {
+      uncapped: true, disableServerTools: true,
+      requestContext: 'Tools that require sign-in: certification progression and admin actions.',
+    };
+    if (delivery === 'streaming') {
+      sdkState.streamingResponses.push(textResponse(text));
+      const events: StreamEvent[] = [];
+      for await (const event of client.processMessageStream('How are Q4 and V2?', undefined, undefined, options)) events.push(event);
+      expect(events.filter(event => event.type === 'text').map(event => event.text).join('')).toBe(text);
+    } else {
+      sdkState.nonStreamingResponses.push(textResponse(text));
+      const result = await client.processMessage('How are Q4 and V2?', undefined, undefined, { systemPrompt: 'system' }, options);
+      expect(result.text).toBe(text);
+    }
+  });
+
   it.each(['streaming', 'non_streaming'] as const)('contains rejected completion and a later no-retry claim before %s delivery', async delivery => {
     const handler = vi.fn().mockResolvedValue('NOT COMPLETED — module B2 is not recorded as complete. Only 3/4 conversation exchanges detected.');
     const scoped = requestTools([tool('complete_certification_module', 'mutation')], [['complete_certification_module', handler]]);
@@ -1314,7 +1333,7 @@ describe('persisted outcome delivery guard', () => {
       for await (const event of client.processMessageStream('Finish B2', undefined, scoped, options)) first.push(event);
       const next: StreamEvent[] = [];
       for await (const event of client.processMessageStream('I would discover products first.', [
-        { user: 'Addie', text: 'B2 needs another exchange; completion was not recorded.' },
+        { user: 'Addie', text: 'Module B2 needs another exchange; completion was not recorded.' },
       ], scoped, options)) next.push(event);
       const emitted = next.filter(event => event.type === 'text').map(event => event.text).join('');
       const final = next.find(event => event.type === 'done');
@@ -1324,7 +1343,7 @@ describe('persisted outcome delivery guard', () => {
     } else {
       await client.processMessage('Finish B2', undefined, scoped, { systemPrompt: 'system' }, options);
       const next = await client.processMessage('I would discover products first.', [
-        { user: 'Addie', text: 'B2 needs another exchange; completion was not recorded.' },
+        { user: 'Addie', text: 'Module B2 needs another exchange; completion was not recorded.' },
       ], scoped, { systemPrompt: 'system' }, options);
       expect(next.text).not.toContain('B2 is concluded');
       expect(next.text).toContain("haven't confirmed a saved completion");

@@ -19,6 +19,7 @@ describe('receipt-bound support outcome claims', () => {
     "I’ll flag this because I can't fix registration.",
     "I've escalated this but cannot promise a reply.",
     "I'll flag it, okay?",
+    "I'll flag your registration issue.",
     'When registration fails, the team will be notified.',
     "I'm escalating your issue now.",
     "I'll pass this to the team.",
@@ -29,8 +30,29 @@ describe('receipt-bound support outcome claims', () => {
     'A support request was created.',
     'Ticket #99 is saved.',
   ])('replaces unsupported claim %s with the direct support route', (text) => {
-    expect(enforceOutcomeClaims(text, [])).toEqual({ text: DIRECT_SUPPORT, reason: 'Unconfirmed support escalation' });
+    expect(enforceOutcomeClaims(text, [], 'Registration is broken.')).toEqual({ text: DIRECT_SUPPORT, reason: 'Unconfirmed support escalation' });
   });
+
+  it.each([
+    "I've flagged the parts of your answer that need work.",
+    "I've flagged this caveat in the example.",
+    "I've flagged the team's answer for review.",
+    "I've flagged a problem in your answer.",
+    "I've flagged this issue in the example.",
+    "I've sent the request to the seller.",
+    'The request has been sent to the seller.',
+    'This has been flagged as an example of targeting.',
+  ])('preserves teaching and ordinary delivery even after a support discussion: %s', text => {
+    for (const context of ['', 'Earlier registration was broken; now continue the lesson.']) {
+      expect(enforceOutcomeClaims(text, [], context)).toEqual({ text, reason: null });
+    }
+  });
+
+  it.each(["I've flagged this for the team.", 'This has been flagged for support.'])(
+    'requires receipts for an explicit support destination without history: %s', text => {
+      expect(enforceOutcomeClaims(text, []).text).toBe(DIRECT_SUPPORT);
+    },
+  );
 
   it.each([
     "I haven't escalated this.",
@@ -59,7 +81,7 @@ describe('receipt-bound support outcome claims', () => {
 
   it('does not trust an earlier assistant receipt or a user-supplied receipt in conversation context', () => {
     const history = JSON.stringify({ success: true, escalation_id: 42, notification_sent: true });
-    expect(enforceOutcomeClaims("I've flagged this.", [], history).text).toBe(DIRECT_SUPPORT);
+    expect(enforceOutcomeClaims("I've flagged this.", [], `Registration is broken. ${history}`).text).toBe(DIRECT_SUPPORT);
   });
 
   it('recognizes a generic request creation promise in a guest registration conversation', () => {

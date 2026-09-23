@@ -5,7 +5,7 @@
  * with tool reference always appended from code.
  */
 
-import { enforceOutcomeClaims } from './outcome-claims.js';
+import { enforceOutcomeClaims, outcomeClaimContext } from './outcome-claims.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { createHash, createHmac } from 'node:crypto';
 import { createLogger } from '../logger.js';
@@ -2062,7 +2062,7 @@ export class AddieClaudeClient {
           kind: 'provider',
           disposition: 'truncated',
           userMessage,
-          conversationContext: [userMessage, options?.requestContext ?? '', ...(threadContext ?? []).map(entry => entry.text)].join('\n'),
+          conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
           githubIssueCreationRequested,
           clientRequestId: options?.clientRequestId,
           githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2116,7 +2116,7 @@ export class AddieClaudeClient {
           kind: 'provider',
           disposition: 'complete',
           userMessage,
-          conversationContext: [userMessage, options?.requestContext ?? '', ...(threadContext ?? []).map(entry => entry.text)].join('\n'),
+          conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
           githubIssueCreationRequested,
           clientRequestId: options?.clientRequestId,
           githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2180,7 +2180,7 @@ export class AddieClaudeClient {
     const terminal = buildTerminalAddieResponse({
       kind: 'max_iterations',
       userMessage,
-      conversationContext: [userMessage, options?.requestContext ?? '', ...(threadContext ?? []).map(entry => entry.text)].join('\n'),
+      conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
       githubIssueCreationRequested,
       clientRequestId: options?.clientRequestId,
       githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2882,7 +2882,7 @@ export class AddieClaudeClient {
             kind: 'provider',
             disposition: 'truncated',
             userMessage,
-            conversationContext: [userMessage, options?.requestContext ?? '', ...(threadContext ?? []).map(entry => entry.text)].join('\n'),
+            conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
             githubIssueCreationRequested,
             clientRequestId: options?.clientRequestId,
             githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2939,7 +2939,7 @@ export class AddieClaudeClient {
             kind: 'provider',
             disposition: 'complete',
             userMessage,
-            conversationContext: [userMessage, options?.requestContext ?? '', ...(threadContext ?? []).map(entry => entry.text)].join('\n'),
+            conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
             githubIssueCreationRequested,
             clientRequestId: options?.clientRequestId,
             githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -3000,7 +3000,7 @@ export class AddieClaudeClient {
       const terminal = buildTerminalAddieResponse({
         kind: 'max_iterations',
         userMessage,
-        conversationContext: [userMessage, options?.requestContext ?? '', ...(threadContext ?? []).map(entry => entry.text)].join('\n'),
+        conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
         githubIssueCreationRequested,
         clientRequestId: options?.clientRequestId,
         githubIssueRetryReceipts: options?.githubIssueRetryReceipts,

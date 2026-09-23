@@ -40,6 +40,9 @@ recorded outcomes or replaced with a brief unconfirmed-state explanation. Other
 teaching sentences remain available. Credential award and external issuance are
 separate claims. A later exchange alone never makes a rejected completion valid.
 A historical completion can be confirmed by reading persisted progress again.
+Bare identifiers require teaching context; ordinary Q4 or V2 conclusions do not
+count as module claims. Generic sign-in/tool boilerplate cannot establish that
+context; actual conversation or active certification facts can.
 
 This is a deterministic delivery backstop for the covered English outcome
 phrasing, not a semantic proof for every paraphrase or language. Expanding the
@@ -86,6 +89,10 @@ and contention evidence, there is no scoped defect to repair here.
 ## Deployment and rollback
 
 Migration 607 adds one nullable containment count and consistency constraint.
+The constraint is `NOT VALID`: future writes are checked immediately, while
+startup avoids scanning historical rows under the schema lock. Historical rows
+have the new column null and already satisfy the check. Optional validation must
+run in a separate transaction, not inside the startup migration transaction.
 Apply migrations before the new application version (normal startup ordering).
 Historical rows remain unclassified; there is no speculative backfill. Rollback
 can restore the prior application while retaining the additive column. Do not
