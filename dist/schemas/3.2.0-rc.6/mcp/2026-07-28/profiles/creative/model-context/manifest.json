@@ -1,0 +1,134 @@
+{
+  "mcp_protocol_version": "2026-07-28",
+  "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+  "source_schema_dialect": "http://json-schema.org/draft-07/schema#",
+  "compatibility": "host-compatible discovery inputs with canonical call-time validation; semantics-preserving outputs",
+  "delivery": "client-side prompt input projection; the parent profile supplies tools/list discovery inputs, while canonical wire schemas validate calls",
+  "annotation_mode": "model-context",
+  "schema_fields": [
+    "inputSchema"
+  ],
+  "profile": "creative",
+  "profile_kind": "active-role-catalog",
+  "view": "client-prompt-inputs",
+  "surface_version": "3.2.0",
+  "compatibility_scope": "active-3.2-only",
+  "filters": {
+    "include_tools": [
+      "build_creative",
+      "get_account_financials",
+      "get_adcp_capabilities",
+      "get_creative_delivery",
+      "get_creative_features",
+      "get_task_status",
+      "list_accounts",
+      "list_creatives",
+      "list_tasks",
+      "list_transformers",
+      "preview_creative",
+      "report_usage",
+      "sync_accounts",
+      "sync_agent_notification_configs",
+      "sync_catalogs",
+      "sync_creatives",
+      "sync_governance",
+      "validate_input"
+    ],
+    "exclude_deprecated": true
+  },
+  "discovery_profile": "../manifest.json",
+  "complete_discovery_projection": "../../../manifest.json",
+  "canonical_wire_manifest": "../../../../../manifest.json",
+  "tools": {
+    "build_creative": {
+      "protocol": "media-buy",
+      "summary": "Generate, transform, refine, retrieve, or adapt creative manifests for advertised creative capabilities.",
+      "inputSchema": "media-buy/build-creative-request.json"
+    },
+    "get_account_financials": {
+      "protocol": "account",
+      "summary": "Retrieve spend, credit or balance status, and invoice history for an operator-billed account.",
+      "inputSchema": "account/get-account-financials-request.json"
+    },
+    "get_adcp_capabilities": {
+      "protocol": "protocol",
+      "summary": "Discover the AdCP protocols and feature sets supported by this agent.",
+      "inputSchema": "protocol/get-adcp-capabilities-request.json"
+    },
+    "get_creative_delivery": {
+      "protocol": "creative",
+      "summary": "Retrieve creative and variant-level delivery metrics scoped to media buys or creative IDs.",
+      "inputSchema": "creative/get-creative-delivery-request.json"
+    },
+    "get_creative_features": {
+      "protocol": "creative",
+      "summary": "Evaluate a creative manifest and return scored safety, content, quality, and governance features.",
+      "inputSchema": "creative/get-creative-features-request.json"
+    },
+    "get_task_status": {
+      "protocol": "protocol",
+      "summary": "Retrieve an AdCP asynchronous task, its conversation history, and terminal result by task ID.",
+      "inputSchema": "protocol/get-task-status-request.json"
+    },
+    "list_accounts": {
+      "protocol": "account",
+      "summary": "List accounts accessible to the caller and recover their canonical account references.",
+      "inputSchema": "account/list-accounts-request.json"
+    },
+    "list_creatives": {
+      "protocol": "creative",
+      "summary": "List creative-library assets with filtering, sorting, and pagination.",
+      "inputSchema": "creative/list-creatives-request.json"
+    },
+    "list_tasks": {
+      "protocol": "protocol",
+      "summary": "List and filter AdCP asynchronous tasks for state reconciliation.",
+      "inputSchema": "protocol/list-tasks-request.json"
+    },
+    "list_transformers": {
+      "protocol": "creative",
+      "summary": "Discover account-scoped creative transformers and their selectable configuration options.",
+      "inputSchema": "creative/list-transformers-request.json"
+    },
+    "preview_creative": {
+      "protocol": "creative",
+      "summary": "Generate single, batch, or variant previews of creative manifests.",
+      "inputSchema": "creative/preview-creative-request.json"
+    },
+    "report_usage": {
+      "protocol": "account",
+      "summary": "Report vendor-service consumption and final measurements for revenue tracking and billing reconciliation.",
+      "inputSchema": "account/report-usage-request.json"
+    },
+    "sync_accounts": {
+      "protocol": "account",
+      "summary": "Provision advertiser accounts or update settings for existing accounts through declarative synchronization.",
+      "inputSchema": "account/sync-accounts-request.json"
+    },
+    "sync_agent_notification_configs": {
+      "protocol": "protocol",
+      "summary": "Register, replace, pause, or clear caller-scoped webhooks for agent-level notifications.",
+      "inputSchema": "protocol/sync-agent-notification-configs-request.json"
+    },
+    "sync_catalogs": {
+      "protocol": "media-buy",
+      "summary": "List or synchronize buyer-managed account catalog feeds, suppress or restore specific items, and read current availability state.",
+      "inputSchema": "media-buy/sync-catalogs-request.json"
+    },
+    "sync_creatives": {
+      "protocol": "creative",
+      "summary": "List or synchronize creative assets, scoped updates, and media-buy assignments.",
+      "inputSchema": "creative/sync-creatives-request.json"
+    },
+    "sync_governance": {
+      "protocol": "account",
+      "summary": "Bind or replace the governance agent used for approval across specific advertiser accounts.",
+      "inputSchema": "account/sync-governance-request.json"
+    },
+    "validate_input": {
+      "protocol": "creative",
+      "summary": "Preflight a creative manifest against canonical formats, products, third-party formats, or agent capabilities.",
+      "inputSchema": "creative/validate-input-request.json"
+    }
+  }
+}

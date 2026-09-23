@@ -1,0 +1,17 @@
+{
+  "reporting_adjustment_id": "adjustment-august-invalid-traffic",
+  "adjusts_reporting_revision_id": "revision-august-official",
+  "reason_code": "invalid_traffic",
+  "reason_detail": "Late invalid-traffic classification supplied by the measurement source.",
+  "accounting_period": {
+    "start": "2026-09-01T00:00:00Z",
+    "end": "2026-10-01T00:00:00Z"
+  },
+  "control_total_deltas": [
+    { "name": "impressions", "value": "-1", "value_type": "integer", "unit": "impressions" },
+    { "name": "spend", "value": "-1.50", "value_type": "decimal", "unit": "USD" }
+  ],
+  "canonical_adjustment_sha256": "401d1428f22fc0c3f2a7a82a1fceb766d81c4971e1f4458a26398c80163ddd2d",
+  "correction_observed_at": "2026-08-29T10:00:00Z",
+  "created_at": "2026-08-29T10:00:01Z"
+}

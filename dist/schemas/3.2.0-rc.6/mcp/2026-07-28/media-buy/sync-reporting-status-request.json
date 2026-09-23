@@ -1,0 +1,632 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/mcp/2026-07-28/media-buy/sync-reporting-status-request.json",
+  "title": "Sync Reporting Status Request",
+  "x-status": "experimental",
+  "x-tool-summary": "Tell a seller whether expected reporting was received, omitted, missing, unreadable, or contradictory.",
+  "description": "Submit the authenticated consumer's operational reporting status for expected configuration periods. This is a batched idempotent append-only sync over seller-hosted task transport, not a webhook registration, measurement-data feed, or billing receipt. Identity comes from authenticated transport; the request MUST NOT assert a buyer or consumer principal.",
+  "type": "object",
+  "x-mutates-state": true,
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Client-generated batch key. Exact retries reuse the key and body."
+    },
+    "statuses": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/external:core~1reporting-consumer-status.json"
+          },
+          {
+            "not": {
+              "required": [
+                "recorded_at"
+              ]
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "description": "Immutable status updates. New state uses a new reporting_status_id and explicitly supersedes the current status for that expected period. A batch contains at most one update for each logical status chain. content_mismatch entries report a consumed revision that contradicts the accepted configuration generation; they are operational disagreements about contract facts, never measurement disputes."
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "account",
+    "idempotency_key",
+    "statuses"
+  ],
+  "x-adcp-validation": {
+    "batch_identity": "reporting_status_id values MUST be unique within the batch. A batch MUST contain at most one statement for each logical chain identified by authenticated consumer, account, configuration generation, report definition, and period; sellers reject every duplicate-chain entry in that batch without evaluating their supersession order. Every configuration generation, report definition, optional obligation, optional revision, superseded status, and seller ledger snapshot MUST resolve within the authenticated caller and account or fail with the same unavailable result used for unknown, unauthorized, cross-account, and cross-caller identifiers.",
+    "partial_results": "Each status is independent. One failed result does not roll back successfully recorded statuses; retries use the same status IDs and content.",
+    "buyer_duty": "When the seller advertises consumer_status_task, a buyer using that Reliable Reporting configuration MUST automate this task: report a failed consumption promptly after its bounded retry/give-up window expires, report each later state change, and post a current status for every elapsed expected period no later than that period's expected_at plus the seller's advertised automated_recovery_window_seconds. That deadline, not scope close, is the buyer's duty; a still-retrying buyer posts revision_missing or unreadable by the deadline and supersedes it later rather than staying silent. A buyer MUST also have a current status for every elapsed expected period before closing that reporting scope. Until the field becomes required Core in the next eligible minor, its absence means the buyer retains status locally and does not infer a reverse endpoint. Seller production health never depends on receiving buyer status, and missing buyer feedback never excuses a seller obligation: a missed deadline is counted in the seller's obligation_counts.consumer_status_pending and creates no issue and no health change."
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/version-envelope.json",
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP request and response schema so the version semantics live in exactly one place. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ]
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/canonical-account-ref.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/canonical-account-ref.json",
+      "title": "Canonical Account Reference",
+      "description": "Compact advertiser-account identity for canonical 3.2 tools. Uses either the seller/storefront account_id returned by list_accounts or the buyer-declared natural key without BrandRef inline overrides. The natural key is brand + operator + optional operator_unit.id + optional fixed currency + optional buyer-selected account timezone + sandbox. brand.countries qualifies the commercial advertiser identity without targeting delivery; operator_unit identifies the operator-owned buying context. operator_unit.name is display metadata and is excluded from identity.",
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/mcp/2026-07-28/media-buy/sync-reporting-status-request.json#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/mcp/2026-07-28/media-buy/sync-reporting-status-request.json#/$defs/external:core~1operator-unit.json",
+              "description": "Optional operator-owned business unit, agency seat, or platform account. Only id participates in identity; name is mutable display metadata."
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "Immutable ISO 4217 transaction currency when the advertiser object is currency-bound. When present, this is part of the natural key and all media buys on the account use it. Omit for per-media-buy currency selection."
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Immutable account timezone. Include it in the natural key only for buyer-selected account_fixed provisioning."
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "examples": [
+        {
+          "account_id": "acc_nova_nl"
+        },
+        {
+          "brand": {
+            "domain": "nova-athletics.example",
+            "countries": [
+              "NL"
+            ]
+          },
+          "operator": "nova-athletics.example",
+          "operator_unit": {
+            "id": "234284238",
+            "name": "Nova EMEA"
+          },
+          "currency": "EUR",
+          "timezone": "Europe/Amsterdam"
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/brand-key.json",
+      "title": "Brand Key",
+      "description": "Stable brand identity used to resolve the canonical brand manifest, optionally qualified by the countries of a commercial advertiser entity. The manifest URL is derived from domain; callers do not send brand assets or per-call brand overrides. Countries do not target delivery.",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/mcp/2026-07-28/media-buy/sync-reporting-status-request.json#/$defs/external:core~1brand-id.json",
+          "description": "Brand within a house-of-brands manifest. Omit for a single-brand domain."
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit when the identity is global or the house does not split the brand geographically. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account and proposal identity and is not delivery targeting."
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/brand-id.json",
+      "title": "Brand ID",
+      "description": "Identifier for a brand within a house portfolio. Must be lowercase alphanumeric with underscores only. The house chooses this identifier.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand",
+      "examples": [
+        "tide",
+        "cheerios",
+        "air_jordan",
+        "nike",
+        "pampers"
+      ]
+    },
+    "external:core/operator-unit.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/operator-unit.json",
+      "title": "Operator Unit",
+      "description": "Operator-owned buying context used to distinguish business units, agency seats, or platform accounts beneath one operator domain. The id is stable identity in the operator's namespace; name is mutable display metadata and never participates in account identity.",
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+          "description": "Stable identifier assigned by the operator. Numeric platform IDs and durable slugs are both valid. Scoped by the enclosing operator domain."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Human-readable seat or business-unit name, such as Nova EMEA. This label may change and is not part of the natural account key."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "234284238",
+          "name": "Nova EMEA"
+        },
+        {
+          "id": "benelux-seat",
+          "name": "Nova Benelux"
+        }
+      ]
+    },
+    "external:core/reporting-consumer-status.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/reporting-consumer-status.json",
+      "title": "Reporting Consumer Status",
+      "x-status": "experimental",
+      "description": "One immutable, authenticated consumer statement about whether the required reporting for an expected configuration period could actually be consumed. It is operational status, not measurement data, delivery totals, a billing receipt, or authority to overwrite the seller's obligation/revision ledger. New statements supersede the current statement for the same consumer, configuration generation, report definition, and period while preserving append-only history.",
+      "type": "object",
+      "properties": {
+        "reporting_status_id": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+          "x-entity": "reporting_consumer_status",
+          "description": "Consumer-issued immutable identity for this status statement. Exact retries reuse the ID and content; changed status uses a new ID and supersedes_reporting_status_id."
+        },
+        "supersedes_reporting_status_id": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+          "x-entity": "reporting_consumer_status",
+          "description": "The authenticated consumer's current status leaf replaced by this statement. It must identify the same account, configuration generation, report definition, and period."
+        },
+        "delivery_config_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "x-entity": "reporting_delivery_config"
+        },
+        "delivery_config_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "report_definition_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_definition",
+          "description": "Exact immutable report definition accepted with the configuration generation, preventing unlike reporting promises from sharing a status chain."
+        },
+        "period": {
+          "type": "object",
+          "description": "Expected half-open reporting period derived from the accepted configuration generation. This identity works even when the seller omitted the corresponding obligation.",
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "source_timezone": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "start",
+            "end",
+            "source_timezone"
+          ],
+          "additionalProperties": false
+        },
+        "reporting_obligation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_obligation",
+          "description": "Seller-issued obligation identity when one was visible. Omitted when the consumer is reporting a missing obligation."
+        },
+        "reporting_revision_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_revision",
+          "description": "Exact revision successfully consumed or found unreadable. Omitted when no required revision was available."
+        },
+        "observed_revision_content_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$",
+          "description": "revision_content_sha256 independently recomputed from the exact consumed Core revision binding. Required for received and content_mismatch, where it proves which exact revision content the consumer read; unlike a Reconciled Billing receipt it carries no materialization evidence, row totals, canonical digest, or billing acceptance."
+        },
+        "consumer_status": {
+          "type": "string",
+          "enum": [
+            "received",
+            "obligation_missing",
+            "revision_missing",
+            "unreadable",
+            "content_mismatch"
+          ],
+          "description": "received means the exact revision content was successfully consumed; obligation_missing means the independently expected period was absent from the seller ledger; revision_missing means the obligation existed but no required revision was available after expected_at; unreadable means a named revision was advertised but its exact content could not be consumed; content_mismatch means the exact revision content was read but contradicts a fact the accepted configuration generation already fixed, named by the closed mismatch_code. None of these values reconciles billing evidence, and content_mismatch in particular is not a measurement dispute."
+        },
+        "status_as_of": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the consumer established this status. For received, this is when the named revision first became consumable to this consumer; sellers use it as buyer-attributed arrival evidence rather than silently substituting publication time."
+        },
+        "mismatch_code": {
+          "type": "string",
+          "enum": [
+            "scope_media_buy_missing",
+            "coverage_short",
+            "metric_missing",
+            "schema_nonconformant",
+            "currency_mismatch",
+            "period_mismatch"
+          ],
+          "description": "Closed reason the consumed revision contradicts the accepted configuration generation. Each value is decidable from the obligation, the pinned report definition, and the revision itself, with no reference to either party's own measurement. scope_media_buy_missing: a media buy frozen in the obligation's media_buy_ids denominator is absent from the revision and is not represented by an explicit zero row, so the revision cannot distinguish zero delivery from an omitted buy. coverage_short: the revision covers fewer packages than the obligation's frozen coverage.covered_package_ids claims. metric_missing: a metric named in the pinned report definition's metrics[].name is absent from the revision. schema_nonconformant: rows do not validate against the reporting profile's pinned schema_uri and schema_sha256. currency_mismatch: a value's unit disagrees with the unit the pinned report definition fixed for that metric, or a control total's unit disagrees with the profile-defined unit for that name. period_mismatch: the revision carries a time dimension declared by the pinned grain whose values fall outside the obligation's half-open period. Precedence when more than one applies: schema_nonconformant is used only when the failure is structural validation against the pinned schema; a metric that is simply absent uses metric_missing even when the pinned schema declares it required. Each names a contract fact already fixed by the accepted generation, never a difference of opinion about counts. Agents dispatch on this value, not on prose."
+        },
+        "failure_code": {
+          "type": "string",
+          "enum": [
+            "access_denied",
+            "resource_not_found",
+            "integrity_mismatch",
+            "reader_incompatible",
+            "transport_failed"
+          ],
+          "description": "Typed reason a named revision was unreadable. Agents dispatch on this value, not prose or provider response bodies."
+        },
+        "consumer_commit_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[A-Za-z0-9_.:-]{1,512}$",
+          "description": "Optional opaque, non-secret consumer checkpoint, transaction, or load reference. It is operational evidence, not authorization, a credential, a URL, or instructions; receivers compare or display it as inert text and never dereference or execute it."
+        },
+        "seller_ledger_snapshot_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Optional seller-issued get_reporting_status snapshot on which this statement was based. It is evidence context, not consumer authority over that snapshot."
+        },
+        "seller_ledger_as_of": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ledger_as_of echoed from seller_ledger_snapshot_id. Present if and only if seller_ledger_snapshot_id is present."
+        },
+        "recorded_at": {
+          "type": "string",
+          "format": "date-time",
+          "readOnly": true,
+          "description": "When the seller durably recorded this immutable statement."
+        }
+      },
+      "required": [
+        "reporting_status_id",
+        "delivery_config_id",
+        "delivery_config_version",
+        "report_definition_id",
+        "period",
+        "consumer_status",
+        "status_as_of"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "received"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reporting_obligation_id",
+              "reporting_revision_id",
+              "observed_revision_content_sha256"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "failure_code"
+                  ]
+                },
+                {
+                  "required": [
+                    "mismatch_code"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "obligation_missing"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "reporting_obligation_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "reporting_revision_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "observed_revision_content_sha256"
+                  ]
+                },
+                {
+                  "required": [
+                    "failure_code"
+                  ]
+                },
+                {
+                  "required": [
+                    "mismatch_code"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "revision_missing"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reporting_obligation_id"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "reporting_revision_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "observed_revision_content_sha256"
+                  ]
+                },
+                {
+                  "required": [
+                    "failure_code"
+                  ]
+                },
+                {
+                  "required": [
+                    "mismatch_code"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "unreadable"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reporting_obligation_id",
+              "reporting_revision_id",
+              "failure_code"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "observed_revision_content_sha256"
+                  ]
+                },
+                {
+                  "required": [
+                    "mismatch_code"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "content_mismatch"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reporting_obligation_id",
+              "reporting_revision_id",
+              "observed_revision_content_sha256",
+              "mismatch_code"
+            ],
+            "not": {
+              "required": [
+                "failure_code"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "seller_ledger_snapshot_id"
+            ]
+          },
+          "then": {
+            "required": [
+              "seller_ledger_as_of"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "seller_ledger_as_of"
+              ]
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "attribution": "The consumer principal comes only from authenticated transport and is never asserted in the payload. Sellers disclose a status only to the same authenticated consumer that submitted it. A consumer status never overwrites or becomes authoritative seller obligation, revision, materialization, receipt, or adjustment evidence. The one reserved carve-out is a configuration generation declaring reporting-delivery-config authoritative_party: consumer, where a later minor will define a separate buyer-deposited revision task rather than change the meaning of this statement; no released version defines that task, so in 3.2 sellers reject that value with UNSUPPORTED_FEATURE and this attribution rule has no exception (see https://github.com/adcontextprotocol/adcp/issues/7440).",
+        "expected_period": "The configuration generation and report_definition_id MUST resolve for the authenticated caller/account, and period MUST be one exact eligible period derived from that immutable generation. obligation_missing and revision_missing are valid only when status_as_of is at or after the obligation's expected_at; content_mismatch is valid only against a revision the seller currently requires for that period. The seller MUST accept obligation_missing without a seller-issued obligation or revision ID when this independently derivable identity is valid.",
+        "revision_binding": "For received, unreadable, or content_mismatch, reporting_revision_id and reporting_obligation_id MUST match the same configuration generation, report definition, and period. received requires the consumer to recompute the Core revision binding and submit the matching revision_content_sha256; it does not assert matching Managed materialization evidence, billing control totals, canonical billing evidence, invoice approval, or dispute waiver. content_mismatch requires the same recomputed binding so the disagreement names the exact bytes the consumer read, and its mismatch_code MUST identify a fact the accepted configuration generation already fixed — denominator membership, coverage, promised metrics, the pinned profile schema, the pinned metric units, or the half-open period. A consumer MUST NOT use content_mismatch to dispute how many impressions the seller counted; that is a measurement disagreement, handled by measurement_terms and makegood_policy rather than by this operational loop.",
+        "immutability": "reporting_status_id is immutable. Exact retries are unchanged; reuse with different content is an idempotency conflict. Each consumer has exactly one current leaf per account, configuration generation, report definition, and period. This logical key remains the chain identity when an obligation_missing statement predates a repaired seller obligation; the seller attaches that chain to the later obligation and never resets or forks it. If a leaf already exists, a new statement MUST name that exact leaf in supersedes_reporting_status_id; omission, a stale leaf, or any attempt to fork the chain fails atomically with a conflict. The new statement becomes current only after that comparison succeeds.",
+        "retention_and_limits": "Superseded statements remain readable as append-only history for at least the advertised status_retention_days. After that retention boundary, sellers MAY prune expired superseded statements while retaining enough chain metadata to reject ID reuse and stale supersession. Sellers apply ordinary authenticated task rate limits and per-caller/account resource limits to pathological status churn without allowing one caller to affect another.",
+        "snapshot_provenance": "When seller_ledger_snapshot_id is present, the seller MUST resolve it and require seller_ledger_as_of to exactly match the issued snapshot for this authenticated caller, account, and applicable filter scope. Unknown, unauthorized, cross-account, cross-caller, expired, or mismatched snapshot identities fail with the same unavailable result.",
+        "time": "status_as_of MUST be no earlier than the superseded statement's status_as_of and no later than recorded_at except for the seller's documented clock-skew tolerance. Sellers reject unreasonable future timestamps and retain the submitted value as consumer-attributed evidence rather than rewriting it."
+      },
+      "additionalProperties": false
+    },
+    "external:core/context.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/context.json",
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/ext.json",
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

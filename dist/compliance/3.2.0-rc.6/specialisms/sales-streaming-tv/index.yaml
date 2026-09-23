@@ -1,0 +1,480 @@
+id: sales_streaming_tv
+version: "0.1.0"
+title: "Streaming TV seller"
+protocol: media-buy
+category: sales_streaming_tv
+summary: "Connected TV and streaming seller — SSAI-delivered video inventory, audience-based buying, household-level frequency capping, and VAST-based creative delivery across CTV apps."
+track: media_buy
+status: preview
+required_tools:
+  - get_products
+  - create_media_buy
+requires_scenarios:
+  - media_buy_seller/refine_products
+  - media_buy_seller/delivery_reporting
+  - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/invalid_transitions
+  - governance_aware_seller/governance_multi_agent_rejected
+
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy.
+invariants:
+  - status.monotonic
+  - impairment.coherence
+
+narrative: |
+  You run a streaming TV platform — an ad-supported streaming service, SSAI
+  provider, or CTV ad platform that sells video impressions against audiences
+  on connected TV devices. Unlike broadcast linear TV (daypart schedules, unit
+  pricing, delayed C7 measurement), streaming inventory is impression-based,
+  audience-targeted, and measured in near-real-time at the household or device
+  level.
+
+  This storyboard tests the streaming-TV-specific flow:
+  1. Product discovery — buyer discovers CTV video products with instream
+     placement, audience targeting, and household frequency capping
+  2. Creative sync — buyer pushes VAST-tag creatives for SSAI insertion
+  3. Media buy with frequency cap — buyer creates an audience-targeted buy
+     with household-level frequency capping
+  4. Delivery with household reach — seller reports impressions, household
+     reach, completion rates, and frequency distribution
+
+  The fixture buyer (Pinnacle Agency for Nova Motors) buys CTV pre-roll and
+  mid-roll inventory for the Volta EV launch campaign.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - frequency_capping
+    - audience_targeting
+  examples:
+    - "Ad-supported streaming service"
+    - "CTV SSAI platform"
+    - "Connected TV ad exchange with audience buying"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency CTV buyer"
+
+prerequisites:
+  description: |
+    The caller has an established account relationship and a campaign brief
+    targeting CTV audiences. The seller supports VAST-based creative delivery
+    via SSAI and household-level frequency capping.
+  test_kit: "test-kits/nova-motors.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the seller supports
+      streaming TV features: CTV channel, audience targeting, frequency
+      capping, and VAST creative delivery.
+
+    steps:
+      - id: get_capabilities
+        title: "Check streaming TV capabilities"
+        narrative: |
+          Verify the seller declares media_buy protocol support with CTV
+          channel and audience-based buying capabilities.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring:
+          - media_buy in supported_protocols
+          - sales-streaming-tv in specialisms
+          - ctv in channels or media_buy features
+        sample_request:
+          context:
+            correlation_id: "sales_streaming_tv--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "media_buy"
+            description: "Agent declares media_buy protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "sales-streaming-tv"
+            description: "Agent declares sales-streaming-tv specialism"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_streaming_tv--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: account_setup
+    title: "Account setup"
+    narrative: |
+      The buyer establishes an account relationship and registers their
+      governance agent before product discovery and buy creation.
+
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        narrative: |
+          The buyer registers their brand and operator. Sandbox accounts
+          are provisioned instantly for testing streaming TV flows.
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id, status (active for sandbox),
+          and billing terms.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "novamotors.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#sales_streaming_tv_account_setup_sync_accounts"
+          context:
+            correlation_id: "sales_streaming_tv--sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_streaming_tv--sync_accounts"
+            description: "Context correlation_id returned unchanged"
+
+      - id: sync_governance
+        title: "Register governance agent"
+        narrative: |
+          The buyer registers the configured governance agent on the account
+          before media-buy creation.
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Acknowledge governance registration for the account:
+          - status: synced
+          - governance_agents[0].url echoes the configured governance agent
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "novamotors.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#sales_streaming_tv_account_setup_sync_governance"
+          context:
+            correlation_id: "sales_streaming_tv--sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "synced"
+            description: "Governance agent is registered on the account"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_streaming_tv--sync_governance"
+            description: "Context correlation_id returned unchanged"
+
+  - id: product_discovery
+    title: "Discover CTV video products"
+    narrative: |
+      The buyer discovers streaming TV products with CTV video inventory.
+      Unlike broadcast (daypart schedules, unit pricing), streaming products
+      are impression-based with audience targeting, household frequency
+      capping, and VAST-delivered creatives via SSAI.
+
+    steps:
+      - id: get_products
+        title: "Discover CTV pre-roll and mid-roll products"
+        narrative: |
+          The buyer queries for streaming TV products. The seller returns
+          CTV video products with instream placement, CPM pricing, audience
+          targeting support, and frequency capping capabilities.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return products with:
+          - channels including ctv
+          - video_placement_type: instream
+          - pricing_options with CPM models
+          - frequency_cap support indicated
+          - format_options with video_vast format_kind
+        sample_request:
+          buying_mode: "brief"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+          brief: "CTV pre-roll and mid-roll for automotive EV launch, adults 25-54, $200K monthly budget, household frequency cap of 4 per week"
+          context:
+            correlation_id: "sales_streaming_tv--get_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Products have product_id"
+          - check: field_present
+            path: "products[0].pricing_options"
+            description: "Products have pricing options"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_streaming_tv--get_products"
+            description: "Context correlation_id returned unchanged"
+        context_outputs:
+          - name: ctv_preroll_product_id
+            path: "products[0].product_id"
+          - name: cpm_pricing_option_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+          - name: ctv_midroll_product_id
+            path: "products[1].product_id"
+          - name: cpm_midroll_pricing_option_id
+            path: "products[1].pricing_options[0].pricing_option_id"
+
+  - id: creative_sync
+    title: "VAST creative sync"
+    requires_capability:
+      path: creative.has_creative_library
+      equals: true
+    narrative: |
+      Streaming TV creative delivery uses VAST tags. Unlike broadcast (raw
+      video files with Ad-ID), CTV creatives are VAST-wrapped for SSAI
+      insertion. The seller ingests the VAST tag URL, validates the tag
+      response, and uses it for server-side ad insertion into the content
+      stream.
+
+    steps:
+      - id: sync_creatives
+        title: "Push VAST creatives for CTV"
+        narrative: |
+          The buyer pushes VAST-tag creatives for CTV delivery. Each creative
+          has a VAST asset URL that the seller's SSAI system will call at
+          impression time. The seller validates the VAST response (version,
+          media files, tracking events) before accepting.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        expected: |
+          Accept and validate VAST creatives:
+          - Per-creative action: created or updated
+          - Per-creative status: accepted, pending_review, or rejected
+          - Validation of VAST tag response (version, media files)
+          - Rejection if VAST tag is unreachable or malformed
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "volta_ctv_preroll_30s"
+              name: "Nova Volta EV — CTV :30 Pre-Roll"
+              format_kind: "video_vast"
+              assets:
+                vast_tag:
+                  asset_type: "vast"
+                  delivery_type: "url"
+                  url: "https://cdn.pinnacle-agency.example/vast/nova-volta-30s.xml"
+                  vast_version: "4.2"
+            - creative_id: "volta_ctv_midroll_15s"
+              name: "Nova Volta EV — CTV :15 Mid-Roll"
+              format_kind: "video_vast"
+              assets:
+                vast_tag:
+                  asset_type: "vast"
+                  delivery_type: "url"
+                  url: "https://cdn.pinnacle-agency.example/vast/nova-volta-15s.xml"
+                  vast_version: "4.2"
+          idempotency_key: "$generate:uuid_v4#sales_streaming_tv_creative_sync_sync_creatives"
+          context:
+            correlation_id: "sales_streaming_tv--sync_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].action"
+            description: "Each creative has an action (created/updated)"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_streaming_tv--sync_creatives"
+            description: "Context correlation_id returned unchanged"
+
+  - id: create_frequency_capped_buy
+    title: "Create media buy with household frequency capping"
+    narrative: |
+      The buyer creates a CTV media buy with audience targeting and
+      household-level frequency capping. Streaming TV frequency management
+      operates at the household or device level (not the cookie level),
+      controlling how many times a household sees the same ad across
+      streaming apps and devices.
+
+    steps:
+      - id: create_media_buy
+        title: "Create CTV buy with frequency cap"
+        narrative: |
+          The buyer creates a media buy targeting adults 25-54 on CTV with
+          a household frequency cap. The frequency_cap constrains delivery
+          to a maximum number of impressions per household per week,
+          preventing ad fatigue across the streaming platform.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          The seller:
+          1. Validates frequency cap against platform capabilities
+          2. Creates the buy with media_buy_status: pending_creatives or active
+          3. Returns media_buy_id for subsequent operations
+          4. Confirms frequency_cap settings in the response
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_streaming_tv_create_frequency_capped_buy_create_media_buy"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "novamotors.example"
+          start_time: "2099-10-01T00:00:00Z"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "$context.ctv_preroll_product_id"
+              budget: 150000
+              pricing_option_id: "$context.cpm_pricing_option_id"
+              targeting_overlay:
+                frequency_cap:
+                  max_impressions: 4
+                  per: "households"
+                  window:
+                    interval: 7
+                    unit: "days"
+              creative_assignments:
+                - creative_id: "volta_ctv_preroll_30s"
+            - product_id: "$context.ctv_midroll_product_id"
+              budget: 50000
+              pricing_option_id: "$context.cpm_midroll_pricing_option_id"
+              targeting_overlay:
+                frequency_cap:
+                  max_impressions: 4
+                  per: "households"
+                  window:
+                    interval: 7
+                    unit: "days"
+              creative_assignments:
+                - creative_id: "volta_ctv_midroll_15s"
+          context:
+            correlation_id: "sales_streaming_tv--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media_buy_id"
+          - check: field_present
+            path: "media_buy_status"
+            description: "Response includes media_buy_status"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_streaming_tv--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: delivery_reporting
+    title: "Delivery with household reach metrics"
+    depends_on: [create_frequency_capped_buy]
+    narrative: |
+      Streaming TV delivery reporting is near-real-time (unlike broadcast's
+      delayed C3/C7 windows). The seller reports impressions, household reach,
+      video completion rates, and frequency distribution. Household reach is
+      the key deduplicated metric — it tells the buyer how many unique
+      households saw the ad, not just total impressions.
+
+    steps:
+      - id: get_delivery
+        title: "Check delivery with household reach"
+        narrative: |
+          The buyer requests delivery data for the active CTV buy. The seller
+          returns impression-level metrics with household reach and video
+          completion rates. Frequency distribution shows how impressions are
+          spread across households.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Return delivery metrics for the CTV buy:
+          - Per-package: impressions, spend, completion_rate
+          - Household reach with reach_unit: households
+          - Frequency distribution (1x, 2x, 3x, 4x households)
+          - Pacing information relative to budget and flight dates
+          - is_final: false for in-flight data
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+          context:
+            correlation_id: "sales_streaming_tv--get_delivery"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains media buy delivery data"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_streaming_tv--get_delivery"
+            description: "Context correlation_id returned unchanged"

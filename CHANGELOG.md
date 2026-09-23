@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.2.0-rc.6
+
+### Patch Changes
+
+- a601dfb: Correct three `enums/error-code.json` prose recovery tags that named a value outside the closed `recovery` enum. `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE`, `PIXEL_TRACKER_LOSSY_DOWNGRADE` and `PIXEL_TRACKER_UPGRADE_INFERRED` ended their `enumDescriptions` with `Recovery: warning`, but `core/error.json` closes `recovery` to `transient` / `correctable` / `terminal`, and all three carry `correctable` in `enumMetadata` — which the block's own `$comment` makes the normative authority the prose MUST match. Prose now reads `Recovery: correctable — non-fatal advisory, do not auto-retry`, preserving the non-fatal semantics without inventing an enum member. Extends `tests/error-recovery-vectors.test.cjs` to hold `error-code.json` to the same prose/metadata agreement already asserted for `request-signing-error-code.json`. No schema shape or wire-behaviour change.
+- b01c18b: Reconcile the experimental Reliable Reporting waiver lifecycle with its health and issue projections. An exact bilateral waiver now retires the caller-scoped `CONSUMER_STATUS_MISMATCH`, restores the underlying seller health in summary and period views, leaves the immutable consumer statement auditable, and uses the existing `reporting.status_changed` recovery transition when health changes. This repairs an unrepresentable state without changing the JSON Schema wire shape.
+- 5300e38: Keep the unpublishable 3.2.0-rc.5 bundle out of release aliases and advance its two post-cut release blockers through a freshly reviewed release candidate.
+
 ## 3.2.0-rc.5
 
 ### Minor Changes
