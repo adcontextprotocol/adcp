@@ -18,6 +18,10 @@ for (const scenarioName of SCENARIOS) {
     const syncPlans = steps.find((step) => step.id === 'sync_plans');
     const createMediaBuy = steps.find((step) => step.task === 'create_media_buy');
 
+    assert.deepEqual(scenario.requires_capability, {
+      path: 'media_buy.governance_aware',
+      equals: true,
+    });
     assert.deepEqual(scenario.requires, ['multi_agent']);
     assert.equal(scenario.default_agent, 'sales');
     assert.equal(syncPlans.agent, 'governance');

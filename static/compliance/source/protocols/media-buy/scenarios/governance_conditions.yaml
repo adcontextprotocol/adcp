@@ -12,6 +12,10 @@ required_tools:
   - get_products
   - create_media_buy
 
+requires_capability:
+  path: media_buy.governance_aware
+  equals: true
+
 narrative: |
   This is a multi-agent test. The test harness sets up a governance plan on a governance
   agent with custom policies that trigger conditions (e.g., "CTV buys require weekly
