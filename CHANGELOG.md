@@ -1,5 +1,52 @@
 # Changelog
 
+## 3.2.0-rc.5
+
+### Minor Changes
+
+- 6947106: Add the shared MediaBuy `name` to `buy_products`, `accept_proposal`, and the
+  compact commitment response, keeping it outside accepted commercial terms and
+  defining buyer-supplied precedence over a proposal-derived default.
+- 7dfeef8: Re-add `sales-exchange` specialism with storyboard covering programmatic exchange product discovery with floor prices and bid guidance, auction-priced media buys, in-flight bid adjustment, and delivery with auction transparency metrics. Addresses the exchange portion of #2511.
+- 7dfeef8: Re-add `sales-retail-media` specialism with storyboard covering catalog sync, keyword-targeted sponsored search, item availability management, and product discovery for retail media networks. Addresses the retail-media portion of #2511.
+- 7dfeef8: Re-add `sales-streaming-tv` specialism with storyboard covering CTV product discovery, VAST creative sync, household frequency-capped media buys, and delivery with household reach metrics. Addresses the streaming-tv portion of #2511.
+- 7082ff1: Add an optional seller-policy decline reason to `REQUOTE_REQUIRED` and buy-specific `ACTION_NOT_ALLOWED` errors, with typed details for the existing envelope-field and change-term conventions. The coarse vocabulary includes inventory, share-of-voice, minimum-commitment, notice-period, contract-term, frequency-cap, and other policy dimensions while preserving seller control over sensitive policy disclosure.
+- 6947106: Require verifiers to treat unsigned MCP transport sessions as
+  non-authoritative: identity, authorization, account and resource selection,
+  and task ownership must derive from each request rather than
+  `Mcp-Session-Id`.
+- 03d00cf: Publish the complete request-signing transport error vocabulary with normative,
+  machine-readable recovery classifications and remediation hints. Keep these
+  lowercase `WWW-Authenticate` codes separate from task error codes, and bind the
+  security profile to the new schema so SDKs no longer infer recovery from names
+  or independently transcribe prose tables.
+- 6947106: Require idempotency key ledgers to outlive created resources for the declared
+  replay window, and add the terminal `COMMITTED_RESOURCE_PURGED` outcome for a
+  write that commits before its resource is independently deleted. Ambiguous
+  handler or downstream timeouts now retain a fail-closed reconciliation claim
+  instead of freeing the key for duplicate execution, with sandbox purge/replay
+  coverage in the compliance controller.
+- 2639ace: Add optional AdCP 3.x migration fields that make `get_creative_features`
+  retry-safe and reconcilable without breaking existing implementations. Clients
+  SHOULD send `idempotency_key`; providers that advertise replay support MUST
+  honor supplied keys for at least 24 hours. Providers SHOULD emit a stable
+  `evaluation_id`, which remains stable across replays and async completion when
+  present. Both fields are planned to become required in AdCP 4.0. Add
+  deterministic conformance coverage for the recommended keyed and identified
+  profile, including synchronous, asynchronous, conflicting, and concurrent
+  retries plus terminal pricing and consumption reconciliation.
+
+### Patch Changes
+
+- a3657f9: Fix get-reporting-status-response schema compilation under AJV strictTypes and strictRequired.
+  
+  Adds `properties` stubs alongside bare `required` arrays in `not`/`then` subschemas (17 locations: Summary view not.anyOf×10, Periods view then.not and not, Revision view not.anyOf×5) and adds `"type": "object"` to the `pagination` property in the Periods and Revision view discriminator arms. Runtime validation behavior with strictTypes/strictRequired disabled is unchanged.
+- 0f83623: Fix webhook-emission compliance setup to discover and bind a real product and
+  pricing option before create_media_buy, waiting for asynchronous discovery to
+  complete when needed. Replace unresolved test-kit schema
+  references with explicit request and response schema paths and complete the
+  trigger samples so conformance validation cannot silently skip these requests.
+
 ## 3.2.0-rc.4
 
 ### Minor Changes

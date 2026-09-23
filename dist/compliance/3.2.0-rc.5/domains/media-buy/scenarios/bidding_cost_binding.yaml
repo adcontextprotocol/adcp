@@ -1,0 +1,152 @@
+id: media_buy_seller/bidding_cost_binding
+version: "1.0.0"
+title: "Seller rejects ambiguous fixed cost-control binding"
+category: media_buy_seller
+summary: "Verifies that fixed media-buy cost caps bind deterministically and cannot mean different result units across inheriting packages."
+track: media_buy
+
+requires_capability:
+  path: media_buy.features.bidding_policy.media_buy.fixed.cost_per_strengths
+  contains: cap
+
+required_tools:
+  - create_media_buy
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  A fixed media-buy cost control binds separately to each inheriting package's
+  primary goal. One amount cannot mean cost per click for one package and cost
+  per view for another. Sellers advertising fixed media-buy cost-cap support
+  reject that ambiguity before creating provider state, even when they do not
+  support media-buy max_bid.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - bidding_policy
+  examples:
+    - "Auction seller with campaign-level outcome-cost controls"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller supports fixed media-buy cost caps across two USD auction
+    products whose package goals can use different result units.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "cost_binding_clicks"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "cost_binding_views"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "cost_binding_clicks"
+      pricing_option_id: "clicks_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.50
+    - product_id: "cost_binding_views"
+      pricing_option_id: "views_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.00
+
+phases:
+  - id: setup
+    title: "Establish account"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: "Return an active account."
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#bidding_cost_binding_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a seller-assigned identifier"
+
+  - id: reject_incompatible_fixed_cost_binding
+    title: "Reject one fixed cost control across incompatible goal units"
+    steps:
+      - id: create_media_buy_with_ambiguous_fixed_cost_binding
+        title: "Reject a cost cap that would mean different results"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation with BIDDING_PLACEMENT_CONFLICT. The cost cap
+          would bind to clicks for the first package and views for the second,
+          so the single amount has no common result unit.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "fixed"
+          bidding:
+            cost_per:
+              amount: 4
+              strength: "cap"
+          packages:
+            - product_id: "cost_binding_clicks"
+              pricing_option_id: "clicks_cpm"
+              budget: 60000
+              optimization_goals:
+                - kind: "metric"
+                  metric: "clicks"
+                  priority: 1
+            - product_id: "cost_binding_views"
+              pricing_option_id: "views_cpm"
+              budget: 40000
+              optimization_goals:
+                - kind: "metric"
+                  metric: "views"
+                  priority: 1
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#bidding_cost_binding_incompatible"
+        validations:
+          - check: error_code
+            value: "BIDDING_PLACEMENT_CONFLICT"
+            description: "Seller rejects a fixed cost control whose inheriting result units differ"
+          - check: field_value
+            path: "errors[0].field"
+            value: "bidding.cost_per"
+            description: "Error identifies the ambiguous media-buy cost control"
