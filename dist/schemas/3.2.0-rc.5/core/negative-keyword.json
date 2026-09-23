@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/core/negative-keyword.json",
+  "title": "Negative Keyword",
+  "description": "An excluded keyword.",
+  "type": "object",
+  "properties": {
+    "keyword": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The keyword to exclude"
+    },
+    "match_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/enums/match-type.json"
+    }
+  },
+  "required": [
+    "keyword",
+    "match_type"
+  ],
+  "additionalProperties": false
+}

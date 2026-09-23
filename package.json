@@ -1,6 +1,6 @@
 {
   "name": "adcontextprotocol",
-  "version": "3.2.0-rc.4",
+  "version": "3.2.0-rc.5",
   "private": true,
   "type": "module",
   "packageManager": "npm@10.9.4",
@@ -122,7 +122,7 @@
     "test:build-schemas-hoist-marked": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-hoist-marked.test.cjs",
     "test:build-schemas-async-response-refs": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-async-response-refs.test.cjs",
     "test:build-schemas-vendor-metric-uniqueness": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-vendor-metric-uniqueness.test.cjs",
-    "test:release-workflow": "node tests/release-workflow-immutability.test.cjs && node tests/promote-release-candidate.test.cjs && node tests/published-compliance-versions.test.cjs",
+    "test:release-workflow": "node tests/release-workflow-immutability.test.cjs && node --test tests/release-publication-ordering.test.cjs tests/changesets-fence.test.cjs tests/release-supersession.test.cjs && node tests/promote-release-candidate.test.cjs && node tests/published-compliance-versions.test.cjs && node --test --test-timeout=30000 tests/cdn-artifacts.test.cjs tests/artifact-cdn-worker.test.cjs",
     "promote:rc": "node scripts/promote-release-candidate.mjs",
     "test:immutable-release-artifacts": "node tests/immutable-release-artifacts.test.cjs",
     "test:patch-3-0-compat-bundle": "node --test --test-force-exit --test-timeout=30000 tests/patch-3-0-compat-bundle.test.cjs",

@@ -125,11 +125,15 @@ authenticated transport as other AdCP tasks.
    `operations_contact`. If you do, an `open` or `acknowledged` issue still
    unresolved at `opened_at` plus that window MUST be `action_required` with a
    `contact_*` `recommended_action`.
-9. Do not retire a live disagreement. `issue_state` may reach `resolved` only
-   when the consumer supersedes the causing statement or your own projection
-   stops conflicting; `waived` records an off-protocol agreement and does not by
-   itself return the period to `healthy` or `complete`. Only `open` and
-   `acknowledged` issues appear in `issues[]`.
+9. Treat `resolved` and `waived` as distinct terminal dispositions. `resolved`
+   means the consumer superseded the causing statement or your own projection
+   stopped conflicting. `waived` requires an explicit off-protocol agreement
+   with the authenticated consumer covering the exact caller/account,
+   `issue_id`, causing `reporting_status_id`, and diagnosed conflict; never
+   create it unilaterally. Retire that issue, restore the underlying summary and
+   period health while retaining the immutable consumer statement, and emit an
+   offered `reporting.status_changed` recovery transition when health changes.
+   Only `open` and `acknowledged` issues appear in `issues[]`.
 10. Add `consumer_status_task: "sync_reporting_status"` only when every item
     above is deployed.
 

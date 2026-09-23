@@ -621,7 +621,7 @@ Surface placement: SDKs that detect on emission OR consumption MUST augment the 
 
 **SDKs MAY (non-normative) fan out automatically** by catalog lookup — for each entry in <code>{"sizes[]"}</code> lacking a corresponding <code>{"v1_format_ref"}</code>, the SDK consults the AAO catalog for the per-size v1 named format (e.g., for <code>{"{width: 728, height: 90}"}</code> look up <code>{"display_728x90_image"}</code>) and emits it under <code>{"format_ids[]"}</code>. This is opt-in (requires catalog access); when SDKs fan out, they SHOULD still emit this code as a transparency advisory so downstream consumers know the v1 emit was synthesized rather than seller-asserted.
 
-Recovery: warning — non-fatal, no retry. Seller fix: add <code>{"v1_format_ref[]"}</code> entries for the missing sizes.
+Recovery: correctable — non-fatal advisory, do not auto-retry. Seller fix: add <code>{"v1_format_ref[]"}</code> entries for the missing sizes.
 
 </Accordion>
 <a id="error-code-format-not-supported"></a>
@@ -879,7 +879,7 @@ Downgrade rules (normative):
 
 Surface: SDK that performs the downgrade MUST augment the response's <code>{"errors[]"}</code> with <code>{"source: \"sdk\""}</code>, <code>{"sdk_id"}</code>, <code>{"code: \"PIXEL_TRACKER_LOSSY_DOWNGRADE\""}</code>, <code>{"field"}</code> pointing at the affected manifest asset path, and <code>{"error.details"}</code> SHOULD carry <code>{"{ asset_id, original_event, original_method, original_custom_event_name (if present), downgrade_target: \"url+tracker_pixel\", lost_fields: [<list>] }"}</code>. One advisory per downgraded asset; SDKs SHOULD NOT collapse multiple downgrades into a single advisory entry — per-asset details let the buyer's measurement-plan owner decide whether each loss is tolerable.
 
-Recovery: warning — non-fatal, no retry. Buyer-side decision: accept the loss (most simple counter pixels survive), or fail the buy and route to a 3.1-capable seller. Seller-side fix: upgrade to 3.1 and accept <code>{"pixel_tracker"}</code> natively.
+Recovery: correctable — non-fatal advisory, do not auto-retry. Buyer-side decision: accept the loss (most simple counter pixels survive), or fail the buy and route to a 3.1-capable seller. Seller-side fix: upgrade to 3.1 and accept <code>{"pixel_tracker"}</code> natively.
 
 </Accordion>
 <a id="error-code-pixel-tracker-upgrade-inferred"></a>
@@ -898,7 +898,7 @@ Inference rules (normative):
 
 Surface: SDK MUST augment the response's <code>{"errors[]"}</code> with <code>{"code: \"PIXEL_TRACKER_UPGRADE_INFERRED\""}</code>, <code>{"field"}</code> pointing at the upgraded asset path, and <code>{"error.details"}</code> SHOULD carry <code>{"{ asset_id, inferred_event, inferred_method, inference_basis: \"asset_id_convention\" \u007c \"default\" }"}</code>. Buyer agents reading the response can re-prompt the seller for explicit values if precise measurement matters.
 
-Recovery: warning — non-fatal, no retry. Seller-side: upgrade emit path to ship pixel_tracker shape directly when 3.1-capable; until then, conventional asset_id values give the SDK enough signal to upgrade without losing critical semantics.
+Recovery: correctable — non-fatal advisory, do not auto-retry. Seller-side: upgrade emit path to ship pixel_tracker shape directly when 3.1-capable; until then, conventional asset_id values give the SDK enough signal to upgrade without losing critical semantics.
 
 </Accordion>
 <a id="error-code-place-target-unavailable"></a>

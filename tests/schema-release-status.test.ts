@@ -25,6 +25,14 @@ describe('schema release discovery status', () => {
       deprecated: false,
       published: false,
     });
+
+    expect(isSelectableRelease('3.2.0-rc.5')).toBe(false);
+    expect(getReleaseMetadata('3.2.0-rc.5')).toEqual({
+      stability: 'unpublished',
+      prerelease: true,
+      deprecated: false,
+      published: false,
+    });
   });
 
   it('marks v2 releases deprecated without removing them from aliases', () => {
@@ -47,9 +55,10 @@ describe('schema release discovery status', () => {
     const withdrawn = discovery.versions.find(({ version }: { version: string }) => version === '3.1.3');
     const aliasTargets = Object.values(discovery.aliases);
 
-    expect(['3.1.3', '3.2.0']).not.toContain(discovery.latest_stable);
+    expect(['3.1.3', '3.2.0', '3.2.0-rc.5']).not.toContain(discovery.latest_stable);
     expect(aliasTargets).not.toContain('3.1.3');
     expect(aliasTargets).not.toContain('3.2.0');
+    expect(aliasTargets).not.toContain('3.2.0-rc.5');
     expect(withdrawn).toMatchObject({
       stability: 'withdrawn',
       deprecated: true,

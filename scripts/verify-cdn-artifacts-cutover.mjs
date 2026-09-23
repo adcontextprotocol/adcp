@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
+import { readdir, readFile } from "node:fs/promises";
+
+const COMPLIANCE_ROOT = new URL("../dist/compliance/", import.meta.url);
+const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 const DEFAULT_REFERENCE = "https://adcontextprotocol.org";
 const DEFAULT_CANDIDATE = "https://adcp-artifacts-cdn.brian-8ca.workers.dev";
@@ -45,13 +49,18 @@ async function main() {
   console.log(`Reference: ${referenceBase}`);
   console.log(`Candidate: ${candidateBase}`);
 
-  const contentPaths = new Set(fixedContentPaths);
-  await addSchemaRegistryPaths(contentPaths);
-  await addProtocolDiscoveryPaths(contentPaths);
+  // Local files are the authority for pinned compliance artifacts. Remote
+  // discovery indexes do not list every nested test vector (including JSONL).
+  const complianceFiles = await collectComplianceFiles();
+  const contentPaths = new Set(options.complianceVersions ? [] : fixedContentPaths);
+  if (!options.complianceVersions) {
+    await addSchemaRegistryPaths(contentPaths);
+    await addProtocolDiscoveryPaths(contentPaths);
+  }
 
   const failures = [];
   let checked = 0;
-  for (const path of [...redirectPaths].sort()) {
+  for (const path of (options.complianceVersions ? [] : [...redirectPaths].sort())) {
     checked += 1;
     const result = await compareRedirect(path);
     if (!result.ok) failures.push(result.message);
@@ -60,6 +69,12 @@ async function main() {
   for (const path of [...contentPaths].sort()) {
     checked += 1;
     const result = await compareContent(path);
+    if (!result.ok) failures.push(result.message);
+  }
+
+  for (const [path, file] of complianceFiles) {
+    checked += 1;
+    const result = await compareComplianceFile(path, file);
     if (!result.ok) failures.push(result.message);
   }
 
@@ -75,6 +90,50 @@ async function main() {
   }
 
   console.log(`\nCDN cutover verification passed: ${checked} checks.`);
+}
+
+async function collectComplianceFiles() {
+  const versions = options.complianceVersions ?? (await readdir(COMPLIANCE_ROOT, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory() && VERSION_PATTERN.test(entry.name))
+    .map((entry) => entry.name);
+  if (versions.length === 0) throw new Error("No local versioned compliance artifacts found");
+
+  const files = new Map();
+  async function visit(directory, prefix) {
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const file = new URL(encodeURIComponent(entry.name), directory);
+      const path = `${prefix}/${encodeURIComponent(entry.name)}`;
+      if (entry.isDirectory()) await visit(new URL(`${file.href}/`), path);
+      else if (entry.isFile()) files.set(path, file);
+    }
+  }
+  for (const version of [...new Set(versions)].sort()) {
+    const directory = new URL(`${version}/`, COMPLIANCE_ROOT);
+    // Refuse a missing or partial local input instead of passing zero checks.
+    await readFile(new URL("index.json", directory));
+    await visit(directory, `/compliance/${version}`);
+  }
+  return files;
+}
+
+async function compareComplianceFile(path, file) {
+  const response = await fetchNoFollow(new URL(path, candidateBase));
+  if (response.status !== 200) return fail(path, `expected 200, got ${response.status}`);
+  const actual = Buffer.from(await response.arrayBuffer());
+  const expected = await readFile(file);
+  if (!expected.equals(actual)) {
+    return fail(path, `committed bytes differ ${digest(expected)} != ${digest(actual)}`);
+  }
+  if (path.endsWith(".jsonl")) {
+    if (response.headers.get("content-type") !== "application/x-ndjson; charset=utf-8") {
+      return fail(path, `unexpected JSONL content-type: ${response.headers.get("content-type")}`);
+    }
+    if (response.headers.get("cache-control") !== "public, max-age=31536000, immutable") {
+      return fail(path, `unexpected pinned cache-control: ${response.headers.get("cache-control")}`);
+    }
+  }
+  return pass();
 }
 
 async function addSchemaRegistryPaths(paths) {
@@ -133,6 +192,9 @@ async function compareContent(path) {
 
   if (reference.status !== candidate.status) {
     return fail(path, `status ${reference.status} != ${candidate.status}`);
+  }
+  if (!reference.ok || !candidate.ok) {
+    return fail(path, `expected successful content, got ${reference.status}`);
   }
 
   const referenceBytes = Buffer.from(await reference.arrayBuffer());
@@ -238,6 +300,10 @@ function parseArgs(args) {
       parsed.reference = readValue(args, ++index, arg);
     } else if (arg === "--candidate") {
       parsed.candidate = readValue(args, ++index, arg);
+    } else if (arg === "--compliance-version") {
+      const version = readValue(args, ++index, arg);
+      if (!VERSION_PATTERN.test(version)) throw new Error(`${arg} requires an exact semver`);
+      (parsed.complianceVersions ??= []).push(version);
     } else if (arg === "-h" || arg === "--help") {
       usage();
       process.exit(0);
@@ -270,5 +336,10 @@ function usage() {
 Options:
   --reference URL  Source of truth. Default: ${DEFAULT_REFERENCE}
   --candidate URL  Candidate CDN endpoint. Default: ${DEFAULT_CANDIDATE}
+  --compliance-version VERSION
+                   Verify only local dist/compliance/VERSION files against the
+                   candidate (repeatable). No aliases or reference requests.
+                   By default, check all local semver compliance trees as well
+                   as the remote schema/protocol cutover comparisons.
 `);
 }
