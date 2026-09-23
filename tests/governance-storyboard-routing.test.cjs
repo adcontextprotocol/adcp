@@ -57,6 +57,14 @@ const NON_GOVERNANCE_STORYBOARDS = [
     path: 'static/compliance/source/specialisms/sales-catalog-driven/index.yaml',
     operator: 'catalog-driven.pinnacle-agency.example',
   },
+  {
+    path: 'static/compliance/source/specialisms/sales-guaranteed/index.yaml',
+    operator: 'sales-guaranteed.pinnacle-agency.example',
+  },
+  {
+    path: 'static/compliance/source/specialisms/sales-non-guaranteed/index.yaml',
+    operator: 'sales-non-guaranteed.pinnacle-agency.example',
+  },
 ];
 
 function load(relativePath) {
