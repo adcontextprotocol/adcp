@@ -1,0 +1,443 @@
+id: media_buy_seller/availability_windows
+version: "1.0.0"
+title: "Seller answers flexible-window availability with eligibility-aware status"
+category: media_buy_seller
+summary: "Verifies offer_filters.availability_horizon discovery: time-dimensioned forecast points that partition the horizon, availability_status computed from booking eligibility (not only holds), forecast excluded from conditional reads, and PRODUCT_UNAVAILABLE on buys against closed or too-short windows."
+track: media_buy
+required_tools:
+  - list_products
+  - buy_products
+
+requires_capability:
+  path: media_buy.availability_horizon
+  equals: true
+
+narrative: |
+  Calendar-shaped guaranteed inventory (homepage takeovers, sponsorships) raises the
+  flexible-date question: "which dates can I run?" Sellers declaring
+  `media_buy.availability_horizon` answer it inside product discovery — the buyer sends
+  `offer_filters.availability_horizon` and each product's forecast comes back partitioned
+  into `time`-dimensioned points carrying `availability_status`.
+
+  This scenario seeds one guaranteed product whose seller-internal calendar has a booked
+  span (Sep 20–27), a second booked span (Sep 27–29), and a minimum bookable duration of
+  3 days. Against a September horizon the correct answer is exactly TWO windows:
+
+  - Sep 1–20: available (19 open days)
+  - Sep 20–Oct 1: unavailable — the two booked spans plus the trailing 2-day gap
+    (shorter than the 3-day minimum) coalesce into one closed window
+
+  This grades three MUSTs at once. Sellers MUST apply all booking eligibility
+  constraints when computing status, not only competing holds — a port of a homegrown
+  avails tool that reports hold-state only returns the trailing 2-day gap as available
+  and fails here. Sellers MUST coalesce adjacent same-status windows. And sellers MUST
+  NOT disclose why a window is closed: the coalesced unavailable window is
+  indistinguishable from a single hold, by design.
+
+  Availability is a per-read overlay, never versioned feed content: a conditional
+  `list_products` read whose `fields` includes `forecast` MUST NOT be answered with
+  `outcome: "unchanged"`. And the buy itself remains the authoritative availability
+  check: a create against a booked span, or a flight shorter than the minimum bookable
+  duration, is rejected with `PRODUCT_UNAVAILABLE` — availability_status is a snapshot,
+  never a hold.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_guaranteed
+  examples:
+    - "Publisher selling homepage takeovers with a booking calendar"
+    - "Sponsorship seller with minimum-flight rules"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and operator credentials. The runner seeds one
+    guaranteed calendar-shaped product with seller-internal availability state: two
+    booked windows and a 3-day minimum bookable duration. The availability block is
+    seller-internal calendar state consumed by seeding; it is never emitted as a
+    product response field.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "availability_windows_takeover"
+      name: "Availability Windows Homepage Takeover"
+      description: "Compliance fixture: calendar-shaped guaranteed placement with booked spans and a 3-day minimum bookable duration."
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "availability_windows_display"
+          format_kind: "image"
+          params:
+            width: 970
+            height: 250
+      availability:
+        min_bookable_days: 3
+        booked_windows:
+          - start_time: "2099-09-20T00:00:00Z"
+            end_time: "2099-09-27T00:00:00Z"
+          - start_time: "2099-09-27T00:00:00Z"
+            end_time: "2099-09-29T00:00:00Z"
+  pricing_options:
+    - product_id: "availability_windows_takeover"
+      pricing_option_id: "availability_windows_fixed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 40.0
+
+phases:
+  - id: setup
+    title: "Account setup"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_availability_windows_setup_sync_accounts"
+          context:
+            correlation_id: "availability_windows--sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "availability_windows--sync_accounts"
+            description: "Context correlation_id returned unchanged"
+
+  - id: mirror_read
+    title: "Capture the feed version without forecast"
+    depends_on: [setup]
+    narrative: |
+      A mirror-maintenance read (no forecast requested) captures the feed_version
+      token that the later conditional read will present.
+    steps:
+      - id: list_without_forecast
+        title: "List the seeded product without forecast"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
+        stateful: true
+        expected: |
+          Return outcome listed with the seeded product and a feed_version token.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_availability_windows_mirror_read_list_without_forecast"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          criteria:
+            product_ids: ["availability_windows_takeover"]
+          fields: ["product_id", "name", "pricing_options"]
+          context:
+            correlation_id: "availability_windows--list_without_forecast"
+        context_outputs:
+          - name: feed_version
+            path: "feed_version"
+          - name: pricing_version
+            path: "pricing_version"
+        validations:
+          - check: response_schema
+            description: "Response matches list-products-response.json schema"
+          - check: field_value
+            path: "outcome"
+            value: "listed"
+            description: "The response contains a product page"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "availability_windows_takeover"
+            description: "The seeded calendar-shaped product is discoverable"
+          - check: field_present
+            path: "feed_version"
+            description: "The response carries a feed_version token for conditional reads"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "availability_windows--list_without_forecast"
+            description: "Context correlation_id returned unchanged"
+
+  - id: flexible_window_read
+    title: "Flexible-window availability discovery"
+    depends_on: [mirror_read]
+    narrative: |
+      The buyer is open to any bookable window in September and asks the seller to
+      partition the horizon. The correct partition is exactly two half-open windows:
+      Sep 1–20 available, Sep 20–Oct 1 unavailable (two booked spans plus a trailing
+      gap shorter than the 3-day minimum, coalesced). A hold-state-only
+      implementation returns the trailing Sep 29–Oct 1 gap as available and fails
+      the two-point assertions.
+    steps:
+      - id: list_with_horizon
+        title: "Request September availability windows"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
+        stateful: false
+        expected: |
+          Return the seeded product whose forecast partitions the requested horizon:
+          - forecast_range_unit: availability
+          - points[0]: time window 2099-09-01T00:00:00Z to 2099-09-20T00:00:00Z,
+            availability_status available, with delivery metrics
+          - points[1]: time window 2099-09-20T00:00:00Z to 2099-10-01T00:00:00Z,
+            availability_status unavailable
+          - no third point: booked spans and the too-short trailing gap coalesce
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_availability_windows_flexible_window_read_list_with_horizon"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          criteria:
+            product_ids: ["availability_windows_takeover"]
+            offer_filters:
+              availability_horizon:
+                start_time: "2099-09-01T00:00:00Z"
+                end_time: "2099-10-01T00:00:00Z"
+          fields: ["product_id", "name", "pricing_options", "forecast"]
+          context:
+            correlation_id: "availability_windows--list_with_horizon"
+        validations:
+          - check: response_schema
+            description: "Response matches list-products-response.json schema"
+          - check: field_value
+            path: "outcome"
+            value: "listed"
+            description: "The response contains a product page"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "availability_windows_takeover"
+            description: "The seeded calendar-shaped product is returned despite partial horizon openness"
+          - check: field_value
+            path: "products[0].forecast.forecast_range_unit"
+            value: "availability"
+            description: "The forecast is an availability check, not a spend curve"
+          - check: field_present
+            path: "products[0].forecast.generated_at"
+            description: "Availability snapshot declares when it was computed"
+          - check: field_present
+            path: "products[0].forecast.valid_until"
+            description: "Availability snapshot declares its freshness bound — it is never a hold"
+          - check: field_value
+            path: "products[0].forecast.points[0].dimensions[0].kind"
+            value: "time"
+            description: "First forecast point carries a time dimension"
+          - check: field_value
+            path: "products[0].forecast.points[0].dimensions[0].start_time"
+            value: "2099-09-01T00:00:00Z"
+            description: "First window starts at the horizon start"
+          - check: field_value
+            path: "products[0].forecast.points[0].dimensions[0].end_time"
+            value: "2099-09-20T00:00:00Z"
+            description: "First window ends where the booked span begins (half-open boundary)"
+          - check: field_value
+            path: "products[0].forecast.points[0].availability_status"
+            value: "available"
+            description: "The open span is bookable"
+          - check: field_present
+            path: "products[0].forecast.points[0].metrics.impressions.mid"
+            description: "Available windows carry delivery metrics"
+          - check: field_value
+            path: "products[0].forecast.points[1].dimensions[0].kind"
+            value: "time"
+            description: "Second forecast point carries a time dimension"
+          - check: field_value
+            path: "products[0].forecast.points[1].dimensions[0].start_time"
+            value: "2099-09-20T00:00:00Z"
+            description: "Second window begins at the first booked boundary"
+          - check: field_value
+            path: "products[0].forecast.points[1].dimensions[0].end_time"
+            value: "2099-10-01T00:00:00Z"
+            description: "Second window runs to the horizon end — booked spans and the too-short trailing gap coalesce"
+          - check: field_value
+            path: "products[0].forecast.points[1].availability_status"
+            value: "unavailable"
+            description: "Booking eligibility, not only holds: the trailing 2-day gap fails the 3-day minimum and is unavailable"
+          - check: field_absent
+            path: "products[0].forecast.points[2]"
+            description: "Exactly two windows partition the horizon — no uncoalesced third point"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "availability_windows--list_with_horizon"
+            description: "Context correlation_id returned unchanged"
+
+  - id: conditional_read
+    title: "Forecast is a per-read overlay, never feed content"
+    depends_on: [mirror_read]
+    narrative: |
+      The buyer repeats the mirror-read selection with the captured feed_version but
+      now requests forecast. Even when the token matches, the unchanged arm omits
+      products and cannot carry the requested volatile data — the seller MUST return
+      a full listed response.
+    steps:
+      - id: conditional_with_forecast
+        title: "Conditional read requesting forecast"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
+        stateful: true
+        expected: |
+          Return outcome listed with products, never unchanged, because fields
+          includes forecast.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_availability_windows_conditional_read_conditional_with_forecast"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          criteria:
+            product_ids: ["availability_windows_takeover"]
+          fields: ["product_id", "name", "forecast"]
+          if_feed_version: "$context.feed_version"
+          context:
+            correlation_id: "availability_windows--conditional_with_forecast"
+        validations:
+          - check: response_schema
+            description: "Response matches list-products-response.json schema"
+          - check: field_value
+            path: "outcome"
+            value: "listed"
+            description: "A request whose fields includes forecast is never answered unchanged"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "availability_windows_takeover"
+            description: "The full product page accompanies the forecast overlay"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "availability_windows--conditional_with_forecast"
+            description: "Context correlation_id returned unchanged"
+
+  - id: buy_rejections
+    title: "The buy is the authoritative availability check"
+    depends_on: [flexible_window_read]
+    narrative: |
+      availability_status is a snapshot, never a hold. The seller re-checks the
+      calendar at buy time and rejects both a flight inside a booked span and a
+      flight shorter than the minimum bookable duration with PRODUCT_UNAVAILABLE —
+      the same all-constraints eligibility rule that governs availability_status.
+    steps:
+      - id: reject_booked_span
+        title: "Reject a buy inside the booked span"
+        task: buy_products
+        schema_ref: "media-buy/buy-products-request.json"
+        response_schema_ref: "media-buy/buy-products-response.json"
+        doc_ref: "/media-buy/task-reference/buy_products"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with PRODUCT_UNAVAILABLE: the requested flight overlaps a booked
+          window. Return a well-formed AdCP error synchronously — booking-eligibility
+          rejection happens before any async approval arm.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_availability_windows_buy_rejections_reject_booked_span"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          feed_version: "$context.feed_version"
+          pricing_version: "$context.pricing_version"
+          purchases:
+            - product_id: "availability_windows_takeover"
+              pricing_option_id: "availability_windows_fixed"
+              budget: 10000
+          start_time: "2099-09-21T00:00:00Z"
+          end_time: "2099-09-24T00:00:00Z"
+          context:
+            correlation_id: "availability_windows--reject_booked_span"
+        validations:
+          - check: response_schema
+            description: "Rejected response matches buy-products-response.json"
+          - check: error_code
+            value: "PRODUCT_UNAVAILABLE"
+            description: "A buy against a closed window fails with the canonical availability error"
+          - check: field_present
+            path: "context"
+            description: "Rejected response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "availability_windows--reject_booked_span"
+            description: "Context correlation_id returned unchanged"
+
+      - id: reject_below_minimum
+        title: "Reject a flight shorter than the minimum bookable duration"
+        task: buy_products
+        schema_ref: "media-buy/buy-products-request.json"
+        response_schema_ref: "media-buy/buy-products-response.json"
+        doc_ref: "/media-buy/task-reference/buy_products"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with PRODUCT_UNAVAILABLE: the requested 1-day flight sits on an open
+          span but fails the product's 3-day minimum bookable duration. Eligibility
+          constraints govern the buy exactly as they govern availability_status.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_availability_windows_buy_rejections_reject_below_minimum"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          feed_version: "$context.feed_version"
+          pricing_version: "$context.pricing_version"
+          purchases:
+            - product_id: "availability_windows_takeover"
+              pricing_option_id: "availability_windows_fixed"
+              budget: 2000
+          start_time: "2099-09-02T00:00:00Z"
+          end_time: "2099-09-03T00:00:00Z"
+          context:
+            correlation_id: "availability_windows--reject_below_minimum"
+        validations:
+          - check: response_schema
+            description: "Rejected response matches buy-products-response.json"
+          - check: error_code
+            value: "PRODUCT_UNAVAILABLE"
+            description: "A too-short flight on an open span fails with the same canonical error — no oracle distinguishing holds from rules"
+          - check: field_present
+            path: "context"
+            description: "Rejected response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "availability_windows--reject_below_minimum"
+            description: "Context correlation_id returned unchanged"

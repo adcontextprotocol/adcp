@@ -1,0 +1,292 @@
+{
+  "description": "Established products-only brief discovery followed by its explicit AdCP 3.2 compatibility projection and legacy purchase continuation.",
+  "cases": [
+    {
+      "source_version": "2.5.3",
+      "legacy_request": {
+        "brief": "A premium display campaign for Acme.",
+        "brand_manifest": { "name": "Acme" }
+      },
+      "legacy_response": {
+        "products": [{
+          "product_id": "brief-display-25",
+          "name": "Brief display 2.5",
+          "description": "A product composed for this brief.",
+          "publisher_properties": [{ "publisher_domain": "publisher.example", "selection_type": "all" }],
+          "format_ids": [{ "agent_url": "https://creative.example", "id": "display-300x250" }],
+          "delivery_type": "guaranteed",
+          "delivery_measurement": { "provider": "Publisher" },
+          "pricing_options": [{
+            "pricing_option_id": "fixed-cpm",
+            "pricing_model": "cpm",
+            "rate": 12,
+            "currency": "USD",
+            "is_fixed": true
+          }],
+          "reporting_capabilities": {
+            "available_reporting_frequencies": ["daily"],
+            "expected_delay_minutes": 240,
+            "timezone": "UTC",
+            "supports_webhooks": false,
+            "available_metrics": ["impressions"]
+          }
+        }]
+      },
+      "compact_projection": {
+        "outcome": "products_available",
+        "products": [{
+          "product_id": "brief-display-25",
+          "name": "Brief display 2.5",
+          "description": "A product composed for this brief.",
+          "pricing_options": [{
+            "pricing_option_id": "fixed-cpm",
+            "pricing_model": "cpm",
+            "currency": "USD",
+            "fixed_price": 12
+          }]
+        }],
+        "purchase_continuation": {
+          "kind": "legacy_create",
+          "continuation_token": "products-only-brief-25-token",
+          "continuation_expires_at": "2099-01-01T00:05:00Z",
+          "product_ids": ["brief-display-25"],
+          "source_adcp_version": "2.5",
+          "losses": ["feed_version_not_atomic", "pricing_version_not_atomic", "mutation_idempotency_not_guaranteed"],
+          "requires_explicit_acceptance": true
+        }
+      },
+      "continuation_input": {
+        "idempotency_key": "71a26db8-69fe-49d5-80a6-a4a39c71f625",
+        "continuation_token": "products-only-brief-25-token",
+        "account": { "account_id": "account-acme" },
+        "selected_product_ids": ["brief-display-25"],
+        "accepted_losses": ["feed_version_not_atomic", "pricing_version_not_atomic", "mutation_idempotency_not_guaranteed"],
+        "legacy_create_request": {
+          "buyer_ref": "products-only-25",
+          "packages": [{
+            "buyer_ref": "line-25",
+            "product_id": "brief-display-25",
+            "budget": 1000,
+            "pricing_option_id": "fixed-cpm"
+          }],
+          "brand_manifest": { "name": "Acme" },
+          "start_time": "2099-01-01T00:00:00Z",
+          "end_time": "2099-02-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "source_version": "3.0.18",
+      "legacy_request": {
+        "buying_mode": "brief",
+        "brief": "A premium display campaign for Acme.",
+        "brand": { "domain": "acme.example" },
+        "account": { "account_id": "account-acme" }
+      },
+      "legacy_response": {
+        "products": [{
+          "product_id": "brief-display-30",
+          "name": "Brief display 3.0",
+          "description": "A product composed for this brief.",
+          "publisher_properties": [{ "publisher_domain": "publisher.example", "selection_type": "all" }],
+          "format_ids": [{ "agent_url": "https://creative.example", "id": "display-300x250" }],
+          "delivery_type": "guaranteed",
+          "pricing_options": [{
+            "pricing_option_id": "fixed-cpm",
+            "pricing_model": "cpm",
+            "currency": "USD",
+            "fixed_price": 12
+          }],
+          "reporting_capabilities": {
+            "available_reporting_frequencies": ["daily"],
+            "expected_delay_minutes": 240,
+            "timezone": "UTC",
+            "supports_webhooks": false,
+            "available_metrics": ["impressions"],
+            "date_range_support": "date_range"
+          }
+        }],
+        "incomplete": [{
+          "scope": "proposals",
+          "description": "The seller returned usable products without constructing a proposal."
+        }]
+      },
+      "compact_projection": {
+        "outcome": "products_available",
+        "products": [{
+          "product_id": "brief-display-30",
+          "name": "Brief display 3.0",
+          "description": "A product composed for this brief.",
+          "pricing_options": [{
+            "pricing_option_id": "fixed-cpm",
+            "pricing_model": "cpm",
+            "currency": "USD",
+            "fixed_price": 12
+          }]
+        }],
+        "incomplete": [{
+          "scope": "proposals",
+          "description": "The seller returned usable products without constructing a proposal."
+        }],
+        "purchase_continuation": {
+          "kind": "legacy_create",
+          "continuation_token": "products-only-brief-30-token",
+          "continuation_expires_at": "2099-01-01T00:05:00Z",
+          "product_ids": ["brief-display-30"],
+          "source_adcp_version": "3.0",
+          "losses": ["feed_version_not_atomic", "pricing_version_not_atomic"],
+          "requires_explicit_acceptance": true
+        }
+      },
+      "continuation_input": {
+        "idempotency_key": "5f203b58-9ae7-4d02-b05f-eb239a47f065",
+        "continuation_token": "products-only-brief-30-token",
+        "account": { "account_id": "account-acme" },
+        "selected_product_ids": ["brief-display-30"],
+        "accepted_losses": ["feed_version_not_atomic", "pricing_version_not_atomic"],
+        "legacy_create_request": {
+          "idempotency_key": "products-only-brief-30-0001",
+          "account": { "account_id": "account-acme" },
+          "brand": { "domain": "acme.example" },
+          "packages": [{
+            "product_id": "brief-display-30",
+            "budget": 1000,
+            "pricing_option_id": "fixed-cpm"
+          }],
+          "start_time": "2099-01-01T00:00:00Z",
+          "end_time": "2099-02-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "source_version": "3.1.15",
+      "legacy_request": {
+        "buying_mode": "brief",
+        "brief": "A premium display campaign for Acme.",
+        "brand": { "domain": "acme.example" },
+        "account": { "account_id": "account-acme" }
+      },
+      "legacy_response": {
+        "status": "completed",
+        "cache_scope": "account",
+        "products": [{
+          "product_id": "brief-display-31",
+          "name": "Brief display 3.1",
+          "description": "A product composed for this brief.",
+          "publisher_properties": [{ "publisher_domain": "publisher.example", "selection_type": "all" }],
+          "format_ids": [{ "agent_url": "https://creative.example", "id": "display-300x250" }],
+          "delivery_type": "guaranteed",
+          "pricing_options": [{
+            "pricing_option_id": "fixed-cpm",
+            "pricing_model": "cpm",
+            "currency": "USD",
+            "fixed_price": 12
+          }],
+          "reporting_capabilities": {
+            "available_reporting_frequencies": ["daily"],
+            "expected_delay_minutes": 240,
+            "timezone": "UTC",
+            "supports_webhooks": false,
+            "available_metrics": ["impressions"],
+            "date_range_support": "date_range"
+          }
+        }],
+        "incomplete": [{
+          "scope": "proposals",
+          "description": "The seller returned usable products without constructing a proposal."
+        }]
+      },
+      "compact_projection": {
+        "outcome": "products_available",
+        "products": [{
+          "product_id": "brief-display-31",
+          "name": "Brief display 3.1",
+          "description": "A product composed for this brief.",
+          "pricing_options": [{
+            "pricing_option_id": "fixed-cpm",
+            "pricing_model": "cpm",
+            "currency": "USD",
+            "fixed_price": 12
+          }]
+        }],
+        "incomplete": [{
+          "scope": "proposals",
+          "description": "The seller returned usable products without constructing a proposal."
+        }],
+        "purchase_continuation": {
+          "kind": "legacy_create",
+          "continuation_token": "products-only-brief-31-token",
+          "continuation_expires_at": "2099-01-01T00:05:00Z",
+          "product_ids": ["brief-display-31"],
+          "source_adcp_version": "3.1",
+          "losses": ["feed_version_not_atomic", "pricing_version_not_atomic"],
+          "requires_explicit_acceptance": true
+        }
+      },
+      "continuation_input": {
+        "idempotency_key": "a15ac836-a49e-4e59-bb49-df24dc2cc339",
+        "continuation_token": "products-only-brief-31-token",
+        "account": { "account_id": "account-acme" },
+        "selected_product_ids": ["brief-display-31"],
+        "accepted_losses": ["feed_version_not_atomic", "pricing_version_not_atomic"],
+        "legacy_create_request": {
+          "idempotency_key": "products-only-brief-31-0001",
+          "account": { "account_id": "account-acme" },
+          "brand": { "domain": "acme.example" },
+          "packages": [{
+            "product_id": "brief-display-31",
+            "budget": 1000,
+            "pricing_option_id": "fixed-cpm"
+          }],
+          "start_time": "2099-01-01T00:00:00Z",
+          "end_time": "2099-02-01T00:00:00Z"
+        }
+      }
+    }
+  ],
+  "listed_purchase_cases": [
+    {
+      "compact_projection": {
+        "outcome": "products_available",
+        "products": [{
+          "product_id": "account-listed-display",
+          "name": "Account-listed display",
+          "pricing_options": [{
+            "pricing_option_id": "account-fixed-cpm",
+            "pricing_model": "cpm",
+            "currency": "USD",
+            "fixed_price": 10
+          }]
+        }],
+        "purchase_continuation": {
+          "kind": "listed_purchase",
+          "product_ids": ["account-listed-display"],
+          "cache_scope": "account",
+          "feed_version": "seller-feed-account-42",
+          "pricing_version": "seller-pricing-account-17"
+        }
+      },
+      "buy_products_request": {
+        "idempotency_key": "listed-purchase-vector-0001",
+        "account": { "account_id": "account-acme" },
+        "brand": { "domain": "acme.example" },
+        "feed_version": "seller-feed-account-42",
+        "pricing_version": "seller-pricing-account-17",
+        "purchases": [{
+          "product_id": "account-listed-display",
+          "pricing_option_id": "account-fixed-cpm",
+          "budget": 1000
+        }],
+        "start_time": "2099-01-01T00:00:00Z",
+        "end_time": "2099-02-01T00:00:00Z"
+      }
+    }
+  ],
+  "reverse_compatibility_cases": [
+    {
+      "description": "An established buyer uses the 3.2 seller's legacy get_products and create_media_buy facades without crossing into products_available.",
+      "seller_version": "3.2",
+      "source_case_index": 2
+    }
+  ]
+}
