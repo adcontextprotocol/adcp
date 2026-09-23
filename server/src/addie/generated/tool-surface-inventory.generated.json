@@ -63,7 +63,7 @@
     }
   },
   "registration_source_sha256": {
-    "server/src/addie/claude-client.ts": "27cdda3be371dff2793bc1b0556dd58c835d66577fa62eed4c4ee1a068e999e0",
+    "server/src/addie/claude-client.ts": "db7fb7f6cff9e967ea0ca2f6c3f80240ec4f36db527184019703cf97cddd7bf1",
     "server/src/addie/request-tool-assembly.ts": "cf4443d27ec69940f22aa9fcf46fdefd3f444762259c2700ac8fa01554ead4da",
     "server/src/addie/request-tool-replay-binding.ts": "3aed4c0bd18032e4418b8fff7e8deb263936b6c75b27941f9818a2a9a87287f2",
     "server/src/addie/prompts.ts": "3ec621f3e97eb9109fb561b94ff625a0639460c84506aa63aeebd57f683790f4",
@@ -94,12 +94,12 @@
     "not_declared_to_router_scope": "Modern routed Slack Bolt profiles only"
   },
   "prompt": {
-    "rules_bytes": 154069,
+    "rules_bytes": 153537,
     "tool_reference_bytes": 40541,
     "complete_offline_tool_reference_bytes": 42589,
     "response_style_bytes": 9513,
-    "system_prompt_bytes": 204137,
-    "system_prompt_sha256": "ccb91e8e1d4189cc7e5d99a758c30064e6b2acad4fb45c350c8cf0f33cf57060"
+    "system_prompt_bytes": 203605,
+    "system_prompt_sha256": "ad110ad95d7f67bc142025f1ca75439807bb821b13cf43e583c6a5e6ecba1862"
   },
   "catalog": {
     "missing_runtime_tool_count": 0,
@@ -39600,7 +39600,7 @@
       "prompt_catalog_tools_missing_runtime": -2,
       "always_available_tools": -13,
       "tool_reference_bytes": -3252,
-      "system_prompt_bytes": 2106,
+      "system_prompt_bytes": 1574,
       "maximum_slack_member_tools": -114,
       "maximum_slack_admin_tools": -181,
       "maximum_slack_public_tools": -3,

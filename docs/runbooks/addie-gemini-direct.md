@@ -237,8 +237,29 @@ checks remain synchronous and fail closed. SSE clients receive a content-free
 
 `call_adcp_task` failures now carry structured status, safe code/category,
 retryability, operation, attempt count, and same-turn recovery state through
-tool checkpoints. `recovered_tool_errors` and `unrecovered_tool_errors` should
-be compared separately; do not parse Markdown result prefixes. A typed
+tool checkpoints. `recovered_tool_errors` requires later success with the exact
+operation, agent URL, and idempotency key. `unrecovered_tool_errors` retains its
+historical meaning: every error without that exact recovery.
+
+The admin results also split classified unrecovered errors into
+`contained_tool_errors` and `unresolved_tool_errors`. Containment means a
+validation rejection was followed by a successful AdCP read from the same
+literal agent URL and a complete, unflagged generated answer. For example,
+unsupported `request_proposals` followed by successful product discovery can
+be contained without claiming proposals were created. A corrected
+`get_products` call with a changed key can be contained but is not exact
+recovery. Unrelated targets, arbitrary tools, mutation successes, transport or
+authentication failures, and text-only answers do not establish containment.
+This is observed workflow continuation, not proof of fulfillment or answer
+quality; consult delivery outcomes separately. `unresolved_tool_errors` means
+neither form of evidence was observed. Historical/incomplete turns retain
+NULL containment; their errors without exact recovery are reported separately
+as `tool_recovery_unclassified_errors` and excluded from the contained/unresolved
+split. The four categories (exact, contained, unresolved, unclassified) do not
+overlap: a historical turn with two errors and one exact recovery has one
+unclassified error. This uses total errors minus exact recoveries, since rows
+predating recovery telemetry have default-zero recovery counters. No historical
+backfill is inferred from answer prose. Do not parse Markdown result prefixes. A typed
 `call_adcp_get_products` read surface makes the adapter's stable
 idempotency-key and buying-mode contract machine-checkable without acquiring a
 mutation reservation. One automatic retry is allowed only for typed transient

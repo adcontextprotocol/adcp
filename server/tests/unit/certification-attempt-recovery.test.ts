@@ -42,6 +42,7 @@ vi.mock('../../src/db/client.js', () => ({
   getPool: vi.fn(),
 }));
 
+import { enforceOutcomeClaims } from '../../src/addie/outcome-claims.js';
 import { createCertificationToolHandlers } from '../../src/addie/mcp/certification-tools.js';
 
 const USER_ID = 'user_attempt_recovery';
@@ -64,6 +65,38 @@ describe('certification attempt recovery', () => {
     mocks.getDeltaStatus.mockResolvedValue({ active: false, status: 'not_required' });
     mocks.checkAndAwardCredentials.mockResolvedValue([]);
     mocks.hasEffectiveMembershipForUser.mockResolvedValue(true);
+  });
+
+  it('rejects B2 at 3/4 exchanges and requires a persisted retry after the fourth', async () => {
+    const scores = { protocol_mastery: 85 };
+    mocks.getModule.mockResolvedValue({
+      id: 'B2', is_free: true,
+      assessment_criteria: { dimensions: [{ name: 'protocol_mastery', weight: 100 }], passing_threshold: 70 },
+      exercise_definitions: [],
+    });
+    mocks.getProgress.mockResolvedValue([{ module_id: 'B2', status: 'in_progress', started_at: new Date(Date.now() - 600_000).toISOString() }]);
+    mocks.getLatestCheckpoint.mockResolvedValue({ preliminary_scores: scores, demonstrations_verified: [] });
+    mocks.query.mockResolvedValue({ rows: [{ count: '3' }] });
+    const complete = createCertificationToolHandlers(memberContext(), { threadId: 'thread_b2' }).get('complete_certification_module')!;
+    const rejected = await complete({ module_id: 'B2', scores });
+    expect(rejected).toContain('at least 4 conversation exchanges');
+    expect(rejected).toContain('Only 3 detected');
+    expect(mocks.completeModule).not.toHaveBeenCalled();
+
+    // A later learner exchange is evidence for retry eligibility, not a write receipt.
+    mocks.query.mockResolvedValue({ rows: [{ count: '4' }] });
+    expect(enforceOutcomeClaims('B2 is concluded.', [], String(rejected)).reason).toBe('Unconfirmed certification completion');
+    expect(mocks.completeModule).not.toHaveBeenCalled();
+
+    mocks.completeModule.mockResolvedValue({ module_id: 'B2', status: 'completed' });
+    const saved = await complete({ module_id: 'B2', scores });
+    expect(mocks.completeModule).toHaveBeenCalledExactlyOnceWith(USER_ID, 'B2', scores);
+    const delivered = enforceOutcomeClaims('B2 is concluded.', [{
+      tool_name: 'complete_certification_module', parameters: { module_id: 'B2' },
+      result: String(saved), is_error: false, duration_ms: 1,
+    }]);
+    expect(delivered.text).toBe('B2 is recorded as complete.');
+    expect(delivered.reason).toBeNull();
   });
 
   it('surfaces an in-progress specialist attempt across handler sessions', async () => {
