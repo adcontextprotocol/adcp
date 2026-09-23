@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import DOMPurify from "isomorphic-dompurify";
 import { Marked } from "marked";
 import { csrfProtection } from "./middleware/csrf.js";
+import { chatRequestCorrelation } from "./middleware/chat-request-correlation.js";
 import { slowResponseTracker } from "./middleware/slow-response.js";
 import { requestMetrics } from "./middleware/request-metrics.js";
 import escapeHtml from "escape-html";
@@ -1335,6 +1336,9 @@ export class HTTPServer {
 
     // Capture request duration metrics for all API calls
     this.app.use(requestMetrics);
+
+    // Include parser, CSRF and authentication rejections in chat support traces.
+    this.app.use('/api/addie/chat', chatRequestCorrelation);
 
     // Use JSON parser for all routes EXCEPT those that need raw body for signature verification
     // Limit increased to 10MB to support base64-encoded logo uploads in member profiles
