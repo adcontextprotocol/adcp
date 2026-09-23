@@ -55,7 +55,7 @@ function extractStep(name) {
 const releaseRelevance = extractStep('Detect release-relevant push');
 const releaseTarget = extractStep('Resolve release target');
 const artifactDetection = extractStep('Detect committed release artifacts');
-const approvalGate = extractStep('Require human authorization for committed release artifacts');
+const approvalGate = extractStep('Require human approval for committed release artifacts');
 const changesetsStep = extractStep('Create Release Pull Request or Tag Release');
 const uploadStep = extractStep('Upload protocol tarball to GitHub Release');
 const changesetsStepConfig = workflowConfig.jobs.release.steps.find(
@@ -265,35 +265,17 @@ assert(
   'Human approval must be required whenever a commit contains release artifacts.'
 );
 
-assert(
-  approvalGate.includes('/commits/${RELEASE_COMMIT}/pulls') &&
-    approvalGate.includes('.base.ref == $base') &&
-    approvalGate.includes('.merged_at != null'),
-  'The approval gate must resolve the merged PR associated with the release commit and branch.'
+assert.strictEqual(
+  workflowConfig.jobs.release.steps.find(
+    step => step.name === 'Require human approval for committed release artifacts'
+  ).run,
+  'node scripts/check-release-state.cjs approval',
+  'Committed release publication must use the permission and merge-provenance gate.'
 );
 
 assert(
-  approvalGate.includes('select(.user.type == "User")') &&
-    approvalGate.includes('map(last)') &&
-    approvalGate.includes('select(.state == "APPROVED" and .commit_id == $head)'),
-  'Human review authorization must require an approval submitted against the final release PR head.'
-);
-
-assert(
-  approvalGate.includes('[ "${author_type}" = "Bot" ]') &&
-    approvalGate.includes('[ "${merger_type}" = "User" ]') &&
-    approvalGate.includes('/issues/${pr_number}/timeline') &&
-    approvalGate.includes('.event == "auto_squash_enabled"') &&
-    approvalGate.includes('.event == "auto_merge_disabled"') &&
-    approvalGate.includes('[ "${auto_merge_state}" = "not_enabled" ]') &&
-    approvalGate.includes('[ "${auto_merge_state}" = "auto_merge_disabled" ]') &&
-    approvalGate.includes('[ "${approved_count}" -lt 1 ] && [ "${direct_merge_authorized}" != "true" ]'),
-  'A human merge may authorize publication only for a bot-authored release PR.'
-);
-
-assert(
-  artifactDetection.includes('git show --format= --name-only --no-renames "${RELEASE_COMMIT}"') &&
-    uploadStep.includes('--target "${RELEASE_COMMIT}"'),
+  artifactDetection.includes('git show --first-parent --format= --name-only --no-renames "${RELEASE_SHA}"') &&
+    uploadStep.includes('--target "${RELEASE_SHA}"'),
   'Recovery must detect and publish artifacts from the validated release commit.'
 );
 
@@ -326,18 +308,20 @@ assert.deepStrictEqual(
     name: 'Create Release Pull Request or Tag Release',
     if: "steps.release-artifacts.outputs.has_release_artifacts != 'true'",
     id: 'changesets',
+    'timeout-minutes': 40,
     uses: `changesets/action@${changesetsActionSha}`,
     with: {
-      'github-token': '${{ steps.app-token.outputs.token }}',
+      'github-token': '${{ steps.changesets-token.outputs.token }}',
       'version-script': 'npm run version',
-      'publish-script': 'npx --no-install changeset git-tag',
       'commit-message': 'Version Packages',
       'pr-title': 'Version Packages',
-      'create-github-releases': true,
+      'pr-draft': 'always',
+      'create-github-releases': false,
       'push-with-git-cli': true,
     },
     env: {
       HUSKY: '0',
+      GH_TOKEN: '${{ steps.changesets-token.outputs.token }}',
     },
   },
   'Release automation must preserve the pinned Changesets v2.1.2 input contract and git-CLI push mode.'
