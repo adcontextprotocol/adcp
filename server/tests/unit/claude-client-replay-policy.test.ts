@@ -1385,4 +1385,33 @@ describe('persisted outcome delivery guard', () => {
     expect(result.text).toBe('B2 is recorded as complete.');
     expect(result.flagged).toBe(false);
   });
+
+  it.each(['streaming', 'non_streaming'] as const)('delivers a generic credential success and its saved share link on %s delivery', async delivery => {
+    const shareUrl = 'https://credsverse.com/credentials/abc-b2';
+    const handler = vi.fn().mockResolvedValue(`Module B2 completed!\n**Credential earned: AdCP Practitioner!**\n- [View and share your credential](${shareUrl})`);
+    const scoped = requestTools([tool('complete_certification_module', 'mutation')], [['complete_certification_module', handler]]);
+    const queue = delivery === 'streaming' ? sdkState.streamingResponses : sdkState.nonStreamingResponses;
+    queue.push(
+      toolUseResponse([{ id: 'award-b2', name: 'complete_certification_module', input: { module_id: 'B2' } }]),
+      textResponse('Congratulations, you earned your certificate!'),
+    );
+    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true, reserveSideEffect: async () => {} };
+    const client = new AddieClaudeClient('unused');
+    let text: string;
+    if (delivery === 'streaming') {
+      const events: StreamEvent[] = [];
+      for await (const event of client.processMessageStream('Finish module B2', undefined, scoped, options)) events.push(event);
+      text = events.filter(event => event.type === 'text').map(event => event.text).join('');
+      const done = events.find(event => event.type === 'done');
+      expect(done?.type === 'done' && done.response.flagged).toBe(false);
+    } else {
+      const result = await client.processMessage('Finish module B2', undefined, scoped, { systemPrompt: 'system' }, options);
+      text = result.text;
+      expect(result.flagged).toBe(false);
+    }
+    expect(text).toContain('Credential earned: AdCP Practitioner.');
+    expect(text).toContain(`[View and share your credential](${shareUrl})`);
+    expect(text).not.toContain('haven\'t confirmed');
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
 });

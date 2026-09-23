@@ -54,12 +54,12 @@ function hasSupportClaim(text: string, context: string): boolean {
 interface CertificationEvidence {
   modules: Set<string>;
   credentials: Set<string>;
-  issuedCredentials: Set<string>;
+  issuedCredentials: Map<string, string>;
 }
 
 /** Only anchored, application-generated lines from successful certification tools count. */
 function certificationEvidence(executions: readonly ToolExecution[]): CertificationEvidence {
-  const evidence: CertificationEvidence = { modules: new Set(), credentials: new Set(), issuedCredentials: new Set() };
+  const evidence: CertificationEvidence = { modules: new Set(), credentials: new Set(), issuedCredentials: new Map() };
   for (const execution of executions) {
     if (execution.is_error || !CERTIFICATION_TOOLS.has(execution.tool_name)) continue;
     const text = execution.result;
@@ -101,13 +101,28 @@ function certificationEvidence(executions: readonly ToolExecution[]): Certificat
       for (const line of lines) {
         const match = /^\*\*Credential earned: (.+)!\*\*$/.exec(line);
         if (match) { credential = match[1]!; evidence.credentials.add(credential); }
-        if (credential && line.startsWith('- [View and share your credential](https://credsverse.com/credentials/')) {
-          evidence.issuedCredentials.add(credential);
+        const share = /^- \[View and share your credential\]\((https:\/\/credsverse\.com\/credentials\/[A-Za-z0-9._~!%'*+-]+)\)$/.exec(line);
+        const sharePath = share ? new URL(share[1]!).pathname : '';
+        if (credential && share && sharePath.startsWith('/credentials/') && sharePath.length > '/credentials/'.length) {
+          evidence.issuedCredentials.set(credential, share[1]!);
         }
       }
     }
   }
   return evidence;
+}
+
+/** A singular generic reference can bind to one receipt, never a different named award. */
+function hasOnlyGenericCredentialReferences(text: string): boolean {
+  const mentions = [...text.matchAll(/\b(?:credential|certificate|badge|certification|certified)\b/gi)];
+  return mentions.length > 0 && mentions.every(match => {
+    const prefix = text.slice(0, match.index);
+    const suffix = text.slice(match.index + match[0].length);
+    if (/^\s+(?:in|for|of|as)\b/i.test(suffix)) return false;
+    return match[0].toLowerCase() === 'certified'
+      ? /\byou(?:'re| are)(?:\s+now)?\s+$/i.test(prefix)
+      : /\b(?:your|the|an?|this|that)\s+(?:(?:new|earned)\s+)?$/i.test(prefix);
+  });
 }
 
 function supportReceipt(executions: readonly ToolExecution[]): { id: number; notified: boolean } | null {
@@ -165,7 +180,8 @@ export function enforceOutcomeClaims(
   const output: string[] = [];
   for (const [index, part] of parts.entries()) {
     if (index % 2 === 1) { output.push(part); continue; }
-    const plain = part.replace(/[*_`]/g, '').replace(/[’‘]/g, "'");
+    const plain = part.replace(/\[([^\[\]\n]*)\]\([^\[\]\s()]+\)/g, '$1')
+      .replace(/[*_`]/g, '').replace(/[’‘]/g, "'");
     if (hasSupportClaim(plain, `${conversationContext}\n${text}${support ? '\nSupport request receipt.' : ''}`)) {
       if (!supportReplaced) output.push(support
         ? `Support request #${support.id} is saved.${support.notified ? ' The team notification was sent.' : ' I could not confirm a team notification.'}`
@@ -187,9 +203,12 @@ export function enforceOutcomeClaims(
       const externalIssuance = /\b(?:issued|sent|delivered|download|share|ready)\b/i.test(plain);
       const credentials = externalIssuance ? evidence.issuedCredentials : evidence.credentials;
       const modulesSupported = ids.every(id => evidence.modules.has(id));
-      const namedCredentials = [...credentials].filter(name => plain.toLowerCase().includes(name.toLowerCase()));
+      const claimedCredentials = [...credentials.keys()].filter(name => plain.toLowerCase().includes(name.toLowerCase()));
+      if (claimedCredentials.length === 0 && credentials.size === 1 && hasOnlyGenericCredentialReferences(plain)) {
+        claimedCredentials.push(...credentials.keys());
+      }
       const modules = ids.length ? ids : [...evidence.modules];
-      const supported = modulesSupported && (credentialClaim ? namedCredentials.length > 0 : modules.length > 0);
+      const supported = modulesSupported && (credentialClaim ? claimedCredentials.length > 0 : modules.length > 0);
       if (!supported) {
         if (!certificationReplaced) output.push(UNCONFIRMED_CERTIFICATION);
         certificationReplaced = true;
@@ -200,7 +219,11 @@ export function enforceOutcomeClaims(
       // license extra credentials, modules, or delivery claims in model prose.
       output.push([
         ...modules.filter(id => evidence.modules.has(id)).map(id => `${id} is recorded as complete.`),
-        ...(credentialClaim ? namedCredentials.map(name => `Credential ${externalIssuance ? 'issued' : 'earned'}: ${name}.`) : []),
+        ...(credentialClaim ? claimedCredentials.map(name => {
+          const shareUrl = evidence.issuedCredentials.get(name);
+          return `Credential ${externalIssuance ? 'issued' : 'earned'}: ${name}.`
+            + (shareUrl ? ` [View and share your credential](${shareUrl})` : '');
+        }) : []),
       ].join(' '));
       certificationRendered = true;
       continue;

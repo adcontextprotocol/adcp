@@ -10,6 +10,9 @@ function enforceCertificationClaims(text: string, executions: readonly ToolExecu
   return enforceOutcomeClaims(text, executions, context);
 }
 const completed = execution('complete_certification_module', 'Module B2 completed! The learner has demonstrated mastery of all learning objectives.');
+const awarded = { ...completed, result: `${completed.result}\n**Credential earned: AdCP Practitioner!**` };
+const shareUrl = 'https://credsverse.com/credentials/abc-b2';
+const issued = { ...awarded, result: `${awarded.result}\n- [View and share your credential](${shareUrl})` };
 
 describe('receipt-bound certification claims', () => {
   it.each(['Q4', 'H1', 'H2', 'V2', 'P1', 'S3', 'b2'])(
@@ -104,6 +107,56 @@ describe('receipt-bound certification claims', () => {
     expect(enforceCertificationClaims('Your earned AdCP Practitioner certificate is ready to download.', [awarded]).reason).toBeTruthy();
     const issued = { ...awarded, result: `${awarded.result}\n- [View and share your credential](https://credsverse.com/credentials/example-id)` };
     expect(enforceCertificationClaims('Your earned AdCP Practitioner certificate is ready to download.', [issued]).reason).toBeNull();
+  });
+
+  it.each([
+    'Congratulations, you earned your certificate!', 'You earned a badge.',
+    "The credential's yours.", 'Your certification has been awarded.', 'You are now certified!',
+  ])('renders an unambiguous persisted credential for generic wording: %s', text => {
+    const result = enforceCertificationClaims(text, [awarded]);
+    expect(result.reason).toBeNull();
+    expect(result.text).toContain('Credential earned: AdCP Practitioner.');
+    expect(result.text).not.toContain('haven\'t confirmed');
+    expect(result.text).not.toContain('credsverse.com');
+    expect(enforceCertificationClaims(text, [completed]).reason).toBeTruthy();
+  });
+
+  it.each([
+    'Your certificate has been issued.', 'Your certificate is ready to download.',
+    `Your AdCP Practitioner certificate has been issued: [View and share](${shareUrl}).`,
+    `You earned the [AdCP Practitioner credential](${shareUrl})!`,
+    'Your AdCP Practitioner certificate has been issued: [View and share](https://example.com/untrusted).',
+  ])('preserves only the receipt-owned credential link: %s', text => {
+    const result = enforceCertificationClaims(text, [issued]);
+    expect(result.reason).toBeNull();
+    expect(result.text).toContain(`[View and share your credential](${shareUrl})`);
+    expect(result.text).not.toContain('https://example.com');
+    if (!text.startsWith('You earned')) expect(enforceCertificationClaims(text, [awarded]).reason).toBeTruthy();
+  });
+
+  it.each([
+    'You earned the Advanced Specialist certificate.',
+    'You earned your certificate and the Advanced Specialist certificate.',
+    'Your certificate for Advanced Specialist has been issued.',
+    'B3 is complete and you earned your certificate.',
+  ])('does not let a generic receipt authorize another named outcome: %s', text => {
+    expect(enforceCertificationClaims(text, [issued]).reason).toBeTruthy();
+  });
+
+  it('does not guess between multiple saved credentials or accept unsuccessful evidence', () => {
+    const multiple = { ...awarded, result: `${awarded.result}\n**Credential earned: AdCP Specialist!**` };
+    expect(enforceCertificationClaims('You earned your certificate.', [multiple]).reason).toBeTruthy();
+    expect(enforceCertificationClaims('You earned your certificate.', [{ ...awarded, is_error: true }]).reason).toBeTruthy();
+    expect(enforceCertificationClaims('You earned your certificate.', [{ ...awarded, tool_name: 'search_docs' }]).reason).toBeTruthy();
+  });
+
+  it.each([
+    'https://credsverse.com.example.com/credentials/id',
+    'https://credsverse.com/credentials/%2e%2e',
+    'https://credsverse.com/credentials/.',
+  ])('does not treat malformed receipt links as credential issuance: %s', url => {
+    const invalid = { ...awarded, result: `${awarded.result}\n- [View and share your credential](${url})` };
+    expect(enforceCertificationClaims('Your certificate has been issued.', [invalid]).reason).toBeTruthy();
   });
 
   it.each([
