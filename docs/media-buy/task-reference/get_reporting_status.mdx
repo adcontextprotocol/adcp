@@ -325,17 +325,23 @@ ticketing. Only `open` and `acknowledged` issues appear in `issues[]`; retiring
 an issue removes it rather than publishing it in a terminal state, so a reader
 that treats a non-empty `issues[]` as degradation stays correct.
 
-Retiring is not a way to discharge a live disagreement. A seller MUST NOT take a
-`CONSUMER_STATUS_MISMATCH` out of a degraded projection while the statement that
-caused it is still that consumer's current unsuperseded leaf. `resolved` is
-reachable when the consumer supersedes that statement with one that agrees, or
-when the seller's own projection changes so the two no longer conflict.
-`waived` records an off-protocol agreement to stop acting and does not by itself
-return the period to `healthy` or `complete` — otherwise the seller could
-unilaterally erase a buyer-attributed disagreement, which is exactly what this
-separately attributed loop exists to prevent. A seller may still waive a
-statement it has diagnosed as buyer-side; that is an explicit, readable act
-rather than silence.
+`resolved` means the underlying disagreement ended: the consumer superseded the
+statement with one that agrees, or the seller's projection changed so the two no
+longer conflict. `waived` is different. It records an explicit off-protocol
+agreement by the authenticated consumer and seller to disregard that exact
+caller/account issue; a seller cannot create the agreement unilaterally. The
+waiver is bound to the `issue_id`, causing `reporting_status_id`, and diagnosed
+conflict. It retires the issue and restores the underlying seller health in
+both summary counts and the period projection, even while that immutable
+consumer statement remains the current leaf in `consumer_statuses[]`. It does
+not turn the statement into seller evidence. A later statement or materially
+different conflict is evaluated independently and receives a new issue ID.
+
+If the waiver removes the last impairment, sellers offering
+`reporting.status_changed` emit the recovery transition only after the recovered
+projection is readable; `issue_ids` is empty or absent. If another impairment
+keeps health unchanged, no health-transition notification is required. Polling
+remains authoritative in either case.
 
 `operations_contact` is human-facing metadata: surface it to an
 operator, never dereference it or treat it as an AdCP endpoint. Its URL is
