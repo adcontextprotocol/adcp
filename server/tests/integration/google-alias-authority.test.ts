@@ -44,6 +44,29 @@ vi.mock('../../src/middleware/auth.js', () => ({
     };
     next();
   },
+  requireApiKeyManagementAuth: async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ) => {
+    const { getPool } = await import('../../src/db/client.js');
+    const credentialId = req.header('x-test-credential');
+    const result = await getPool().query(
+      `SELECT canonical.workos_user_id, u.email
+         FROM identity_workos_users credential
+         JOIN identity_workos_users canonical
+           ON canonical.identity_id = credential.identity_id AND canonical.is_primary
+         JOIN users u ON u.workos_user_id = canonical.workos_user_id
+        WHERE credential.workos_user_id = $1`, [credentialId],
+    );
+    if (!result.rows[0]) { res.sendStatus(401); return; }
+    req.user = {
+      id: result.rows[0].workos_user_id, authWorkosUserId: credentialId,
+      email: result.rows[0].email, emailVerified: true,
+      createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString(),
+    };
+    next();
+  },
 }));
 const { createApiKeysRouter } = await import('../../src/routes/api-keys.js');
 
@@ -56,10 +79,13 @@ const ALL_ORG_IDS = [...ORG_IDS, PERSONAL_ORG_ID];
 const API_KEY_ORGS = [PERSONAL_ORG_ID, ORG_IDS[1]];
 
 interface ProviderMembership {
+  id: string;
   userId: string;
   organizationId: string;
   status: string;
   role: { slug: string };
+  createdAt: string;
+  updatedAt: string;
 }
 interface ProviderApiKey {
   id: string;
@@ -149,8 +175,24 @@ describe('Google aliases never union credential authority', () => {
     );
     credentials = USER_IDS.map((id, i) => ({ id, email: EMAILS[i] }));
     memberships = [
-      ...USER_IDS.map((userId, i) => ({ userId, organizationId: ORG_IDS[i], status: 'active', role: { slug: i ? 'owner' : 'member' } })),
-      { userId: USER_IDS[0], organizationId: PERSONAL_ORG_ID, status: 'active', role: { slug: 'owner' } },
+      ...USER_IDS.map((userId, i) => ({
+        id: `membership_alias_${i}`,
+        userId,
+        organizationId: ORG_IDS[i],
+        status: 'active',
+        role: { slug: i ? 'owner' : 'member' },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      })),
+      {
+        id: 'membership_alias_personal',
+        userId: USER_IDS[0],
+        organizationId: PERSONAL_ORG_ID,
+        status: 'active',
+        role: { slug: 'owner' },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
     ];
     apiKeys = API_KEY_ORGS.map((organization_id, i) => ({
       id: `key_alias_${i}`, organization_id, name: `Credential ${i} organization key`, permissions: ['admin:read'],
@@ -162,7 +204,15 @@ describe('Google aliases never union credential authority', () => {
       data: structuredClone(memberships.filter((row) => row.userId === userId && (!organizationId || row.organizationId === organizationId))),
     }));
     provider.createOrganizationMembership.mockImplementation(async ({ userId, organizationId }) => {
-      memberships.push({ userId, organizationId, status: 'active', role: { slug: 'member' } });
+      memberships.push({
+        id: `membership_alias_created_${memberships.length}`,
+        userId,
+        organizationId,
+        status: 'active',
+        role: { slug: 'member' },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      });
     });
     provider.updateUser.mockImplementation(async ({ userId, email }) => {
       credentials = credentials.map((row) => row.id === userId ? { ...row, email } : row);

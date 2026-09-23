@@ -15,8 +15,11 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
   warn: vi.fn(),
   resolvePersonId: vi.fn(),
+  recordPersonMessage: vi.fn(),
+  deriveSentiment: vi.fn(),
   evaluateStageTransitions: vi.fn(),
   recordEvent: vi.fn(),
+  buildMessageReceivedData: vi.fn(),
 }));
 
 vi.hoisted(() => {
@@ -65,6 +68,17 @@ vi.mock('../../src/db/migrate.js', () => ({
   runMigrations: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Keep the callback test focused on alias containment. Current main finalizes
+// the login through the credential-event transaction, so provide that
+// transaction boundary while retaining the production upsert implementation.
+vi.mock('../../src/db/identity-db.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/db/identity-db.js')>(),
+  withCredentialCreationEventMutation: async <T>(
+    _workosUserId: string,
+    mutation: (client: { query: typeof mocks.query }) => Promise<T>,
+  ) => ({ applied: true, value: await mutation({ query: mocks.query }) }),
+}));
+
 vi.mock('../../src/logger.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/logger.js')>();
   return {
@@ -80,9 +94,14 @@ vi.mock('../../src/logger.js', async (importOriginal) => {
 // Keep unrelated login tracking local; alias detection itself runs unchanged.
 vi.mock('../../src/db/relationship-db.js', () => ({
   resolvePersonId: mocks.resolvePersonId,
+  recordPersonMessage: mocks.recordPersonMessage,
+  deriveSentiment: mocks.deriveSentiment,
   evaluateStageTransitions: mocks.evaluateStageTransitions,
 }));
-vi.mock('../../src/db/person-events-db.js', () => ({ recordEvent: mocks.recordEvent }));
+vi.mock('../../src/db/person-events-db.js', () => ({
+  recordEvent: mocks.recordEvent,
+  buildMessageReceivedData: mocks.buildMessageReceivedData,
+}));
 
 const { HTTPServer } = await import('../../src/http.js');
 const { OrganizationDatabase } = await import('../../src/db/organization-db.js');
@@ -107,8 +126,11 @@ describe.each(accounts)('Google alias callback for $email', (account) => {
     vi.resetAllMocks();
     mocks.query.mockResolvedValue({ rows: [], rowCount: 0 });
     mocks.resolvePersonId.mockResolvedValue(`person_${account.id}`);
+    mocks.recordPersonMessage.mockResolvedValue(undefined);
+    mocks.deriveSentiment.mockResolvedValue(undefined);
     mocks.evaluateStageTransitions.mockResolvedValue(undefined);
     mocks.recordEvent.mockResolvedValue(undefined);
+    mocks.buildMessageReceivedData.mockReturnValue({});
     mocks.authenticateWithCode.mockResolvedValue({
       sealedSession: SEALED_SESSION,
       user: {
@@ -208,7 +230,7 @@ describe.each(accounts)('Google alias callback for $email', (account) => {
       }
       const writes = mocks.query.mock.calls.filter(([sql]) => !sql.trim().startsWith('SELECT'));
       expect(writes).toHaveLength(failurePoint === 'audit insert' ? 2 : 1);
-      expect(writes[0][0]).toContain('INSERT INTO users (workos_user_id, email,');
+      expect(writes[0][0]).toMatch(/INSERT INTO users \(\s*workos_user_id, email,/);
       expect(writes[0][1].slice(0, 2)).toEqual([account.id, account.email]);
       expect(mocks.query.mock.calls.map(([sql]) => sql).join('\n'))
         .not.toMatch(/user_email_aliases|identity_workos_users|organization_memberships|DELETE FROM users/);
