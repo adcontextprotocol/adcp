@@ -167,11 +167,11 @@ describe('OpenAIResponsesProvider', () => {
     },
   );
 
-  it.each(['xhigh', 'max'] as const)('scopes OpenAI evaluation-only control %s outside the runtime adapter', (effort) => {
+  it.each(['xhigh', 'max'] as const)('rejects unreviewed OpenAI reasoning control %s in runtime and evaluation projections', (effort) => {
     const runtime = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
     const evaluationRequest = request(OPENAI_ROUTER_MODEL, { reasoning: { effort } as never });
     expect(() => runtime.prepare(evaluationRequest)).toThrow('reasoning');
-    expect(prepareOpenAIResponsesEvaluationRequest(evaluationRequest)).toMatchObject({ reasoning: { effort } });
+    expect(() => prepareOpenAIResponsesEvaluationRequest(evaluationRequest)).toThrow('reasoning');
     expect(prepareOpenAIResponsesEvaluationRequest(request(OPENAI_ROUTER_MODEL, { reasoning: { effort: 'provider_default' } })))
       .not.toHaveProperty('reasoning');
   });

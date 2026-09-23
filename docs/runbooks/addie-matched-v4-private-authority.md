@@ -73,6 +73,18 @@ object-owner `GRANT`/`REVOKE` or function DDL command; atomicity is therefore
 relative to the supported workflows. Any such out-of-protocol drift is rejected
 by the next exact attestation and never silently repaired.
 
+Before paid screening, review the sealed matrix rather than treating the
+evaluator as a capability-expansion path. OpenAI cells use only the ordinary
+Responses adapter controls (`provider_default`, `none`, `low`, `medium`, and
+`high`); evaluator-only `xhigh` and `max` are excluded. Anthropic includes its
+ordinary `provider_default` and native `medium` cells, while Gemini 3.7/3.8
+retain `provider_default`, `low`, `medium`, and `high`. The evaluator supplies
+the provider-specific broad or clean runtime prompt and actual registered tool
+definitions—not explanatory prompt prose—and binds their hashes into its
+authority manifest and durable artifact. Every direct full-stage cell compares
+only with the routed Haiku→Sonnet baseline on the same tool surface, so router
+retirement is not confounded with a tool-surface change.
+
 The secret-bearing `.github/workflows/provision-matched-v4-evaluator.yml` is
 triggered only by a no-secret default-branch coordinator. It rejects foreign
 repositories, non-default branches, and a coordinator SHA that is not current
