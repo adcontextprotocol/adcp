@@ -145,6 +145,7 @@ phases:
       - id: sync_creatives_contradicted
         title: "Submit creative whose claim contradicts the verifier's verdict"
         task: sync_creatives
+        requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
@@ -235,6 +236,7 @@ phases:
       - id: sync_creatives_consistent
         title: "Submit creative whose claim matches the verifier's verdict"
         task: sync_creatives
+        requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"

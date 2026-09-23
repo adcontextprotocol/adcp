@@ -126,6 +126,7 @@ phases:
       - id: sync_creatives_carveout_claim
         title: "Submit creative that carries an audit-worthy carve-out claim"
         task: sync_creatives
+        requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
@@ -257,6 +258,7 @@ phases:
       - id: query_directed_audit_observation
         title: "Assert directed carve-out audit observation"
         task: comply_test_controller
+        requires_tool: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
         doc_ref: "/building/implementation/comply-test-controller"
@@ -296,6 +298,7 @@ phases:
       - id: query_edited_audit_observation
         title: "Assert edited carve-out audit observation"
         task: comply_test_controller
+        requires_tool: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
         doc_ref: "/building/implementation/comply-test-controller"
