@@ -7,6 +7,7 @@ import { createLogger } from "./logger.js";
 const logger = createLogger("schemas-middleware");
 const RELEASE_STATUS_OVERRIDES = new Map<string, "withdrawn" | "unpublished">([
   ["3.1.3", "withdrawn"],
+  ["3.2.0-rc.5", "unpublished"],
   ["3.2.0", "unpublished"],
 ]);
 

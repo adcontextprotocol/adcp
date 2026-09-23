@@ -327,6 +327,36 @@ A new main commit during the attempt requires another explicit dispatch and
 verification of the new head. If a later package version has already landed,
 stop for a separately reviewed historical recovery; this path refuses it.
 
+### Superseding an unpublishable committed prerelease
+
+An unpublished prerelease whose Version Packages merge lacks valid release
+authority must not be recovered, retroactively approved, tagged, or uploaded.
+Preserve its committed bytes and advance to a freshly generated candidate.
+This path applies only to an `rc.N` while Changesets remains in `rc` pre mode.
+
+Land a reviewed `.changeset/release-supersession.json` together with the
+supersession gate. The marker binds the unpublishable version to its exact
+release merge and protocol-tarball digest, explains why it cannot publish, and
+lists every pending changeset with its digest. Mark that version `unpublished`
+in generated and runtime release discovery so it cannot win a public alias.
+
+After that plan merges, dispatch `release.yml` on the exact current `main` SHA:
+
+```bash
+MAIN_SHA=$(git ls-remote origin refs/heads/main | cut -f1)
+gh workflow run release.yml --ref main \
+  -f release_commit="$MAIN_SHA" \
+  -f prepare_next=true
+```
+
+The workflow fails closed unless `main` is still that exact SHA, the named RC
+artifacts remain byte-identical to their merge, no tag or GitHub Release exists,
+the tarball and pending changesets match the reviewed digests, and the complete
+pending changeset set advances the candidate. The new Version Packages commit
+consumes the marker. Review that generated PR normally and require a non-author
+maintainer approval on its final head before merge; only the new candidate may
+publish.
+
 For the 2026-09-14 `3.2.0-rc.3` incident, the recovery target is
 `71f9cd5414454e94ccfef87ce25777ead6fad228` (#7485), whose final PR head
 `e7d42cbe5d7b3d05c3fcdcaa6f568b08ba131439` received human approval at
