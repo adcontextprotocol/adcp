@@ -1,0 +1,20 @@
+{
+  "version": "3.2.0-rc.5",
+  "release_commit": "e2db8ee0497166958bc49a45463b4d6ae0a2ed1e",
+  "protocol_sha256": "3bb647220394a05ca96af9e8ef94d62d893e01ed72c3058eaf58855316084e7f",
+  "reason": "RC5 was merged without the required final-head maintainer approval and does not contain the two subsequent release-blocking fixes; preserve its bytes as unpublished and generate a freshly reviewed RC6.",
+  "changesets": [
+    {
+      "file": "fix-error-code-recovery-prose-enum.md",
+      "sha256": "1268d26999edbb3a89cc9ee698dbe452d58faac192e2e0b641b0f1ecf8fd5ab6"
+    },
+    {
+      "file": "fix-waived-reporting-mismatch-projection.md",
+      "sha256": "5b047a8cac0064906c3727954d01b5514c9a12c59367920470d7482117b4ab0a"
+    },
+    {
+      "file": "supersede-unpublishable-rc5.md",
+      "sha256": "d1a515887df77495980344fde473df7ccc5c200890b45263d4f74187fc2aa444"
+    }
+  ]
+}

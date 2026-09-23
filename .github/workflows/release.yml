@@ -9,9 +9,14 @@ on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Original approved release merge SHA to recover on the current branch
+        description: Approved release merge SHA to recover, or exact current branch SHA when preparing a reviewed supersession
         required: true
         type: string
+      prepare_next:
+        description: Generate the next candidate from a reviewed unpublished-release supersession marker
+        required: false
+        default: false
+        type: boolean
 
 # Keep pending release commits; freshness fences still reject obsolete runs.
 concurrency:
@@ -87,13 +92,24 @@ jobs:
 
       - name: Detect release-relevant push
         id: release-relevance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREPARE_NEXT: ${{ inputs.prepare_next }}
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            node scripts/check-release-state.cjs recovery "$RELEASE_SHA"
+            if [ "${PREPARE_NEXT}" = "true" ]; then
+              if [ "$RELEASE_SHA" != "$TESTED_SHA" ]; then
+                echo '::error::Supersession preparation must target the exact current release branch head.'
+                exit 1
+              fi
+              node scripts/check-release-supersession.cjs verify
+            else
+              node scripts/check-release-state.cjs recovery "$RELEASE_SHA"
+            fi
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -202,13 +218,18 @@ jobs:
         id: release-artifacts
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PREPARE_NEXT: ${{ inputs.prepare_next }}
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            node scripts/check-release-state.cjs recovery "$RELEASE_SHA"
+            if [ "$PREPARE_NEXT" = true ]; then
+              node scripts/check-release-supersession.cjs verify
+            else
+              node scripts/check-release-state.cjs recovery "$RELEASE_SHA"
+            fi
           fi
           node scripts/check-release-state.cjs current
           changed_files="$(git show --first-parent --format= --name-only --no-renames "${RELEASE_SHA}")"
@@ -217,7 +238,7 @@ jobs:
             echo "Detected committed release artifact changes for ${VERSION}."
           else
             echo "has_release_artifacts=false" >> "$GITHUB_OUTPUT"
-            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "$PREPARE_NEXT" != true ]; then
               echo "::error::Release recovery target ${RELEASE_COMMIT} does not commit artifacts for ${VERSION}."
               exit 1
             fi

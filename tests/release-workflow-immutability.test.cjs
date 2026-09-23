@@ -195,6 +195,31 @@ assert.strictEqual(
   'Manual release recovery must require an explicit release commit.'
 );
 
+assert.deepStrictEqual(
+  workflowConfig.on.workflow_dispatch.inputs.prepare_next,
+  {
+    description: 'Generate the next candidate from a reviewed unpublished-release supersession marker',
+    required: false,
+    default: false,
+    type: 'boolean',
+  },
+  'Prerelease supersession must require an explicit manual-dispatch mode.'
+);
+
+assert(
+  releaseRelevance.includes('if [ "$RELEASE_SHA" != "$TESTED_SHA" ]') &&
+    releaseRelevance.includes('node scripts/check-release-supersession.cjs verify'),
+  'Supersession generation must bind the reviewed marker to the exact current release-branch head.'
+);
+
+assert.strictEqual(
+  workflowConfig.jobs['verify-release'].steps.find(
+    (step) => step.name === 'Detect release-relevant push'
+  ).env.GH_TOKEN,
+  '${{ github.token }}',
+  'The read-only verification job must authenticate its GitHub Release absence check.'
+);
+
 assert.strictEqual(
   verificationJob.outputs.target_commit,
   '${{ steps.release-target.outputs.commit }}',
@@ -283,6 +308,12 @@ assert(
   artifactDetection.includes('[ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]') &&
     artifactDetection.includes('does not commit artifacts for ${VERSION}'),
   'Manual recovery must fail instead of running Changesets when its target has no committed release artifacts.'
+);
+
+assert(
+  artifactDetection.includes('node scripts/check-release-supersession.cjs verify') &&
+    artifactDetection.includes('[ "$PREPARE_NEXT" != true ]'),
+  'Only a separately verified supersession dispatch may generate past an unpublished committed prerelease.'
 );
 
 assert(

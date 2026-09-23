@@ -163,6 +163,7 @@ function transformPublishedSchemaText(content, version) {
 // must never win latest/major/minor aliases.
 const RELEASE_STATUS_OVERRIDES = new Map([
   ['3.1.3', 'withdrawn'],
+  ['3.2.0-rc.5', 'unpublished'],
   ['3.2.0', 'unpublished'],
 ]);
 
@@ -271,7 +272,7 @@ function getReleaseMetadata(version, knownVersions = []) {
   if (statusOverride === 'unpublished') {
     return {
       stability: 'unpublished',
-      prerelease: false,
+      prerelease: String(version).includes('-'),
       deprecated: false,
       published: false,
     };
