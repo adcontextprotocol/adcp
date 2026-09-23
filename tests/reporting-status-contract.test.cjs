@@ -1193,15 +1193,15 @@ describe('managed reporting status contract', () => {
     // deliberately narrower bilateral escape hatch for one exact disagreement.
     assert.match(
       readSchema('/schemas/core/reporting-status-issue.json')['x-adcp-validation'].consumer_mismatch_lifecycle,
-      /resolved is reachable only when the consumer supersedes the causing statement/,
+      /resolved requires a superseding agreeing consumer statement/,
     );
     assert.match(
       readSchema('/schemas/core/reporting-status-issue.json')['x-adcp-validation'].consumer_mismatch_lifecycle,
-      /waived is the distinct terminal disposition for an exact disagreement that the authenticated consumer and seller have explicitly agreed off-protocol to disregard/,
+      /waived is terminal only when consumer and seller explicitly agree off-protocol to disregard the exact caller\/account mismatch/,
     );
     assert.match(
       readSchema('/schemas/core/reporting-status-issue.json')['x-adcp-validation'].consumer_mismatch_lifecycle,
-      /projects the underlying seller obligation health, which may be healthy or complete.*causing statement is the current unsuperseded leaf/,
+      /projects underlying seller health.*immutable statement remains current and visible in consumer_statuses\[\]/,
     );
     assert.match(
       statusResponseSchema['x-adcp-validation'].consumer_status_projection,
