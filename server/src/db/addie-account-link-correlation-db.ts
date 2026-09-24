@@ -55,13 +55,13 @@ export async function createAccountLinkCorrelation(
     `INSERT INTO addie_account_link_correlations (
        token_hash, surface, thread_id, initiating_user_id, external_id, expires_at
      )
-     SELECT $1, $2, t.thread_id, $4, t.external_id, $5
+     SELECT $1, $2::text, t.thread_id, $4::text, t.external_id, $5
      FROM addie_threads t
      WHERE t.thread_id = $3
-       AND t.channel = $2
-       AND t.user_id = $4
-       AND (($2 = 'slack' AND t.user_type = 'slack')
-         OR ($2 = 'web' AND t.user_type IN ('workos', 'anonymous')))
+       AND t.channel = $2::text
+       AND t.user_id = $4::text
+       AND (($2::text = 'slack' AND t.user_type = 'slack')
+         OR ($2::text = 'web' AND t.user_type IN ('workos', 'anonymous')))
      RETURNING correlation_id`,
     [tokenHash, input.surface, input.threadId, input.initiatingUserId, expiresAt],
   );
