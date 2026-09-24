@@ -275,6 +275,32 @@ assert.strictEqual(
   'The release job must check out the validated release target.'
 );
 
+const artifactCheckout = releaseJob.steps.find(
+  step => step.name === 'Refresh credentials for artifact publication'
+);
+const r2Publication = releaseJob.steps.find(
+  step => step.name === 'Publish release artifacts to R2'
+);
+assert.strictEqual(
+  artifactCheckout.with.token,
+  '${{ github.token }}',
+  'Long immutable publication must refresh the expiring App checkout credential with the job-scoped token.'
+);
+assert.strictEqual(
+  artifactCheckout.with.ref,
+  '${{ needs.verify-release.outputs.target_commit }}',
+  'The credential refresh must preserve the validated release checkout.'
+);
+assert.strictEqual(
+  r2Publication.env.GH_TOKEN,
+  '${{ github.token }}',
+  'R2 publication freshness reads must use the job-scoped token rather than the one-hour App token.'
+);
+assert(
+  releaseJob.steps.indexOf(artifactCheckout) < releaseJob.steps.indexOf(r2Publication),
+  'Artifact publication credentials must refresh immediately before the R2 phase.'
+);
+
 assert(
   !artifactDetection.includes('[ -d "dist/schemas/${VERSION}" ]'),
   'Release artifact detection must not treat artifacts that merely exist in the tree as publishable.'
