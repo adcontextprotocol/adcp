@@ -43,6 +43,7 @@ vi.mock('../../src/middleware/auth.js', () => {
     invalidateSessionCache: vi.fn(),
     invalidateBanCache: vi.fn(),
     invalidateSessionsForUsers: vi.fn(),
+    switchSessionOrganization: vi.fn(),
     isDevModeEnabled: () => false,
     getDevUser: () => null,
     getAvailableDevUsers: () => ({}),
