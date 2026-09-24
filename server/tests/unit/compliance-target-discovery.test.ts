@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   discovery: vi.fn(),
+  sdkComply: vi.fn(),
   safeFetch: vi.fn(),
   fallbackTarget: {
     requested: '3.0',
@@ -21,7 +22,7 @@ vi.mock('@adcp/sdk/testing', () => ({
   SAMPLE_BRIEFS: [],
   getBriefsByVertical: vi.fn(),
   setAgentTesterLogger: vi.fn(),
-  comply: vi.fn(),
+  comply: mocks.sdkComply,
   loadComplianceIndex: vi.fn(),
   testCapabilityDiscovery: mocks.discovery,
   CapabilityResolutionError: class CapabilityResolutionError extends Error {},
@@ -69,6 +70,7 @@ vi.mock('../../src/services/storyboards.js', () => ({
 
 import {
   HOSTED_TARGET_DISCOVERY_TIMEOUT_MS,
+  comply,
   selectComplianceTargetForAgentSelection,
 } from '../../src/addie/services/compliance-testing.js';
 
@@ -375,5 +377,30 @@ describe('hosted compliance target discovery deadline', () => {
 
     await vi.advanceTimersByTimeAsync(HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
     expect(receivedSignal?.aborted).toBe(false);
+  });
+});
+
+describe('hosted compliance run pre-discovery', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('probes the agent at the requested exact target version', async () => {
+    const exactStableTarget = {
+      requested: '3.1.20',
+      version: '3.1.20',
+      complianceDir: '/compliance/3.1.20',
+      schemaRoot: '/schemas/3.1.20',
+    };
+    mocks.discovery.mockResolvedValue({
+      profile: { adcp_supported_versions: ['3.1'] },
+      steps: [],
+    });
+    mocks.sdkComply.mockResolvedValue({ agent_profile: {} });
+
+    await comply('https://agent.example/mcp', { test_session_id: 'explicit-target' }, exactStableTarget);
+
+    expect(mocks.discovery).toHaveBeenCalledTimes(1);
+    expect(mocks.discovery.mock.calls[0][1]).toMatchObject({ adcpVersion: '3.1.20' });
   });
 });
