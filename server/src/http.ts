@@ -66,12 +66,12 @@ import { SlackDatabase } from "./db/slack-db.js";
 import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
-import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
-import { assertIdentityConsolidationAllowed } from "./db/identity-mutation-policy.js";
+import { getCompanyDomain } from "./utils/email-domain.js";
 import {
   upsertWorkosUserInCredentialEvent,
   withCredentialCreationEventMutation,
 } from "./db/identity-db.js";
+import { detectGoogleAliasAccount } from "./services/google-alias-detection.js";
 import { hasActiveSlackLink } from "./utils/slack-linkage.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
@@ -7814,133 +7814,14 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           });
         }
 
-        // Auto-merge duplicate accounts caused by Google email aliases.
-        // googlemail.com and gmail.com deliver to the same inbox, so we can
-        // merge without requiring email verification — WorkOS already verified
-        // ownership of the mailbox during signup.
+        // Matching Google inboxes are a support hint, never authority to
+        // consolidate users or bind credentials through canonical routing.
         let duplicateAliasEmail: string | null = null;
-        let autoMerged = false;
         try {
-          const aliasEmails = getGoogleEmailAliases(user.email);
-          if (aliasEmails.length > 0) {
-            const pool = getPool();
-            // Find a duplicate account, skipping emails already claimed by any user
-            const aliasResult = await pool.query<{ workos_user_id: string; email: string }>(
-              `SELECT u.workos_user_id, u.email FROM users u
-               WHERE LOWER(u.email) = ANY($1::text[]) AND u.workos_user_id != $2
-               AND NOT EXISTS (
-                 SELECT 1 FROM user_email_aliases a
-                 WHERE LOWER(a.email) = LOWER(u.email)
-               )
-               LIMIT 1`,
-              [aliasEmails, user.id]
-            );
-
-            // If no local match, check WorkOS — the duplicate may exist there
-            // but never have logged in (e.g. created via Stripe checkout only).
-            let existing: { workos_user_id: string; email: string } | null =
-              aliasResult.rows[0] ?? null;
-
-            if (!existing && workos) {
-              for (const aliasEmail of aliasEmails) {
-                const workosUsers = await workos.userManagement.listUsers({ email: aliasEmail });
-                const match = workosUsers.data.find(u => u.id !== user.id);
-                if (match) {
-                  duplicateAliasEmail = match.email;
-                  // Containment before even creating a local duplicate credential.
-                  assertIdentityConsolidationAllowed();
-                  // Insert into local users table so mergeUsers can operate on it
-                  await pool.query(
-                    `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-                     ON CONFLICT (workos_user_id) DO NOTHING`,
-                    [match.id, match.email, match.firstName, match.lastName, match.emailVerified, match.createdAt, match.updatedAt]
-                  );
-                  logger.info(
-                    { primaryUserId: user.id, secondaryWorkosId: match.id, secondaryEmail: match.email },
-                    'Found duplicate account in WorkOS (not in local DB) — created local user for merge'
-                  );
-                  existing = { workos_user_id: match.id, email: match.email };
-                  break;
-                }
-              }
-            }
-
-            if (existing) {
-              duplicateAliasEmail = existing.email;
-              // Refuse before alias claims or WorkOS membership copies. Mailbox
-              // equivalence cannot authorize consolidation (#6827).
-              assertIdentityConsolidationAllowed();
-
-              // Claim the alias atomically — UNIQUE(LOWER(email)) prevents
-              // two users from claiming the same target concurrently.
-              const claimResult = await pool.query(
-                `INSERT INTO user_email_aliases (workos_user_id, email)
-                 VALUES ($1, $2)
-                 ON CONFLICT DO NOTHING
-                 RETURNING 1`,
-                [user.id, existing.email]
-              );
-
-              if (claimResult.rows.length > 0) {
-                // The currently-logging-in user must be primary — mergeUsers
-                // deletes the secondary's WorkOS account, which would invalidate
-                // the session we just created if the current user were secondary.
-                const primaryId = user.id;
-                const secondaryId = existing.workos_user_id;
-
-                try {
-                  // Add the primary user to any of the secondary's WorkOS orgs
-                  // so that membership context resolves correctly after the
-                  // merge deletes the secondary user from WorkOS.
-                  if (workos) {
-                    const secondaryMemberships = await workos.userManagement.listOrganizationMemberships({
-                      userId: secondaryId,
-                      limit: 100,
-                    });
-                    for (const mem of secondaryMemberships.data) {
-                      if (mem.status !== 'active') continue;
-                      try {
-                        await workos.userManagement.createOrganizationMembership({
-                          userId: primaryId,
-                          organizationId: mem.organizationId,
-                        });
-                      } catch (memErr: unknown) {
-                        // Ignore conflict — the primary may already be a member
-                        const status = (memErr as { status?: number })?.status;
-                        if (status !== 409) throw memErr;
-                      }
-                    }
-                  }
-
-                  const { mergeUsers } = await import('./db/user-merge-db.js');
-                  const summary = await mergeUsers(primaryId, secondaryId, 'system:google-alias-merge');
-                  autoMerged = true;
-                  logger.info(
-                    { primaryUserId: primaryId, secondaryUserId: secondaryId, tables: summary.tables_merged.length },
-                    'Auto-merged duplicate Google email alias accounts'
-                  );
-                } catch (mergeError) {
-                  // Note: org memberships already transferred to primary in WorkOS
-                  // are NOT rolled back. This is acceptable because both users
-                  // control the same inbox, and the merge will be retried on
-                  // next login (createOrganizationMembership will 409, which is handled).
-                  // Roll back the alias claim so the merge can be retried on next login
-                  await pool.query(
-                    'DELETE FROM user_email_aliases WHERE workos_user_id = $1 AND LOWER(email) = LOWER($2)',
-                    [user.id, existing.email]
-                  ).catch(() => {});
-                  logger.error(
-                    { err: mergeError, primaryUserId: primaryId, secondaryUserId: secondaryId },
-                    'Failed to auto-merge Google email alias accounts — user will see manual banner'
-                  );
-                }
-              }
-              // else: another concurrent login already claimed this alias — skip
-            }
-          }
-        } catch (aliasCheckError) {
-          logger.warn({ error: aliasCheckError }, 'Failed to check for Google email alias duplicates');
+          duplicateAliasEmail = await detectGoogleAliasAccount(user, workos!.userManagement);
+        } catch {
+          // Provider errors may contain credentials or request details.
+          logger.warn({ userId: user.id }, 'Google alias detection unavailable');
         }
 
         // Check if user needs to accept (or re-accept) ToS and Privacy Policy
@@ -8368,15 +8249,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           }
         }
 
-        // If a Google email alias duplicate was detected, append status to the redirect.
-        // Auto-merged: show success notice. Failed: show manual merge banner.
+        // Surface the support notice without changing either account's authority.
         if (duplicateAliasEmail && returnTo.startsWith('/')) {
           const sep = returnTo.includes('?') ? '&' : '?';
-          if (autoMerged) {
-            returnTo = `${returnTo}${sep}accounts_merged=${encodeURIComponent(duplicateAliasEmail)}`;
-          } else {
-            returnTo = `${returnTo}${sep}duplicate_email=${encodeURIComponent(duplicateAliasEmail)}`;
-          }
+          returnTo = `${returnTo}${sep}duplicate_email=${encodeURIComponent(duplicateAliasEmail)}`;
         }
 
         // Redirect to dashboard or onboarding
