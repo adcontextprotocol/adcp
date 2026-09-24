@@ -1,11 +1,21 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import express from "express";
 import request from "supertest";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import semver from "semver";
-import { mountProtocolRoutes, mountSchemasRoutes } from "../../src/schemas-middleware.js";
+import {
+  mountComplianceRoutes,
+  mountProtocolRoutes,
+  mountSchemasRoutes,
+  resolvePinnedFallback as resolveFlyFallback,
+} from "../../src/schemas-middleware.js";
+import {
+  clearVersionCacheForTests,
+  handleRequest,
+  resolvePinnedFallback as resolveWorkerFallback,
+} from "../../../workers/artifact-cdn/src/index.js";
 
 /**
  * End-to-end tests for /schemas routing: version alias rewriting, bare-directory
@@ -435,5 +445,284 @@ describe("/protocol discovery release overrides", () => {
     } finally {
       fs.rmSync(protocolPath, { recursive: true, force: true });
     }
+  });
+});
+
+describe("Worker and Fly artifact routing parity", () => {
+  const mounts = ["schemas", "compliance"] as const;
+  const methods = ["GET", "HEAD"] as const;
+  const immutable = "public, max-age=31536000, immutable";
+  const revalidate = "public, no-cache, must-revalidate";
+  const versions = ["2.9.9", "3.0.18", "3.0.20", "3.1.4", "3.2.0-rc.3", "3.2.0-rc.3+build.7", "3.4.0", "5.0.0-rc.3"];
+  const objects = new Map<string, string>();
+  let fixtureRoot: string;
+  let app: express.Express;
+  let appWithFallback: express.Express;
+
+  // Only the R2 storage boundary is faked. Both production routers serve the
+  // same tiny fixture tree, without building or changing released artifacts.
+  const bucket = {
+    async list({ prefix, delimiter }: { prefix: string; delimiter?: string }) {
+      const keys = [...objects.keys()].filter((key) => key.startsWith(prefix));
+      return {
+        objects: keys.map((key) => ({ key })),
+        delimitedPrefixes: delimiter
+          ? [...new Set(keys.map((key) => prefix + key.slice(prefix.length).split("/")[0] + "/"))]
+          : [],
+        truncated: false,
+      };
+    },
+    async get(key: string) {
+      const body = objects.get(key);
+      return body === undefined ? null : { body, httpEtag: '"fixture"' };
+    },
+    async head(key: string) {
+      return this.get(key);
+    },
+  };
+
+  beforeAll(() => {
+    clearVersionCacheForTests();
+    fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "artifact-routing-parity-"));
+    const add = (key: string, body: string) => {
+      objects.set(key, body);
+      const filename = path.join(fixtureRoot, key);
+      fs.mkdirSync(path.dirname(filename), { recursive: true });
+      fs.writeFileSync(filename, body);
+    };
+    for (const mount of mounts) {
+      for (const version of [...versions, "latest"]) {
+        for (const filename of ["artifact.json", "index.json", "nested/index.json", "nested/artifact.json"]) {
+          add(`${mount}/${version}/${filename}`, JSON.stringify({ version, filename }));
+        }
+      }
+      add(`${mount}/latest/candidate-only.json`, JSON.stringify({ version: "latest" }));
+    }
+    for (const version of ["3.1.4", "3.2.0-rc.3", "latest"]) {
+      for (const suffix of ["", ".sha256", ".sig", ".crt"]) {
+        add(`protocol/${version}.tgz${suffix}`, `${version}${suffix}`);
+      }
+    }
+    app = express();
+    mountSchemasRoutes(app, path.join(fixtureRoot, "schemas"));
+    mountComplianceRoutes(app, path.join(fixtureRoot, "compliance"));
+    mountProtocolRoutes(app, path.join(fixtureRoot, "protocol"));
+    appWithFallback = express();
+    mountSchemasRoutes(appWithFallback, path.join(fixtureRoot, "schemas"));
+    mountComplianceRoutes(appWithFallback, path.join(fixtureRoot, "compliance"));
+    appWithFallback.use((_req, res) => res.json({ version: "older" }));
+  });
+
+  afterAll(() => {
+    clearVersionCacheForTests();
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  });
+
+  const clients = {
+    Worker: async (url: string, method: "GET" | "HEAD") => {
+      const response = await handleRequest(new Request(`https://artifacts.example${url}`, { method }), { ARTIFACTS: bucket });
+      return { status: response.status, headers: Object.fromEntries(response.headers), text: await response.text() };
+    },
+    Fly: async (url: string, method: "GET" | "HEAD") => {
+      const response = await (method === "HEAD" ? request(app).head(url) : request(app).get(url));
+      return { status: response.status, headers: response.headers, text: response.text ?? (method === "HEAD" ? "" : response.body.toString()) };
+    },
+  };
+
+  for (const [runtime, get] of Object.entries(clients)) {
+    describe(runtime, () => {
+      for (const mount of mounts) {
+        describe(`/${mount}`, () => {
+          it.each(methods)("%s serves exact prerelease files and directory forms with immutable caching", async (method) => {
+            for (const version of ["3.2.0-rc.3", "3.2.0-rc.3+build.7"]) {
+              for (const [suffix, status, location] of [
+                ["/artifact.json", 200, undefined],
+                ["/index.json", 200, undefined],
+                ["", 301, `/${mount}/${version}/`],
+                ["/", 302, `/${mount}/${version}/index.json`],
+              ] as const) {
+                const response = await get(`/${mount}/${version}${suffix}`, method);
+                expect(response.status, suffix).toBe(status);
+                expect(response.headers.location, suffix).toBe(location);
+                expect(response.headers["cache-control"], suffix).toBe(immutable);
+                if (method === "GET" && status === 200) expect(JSON.parse(response.text).version).toBe(version);
+                if (method === "HEAD") expect(response.text).toBe("");
+              }
+            }
+          });
+
+          it.each(methods)("%s denies every absent prerelease form before fallback or directory redirects", async (method) => {
+            for (const version of ["3.2.0-rc.4", "3.5.0-rc.1", "3.2.0-rc.4+build.7", "3.2.0-rc.3+missing", "v3.2.0-rc.4", "v3.2.0-rc.3"]) {
+              for (const suffix of ["", "/", "/artifact.json", "/index.json", "/nested", "/nested/", "/nested/index.json", "/nested/artifact.json", "/candidate-only.json"]) {
+                const url = `/${mount}/${version}${suffix}`;
+                const response = await get(url, method);
+                expect(response.status, url).toBe(404);
+                expect(response.headers.location, url).toBeUndefined();
+                expect(response.headers["cache-control"], url).toBe("no-store");
+                expect(response.headers.etag, url).toBeUndefined();
+                expect(response.text, url).toBe(method === "HEAD" ? "" : "Not Found");
+              }
+            }
+          });
+
+          it.each(methods)("%s keeps candidate-only files absent even under an exact published prerelease", async (method) => {
+            const url = `/${mount}/3.2.0-rc.3/candidate-only.json`;
+            const response = runtime === "Fly"
+              ? await (method === "HEAD" ? request(appWithFallback).head(url) : request(appWithFallback).get(url))
+              : await get(url, method);
+            expect(response.status).toBe(404);
+            expect(response.headers.location).toBeUndefined();
+            expect(response.headers["cache-control"]).toBe("no-store");
+            expect(response.headers.etag).toBeUndefined();
+            expect(response.text ?? "").toBe(method === "HEAD" ? "" : "Not Found");
+          });
+
+          it("lists only stored versions and stable aliases, omitting the unpublished candidate", async () => {
+            const response = await get(`/${mount}/`, "GET");
+            expect(response.status).toBe(200);
+            const discovery = JSON.parse(response.text);
+            expect(discovery.versions.map((entry: { version: string }) => entry.version).sort()).toEqual([...versions].sort());
+            expect(discovery.aliases.every((entry: { resolves_to: string }) => versions.includes(entry.resolves_to) && !entry.resolves_to.includes("-"))).toBe(true);
+            expect(discovery.latest_stable).toBe("3.4.0");
+            expect(discovery.latest.path).toBe(`/${mount}/latest/`);
+            expect(response.text).not.toContain("3.2.0-rc.4");
+          });
+
+          it.each(methods)("%s limits stable docs-gap fallback to schemas", async (method) => {
+            for (const [pin, target] of [["3.0.19", "3.0.18"], ["3.3.0", "3.1.4"]]) {
+              for (const suffix of ["", "/", "/artifact.json", "/index.json"]) {
+                const response = await get(`/${mount}/${pin}${suffix}`, method);
+                if (mount === "schemas") {
+                  expect(response.status, pin + suffix).toBe(suffix === "" ? 301 : suffix === "/" ? 302 : 200);
+                  expect(response.headers["cache-control"], pin + suffix).toBe(revalidate);
+                  if (suffix === "") expect(response.headers.location, pin).toBe(`/${mount}/${target}/`);
+                  else if (suffix === "/") expect(response.headers.location, pin).toBe(`/${mount}/${target}/index.json`);
+                  else if (method === "GET") expect(JSON.parse(response.text).version, pin).toBe(target);
+                } else {
+                  expect(response.status, pin + suffix).toBe(404);
+                  expect(response.headers.location, pin + suffix).toBeUndefined();
+                  expect(response.headers["cache-control"], pin + suffix).toBe("no-store");
+                }
+              }
+            }
+            for (const pin of ["3.0.1", "4.0.0", "5.0.0"]) {
+              const response = await get(`/${mount}/${pin}/artifact.json`, method);
+              expect(response.status, pin).toBe(404);
+              expect(response.headers.location, pin).toBeUndefined();
+            }
+          });
+
+          it.each(methods)("%s does not resolve malformed versions", async (method) => {
+            for (const version of ["3.2", "3.2.0junk", "03.2.0", "3.2.0-rc.04", "3.2.0-rc..4", "3.2.0-rc.4+"]) {
+              for (const suffix of ["", "/", "/artifact.json", "/index.json"]) {
+                const response = await get(`/${mount}/${version}${suffix}`, method);
+                expect(response.status, version + suffix).toBe(404);
+                expect(response.headers.location, version + suffix).toBeUndefined();
+              }
+            }
+          });
+
+          it("keeps stable aliases and latest mutable", async () => {
+            for (const [alias, target] of [["v3", "3.4.0"], ["v3.0", "3.0.20"], ["latest", "latest"], ["v1", "latest"]]) {
+              const response = await get(`/${mount}/${alias}/artifact.json`, "GET");
+              expect(response.status, alias).toBe(200);
+              expect(JSON.parse(response.text).version, alias).toBe(target);
+              expect(response.headers["cache-control"], alias).toBe(revalidate);
+            }
+          });
+        });
+      }
+
+      it.each(methods)("%s leaves exact protocol artifacts and absent protocol versions unchanged", async (method) => {
+        for (const suffix of ["", ".sha256", ".sig", ".crt"]) {
+          const exact = await get(`/protocol/3.2.0-rc.3.tgz${suffix}`, method);
+          expect(exact.status, suffix).toBe(200);
+          // Protocol cache policies already differ between hosts; this fix
+          // must leave those tarball and sidecar policies untouched.
+          expect(exact.headers["cache-control"], suffix).toBe(suffix && runtime === "Worker" ? revalidate : immutable);
+          if (method === "GET") expect(exact.text, suffix).toBe(`3.2.0-rc.3${suffix}`);
+          for (const missing of ["3.2.0-rc.4", "3.1.5"]) {
+            const response = await get(`/protocol/${missing}.tgz${suffix}`, method);
+            expect(response.status, missing + suffix).toBe(404);
+            expect(response.headers.location).toBeUndefined();
+          }
+        }
+        for (const url of ["/protocol/3.2.0-rc.4", "/protocol/3.2.0-rc.4/", "/protocol/v3.tgz"]) {
+          expect((await get(url, method)).status, url).toBe(404);
+        }
+        const latest = await get("/protocol/latest.tgz", method);
+        expect(latest.status).toBe(200);
+        expect(latest.headers["cache-control"]).toBe(runtime === "Worker" ? revalidate : "public, max-age=600");
+        if (method === "GET") expect(latest.text).toBe("latest");
+      });
+
+      it("keeps protocol discovery based on exact tarballs", async () => {
+        const response = await get("/protocol/", "GET");
+        expect(response.status).toBe(200);
+        const discovery = JSON.parse(response.text);
+        expect(discovery.versions.map((entry: { version: string }) => entry.version)).toEqual(["3.2.0-rc.3", "3.1.4"]);
+        expect(discovery.latest.published_version).toBe("3.2.0-rc.3");
+        expect(response.text).not.toContain("3.2.0-rc.4");
+      });
+    });
+  }
+
+  it("denies absent prereleases without exposing failed version-listing details", async () => {
+    clearVersionCacheForTests();
+    const unavailableApp = express();
+    mountSchemasRoutes(unavailableApp, path.join(fixtureRoot, "missing-schemas"));
+    mountComplianceRoutes(unavailableApp, path.join(fixtureRoot, "missing-compliance"));
+    let listCalls = 0;
+    const unavailableBucket = {
+      ...bucket,
+      async list() {
+        listCalls += 1;
+        throw new Error("Private bucket listing credentials unavailable");
+      },
+    };
+    for (const mount of mounts) {
+      for (const method of methods) {
+        for (const suffix of ["", "/", "/artifact.json", "/index.json"]) {
+          const url = `/${mount}/3.2.0-rc.4${suffix}`;
+          const worker = await handleRequest(new Request(`https://artifacts.example${url}`, { method }), { ARTIFACTS: unavailableBucket });
+          const fly = await (method === "HEAD" ? request(unavailableApp).head(url) : request(unavailableApp).get(url));
+          for (const response of [
+            { status: worker.status, headers: Object.fromEntries(worker.headers), text: await worker.text() },
+            { status: fly.status, headers: fly.headers, text: fly.text ?? "" },
+          ]) {
+            expect(response.status, url).toBe(404);
+            expect(response.headers["cache-control"], url).toBe("no-store");
+            expect(response.headers.location, url).toBeUndefined();
+            expect(response.headers.etag, url).toBeUndefined();
+            expect(response.text, url).toBe(method === "HEAD" ? "" : "Not Found");
+          }
+        }
+      }
+    }
+    expect(listCalls).toBe(16);
+  });
+
+  it.each([
+    ["3.2.0-rc.4", ["3.2.0-rc.3", "3.1.4"], undefined],
+    ["v3.2.0-rc.4", ["3.2.0-rc.3", "3.1.4"], undefined],
+    ["3.2.0-rc.4+build.7", ["3.2.0-rc.3+build.7"], undefined],
+    ["3.5.0-rc.1", ["3.4.0"], undefined],
+    ["3.0.19", ["3.0.20", "3.1.4", "3.0.18"], "3.0.18"],
+    ["3.0.19+build-rc.4", ["3.0.18"], "3.0.18"],
+    ["3.3.0", ["3.4.0", "3.2.0-rc.3", "3.1.4"], "3.1.4"],
+    ["3.0.1", ["2.9.9", "3.0.18"], undefined],
+    ["4.0.0", ["3.4.0", "5.0.0"], undefined],
+    ["5.0.0", ["5.0.0-rc.3"], undefined],
+    ["3.1.5", ["3.1.3", "3.1.2"], "3.1.2"],
+    ["3.2.1", ["3.2.0", "3.1.4"], "3.1.4"],
+    ["3.2", ["3.1.4"], undefined],
+    ["3.2.0junk", ["3.1.4"], undefined],
+    ["03.2.0", ["3.1.4"], undefined],
+    ["3.2.0-rc.04", ["3.1.4"], undefined],
+    ["3.2.0-rc..4", ["3.1.4"], undefined],
+    ["3.2.0-rc.4+", ["3.1.4"], undefined],
+  ] as const)("production resolvers agree for %s with %j", (requested, published, expected) => {
+    expect(resolveWorkerFallback([...published], requested)).toBe(expected);
+    expect(resolveFlyFallback([...published], requested)).toBe(expected);
   });
 });
