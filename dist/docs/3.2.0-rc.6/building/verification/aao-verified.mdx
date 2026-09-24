@@ -1,0 +1,264 @@
+---
+title: AAO Verified
+sidebarTitle: AAO Verified
+description: "The public trust mark for AdCP agents: what evidence was observed, which grading policy evaluated it, and how to verify the result."
+"og:title": "AdCP — AAO Verified"
+---
+
+**Status**: Owner-selectable grading rollout
+**Last Updated**: September 16, 2026
+
+**AAO Verified** is AgenticAdvertising.org's public trust mark for AdCP agents.
+Each badge applies to one exact `(agent URL, role, AdCP version)` and answers two
+separate questions:
+
+1. **What evidence did AgenticAdvertising.org observe?** The badge's
+   `verification_modes` answer this question.
+2. **Which grading policy evaluated that evidence?** The badge's
+   `grading_profile` answers this question.
+
+Do not infer the grading profile from a verification mode. In particular,
+`spec` can appear in both fields with different meanings.
+
+## Evidence modes
+
+Evidence modes describe what was exercised or observed. They are not grading
+levels.
+
+| Mode | Meaning |
+|---|---|
+| **Spec** (`"spec"`) | AdCP storyboards exercised the agent's declared protocol behavior. |
+| **Live** (`"live"`) | AgenticAdvertising.org observed qualifying production traffic. |
+
+An active badge always has at least one evidence mode. A badge may show
+`(Spec)`, `(Live)`, or `(Spec + Live)`. `sandbox` is not a
+`verification_modes` value.
+
+## Grading profiles
+
+The grading profile is the policy used to decide whether the collected evidence
+supports the public badge.
+
+| Profile | Public status | Meaning |
+|---|---|---|
+| **Legacy grading** (`"legacy"`) | Available and owner-selectable | The established grading policy. Historical badges and older tokens without a `grading_profile` claim are treated as Legacy. |
+| **Strict Spec grading** (`"spec"`) | Available and owner-selectable | A stricter evaluation of the same evidence, including required storyboard, completeness, and skip-reason rules. |
+| **Sandbox grading preview** | Preview only | A diagnostic comparison. It cannot be selected and cannot issue or relabel a public badge. |
+
+Sandbox grading remains preview-only until causal bundle data is available and a
+public, versioned exception catalog has shipped. Its presence in an owner
+dashboard is not a promise that Sandbox grading will become selectable on a
+particular date.
+
+<Note>
+**Evidence mode and grading profile are orthogonal.** A badge can, for example,
+show `(Spec) · Legacy grading` or `(Spec) · Strict Spec grading`. The first
+`Spec` says which evidence was collected; the second says which policy judged
+it.
+</Note>
+
+## Reading a badge
+
+The visible SVG includes the role, AdCP version, evidence mode, and grading
+profile:
+
+| Display | Meaning |
+|---|---|
+| `AAO Verified Media Buy Agent 3.1 (Spec) · Legacy grading` | Spec storyboard evidence supports the 3.1 media-buy badge under Legacy grading. |
+| `AAO Verified Media Buy Agent 3.1 (Spec) · Strict Spec grading` | The same evidence category supports that exact badge under Strict Spec grading. |
+| `AAO Verified — Not Verified` | No active badge exists for that exact role and version. |
+
+The profile suffix is part of the public meaning. Do not remove it from copied
+alt text or replace it with the evidence qualifier.
+
+## Declare specialisms
+
+```json
+// agent declares its claims in get_adcp_capabilities
+{
+  "supported_protocols": ["media_buy", "creative"],
+  "specialisms": [
+    "sales-broadcast-tv",
+    "sales-guaranteed",
+    "creative-ad-server"
+  ]
+}
+```
+
+`specialisms` routes evidence to role-specific badges. Omitting it does not stop
+universal and protocol-baseline storyboards from running, but the verification
+engine has no narrow specialism claim from which to issue a public badge.
+
+Badge issuance also requires an active AgenticAdvertising.org membership at an
+API-access tier.
+
+## Selecting a grading profile
+
+An organization owner or administrator can select Legacy or Strict Spec grading
+from the agent dashboard when a current comparison is available.
+
+Selection is deliberately narrow:
+
+- It changes one exact `(agent URL, role, AdCP version)` only.
+- It uses a current immutable assessment from one source run.
+- It does not contact or re-run the agent.
+- A stale, incomplete, missing, or superseded assessment cannot be selected.
+- Sandbox grading preview cannot be selected.
+
+Before confirmation, the dashboard shows the server-computed public effect and,
+when relevant, the grace deadline. Depending on the current evidence and badge
+state, selection can leave the badge unchanged, issue it, restore it, regrade it
+without changing lifecycle status, degrade it, or revoke it. A degrade or revoke
+effect requires explicit acknowledgement.
+
+### Roll back to Legacy grading
+
+Legacy remains an owner-selectable production profile. An owner can revert one
+exact role and version from Strict Spec to Legacy when the dashboard offers a
+current Legacy assessment. Rollback uses the same authorization, freshness,
+revision, audit, and public-impact checks as selection in the other direction.
+It is not an agent-wide reset.
+
+The dashboard and registry are authoritative after a selection. If refreshed
+offline tokens are still being generated, the selection succeeds and the
+dashboard reports that token refresh is pending.
+
+## Decentralized verification
+
+Each active badge is backed by a signed JWT (EdDSA / Ed25519).
+AgenticAdvertising.org publishes its public keys at `/.well-known/jwks.json`.
+
+```json
+{
+  "iss": "https://aao.org",
+  "sub": "https://your-agent.example.com/mcp",
+  "aud": "aao-verification",
+  "jti": "<uuid>",
+  "iat": 1789516800,
+  "exp": 1792108800,
+  "role": "media-buy",
+  "adcp_version": "3.1",
+  "verified_specialisms": ["sales-broadcast-tv", "sales-guaranteed"],
+  "verification_modes": ["spec"],
+  "grading_profile": "spec",
+  "protocol_version": "3.1.0"
+}
+```
+
+Verifiers must check all of the claims relevant to their decision:
+
+- `sub`, `role`, and `adcp_version` identify the exact badge.
+- `verification_modes` says which evidence was observed.
+- `grading_profile` says whether Legacy or Strict Spec grading produced it.
+- `exp`, signature, issuer, and audience establish token validity.
+
+Tokens issued before grading profiles were added may omit `grading_profile`.
+Interpret a missing claim as `legacy`; never reinterpret an old token as Strict
+Spec grading.
+
+The registry API is authoritative for real-time status. A JWT is an offline,
+cacheable proof that can remain valid for up to 30 days and cannot learn about a
+later profile selection, degradation, revocation, membership lapse, or opt-out.
+Applications that need current status must check the registry.
+
+## Lifecycle
+
+Verification is continuously re-evaluated, not a one-time certificate.
+
+- **Issued** — qualifying evidence and all non-evidence eligibility checks pass.
+- **Active** — the selected profile continues to pass on current evidence.
+- **Degraded** — a qualifying regression starts the existing 48-hour grace
+  period; the registry exposes the state and deadline.
+- **Revoked** — the badge no longer qualifies after the applicable grace or an
+  immediate-revocation event.
+- **Recovered** — later passing evidence can restore or issue the badge.
+
+A membership lapse or compliance opt-out revokes the public badge regardless of
+grading profile. Re-enabling monitoring requires fresh qualifying evidence;
+partial reruns do not silently restore an earlier badge.
+
+## Legacy grading sunset
+
+Legacy is not automatically deprecated or relabeled by this rollout.
+
+- The working group will review Legacy no earlier than six months after
+  owner-selectable grading launches.
+- Legacy cannot retire earlier than 12 months after that launch.
+- Any proposed retirement requires at least 90 days' public notice.
+- Existing Legacy selections and claim-less historical tokens are never
+  automatically relabeled as Strict Spec.
+- Retirement timing and migration behavior require a future working-group
+  decision; there is no automatic retirement deadline today.
+
+Until those conditions are met and a later decision is published, Legacy is an
+honest production profile and remains available for rollback.
+
+## Per-version badges
+
+Each badge is identified by `(agent URL, role, AdCP version)`. An agent can hold
+parallel badges across AdCP releases and can select a different grading profile
+for each exact role/version pair. A 3.0 selection or regression does not change
+the 3.1 badge.
+
+The version is embedded in the visible label, for example:
+`Media Buy Agent 3.1 (Spec) · Strict Spec grading`.
+
+## Display and embedding
+
+Two SVG URL shapes are available:
+
+```text
+# Auto-upgrades to the highest active version for the role
+https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/{role}.svg
+
+# Pins one exact AdCP release
+https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/{role}/{adcp-version}.svg
+```
+
+Use the version-pinned URL when your claim is about a specific AdCP version.
+The unversioned URL can change to a newer active badge without the embed URL
+changing. Both SVG forms revalidate using ETags.
+
+Unknown agents, opted-out agents, and revoked or never-earned exact badges
+return a grey `Not Verified` SVG. To decide whether to render a badge at all,
+query the exact versioned embed endpoint during server-side rendering or a
+static-site build:
+
+```javascript test=true integration=true
+const agentUrl = "https://seller.example.com/mcp";
+const role = "media-buy";
+const version = "3.1";
+const encodedUrl = encodeURIComponent(agentUrl);
+const endpoint = `https://agenticadvertising.org/api/registry/agents/${encodedUrl}/badge/${role}/${version}/embed`;
+
+const response = await fetch(endpoint);
+if (!response.ok) throw new Error("Could not check AgenticAdvertising.org verification");
+
+const embed = await response.json();
+const badgeHtml = embed.verified ? embed.html : "";
+
+export { badgeHtml };
+```
+
+For bulk decisions, query
+`/api/registry/agents/{url-encoded-agent-url}/verification` and match both `role`
+and `adcp_version` in `badges[]`. Read `verification_modes` and
+`grading_profile` independently.
+
+## What AAO Verified is not
+
+- **Not a Sandbox grading badge.** Sandbox is diagnostic preview only until its
+  data and catalog gates ship.
+- **Not a regulatory, security, or financial audit.** Frameworks such as SOC 2,
+  ISO 27001, and ISAE 3402 address different controls.
+- **Not an SLA.** The mark does not guarantee uptime, latency, inventory, or
+  commercial outcomes.
+- **Not a substitute for due diligence.** Buyers should still assess contracts,
+  billing, governance, security, and incident response.
+
+## Related documentation
+
+- [Conformance Specification](/dist/docs/3.2.0-rc.6/building/verification/conformance)
+- [Compliance Catalog](/dist/docs/3.2.0-rc.6/building/verification/compliance-catalog)
+- [`get_adcp_capabilities`](/dist/docs/3.2.0-rc.6/protocol/get_adcp_capabilities)
+- [Maintaining your agent](/dist/docs/3.2.0-rc.6/registry/maintaining-your-agent)
