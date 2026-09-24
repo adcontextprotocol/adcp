@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.1.24
+
+### Patch Changes
+
+- 802211e: Gate the 3.1 governance approval and conditions storyboards on `media_buy.governance_aware` so sellers that do not claim governance support are not graded against multi-agent governance scenarios.
+- 150139c: Keep the 3.1 guaranteed and non-guaranteed sales baselines ungoverned, and
+  isolate their account natural keys so governance bindings from other compliance
+  scenarios cannot leak into their media-buy requests. Fixes #7628.
+- f2abd96: Canonicalize `format_ids[].agent_url` in the `get_products_pagination_integrity` storyboard: `https://compliance.adcontextprotocol.org` → `https://compliance.adcontextprotocol.org/`. `core/format-id.json` requires callers to canonicalize `agent_url` before treating two `format-id` values as the same, and `docs/reference/url-canonicalization.mdx` step 5 substitutes `/` for an empty path when an authority is present — so a schema-conformant seller emits the trailing slash and failed the storyboard's raw string comparison. Corrects all six occurrences (both seeded fixtures, both request filters, and the `field_contains` values on `wholesale_first_page` and `wholesale_terminal_page`). Partially addresses #7367; the runner-side canonicalization in `adcp-client` remains the general fix.
+- 56f93da: Correct the 3.1 creative-generative storyboard to require `creative_manifest.format_kind` instead of the mutually exclusive legacy `format_id`, matching the canonical-formats storyboard and response schema.
+- 5f52da3: Fix `VERSION_UNSUPPORTED` recovery value in error-compliance storyboards: `fatal` → `correctable`, matching `core/error.json` `enumMetadata`. Also corrects the general error-shape narrative enum list from `correctable, transient, or fatal` to `transient, correctable, or terminal`. Affects `error-compliance.yaml` and `error-compliance-signals.yaml`. Backport of #7376 to the 3.1.x line.
+- 023d726: Route the 3.1 governance approval and conditions storyboards across their sales and governance agents, capture the synchronized governance plan ID, and include it in the governed media-buy request.
+- cf424a5: Provenance storyboards now mark every creative-library and test-controller step
+  with its actual tool prerequisite, so hosted grading does not fail sellers for
+  optional surfaces they do not advertise. Fixes #7586.
+- b23175a: Keep the universal media-buy lifecycle and non-governance seller specialisms
+  ungoverned, and isolate their account natural keys so governance bindings from
+  other compliance scenarios cannot leak into their runs. Refs #7585.
+
 ## 3.2.0-rc.6
 
 ### Patch Changes
