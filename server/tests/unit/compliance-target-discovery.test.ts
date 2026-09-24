@@ -68,8 +68,10 @@ vi.mock('../../src/services/storyboards.js', () => ({
   getStoryboard: vi.fn(),
 }));
 
+import { CapabilityResolutionError } from '@adcp/sdk/testing';
 import {
   HOSTED_TARGET_DISCOVERY_TIMEOUT_MS,
+  classifyCapabilityResolutionErrorWithDeclaredProtocols,
   comply,
   selectComplianceTargetForAgentSelection,
 } from '../../src/addie/services/compliance-testing.js';
@@ -399,6 +401,41 @@ describe('hosted compliance run pre-discovery', () => {
     mocks.sdkComply.mockResolvedValue({ agent_profile: {} });
 
     await comply('https://agent.example/mcp', { test_session_id: 'explicit-target' }, exactStableTarget);
+
+    expect(mocks.discovery).toHaveBeenCalledTimes(1);
+    expect(mocks.discovery.mock.calls[0][1]).toMatchObject({ adcpVersion: '3.1.20' });
+  });
+});
+
+describe('capability resolution error reprobe', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('reprobes the agent at the failed run target version', async () => {
+    const exactStableTarget = {
+      requested: '3.1.20',
+      version: '3.1.20',
+      complianceDir: '/compliance/3.1.20',
+      schemaRoot: '/schemas/3.1.20',
+    };
+    const resolutionError = Object.assign(
+      new CapabilityResolutionError(
+        'Agent declared specialism "sales-guaranteed" (parent protocol: media_buy) but did not include it in supported_protocols',
+      ),
+      { code: 'specialism_parent_protocol_missing', specialism: 'sales-guaranteed', parentProtocol: 'media_buy' },
+    );
+    mocks.discovery.mockResolvedValue({
+      profile: { adcp_supported_versions: ['3.1'], supported_protocols: ['media-buy'] },
+      steps: [],
+    });
+
+    await classifyCapabilityResolutionErrorWithDeclaredProtocols(
+      resolutionError,
+      'https://agent.example/mcp',
+      { type: 'bearer', token: 'secret' },
+      exactStableTarget,
+    );
 
     expect(mocks.discovery).toHaveBeenCalledTimes(1);
     expect(mocks.discovery.mock.calls[0][1]).toMatchObject({ adcpVersion: '3.1.20' });
