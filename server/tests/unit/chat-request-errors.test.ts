@@ -16,8 +16,12 @@ const sse = (event: string, body: unknown) => new Response(
   { headers: { 'Content-Type': 'text/event-stream', 'X-Request-ID': id } },
 );
 
-async function openChat(reply: (attempt: number) => Response, organization?: string, csrfRetry = false) {
+async function openChat(
+  reply: (attempt: number) => Response, organization?: string, csrfRetry = false,
+  switchReply: () => Response = () => json({}, 404),
+) {
   const requests: Array<{ body: Record<string, unknown>; headers: Headers }> = [];
+  const switches: Array<Record<string, unknown>> = [];
   dom = new JSDOM(html, {
     url: 'https://example.test/chat', runScripts: 'dangerously', pretendToBeVisual: true,
     beforeParse(window) {
@@ -34,6 +38,10 @@ async function openChat(reply: (attempt: number) => Response, organization?: str
         if (url.startsWith('/api/me/addie-home')) return json({ html: '', css: '' });
         if (url === '/api/addie/chat/threads') return json({ conversations: [] });
         if (url === '/api/si/sessions/user') return json({ sessions: [] });
+        if (url === '/auth/switch-organization') {
+          switches.push(JSON.parse(String(options?.body)));
+          return switchReply();
+        }
         if (url === '/api/addie/chat/stream') {
           requests.push({ body: JSON.parse(String(options?.body)), headers: new Headers(options?.headers) });
           return reply(requests.length);
@@ -51,19 +59,21 @@ async function openChat(reply: (attempt: number) => Response, organization?: str
   await vi.waitFor(() => expect((window.document.getElementById('sendButton') as HTMLButtonElement).disabled).toBe(false));
   window.document.getElementById('sendButton')!.click();
   await vi.waitFor(() => expect(requests.length).toBeGreaterThan(0));
-  return { document: window.document, requests };
+  return { document: window.document, requests, switches };
 }
 
 describe('chat requests and actionable failure UI', () => {
   it.each([undefined, '', '   '])('omits an absent/empty organization selector (%s)', async (org) => {
-    const { requests } = await openChat(() => json({}, 403), org);
+    const { document, requests } = await openChat(() => json({}, 403), org);
+    await vi.waitFor(() => expect(document.querySelector('.chat-request-error')).not.toBeNull());
     expect(requests[0].body).not.toHaveProperty('organization_id');
     expect(requests[0].headers.get('X-Request-ID')).toMatch(/^[0-9a-f-]{36}$/);
     expect(requests[0].body.client_request_id).not.toBe(requests[0].headers.get('X-Request-ID'));
   });
 
   it('retains a selected organization without inferring another one', async () => {
-    const { requests } = await openChat(() => json({}, 403), 'org_selected');
+    const { document, requests } = await openChat(() => json({}, 403), 'org_selected');
+    await vi.waitFor(() => expect(document.querySelector('.chat-request-error')).not.toBeNull());
     expect(requests[0].body.organization_id).toBe('org_selected');
   });
 
@@ -125,6 +135,44 @@ describe('chat requests and actionable failure UI', () => {
     const { document } = await openChat(() => sse('text', { text: 'Partial reply' }));
     await vi.waitFor(() => expect(document.querySelector('.reply-recovery__action')).not.toBeNull());
     expect(document.querySelector('.chat-request-reference')?.textContent).toContain(id);
+  });
+
+  const conflict = () => json({ error: 'An unambiguous organization selection is required' }, 403, { 'X-Request-ID': id });
+
+  it('rebinds the session to the selected organization and resends once', async () => {
+    const { document, requests, switches } = await openChat(
+      (attempt) => attempt === 1 ? conflict() : sse('text', { text: 'Hello from your organization' }),
+      'org_selected', false, () => json({ organization_id: 'org_selected' }),
+    );
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    // The retried stream is the one consumed: its EOF offers recovery, not the org error.
+    await vi.waitFor(() => expect(document.querySelector('.reply-recovery__action')).not.toBeNull());
+    expect(switches).toEqual([{ target_organization_id: 'org_selected' }]);
+    expect(requests).toHaveLength(2);
+    expect(requests[1].body).toEqual(requests[0].body);
+    expect(requests[1].headers.get('X-Request-ID')).not.toBe(requests[0].headers.get('X-Request-ID'));
+    expect(document.querySelector('.chat-request-error')?.textContent ?? '').not.toContain('Choose your organization again');
+  });
+
+  it('shows the organization error when the session cannot be rebound', async () => {
+    const { document, requests, switches } = await openChat(
+      conflict, 'org_selected', false, () => json({ error: 'Unable to switch to that organization' }, 403),
+    );
+    await vi.waitFor(() => expect(document.querySelector('.chat-request-error')?.textContent).toContain('Choose your organization again'));
+    expect(switches).toHaveLength(1);
+    expect(requests).toHaveLength(1);
+  });
+
+  it('does not switch organizations without a selection or for other 403s', async () => {
+    const withoutSelection = await openChat(conflict);
+    await vi.waitFor(() => expect(withoutSelection.document.querySelector('.chat-request-error')).not.toBeNull());
+    expect(withoutSelection.switches).toHaveLength(0);
+    dom.window.close();
+
+    const otherForbidden = await openChat(() => json({ error: 'Forbidden' }, 403), 'org_selected');
+    await vi.waitFor(() => expect(otherForbidden.document.querySelector('.chat-request-error')).not.toBeNull());
+    expect(otherForbidden.switches).toHaveLength(0);
+    expect(otherForbidden.requests).toHaveLength(1);
   });
 
   it('retries a CSRF cookie-expiry 403 once using its fresh token and preserves correlation', async () => {

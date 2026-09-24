@@ -3418,6 +3418,30 @@
         return fetch(url, { ...options, headers, credentials: 'include' });
       }
 
+      async function isOrganizationSelectionConflict(response) {
+        if (response.status !== 403) return false;
+        try {
+          const data = await response.clone().json();
+          return data?.error === 'An unambiguous organization selection is required';
+        } catch (e) {
+          return false;
+        }
+      }
+
+      async function switchSessionOrganization(organizationId) {
+        if (typeof organizationId !== 'string' || !organizationId.trim() || nativeAuthToken) return false;
+        try {
+          const response = await authFetch('/auth/switch-organization', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_organization_id: organizationId.trim() }),
+          });
+          return response.ok;
+        } catch (e) {
+          return false;
+        }
+      }
+
       function getSelectedOrganizationId() {
         const urlOrg = new URLSearchParams(window.location.search).get('org');
         if (urlOrg) return urlOrg;
@@ -5377,7 +5401,7 @@
 
         try {
           const selectedOrganizationId = getSelectedOrganizationId();
-          const response = await authFetch('/api/addie/chat/stream', {
+          const postStream = () => authFetch('/api/addie/chat/stream', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -5395,6 +5419,15 @@
               retry: retrying,
             }),
           });
+          let response = await postStream();
+          // The org picker only changes the local selection. When the session
+          // is bound to another org, rebind it once and resend: auth rejected
+          // the request before the chat route saw it.
+          if (await isOrganizationSelectionConflict(response)
+              && await switchSessionOrganization(selectedOrganizationId)) {
+            requestId = crypto.randomUUID();
+            response = await postStream();
+          }
           requestId = validChatRequestId(response.headers.get('X-Request-ID')) || requestId;
 
           if (!response.ok) {
