@@ -199,7 +199,7 @@
     "@google-cloud/storage": "8.2.0",
     "@google/genai": "^2.23.0",
     "@google/generative-ai": "^0.24.1",
-    "@googleapis/calendar": "^16.0.0",
+    "@googleapis/calendar": "^20.0.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@mozilla/readability": "^0.6.0",
     "@opentelemetry/api-logs": "^0.222.0",
