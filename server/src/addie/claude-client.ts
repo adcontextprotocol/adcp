@@ -538,9 +538,17 @@ function finalizeAssistantText(
   const validation = enforceJsonValidationClaims(processed.text, toolExecutions);
   const lengthExceeded = validation.text.length > MAX_OUTPUT_LENGTH;
   const truncated = forceTruncation || lengthExceeded;
-  const delivered = truncated
-    ? enforceJsonValidationClaims(formatTruncatedOutput(validation.text), toolExecutions)
-    : validation;
+  let delivered = validation;
+  if (truncated) {
+    let contentBudget = MAX_OUTPUT_LENGTH;
+    do {
+      delivered = enforceJsonValidationClaims(formatTruncatedOutput(validation.text, contentBudget), toolExecutions);
+      // Removing a payload can turn its short confirmation into a longer
+      // disclaimer. Reserve that expansion and recheck the newly cut candidate.
+      // The budget strictly decreases; at zero only the continuation cue remains.
+      contentBudget -= Math.max(1, delivered.text.length - MAX_OUTPUT_LENGTH);
+    } while (delivered.text.length > MAX_OUTPUT_LENGTH);
+  }
   return {
     text: delivered.text,
     emptyReason: processed.reason,

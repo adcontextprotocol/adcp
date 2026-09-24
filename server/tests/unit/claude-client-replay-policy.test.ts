@@ -1297,6 +1297,30 @@ describe('AddieClaudeClient isolated execution policy', () => {
 });
 
 describe('persisted outcome delivery guard', () => {
+  it.each(['streaming', 'non_streaming'] as const)('keeps post-truncation validation rewrites within the output cap on %s delivery', async delivery => {
+    const handler = vi.fn().mockResolvedValue('✅ **Valid!** The JSON validates successfully against https://adcontextprotocol.org/schemas/3.1.24/a.json');
+    const json = { x: 'a'.repeat(500) };
+    const scoped = requestTools([tool('validate_json', 'pure_local')], [['validate_json', handler]]);
+    const queue = delivery === 'streaming' ? sdkState.streamingResponses : sdkState.nonStreamingResponses;
+    queue.push(
+      toolUseResponse([{ id: 'validation', name: 'validate_json', input: { json, schema_path: 'a.json' } }]),
+      textResponse(`Context.\n${'A'.repeat(31840)}.\nThe JSON passes validation.\n\`\`\`json\n${JSON.stringify(json)}\n\`\`\``),
+    );
+    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true };
+    const client = new AddieClaudeClient('unused');
+    let text: string;
+    if (delivery === 'streaming') {
+      const events: StreamEvent[] = [];
+      for await (const event of client.processMessageStream('Validate this JSON', undefined, scoped, options)) events.push(event);
+      text = events.filter(event => event.type === 'text').map(event => event.text).join('');
+    } else {
+      text = (await client.processMessage('Validate this JSON', undefined, scoped, { systemPrompt: 'system' }, options)).text;
+    }
+    expect(text.length).toBeLessThanOrEqual(32_000);
+    expect(text).not.toContain('passed validation');
+    expect(text).not.toContain('passes validation.');
+  });
+
   it.each(['streaming', 'non_streaming'] as const)('preserves the validated final candidate through all %s transforms', async delivery => {
     const handler = vi.fn().mockResolvedValue('✅ **Valid!** The JSON validates successfully against https://adcontextprotocol.org/schemas/3.1.24/core/product.json');
     const json = { description: 'You earned your certificate.' };

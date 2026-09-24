@@ -26,7 +26,8 @@ export function jsonValidationReceipt(execution: Pick<ToolExecution, 'tool_name'
 }
 
 function claimsValidation(text: string, validationContext: boolean): boolean {
-  const plain = text.replace(/[*_`]/g, '').replace(/[’‘]/g, "'");
+  const plain = text.replace(/[*_`]/g, '').replace(/[’‘]/g, "'")
+    .replace(/^\s*(?:#{1,6}|>|[-+]|\d+[.)])\s+/, '');
   return plain.split(/[,;]|\b(?:but|and)\b/i).some(clause => {
     if (!/\b(?:JSON|payload|candidate|example|schema)\b/i.test(clause)
       && !/^\s*Validated against\b/i.test(clause)
@@ -77,6 +78,8 @@ export function enforceJsonValidationClaims(text: string, executions: readonly T
   let rendered = false;
   for (let i = 0; i < parts.length; i += 2) {
     parts[i] = parts[i]!.split(/((?<=[.!?])\s+|\n+)/).map(part => {
+      // Rechecking a truncated answer must not expand our own disclaimer.
+      if (part.trim().endsWith('.') && UNCONFIRMED_JSON_VALIDATION.startsWith(part.trim())) return part;
       const prose = part.replace(/`\{[^`\n]*\}`/g, '').replace(/[`*_]/g, '');
       if (!claimsValidation(prose, validationContext)) return part;
       const inlineCandidates = part.match(/`\{[^`\n]*\}`/g) ?? [];

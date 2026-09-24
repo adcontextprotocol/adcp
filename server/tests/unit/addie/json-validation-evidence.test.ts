@@ -28,6 +28,8 @@ describe('evidence-backed JSON validation claims', () => {
 
   it.each(['Schema-Validated MVP Response', 'Validated against AdCP 3.1.24.', 'The JSON passes validation.', 'The payload is valid.',
     'Validation succeeded.', 'This payload conforms to the schema.', 'The JSON passed all schema checks.',
+    '### Validated against AdCP 3.2.0-rc.6', '### Validation succeeded.',
+    '- Validation succeeded.', '> Validation succeeded.',
     'The payload was not validated, but this JSON passes validation.'])(
     'blocks unsupported success prose after seven rejected attempts: %s', claim => {
       const result = enforceJsonValidationClaims(answer(claim), Array.from({ length: 7 }, () => receipt(candidate, schema, false)));
@@ -65,6 +67,11 @@ describe('evidence-backed JSON validation claims', () => {
 
   it('uses failed attempts as context, never as successful evidence', () => {
     expect(enforceJsonValidationClaims('Validation succeeded.', [receipt(candidate, schema, false)]).reason).toBeTruthy();
+  });
+
+  it('keeps an already-enforced disclaimer stable when checking a truncated answer again', () => {
+    const first = enforceJsonValidationClaims(answer('The JSON passes validation.'), []);
+    expect(enforceJsonValidationClaims(first.text, []).text).toBe(first.text);
   });
 
   it('preserves inline JSON when confirming or rejecting validation prose', () => {

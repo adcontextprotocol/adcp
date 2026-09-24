@@ -157,7 +157,7 @@ function certificationPredicates(text: string): RegExpMatchArray[] {
   });
 }
 
-const MODULE_OBJECT = '(?:(?:this|that|the|your)\\s+)?(?:(?:module\\s+)?[A-Z]{1,2}\\d{1,2}(?:\\s+and\\s+(?:module\\s+)?[A-Z]{1,2}\\d{1,2})*(?:\\s+module)?|module|capstone)';
+const MODULE_OBJECT = '(?:(?:all(?:\\s+of)?|both)\\s+)?(?:(?:this|that|the|your|each|every)\\s+)?(?:(?:entire|whole)\\s+)?(?:(?:modules?\\s+)?[A-Z]{1,2}\\d{1,2}(?:\\s+and\\s+(?:module\\s+)?[A-Z]{1,2}\\d{1,2})*(?:\\s+module)?|module|capstone)';
 const CREDENTIAL_NAME_WORD = '(?!(?:is|are|was|has|have|been|requires|needs)\\b)[\\w\'-]+';
 const CREDENTIAL_OBJECT = `(?:(?!(?:access|to|for|about|explaining|exercise|registration|buy|options|course|requires|needs|but)\\b)[\\w'-]+\\s+){0,5}(?:credential|certificate|badge|certification)(?:\\s+(?:for|in|of|as)\\s+${CREDENTIAL_NAME_WORD}(?:\\s+${CREDENTIAL_NAME_WORD}){0,3})?`;
 const OUTCOME_OBJECT = `(?:${MODULE_OBJECT}|${CREDENTIAL_OBJECT})`;
@@ -178,7 +178,7 @@ function certificationClaim(text: string, teachingContext: boolean): { ids: stri
     for (const target of [subject, object]) {
       if (!target) continue;
       if (CREDENTIAL.test(target)) { credential = true; continue; }
-      if (!teachingContext && !/\b(?:module\s+[A-Z]{1,2}\d{1,2}|[A-Z]{1,2}\d{1,2}\s+module|capstone)\b/i.test(target)) continue;
+      if (!teachingContext && !/\b(?:modules?\s+[A-Z]{1,2}\d{1,2}|[A-Z]{1,2}\d{1,2}\s+module|capstone)\b/i.test(target)) continue;
       module = true;
       for (const id of target.matchAll(MODULE_ID)) ids.add(id[0].toUpperCase());
     }

@@ -80,9 +80,21 @@ describe('receipt-bound certification claims', () => {
   });
 
   it('requires receipts for explicit module claims even without prior context', () => {
-    for (const text of ['Module B2 is complete.', 'You passed the B2 module.', 'You have completed your B2 module.']) {
+    for (const text of ['Module B2 is complete.', 'You passed the B2 module.', 'You have completed your B2 module.',
+      'You have completed the entire module B2.', 'You completed both modules B2 and B3.',
+      'You have completed all of module B2.', 'You have completed all of the module B2.']) {
       expect(enforceOutcomeClaims(text, []).reason).toBeTruthy();
     }
+  });
+
+  it('binds quantified module claims to every explicit module receipt', () => {
+    expect(enforceCertificationClaims('You completed the entire module B2.', [completed]).reason).toBeNull();
+    expect(enforceCertificationClaims('You completed both modules B2 and B3.', [completed]).reason).toBeTruthy();
+    const other = execution('complete_certification_module', 'Module B3 completed!');
+    const result = enforceCertificationClaims('You completed both modules B2 and B3.', [completed, other]);
+    expect(result.reason).toBeNull();
+    expect(result.text).toContain('B2 is recorded as complete.');
+    expect(result.text).toContain('B3 is recorded as complete.');
   });
 
   it('preserves outcome-like strings inside code and inline JSON', () => {
