@@ -253,22 +253,28 @@ function latestRcComplianceVersionForLine(line: string): string {
 }
 
 function latestBadgeEligibleComplianceVersionForLine(line: string): string {
+  if (line !== DEFAULT_HOSTED_COMPLIANCE_LINE) {
+    // Only the default line gets a prerelease fallback (below). A bare line
+    // alias like "3.2" with no stable build yet must throw rather than
+    // silently resolve to an RC — callers (badge eligibility, explicit
+    // `compliance_target: "3.2"`) treat the returned version as that line's
+    // stable release, and a silent RC substitution there is indistinguishable
+    // from an actual stable resolution.
+    return latestStableComplianceVersionForLine(line);
+  }
+
   try {
     return latestStableComplianceVersionForLine(line);
   } catch (stableError) {
     try {
       return latestRcComplianceVersionForLine(line);
     } catch {
-      // Fall through to beta/default handling below.
+      // Fall through to beta fallback below.
     }
 
-    if (line === DEFAULT_HOSTED_COMPLIANCE_LINE) {
-      // The default line may temporarily fall back to a beta cache while its
-      // stable compliance bundle is being staged.
-      return latestBetaComplianceVersionForLine(line);
-    }
-
-    throw stableError;
+    // The default line may temporarily fall back to a beta cache while its
+    // stable compliance bundle is being staged.
+    return latestBetaComplianceVersionForLine(line);
   }
 }
 
