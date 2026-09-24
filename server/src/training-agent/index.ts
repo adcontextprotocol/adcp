@@ -443,7 +443,7 @@ export function createTrainingAgentRouter(options: {
         });
       }
     } finally {
-      await server?.close().catch(() => {});
+      await server?.close().catch(() => { });
     }
   }
 
@@ -526,7 +526,7 @@ export function createTrainingAgentRouter(options: {
           });
         }
       } finally {
-        await server?.close().catch(() => {});
+        await server?.close().catch(() => { });
       }
     };
   }

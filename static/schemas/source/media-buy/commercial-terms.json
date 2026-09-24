@@ -44,6 +44,13 @@
         }
       }
     },
+    "definition_pins": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/definition-pin.json" },
+      "minItems": 1,
+      "description": "Seller-authored integrity pins for every covered publisher- or data-provider-hosted definition referenced by these commercial terms. Pins are part of the terms_digest projection and MUST be preserved in accepted readbacks.",
+      "uniqueItems": true
+    },
     "start_time": { "$ref": "/schemas/core/start-timing.json" },
     "end_time": { "type": "string", "format": "date-time" },
     "total_budget": {

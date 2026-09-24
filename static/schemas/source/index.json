@@ -249,6 +249,10 @@
           "$ref": "/schemas/core/audience-evidence-pin.json",
           "description": "Buyer commitment pin for an exact immutable audience-evidence snapshot"
         },
+        "definition-pin": {
+          "$ref": "/schemas/core/definition-pin.json",
+          "description": "Seller-authored integrity pin for a published commercial definition"
+        },
         "audience-evidence-selection": {
           "$ref": "/schemas/core/audience-evidence-selection.json",
           "description": "Digest-pinned package readback for evidence used in a decision"

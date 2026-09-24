@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/definition-pin.json",
+  "title": "Commercial Definition Pin",
+  "description": "Seller-authored integrity pin for a publisher- or data-provider-hosted definition referenced by accepted commercial terms.",
+  "type": "object",
+  "properties": {
+    "ref_kind": {
+      "type": "string",
+      "enum": [
+        "publisher_format_option",
+        "publisher_placement",
+        "publisher_collection",
+        "data_provider_signal"
+      ]
+    },
+    "reference": {
+      "type": "object",
+      "description": "Closed canonical identity of the referenced published definition. The required members depend on ref_kind.",
+      "properties": {
+        "scope": { "type": "string" },
+        "publisher_domain": { "type": "string" },
+        "format_option_id": { "type": "string" },
+        "placement_id": { "type": "string" },
+        "collection_id": { "type": "string" },
+        "data_provider_domain": { "type": "string" },
+        "signal_id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase hexadecimal SHA-256 digest of the RFC 8785 canonical definition projection."
+    },
+    "source_version": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": ["ref_kind", "reference", "content_digest"],
+  "additionalProperties": false
+}

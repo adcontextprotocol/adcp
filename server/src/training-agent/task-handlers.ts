@@ -59,6 +59,7 @@ import {
   accountScopeFromRef,
   canonicalizeAccountRef,
 } from './account-scope.js';
+import { buildDefinitionPins } from './definition-pins.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import {
   TRAINING_SELLER_VAST_VERSIONS,
@@ -7357,9 +7358,11 @@ function buildCanonicalCommercialTerms(
     };
   });
   const changeTerms = proposalChangeTermsForPurchases(purchases, products);
+  const definitionPins = buildDefinitionPins(purchases, products);
   return {
     brand,
     purchases,
+    ...(definitionPins.length > 0 && { definition_pins: definitionPins }),
     start_time: startTime,
     end_time: endTime,
     ...(isRecord(internal.__media_buy_frequency_cap) && {
@@ -21088,6 +21091,10 @@ export async function handleBuyProducts(
     brand,
     ...(args.advertiser_industry !== undefined && { advertiser_industry: args.advertiser_industry }),
     purchases: canonicalPurchases,
+    ...(() => {
+      const definitionPins = buildDefinitionPins(canonicalPurchases, productMap);
+      return definitionPins.length > 0 ? { definition_pins: definitionPins } : {};
+    })(),
     start_time: args.start_time === 'asap' ? purchaseStartedAt : args.start_time,
     end_time: args.end_time,
     ...(args.total_budget !== undefined && { total_budget: args.total_budget }),
@@ -21281,6 +21288,8 @@ async function acceptExistingMediaBuyProposal(
     const terms = proposal.commercial_terms;
     const compactTerms = terms as unknown as Record<string, unknown>;
     const compactPurchases = terms.purchases as unknown as CompactProductPurchase[];
+    const productMap = new Map(getCatalog().map(entry => [entry.product.product_id, entry.product]));
+    overlaySeededProducts(mediaBuySession, productMap);
     const cancellationTerms = isRecord(compactTerms.cancellation_terms) ? compactTerms.cancellation_terms : undefined;
     const bindingIds = new Map<number, string>();
     const priorPackageIds = new Set(mediaBuy.packages.map(pkg => pkg.packageId));
@@ -21321,8 +21330,6 @@ async function acceptExistingMediaBuyProposal(
       }
       const matchedPackageIds = new Set<string>();
       const packageUpdates: Record<string, unknown>[] = [];
-      const productMap = new Map(getCatalog().map(entry => [entry.product.product_id, entry.product]));
-      overlaySeededProducts(mediaBuySession, productMap);
       const packageViews = legacyPackagesFromPurchases(compactPurchases, (args.total_budget ?? terms.total_budget)?.amount, productMap);
       const newPackages: Record<string, unknown>[] = [];
       compactPurchases.forEach((purchase, index) => {
