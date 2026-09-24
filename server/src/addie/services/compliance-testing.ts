@@ -221,6 +221,7 @@ export type {
 async function hostedAuthDefaultsForRun(
   agentUrl: string,
   options: ComplyOptions,
+  target: HostedComplianceTarget,
 ): Promise<{ probeTask?: string; apiKey?: string }> {
   const hasOperatorTransportAuth = options.auth?.type === 'bearer' || options.auth?.type === 'basic';
   const shouldInferStaticFixture =
@@ -230,7 +231,7 @@ async function hostedAuthDefaultsForRun(
   }
 
   try {
-    const discovery = await discoverCapabilitiesWithDeadline(agentUrl, options);
+    const discovery = await discoverCapabilitiesWithDeadline(agentUrl, withHostedTestOptions(options, target));
     const apiKey = shouldInferStaticFixture
       ? hostedStaticApiKeyForProfile(discovery.profile)
       : undefined;
@@ -250,7 +251,7 @@ export async function comply(
   target: HostedComplianceTarget,
 ): Promise<ComplianceResult> {
   const safeOptions = withSdkSafeTransport(options);
-  const authDefaults = await hostedAuthDefaultsForRun(agentUrl, safeOptions);
+  const authDefaults = await hostedAuthDefaultsForRun(agentUrl, safeOptions, target);
   const result = await sdkComply(
     agentUrl,
     withSdkSafeTransport(
