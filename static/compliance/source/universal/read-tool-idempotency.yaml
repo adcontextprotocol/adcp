@@ -227,7 +227,6 @@ phases:
 
         sample_request:
           idempotency_key: "$generate:uuid_v4#read_tools_3_1_list_formats"
-          type: "display"
           pagination:
             max_results: 10
           context:
