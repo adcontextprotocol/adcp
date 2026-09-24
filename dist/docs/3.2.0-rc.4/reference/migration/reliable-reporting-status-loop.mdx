@@ -1,0 +1,217 @@
+---
+title: "Reliable Reporting consumer-status loop"
+description: "Breaking-change notice and migration guide for sync_reporting_status in Reliable Reporting Core."
+"og:title": "AdCP — Reliable Reporting consumer-status migration"
+---
+
+<Warning>
+**Experimental breaking-change notice published September 12, 2026.** Under
+AdCP's six-week experimental-surface notice policy, the Core requirement
+described here must not appear in an immutable release before October 24,
+2026. `3.2.0-rc.2` publishes the task as opt-in and `3.2.0-rc.3` hardens it;
+making it *required* is what the notice window governs. Published
+`3.2.0-rc.1` remains unchanged.
+</Warning>
+
+Reliable Reporting RC.1 lets a seller publish its obligation/revision state and
+requires a buyer to derive an independent expected-period denominator. It does
+not give the buyer a standard way to tell the seller that reporting was absent
+or unreadable. A seller can therefore project `healthy` while the buyer's
+webhook, exact revision read, or destination access is failing.
+
+`3.2.0-rc.2` closes that loop additively with opt-in
+[`sync_reporting_status`](/dist/docs/3.2.0-rc.4/media-buy/task-reference/sync_reporting_status),
+and `3.2.0-rc.3` hardens it. A seller advertises `consumer_status_task` only
+when the task and readback are implemented. The requirement itself lands only in the next eligible minor
+after the notice window. Both changes remain inside the experimental
+`media_buy.reporting_delivery` surface.
+
+## Capability change
+
+The blocks below are excerpts of `media_buy.reporting_delivery` showing only the
+fields that change; a real declaration also carries `offerings[]`,
+`automated_recovery_window_seconds`, and `status_retention_days`.
+
+Before (`3.2.0-rc.1`):
+
+```json
+{
+  "supported": true,
+  "reliable_reporting_version": "1.0",
+  "configuration_task": "sync_accounts",
+  "status_task": "get_reporting_status",
+  "revision_content_task": "get_media_buy_delivery"
+}
+```
+
+Current opt-in form (`3.2.0-rc.3`), and required form in the next eligible
+minor after the notice window:
+
+```json
+{
+  "supported": true,
+  "reliable_reporting_version": "1.0",
+  "configuration_task": "sync_accounts",
+  "status_task": "get_reporting_status",
+  "consumer_status_task": "sync_reporting_status",
+  "revision_content_task": "get_media_buy_delivery"
+}
+```
+
+A seller that also commits to an escalation clock advertises the window and the
+contact it escalates to. Both are optional, and declaring the window requires
+declaring the contact:
+
+```json
+{
+  "supported": true,
+  "reliable_reporting_version": "1.0",
+  "configuration_task": "sync_accounts",
+  "status_task": "get_reporting_status",
+  "consumer_status_task": "sync_reporting_status",
+  "revision_content_task": "get_media_buy_delivery",
+  "consumer_mismatch_escalation_seconds": 172800,
+  "operations_contact": {
+    "url": "https://status.streamhaus.example/reporting",
+    "email": "reporting-ops@streamhaus.example"
+  }
+}
+```
+
+`operations_contact` is inert human-facing metadata. Agents surface it to an
+operator; they never dereference the URL, send protocol traffic to it, or treat
+either value as a credential or as evidence of agent identity.
+
+The new field is optional during the notice window. When present, it commits the
+seller to the complete task and readback contract below. The next eligible minor
+makes the field required for Reliable Reporting Core. It does not add a buyer
+endpoint or webhook: buyers call the seller-hosted task using the same
+authenticated transport as other AdCP tasks.
+
+## Seller migration
+
+1. Accept batched immutable consumer status statements with ordinary AdCP
+   idempotency, atomic current-leaf supersession, bounded per-caller resources,
+   and caller/account isolation.
+2. Validate a missing obligation from the accepted configuration generation,
+   report definition, and period; do not require a seller-issued obligation ID.
+3. Retain superseded status history and include it in
+   `get_reporting_status(view: "periods")`, pagination totals, and
+   `changes_after` checkpoints for at least `status_retention_days`. Verify any
+   supplied seller snapshot ID and timestamp against the scoped snapshot you
+   actually issued.
+4. Compare the current buyer statement with the current seller projection. A
+   conflict creates a caller-scoped `CONSUMER_STATUS_MISMATCH`; it never rewrites
+   either party's evidence or contaminates another caller. Carry `opened_at` on
+   that issue and keep it fixed across re-emissions and severity changes.
+5. Apply the stale-`received` grace window. A `received` statement made stale
+   only by your own restatement is `delayed` until the `created_at` of the
+   **first** revision that superseded the one the buyer named, plus the
+   configuration generation's `schedule.delivery_sla`, as exact elapsed time in
+   UTC — or `automated_recovery_window_seconds` when that SLA resolves to a zero
+   duration. It is `action_required` after. Later restatements do not restart
+   the window, and an advertised `consumer_mismatch_escalation_seconds` boundary
+   takes precedence when the two overlap. Every other conflict —
+   `obligation_missing`, `revision_missing`, `unreadable`, `content_mismatch` —
+   is `action_required` immediately.
+6. Report `obligation_counts.consumer_status_pending` on the summary view:
+   obligations past `expected_at + automated_recovery_window_seconds` with no
+   current status from this caller. Count it and stop. Silence never changes
+   health, another count, or your `reliability_statistics`.
+7. Accept `content_mismatch` with its closed `mismatch_code`. It is a
+   contract-fact disagreement about the accepted configuration generation, not a
+   measurement dispute; do not route it into billing variance handling.
+8. Optionally advertise `consumer_mismatch_escalation_seconds` with an
+   `operations_contact`. If you do, an `open` or `acknowledged` issue still
+   unresolved at `opened_at` plus that window MUST be `action_required` with a
+   `contact_*` `recommended_action`.
+9. Do not retire a live disagreement. `issue_state` may reach `resolved` only
+   when the consumer supersedes the causing statement or your own projection
+   stops conflicting; `waived` records an off-protocol agreement and does not by
+   itself return the period to `healthy` or `complete`. Only `open` and
+   `acknowledged` issues appear in `issues[]`.
+10. Add `consumer_status_task: "sync_reporting_status"` only when every item
+    above is deployed.
+
+## Buyer migration
+
+1. Continue retaining accepted configuration generations and deriving expected
+   periods independently.
+2. After bounded retries, submit `received`, `obligation_missing`,
+   `revision_missing`, `unreadable`, or `content_mismatch` for the exact period;
+   do not wait indefinitely before making failure visible.
+3. Meet the posting deadline. Every elapsed expected period needs a current
+   status by `expected_at + automated_recovery_window_seconds`. If you are still
+   retrying at that point, post `revision_missing` or `unreadable` and supersede
+   it later — silence is counted against you in
+   `obligation_counts.consumer_status_pending` and tells the seller nothing.
+4. Send a new immutable statement with explicit supersession whenever status
+   changes.
+5. Re-read within the grace window when a seller restatement makes your
+   `received` stale. You have until the first superseding revision's
+   `created_at + delivery_sla` before the mismatch escalates to
+   `action_required`; a seller that restates again does not buy you more time.
+6. Use `content_mismatch` only for contract facts the accepted configuration
+   generation already fixed — a frozen media buy with no rows, a promised metric
+   absent, the wrong currency, rows outside the period. A disagreement about
+   counts belongs to
+   [billing authority](/dist/docs/3.2.0-rc.4/media-buy/advanced-topics/billing-authority)
+   and `makegood_policy`, not to this loop.
+7. Before closing the reporting scope, ensure every elapsed expected period has
+   a current consumer status.
+
+Missing buyer feedback remains unknown and never excuses the seller's reporting
+obligation. `received` is Core access evidence only; Reconciled Billing still
+uses [`sync_reporting_receipts`](/dist/docs/3.2.0-rc.4/media-buy/task-reference/sync_reporting_receipts)
+for materialization evidence, row/control totals, and canonical billing digests.
+
+## Billing authority stays separate
+
+None of this decides whose count governs an invoice. That remains
+`measurement_terms.billing_measurement` — see
+[Billing Authority](/dist/docs/3.2.0-rc.4/media-buy/advanced-topics/billing-authority). Current
+source reserves an optional `authoritative_party` (`seller` | `consumer`,
+default `seller`) on `reporting-delivery-config.json` so the two models can be
+unified additively later. **Sellers MUST reject `consumer` with
+`UNSUPPORTED_FEATURE`** during configuration validation; no released minor
+defines the buyer-deposited revision task it anticipates. Reserving it now means
+a future buyer-basis billing feed does not have to break the existing
+billing-feed constraints. Tracked in
+[#7440](https://github.com/adcontextprotocol/adcp/issues/7440).
+
+<Note>
+**Already emitting `CONSUMER_STATUS_MISMATCH`?** `opened_at` and
+`reporting_status_id` are now required on that issue code. The code itself
+shipped in RC.1's `reporting-status-issue.json` enum, so an RC.1 seller that
+already emits it must add `opened_at` — fixed at first emission, never advanced
+on re-emission — before validating against
+[`3.2.0-rc.3`](https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/reporting-status-issue.json).
+No other issue code is affected.
+</Note>
+
+## Verifying the loop
+
+Sellers advertising `consumer_status_task` run the capability-gated
+`reporting_consumer_status` storyboard. It uses the
+[`reporting_core_lifecycle_probe`](/dist/docs/3.2.0-rc.4/building/by-layer/L3/comply-test-controller#reporting_core_lifecycle_probe)
+controller fixture, which supplies every boundary the projection depends on:
+
+- `restate_after_received` restates a revision the caller already reported as
+  `received` and returns the `stale_received_grace_deadline`, so both sides of
+  the grace boundary are graded live rather than only in a seller's own
+  integration tests.
+- `advance_past_status_deadline` crosses `expected_at +
+  automated_recovery_window_seconds` without recording any statement, so the
+  storyboard can check that `obligation_counts.consumer_status_pending` rises,
+  that it clears on any posted leaf, and that neither transition moves `health`
+  or any other count.
+- `advance_past_escalation` crosses the open issue's `opened_at` plus
+  `consumer_mismatch_escalation_seconds` while the grace window is still open,
+  so the precedence rule is graded rather than assumed — and the returned
+  `issue_id` and `issue_opened_at` prove the window is anchored to the issue
+  rather than to the poll.
+
+The storyboard also grades each closed `mismatch_code`, rejection of a
+`content_mismatch` that omits it, and the advertised `operations_contact`.
+Cross-principal non-disclosure still requires an integration test — see
+[known limitations](/dist/docs/3.2.0-rc.4/reference/known-limitations#conformance-and-testing).
