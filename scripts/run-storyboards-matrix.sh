@@ -394,7 +394,7 @@ for entry in "${TENANTS[@]}"; do
   log=$(mktemp -t "storyboards-${tenant}.XXXXXX.log")
   orchestrator_failure=0
 
-  if { [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; } \
+  if { [ "${FLOOR_SET}" = "current" ] && { [ "${tenant}" = "sales" ] || [ "${tenant}" = "creative" ]; }; } \
     || [ "${tenant}" = "creative-builder" ]; then
     TENANT_PATH="${tenant}" \
       PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \

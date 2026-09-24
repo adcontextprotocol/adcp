@@ -96,8 +96,53 @@ function isProtocolScopedPath(filePath) {
   return PROTOCOL_SCOPED_PATHS.some(pattern => pattern.test(normalized));
 }
 
-function hasProtocolScopedChanges(changes) {
-  return changes.some(change => (change.paths || []).some(isProtocolScopedPath));
+// Only these complete operational substitutions are exempt. Any accompanying
+// edit (floors, selection, environment, failure policy, etc.) stays scoped.
+const CREATIVE_ISOLATION_SUBSTITUTIONS = new Map(Object.entries({
+  "scripts/run-storyboards-matrix.sh": [
+    [
+      "  if { [ \"${FLOOR_SET}\" = \"current\" ] && [ \"${tenant}\" = \"sales\" ]; } \\\n",
+      "  if { [ \"${FLOOR_SET}\" = \"current\" ] && { [ \"${tenant}\" = \"sales\" ] || [ \"${tenant}\" = \"creative\" ]; }; } \\\n"
+    ]
+  ],
+  ".github/workflows/training-agent-storyboards.yml": [
+    [
+      "          # matrix tenants remain monolithic; current /sales has its separate\n",
+      "          # matrix tenants except current /creative remain monolithic; current /sales has its separate\n"
+    ],
+    [
+      "          if [ \"${{ matrix.tenant }}\" = \"creative-builder\" ]; then\n",
+      "          if [ \"${{ matrix.tenant }}\" = \"creative-builder\" ] || { [ \"${{ matrix.surface }}\" = \"current\" ] && [ \"${{ matrix.tenant }}\" = \"creative\" ]; }; then\n"
+    ],
+    [
+      "            echo \"::error::One or more isolated creative-builder orchestrators failed. Counts above are diagnostic only.\"\n",
+      "            echo \"::error::One or more isolated ${{ matrix.tenant }} orchestrators failed. Counts above are diagnostic only.\"\n"
+    ]
+  ]
+}));
+
+function isCreativeIsolationOnlyChange(change, readFileAtHead, readFileAtBase) {
+  if (change.status !== 'M' || change.paths?.length !== 1) return false;
+  const filePath = normalizePath(change.paths[0]);
+  const substitutions = CREATIVE_ISOLATION_SUBSTITUTIONS.get(filePath);
+  if (!substitutions || !readFileAtHead || !readFileAtBase) return false;
+  try {
+    let expected = readFileAtBase(filePath);
+    const head = readFileAtHead(filePath);
+    if (typeof expected !== 'string' || !expected || typeof head !== 'string') return false;
+    for (const [before, after] of substitutions) {
+      if (expected.split(before).length !== 2) return false;
+      expected = expected.replace(before, after);
+    }
+    return expected === head;
+  } catch {
+    return false;
+  }
+}
+
+function hasProtocolScopedChanges(changes, readFileAtHead, readFileAtBase) {
+  return changes.some(change => !isCreativeIsolationOnlyChange(change, readFileAtHead, readFileAtBase)
+    && (change.paths || []).some(isProtocolScopedPath));
 }
 
 function isChangesetMaintenancePath(filePath) {
@@ -222,7 +267,7 @@ function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileA
 
   for (const change of changes) {
     for (const filePath of change.paths || []) {
-      if (isProtocolScopedPath(filePath)) {
+      if (isProtocolScopedPath(filePath) && !isCreativeIsolationOnlyChange(change, readFileAtHead, readFileAtBase)) {
         protocolScopedFiles.push(filePath);
       }
     }
@@ -289,7 +334,9 @@ function formatViolationMessage(violations) {
 
 function run(argv = process.argv.slice(2)) {
   const baseRef = argv[0] || defaultBaseRef();
-  const diffOutput = git(['diff', '--name-status', '--find-renames', `${baseRef}...HEAD`]);
+  const mergeBase = git(['merge-base', baseRef, 'HEAD']).trim();
+  const readFileAtBase = filePath => readFileAtRef(mergeBase, filePath);
+  const diffOutput = git(['diff', '--name-status', '--find-renames', `${mergeBase}...HEAD`]);
   const changes = parseNameStatus(diffOutput);
 
   if (argv.includes('--is-delete-only-cleanup')) {
@@ -313,7 +360,7 @@ function run(argv = process.argv.slice(2)) {
   }
 
   if (argv.includes('--has-protocol-scoped-changes')) {
-    const hasProtocol = hasProtocolScopedChanges(changes);
+    const hasProtocol = hasProtocolScopedChanges(changes, readFileAtHead, readFileAtBase);
     if (hasProtocol) {
       console.log('Protocol-scoped changes detected.');
       return 0;
@@ -325,7 +372,7 @@ function run(argv = process.argv.slice(2)) {
   const violations = findChangesetProtocolScopeViolations(
     changes,
     readFileAtHead,
-    filePath => readFileAtRef(baseRef, filePath)
+    readFileAtBase
   );
 
   if (violations.length > 0) {

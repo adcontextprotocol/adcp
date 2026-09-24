@@ -317,3 +317,110 @@ assert.strictEqual(
 );
 
 console.log('Changeset protocol scope tests passed.');
+
+// Complete before/after contents are required for the exact creative runner
+// substitution. Unrelated edits in these operational files remain scoped.
+{
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const replacements = {
+    'scripts/run-storyboards-matrix.sh': [[
+      '&& { [ "${tenant}" = "sales" ] || [ "${tenant}" = "creative" ]; }; }',
+      '&& [ "${tenant}" = "sales" ]; }',
+    ]],
+    '.github/workflows/training-agent-storyboards.yml': [
+      ['# matrix tenants except current /creative remain monolithic;', '# matrix tenants remain monolithic;'],
+      ['if [ "${{ matrix.tenant }}" = "creative-builder" ] || { [ "${{ matrix.surface }}" = "current" ] && [ "${{ matrix.tenant }}" = "creative" ]; }; then',
+        'if [ "${{ matrix.tenant }}" = "creative-builder" ]; then'],
+      ['One or more isolated ${{ matrix.tenant }} orchestrators failed.', 'One or more isolated creative-builder orchestrators failed.'],
+    ],
+  };
+  for (const [file, substitutions] of Object.entries(replacements)) {
+    const head = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+    let base = head;
+    for (const [after, before] of substitutions) {
+      assert.ok(base.includes(after));
+      base = base.replace(after, before);
+    }
+    const changes = [{ status: 'M', paths: [file] }];
+    const classify = (candidate = head, prior = base, delta = changes) =>
+      hasProtocolScopedChanges(delta, readFiles({ [file]: candidate }), readFiles({ [file]: prior }));
+    assert.strictEqual(classify(), false, `${file}: exact isolation substitution is operational`);
+    assert.strictEqual(hasProtocolScopedChanges(changes), true, 'path-only queries fail closed');
+    assert.strictEqual(classify(head, ''), true, 'missing base fails closed');
+    assert.strictEqual(classify('', base), true, 'missing head fails closed');
+    assert.strictEqual(hasProtocolScopedChanges(changes, () => { throw new Error('unreadable'); }, () => base), true);
+    assert.strictEqual(classify(head, head), true, 'an absent substitution cannot exempt other edits');
+    assert.strictEqual(classify(head + '\n', base), true, 'extra edits fail closed');
+    assert.strictEqual(classify(head, base + base), true, 'ambiguous substitution fails closed');
+    for (const status of ['A', 'D', 'R100', 'C100']) {
+      assert.strictEqual(classify(head, base, [{ status, paths: [file] }]), true, status);
+    }
+    assert.strictEqual(classify(head, base, [{ status: 'R100', paths: ['previous.sh', file] }]), true);
+    for (const [before, after] of [['209', '208'], ['49', '48'], ['--shard-count 8', '--shard-count 1'],
+      ['PUBLIC_TEST_AGENT_TOKEN', 'REPLACED_TOKEN'], ['orchestrator_failure=1', 'orchestrator_failure=0']]) {
+      assert.ok(head.includes(before));
+      assert.strictEqual(classify(head.replace(before, after)), true, `${file}: ${before} must remain scoped`);
+    }
+    const mixed = [...changes, { status: 'M', paths: ['static/compliance/source/universal/security.yaml'] }];
+    assert.strictEqual(classify(head, base, mixed), true, 'mixed protocol changes still require changesets');
+    for (const content of [protocolChangeset, emptyChangeset]) {
+      const withChangeset = [...changes, { status: 'A', paths: ['.changeset/unnecessary.md'] }];
+      assert.strictEqual(findChangesetProtocolScopeViolations(withChangeset,
+        readFiles({ [file]: head, '.changeset/unnecessary.md': content }), readFiles({ [file]: base })).length, 1,
+      'operational substitution rejects gratuitous protocol and empty changesets');
+    }
+    // A separately landed npm-ci substitution may be present identically on
+    // both sides, but this exemption cannot absorb it into the same delta.
+    assert.strictEqual(classify(head.replaceAll('run: npm ci', 'run: node .github/scripts/npm-ci.mjs'),
+      base.replaceAll('run: npm ci', 'run: node .github/scripts/npm-ci.mjs')), false);
+    if (file.endsWith('.yml')) assert.strictEqual(classify(head.replaceAll('run: npm ci', 'run: node .github/scripts/npm-ci.mjs')), true);
+  }
+  assert.strictEqual(hasProtocolScopedChanges([{ status: 'M', paths: ['.github/workflows/release.yml'] }], () => '', () => ''), true);
+}
+
+// Verify the actual CLI reads the diff's merge base, including when main has
+// advanced independently. Neither query nor changeset rejection may regress to
+// a path-only classification after the unit-level exemption succeeds.
+{
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { execFileSync, spawnSync } = require('node:child_process');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'creative-scope-cli-'));
+  const git = (...args) => execFileSync('git', args, { cwd: directory, stdio: 'pipe' }).toString().trim();
+  const checker = path.resolve(__dirname, '../scripts/check-changeset-protocol-scope.cjs');
+  const file = 'scripts/run-storyboards-matrix.sh';
+  const head = fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');
+  const base = head.replace('&& { [ "${tenant}" = "sales" ] || [ "${tenant}" = "creative" ]; }; }',
+    '&& [ "${tenant}" = "sales" ]; }');
+  const check = (...args) => spawnSync(process.execPath, [checker, 'main', ...args], { cwd: directory, encoding: 'utf8' });
+  try {
+    git('init', '-b', 'main');
+    git('config', 'user.name', 'Scope fixture');
+    git('config', 'user.email', 'scope@example.test');
+    git('config', 'core.hooksPath', '/dev/null');
+    fs.mkdirSync(path.join(directory, 'scripts'));
+    fs.writeFileSync(path.join(directory, file), base);
+    git('add', '.'); git('commit', '-m', 'base');
+    git('checkout', '-b', 'candidate');
+    fs.writeFileSync(path.join(directory, file), head);
+    git('add', '.'); git('commit', '-m', 'isolate creative');
+    assert.strictEqual(check('--has-protocol-scoped-changes').status, 1);
+    assert.strictEqual(check().status, 0);
+    git('checkout', 'main');
+    fs.appendFileSync(path.join(directory, file), '\n# independent main edit\n');
+    git('add', '.'); git('commit', '-m', 'advance main');
+    git('checkout', 'candidate');
+    assert.match(check('--has-protocol-scoped-changes').stdout, /No protocol-scoped changes detected/);
+    fs.mkdirSync(path.join(directory, '.changeset'));
+    fs.writeFileSync(path.join(directory, '.changeset/unnecessary.md'), protocolChangeset);
+    git('add', '.'); git('commit', '-m', 'gratuitous bump');
+    assert.strictEqual(check().status, 1);
+    fs.writeFileSync(path.join(directory, file), head.replace('creative:49:209', 'creative:49:208'));
+    git('add', '.'); git('commit', '-m', 'floor change');
+    assert.strictEqual(check('--has-protocol-scoped-changes').status, 0);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+}
