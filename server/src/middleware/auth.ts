@@ -893,6 +893,62 @@ function sendAuthorizationStateError(error: unknown, res: Response, includeTrans
 }
 
 /**
+ * Rebind the caller's sealed WorkOS session to another organization.
+ * Request fields never select authority on their own: WorkOS verifies the
+ * membership during the refresh, and later requests carry the new provider org.
+ * Mount behind requireAuth. The target uses its own field so it is not read as
+ * a conflicting organization selector by the auth middleware.
+ */
+export async function switchSessionOrganization(req: Request, res: Response) {
+  const target = req.body?.target_organization_id;
+  if (typeof target !== 'string' || !target.trim()) {
+    return res.status(400).json({ error: 'target_organization_id is required' });
+  }
+  const sessionCookie = req.headers.authorization === undefined ? req.cookies?.['wos-session'] : undefined;
+  if (!sessionCookie) {
+    return res.status(400).json({ error: 'Organization switching requires a browser session' });
+  }
+
+  const cacheKey = hashSessionCookie(sessionCookie);
+  try {
+    // The cookie's refresh token may already be rotated by a concurrent refresh.
+    const current = sessionCache.get(cacheKey)?.newSealedSession
+      ?? await getRefreshedSession(cacheKey)
+      ?? sessionCookie;
+    const result = await workos.userManagement.loadSealedSession({
+      sessionData: current,
+      cookiePassword: WORKOS_COOKIE_PASSWORD,
+    }).refresh({ cookiePassword: WORKOS_COOKIE_PASSWORD, organizationId: target.trim() });
+
+    if (!result.authenticated || !result.sealedSession) {
+      if ('retryable' in result && result.retryable) {
+        return res.status(503).json({ error: 'Authentication service temporarily unavailable' });
+      }
+      logger.info(
+        { userId: req.user?.id, reason: 'reason' in result ? result.reason : undefined },
+        'Session organization switch rejected',
+      );
+      return res.status(403).json({ error: 'Unable to switch to that organization' });
+    }
+
+    sessionCache.delete(cacheKey);
+    setSessionCookie(res, result.sealedSession);
+    // Other instances holding the old cookie adopt the switched session.
+    storeRefreshedSession(cacheKey, result.sealedSession).catch((err) => {
+      logger.error({ err }, 'Failed to store switched session — other instances may force re-auth');
+    });
+    return res.json({ organization_id: target.trim() });
+  } catch (error) {
+    if (isTransientAuthError(error)) {
+      logger.warn({ err: error }, 'Authentication service unavailable during organization switch');
+      return res.status(503).json({ error: 'Authentication service temporarily unavailable' });
+    }
+    logger.warn({ err: error, userId: req.user?.id }, 'Session organization switch failed');
+    return res.status(403).json({ error: 'Unable to switch to that organization' });
+  }
+}
+
+/**
  * Middleware to require authentication
  * Checks for WorkOS session cookie and loads user info
  * Also accepts WorkOS API keys as Bearer token for programmatic access
