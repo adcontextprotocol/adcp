@@ -13525,6 +13525,10 @@ paths:
                           - monitoring_requeue
                       alternative_description:
                         type: string
+                      tracking_issue:
+                        type: string
+                        format: uri
+                        description: Issue tracking the restoration of human-initiated refresh
                     required:
                       - error
                       - code
@@ -13533,6 +13537,7 @@ paths:
                       - applies_to
                       - alternative_action
                       - alternative_description
+                      - tracking_issue
   /api/registry/agents/{encodedUrl}/refreshes/{operationId}:
     get:
       operationId: getAgentRefreshOperation

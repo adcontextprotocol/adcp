@@ -275,6 +275,7 @@ describe("dashboard agent refresh", () => {
   it('renders the non-retryable pause before a click and keeps requeue semantically separate', () => {
     expect(dashboardSource).toContain('cs?.refresh_availability');
     expect(dashboardSource).toContain('data-refresh-paused="true"');
+    expect(dashboardSource).toContain('refreshAvailability.tracking_issue');
     expect(dashboardSource).toContain('This is not a human refresh and has no guaranteed start time.');
     expect(dashboardSource).not.toContain('runs within ~1 hour');
     expect(dashboardSource).not.toContain('next heartbeat cycle (within ~1 hour)');
