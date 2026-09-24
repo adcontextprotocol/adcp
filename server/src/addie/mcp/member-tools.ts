@@ -86,6 +86,7 @@ import { getTestKitForStoryboard } from '../../services/storyboards.js';
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
+  HostedComplianceTargetError,
   HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS,
   hostedAuthProbeTaskForProfile,
   withHostedStoryboardRunOptions,
@@ -184,7 +185,8 @@ function targetFromInput(input: Record<string, unknown>): ReturnType<typeof host
     return typeof requested === 'string' && requested.trim()
       ? hostedComplianceTarget(requested.trim())
       : complianceTarget;
-  } catch {
+  } catch (error) {
+    if (error instanceof HostedComplianceTargetError) throw new ToolError(error.message);
     throw new ToolError('Invalid compliance_target. Use 3.1, 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.');
   }
 }
