@@ -668,6 +668,26 @@ test("workflow wiring binds tested SHA, approval, exact recovery, and publicatio
     steps.indexOf(step("Upload protocol tarball to GitHub Release")) <
       steps.indexOf(step("Publish release artifacts to R2")),
   );
+  const artifactCredentials = step(
+    "Refresh credentials for artifact publication",
+  );
+  assert.ok(
+    steps.indexOf(step("Upload protocol tarball to GitHub Release")) <
+      steps.indexOf(artifactCredentials) &&
+      steps.indexOf(artifactCredentials) <
+        steps.indexOf(step("Publish release artifacts to R2")),
+  );
+  assert.equal(artifactCredentials.uses, "actions/checkout@v7.0.1");
+  assert.equal(
+    artifactCredentials.with.ref,
+    "${{ needs.verify-release.outputs.target_commit }}",
+  );
+  assert.equal(artifactCredentials.with["fetch-depth"], 0);
+  assert.equal(artifactCredentials.with.token, "${{ github.token }}");
+  assert.equal(
+    step("Publish release artifacts to R2").env.GH_TOKEN,
+    "${{ github.token }}",
+  );
   assert.equal(
     step("Create Release Pull Request or Tag Release").with["publish-script"],
     undefined,
