@@ -6,6 +6,7 @@
  */
 
 import { enforceOutcomeClaims, outcomeClaimContext } from './outcome-claims.js';
+import { enforceJsonValidationClaims } from './json-validation-evidence.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { createHash, createHmac } from 'node:crypto';
 import { createLogger } from '../logger.js';
@@ -533,12 +534,17 @@ function finalizeAssistantText(
     outcome.text,
     toolExecutions,
   );
-  const lengthExceeded = processed.text.length > MAX_OUTPUT_LENGTH;
+  // Match receipts to the final rendered candidate after all prose transforms.
+  const validation = enforceJsonValidationClaims(processed.text, toolExecutions);
+  const lengthExceeded = validation.text.length > MAX_OUTPUT_LENGTH;
   const truncated = forceTruncation || lengthExceeded;
+  const delivered = truncated
+    ? enforceJsonValidationClaims(formatTruncatedOutput(validation.text), toolExecutions)
+    : validation;
   return {
-    text: truncated ? formatTruncatedOutput(processed.text) : processed.text,
+    text: delivered.text,
     emptyReason: processed.reason,
-    localReplacementReason: githubIssueOutcome.reason ?? evidenceBoundary.reason ?? outcome.reason,
+    localReplacementReason: githubIssueOutcome.reason ?? evidenceBoundary.reason ?? outcome.reason ?? validation.reason ?? delivered.reason,
     lengthExceeded,
   };
 }

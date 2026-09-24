@@ -15,6 +15,54 @@ const shareUrl = 'https://credsverse.com/credentials/abc-b2';
 const issued = { ...awarded, result: `${awarded.result}\n- [View and share your credential](${shareUrl})` };
 
 describe('receipt-bound certification claims', () => {
+  it('preserves product discovery conclusions even with certification history', () => {
+    const text = 'Your media buy is complete. This is guaranteed streaming audio inventory. We have finished the product comparison.';
+    const result = enforceCertificationClaims(text, [execution('call_adcp_get_products', 'Products found.')]);
+    expect(result).toEqual({ text, reason: null });
+  });
+
+  it('preserves B1 membership guidance and unrelated completion predicates', () => {
+    const text = 'You completed the exercise; B1 requires an active member organization. You have mastered it. We can continue once membership is active.';
+    expect(enforceCertificationClaims(text, [execution('start_certification_module', 'Membership required')]))
+      .toEqual({ text, reason: null });
+  });
+
+  it('confirms the successful A3 module and Basics credential without contradictory copy', () => {
+    const receipt = execution('complete_certification_module', `Module A3 completed! The learner has demonstrated mastery of all learning objectives.\n**Credential earned: AdCP Basics!**\n- [View and share your credential](${shareUrl})`);
+    const text = 'Congratulations, you completed A3! You are now AdCP Basics certified! Your credential is ready to share.';
+    const result = enforceCertificationClaims(text, [receipt], 'A3 certification');
+    expect(result.reason).toBeNull();
+    expect(result.text).toContain('A3 is recorded as complete.');
+    expect(result.text).toContain('AdCP Basics');
+    expect(result.text).toContain(shareUrl);
+    expect(result.text).not.toContain("haven't confirmed");
+  });
+
+  it('binds module outcomes to their clause and preserves the next module guidance', () => {
+    for (const text of ['B2 is complete, but B3 requires membership.', 'B2 is complete and B3 requires membership.']) {
+      const result = enforceCertificationClaims(text, [completed]);
+      expect(result.reason).toBeNull();
+      expect(result.text).toContain('B2 is recorded as complete.');
+      expect(result.text).toContain('B3 requires membership.');
+    }
+  });
+
+  it.each([
+    'You completed the exercise and module B1 requires membership.',
+    'You completed the exercise and your credential requires membership.',
+    'You completed the registration for module B1.',
+    'I finished explaining your certification options.',
+    'You earned access to the B1 certification course.',
+  ])('does not attach an unrelated predicate to certification nouns: %s', text => {
+    expect(enforceCertificationClaims(text, [])).toEqual({ text, reason: null });
+  });
+
+  it('does not add module completions to a credential-only claim', () => {
+    const result = enforceCertificationClaims('You earned the AdCP Practitioner credential.', [issued]);
+    expect(result.reason).toBeNull();
+    expect(result.text).not.toContain('B2');
+    expect(result.text).toContain(shareUrl);
+  });
   it.each(['Q4', 'H1', 'H2', 'V2', 'P1', 'S3', 'b2'])(
     'preserves ordinary identifiers outside a teaching conversation: %s', id => {
       const text = `Your ${id} migration is complete.`;
@@ -32,7 +80,21 @@ describe('receipt-bound certification claims', () => {
   });
 
   it('requires receipts for explicit module claims even without prior context', () => {
-    expect(enforceOutcomeClaims('Module B2 is complete.', []).reason).toBeTruthy();
+    for (const text of ['Module B2 is complete.', 'You passed the B2 module.', 'You have completed your B2 module.']) {
+      expect(enforceOutcomeClaims(text, []).reason).toBeTruthy();
+    }
+  });
+
+  it('preserves outcome-like strings inside code and inline JSON', () => {
+    for (const text of ['```json\n{"description":"You earned your certificate."}\n```', '`{"description":"Module B2 is complete."}`']) {
+      expect(enforceOutcomeClaims(text, [])).toEqual({ text, reason: null });
+    }
+  });
+
+  it('preserves Markdown boundaries between rewritten prose and payloads', () => {
+    const json = '```json\n{"x":1}\n```';
+    expect(enforceOutcomeClaims(`Module B2 is complete.\n\n${json}`, []).text)
+      .toBe(`${UNCONFIRMED_CERTIFICATION}\n\n${json}`);
   });
 
   it.each(['The get_products module needs a tutorial.', 'Update the reporting module.', 'The S3 migration uses v2.'])(
@@ -48,6 +110,8 @@ describe('receipt-bound certification claims', () => {
 
   it.each([
     'B2 is complete.', 'B2 is concluded.', 'B2 is done.', 'B2 mastery is confirmed.',
+    'You passed the B2 module.', 'You have completed your B2 module.',
+    'You passed your capstone.', 'You are officially done with module B2.',
     "The credential's yours.", 'Your Foundations certificate is ready to download.', 'Your certification has been awarded.',
     'B2 is completed, so do not forget to practice.', 'B2 is completed but not yet reflected in your profile.',
     'B2 is completed when you are ready to move on.',
@@ -56,7 +120,7 @@ describe('receipt-bound certification claims', () => {
     'We finished B2.', 'Congratulations, you passed B2!',
     'Your AdCP Practitioner credential is earned.', 'You are now certified!',
   ])('replaces an unconfirmed claim: %s', text => {
-    expect(enforceCertificationClaims(text, []).text).toBe(UNCONFIRMED_CERTIFICATION);
+    expect(enforceCertificationClaims(text, []).text).toContain(UNCONFIRMED_CERTIFICATION);
   });
 
   it('blocks rejected completion, then another exchange with no retry', () => {
@@ -161,12 +225,13 @@ describe('receipt-bound certification claims', () => {
 
   it.each([
     'You completed the exercise and this module is complete.',
-    'You completed the exercise, so you have mastered it.',
   ])('does not let a teaching subtask authorize another conclusion: %s', text => {
     expect(enforceCertificationClaims(text, [], 'B2 certification').reason).toBeTruthy();
   });
 
   it.each([
+    'You completed the exercise, so you have mastered it.',
+    'You earned it.',
     'The media buy was completed after the seller accepted the proposal.',
     'You are ready to try another exercise.', 'You are ready for B2.',
     'You have completed the exercise.', "You've completed the tutorial.", 'You have mastered this example.', 'Mastery comes from practice.', 'Complete B2 before starting B3.',

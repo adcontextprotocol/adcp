@@ -44,6 +44,42 @@ function call(input: Record<string, unknown> = { id: 'abc' }): ModelToolCallCont
 describe('createAddieToolExecutor', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('reuses only identical deterministic validation failures within one executor turn', async () => {
+    const raw = '❌ **Invalid.** Validation errors against https://adcontextprotocol.org/schemas/3.1.24/core/product.json:\n\n- /totals: must be object';
+    const handler = vi.fn().mockResolvedValue(raw);
+    const options = { executionMode: 'evaluation' as const, policy: () => ({ allowed: true }) };
+    const makeExecutor = () => createAddieToolExecutor([{ ...tool, name: 'validate_json' }], new Map([['validate_json', handler]]), options);
+    const execute = makeExecutor();
+    const first = { ...call({ json: { totals: [], status: 'ok' }, schema_path: 'core/product.json' }), name: 'validate_json' };
+    await execute(first, 1);
+    const duplicate = await execute({ ...first, id: 'duplicate', input: { schema_path: 'core/product.json', json: { status: 'ok', totals: [] } } }, 2);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(duplicate.execution).toMatchObject({ is_error: true, reused_result: true, duration_ms: 0, sequence: 2 });
+    expect(duplicate.result).toMatchObject({ toolCallId: 'duplicate', isError: true });
+    expect(duplicate.result.content).toContain('Change the candidate or schema');
+    expect(duplicate.result.content).toContain('/totals: must be object');
+    await execute({ ...first, input: { ...first.input, json: { totals: {}, status: 'ok' } } }, 3);
+    await execute({ ...first, input: { ...first.input, schema_path: 'core/format.json' } }, 4);
+    await execute({ ...first, input: { ...first.input, version: '3.2-rc' } }, 5);
+    await makeExecutor()(first, 1);
+    expect(handler).toHaveBeenCalledTimes(5);
+  });
+
+  it.each([
+    '❌ **Invalid.** Validation errors against https://adcontextprotocol.org/schemas/3.1.24/core/product.json:\n\n- Schema validation failed: upstream unavailable',
+    '✅ **Valid!** The JSON validates successfully against https://adcontextprotocol.org/schemas/3.1.24/core/product.json',
+    'Error: Temporary timeout',
+  ])('does not cache successful or nondeterministic validation results', async raw => {
+    const handler = vi.fn().mockResolvedValue(raw);
+    const execute = createAddieToolExecutor([{ ...tool, name: 'validate_json' }], new Map([['validate_json', handler]]), {
+      executionMode: 'evaluation', policy: () => ({ allowed: true }),
+    });
+    const request = { ...call({ json: {} }), name: 'validate_json' };
+    await execute(request, 1);
+    await execute(request, 2);
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     ['list_github_issues', 'GitHub rejected the request while trying to list issues (422).', 'invalid_input'],
     ['call_adcp_task', '**Task failed:** `si_initiate_session`\n\n**Error:** Unknown tool: si_initiate_session', 'error'],
