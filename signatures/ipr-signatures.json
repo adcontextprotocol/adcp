@@ -519,6 +519,16 @@
       "pullRequestNo": 7646,
       "comment_id": 5775385884,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7646#issuecomment-5775385884"
+    },
+    {
+      "name": "otsybizov",
+      "id": 40855970,
+      "created_at": "2026-09-24T19:33:00Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 7685,
+      "comment_id": 5820848574,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7685#issuecomment-5820848574"
     }
   ]
 }
