@@ -7,6 +7,7 @@ import {
   type FileReadResult,
 } from '../mcp/url-tools.js';
 import { ToolError } from '../tool-error.js';
+import { jsonValidationReceipt, REPEATED_JSON_VALIDATION } from '../json-validation-evidence.js';
 import {
   hasDurableHandlerOutcome,
   isSideEffectToolCall,
@@ -76,6 +77,8 @@ export interface ToolExecution {
   duration_ms: number;
   sequence: number;
   blocked_by_policy?: true;
+  /** A deterministic validation failure was reused without another handler call. */
+  reused_result?: true;
   normalized_result?: ToolResultPresentation;
   /** A normal return from an allowlisted local mutation handler settled its reservation. */
   durable_outcome?: 'known';
@@ -680,6 +683,7 @@ export function createAddieToolExecutor(
 ): AddieToolExecutor {
   const registry = new Map<string, RegisteredTool>();
   const dispatchedSideEffects = new Set<string>();
+  const validationFailures = new Map<string, NormalizedToolResult>();
   for (const sourceDefinition of tools) {
     const definition = snapshotDefinition(sourceDefinition);
     registry.set(definition.name, {
@@ -821,6 +825,19 @@ export function createAddieToolExecutor(
       return failureResult(call, sequence, options.executionMode, normalized, 0, true);
     }
 
+    // This executor belongs to one model turn. Never cache successful results,
+    // transport failures, or arbitrary tool errors, and always check policy.
+    const validationKey = call.name === 'validate_json' ? sideEffectReplayKey(call.name, call.input) : null;
+    const previousValidation = validationKey ? validationFailures.get(validationKey) : undefined;
+    if (previousValidation) {
+      const reused = failureResult(call, sequence, options.executionMode, {
+        ...previousValidation,
+        model_context: `${previousValidation.model_context}\n\n${REPEATED_JSON_VALIDATION}`,
+      }, 0);
+      reused.execution.reused_result = true;
+      return reused;
+    }
+
     if (sideEffectKey) {
       if (operationalExecution && !options.reserveSideEffect) {
         const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
@@ -916,6 +933,12 @@ export function createAddieToolExecutor(
             user_summary: 'GitHub issue creation was not confirmed.',
           }))
         : handlerNormalized;
+      if (validationKey && jsonValidationReceipt({
+        tool_name: call.name, parameters: call.input, result: normalized.model_context,
+        is_error: isToolResultError(normalized.status),
+      })?.valid === false) {
+        validationFailures.set(validationKey, normalized);
+      }
       const presentation = recordedPresentation(options.executionMode, normalized);
       const isError = isToolResultError(normalized.status);
       const modelResult = renderToolResultForModel(call.name, normalized);

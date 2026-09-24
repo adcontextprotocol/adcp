@@ -106,6 +106,17 @@ afterEach(() => {
 });
 
 describe('schema handler version resolution', () => {
+  it.each([{ json: [] }, { json: [1] }, { json: 'text' }, { json: 42 }, { json: true }, { json: null }])(
+    'rejects top-level arrays and scalar JSON before fetching a schema: $json', async ({ json }) => {
+      expect(SCHEMA_TOOLS.find(tool => tool.name === 'validate_json')?.input_schema.properties.json.type).toBe('object');
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(createSchemaToolHandlers().get('validate_json')!({ json, schema_path: 'core/product.json' }))
+        .rejects.toThrow('json must be a non-null object, not an array or primitive value.');
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   const publicSelectors: Array<{
     selector?: string;
     canonical: string;

@@ -140,22 +140,50 @@ function supportReceipt(executions: readonly ToolExecution[]): { id: number; not
 }
 
 /** Test each outcome predicate; an unrelated negation cannot exempt a claim. */
-function assertsCertificationOutcome(text: string): boolean {
-  if (/^(?:complete|finish|pass|master|earn)\b/i.test(text.trim())) return false;
-  if (/^(?:have|has|is|are|did|can|could|would|will)\b/i.test(text.trim()) && text.endsWith('?')) return false;
+function certificationPredicates(text: string): RegExpMatchArray[] {
+  if (/^(?:complete|finish|pass|master|earn)\b/i.test(text.trim())) return [];
+  if (/^(?:have|has|is|are|did|can|could|would|will)\b/i.test(text.trim()) && text.endsWith('?')) return [];
   const predicates = [...text.matchAll(COMPLETION)];
   if (CREDENTIAL.test(text)) predicates.push(...text.matchAll(/\b(?:yours|ready(?=\s*[.!?]?$| to (?:download|share)| for (?:download|sharing)))/gi));
   if (/\bmastery\b/i.test(text)) predicates.push(...text.matchAll(/\b(?:confirmed|demonstrated|recorded)\b/gi));
-  for (const match of predicates) {
+  return predicates.filter(match => {
     const prefix = text.slice(0, match.index);
     // Negation must apply to this predicate, not another clause.
-    if (/\b(?:not|never|haven't|hasn't|isn't|aren't|cannot|can't)(?:\s+\w+){0,2}\s+$/i.test(prefix)) continue;
+    if (/\b(?:not|never|haven't|hasn't|isn't|aren't|cannot|can't)(?:\s+\w+){0,2}\s+$/i.test(prefix)) return false;
     const clause = prefix.split(/[,;:]|\b(?:but|and|so)\b/i).at(-1)!.trim();
-    if (/^(?:once|if|when|until|before|to)\b/i.test(clause)) continue;
-    if (/\bto\s+$/i.test(prefix)) continue;
+    if (/^(?:once|if|when|until|before|to)\b/i.test(clause)) return false;
+    if (/\bto\s+$/i.test(prefix)) return false;
     return true;
+  });
+}
+
+const MODULE_OBJECT = '(?:(?:all(?:\\s+of)?|both)\\s+)?(?:(?:this|that|the|your|each|every)\\s+)?(?:(?:entire|whole)\\s+)?(?:(?:modules?\\s+)?[A-Z]{1,2}\\d{1,2}(?:\\s+and\\s+(?:module\\s+)?[A-Z]{1,2}\\d{1,2})*(?:\\s+module)?|module|capstone)';
+const CREDENTIAL_NAME_WORD = '(?!(?:is|are|was|has|have|been|requires|needs)\\b)[\\w\'-]+';
+const CREDENTIAL_OBJECT = `(?:(?!(?:access|to|for|about|explaining|exercise|registration|buy|options|course|requires|needs|but)\\b)[\\w'-]+\\s+){0,5}(?:credential|certificate|badge|certification)(?:\\s+(?:for|in|of|as)\\s+${CREDENTIAL_NAME_WORD}(?:\\s+${CREDENTIAL_NAME_WORD}){0,3})?`;
+const OUTCOME_OBJECT = `(?:${MODULE_OBJECT}|${CREDENTIAL_OBJECT})`;
+const OUTCOME_SUBJECT = new RegExp(`\\b(${OUTCOME_OBJECT})(?:'s)?\\s*(?:(?:is|are|was|were|has|have|been|now|officially|already|successfully|recorded|marked|as|mastery)\\s+){0,6}$`, 'i');
+const OUTCOME_DIRECT_OBJECT = new RegExp(`^\\s+(?:with\\s+)?(${OUTCOME_OBJECT})\\b(?!\\s+(?:course|options|requirements|access)\\b)`, 'i');
+
+/** Extract only objects attached to outcome predicates, never generic pronouns. */
+function certificationClaim(text: string, teachingContext: boolean): { ids: string[]; credential: boolean; module: boolean } {
+  const ids = new Set<string>();
+  let credential = false;
+  let module = false;
+  for (const predicate of certificationPredicates(text)) {
+    const prefix = text.slice(0, predicate.index);
+    const suffix = text.slice(predicate.index! + predicate[0].length);
+    if (predicate[0].toLowerCase() === 'certified') credential = true;
+    const subject = OUTCOME_SUBJECT.exec(prefix)?.[1];
+    const object = OUTCOME_DIRECT_OBJECT.exec(suffix)?.[1];
+    for (const target of [subject, object]) {
+      if (!target) continue;
+      if (CREDENTIAL.test(target)) { credential = true; continue; }
+      if (!teachingContext && !/\b(?:modules?\s+[A-Z]{1,2}\d{1,2}|[A-Z]{1,2}\d{1,2}\s+module|capstone)\b/i.test(target)) continue;
+      module = true;
+      for (const id of target.matchAll(MODULE_ID)) ids.add(id[0].toUpperCase());
+    }
   }
-  return false;
+  return { ids: [...ids], credential, module };
 }
 
 /**
@@ -168,6 +196,23 @@ export function enforceOutcomeClaims(
   executions: readonly ToolExecution[],
   conversationContext = '',
 ): { text: string; reason: string | null } {
+  // Code/payload strings are data, never assistant assertions. In particular,
+  // do not corrupt a validated JSON example by rewriting its string values.
+  const parts = text.split(/(```[^\n]*\n[\s\S]*?```|~~~[^\n]*\n[\s\S]*?~~~|`[\[{][^`\n]*[\]}]`)/g);
+  const reasons = new Set<string>();
+  for (let i = 0; i < parts.length; i += 2) {
+    const result = enforceProseOutcomeClaims(parts[i]!, executions, conversationContext);
+    parts[i] = result.text;
+    if (result.reason) reasons.add(result.reason);
+  }
+  return { text: parts.join(''), reason: [...reasons].join('; ') || null };
+}
+
+function enforceProseOutcomeClaims(
+  text: string,
+  executions: readonly ToolExecution[],
+  conversationContext: string,
+): { text: string; reason: string | null } {
   const evidence = certificationEvidence(executions);
   const support = supportReceipt(executions);
   const certificationContext = CERTIFICATION_CONTEXT.test(conversationContext)
@@ -176,7 +221,9 @@ export function enforceOutcomeClaims(
   let certificationReplaced = false;
   let certificationRendered = false;
   let supportReplaced = false;
-  const parts = text.split(/((?<=[.!?])\s+|\n+)/);
+  // Separate independent clauses before binding objects to predicates. A next
+  // module mentioned in a membership/next-step clause is not a completed one.
+  const parts = text.split(/((?<=[.!?])\s+|\n+|;\s*|,\s*(?=(?:but|so)\b)|\s+(?=and (?:module\s+)?[A-Z]{1,2}\d{1,2}\s+(?:requires|needs)\b))/);
   const output: string[] = [];
   for (const [index, part] of parts.entries()) {
     if (index % 2 === 1) { output.push(part); continue; }
@@ -190,16 +237,10 @@ export function enforceOutcomeClaims(
       if (!support) reasons.add('Unconfirmed support escalation');
       continue;
     }
-    const ids = [...plain.matchAll(MODULE_ID)].map(match => match[0].toUpperCase());
-    const teachingSubtask = ids.length === 0 && !CREDENTIAL.test(plain)
-      && !/\b(?:module|capstone|mastery)\b/i.test(plain)
-      && [...plain.matchAll(COMPLETION)].length === 1
-      && /\b(?:completed?|finished|passed|mastered)\s+(?:(?:the|this|that|an?|your)\s+)?(?:example|exercise|question|practice|tutorial|request|media buy|deployment)\b/i.test(plain);
-    const isCertificationClaim = !teachingSubtask && assertsCertificationOutcome(plain)
-      && (CREDENTIAL.test(plain) || /\bcapstone\b|\bmodule\s+[A-Z]{1,2}\d{1,2}\b/i.test(plain)
-        || (certificationContext && (ids.length > 0 || /\b(?:module|you|your|we|that|this|it)\b/i.test(plain))));
-    if (isCertificationClaim) {
-      const credentialClaim = CREDENTIAL.test(plain);
+    const claim = certificationClaim(plain, certificationContext);
+    const ids = claim.ids;
+    if (claim.module || claim.credential) {
+      const credentialClaim = claim.credential;
       const externalIssuance = /\b(?:issued|sent|delivered|download|share|ready)\b/i.test(plain);
       const credentials = externalIssuance ? evidence.issuedCredentials : evidence.credentials;
       const modulesSupported = ids.every(id => evidence.modules.has(id));
@@ -207,7 +248,7 @@ export function enforceOutcomeClaims(
       if (claimedCredentials.length === 0 && credentials.size === 1 && hasOnlyGenericCredentialReferences(plain)) {
         claimedCredentials.push(...credentials.keys());
       }
-      const modules = ids.length ? ids : [...evidence.modules];
+      const modules = ids.length ? ids : credentialClaim ? [] : [...evidence.modules];
       const supported = modulesSupported && (credentialClaim ? claimedCredentials.length > 0 : modules.length > 0);
       if (!supported) {
         if (!certificationReplaced) output.push(UNCONFIRMED_CERTIFICATION);
@@ -230,5 +271,5 @@ export function enforceOutcomeClaims(
     }
     output.push(part);
   }
-  return { text: reasons.size > 0 || supportReplaced || certificationRendered ? output.join('').trim() : text, reason: [...reasons].join('; ') || null };
+  return { text: reasons.size > 0 || supportReplaced || certificationRendered ? output.join('') : text, reason: [...reasons].join('; ') || null };
 }
