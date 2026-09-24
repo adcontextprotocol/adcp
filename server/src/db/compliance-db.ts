@@ -117,6 +117,7 @@ export interface ComplianceRun {
   agent_url: string;
   requested_compliance_target: string | null;
   adcp_version: string | null;
+  runner_capability_version: string | null;
   lifecycle_stage: LifecycleStage;
   overall_status: OverallRunStatus;
   headline: string | null;
@@ -285,6 +286,7 @@ export interface RecordComplianceRunInput {
   agent_url: string;
   requested_compliance_target?: string | null;
   adcp_version?: string | null;
+  runner_capability_version?: string | null;
   lifecycle_stage: LifecycleStage;
   overall_status: OverallRunStatus;
   headline?: string;
@@ -696,8 +698,9 @@ export class ComplianceDatabase {
           tracks_skipped, tracks_partial, agent_profile_json,
           observations_json, triggered_by, triggered_org_id, dry_run,
           notices_json, refresh_operation_id, agent_quality_evaluation_id,
-          completeness, is_authoritative, storyboard_statuses_json, provenance_json
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+          completeness, is_authoritative, storyboard_statuses_json, provenance_json,
+          runner_capability_version
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
         ON CONFLICT DO NOTHING
         RETURNING *`,
         [
@@ -725,6 +728,7 @@ export class ComplianceDatabase {
           authoritative,
           JSON.stringify(input.storyboard_statuses ?? []),
           input.provenance_json ? JSON.stringify(input.provenance_json) : null,
+          input.runner_capability_version ?? null,
         ],
       );
       let run = runResult.rows[0] as ComplianceRun | undefined;
