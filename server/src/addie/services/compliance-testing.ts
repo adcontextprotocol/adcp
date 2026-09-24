@@ -265,6 +265,27 @@ export async function comply(
   return result;
 }
 
+export async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
+  error: unknown,
+  agentUrl: string,
+  auth: ComplyOptions['auth'] | undefined,
+  target: HostedComplianceTarget,
+): Promise<CapabilityResolutionErrorInfo | undefined> {
+  const initial = classifyCapabilityResolutionError(error);
+  if (initial?.kind !== 'specialism_parent_protocol_missing') return initial;
+
+  try {
+    const caps = await testCapabilityDiscovery(
+      agentUrl,
+      withSdkSafeTransport(withHostedTestOptions({ ...(auth && { auth }) }, target)),
+    );
+    return classifyCapabilityResolutionError(error, caps.profile?.supported_protocols ?? []) ?? initial;
+  } catch (probeError) {
+    logger.warn({ probeError, agentUrl }, 'evaluate_agent_quality: could not reprobe capabilities after resolver error');
+    return initial;
+  }
+}
+
 export function loadComplianceIndex(target: HostedComplianceTarget, options: ComplyOptions = {}) {
   return sdkLoadComplianceIndex(
     withSdkSafeTransport(withHostedComplianceRunOptions(options, target)),
