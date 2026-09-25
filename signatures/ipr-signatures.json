@@ -529,6 +529,16 @@
       "pullRequestNo": 7685,
       "comment_id": 5820848574,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7685#issuecomment-5820848574"
+    },
+    {
+      "name": "therevoltingx",
+      "id": 191371,
+      "created_at": "2026-09-25T18:53:46Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 7691,
+      "comment_id": 5837894291,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7691#issuecomment-5837894291"
     }
   ]
 }
