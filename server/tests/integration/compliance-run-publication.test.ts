@@ -188,6 +188,132 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
     }
   });
 
+  describe('owner-initiated runs leave the heartbeat schedule alone (#7680)', () => {
+    const urls: string[] = [];
+    const freshAgent = async (options: { withMetadata?: boolean } = {}) => {
+      const url = `https://${randomUUID()}.example.test/mcp`;
+      urls.push(url);
+      if (options.withMetadata ?? true) await db.upsertRegistryMetadata(url, { lifecycle_stage: 'production' });
+      return url;
+    };
+    const schedule = async (url: string) => (await pool.query<{
+      next_compliance_check_at: Date | null; requeued_at: Date | null; hours_until_next: number | null;
+    }>(
+      `SELECT next_compliance_check_at, requeued_at,
+              EXTRACT(EPOCH FROM next_compliance_check_at - NOW()) / 3600 AS hours_until_next
+       FROM agent_registry_metadata WHERE agent_url = $1`,
+      [url],
+    )).rows[0];
+    const isDue = async (url: string) =>
+      (await db.getAgentsDueForCheck(100000)).some(agent => agent.agent_url === url);
+
+    afterAll(async () => {
+      for (const table of ['agent_compliance_step_diagnostics', 'agent_storyboard_status', 'agent_verification_badges',
+        'agent_compliance_status', 'agent_compliance_runs', 'agent_registry_metadata']) {
+        await pool.query(`DELETE FROM ${table} WHERE agent_url = ANY($1::text[])`, [urls]);
+      }
+    });
+
+    it('keeps a pending requeue when a full-suite owner test publishes', async () => {
+      const url = await freshAgent();
+      await db.requeueForHeartbeat(url);
+      await db.recordComplianceRun({ ...input, agent_url: url, triggered_by: 'owner_test' });
+
+      const after = await schedule(url);
+      expect(after.next_compliance_check_at).toBeNull();
+      expect(after.requeued_at).not.toBeNull();
+      expect(await isDue(url)).toBe(true);
+      // The owner verdict still publishes to the public card.
+      expect((await db.getComplianceStatus(url))?.status).toBe('passing');
+    });
+
+    it('consumes the requeue when the heartbeat serving it publishes', async () => {
+      const url = await freshAgent();
+      await db.requeueForHeartbeat(url);
+      await db.recordComplianceRun({ ...input, agent_url: url, triggered_by: 'heartbeat' });
+
+      const after = await schedule(url);
+      expect(after.requeued_at).toBeNull();
+      expect(Number(after.hours_until_next)).toBeCloseTo(12, 1);
+      expect(await isDue(url)).toBe(false);
+    });
+
+    it.each(['manual', 'webhook'] as const)('advances the cadence and clears the requeue for %s runs', async (triggeredBy) => {
+      const url = await freshAgent();
+      await db.requeueForHeartbeat(url);
+      await db.recordComplianceRun({ ...input, agent_url: url, triggered_by: triggeredBy });
+
+      const after = await schedule(url);
+      expect(after.requeued_at).toBeNull();
+      expect(Number(after.hours_until_next)).toBeCloseTo(12, 1);
+    });
+
+    it('defaults an unlabelled run to heartbeat scheduling', async () => {
+      const url = await freshAgent();
+      await db.requeueForHeartbeat(url);
+      expect(input.triggered_by).toBeUndefined();
+      await db.recordComplianceRun({ ...input, agent_url: url });
+
+      const after = await schedule(url);
+      expect(after.requeued_at).toBeNull();
+      expect(Number(after.hours_until_next)).toBeCloseTo(12, 1);
+    });
+
+    it('does not push a scheduled heartbeat further out when an owner test publishes', async () => {
+      const url = await freshAgent();
+      await pool.query(
+        `UPDATE agent_registry_metadata SET next_compliance_check_at = NOW() + INTERVAL '2 hours' WHERE agent_url = $1`,
+        [url],
+      );
+      const before = await schedule(url);
+      await db.recordComplianceRun({ ...input, agent_url: url, triggered_by: 'owner_test' });
+
+      expect((await schedule(url)).next_compliance_check_at).toEqual(before.next_compliance_check_at);
+    });
+
+    it('leaves an overdue heartbeat due after an owner test publishes', async () => {
+      const url = await freshAgent();
+      await pool.query(
+        `UPDATE agent_registry_metadata SET next_compliance_check_at = NOW() - INTERVAL '1 hour' WHERE agent_url = $1`,
+        [url],
+      );
+      await db.recordComplianceRun({ ...input, agent_url: url, triggered_by: 'owner_test' });
+
+      expect(await isDue(url)).toBe(true);
+    });
+
+    it('leaves a first-ever owner test immediately eligible for an independent heartbeat', async () => {
+      const url = await freshAgent({ withMetadata: false });
+      await db.recordComplianceRun({ ...input, agent_url: url, triggered_by: 'owner_test' });
+
+      const after = await schedule(url);
+      expect(after).toBeDefined();
+      expect(after.next_compliance_check_at).toBeNull();
+      expect(await isDue(url)).toBe(true);
+    });
+
+    it('still schedules a first-ever heartbeat on the default cadence', async () => {
+      const url = await freshAgent({ withMetadata: false });
+      await db.recordComplianceRun({ ...input, agent_url: url, triggered_by: 'heartbeat' });
+
+      expect(Number((await schedule(url)).hours_until_next)).toBeCloseTo(12, 1);
+    });
+
+    it('leaves scheduling untouched for a scoped (non-authoritative) owner test', async () => {
+      const url = await freshAgent();
+      await db.requeueForHeartbeat(url);
+      await db.recordComplianceRun({
+        ...input, agent_url: url, triggered_by: 'owner_test',
+        is_authoritative: false, replace_storyboard_statuses: false,
+        storyboard_statuses: [{ storyboard_id: 'first', status: 'passing', steps_passed: 1, steps_total: 1 }],
+      });
+
+      const after = await schedule(url);
+      expect(after.next_compliance_check_at).toBeNull();
+      expect(after.requeued_at).not.toBeNull();
+    });
+  });
+
   it('uses only complete public profiles for version and specialism fallback', async () => {
     const complete = await db.recordComplianceRun(input);
     const epoch = Date.parse('2030-01-01T00:00:00Z');

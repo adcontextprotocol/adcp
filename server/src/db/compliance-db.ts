@@ -932,14 +932,23 @@ export class ComplianceDatabase {
         tracksSummary[t.track] = t.status;
       }
 
-      // 4. Upsert the materialized status and capture transition
+      // 4. Upsert the materialized status and capture transition.
+      // Owner-initiated runs publish the verdict but never touch the heartbeat
+      // schedule: they must not re-arm the eligibility gate, cancel a pending
+      // requeue, or displace the registry's independent check (#7680).
       const statusResult = await client.query(
         `WITH schedule_next AS (
           INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
-          VALUES ($1, NOW() + INTERVAL '12 hours')
+          VALUES ($1, CASE WHEN $7 = 'owner_test' THEN NULL ELSE NOW() + INTERVAL '12 hours' END)
           ON CONFLICT (agent_url) DO UPDATE SET
             next_compliance_check_at = NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours),
             requeued_at = NULL
+          -- $7 is TriggeredBy (compliance-db.ts): the TypeScript union is the
+          -- compile-time guard on this value space. A new TriggeredBy member
+          -- opts into advancing the cadence and consuming requeues by default
+          -- unless this predicate is updated alongside the union. The CASE
+          -- above is keyed on the same literal and must move with it.
+          WHERE $7 != 'owner_test'
         )
         INSERT INTO agent_compliance_status (
           agent_url, status, last_checked_at,
@@ -996,6 +1005,7 @@ export class ComplianceDatabase {
           input.headline ?? null,
           input.requested_compliance_target ?? null,
           input.adcp_version ?? null,
+          input.triggered_by ?? 'heartbeat',
         ],
       );
 
