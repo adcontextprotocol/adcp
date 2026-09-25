@@ -701,18 +701,22 @@ async function inferHostedAuthProbeTask(
   }
 }
 
-async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
+export async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
   error: unknown,
   agentUrl: string,
   auth: ReturnType<typeof buildAuthOption>,
+  target: HostedComplianceTarget,
 ): Promise<CapabilityResolutionErrorInfo | undefined> {
   const initial = classifyCapabilityResolutionError(error);
   if (initial?.kind !== 'specialism_parent_protocol_missing') return initial;
 
   try {
-    const caps = await testCapabilityDiscovery(agentUrl, withSdkSafeTransport({
-      ...(auth && { auth }),
-    }));
+    const caps = await testCapabilityDiscovery(
+      agentUrl,
+      withSdkSafeTransport(withHostedTestOptions({
+        ...(auth && { auth }),
+      }, target)),
+    );
     return classifyCapabilityResolutionError(error, caps.profile?.supported_protocols ?? []) ?? initial;
   } catch (probeError) {
     logger.warn({ probeError, agentUrl }, 'evaluate_agent_quality: could not reprobe capabilities after resolver error');
@@ -5242,6 +5246,7 @@ export function createMemberToolHandlers(
           error,
           resolved.resolvedUrl,
           authOption,
+          runTarget,
         );
       } catch (classificationError) {
         logger.warn(
