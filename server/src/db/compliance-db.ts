@@ -943,6 +943,8 @@ export class ComplianceDatabase {
           ON CONFLICT (agent_url) DO UPDATE SET
             next_compliance_check_at = NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours),
             requeued_at = NULL
+          -- triggered_by ($7) is an unvalidated string at the SQL layer; any value
+          -- that is not exactly 'owner_test' silently advances the cadence.
           WHERE $7 != 'owner_test'
         )
         INSERT INTO agent_compliance_status (
