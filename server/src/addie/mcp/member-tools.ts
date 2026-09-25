@@ -53,6 +53,7 @@ import {
   getBriefsByVertical,
   SAMPLE_BRIEFS,
   classifyCapabilityResolutionError,
+  classifyCapabilityResolutionErrorWithDeclaredProtocols,
   presentCapabilityResolutionError,
   complianceResultToDbInput,
   loadComplianceIndex,
@@ -698,25 +699,6 @@ async function inferHostedAuthProbeTask(
   } catch (error) {
     logger.warn({ error, agentUrl }, 'Addie: could not infer hosted auth probe task; using default');
     return undefined;
-  }
-}
-
-async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
-  error: unknown,
-  agentUrl: string,
-  auth: ReturnType<typeof buildAuthOption>,
-): Promise<CapabilityResolutionErrorInfo | undefined> {
-  const initial = classifyCapabilityResolutionError(error);
-  if (initial?.kind !== 'specialism_parent_protocol_missing') return initial;
-
-  try {
-    const caps = await testCapabilityDiscovery(agentUrl, withSdkSafeTransport({
-      ...(auth && { auth }),
-    }));
-    return classifyCapabilityResolutionError(error, caps.profile?.supported_protocols ?? []) ?? initial;
-  } catch (probeError) {
-    logger.warn({ probeError, agentUrl }, 'evaluate_agent_quality: could not reprobe capabilities after resolver error');
-    return initial;
   }
 }
 
@@ -5242,6 +5224,7 @@ export function createMemberToolHandlers(
           error,
           resolved.resolvedUrl,
           authOption,
+          runTarget,
         );
       } catch (classificationError) {
         logger.warn(
