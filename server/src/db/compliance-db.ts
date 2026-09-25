@@ -943,6 +943,11 @@ export class ComplianceDatabase {
           ON CONFLICT (agent_url) DO UPDATE SET
             next_compliance_check_at = NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours),
             requeued_at = NULL
+          -- $7 is TriggeredBy (compliance-db.ts): the TypeScript union is the
+          -- compile-time guard on this value space. A new TriggeredBy member
+          -- opts into advancing the cadence and consuming requeues by default
+          -- unless this predicate is updated alongside the union. The CASE
+          -- above is keyed on the same literal and must move with it.
           WHERE $7 != 'owner_test'
         )
         INSERT INTO agent_compliance_status (
