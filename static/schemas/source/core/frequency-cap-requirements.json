@@ -27,14 +27,14 @@
     "supported_window_units": {
       "type": "array",
       "description": "Require each listed unit to be a supported max_impressions.window unit after seller-wide inheritance.",
-      "items": { "$ref": "/schemas/core/frequency-cap-duration-unit.json" },
+      "items": { "$ref": "/schemas/enums/duration-unit.json" },
       "minItems": 1,
       "uniqueItems": true
     },
     "supported_suppression_units": {
       "type": "array",
       "description": "Require each listed unit to be a supported suppress unit after seller-wide inheritance.",
-      "items": { "$ref": "/schemas/core/frequency-cap-duration-unit.json" },
+      "items": { "$ref": "/schemas/enums/duration-unit.json" },
       "minItems": 1,
       "uniqueItems": true
     }
