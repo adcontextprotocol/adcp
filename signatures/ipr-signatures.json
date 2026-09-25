@@ -539,6 +539,16 @@
       "pullRequestNo": 7691,
       "comment_id": 5837894291,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7691#issuecomment-5837894291"
+    },
+    {
+      "name": "moeloubani",
+      "id": 4263363,
+      "created_at": "2026-09-25T19:37:54Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 7692,
+      "comment_id": 5838452475,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7692#issuecomment-5838452475"
     }
   ]
 }
