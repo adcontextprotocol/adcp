@@ -101,6 +101,11 @@
       },
       "minItems": 1
     },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "deprecated": true,
+      "description": "**DEPRECATED for `list_creative_formats` in 3.2. Removed at 4.0.** Use the account-scoped `list_transformers` request instead. *Legacy 3.x behavior:* scopes the request to the named account."
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"
     },
