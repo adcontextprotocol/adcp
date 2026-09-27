@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.2.0-rc.7
+
+### Minor Changes
+
+- 2785fcb: Add `viewable_rate` as a `kind: "metric"` optimization goal, closing a schema omission: the optimization docs already described viewability as a standard metric goal, but neither goal schema accepted it. A `viewable_rate` goal requires a viewability `standard` (`mrc` or `groupm`), takes an optional measurement `vendor`, and bounds `threshold_rate.value` to at most 1. Products and seller capabilities can advertise `viewable_rate` in their supported optimization metrics, and products can declare `metric_optimization.supported_viewability_standards`. When a package carries both a `viewable_rate` goal and a viewability performance standard, a lower goal never relaxes the standard.
+
+### Patch Changes
+
+- 26432e6: Declare the deprecated `account` field in `media-buy/list-creative-formats-request.json` so the universal `pagination_integrity_creative_formats` storyboard keeps its account scoping against media-buy agents. Previously the runner stripped `account` and emitted `input_schema_field_stripped`, so sellers that scope seeded formats by account could return a different result set during the pagination walk.
+- 0547bde: Seed fixture accounts in package_correlation_legacy_fallback storyboard so account-scoped requests resolve before attribution is checked.
+- 7b5472f: Stop the universal `read_tool_idempotency` storyboard from sending the creative-agent-only `type` filter to `list_creative_formats`, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
+- e82f055: Tighten the unreleased `viewable_rate` optimization goal before 3.2.0-rc.7. The legacy goal shape now accepts only `threshold_rate` targets for `viewable_rate`, so a meaningless `cost_per` target is rejected rather than silently capped at 1. Viewability `standard` and `vendor` are now allowed on `viewed_seconds` goals too, which were already governed by the viewability standard, and both goal shapes reject those fields on other metrics. The migration guide documents the `BrandRef`-to-`BrandKey` vendor mapping when converting legacy goals to the canonical shape.
+
 ## 3.1.24
 
 ### Patch Changes
