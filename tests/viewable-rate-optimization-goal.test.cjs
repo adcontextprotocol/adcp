@@ -29,6 +29,12 @@ const viewabilityGoal = {
   priority: 2,
 };
 
+test('legacy goal rejects cost_per targets on viewable_rate', async () => {
+  const validate = await compile('/schemas/core/optimization-goal.json');
+  assert.equal(validate({ ...viewabilityGoal, target: { kind: 'cost_per', value: 0.5 } }), false);
+  assert.equal(validate({ kind: 'metric', metric: 'clicks', target: { kind: 'cost_per', value: 2.5 } }), true);
+});
+
 for (const uri of GOAL_SCHEMAS) {
   test(`${uri} accepts a viewable_rate goal with standard and vendor`, async () => {
     const validate = await compile(uri);
@@ -48,6 +54,23 @@ for (const uri of GOAL_SCHEMAS) {
     const validate = await compile(uri);
     assert.equal(validate({ ...viewabilityGoal, target: { kind: 'threshold_rate', value: 1 } }), true);
     assert.equal(validate({ ...viewabilityGoal, target: { kind: 'threshold_rate', value: 70 } }), false);
+  });
+
+  test(`${uri} allows viewability standard and vendor on viewed_seconds only as options`, async () => {
+    const validate = await compile(uri);
+    const goal = { kind: 'metric', metric: 'viewed_seconds', target: { kind: 'threshold_rate', value: 3 } };
+    assert.equal(validate(goal), true, JSON.stringify(validate.errors));
+    assert.equal(
+      validate({ ...goal, standard: 'groupm', vendor: { domain: 'acmeverify.example' } }),
+      true,
+      JSON.stringify(validate.errors)
+    );
+  });
+
+  test(`${uri} rejects viewability standard and vendor on other metrics`, async () => {
+    const validate = await compile(uri);
+    assert.equal(validate({ kind: 'metric', metric: 'views', standard: 'mrc' }), false);
+    assert.equal(validate({ kind: 'metric', metric: 'clicks', vendor: { domain: 'acmeverify.example' } }), false);
   });
 
   test(`${uri} leaves other metric thresholds unbounded`, async () => {
