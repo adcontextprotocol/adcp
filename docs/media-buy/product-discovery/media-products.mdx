@@ -110,6 +110,7 @@ Products that support `optimization_goals` with `kind: "metric"` declare their c
 |-------|------|----------|-------------|
 | `supported_metrics` | string[] | Yes | Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here. |
 | `supported_view_durations` | number[] | No | Video view duration thresholds (in seconds) supported for `completed_views` goals. When absent, the seller uses their platform default. |
+| `supported_viewability_standards` | string[] | No | Viewability standards (`mrc`, `groupm`) supported for `viewable_rate` goals. When present, the goal's `standard` must be listed here. |
 | `supported_targets` | string[] | No | Target kinds available: `cost_per`, `threshold_rate`. Values match `target.kind` on the optimization goal. Only listed kinds are accepted. When omitted, buyers can set target-less metric goals (maximize volume) but cannot set specific targets. |
 
 ### Conversion tracking

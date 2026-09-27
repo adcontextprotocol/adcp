@@ -287,6 +287,7 @@
               "views",
               "completed_views",
               "viewed_seconds",
+              "viewable_rate",
               "attention_seconds",
               "attention_score",
               "engagements",
@@ -313,6 +314,15 @@
             "type": "number",
             "exclusiveMinimum": 0
           }
+        },
+        "supported_viewability_standards": {
+          "type": "array",
+          "description": "Viewability standards this product can optimize viewable_rate goals against. Only relevant when supported_metrics includes 'viewable_rate'. When absent, buyers cannot assume a specific standard is supported and sellers reject unsupported values. Buyers must set the goal's standard to a value in this list when it is present.",
+          "items": {
+            "$ref": "/schemas/enums/viewability-standard.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
         },
         "supported_targets": {
           "type": "array",
