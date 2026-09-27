@@ -40,7 +40,7 @@ Every goal has a `kind` discriminator:
 }
 ```
 
-Supported metrics: `clicks`, `views`, `completed_views`, `viewed_seconds`, `engagements`, `follows`, `saves`, `profile_visits`, `reach`. `attention_seconds` and `attention_score` are accepted but **deprecated** (slated for removal at next major) — use `kind: "vendor_metric"` with an explicit vendor binding instead.
+Supported metrics: `clicks`, `views`, `completed_views`, `viewed_seconds`, `viewable_rate` (requires `standard`; optional `vendor`), `engagements`, `follows`, `saves`, `profile_visits`, `reach`. `attention_seconds` and `attention_score` are accepted but **deprecated** (slated for removal at next major) — use `kind: "vendor_metric"` with an explicit vendor binding instead.
 
 **How these surface in delivery:** `viewed_seconds` is reported via `viewability.viewed_seconds` (the same `standard` threshold governs both `viewable_rate` and `viewed_seconds`). Vendor-attested metrics — attention, panel-based brand lift, emissions, retail-media partner metrics — flow through the `kind: "vendor_metric"` goal kind on the optimization side and `vendor_metric_values[]` on the delivery side, keyed on `(vendor, metric_id)`. See [`kind: vendor_metric`](/docs/media-buy/conversion-tracking/#kind-vendor_metric) for the goal shape and the three-precondition rejection rule.
 
@@ -157,6 +157,7 @@ Products declare optimization support via `metric_optimization`:
 - `supported_metrics` — Which metrics the product can optimize for
 - `supported_reach_units` — Required when `reach` is in supported_metrics
 - `supported_view_durations` — Seconds for `completed_views` metric
+- `supported_viewability_standards` — Viewability standards (`mrc`, `groupm`) for `viewable_rate` goals
 - `supported_targets` — Target kinds available. When omitted, only target-less goals (maximize volume) are allowed
 - `max_optimization_goals` — Maximum number of goals per package
 

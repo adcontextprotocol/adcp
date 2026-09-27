@@ -1839,6 +1839,7 @@
               "views",
               "completed_views",
               "viewed_seconds",
+              "viewable_rate",
               "attention_seconds",
               "attention_score",
               "engagements",

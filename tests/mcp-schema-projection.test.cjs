@@ -68,16 +68,20 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // measured media-buy context to 417.25 KiB. Request-only targeting and product
 // purchase inputs add explicit nullable command wrappers while retaining strict
 // response definitions, bringing the prompt view to ~429 KiB and bounded here
-// at 440 KiB.
+// at 440 KiB. The viewable_rate optimization goal adds viewability standard and
+// vendor fields plus one conditional to the canonical goal carried by
+// control_media_buy and buy_products (~1.3 KiB each), bounded at 442 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 440,
+  'media-buy': 442,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product
 // targeting contract. The test below still compiles both dialects and executes
-// every collected storyboard fixture.
-const PARITY_COMPILE_LIMIT = 1_250_000;
+// every collected storyboard fixture. The viewable_rate optimization goal and
+// supported_viewability_standards capability add ~1.8 KB to the
+// comply_test_controller request, which already sat at 1_249_930 bytes.
+const PARITY_COMPILE_LIMIT = 1_260_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

@@ -11,8 +11,10 @@
         "kind": { "type": "string", "const": "metric" },
         "metric": {
           "type": "string",
-          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "engagements", "follows", "saves", "profile_visits", "reach"]
+          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "viewable_rate", "engagements", "follows", "saves", "profile_visits", "reach"]
         },
+        "standard": { "$ref": "/schemas/enums/viewability-standard.json" },
+        "vendor": { "$ref": "/schemas/core/brand-key.json" },
         "reach_unit": { "$ref": "/schemas/enums/reach-unit.json" },
         "target_frequency": {
           "type": "object",
@@ -38,6 +40,15 @@
         "priority": { "type": "integer", "minimum": 1 }
       },
       "required": ["kind", "metric"],
+      "allOf": [
+        {
+          "if": { "properties": { "metric": { "const": "viewable_rate" } }, "required": ["metric"] },
+          "then": {
+            "required": ["standard"],
+            "properties": { "target": { "properties": { "value": { "maximum": 1 } } } }
+          }
+        }
+      ],
       "additionalProperties": false
     },
     {
