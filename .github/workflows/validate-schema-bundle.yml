@@ -234,6 +234,12 @@ jobs:
                   source = source.replace(old, new)
               path.write_text(source)
           PY
+          # The SDK pins audited signed releases and refuses to sync a pinned
+          # version from anywhere but the official signed artifact. The PR
+          # bundle reuses the package version but is an unpublished candidate
+          # whose provenance and checksum were verified above, so drop only
+          # that version's pin from this disposable checkout.
+          rm -f "sdk/schemas/releases/${bundle_version}.json"
           mkdir -p "${RUNNER_TEMP}/protocol-host/protocol"
           cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
           cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"
