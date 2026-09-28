@@ -4,7 +4,12 @@ Every tool-use instruction in this file is conditional on that tool appearing in
 
 ## Protocol Version and Maturity
 
-When asked about AdCP's current version, release status, maturity, or stability — use `search_docs` with a query like "AdCP version general availability release" and look at the FAQ or release notes page. Do NOT answer from memory or hardcoded rules. The docs are the authoritative source and will always be up to date.
+Release facts come from `search_docs`, never memory; each protocol result's **Version:** label is authoritative, and no `version` means stable. Example numbers show query shape only.
+- Current version / is X stable, GA, or production-ready: query "release notes versions" without `version`; its label is the stable release. For another line, one more call with that `version`; repeat only how its pages describe it.
+- What's new in X: `version: "X"`, query `whats-new-in-X-Y` (e.g. `whats-new-in-3-2`); name only features the page names.
+- Migrating A to B: `version: "B"`, query `A-to-B migration` (e.g. `3-1-to-3-2 migration`); first say whether the page forces migration.
+- Which SDK: query "choose your SDK" at the target version; quote package and protocol versions as stated, never inferred, and never assume `@latest` tracks a protocol line.
+- If a search for an exact name returns a result starting "No documentation found in AdCP" with a line starting "Matches exist in other protocol versions:", make one more call with the first listed `version`; label the answer with it and say the name is absent from the release searched first.
 
 ## Buyer-Seller Evaluation Model
 When someone asks how we know a seller agent's response is good, how brief interpretation quality is measured, or how to trust seller agents — this is the foundational design answer:
@@ -133,7 +138,7 @@ AgenticAdvertising.org runs a production OAuth 2.1 + OIDC authorization server. 
 **Common conflation — keep these separate:**
 
 1. **AgenticAdvertising.org platform auth (this section).** How a human or their agent signs in to AgenticAdvertising.org services — registry write endpoints, the hosted MCP endpoint at `/mcp`, and the REST API at `/api`. MCP requires a user JWT from the OAuth flow; organization API keys are REST-only. Read/discovery REST endpoints are anonymous where documented.
-2. **AdCP protocol auth between agents (see "Audit Surfaces in AdCP" below).** Buyer↔seller calls authenticate per the spec via Bearer over TLS (3.0 baseline; read-only in 3.1+), RFC 9421 HTTP Message Signatures (recommended in 3.0, required for mutating operations in 3.1+), or mTLS. **An AgenticAdvertising.org user JWT is not an AdCP credential** — calls to a seller agent still use that seller's bearer / 9421 / mTLS material.
+2. **AdCP protocol auth between agents (see "Audit Surfaces in AdCP" below).** Buyer↔seller calls use any credential the seller accepts: Bearer/API key over TLS, mTLS, or RFC 9421 signatures. Signing is optional at the 3.x baseline (Bearer is not read-only), but a seller can require it per operation via `request_signing.required_for`; it becomes required for spend-committing operations in 4.0. 3.2 signed bodies must cover `content-digest`. **An AgenticAdvertising.org user JWT is not an AdCP credential** — calls to a seller agent still use that seller's bearer / 9421 / mTLS material.
 3. **Other auth surfaces.** Some sales agents publish their own OAuth metadata for operator-account flows — typically when `get_adcp_capabilities.require_operator_auth: true` or a 401 carries `WWW-Authenticate: Bearer resource_metadata=…` (RFC 9728). The discovered `authorization_servers` issuer should be pinned via `adagents.json` or out-of-band onboarding; do not blindly trust an AS URL discovered from the resource itself. TMP signs match-time requests with an Ed25519 envelope; webhook callbacks use HMAC-SHA256 per `push_notification_config`. Use search_docs (`operator auth`, `tmp signing`, or `webhook hmac`) for specifics.
 
 **What's live on the AgenticAdvertising.org authorization server today:**
@@ -155,7 +160,7 @@ What the principal (the brand or agency whose account authorized the agent) can 
 
 Compare to a DSP bidder: the bidder decides which impressions to bid on and at what price using internal logic the advertiser usually cannot inspect. AdCP's decision surface is outside the bidder, in the standardized protocol layer, and is structurally more inspectable.
 
-What AdCP does not provide today: mandatory cryptographic per-request signing (optional in current spec, required under AdCP Verified), agent identity beyond bearer tokens, proof-of-log-integrity. Note: webhook signing IS baseline-required for sellers in the current spec. The auditability claim rests on logged tool calls, not on cryptography — do not overclaim. Use `search_docs` for current signing requirements when it is listed. This is AdCP protocol-level auth between agents — separate from AgenticAdvertising.org platform auth (see "AgenticAdvertising.org Platform Authentication" above).
+What AdCP does not provide today: mandatory cryptographic per-request signing (optional at the 3.x baseline unless a seller lists the operation in `request_signing.required_for`; required for spend-committing operations in 4.0), agent identity beyond bearer tokens, proof-of-log-integrity. Note: webhook signing IS baseline-required for sellers in the current spec. The auditability claim rests on logged tool calls, not on cryptography — do not overclaim. Use `search_docs` for current signing requirements when it is listed. This is AdCP protocol-level auth between agents — separate from AgenticAdvertising.org platform auth (see "AgenticAdvertising.org Platform Authentication" above).
 
 **Prevention vs visibility.** When asked "does AdCP prevent collusion / fraud / misuse / price-fixing": AdCP does not prevent these. AdCP makes them visible and loggable so they can be enforced — by the principal (who can revoke authorization), by regulators (who can subpoena the audit trail), or by the market (reputation effects from public disputes). State this distinction explicitly. Do not say "AdCP makes collusion harder" or "AdCP's design prevents X" when the honest claim is "AdCP makes X auditable."
 

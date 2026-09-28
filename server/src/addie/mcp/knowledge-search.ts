@@ -30,6 +30,9 @@ import {
   getSupportedDocsVersions,
   resolveDocsVersion,
   formatDocsVersion,
+  MAX_SEARCH_QUERY_CHARS,
+  type DocsVersion,
+  type IndexedDoc,
 } from './docs-indexer.js';
 import {
   initializeExternalRepos,
@@ -222,6 +225,63 @@ export function searchDocsContent(
       artifactVersion: doc.artifactVersion,
     };
   });
+}
+
+const MAX_CROSS_VERSION_PROBE_QUERY_CHARS = 120;
+const MAX_ECHOED_INPUT_CHARS = 200;
+
+/** Collapse caller text to one bounded line before echoing it in a tool result. */
+export function echoSingleLine(value: string): string {
+  const singleLine = value.replace(/[\r\n\u2028\u2029]+/g, ' ');
+  return singleLine.length > MAX_ECHOED_INPUT_CHARS
+    ? `${singleLine.slice(0, MAX_ECHOED_INPUT_CHARS)}…`
+    : singleLine;
+}
+
+/**
+ * When a search is empty in the selected release, probe the representative
+ * entry of every other release line (the first docs.json entry for that line,
+ * so a stable line wins over its prereleases) for the same query. This lets a
+ * name that exists only in a newer or older release be found with one
+ * directed retry instead of reading as "does not exist".
+ *
+ * Only pages containing the whole query count; pages that name it in their
+ * title or path (the name's own page or schema) are listed before pages that
+ * merely mention it, so the first listed version is the strongest match.
+ */
+function findMatchesInOtherDocsVersions(
+  query: string,
+  category: string | undefined,
+  selectedVersion: DocsVersion,
+): Array<{ version: DocsVersion; doc: IndexedDoc }> {
+  const releaseLineOf = (version: string): string => version.match(/^\d+\.\d+/)?.[0] ?? version;
+  const phrase = query.trim().toLowerCase();
+  if (!phrase) return [];
+  const phraseForms = [...new Set([phrase, phrase.replace(/_/g, '-'), phrase.replace(/-/g, '_')])];
+  const probedLines = new Set<string>([releaseLineOf(selectedVersion.version)]);
+  const strong: Array<{ version: DocsVersion; doc: IndexedDoc }> = [];
+  const weak: Array<{ version: DocsVersion; doc: IndexedDoc }> = [];
+  for (const version of getSupportedDocsVersions()) {
+    const releaseLine = releaseLineOf(version.version);
+    if (probedLines.has(releaseLine)) continue;
+    probedLines.add(releaseLine);
+
+    // Version-independent pages match every release equally, so only a
+    // protocol page from this release proves the name lives there.
+    const candidates = searchDocs(query, { category, version: version.version, limit: 10 })
+      .filter((result) => result.version === version.version);
+    const named = candidates.find((doc) => {
+      const identity = `${doc.title} ${doc.path}`.toLowerCase();
+      return phraseForms.some((form) => identity.includes(form));
+    });
+    if (named) {
+      strong.push({ version, doc: named });
+      continue;
+    }
+    const mentioned = candidates.find((doc) => doc.content.toLowerCase().includes(phrase));
+    if (mentioned) weak.push({ version, doc: mentioned });
+  }
+  return [...strong, ...weak];
 }
 
 /**
@@ -623,7 +683,11 @@ export function createKnowledgeToolHandlers(
 
   handlers.set('search_docs', async (input) => {
     const startTime = Date.now();
-    const query = input.query as string;
+    // Bound per-call scoring and excerpt work; useful queries are short.
+    const query = String(input.query ?? '').slice(0, MAX_SEARCH_QUERY_CHARS);
+    if (!query.trim()) {
+      return 'search_docs needs a non-empty query.';
+    }
     const category = input.category as string | undefined;
     const requestedVersion = input.version as string | undefined;
     const requestedLimit = input.limit;
@@ -669,7 +733,21 @@ export function createKnowledgeToolHandlers(
           'Addie search_docs: zero results'
         );
       }
-      return `No documentation found in AdCP ${formatDocsVersion(selectedVersion)} for: "${query}"${category ? ` in category: ${category}` : ''}\n\nTry another supported protocol version, web_search for external sources, or search_slack for community discussions.`;
+      // Echo caller text on one bounded line so it cannot forge the
+      // line-start "Matches exist" marker the Knowledge rules key on.
+      const notFound = `No documentation found in AdCP ${formatDocsVersion(selectedVersion)} for: "${echoSingleLine(query)}"${category ? ` in category: ${echoSingleLine(category)}` : ''}`;
+      // Exact task/field/error names are short; skip the cross-release probe
+      // for long natural-language queries to bound the extra scoring work.
+      const otherVersionMatches = query.length <= MAX_CROSS_VERSION_PROBE_QUERY_CHARS
+        ? findMatchesInOtherDocsVersions(query, category, selectedVersion)
+        : [];
+      if (otherVersionMatches.length > 0) {
+        const lines = otherVersionMatches.map(({ version, doc }) => (
+          `- version "${version.version}" — ${formatDocsVersion(version)}: ${doc.title} (ID: ${doc.id})`
+        ));
+        return `${notFound}\n\nMatches exist in other protocol versions:\n${lines.join('\n')}`;
+      }
+      return `${notFound}\n\nNo other supported protocol version matches either. Try a different query, web_search for external sources, or search_slack for community discussions.`;
     }
 
     // Return smart excerpts that focus on content matching the query
