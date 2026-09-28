@@ -7169,6 +7169,9 @@ export function normalizeProductDiscoveryArgs(
               ...(entry.action !== 'finalize'
                 && (entry.change_kind === 'amendment' || entry.change_kind === 'cancellation')
                 && { change_kind: entry.change_kind }),
+              ...(entry.action !== 'finalize'
+                && entry.remove_media_buy_frequency_cap === true
+                && { remove_media_buy_frequency_cap: true }),
             };
           })
         : [],
@@ -10918,6 +10921,40 @@ async function handleGetProductsUnlocked(
           } as Proposal];
         }
       }
+    }
+    // Criteria-only request_proposals (no product_ids) against a session whose
+    // product catalog consists entirely of seeded/fixture products: no static
+    // catalog proposal covers those IDs, so proposals[] stays empty.  Generate
+    // an indicative plan from the filtered product set so that context_outputs
+    // extractions such as proposals[0].proposal_id resolve to a real value.
+    // Without this, the storyboard runner receives undefined for every
+    // downstream step that references $context.<proposal_key> as a proposal_id
+    // string, which causes the runner to crash when it processes the undefined
+    // value (Cannot read properties of undefined (reading 'split')).
+    if (!exactProductIds && proposals.length === 0 && products.length > 0) {
+      const allocationPercentage = 100 / products.length;
+      const firstPricing = products[0]!.pricing_options[0];
+      proposals = [{
+        proposal_id: 'seeded_product_plan',
+        name: products.length === 1
+          ? `Proposal for ${products[0]!.name}`
+          : 'Proposal for qualifying products',
+        description: 'Indicative plan constructed from the products matching the request criteria.',
+        brief_alignment: typeof brief === 'string' ? brief : 'Covers the products matching the request criteria.',
+        total_budget_guidance: {
+          min: 1,
+          recommended: 1000,
+          currency: firstPricing?.currency ?? 'USD',
+        },
+        allocations: products.map(product => ({
+          product_id: product.product_id,
+          allocation_percentage: allocationPercentage,
+          rationale: 'Product matching the request criteria',
+          ...(product.pricing_options[0] && {
+            pricing_option_id: product.pricing_options[0].pricing_option_id,
+          }),
+        })) as Proposal['allocations'],
+      } as Proposal];
     }
     const key = typeof (req as unknown as Record<string, unknown>).idempotency_key === 'string'
       ? (req as unknown as Record<string, unknown>).idempotency_key as string
