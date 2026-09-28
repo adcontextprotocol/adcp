@@ -225,17 +225,30 @@ test('OpenAPI navigation uses release-pinned public sources', () => {
   }
 });
 
+// The stable maintenance branch follows the docs default: 3.1 -> origin/3.1.x,
+// and after the 3.2 GA flip, 3.2 -> origin/3.2.x. Until that branch is cut,
+// main itself is the stable surface and CI leaves REQUIRE_STABLE_DOCS_REF unset.
+function stableDocsRef() {
+  if (process.env.STABLE_DOCS_REF) return process.env.STABLE_DOCS_REF;
+  const line = /^(\d+\.\d+)$/.exec(defaultVersion)?.[1];
+  return line ? `origin/${line}.x` : null;
+}
+
 test('default navigation matches the stable release branch surface', () => {
+  const stableRef = stableDocsRef();
+  if (!stableRef) {
+    throw new Error(`Default docs version "${defaultVersion}" must be a stable X.Y release line`);
+  }
   let releaseConfig;
   try {
     releaseConfig = JSON.parse(execFileSync(
       'git',
-      ['show', 'origin/3.1.x:docs.json'],
+      ['show', `${stableRef}:docs.json`],
       { cwd: rootDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
     ));
   } catch {
     if (process.env.REQUIRE_STABLE_DOCS_REF === '1') {
-      throw new Error('origin/3.1.x is required but unavailable');
+      throw new Error(`${stableRef} is required but unavailable`);
     }
     return;
   }
@@ -262,7 +275,7 @@ test('default navigation matches the stable release branch surface', () => {
     const unexpected = currentRoutes.filter(route => !releaseSet.has(route));
     const missing = releaseRoutes.filter(route => !currentSet.has(route));
     throw new Error(
-      `Stable navigation drifted from origin/3.1.x.`
+      `Stable navigation drifted from ${stableRef}.`
       + `\n      Unexpected: ${unexpected.join(', ') || 'none'}`
       + `\n      Missing: ${missing.join(', ') || 'none'}`
     );

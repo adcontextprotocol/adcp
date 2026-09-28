@@ -22,11 +22,15 @@ Land a single PR that:
   `whats-new-*.mdx`. **Do NOT hand-write a `## 3.0.0` section in
   `CHANGELOG.md`** — `changeset version` owns that file. Hand-writing it
   creates a duplicate header when the action regenerates the release PR.
-- Updates `docs.json` banner + default version.
-- Updates Mintlify navigation so the stable version label is the final release
-  (`3.0`, `3.1`, etc.), not the RC/beta selector. After the docs snapshot PR
-  lands, the stable selector points at the final `dist/docs/<version>/`
-  snapshot.
+- Updates the `docs.json` banner to GA wording. The default version flip is
+  automated: when the stable release publishes, `release-docs.yml` runs
+  `scripts/update-release-docs-nav.mjs <X.Y.N> <X.Y>`. For a line newer than
+  the current default it makes `X.Y` the only default and only `Latest`
+  entry, pinned to `dist/docs/<X.Y.N>/`; demotes the previous default; removes
+  the `X.Y-rc` / `X.Y-beta` selectors from the picker (their snapshots and
+  redirects stay); repoints clean `/docs/*` aliases; regenerates
+  `llms-current.md`; and rewrites Addie's `DOCS_SCHEMA_RELEASES` from
+  `docs.json`. Review that snapshot PR rather than flipping by hand.
 - Removes any "use N-1 for production" banners.
 - Removes GA-facing RC/beta wording from release notes, versions, what's-new,
   and migration pages. Keep prerelease guidance only in prerelease archive or
