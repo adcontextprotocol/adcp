@@ -486,7 +486,7 @@ function githubIssueCreationExecutionPolicy(
     if (
       request.toolName === 'create_github_issue'
       && !mayDispatchGithubIssueCreation(creationRequested, request.executionMode)
-    ) return { allowed: false };
+    ) return { allowed: false, reason: 'github_confirmation_required' };
     return callerPolicy?.(request) ?? { allowed: request.executionMode === 'production' };
   };
 }

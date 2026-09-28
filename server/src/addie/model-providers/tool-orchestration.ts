@@ -61,6 +61,7 @@ export interface ToolExecutionPolicyRequest {
 
 export interface ToolExecutionPolicyDecision {
   allowed: boolean;
+  reason?: 'github_confirmation_required';
 }
 
 /** Fail closed: only an explicit `{ allowed: true }` dispatches a handler. */
@@ -798,6 +799,7 @@ export function createAddieToolExecutor(
     }
 
     let allowed = !isIsolatedExecution(options.executionMode);
+    let policyReason: ToolExecutionPolicyDecision['reason'];
     if (options.policy) {
       try {
         const decision = await options.policy({
@@ -808,6 +810,7 @@ export function createAddieToolExecutor(
           executionMode: options.executionMode,
         });
         allowed = decision?.allowed === true;
+        policyReason = decision?.reason;
       } catch {
         logger.warn(
           { toolName: call.name, executionMode: options.executionMode },
@@ -817,10 +820,12 @@ export function createAddieToolExecutor(
       }
     }
     if (!allowed) {
+      const confirmationRequired = call.name === 'create_github_issue' && policyReason === 'github_confirmation_required';
+      const confirmationHelp = 'No GitHub issue was created. Show the draft with draft_github_issue, then ask the user to reply in a separate message with only "Create it" or "Yes". If they request edits or add other instructions, update and show the draft again before asking for confirmation.';
       const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
         status: 'access_denied',
-        model_context: BLOCKED_TOOL_RESULT,
-        user_summary: 'This tool action was blocked by execution policy.',
+        model_context: confirmationRequired ? `${BLOCKED_TOOL_RESULT}. ${confirmationHelp}` : BLOCKED_TOOL_RESULT,
+        user_summary: confirmationRequired ? confirmationHelp : 'This tool action was blocked by execution policy.',
       }));
       return failureResult(call, sequence, options.executionMode, normalized, 0, true);
     }

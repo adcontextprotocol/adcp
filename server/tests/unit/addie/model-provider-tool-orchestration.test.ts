@@ -1031,3 +1031,16 @@ describe('orchestrateAcceptedAddieTurn', () => {
     });
   });
 });
+
+
+it('explains the standalone GitHub confirmation without dispatching or issuing a receipt', async () => {
+  const handler = vi.fn();
+  const execute = createAddieToolExecutor([{ ...tool, name: 'create_github_issue' }], new Map([['create_github_issue', handler]]), {
+    executionMode: 'production', policy: () => ({ allowed: false, reason: 'github_confirmation_required' }),
+  });
+  const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
+  expect(handler).not.toHaveBeenCalled();
+  expect(result.result.content).toContain('separate message with only "Create it" or "Yes"');
+  expect(result.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
+  expect(result.execution.github_issue_receipt).toBeUndefined();
+});
