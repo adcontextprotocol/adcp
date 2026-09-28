@@ -25,6 +25,29 @@ import {
 } from './model-provider.js';
 import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
 import { validateNormalizedModelResponse } from './events.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('google-generate-content-provider');
+type NormalizationReason = 'identity' | 'usage' | 'candidate_count' | 'finish_reason'
+  | 'content_shape' | 'content_limit' | 'thought_signature' | 'tool_call'
+  | 'tool_call_signature' | 'normalized_contract';
+
+/** App-owned structural labels only; never log a caught provider value. */
+class GoogleNormalizationError extends Error {
+  constructor(readonly reason: NormalizationReason, message: string) {
+    super(message);
+  }
+}
+
+function normalizationReason(error: unknown): NormalizationReason | 'unknown_structure' {
+  try {
+    return error instanceof GoogleNormalizationError ? error.reason : 'unknown_structure';
+  } catch {
+    // Even instanceof can invoke an untrusted exception proxy.
+    return 'unknown_structure';
+  }
+}
+
 
 export const GOOGLE_ROUTER_MODEL = 'gemini-3.7-flash';
 export const GOOGLE_DIRECT_FULL_SUITE_MODEL = 'gemini-3.8-flash';
@@ -131,7 +154,7 @@ function deepFreeze<T>(value: T): T {
 
 function assertSafeCount(value: unknown, label: string): asserts value is number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
-    throw new Error(`Malformed Google ${label}`);
+    throw new GoogleNormalizationError('usage', `Malformed Google ${label}`);
   }
 }
 
@@ -166,7 +189,7 @@ function textOnly(content: ModelMessageContent[], label: string): string {
 function rememberGoogleContinuation<T extends object>(content: T, parts: ReadonlyArray<Readonly<Part>>): T {
   const serialized = JSON.stringify(parts);
   if (Buffer.byteLength(serialized, 'utf8') > MAX_GOOGLE_CONTINUATION_BYTES) {
-    throw new Error('Google continuation state exceeds size limit');
+    throw new GoogleNormalizationError('content_limit', 'Google continuation state exceeds size limit');
   }
   const frozen = deepFreeze(content);
   googleContinuationParts.set(frozen, deepFreeze(structuredClone(parts)));
@@ -327,17 +350,22 @@ function normalizeFinishReason(reason: string): ModelFinishReason {
   if (['SAFETY', 'RECITATION', 'LANGUAGE', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII', 'IMAGE_SAFETY'].includes(reason)) {
     return 'refusal';
   }
-  throw new Error(`Unhandled Google finish reason: ${reason}`);
+  throw new GoogleNormalizationError('finish_reason', 'Unhandled Google finish reason');
+}
+
+function validateGoogleNormalizedResponse(response: ModelResponse): void {
+  try { validateNormalizedModelResponse(response); }
+  catch { throw new GoogleNormalizationError('normalized_contract', 'Malformed normalized Google response'); }
 }
 
 export function normalizeGoogleResponse(response: GenerateContentResponse): ModelResponse {
   if (typeof response.responseId !== 'string' || !response.responseId.trim() || response.responseId.length > 256) {
-    throw new Error('Malformed Google response ID');
+    throw new GoogleNormalizationError('identity', 'Malformed Google response ID');
   }
   if (typeof response.modelVersion !== 'string' || !response.modelVersion.trim() || response.modelVersion.length > 256) {
-    throw new Error('Malformed Google response model');
+    throw new GoogleNormalizationError('identity', 'Malformed Google response model');
   }
-  if (!response.usageMetadata) throw new Error('Malformed Google response usage');
+  if (!response.usageMetadata) throw new GoogleNormalizationError('usage', 'Malformed Google response usage');
   assertSafeCount(response.usageMetadata.promptTokenCount, 'input usage');
   if (response.usageMetadata.thoughtsTokenCount !== undefined) {
     assertSafeCount(response.usageMetadata.thoughtsTokenCount, 'thought usage');
@@ -345,7 +373,7 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
   if ((response.candidates?.length ?? 0) === 0 && response.promptFeedback?.blockReason) {
     assertSafeCount(response.usageMetadata.candidatesTokenCount, 'output usage');
     if (!Object.values(BlockedReason).includes(response.promptFeedback.blockReason)) {
-      throw new Error('Malformed Google prompt block reason');
+      throw new GoogleNormalizationError('finish_reason', 'Malformed Google prompt block reason');
     }
     const refused = deepFreeze({
       provider: 'google',
@@ -363,14 +391,14 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
         }),
       },
     } satisfies ModelResponse);
-    validateNormalizedModelResponse(refused);
+    validateGoogleNormalizedResponse(refused);
     return refused;
   }
   if (!Array.isArray(response.candidates) || response.candidates.length !== 1) {
-    throw new Error('Google response requires exactly one candidate');
+    throw new GoogleNormalizationError('candidate_count', 'Google response requires exactly one candidate');
   }
   const candidate = response.candidates[0];
-  if (typeof candidate.finishReason !== 'string') throw new Error('Malformed Google finish reason');
+  if (typeof candidate.finishReason !== 'string') throw new GoogleNormalizationError('finish_reason', 'Malformed Google finish reason');
   const finishReason = normalizeFinishReason(candidate.finishReason);
   const hasOmittedCandidateOutputUsage = response.usageMetadata.candidatesTokenCount === undefined;
   if (!hasOmittedCandidateOutputUsage) {
@@ -380,18 +408,18 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
   if (candidate.content === undefined) {
     // Gemini can omit content after a bounded reasoning turn consumes its
     // output allowance. No other terminal state may omit its content object.
-    if (finishReason !== 'length') throw new Error('Malformed Google response content');
+    if (finishReason !== 'length') throw new GoogleNormalizationError('content_shape', 'Malformed Google response content');
   } else if (!Array.isArray(parts)) {
-    throw new Error('Malformed Google response content');
+    throw new GoogleNormalizationError('content_shape', 'Malformed Google response content');
   }
   if ((parts?.length ?? 0) > MAX_GOOGLE_RESPONSE_PARTS) {
-    throw new Error('Google response content part limit exceeded');
+    throw new GoogleNormalizationError('content_limit', 'Google response content part limit exceeded');
   }
   // Gemini can omit the visible-candidate count only when a bounded reasoning
   // turn consumes its output allowance before emitting a candidate payload.
   // Its validated thoughts count remains part of the actual billed output usage.
   if (hasOmittedCandidateOutputUsage && (finishReason !== 'length' || (parts?.length ?? 0) !== 0)) {
-    throw new Error('Malformed Google output usage');
+    throw new GoogleNormalizationError('usage', 'Malformed Google output usage');
   }
   const outputTokens = response.usageMetadata.candidatesTokenCount ?? 0;
   const content: ModelMessageContent[] = [];
@@ -409,15 +437,15 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
   for (const part of parts ?? []) {
     const keys = Object.keys(part).filter((key) => part[key as keyof typeof part] !== undefined);
     if (keys.some((key) => !['text', 'functionCall', 'thoughtSignature', 'thought'].includes(key))) {
-      throw new Error('Unexpected Google response content');
+      throw new GoogleNormalizationError('content_shape', 'Unexpected Google response content');
     }
-    if (part.thought !== undefined && part.thought !== false) throw new Error('Unexpected Google thought content');
+    if (part.thought !== undefined && part.thought !== false) throw new GoogleNormalizationError('content_shape', 'Unexpected Google thought content');
     if (part.thoughtSignature !== undefined && (typeof part.thoughtSignature !== 'string' || part.thoughtSignature.length > 16_384)) {
-      throw new Error('Malformed Google thought signature');
+      throw new GoogleNormalizationError('thought_signature', 'Malformed Google thought signature');
     }
     const hasText = part.text !== undefined;
     const hasFunctionCall = part.functionCall !== undefined;
-    if (hasText === hasFunctionCall) throw new Error('Google response part requires exactly one payload');
+    if (hasText === hasFunctionCall) throw new GoogleNormalizationError('content_shape', 'Google response part requires exactly one payload');
     if (part.functionCall !== undefined) {
       const call = part.functionCall;
       const callKeys = Object.keys(call).filter((key) => call[key as keyof typeof call] !== undefined);
@@ -436,8 +464,9 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
         || Array.isArray(call.args)
         || call.partialArgs !== undefined
         || call.willContinue !== undefined
-      ) throw new Error('Malformed Google function call');
-      assertPlainJson(call.args, 'Google function-call input');
+      ) throw new GoogleNormalizationError('tool_call', 'Malformed Google function call');
+      try { assertPlainJson(call.args, 'Google function-call input'); }
+      catch { throw new GoogleNormalizationError('tool_call', 'Malformed Google function-call input'); }
       flushText();
       content.push(rememberGoogleContinuation({
         type: 'tool_call',
@@ -446,20 +475,20 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
         input: call.args,
       } as const, [part]));
     } else {
-      if (typeof part.text !== 'string') throw new Error('Malformed Google text content');
+      if (typeof part.text !== 'string') throw new GoogleNormalizationError('content_shape', 'Malformed Google text content');
       textParts.push(part);
     }
   }
   flushText();
   if (candidate.content !== undefined && candidate.content.role !== 'model') {
-    throw new Error('Malformed Google response role');
+    throw new GoogleNormalizationError('content_shape', 'Malformed Google response role');
   }
   // A bounded reasoning turn can consume its complete output allowance before
   // emitting visible text. It is still a settled MAX_TOKENS receipt, not an
   // unknown provider exposure; retain its normalized usage and let the
   // evaluator record the explicit truncated outcome. Empty STOP responses
   // remain invalid.
-  if (finishReason !== 'refusal' && finishReason !== 'length' && content.length < 1) throw new Error('Empty Google response output');
+  if (finishReason !== 'refusal' && finishReason !== 'length' && content.length < 1) throw new GoogleNormalizationError('content_shape', 'Empty Google response output');
 
   const hasToolCalls = content.some((item) => item.type === 'tool_call');
   if (hasToolCalls) {
@@ -467,10 +496,10 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
     if (
       typeof firstFunctionPart?.thoughtSignature !== 'string'
       || !firstFunctionPart.thoughtSignature.trim()
-    ) throw new Error('Google function call is missing its thought signature');
+    ) throw new GoogleNormalizationError('tool_call_signature', 'Google function call is missing its thought signature');
   }
   if (hasToolCalls && finishReason !== 'stop') {
-    throw new Error('Google function call has incompatible finish reason');
+    throw new GoogleNormalizationError('finish_reason', 'Google function call has incompatible finish reason');
   }
 
   const normalized = deepFreeze({
@@ -491,7 +520,7 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
       }),
     },
   } satisfies ModelResponse);
-  validateNormalizedModelResponse(normalized);
+  validateGoogleNormalizedResponse(normalized);
   return normalized;
 }
 
@@ -606,7 +635,9 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     let normalized: ModelResponse;
     try {
       normalized = normalizeGoogleResponse(response);
-    } catch {
+    } catch (error) {
+      logger.warn({ reason: normalizationReason(error) },
+        'Google response normalization failed');
       throw createModelProviderAdapterError('adapter_response_normalization');
     }
     if (!googleReturnedModelIdentityMatches(request.model, normalized.model)) {

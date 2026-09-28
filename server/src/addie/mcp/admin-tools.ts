@@ -9984,6 +9984,8 @@ Use add_committee_leader to assign a leader.`;
 
       let response = `✅ Escalation #${escalationId} marked as ${status}.`;
 
+      let notificationChannel: 'slack' | 'email' | null = null;
+
       // Notify user if requested
       if (notifyUser && escalation.slack_user_id) {
         const messageText = buildResolutionNotificationMessage(
@@ -9997,6 +9999,7 @@ Use add_committee_leader to assign a leader.`;
         });
 
         if (dmResult.ok) {
+          notificationChannel = 'slack';
           response += `\n📬 Notified user via Slack DM.`;
           logger.info(
             { escalationId, slackUserId: escalation.slack_user_id },
@@ -10023,6 +10026,7 @@ Use add_committee_leader to assign a leader.`;
               notificationMessage,
             });
             if (emailSent) {
+              notificationChannel = 'email';
               response += `\n📧 Notified user via email (${escalation.user_email}).`;
             } else {
               response += `\n⚠️ Email fallback also failed.`;
@@ -10043,6 +10047,7 @@ Use add_committee_leader to assign a leader.`;
           notificationMessage,
         });
         if (emailSent) {
+          notificationChannel = 'email';
           response += `\n📧 Notified user via email (${escalation.user_email}).`;
         } else {
           response += `\n⚠️ Could not notify user (email send failed).`;
@@ -10055,7 +10060,14 @@ Use add_committee_leader to assign a leader.`;
         response += `\n**Notes**: ${resolutionNotes}`;
       }
 
-      return response;
+      return JSON.stringify({
+        success: true,
+        escalation_id: escalationId,
+        status,
+        notification_sent: notificationChannel !== null,
+        notification_channel: notificationChannel,
+        message: response,
+      });
     } catch (error) {
       logger.error({ error, escalationId }, "Error resolving escalation");
       return `❌ Failed to resolve escalation #${escalationId}.`;

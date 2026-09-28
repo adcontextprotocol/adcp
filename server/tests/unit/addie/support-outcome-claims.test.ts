@@ -114,3 +114,56 @@ describe('receipt-bound support outcome claims', () => {
     expect(result.text).toContain('You can keep learning');
   });
 });
+
+
+describe('operation-aware support receipts', () => {
+  const resolved = (notified = true, status = 'resolved') => execution(JSON.stringify({
+    success: true, escalation_id: 42, status, notification_sent: notified,
+    notification_channel: notified ? 'email' : null,
+  }), { tool_name: 'resolve_escalation' });
+
+  it('confirms resolution and an email to the user without inventing a creation or team notification', () => {
+    const result = enforceOutcomeClaims("I've resolved escalation #42 and notified the user.", [resolved()]);
+    expect(result).toEqual({ text: 'Escalation #42 is marked as resolved. The user notification was sent via email.', reason: null });
+  });
+
+  it('keeps resolution and notification evidence independent', () => {
+    expect(enforceOutcomeClaims("I've resolved escalation #42 and notified the user.", [resolved(false)]).text)
+      .toBe('Escalation #42 is marked as resolved. I could not confirm a user notification.');
+    expect(enforceOutcomeClaims('Escalation #42 is resolved.', [resolved(false, 'wont_do')]).text)
+      .toContain('marked as wont_do');
+  });
+
+  it('does not let creation authorize resolution, or resolution authorize creation/team notification', () => {
+    expect(enforceOutcomeClaims('Escalation #42 is resolved.', [receipt()]).reason).toBe('Unconfirmed support resolution');
+    expect(enforceOutcomeClaims("I've escalated this.", [resolved()]).text).toBe(DIRECT_SUPPORT);
+    expect(enforceOutcomeClaims("I've notified the team.", [resolved()]).text).toBe(DIRECT_SUPPORT);
+  });
+
+  it.each([
+    execution(JSON.stringify({ success: true, escalation_id: 42, status: 'resolved', notification_sent: true }), { tool_name: 'resolve_escalation' }),
+    execution(JSON.stringify({ success: false, escalation_id: 42, status: 'resolved', notification_sent: false }), { tool_name: 'resolve_escalation' }),
+    { ...resolved(), is_error: true },
+    { ...resolved(), tool_name: 'search_docs' },
+  ])('fails closed for unsupported resolution evidence %#', result => {
+    expect(enforceOutcomeClaims('Escalation #42 is resolved.', [result]).reason).toBe('Unconfirmed support resolution');
+  });
+
+  it('does not infer a full document attachment from a saved summary', () => {
+    const result = enforceOutcomeClaims("I've forwarded the full document to the team.", [receipt()]);
+    expect(result.text).toBe('Support request #42 is saved. The team notification was sent.');
+    expect(result.text).not.toContain('document');
+  });
+});
+
+
+it.each([
+  "I've resolved the schema ambiguity.",
+  "I've notified the member about the event.",
+  "I haven't resolved the escalation.",
+  "I can't confirm escalation #42 is resolved.",
+  'If escalation #42 is resolved, we can continue.',
+  'No escalation is resolved.',
+])('preserves unrelated outcomes and qualified resolution statements: %s', text => {
+  expect(enforceOutcomeClaims(text, [])).toEqual({ text, reason: null });
+});

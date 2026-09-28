@@ -3696,6 +3696,14 @@ export function createMemberToolHandlers(
     );
 
     if (!result.success) {
+      if (result.error_code === 'MEMBERSHIP_REQUIRED' || result.error_code === 'COMMITTEE_MEMBERSHIP_REQUIRED') {
+        return {
+          status: 'access_denied',
+          model_context: `Content was not submitted. ${result.error}`,
+          user_summary: `Content was not submitted. ${result.error}`,
+          telemetry: { operation: 'propose_content', error_code: result.error_code, error_category: 'authorization', retryable: false },
+        };
+      }
       if (result.error?.includes('No collection found')) {
         return `Committee "${committeeSlug}" not found. Use list_working_groups to see available committees.`;
       }
