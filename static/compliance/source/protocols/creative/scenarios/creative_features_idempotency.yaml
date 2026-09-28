@@ -6,10 +6,9 @@ category: creative
 summary: "Proves exact sync and async replay, payload conflicts, concurrent deduplication, submitted acknowledgement validity, and stable provider evaluation economics through polling."
 track: creative
 required_tools:
-  - get_adcp_capabilities
   - get_creative_features
-  - get_task_status
-  - comply_test_controller
+requires:
+  - controller
 
 narrative: |
   get_creative_features accepts provider work even when the caller-facing price
