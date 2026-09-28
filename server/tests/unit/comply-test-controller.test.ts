@@ -573,6 +573,50 @@ describe('comply_test_controller', () => {
       expect(conflict).toMatchObject({ success: false, error: 'INVALID_STATE' });
     });
 
+    it('lets an operator_unit-scoped buyer update a grant the runner seeded without the unit', async () => {
+      // The SDK runner builds seed_rights_grant from the test-kit account and
+      // drops the authored operator_unit; update_rights then names the full
+      // isolated account (brand_rights/update_rights_lifecycle).
+      const fixture = {
+        brand_id: 'daan_janssen',
+        buyer_domain: 'comply-tester',
+        pricing_option_id: 'monthly_exclusive',
+        start_date: '2099-04-01',
+        end_date: '2099-06-30',
+        impression_cap: 100000,
+      };
+      const { result: seeded } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_rights_grant',
+        account: CONTROLLER_ACCOUNT,
+        params: { rights_id: 'janssen_likeness_voice', fixture },
+      });
+      expect(seeded.success).toBe(true);
+
+      const unitAccount = { ...ACCOUNT, operator_unit: { id: 'compliance-update-rights-unit' } };
+      const { result: updated, isError } = await simulateCallTool(server, 'update_rights', {
+        account: unitAccount,
+        rights_id: 'janssen_likeness_voice',
+        paused: true,
+      });
+      expect(isError).not.toBe(true);
+      expect(updated).toMatchObject({ rights_id: 'janssen_likeness_voice', paused: true });
+
+      // The bridge covers only the dropped operator_unit. Another operator,
+      // or a live account, still cannot reach the sandbox fixture.
+      for (const account of [
+        { ...unitAccount, operator: 'other-tester' },
+        { ...unitAccount, sandbox: false },
+      ]) {
+        const { result, isError: rejected } = await simulateCallTool(server, 'update_rights', {
+          account,
+          rights_id: 'janssen_likeness_voice',
+          paused: true,
+        });
+        expect(rejected).toBe(true);
+        expect(result.code).toBe('REFERENCE_NOT_FOUND');
+      }
+    });
+
     it('rejects an unknown grant without mutating seeded state', async () => {
       const { result, isError } = await simulateCallTool(server, 'update_rights', {
         account: ACCOUNT,
