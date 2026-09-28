@@ -281,6 +281,19 @@ function latestBadgeEligibleComplianceVersionForLine(line: string): string {
 export const DEFAULT_HOSTED_COMPLIANCE_VERSION =
   latestBadgeEligibleComplianceVersionForLine(DEFAULT_HOSTED_COMPLIANCE_LINE);
 
+/**
+ * A compliance target the caller can correct. Handlers that accept a
+ * `compliance_target` should surface this message verbatim; every other
+ * resolver failure is an operator problem (missing cache, stale manifest) and
+ * should stay behind a generic error.
+ */
+export class HostedComplianceTargetError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'HostedComplianceTargetError';
+  }
+}
+
 export function hostedComplianceDir(version = DEFAULT_HOSTED_COMPLIANCE_VERSION): string {
   return repoPath('dist', 'compliance', version);
 }
@@ -295,7 +308,33 @@ function hostedSchemaRootForVersion(version: string, target: HostedComplianceTar
 
 export function resolveHostedComplianceVersion(target: string = DEFAULT_HOSTED_COMPLIANCE_LINE): string {
   if (/^[1-9][0-9]*\.[0-9]+$/.test(target)) {
-    return latestBadgeEligibleComplianceVersionForLine(target);
+    try {
+      return latestBadgeEligibleComplianceVersionForLine(target);
+    } catch (cause) {
+      // The default line resolves at module load; if it fails, that is an
+      // operator problem, not a bad request.
+      if (target === DEFAULT_HOSTED_COMPLIANCE_LINE) throw cause;
+      // A bare line alias asks for a stable release (#7356). If the line has
+      // a prerelease cache, tell the caller which alias to send instead of the
+      // operator-facing cache message. Only name aliases that resolve: an
+      // unknown line has no prerelease either, and advice that fails on the
+      // next call is worse than the generic error.
+      const prereleaseAliases = (['rc', 'beta'] as const)
+        .filter(label => {
+          try {
+            latestPrereleaseComplianceVersionForLine(target, label);
+            return true;
+          } catch {
+            return false;
+          }
+        })
+        .map(label => `"${target}-${label}"`);
+      if (prereleaseAliases.length === 0) throw cause;
+      throw new HostedComplianceTargetError(
+        `No stable AdCP ${target}.x compliance release is published yet. Use ${prereleaseAliases.join(' or ')} to run prerelease diagnostics explicitly.`,
+        { cause },
+      );
+    }
   }
   const betaMatch = target.match(/^([1-9][0-9]*\.[0-9]+)-beta$/);
   if (betaMatch) {

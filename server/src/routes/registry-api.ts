@@ -36,6 +36,7 @@ import { compareAdcpVersions, listStoryboards, getStoryboard, getTestKitForStory
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
+  HostedComplianceTargetError,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
   hostedAuthProbeTaskForProfile,
   withHostedStoryboardRunOptions,
@@ -656,8 +657,10 @@ function targetFromRequestValue(value: unknown): ReturnType<typeof hostedComplia
   if (!requested) return complianceTarget;
   try {
     return hostedComplianceTarget(requested);
-  } catch {
-    throw new InvalidComplianceTargetError(INVALID_COMPLIANCE_TARGET_MESSAGE);
+  } catch (error) {
+    throw new InvalidComplianceTargetError(
+      error instanceof HostedComplianceTargetError ? error.message : INVALID_COMPLIANCE_TARGET_MESSAGE,
+    );
   }
 }
 
@@ -9509,7 +9512,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       });
     } catch (error) {
       if (error instanceof InvalidComplianceTargetError) {
-        return res.status(400).json({ error: INVALID_COMPLIANCE_TARGET_MESSAGE });
+        return res.status(400).json({ error: error.message });
       }
       logger.error({ err: error, path: req.path }, "Failed to list storyboards");
       res.status(500).json({ error: "Failed to list storyboards" });
@@ -9538,7 +9541,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       });
     } catch (error) {
       if (error instanceof InvalidComplianceTargetError) {
-        return res.status(400).json({ error: INVALID_COMPLIANCE_TARGET_MESSAGE });
+        return res.status(400).json({ error: error.message });
       }
       logger.error({ err: error, path: req.path }, "Failed to get storyboard");
       res.status(500).json({ error: "Failed to get storyboard" });
@@ -9837,7 +9840,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         });
       } catch (error) {
         if (error instanceof InvalidComplianceTargetError) {
-          return res.status(400).json({ error: INVALID_COMPLIANCE_TARGET_MESSAGE });
+          return res.status(400).json({ error: error.message });
         }
         logger.error({ err: error, path: req.path }, "Failed to get first step preview");
         res.status(500).json({ error: "Failed to get first step preview" });

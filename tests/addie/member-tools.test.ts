@@ -237,6 +237,28 @@ describe('createMemberToolHandlers', () => {
     }
   });
 
+  it('tells the caller which alias to send when compliance_target names a line with no stable release', async () => {
+    // Follow-up to #7356: the resolver now refuses to promote a bare line
+    // alias to a prerelease, and that refusal must reach the caller instead of
+    // being flattened into the generic "Invalid compliance_target" text.
+    // Assumes 3.2 has an RC cache and no stable release yet (see
+    // static/compliance/published-versions.json).
+    const handlers = createMemberToolHandlers(null);
+    await expect(handlers.get('evaluate_agent_quality')!({
+      agent_url: 'https://seller.example.com/mcp',
+      compliance_target: '3.2',
+    })).rejects.toThrow('No stable AdCP 3.2.x compliance release is published yet. Use "3.2-rc"');
+
+    // A line with no cache at all, and malformed input, still get the generic
+    // message, never an operator-facing one and never advice that fails next.
+    for (const compliance_target of ['4.0', 'not-a-version']) {
+      await expect(handlers.get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target,
+      })).rejects.toThrow('Invalid compliance_target. Use 3.1, 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.');
+    }
+  });
+
   describe('storyboard diagnostic formatting', () => {
     const storyboard = {
       id: 'sb_demo',
