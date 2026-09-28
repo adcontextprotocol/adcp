@@ -167,3 +167,23 @@ it.each([
 ])('preserves unrelated outcomes and qualified resolution statements: %s', text => {
   expect(enforceOutcomeClaims(text, [])).toEqual({ text, reason: null });
 });
+
+it.each([
+  "I've notified the user about the escalation. A support request was created.",
+  "A support request was created. I've emailed the user about the escalation.",
+  "I've notified the user and created a support request.",
+])('retains creation evidence while denying an unsupported user notification: %s', text => {
+  const result = enforceOutcomeClaims(text, [receipt()], 'Create an escalation.');
+  expect(result.text).toContain('Support request #42 is saved. The team notification was sent.');
+  expect(result.text).toContain('I could not confirm a notification to the user.');
+  expect(result.text).not.toContain('saved resolution');
+  expect(result.text.match(/Support request #42/g)).toHaveLength(1);
+  expect(result.reason).toBe('Unconfirmed support notification');
+});
+
+it('does not let an unsupported resolution suppress an independent creation receipt', () => {
+  const result = enforceOutcomeClaims("Escalation #42 is resolved. I've escalated the issue.", [receipt()]);
+  expect(result.text).toContain("I haven't confirmed a saved resolution");
+  expect(result.text).toContain('Support request #42 is saved. The team notification was sent.');
+  expect(result.reason).toBe('Unconfirmed support resolution');
+});
