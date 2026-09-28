@@ -217,10 +217,10 @@ AdCP 3.2 contains a bounded set of stable-surface changes that can reject a payl
 | `create_media_buy` `total_budget.currency` | Must match `^[A-Z]{3}$` (uppercase ISO 4217). | Encodes the documented ISO 4217 value. |
 | `build_creative` | A non-refinement build carries exactly one target route (`target_capability_id`, `target_capability_ids`, `target_format_id`, or `target_format_ids`). A refinement (`refine_from_build_variant_id`) carries no target selector or `transformer_id`. `target_format_ids` has `maxItems: 50`. | Canonical creative formats. |
 | Package `format_kind: "image"` with `params` | `params.width` and `params.height` must appear together. | Canonical creative formats. |
-| `sync_governance` `authentication.schemes` | `"Bearer"` only. `"HMAC-SHA256"` is rejected. | The seller authenticates outbound `check_governance` calls with a Bearer credential. The shared webhook scheme list (`enums/auth-scheme.json`) is deprecated. |
+| `sync_governance` `authentication.schemes` | `"Bearer"` only. `"HMAC-SHA256"` is rejected. | The seller authenticates outbound `check_governance` calls with a Bearer credential. The shared webhook scheme list (`enums/auth-scheme.json`) is deprecated. Also counted as an authentication exception in the stability table. |
 | `notification_configs[].event_types` (`sync_accounts`) | Media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) are schema-invalid. | 3.1 prose already required sellers to reject them. |
 | `preview_creative` | `creative_manifest` and `creative_id` cannot both be sent. | Clarifies the single-input contract. |
-| `adcp_version` and `supported_versions[]` | No leading zeros, and no trailing `.` or `-` in the prerelease segment. | Encodes the canonical `MAJOR.MINOR[-PRERELEASE]` wire shape. |
+| `adcp_version` and `supported_versions[]` | No leading zeros in `MAJOR` or `MINOR`, and the prerelease segment must start and end with a letter or digit (no leading or trailing `.` or `-`). | Encodes the canonical `MAJOR.MINOR[-PRERELEASE]` wire shape. |
 
 **Tightened producer validation.** A 3.1 producer that emitted these values fails 3.2 validation:
 

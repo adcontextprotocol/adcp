@@ -85,11 +85,12 @@ complete list is in
   `content-digest` coverage and RFC 8941 padded Base64. The endpoint selects
   the profile, so a signed 3.1 request to a shared endpoint that advertises 3.2
   is rejected even when it pins `"3.1"`.
-- **Eight tightened request schemas.** `create_media_buy` shape and currency,
+- **Eight tightened request rules.** `create_media_buy` shape and currency,
   `build_creative` routes, image package dimensions, `sync_governance` schemes,
   account notification `event_types`, `preview_creative` inputs, and the
   `adcp_version` pattern. Most encode rules 3.1 already documented; the
-  versioning table records the basis for each.
+  versioning table records the basis for each. The Bearer-only
+  `sync_governance` rule also counts as an authentication exception.
 - **Three producer-side tightenings.** Preview `recommended_sandbox`,
   committed-proposal `pricing_option_id`, and capability `vast_versions` /
   `request_signing` list patterns.
@@ -404,7 +405,9 @@ independent per-package counters.
   `aggregate_frequency_capping` and every selected product declares compatible
   `media_buy_support`. Use `required_media_buy_support` in product discovery to
   find those products. The root cap requires `max_impressions` and does not
-  accept `suppress` or `suppress_minutes`.
+  accept `suppress` or `suppress_minutes`. It is not accepted when executing a
+  committed proposal: the `create_media_buy` schema forbids `frequency_cap`
+  alongside `proposal_id` + `total_budget`.
 - **Live buys** change the cap through the `update_media_buy_frequency_cap`
   action when `available_actions[]` offers it.
 
@@ -669,7 +672,7 @@ and new tasks are omitted.
 | 1 | Body-level `status` removed from `create_media_buy` / `update_media_buy` success | Parser | Buyers still reading body `status` | Read `media_buy_status` ([guide](/docs/reference/migration/media-buy-status)). |
 | 2 | Request `Signature` / `Content-Digest` use RFC 8941 padded Base64; `content-digest` coverage mandatory on 3.2 endpoints | Sender | Signing buyers, verifying sellers | See [Mixed-version request signing](#mixed-version-request-signing). |
 | 3 | `error.recovery` populated on every 3.2 error; `retry_after` is an integer | Producer | Sellers and all agents | Always emit both. Decoders keep tolerating 3.1 errors without `recovery`. |
-| 4 | `get_media_buy_delivery`: root `currency` no longer required (it is required only with `aggregated_totals`); `totals.spend` no longer required; `aggregated_totals` deprecated. Same in `media-buy-delivery-webhook-result` | Parser | Reporting pipelines | Read currency per media buy or package. Tolerate missing `spend` on mixed-currency buys. |
+| 4 | `get_media_buy_delivery`: root `currency` no longer required (it is required only with `aggregated_totals`); `totals.spend` no longer required; `aggregated_totals` deprecated. The delivery webhook result (`media-buy-delivery-webhook-result`) also drops root `currency` from `required` | Parser | Reporting pipelines | Read currency per media buy or package. Tolerate missing `spend` on mixed-currency buys. |
 | 5 | `create_media_buy` root `anyOf`: explicit `packages` without `proposal_id`, or `proposal_id` + `total_budget` without `packages` | Sender | Buyers sending both, or neither | Send exactly one shape. |
 | 6 | `total_budget.currency` pattern `^[A-Z]{3}$` | Sender | Buyers sending lowercase codes | Send uppercase ISO 4217. |
 | 7 | `build_creative`: exactly one target route; refinements carry none; `target_format_ids` `maxItems: 50` | Sender | Buyers and orchestrators calling creative agents | Send one of `target_capability_id(s)` / `target_format_id(s)`. |
@@ -680,7 +683,7 @@ and new tasks are omitted.
 | 12 | `adcp_version` / `supported_versions[]` pattern rejects leading zeros and trailing separators | Sender | Hand-rolled clients | Emit canonical `MAJOR.MINOR[-PRERELEASE]`. |
 | 13 | Preview `embedding.recommended_sandbox` must be `""` | Producer | Creative agents | Emit `""`. |
 | 14 | Committed proposals require `allocations[].pricing_option_id`; capability `vast_versions` is a closed enum; `request_signing.*_for` entries match `^[a-z][a-z0-9_]*$` | Producer | Sellers | Emit the constrained values. |
-| 15 | `targeting.language` accepts BCP 47 tags (`en-US`), not only ISO 639-1 | Parser | Buyers echoing or validating targeting | Accept BCP 47 tags. |
+| 15 | `targeting.language` accepts BCP 47 tags (`en-US`), not only ISO 639-1 | Parser (both directions) | 3.1 sellers validating incoming targeting, and buyers validating echoed or read-back targeting | Accept BCP 47 tags; 3.1 two-letter codes stay valid. |
 | 16 | Capabilities `targeting.geo_regions` and `targeting.language`: boolean → boolean or object | Parser | Strictly typed capability parsers | Accept both forms ([negotiation](#version-negotiation-across-3-1-and-3-2)). |
 | 17 | `get_products` terminal `status: "rejected"` arm (no `products` or `cache_scope`) | Parser | Buyers validating `get_products` | Handle `rejected`, with `reason` and optional `suggestions`. |
 | 18 | `pricing-option` `revenue_share` arm; `pricing_model` gains `revenue_share` | Parser | Buyers with a closed pricing `oneOf` | Skip unknown pricing models. |
@@ -688,7 +691,7 @@ and new tasks are omitted.
 | 20 | `get_media_buys` `available_actions[]` accepts canonical action objects; actions gain `update_name`, `update_budget_allocation`, `update_bidding`, `update_media_buy_frequency_cap`; action mode gains `seller_managed` | Parser | Buyers switching on actions | Tolerate unknown actions and modes. |
 | 21 | New union arms: `product-format-declaration` (`audio_vast`, `seller_rendered_stateful_display`, `coordinated_placements`), `asset-union` (`display_tag`), async `submitted` arms on `preview_creative` / `get_creative_features` | Parser | Strict validators and code generators | Tolerate unknown arms. |
 | 22 | New either-or requirements: `capability_id` or `format_id` on build previews; `output_capability_ids` or `output_format_ids` on transformers; `property_ids` or `identifiers` on collection distributions | Parser | Creative and collection consumers | Accept either form. |
-| 23 | Enum additions, including `delivery_status: "not_delivering"`, `partially_approved`, `proposal_status: "accepted"`, reporting frequencies (`weekly`, `quarterly`, `post_campaign`), 10 specialisms, and notification types | Parser | Exhaustive switches | Unknown-value tolerance. |
+| 23 | Enum additions, including `delivery_status: "not_delivering"` on `get_media_buy_delivery` packages and the delivery webhook (it already existed on `get_media_buys`), `partially_approved`, `proposal_status: "accepted"`, reporting frequencies (`weekly`, `quarterly`, `post_campaign`), 10 specialisms, and notification types | Parser | Exhaustive switches | Unknown-value tolerance. |
 | 24 | `bid_price` and pricing-option `max_bid` deprecated in favor of `bidding.bid_amount` / `bidding.max_bid` | Deprecation | Auction buyers and sellers | Emit `bidding`; keep reading `bid_price`. |
 | 25 | Named formats deprecated: `core/format-id.json`, `core/format.json`, `list_creative_formats` | Deprecation | Creative and sales agents | Move to canonical capability discovery ([Canonical creative discovery](#canonical-creative-discovery)). |
 
