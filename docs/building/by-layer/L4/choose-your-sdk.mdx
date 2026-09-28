@@ -28,16 +28,16 @@ What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cro
 | SDK | Current package | 3.2 RC support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
 | **`@adcp/sdk`** (TypeScript) | `14.0.0-rc.49` | Exact `3.2.0-rc.7` support | ✅ | ✅ | ✅ | ✅ |
-| **`adcp`** (Python) | `8.0.0b14` | Exact `3.2.0-rc.1` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
+| **`adcp`** (Python) | `8.0.0b15` | Exact `3.2.0-rc.3` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **`adcp/v3`** (Go) | `v3.2.1` | Exact `3.2.0-rc.1` generated schemas and types; higher layers remain role-dependent | ✅ | ⚠️ | ⚠️ | ⚠️ |
 
 Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. The L0–L3 columns describe the current package, not a 3.2 support claim.
 
-The current `rc` npm tag of `@adcp/sdk` matches this checkpoint and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`) and, from `14.0.0-rc.49`, the buyer-side consumer module (`@adcp/sdk/reporting/consumer`). Python and Go remain pinned to RC.1 until their next SDK wave.
+The current `rc` npm tag of `@adcp/sdk` matches this checkpoint and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`) and, from `14.0.0-rc.49`, the buyer-side consumer module (`@adcp/sdk/reporting/consumer`). Python remains on RC.3 and Go on RC.1 until their next SDK wave.
 
 <Warning>
 **The TypeScript SDK embeds RC.7, the current protocol checkpoint.**
-Python and Go still embed `3.2.0-rc.1`. Pin the exact package and matching wire
+Python embeds `3.2.0-rc.3` and Go embeds `3.2.0-rc.1`. Pin the exact package and matching wire
 version shown here for development and staging. Raw-wire and code-generation
 workflows can use RC.7's [signed bundle](/docs/reference/3-2-beta#use-the-rc-7-artifact-directly).
 This is not a GA signal: production integrations should remain on 3.1 until
@@ -144,7 +144,7 @@ integrations should use the main server and per-tool type exports.
 [![PyPI version](https://img.shields.io/pypi/v/adcp)](https://pypi.org/project/adcp/)
 
 ```bash
-pip install adcp==8.0.0b14
+pip install adcp==8.0.0b15
 ```
 
 ```python
@@ -218,9 +218,9 @@ The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`a
 ### Python CLI
 
 ```bash
-uvx --from adcp==8.0.0b14 adcp --help
-uvx --from adcp==8.0.0b14 adcp --save-auth my-agent https://sales.example.com/mcp
-uvx --from adcp==8.0.0b14 adcp my-agent get_products '{"adcp_version":"3.2-rc.1","idempotency_key":"550e8400-e29b-41d4-a716-446655442064","buying_mode":"brief","brief":"CTV campaign"}'
+uvx --from adcp==8.0.0b15 adcp --help
+uvx --from adcp==8.0.0b15 adcp --save-auth my-agent https://sales.example.com/mcp
+uvx --from adcp==8.0.0b15 adcp my-agent get_products '{"adcp_version":"3.2-rc.3","idempotency_key":"550e8400-e29b-41d4-a716-446655442064","buying_mode":"brief","brief":"CTV campaign"}'
 ```
 
 ## What's next

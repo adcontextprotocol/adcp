@@ -21,8 +21,8 @@ and Go SDK `adcp/v3@v3.2.1` embeds `3.2.0-rc.1`:
 
 <Info>
 **Match every SDK to its embedded checkpoint.** TypeScript
-`@adcp/sdk@14.0.0-rc.49` is RC.7 evidence. The exact Python and Go package
-pairings below remain RC.1 evidence. Use the signed RC.7 bundle for raw-wire
+`@adcp/sdk@14.0.0-rc.49` is RC.7 evidence, Python `adcp==8.0.0b15` is RC.3
+evidence, and Go `adcp/v3@v3.2.1` remains RC.1 evidence. Use the signed RC.7 bundle for raw-wire
 validation and code generation, and do not infer compatibility from a floating
 package tag or from an SDK generated against an earlier checkpoint.
 </Info>
@@ -95,8 +95,7 @@ configuration. It retains 3.0 and 3.1 adaptation for mixed-version testing.
 See [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) for the support
 matrix and install guidance.
 
-Python `adcp==8.0.0b14` carries RC.1 schemas and generated types, and
-`adcp==8.0.0b15` carries RC.3 schemas. Its
+Python `adcp==8.0.0b15` carries RC.3 schemas and generated types. Its
 higher-level caller/server helpers remain role-dependent, so consult the SDK
 matrix before treating schema parity as complete L1–L3 coverage.
 
@@ -157,8 +156,8 @@ An SDK support claim must name all of the following:
 - install command and one tested validation command.
 
 The SDK compatibility matrix lives in [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
-The TypeScript row names exact RC.7 support; the Python and Go rows name exact
-RC.1 support with different higher-layer coverage. None implies support for a
+The TypeScript row names exact RC.7 support, the Python row exact RC.3 support,
+and the Go row exact RC.1 support, with different higher-layer coverage. None implies support for a
 different checkpoint. Treat generated 3.2 types and validators in every other
 SDK as unavailable until its row names an exact package and protocol checkpoint.
 Raw JSON calls may still be possible, but they are not equivalent to SDK support.
