@@ -96,8 +96,27 @@ function isProtocolScopedPath(filePath) {
   return PROTOCOL_SCOPED_PATHS.some(pattern => pattern.test(normalized));
 }
 
-function hasProtocolScopedChanges(changes) {
-  return changes.some(change => (change.paths || []).some(isProtocolScopedPath));
+function isCiInstallOnlyChange(change, readFileAtHead, readFileAtBase) {
+  // This workflow also controls compliance execution, so keep its default
+  // protocol classification. Only the exact CI install substitution is exempt.
+  if (change.status !== 'M' || change.paths?.length !== 1 ||
+      change.paths[0] !== '.github/workflows/training-agent-storyboards.yml') return false;
+  if (!readFileAtHead || !readFileAtBase) return false;
+  try {
+    const head = readFileAtHead(change.paths[0]);
+    const base = readFileAtBase(change.paths[0]);
+    if (typeof head !== 'string' || typeof base !== 'string') return false;
+    const restored = head.replace(/^([ \t]*run: )node \.github\/scripts\/npm-ci\.mjs$/gm, '$1npm ci');
+    return restored !== head && restored === base;
+  } catch {
+    // Missing content must never exempt a potentially protocol-scoped change.
+    return false;
+  }
+}
+
+function hasProtocolScopedChanges(changes, readFileAtHead, readFileAtBase) {
+  return changes.some(change => (change.paths || []).some(isProtocolScopedPath) &&
+    !isCiInstallOnlyChange(change, readFileAtHead, readFileAtBase));
 }
 
 function isChangesetMaintenancePath(filePath) {
@@ -222,7 +241,7 @@ function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileA
 
   for (const change of changes) {
     for (const filePath of change.paths || []) {
-      if (isProtocolScopedPath(filePath)) {
+      if (isProtocolScopedPath(filePath) && !isCiInstallOnlyChange(change, readFileAtHead, readFileAtBase)) {
         protocolScopedFiles.push(filePath);
       }
     }
@@ -291,6 +310,9 @@ function run(argv = process.argv.slice(2)) {
   const baseRef = argv[0] || defaultBaseRef();
   const diffOutput = git(['diff', '--name-status', '--find-renames', `${baseRef}...HEAD`]);
   const changes = parseNameStatus(diffOutput);
+  // Read the same baseline as the three-dot diff, even if the target advances.
+  const mergeBase = git(['merge-base', baseRef, 'HEAD']).trim();
+  const readFileAtBase = filePath => readFileAtRef(mergeBase, filePath);
 
   if (argv.includes('--is-delete-only-cleanup')) {
     const isCleanup = isChangesetDeleteOnlyCleanup(changes);
@@ -313,7 +335,7 @@ function run(argv = process.argv.slice(2)) {
   }
 
   if (argv.includes('--has-protocol-scoped-changes')) {
-    const hasProtocol = hasProtocolScopedChanges(changes);
+    const hasProtocol = hasProtocolScopedChanges(changes, readFileAtHead, readFileAtBase);
     if (hasProtocol) {
       console.log('Protocol-scoped changes detected.');
       return 0;
@@ -325,7 +347,7 @@ function run(argv = process.argv.slice(2)) {
   const violations = findChangesetProtocolScopeViolations(
     changes,
     readFileAtHead,
-    filePath => readFileAtRef(baseRef, filePath)
+    readFileAtBase
   );
 
   if (violations.length > 0) {

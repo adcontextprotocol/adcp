@@ -41,7 +41,7 @@ jobs:
       - name: Build an untrusted runnable evaluator bundle
         run: |
           set -euo pipefail
-          npm ci
+          node .github/scripts/npm-ci.mjs
           npm run build
           printf '%s\n' "${{ steps.verify.outputs.approved_main_sha }}" > /tmp/matched-v4-runtime-commit
           # This job deliberately has no id-token permission. The protected
