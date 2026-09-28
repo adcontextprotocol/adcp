@@ -243,10 +243,10 @@ jobs:
           # Creative-builder retains a large generated-schema graph after its
           # result is complete on some Node/V8 builds. Run each storyboard in
           # a bounded child so teardown cannot retain the whole job. Other
-          # matrix tenants remain monolithic; current /sales has its separate
+          # matrix tenants except current /creative remain monolithic; current /sales has its separate
           # isolated aggregate jobs below.
           isolated_orchestrator_failure=0
-          if [ "${{ matrix.tenant }}" = "creative-builder" ]; then
+          if [ "${{ matrix.tenant }}" = "creative-builder" ] || { [ "${{ matrix.surface }}" = "current" ] && [ "${{ matrix.tenant }}" = "creative" ]; }; then
             bash scripts/run-storyboards-isolated-shards.sh \
               --shard-count 8 --max-parallel 4 2>&1 \
               | tee /tmp/storyboards.log || isolated_orchestrator_failure=1
@@ -294,7 +294,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${isolated_orchestrator_failure}" -ne 0 ]; then
-            echo "::error::One or more isolated creative-builder orchestrators failed. Counts above are diagnostic only."
+            echo "::error::One or more isolated ${{ matrix.tenant }} orchestrators failed. Counts above are diagnostic only."
             exit 1
           fi
 
