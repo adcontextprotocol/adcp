@@ -807,6 +807,18 @@ function main() {
     process.exit(1);
   }
 
+  // $generate phase-scope lint: the runner scopes `$generate:<kind>#<alias>`
+  // values to one phase, so an alias reused in a later phase silently mints a
+  // different ID. Cross-phase values must travel through context_outputs.
+  try {
+    execSync('node scripts/lint-storyboard-generate-phase-scope.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Advisory-expiry lint (warnings only): surface storyboards declaring
   // severity: advisory without expires_after_version (or permanent_advisory),
   // so authors can confirm at PR review whether the drift is on purpose.

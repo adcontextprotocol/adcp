@@ -222,6 +222,11 @@ phases:
         context_outputs:
           - name: plan_id
             path: 'plans[0].plan_id'
+          # $generate aliases are phase-scoped; the conditions checks and the
+          # create_media_buy phase read the exact request's key through
+          # context so the authorized payload matches the executed one.
+          - name: spend_authority_create_media_buy_key
+            generate: uuid_v4
         validations:
           - check: response_schema
             description: "Response matches sync-plans-response.json schema"
@@ -297,7 +302,7 @@ phases:
               - product_id: "lifestyle_display_q2"
                 budget: 15000
                 pricing_option_id: "cpm_standard"
-            idempotency_key: "$generate:uuid_v4#governance_spend_authority_conditions_create_media_buy"
+            idempotency_key: "$context.spend_authority_create_media_buy_key"
 
           context:
             correlation_id: "governance_spend_authority--check_governance_conditions"
@@ -380,7 +385,7 @@ phases:
               - product_id: "lifestyle_display_q2"
                 budget: 15000
                 pricing_option_id: "cpm_standard"
-            idempotency_key: "$generate:uuid_v4#governance_spend_authority_conditions_create_media_buy"
+            idempotency_key: "$context.spend_authority_create_media_buy_key"
             ext:
               governance_policy_acknowledgements:
                 - "ctv_weekly_reporting"
@@ -455,7 +460,7 @@ phases:
             - product_id: "lifestyle_display_q2"
               budget: 15000
               pricing_option_id: "cpm_standard"
-          idempotency_key: "$generate:uuid_v4#governance_spend_authority_conditions_create_media_buy"
+          idempotency_key: "$context.spend_authority_create_media_buy_key"
           ext:
             governance_policy_acknowledgements:
               - "ctv_weekly_reporting"

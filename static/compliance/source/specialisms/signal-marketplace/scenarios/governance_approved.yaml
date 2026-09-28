@@ -139,6 +139,10 @@ phases:
               countries: ["US"]
         context_outputs:
           - { name: plan_id, path: "plans[0].plan_id" }
+          # $generate aliases are phase-scoped; the intent check and the
+          # authorized activate_signal read the exact request's key through
+          # context so the authorized payload matches the executed one.
+          - { name: signal_governance_approved_activate_key, generate: uuid_v4 }
         validations:
           - check: response_schema
 
@@ -168,7 +172,7 @@ phases:
               - type: "platform"
                 platform: "pinnacle-dsp"
                 account: "acmeoutdoor-governed-seat"
-            idempotency_key: "$generate:uuid_v4#signal_governance_approved_activate"
+            idempotency_key: "$context.signal_governance_approved_activate_key"
         context_outputs:
           - { name: governance_context, path: "governance_context" }
         validations:
@@ -202,7 +206,7 @@ phases:
             - type: "platform"
               platform: "pinnacle-dsp"
               account: "acmeoutdoor-governed-seat"
-          idempotency_key: "$generate:uuid_v4#signal_governance_approved_activate"
+          idempotency_key: "$context.signal_governance_approved_activate_key"
           governance_context: "$context.governance_context"
         validations:
           - check: response_schema

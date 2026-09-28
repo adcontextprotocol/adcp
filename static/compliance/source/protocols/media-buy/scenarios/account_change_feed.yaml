@@ -102,6 +102,10 @@ phases:
         context_outputs:
           - name: account_change_cursor
             path: "cursor"
+          # $generate aliases are phase-scoped; later phases read the
+          # external creative's ID through context.
+          - name: account_change_external_creative_id
+            generate: uuid_v4
         validations:
           - check: response_schema
             description: "Response matches list-account-changes-response.json"
@@ -129,7 +133,7 @@ phases:
             sandbox: true
           scenario: "seed_creative"
           params:
-            creative_id: "$generate:uuid_v4#account_change_feed_external_creative"
+            creative_id: "$context.account_change_external_creative_id"
             fixture:
               name: "Shared account display baseline"
               status: "approved"
@@ -195,7 +199,7 @@ phases:
             description: "Feed identifies the changed resource family"
           - check: field_value
             path: "changes[0].resource.resource_id"
-            value: "$generate:uuid_v4#account_change_feed_external_creative"
+            value: "$context.account_change_external_creative_id"
             description: "Feed identifies the externally changed creative"
           - check: field_value
             path: "changes[0].origin.kind"
@@ -218,13 +222,13 @@ phases:
             account_id: "acc_luma_shared"
           filters:
             creative_ids:
-              - "$generate:uuid_v4#account_change_feed_external_creative"
+              - "$context.account_change_external_creative_id"
         validations:
           - check: response_schema
             description: "Response matches list-creatives-response.json"
           - check: field_value
             path: "creatives[0].creative_id"
-            value: "$generate:uuid_v4#account_change_feed_external_creative"
+            value: "$context.account_change_external_creative_id"
             description: "Authoritative read returns the changed creative"
           - check: field_value
             path: "creatives[0].status"
@@ -247,7 +251,7 @@ phases:
             sandbox: true
           scenario: "force_creative_status"
           params:
-            creative_id: "$generate:uuid_v4#account_change_feed_external_creative"
+            creative_id: "$context.account_change_external_creative_id"
             status: "rejected"
             rejection_reason: "Connected-platform policy review rejected the creative."
         validations:
@@ -299,7 +303,7 @@ phases:
             description: "Response matches list-account-changes-response.json"
           - check: field_value
             path: "changes[0].resource.resource_id"
-            value: "$generate:uuid_v4#account_change_feed_external_creative"
+            value: "$context.account_change_external_creative_id"
             description: "Feed correlates the modification to the creative"
           - check: field_value
             path: "changes[0].action"
@@ -322,7 +326,7 @@ phases:
             account_id: "acc_luma_shared"
           filters:
             creative_ids:
-              - "$generate:uuid_v4#account_change_feed_external_creative"
+              - "$context.account_change_external_creative_id"
         validations:
           - check: response_schema
             description: "Response matches list-creatives-response.json"
@@ -481,7 +485,7 @@ phases:
             account_id: "acc_luma_shared"
           filters:
             creative_ids:
-              - "$generate:uuid_v4#account_change_feed_external_creative"
+              - "$context.account_change_external_creative_id"
         validations:
           - check: response_schema
             description: "Response matches list-creatives-response.json"
