@@ -727,6 +727,13 @@ function brandFromKit(
     storyboardId === 'wholesale_feed_products_scope_isolation'
     || storyboardId === 'wholesale_feed_signals_scope_isolation'
   ) return undefined;
+  // This storyboard targets the seller's shared account (acc_luma_shared),
+  // whose brand is not the test-kit brand. The SDK runner addresses
+  // comply_test_controller by the natural key sync_accounts returned, and the
+  // brand invariant would swap in the test-kit brand. That key names no
+  // account the buyer synced, so the seeded creative would record no change
+  // and no account.change_recorded webhook would fire.
+  if (storyboardId === 'media_buy_seller/account_change_feed') return undefined;
   const domain = kit?.brand?.house?.domain;
   return domain ? { domain } : undefined;
 }
