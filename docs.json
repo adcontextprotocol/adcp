@@ -705,6 +705,7 @@
                   "dist/docs/3.2.0-rc.6/reference/migration/index",
                   "dist/docs/3.2.0-rc.6/reference/migration/3-0-to-3-1",
                   "dist/docs/3.2.0-rc.6/reference/migration/3-1-to-3-2",
+                  "dist/docs/3.2.0-rc.6/reference/migration/reliable-reporting-status-loop",
                   "dist/docs/3.2.0-rc.6/reference/migration/prerelease-upgrades",
                   "dist/docs/3.2.0-rc.6/reference/migration/channels",
                   "dist/docs/3.2.0-rc.6/reference/migration/pricing",
@@ -765,6 +766,7 @@
                       "dist/docs/3.2.0-rc.6/building/by-layer/L3/index",
                       "dist/docs/3.2.0-rc.6/building/by-layer/L3/task-lifecycle",
                       "dist/docs/3.2.0-rc.6/building/by-layer/L3/async-operations",
+                      "dist/docs/3.2.0-rc.6/building/by-layer/L3/async-identity-and-convergence",
                       "dist/docs/3.2.0-rc.6/building/by-layer/L3/webhooks",
                       "dist/docs/3.2.0-rc.6/building/by-layer/L3/error-handling",
                       "dist/docs/3.2.0-rc.6/building/by-layer/L3/comply-test-controller"
@@ -799,9 +801,12 @@
                       "dist/docs/3.2.0-rc.6/building/by-layer/L0/schemas",
                       "dist/docs/3.2.0-rc.6/building/by-layer/L0/mcp-guide",
                       "dist/docs/3.2.0-rc.6/building/by-layer/L0/a2a-guide",
+                      "dist/docs/3.2.0-rc.6/building/by-layer/L0/a2a-profile-extension",
                       "dist/docs/3.2.0-rc.6/building/by-layer/L0/a2a-response-format",
                       "dist/docs/3.2.0-rc.6/protocol/get_adcp_capabilities",
                       "dist/docs/3.2.0-rc.6/protocol/sync_agent_notification_configs",
+                      "dist/docs/3.2.0-rc.6/protocol/sync_principal",
+                      "dist/docs/3.2.0-rc.6/protocol/get_principal",
                       "dist/docs/3.2.0-rc.6/building/by-layer/L0/mcp-response-extraction",
                       "dist/docs/3.2.0-rc.6/building/by-layer/L0/a2a-response-extraction"
                     ]
@@ -855,7 +860,8 @@
                   "dist/docs/3.2.0-rc.6/accounts/tasks/list_accounts",
                   "dist/docs/3.2.0-rc.6/accounts/tasks/report_usage",
                   "dist/docs/3.2.0-rc.6/accounts/tasks/sync_governance",
-                  "dist/docs/3.2.0-rc.6/accounts/tasks/get_account_financials"
+                  "dist/docs/3.2.0-rc.6/accounts/tasks/get_account_financials",
+                  "dist/docs/3.2.0-rc.6/accounts/tasks/list_account_changes"
                 ]
               }
             ]
@@ -904,6 +910,7 @@
                     "pages": [
                       "dist/docs/3.2.0-rc.6/media-buy/capability-discovery/index",
                       "dist/docs/3.2.0-rc.6/media-buy/capability-discovery/implementing-standard-formats",
+                      "dist/docs/3.2.0-rc.6/media-buy/reporting-core-implementation-guide",
                       "dist/docs/3.2.0-rc.6/media-buy/advanced-topics/agentic-execution-engine",
                       "dist/docs/3.2.0-rc.6/media-buy/advanced-topics/accounts-and-security",
                       "dist/docs/3.2.0-rc.6/media-buy/advanced-topics/sandbox"
@@ -925,6 +932,9 @@
                       "dist/docs/3.2.0-rc.6/media-buy/task-reference/sync_catalogs",
                       "dist/docs/3.2.0-rc.6/media-buy/task-reference/get_media_buys",
                       "dist/docs/3.2.0-rc.6/media-buy/task-reference/get_media_buy_delivery",
+                      "dist/docs/3.2.0-rc.6/media-buy/task-reference/get_reporting_status",
+                      "dist/docs/3.2.0-rc.6/media-buy/task-reference/sync_reporting_status",
+                      "dist/docs/3.2.0-rc.6/media-buy/task-reference/sync_reporting_receipts",
                       "dist/docs/3.2.0-rc.6/media-buy/task-reference/provide_performance_feedback",
                       "dist/docs/3.2.0-rc.6/media-buy/task-reference/sync_event_sources",
                       "dist/docs/3.2.0-rc.6/media-buy/task-reference/log_event",
@@ -972,10 +982,16 @@
                   {
                     "group": "Formats and Assets",
                     "pages": [
+                      "dist/docs/3.2.0-rc.6/creative/canonical-formats",
+                      "dist/docs/3.2.0-rc.6/creative/canonical-formats-migration",
                       "dist/docs/3.2.0-rc.6/creative/formats",
                       "dist/docs/3.2.0-rc.6/creative/asset-types",
+                      "dist/docs/3.2.0-rc.6/creative/representation-sets",
+                      "dist/docs/3.2.0-rc.6/creative/published-post-reference-creatives",
+                      "dist/docs/3.2.0-rc.6/creative/sponsored-placement-adapter-contracts",
                       "dist/docs/3.2.0-rc.6/creative/template-format-ids",
-                      "dist/docs/3.2.0-rc.6/creative/universal-macros"
+                      "dist/docs/3.2.0-rc.6/creative/universal-macros",
+                      "dist/docs/3.2.0-rc.6/creative/tracker-execution-contracts"
                     ]
                   },
                   {
@@ -983,11 +999,13 @@
                     "pages": [
                       "dist/docs/3.2.0-rc.6/creative/channels/video",
                       "dist/docs/3.2.0-rc.6/creative/channels/ctv",
+                      "dist/docs/3.2.0-rc.6/creative/ctv-experiences",
                       "dist/docs/3.2.0-rc.6/creative/channels/broadcast",
                       "dist/docs/3.2.0-rc.6/creative/channels/display",
                       "dist/docs/3.2.0-rc.6/creative/channels/audio",
                       "dist/docs/3.2.0-rc.6/creative/channels/radio",
                       "dist/docs/3.2.0-rc.6/creative/channels/dooh",
+                      "dist/docs/3.2.0-rc.6/creative/channels/ooh",
                       "dist/docs/3.2.0-rc.6/creative/channels/print",
                       "dist/docs/3.2.0-rc.6/creative/channels/carousels",
                       "dist/docs/3.2.0-rc.6/creative/channels/social-native"
@@ -1024,6 +1042,7 @@
                   "dist/docs/3.2.0-rc.6/governance/overview",
                   "dist/docs/3.2.0-rc.6/governance/rfc-process",
                   "dist/docs/3.2.0-rc.6/governance/embedded-human-judgment",
+                  "dist/docs/3.2.0-rc.6/governance/sell-side-governance",
                   "dist/docs/3.2.0-rc.6/governance/policy-registry",
                   "dist/docs/3.2.0-rc.6/governance/policy-registry-sync",
                   "dist/docs/3.2.0-rc.6/governance/policy-attribution",
@@ -1079,7 +1098,8 @@
                     "pages": [
                       "dist/docs/3.2.0-rc.6/governance/creative/index",
                       "dist/docs/3.2.0-rc.6/governance/creative/get_creative_features",
-                      "dist/docs/3.2.0-rc.6/governance/creative/provenance-verification"
+                      "dist/docs/3.2.0-rc.6/governance/creative/provenance-verification",
+                      "dist/docs/3.2.0-rc.6/governance/creative/policy-backed-rejections"
                     ]
                   },
                   {
@@ -1199,6 +1219,8 @@
                   "dist/docs/3.2.0-rc.6/trusted-match/context-and-identity",
                   "dist/docs/3.2.0-rc.6/trusted-match/specification",
                   "dist/docs/3.2.0-rc.6/trusted-match/router-architecture",
+                  "dist/docs/3.2.0-rc.6/trusted-match/identity-match-implementation",
+                  "dist/docs/3.2.0-rc.6/trusted-match/impression-tracker-implementation",
                   "dist/docs/3.2.0-rc.6/trusted-match/privacy-architecture",
                   "dist/docs/3.2.0-rc.6/trusted-match/data-protection-roles",
                   "dist/docs/3.2.0-rc.6/trusted-match/migration-from-axe",
@@ -1332,7 +1354,8 @@
                 "pages": [
                   "dist/docs/3.2.0-rc.6/learning/supplements/buyer-briefs-and-get-products",
                   "dist/docs/3.2.0-rc.6/learning/supplements/governance-protocol-by-role",
-                  "dist/docs/3.2.0-rc.6/learning/supplements/creative-agent-workflows"
+                  "dist/docs/3.2.0-rc.6/learning/supplements/creative-agent-workflows",
+                  "dist/docs/3.2.0-rc.6/learning/shared-account-change-feed"
                 ]
               },
               {
