@@ -3,7 +3,7 @@ set -euo pipefail
 # Run from the repository root. Dependencies: npm ci, pinned requirements.txt,
 # Go from go/go.mod. No partner credentials or external agent URLs are used.
 output_dir=${1:-.context/sdk-response-conformance}
-typescript_release=${2:-3.2.0-rc.3}
+typescript_release=${2:-3.2.0-rc.7}
 python_go_release=${3:-3.2.0-rc.1}
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
