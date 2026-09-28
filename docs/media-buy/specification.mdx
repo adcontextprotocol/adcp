@@ -531,6 +531,10 @@ Each `get_products` request with `buying_mode: "refine"` is self-contained — s
 ### Canonical creative-format discovery
 
 Sales-agent `list_creative_formats` is deprecated in AdCP 3.2. An agent-global list cannot represent product-, placement-, account-, or inventory-specific deliverability.
+For older 3.x callers, the deprecated media-buy request still accepts `account`.
+Sellers with account-specific catalogs use it to scope the returned formats;
+sellers with one shared catalog MAY ignore it. New integrations use
+`get_products` with `account` and read each product's `format_options[]`.
 
 Use these canonical sources instead:
 

@@ -418,8 +418,8 @@ Only use `patch`/`minor`/`major` when the change affects the published AdCP prot
 AdCP runs two active release lines:
 
 - **`3.1.x`** → stable maintenance patches (`3.1.4`, `3.1.5`, …)
-- **`main`** → the next minor, which must use Changesets beta pre mode
-  (`.changeset/pre.json`) to produce `3.2.0-beta.N`
+- **`main`** → the next minor, currently in Changesets RC pre mode
+  (`.changeset/pre.json`) to produce `3.2.0-rc.N` until GA exit
 
 Branch naming follows `<major>.<minor>.x` to match the existing `2.6.x` precedent. No `release/` prefix.
 
@@ -506,12 +506,12 @@ These are version-level concerns. Security fixes ship as out-of-band advisories 
 If unsure, default to no changeset and discuss whether the change belongs on
 `3.1.x` at all. New protocol surface stays on `main` for 3.2.
 
-#### Pre mode (beta releases)
+#### Pre mode (prereleases)
 
-When present, `.changeset/pre.json` puts `main` in **beta pre mode**. During
-3.2 development, every Version Packages cut must produce `3.2.0-beta.N`,
-never stable `3.2.0`. Enter pre mode before accepting 3.2 release changes, in
-a reviewed PR:
+During the beta phase, `.changeset/pre.json` put `main` in **beta pre mode**,
+so each Version Packages cut produced `3.2.0-beta.N`. The current file uses
+`"tag": "rc"` and produces `3.2.0-rc.N`; stable `3.2.0` requires the reviewed
+pre-mode exit below. The original beta entry procedure was:
 
 ```bash
 npx changeset pre enter beta

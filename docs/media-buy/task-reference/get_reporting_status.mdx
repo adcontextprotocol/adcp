@@ -5,7 +5,7 @@ description: "Check Reliable Reporting health, enumerate expected periods and re
 ---
 
 <Warning>
-**Reliable Reporting 1.0 is published through `3.2.0-rc.3` and remains
+**Reliable Reporting 1.0 is published through `3.2.0-rc.7` and remains
 experimental.** RC.2 publishes the opt-in consumer-status sync and readback and
 RC.3 hardens it. Sellers implementing that extension advertise
 `consumer_status_task`; it stays opt-in until the notice window closes on
@@ -20,9 +20,9 @@ usable. It does not replace [`get_media_buy_delivery`](/docs/media-buy/task-refe
 as the reporting-data API.
 
 {/* The stable /schemas/v3 alias does not expose this prerelease-only task yet. */}
-**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/get-reporting-status-request.json)
+**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.7/media-buy/get-reporting-status-request.json)
 
-**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/get-reporting-status-response.json)
+**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.7/media-buy/get-reporting-status-response.json)
 
 <Note>
 **What landed when.** RC.0 supports the `summary`, `periods`, and `revision`
@@ -161,7 +161,7 @@ This state is reachable after the caller intentionally sends
 
 ### Future expectation on a complete summary
 
-This correction targets the next 3.2 release candidate. The immutable RC.3
+This correction shipped in RC.4 and remains in RC.7. The immutable RC.3
 schemas retain the earlier prohibition on this field with complete health.
 
 For `view: summary` with `health: complete`, a seller MUST populate
