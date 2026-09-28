@@ -2,7 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/list-account-changes-response.json",
   "title": "List Account Changes Response",
-  "description": "Durable account change feed page. cursor is always present, including for an empty page at the tail; ordinary pagination-response semantics do not apply.",
+  "x-status": "experimental",
+  "description": "Durable account change feed page. cursor is always present, including for an empty page at the tail; ordinary pagination-response semantics do not apply. Experimental in 3.2 (RFC #6810): sellers returning this response MUST list account.change_feed in experimental_features.",
   "type": "object",
   "allOf": [
     {"$ref": "/schemas/core/version-envelope.json"},

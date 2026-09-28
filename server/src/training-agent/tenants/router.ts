@@ -1129,6 +1129,11 @@ function projectTenantCapabilities(
             resource_types: ['creative'],
           },
         };
+        // The feed is experimental in 3.2 (RFC #6810): advertising the block
+        // requires the matching experimental_features declaration.
+        if (!experimentalFeatures.includes('account.change_feed')) {
+          experimentalFeatures.push('account.change_feed');
+        }
       }
       const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
         ? structured.compliance_testing

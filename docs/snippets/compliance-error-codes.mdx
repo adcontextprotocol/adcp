@@ -547,7 +547,7 @@ The seller detected authentication material or caller-supplied trust material pl
 
 **Suggested action:** obtain a latest checkpoint, rebuild authoritative account snapshots, then drain changes after the checkpoint
 
-The list_account_changes cursor is no longer within the seller's retained account change window. The seller MUST NOT silently restart from the retention boundary. Recovery: correctable (obtain a new starting_position: latest checkpoint, rebuild every authoritative account snapshot, then drain changes after that checkpoint). error.details SHOULD include available_since and MAY include a replacement starting-position hint, without disclosing inaccessible history.
+The list_account_changes cursor (experimental, account.change_feed) is no longer within the seller's retained account change window. The seller MUST NOT silently restart from the retention boundary. Recovery: correctable (obtain a new starting_position: latest checkpoint, rebuild every authoritative account snapshot, then drain changes after that checkpoint). error.details SHOULD include available_since and MAY include a replacement starting-position hint, without disclosing inaccessible history.
 
 </Accordion>
 <a id="error-code-evaluator-agent-not-accepted"></a>
