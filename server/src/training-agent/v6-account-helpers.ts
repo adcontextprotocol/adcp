@@ -37,8 +37,7 @@ import type {
   ResolveContext,
   SyncAccountsResultRow,
 } from '@adcp/sdk/server';
-import { handleSyncAccounts, isKnownAccountId } from './account-handlers.js';
-import type { CanonicalAccountRef } from './account-scope.js';
+import { handleSyncAccounts } from './account-handlers.js';
 import { pickFromInput } from './v6-input-helpers.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -124,19 +123,4 @@ export function accountRefForResolution(ref: unknown, toolName: string | undefin
   if (!Object.prototype.hasOwnProperty.call(record, 'account_id') || record.sandbox !== true) return ref;
   const { sandbox: _sandbox, ...identity } = record;
   return identity;
-}
-
-/**
- * The controller may only act on accounts this seller holds
- * (comply-test-controller-request.json). The training resolvers synthesize an
- * account for any other ref, so refuse unknown account_ids here.
- */
-export function isUnknownControllerAccount(
-  canonical: CanonicalAccountRef,
-  toolName: string | undefined,
-  principal: string | undefined,
-): boolean {
-  return toolName === 'comply_test_controller'
-    && canonical.kind === 'account_id'
-    && !isKnownAccountId(canonical.account_id, principal);
 }

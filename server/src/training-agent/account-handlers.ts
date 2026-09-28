@@ -1048,12 +1048,6 @@ export async function emitAccountChangeRecordedWebhook(
   }));
 }
 
-/** Whether an account_id names an account this seller holds: synced by the caller, or a compliance fixture. */
-export function isKnownAccountId(accountId: string, principal: string | undefined): boolean {
-  return findAccountByIdAcrossSessions(accountId, principal) !== undefined
-    || getComplianceAccounts().some(account => account.account_id === accountId);
-}
-
 export function resolveAccountIdForRef(
   sessionKey: string,
   principal: string | undefined,

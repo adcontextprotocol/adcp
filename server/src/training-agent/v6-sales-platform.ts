@@ -57,7 +57,7 @@ import {
   handleLogEvent,
 } from './catalog-event-handlers.js';
 import { handleSyncAudiences } from './audience-handlers.js';
-import { syncAccountsUpsert, accountRefForResolution, isUnknownControllerAccount } from './v6-account-helpers.js';
+import { syncAccountsUpsert, accountRefForResolution } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { PUBLISHERS } from './publishers.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
@@ -982,7 +982,6 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
     }
     const toolName = (ctx as { toolName?: string } | undefined)?.toolName;
     const canonical = canonicalizeAccountRef(accountRefForResolution(ref, toolName));
-    if (isUnknownControllerAccount(canonical, toolName, principal)) return null;
     const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
       ? { account_id: canonical.account_id }
       : {
