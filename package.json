@@ -138,7 +138,7 @@
     "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs && node --test --test-force-exit --test-timeout=30000 tests/universal-macro-translation-vectors.test.cjs",
     "test:unit": "npm run test:canonical-pixel-ratio && npm run test:governance-jws-vectors && vitest run --dir tests/ --pool=threads",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",
-    "test:server-unit": "vitest run --config server/vitest.config.ts tests/unit/",
+    "test:server-unit": "vitest run --config server/vitest.config.ts tests/unit/ src/",
     "test:server-integration": "vitest run server/tests/integration --config server/vitest.config.ts",
     "test:external-smoke": "tsx scripts/external-smoke/run.ts",
     "test:openapi": "tsx scripts/generate-openapi.ts && git diff --exit-code static/openapi/registry.yaml || (echo 'OpenAPI spec is out of date. Run: npm run build:openapi' && exit 1)",

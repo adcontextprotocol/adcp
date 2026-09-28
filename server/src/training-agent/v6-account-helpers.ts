@@ -37,7 +37,8 @@ import type {
   ResolveContext,
   SyncAccountsResultRow,
 } from '@adcp/sdk/server';
-import { handleSyncAccounts } from './account-handlers.js';
+import { handleSyncAccounts, isKnownAccountId } from './account-handlers.js';
+import type { CanonicalAccountRef } from './account-scope.js';
 import { pickFromInput } from './v6-input-helpers.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -110,3 +111,32 @@ export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (re
   const wrapped = v5Result as { accounts?: unknown[] };
   return (wrapped.accounts ?? []) as SyncAccountsResultRow[];
 };
+
+/**
+ * comply_test_controller carries its own account object: an account_id plus
+ * the required `sandbox: true` caller assertion, which core AccountRef forbids
+ * on account_id refs. Drop the assertion before canonicalizing; the resolved
+ * account record, not the flag, decides sandbox status.
+ */
+export function accountRefForResolution(ref: unknown, toolName: string | undefined): unknown {
+  if (toolName !== 'comply_test_controller' || ref == null || typeof ref !== 'object' || Array.isArray(ref)) return ref;
+  const record = ref as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, 'account_id') || record.sandbox !== true) return ref;
+  const { sandbox: _sandbox, ...identity } = record;
+  return identity;
+}
+
+/**
+ * The controller may only act on accounts this seller holds
+ * (comply-test-controller-request.json). The training resolvers synthesize an
+ * account for any other ref, so refuse unknown account_ids here.
+ */
+export function isUnknownControllerAccount(
+  canonical: CanonicalAccountRef,
+  toolName: string | undefined,
+  principal: string | undefined,
+): boolean {
+  return toolName === 'comply_test_controller'
+    && canonical.kind === 'account_id'
+    && !isKnownAccountId(canonical.account_id, principal);
+}

@@ -20,7 +20,7 @@ import {
   type AccountStore,
 } from '@adcp/sdk/server';
 import { handleGetSignals, handleActivateSignal } from './task-handlers.js';
-import { syncAccountsUpsert } from './v6-account-helpers.js';
+import { syncAccountsUpsert, accountRefForResolution, isUnknownControllerAccount } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { taskRegistryScopeFromContext } from './task-registry-scope.js';
@@ -65,7 +65,9 @@ const trainingAccounts: AccountStore<TrainingMeta> = {
         authInfo: principal ? authInfo : { kind: 'public' as const },
       };
     }
-    const canonical = canonicalizeAccountRef(ref);
+    const toolName = (ctx as { toolName?: string } | undefined)?.toolName;
+    const canonical = canonicalizeAccountRef(accountRefForResolution(ref, toolName));
+    if (isUnknownControllerAccount(canonical, toolName, principal)) return null;
     const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
       ? { account_id: canonical.account_id }
       : {
