@@ -159,8 +159,10 @@ function transformPublishedSchemaText(content, version) {
 }
 
 // Keep generated file-based discovery aligned with the CDN and server
-// middleware. Exact artifacts remain available, but non-selectable releases
-// must never win latest/major/minor aliases.
+// middleware (tests/schema-release-status.test.ts enforces this). Exact
+// artifacts remain available, but non-selectable releases must never win
+// latest/major/minor aliases. 3.2.0 is the permanently withdrawn June 2026
+// accidental cut; 3.2 GA ships as 3.2.1 (.changeset/withdrawn-release.json).
 const RELEASE_STATUS_OVERRIDES = new Map([
   ['3.1.3', 'withdrawn'],
   ['3.2.0-rc.5', 'unpublished'],
@@ -169,6 +171,25 @@ const RELEASE_STATUS_OVERRIDES = new Map([
 
 function isSelectableRelease(version) {
   return !RELEASE_STATUS_OVERRIDES.has(version);
+}
+
+// A prerelease is superseded by the first selectable stable release on its
+// minor line that is newer than it. Withdrawn/unpublished stable numbers
+// (e.g. 3.2.0) never supersede anything, so 3.2.0-rc.N resolves to 3.2.1.
+function supersedingStableVersion(version, knownVersions = []) {
+  const parsed = semver.parse(version);
+  if (!parsed || parsed.prerelease.length === 0) return undefined;
+  return knownVersions
+    .filter((candidate) => {
+      if (!isSelectableRelease(candidate)) return false;
+      const stable = semver.parse(candidate);
+      return stable
+        && stable.prerelease.length === 0
+        && stable.major === parsed.major
+        && stable.minor === parsed.minor
+        && semver.gt(candidate, version);
+    })
+    .sort(semver.compare)[0];
 }
 
 // Parse command line arguments
@@ -300,8 +321,7 @@ function getReleaseMetadata(version, knownVersions = []) {
   }
 
   const label = prerelease.split('.')[0].toLowerCase();
-  const stableVersion = String(version).split('-')[0];
-  const supersededBy = knownVersions.includes(stableVersion) ? stableVersion : undefined;
+  const supersededBy = supersedingStableVersion(String(version), knownVersions);
   const metadata = {
     stability: label === 'rc' ? 'rc' : label === 'beta' ? 'beta' : 'prerelease',
     prerelease: true,
@@ -2724,6 +2744,8 @@ module.exports = {
   getReleaseMetadata,
   buildRootSchemaDiscovery,
   isSelectableRelease,
+  RELEASE_STATUS_OVERRIDES,
+  supersedingStableVersion,
   discoverTools,
   buildTaskResultResolution,
   validateManifestToolRelationships,

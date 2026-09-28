@@ -38,18 +38,28 @@ After #1 merges, `changesets/action` regenerates the `changeset-release/main`
 branch and opens/updates the Version Packages PR (title drops the `(rc)`
 suffix, target version is `3.0.0`).
 
-**Audit the consumed changesets** before merge:
+**Audit the consumed changesets** before merge. Run this on the pre-exit
+`main` (before the Version Packages merge deletes them). In exit mode,
+Changesets consumes both the pending `.changeset/*.md` files **and** every
+changeset archived in `.changeset/pre/*.md` during the beta/RC cuts, so the
+audit must cover both:
 
 ```bash
-for f in .changeset/*.md; do
-  name=$(basename "$f" .md)
+for f in .changeset/*.md .changeset/pre/*.md; do
+  [ -e "$f" ] || continue
+  name=${f#.changeset/}; name=${name%.md}
   [ "$name" = "README" ] && continue
   if grep -q '"adcontextprotocol"' "$f" 2>/dev/null; then
     bump=$(grep '"adcontextprotocol"' "$f" | head -1 | sed 's/.*: *//' | tr -d ' ')
     echo "$bump $name"
+  else
+    echo "EMPTY $name"
   fi
 done | sort
 ```
+
+Entries print as `pre/<name>` when they come from the archive. `EMPTY` entries
+carry no protocol bump and still land in the changelog; review them too.
 
 Any changeset describing **website, admin, billing, newsletter, digest, Addie,
 server-infra, migration-only, or operational work** should not exist at all.

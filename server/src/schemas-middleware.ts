@@ -5,13 +5,20 @@ import semver from "semver";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("schemas-middleware");
-const RELEASE_STATUS_OVERRIDES = new Map<string, "withdrawn" | "unpublished">([
+// Keep aligned with scripts/build-schemas.cjs and workers/artifact-cdn/src/index.js
+// (tests/schema-release-status.test.ts enforces this). 3.2.0 is the permanently
+// withdrawn June 2026 accidental cut; 3.2 GA ships as 3.2.1
+// (.changeset/withdrawn-release.json).
+export const RELEASE_STATUS_OVERRIDES: ReadonlyMap<string, "withdrawn" | "unpublished"> = new Map<
+  string,
+  "withdrawn" | "unpublished"
+>([
   ["3.1.3", "withdrawn"],
   ["3.2.0-rc.5", "unpublished"],
   ["3.2.0", "unpublished"],
 ]);
 
-function isSelectableRelease(version: string): boolean {
+export function isSelectableRelease(version: string): boolean {
   return !RELEASE_STATUS_OVERRIDES.has(version);
 }
 

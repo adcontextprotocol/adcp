@@ -1,0 +1,8 @@
+{
+  "withdrawn_version": "3.2.0",
+  "target_version": "3.2.1",
+  "withdrawn_release_commit": "5dbe4ae7902e677110b6d4cfbf0630d78e5f4612",
+  "revert_commit": "1a18bbebeda9e361dc55a13674b0dcc7207be112",
+  "withdrawn_protocol_sha256": "9fc36017a839e117a1079e8304f13e4818c0aadbdc81c132e9edf707eafc1e83",
+  "reason": "On 2026-06-30 an accidental Version Packages cut (5dbe4ae) committed 3.2.0 from 3.1-era main. #5769 reverted it and deleted its tag and GitHub Release, but its signed schema, compliance, and protocol artifacts remain on the artifact CDN with immutable caching and are never overwritten or retired. 3.2 GA therefore ships as 3.2.1; the wire pin stays \"3.2\"."
+}
