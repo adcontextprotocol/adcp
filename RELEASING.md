@@ -8,9 +8,9 @@ maintenance-line checklist, see `.agents/shortcuts/cut-patch.md`.
 
 - `3.1.x` is the stable maintenance line. Patch fixes are reviewed on `main`
   first, then cherry-picked to a PR targeting `3.1.x`.
-- `main` is the next-minor line. It must be in Changesets beta pre mode
-  (`.changeset/pre.json` with `"tag": "beta"`) while developing 3.2, so its
-  Version Packages PRs produce `3.2.0-beta.N` rather than stable `3.2.0`.
+- `main` is the next-minor line. It is currently in Changesets RC pre mode
+  (`.changeset/pre.json` with `"tag": "rc"`), so Version Packages PRs produce
+  `3.2.0-rc.N` until the separately reviewed GA pre-mode exit.
 - Forward merges are one-way: `3.1.x → main`. Never merge `main` into the
   maintenance branch.
 
