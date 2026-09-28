@@ -21,6 +21,7 @@ import {
   prepareReportingCoreLifecycleProbe,
   publishZeroRowReportingCoreLifecycleProbe,
   publishReportingCoreLifecycleProbeRows,
+  publishReportingCoreLifecycleProbeVector,
   setReportingCoreLifecycleProbeClock,
   prepareReliableReportingReconciledBillingProbe,
   publishReliableReportingReconciledAdjustments,
@@ -126,6 +127,27 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
       '"period_end":"2026-08-01T01:00:01.000Z"',
     );
     expect(sha256(mutatedPeriod)).not.toBe(expectedDigest);
+  });
+
+  it('commits the fixed Core vector identity and digest from publish_nonempty for any caller account', () => {
+    // Literal values from reporting-core.yaml's publish_nonempty_core step.
+    // The identity is part of the vector, so it must not vary with the
+    // account (the storyboard runner substitutes its test-kit account).
+    for (const accountId of ['reporting_core_nonempty_lab', 'reporting_core_lab']) {
+      const principal = `test-core-vector-${accountId}`;
+      prepareReportingCoreLifecycleProbe(principal, accountId);
+      expect(publishReportingCoreLifecycleProbeVector(principal, accountId)).toEqual({
+        reporting_revision_id: 'reporting-revision.ecc62efa00946aa1e2788ad9',
+        row_count: 2,
+        revision_content_sha256: '5199a776b3a99915f084e16c921b2e501fcedd949017236d51a2303c5c2f5cd1',
+      });
+      const status = getReportingStatusForAccount({ view: 'revision', reporting_revision_id: 'reporting-revision.ecc62efa00946aa1e2788ad9' } as TrainingGetReportingStatusRequest, principal, accountId);
+      expect(status.revision).toMatchObject({
+        reporting_revision_id: 'reporting-revision.ecc62efa00946aa1e2788ad9',
+        control_totals: [{ name: 'impressions', value: '5', value_type: 'integer', unit: 'impressions' }],
+        revision_content_sha256: '5199a776b3a99915f084e16c921b2e501fcedd949017236d51a2303c5c2f5cd1',
+      });
+    }
   });
 
   it('paginates the complete revision resource union with an accurate count', () => {

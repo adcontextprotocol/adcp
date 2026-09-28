@@ -106,7 +106,7 @@ import {
   prepareReliableReportingCoreIntegrityProbe,
   publishReliableReportingReconciledAdjustments,
   publishReliableReportingCoreIntegrityCorrection,
-  publishReportingCoreLifecycleProbeRows,
+  publishReportingCoreLifecycleProbeVector,
   publishZeroRowReportingCoreLifecycleProbe,
   restateAfterReceivedReportingCoreLifecycleProbe,
   restateReportingCoreLifecycleProbeSnapshot,
@@ -1712,18 +1712,7 @@ async function handleReportingCoreLifecycleProbe(
     if (operation === 'publish_nonempty') {
       return {
         success: true,
-        simulated: publishReportingCoreLifecycleProbeRows(ctx.principal, accountId, [
-          {
-            period_start: '2026-08-01T00:00:00.000Z', period_end: '2026-08-01T01:00:00.000Z', impressions: 2,
-            dimensions: { media_buy_id: 'media-buy-core-001', package_id: 'package-core-001', country: 'US' },
-            metrics: { impressions: 2, clicks: 1 },
-          },
-          {
-            period_start: '2026-08-01T00:00:00.000Z', period_end: '2026-08-01T01:00:00.000Z', impressions: 3,
-            dimensions: { media_buy_id: 'media-buy-core-002', package_id: 'package-core-002', country: 'CA' },
-            metrics: { impressions: 3, clicks: 0 },
-          },
-        ]),
+        simulated: publishReportingCoreLifecycleProbeVector(ctx.principal, accountId),
         message: 'Published a deterministic non-empty immutable Core revision for exact-read verification.',
       };
     }
@@ -1817,6 +1806,13 @@ async function handleReliableReportingCoreIntegrityProbe(
           success: true,
           simulated: prepareReliableReportingCoreIntegrityProbe(ctx.principal, accountId),
           message: 'Prepared one daily official Core obligation in the upstream source timezone.',
+        };
+      }
+      if (operation === 'probe_scheduler_dst') {
+        return {
+          success: true,
+          simulated: probeReportingSourceCalendarDst(ctx.principal, accountId),
+          message: 'Ran the installed source-timezone scheduler across both 2026 DST transitions.',
         };
       }
       if (operation === 'publish_official_adjustment') {
