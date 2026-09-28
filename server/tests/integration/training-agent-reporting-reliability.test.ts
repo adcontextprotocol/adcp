@@ -37,12 +37,12 @@ import {
 } from '../../src/training-agent/state.js';
 import { buildCatalog } from '../../src/training-agent/product-factory.js';
 import {
+  TRAINING_AGENT_CURRENT_ADCP_RELEASE,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
   type MediaBuyState,
 } from '../../src/training-agent/types.js';
 
 const PUBLIC_TEST_TOKEN = '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
-const ADCP_VERSION = TRAINING_AGENT_CURRENT_ADCP_VERSION;
 
 async function boot(): Promise<{ url: string; close(): Promise<void> }> {
   const app = express();
@@ -107,7 +107,12 @@ describe('sales training-agent reporting Core exercise', () => {
     stopSessionCleanup();
   });
 
-  it('advertises Core honestly and runs the immediate missing-first then zero-row lab', async () => {
+  // The GA release pin ("3.2") must reach the same Reliable Reporting lab as
+  // the exact current bundle pin rather than downshifting to 3.1.
+  it.each([
+    TRAINING_AGENT_CURRENT_ADCP_VERSION,
+    TRAINING_AGENT_CURRENT_ADCP_RELEASE,
+  ])('advertises Core honestly and runs the immediate missing-first then zero-row lab (adcp_version %s)', async (ADCP_VERSION: string) => {
     const { url, close } = await boot();
     const account = {
       brand: { domain: 'reporting-lab.example' },
@@ -131,7 +136,7 @@ describe('sales training-agent reporting Core exercise', () => {
 
       const configured = await call(url, 2, 'sync_accounts', {
         adcp_version: ADCP_VERSION,
-        idempotency_key: 'reporting-core-configure-0001',
+        idempotency_key: `reporting-core-configure-0001-${ADCP_VERSION}`,
         accounts: [{ ...account, billing: 'operator', reporting_delivery_configs: [TRAINING_REPORTING_CORE_CONFIGURATION] }],
       });
       expect(configured.result?.structuredContent).toMatchObject({
@@ -178,7 +183,7 @@ describe('sales training-agent reporting Core exercise', () => {
       };
       const unconfigured = await call(url, 23, 'sync_accounts', {
         adcp_version: ADCP_VERSION,
-        idempotency_key: 'reporting-core-empty-account-0001',
+        idempotency_key: `reporting-core-empty-account-0001-${ADCP_VERSION}`,
         accounts: [{ ...unconfiguredAccount, billing: 'operator' }],
       });
       expect(unconfigured.result?.structuredContent).toMatchObject({
@@ -222,7 +227,7 @@ describe('sales training-agent reporting Core exercise', () => {
       });
       const rejectedUnknownScope = await call(url, 25, 'sync_accounts', {
         adcp_version: ADCP_VERSION,
-        idempotency_key: 'reporting-core-unknown-scope-0001',
+        idempotency_key: `reporting-core-unknown-scope-0001-${ADCP_VERSION}`,
         accounts: [{
           account,
           reporting_delivery_configs: [{
@@ -248,7 +253,7 @@ describe('sales training-agent reporting Core exercise', () => {
       });
       const dryRun = await call(url, 31, 'sync_accounts', {
         adcp_version: ADCP_VERSION,
-        idempotency_key: 'reporting-core-dry-run-0001',
+        idempotency_key: `reporting-core-dry-run-0001-${ADCP_VERSION}`,
         dry_run: true,
         accounts: [{
           brand: { domain: 'reporting-dry-run.example' },
@@ -276,7 +281,7 @@ describe('sales training-agent reporting Core exercise', () => {
       expect(afterDryRun.result?.structuredContent).toMatchObject({ accounts: [] });
       const liveAfterDryRun = await call(url, 33, 'sync_accounts', {
         adcp_version: ADCP_VERSION,
-        idempotency_key: 'reporting-core-after-dry-run-0001',
+        idempotency_key: `reporting-core-after-dry-run-0001-${ADCP_VERSION}`,
         accounts: [{
           brand: { domain: 'reporting-dry-run.example' },
           operator: 'pinnacle-agency.example',

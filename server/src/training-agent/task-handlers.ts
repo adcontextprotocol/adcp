@@ -13560,6 +13560,83 @@ async function captureMediaBuyReportingState(
   );
 }
 
+/**
+ * Validate a `viewable_rate` metric goal (core/optimization-goal.json).
+ * `standard` is required and targets are `threshold_rate` proportions. The
+ * product must declare `viewable_rate` in
+ * `metric_optimization.supported_metrics`, and the standard must appear in
+ * `supported_viewability_standards` when that list is declared. A named
+ * vendor must be one the seller can optimize against. Capability mismatches
+ * are rejected with TERMS_REJECTED
+ * (docs/media-buy/media-buys/optimization-reporting.mdx), never accepted
+ * unmeasured.
+ *
+ * The training catalog declares no `viewable_rate` optimization and has no
+ * viewability-vendor integration. So a well-formed goal is rejected unless a
+ * seeded product declares support.
+ */
+function viewableRateGoalError(
+  goal: object,
+  product: Product | undefined,
+  fieldPath: string,
+): TaskError | undefined {
+  const candidate = goal as { metric?: unknown; standard?: unknown; vendor?: unknown; target?: unknown };
+  if (candidate.metric !== 'viewable_rate') return undefined;
+  if (typeof candidate.standard !== 'string' || candidate.standard.length === 0) {
+    return {
+      code: 'INVALID_REQUEST',
+      message: 'viewable_rate goals require standard, the viewability standard the goal is judged against',
+      field: `${fieldPath}.standard`,
+    };
+  }
+  if (candidate.target !== undefined) {
+    const target = isRecord(candidate.target) ? candidate.target : undefined;
+    if (target?.kind !== 'threshold_rate') {
+      return {
+        code: 'INVALID_REQUEST',
+        message: 'viewable_rate goals accept only threshold_rate targets',
+        field: `${fieldPath}.target.kind`,
+      };
+    }
+    if (typeof target.value !== 'number' || !(target.value > 0) || target.value > 1) {
+      return {
+        code: 'INVALID_REQUEST',
+        message: 'viewable_rate target.value must be a proportion greater than 0 and at most 1',
+        field: `${fieldPath}.target.value`,
+      };
+    }
+  }
+  if (!product) return undefined;
+  const metricOptimization = product.metric_optimization as {
+    supported_metrics?: readonly string[];
+    supported_viewability_standards?: readonly string[];
+  } | undefined;
+  if (!metricOptimization?.supported_metrics?.includes('viewable_rate')) {
+    return {
+      code: 'TERMS_REJECTED',
+      message: `Product ${product.product_id} cannot optimize toward viewable_rate: it is not in the product's metric_optimization.supported_metrics`,
+      field: `${fieldPath}.metric`,
+      suggestion: 'Choose a metric the product declares in metric_optimization.supported_metrics, or negotiate viewability through performance_standards.',
+    };
+  }
+  const standards = metricOptimization.supported_viewability_standards;
+  if (Array.isArray(standards) && !standards.includes(candidate.standard)) {
+    return {
+      code: 'TERMS_REJECTED',
+      message: `Viewability standard ${JSON.stringify(candidate.standard.slice(0, 64))} is not in the product's metric_optimization.supported_viewability_standards`,
+      field: `${fieldPath}.standard`,
+    };
+  }
+  if (candidate.vendor !== undefined) {
+    return {
+      code: 'TERMS_REJECTED',
+      message: 'The training seller cannot optimize against a named viewability vendor. Omit vendor to use the seller default measurement.',
+      field: `${fieldPath}.vendor`,
+    };
+  }
+  return undefined;
+}
+
 export async function handleCreateMediaBuy(
   args: ToolArgs,
   ctx: TrainingContext,
@@ -13927,6 +14004,8 @@ async function handleCreateMediaBuyUnlocked(
           view_duration_seconds?: number;
         };
         if (goal?.kind !== 'metric') continue;
+        const viewableRateError = viewableRateGoalError(goal, product, `packages[${i}].optimization_goals[${j}]`);
+        if (viewableRateError) return { errors: [viewableRateError] };
         if (goal.metric === 'reach' && typeof goal.reach_unit === 'string' && goal.reach_unit.length > 0) {
           const supported = product?.metric_optimization?.supported_reach_units;
           // Reach is honest-bounded by reach-unit.json enum; reject when the
@@ -17618,6 +17697,13 @@ async function handleUpdateMediaBuyUnlocked(
         affectedPackageIds.add(pkgId);
       }
       if (Array.isArray(compactControl.optimization_goals)) {
+        const goalProduct = productMap.get(pkg.productId);
+        for (let j = 0; j < compactControl.optimization_goals.length; j++) {
+          const goal = compactControl.optimization_goals[j];
+          if (!isRecord(goal) || goal.kind !== 'metric') continue;
+          const viewableRateError = viewableRateGoalError(goal, goalProduct, `packages[${pkgId}].optimization_goals[${j}]`);
+          if (viewableRateError) return { errors: [viewableRateError] };
+        }
         pkg.optimizationGoals = compactControl.optimization_goals.filter(isRecord).map(goal => structuredClone(goal));
         affectedPackageIds.add(pkgId);
       }
