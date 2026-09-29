@@ -48,10 +48,39 @@ test-vectors/request-signing/
 │   ├── 026-non-ascii-host.json            → request_signature_header_malformed (step 1; raw IDN U-label on wire; MUST be A-label)
 │   ├── 027-webhook-registration-authentication-unsigned.json → request_signature_required (webhook-reg with push_notification_config.authentication over bearer on a seller supporting signing; operation NOT in required_for)
 │   └── 028-unsigned-protocol-method-required.json → request_signature_required (unsigned `tasks/cancel` JSON-RPC POST; method is in `protocol_methods_required_for`)
-├── profile-3.2/                          3.2-only wire-format vectors
-│   ├── positive/001-post-with-content-digest.json  RFC 8941 Base64 + required body binding
-│   ├── negative/001-base64url-sf-binary.json       → request_signature_header_malformed (legacy alphabet)
-│   └── negative/002-multiple-trailing-dots.json    → request_target_uri_malformed (empty DNS label)
+├── profile-3.2/                          3.2 vectors: RFC 8941 Base64 sf-binary, content-digest covered, covers_content_digest 'required'
+│   ├── positive/                         counterparts keep the root vector's number and slug; gaps = not mirrored
+│   │   ├── 001-post-with-content-digest.json                  RFC 8941 Base64 + required body binding (3.2 counterpart of root 001 and 002)
+│   │   ├── 003-es256-post.json                                 ES256
+│   │   ├── 004-multiple-signature-labels.json                  verifier processes sig1 only
+│   │   ├── 005-default-port-stripped.json
+│   │   ├── 006-dot-segment-path.json
+│   │   ├── 007-query-byte-preserved.json
+│   │   ├── 008-percent-encoded-path.json
+│   │   ├── 009-percent-encoded-unreserved-decoded.json
+│   │   ├── 010-percent-encoded-slash-preserved.json
+│   │   ├── 011-ipv6-authority.json
+│   │   └── 012-ipv6-authority-default-port-stripped.json
+│   └── negative/
+│       ├── 001-base64url-sf-binary.json       → request_signature_header_malformed (3.2-only; legacy alphabet)
+│       ├── 002-multiple-trailing-dots.json    → request_target_uri_malformed (3.2-only; empty DNS label)
+│       ├── 002-wrong-tag.json                 → request_signature_tag_invalid (step 3)
+│       ├── 003-expired-signature.json         → request_signature_window_invalid (step 5)
+│       ├── 004-window-too-long.json           → request_signature_window_invalid (step 5)
+│       ├── 005-alg-not-allowed.json           → request_signature_alg_not_allowed (step 4)
+│       ├── 006-missing-covered-component.json → request_signature_components_incomplete (step 6)
+│       ├── 007-missing-content-digest.json    → request_signature_components_incomplete (step 6; unconditional in 3.2)
+│       ├── 008-unknown-keyid.json             → request_signature_key_unknown (step 7)
+│       ├── 009-key-ops-missing-verify.json    → request_signature_key_purpose_invalid (step 8)
+│       ├── 010-content-digest-mismatch.json   → request_signature_digest_mismatch (step 11)
+│       ├── 012-missing-expires-param.json     → request_signature_params_incomplete (step 2)
+│       ├── 013-expires-le-created.json        → request_signature_window_invalid (step 5)
+│       ├── 014-missing-nonce-param.json       → request_signature_params_incomplete (step 2)
+│       ├── 015-signature-invalid.json         → request_signature_invalid (step 10)
+│       ├── 016-replayed-nonce.json            → request_signature_replayed (step 12; requires test_harness_state preload)
+│       ├── 017-key-revoked.json               → request_signature_key_revoked (step 9; requires test_harness_state preload)
+│       ├── 020-rate-abuse.json                → request_signature_rate_abuse (step 9a; requires test_harness_state preload)
+│       └── 025-jwk-alg-crv-mismatch.json      → request_signature_key_purpose_invalid (step 8; jwks_override)
 └── positive/                             vectors that MUST verify successfully
     ├── 001-basic-post.json                   Ed25519, no content-digest
     ├── 002-post-with-content-digest.json     Ed25519, content-digest covered
@@ -190,9 +219,24 @@ An implementation is conformant when, for every vector:
 
 Positive-vector signatures are computed from the canonical signature base per RFC 9421 §2.5. The base string for each positive vector is in `expected_signature_base` so implementers can check their canonicalization independently of cryptographic signing.
 
-The shipped signatures were generated from those base strings using the corresponding private keys. Regenerator script (not shipped): `.context/generate-test-vectors.mjs` uses `jose` + Node's `node:crypto` to produce the committed outputs.
+The shipped signatures were generated from those base strings using the corresponding private keys. The legacy 3.1 fixtures and the hand-authored `profile-3.2/positive/001` and `profile-3.2/negative/001`–`002` came from an uncommitted regenerator. The rest of `profile-3.2/` is produced by the committed [`scripts/generate-request-signing-profile-3.2-vectors.mjs`](https://github.com/adcontextprotocol/adcp/blob/main/scripts/generate-request-signing-profile-3.2-vectors.mjs) (`--check` verifies the committed files are current; CI runs it). Do not hand-edit signature bytes.
 
 **Cross-implementation commitment check.** Before relying on the shipped signatures, SDK implementers SHOULD independently compute the signature base from the vector inputs (method, URL, headers, body, covered-components list, sig-params) and compare byte-for-byte against `expected_signature_base` in each positive vector. If all three reference SDKs (TypeScript, Go, Python — see adcp#2323 for tracking issues) agree with the committed base, confidence that the committed `Signature` values are canonical is high. If any disagrees, escalate to the spec repo BEFORE the SDK consumes the signatures — locking a canonicalization bug into the committed signatures would be the worst outcome, because every subsequent verifier would inherit it. The `expected_signature_base` field exists specifically to make this check byte-level and implementation-independent.
+
+## Profile 3.2 vectors
+
+A 3.2 signing peer MUST advertise `covers_content_digest: "required"`, and every accepted signature on a body-bearing request covers `content-digest`. Most root vectors sign without `content-digest`, so a `required` verifier cannot grade them. `profile-3.2/` restores that coverage: each root positive vector and each root negative for checklist steps 2–12 has a 3.2 counterpart **with the same number and slug** (for example, `profile-3.2/negative/003-expired-signature.json` is the 3.2 version of `negative/003-expired-signature.json`). Root vectors that are not mirrored leave gaps in the numbering. Root `positive/001` (basic POST) and `positive/002` (POST with content-digest) are the same request in 3.2, so both map to `profile-3.2/positive/001-post-with-content-digest.json`. `profile-3.2/negative/001` and `002-multiple-trailing-dots` are 3.2-only wire-format vectors that predate this scheme; `002-multiple-trailing-dots` shares its number with the `002-wrong-tag` counterpart, and file names stay unique.
+
+Each counterpart keeps its original's request shape but:
+
+- covers `content-digest` (except `profile-3.2/negative/007-missing-content-digest`, whose whole point is that it is missing; it still sends a correct `Content-Digest` header, so verifiers must check the covered-components list rather than header presence);
+- encodes `Signature` and `Content-Digest` as RFC 8941 `sf-binary` (standard Base64, padded);
+- advertises `covers_content_digest: "required"`;
+- re-keys the body's `idempotency_key`, so the counterpart is a distinct request.
+
+As in the root corpus, pre-crypto negatives (steps 2–9a) carry a 64-zero-byte placeholder `Signature`. That makes them step-ordering canaries: a verifier that verifies the signature before the targeted check returns `request_signature_invalid`. The post-crypto negatives (`profile-3.2/negative/010` and `016`) carry real signatures, so only the targeted check fails.
+
+Root negatives without a 3.2 counterpart: the unsigned pre-check vectors (`001`, `027`, `028`); the step-1 parse vectors (`011`, `019`, `021`–`024`, `026`), which reject before covered components are considered; and `018`, because `forbidden` is a legacy-only posture a 3.2 verifier cannot advertise.
 
 ## Running vectors against an implementation
 
@@ -201,7 +245,7 @@ A reference harness is in progress at https://github.com/adcontextprotocol/adcp-
 1. Parse each vector JSON.
 2. Build a `Request` object from `vector.request.method`, `vector.request.url`, `vector.request.headers`, `vector.request.body`.
 3. Build the verifier's JWKS from `vector.jwks_ref` (selecting entries from `keys.json`) or `vector.jwks_override` (use as-is).
-4. Preload any `test_harness_state` sub-keys into the verifier's replay cache and revocation snapshot.
+4. Preload any `test_harness_state` sub-keys into the verifier's replay cache and revocation snapshot. **Reset verifier state (replay cache, per-keyid cap, revocation snapshot) before every vector.** Vectors are independent: many share a `(keyid, nonce)` pair and a `reference_now`, so a replay cache carried over from an earlier vector rejects a later positive vector as `request_signature_replayed`, and cap or revocation state carried over fails unrelated vectors.
 5. Invoke verification with `reference_now` as the wall clock, `vector.verifier_capability` as the advertised capability, and the operation name derived from the request URL or `expected_outcome.failed_step == 0`'s pre-check expectation.
 6. Assert:
    - Negative: error code matches `expected_outcome.error_code` exactly.
@@ -209,7 +253,7 @@ A reference harness is in progress at https://github.com/adcontextprotocol/adcp-
 
 ### Recommended run order
 
-Run vectors in this order when validating a new implementation — it isolates failure categories so a bug surfaces cleanly instead of as a pile of unrelated red tests:
+Run vectors in this order when validating a new implementation — it isolates failure categories so a bug surfaces cleanly instead of as a pile of unrelated red tests. The numbers below refer to the root 3.1 corpus; a 3.2 verifier applies the same order to the `profile-3.2/` counterparts (see the mapping in [File layout](#file-layout)):
 
 1. **Positive vectors first** (`positive/001`, `/002`, `/003`). These exercise the happy path. If `001` fails, your signer or verifier's canonicalization, key loading, or crypto is wrong — fix before touching anything else. The `expected_signature_base` field in each positive vector lets you diff YOUR canonical base against the spec's, independent of whether your crypto works.
 2. **Parse-level negatives next** (`001`, `002`, `011`, `012`, `014`, `019`). These fail at the pre-check or early checklist steps without invoking crypto. Passing these means your header parsing and presence checks are correct.

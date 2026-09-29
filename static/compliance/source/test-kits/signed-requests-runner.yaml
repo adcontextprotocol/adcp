@@ -16,6 +16,11 @@
 #   017-key-revoked      — keyid must already be in the revocation list
 #   020-rate-abuse       — per-keyid replay cache must be at its configured cap
 #
+# The AdCP 3.2 counterparts under `profile-3.2/negative/` keep the same number
+# and slug (016-replayed-nonce, 017-key-revoked, 020-rate-abuse) and use the
+# same contract entries below; each `vector_id` names both the root vector and
+# its profile-3.2 counterpart.
+#
 # This test-kit defines the coordination contract between a black-box runner and
 # a request-signing agent under test. Agents advertising
 # `request_signing.supported: true` MUST pre-configure their verifier per this
@@ -100,7 +105,7 @@ functional_dispatch:
 
 stateful_vector_contract:
   replay_window:
-    # Vector 016-replayed-nonce.
+    # Vector 016-replayed-nonce (root and profile-3.2/negative/016).
     #
     # The runner provokes the replay rejection by sending the same signed
     # request twice in sequence. The agent MUST accept the first submission
@@ -125,7 +130,7 @@ stateful_vector_contract:
     min_replay_ttl_seconds: 10
 
   revocation:
-    # Vector 017-key-revoked.
+    # Vector 017-key-revoked (root and profile-3.2/negative/017).
     #
     # The runner cannot revoke a key on the agent's side. The agent MUST
     # pre-configure its revocation list with `test-revoked-2026` before the
@@ -139,7 +144,7 @@ stateful_vector_contract:
     pre_revoked_keyid: test-revoked-2026
 
   rate_abuse:
-    # Vector 020-rate-abuse (checklist step 9a).
+    # Vector 020-rate-abuse (checklist step 9a; root and profile-3.2/negative/020).
     #
     # The runner sends N+1 distinct-nonce requests signed by the same keyid
     # within the window. The agent MUST reject the (N+1)th with
