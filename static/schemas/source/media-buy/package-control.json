@@ -13,7 +13,7 @@
     "budget": {
       "type": ["number", "null"],
       "minimum": 0,
-      "description": "Replace this package's hard lifetime spend cap. A number in a resulting seller-optimized buy requires advertised media_buy.features.seller_optimized_package_budgets; otherwise rejected with UNSUPPORTED_FEATURE."
+      "description": "Replace this package's hard lifetime spend cap. A number in a resulting seller-optimized buy requires advertised media_buy.features.seller_optimized_package_budgets; otherwise rejected with UNSUPPORTED_FEATURE before any over-subscription validation."
     },
     "daily_budget_cap": {
       "type": ["number", "null"],
@@ -23,7 +23,7 @@
     "min_spend_target": {
       "type": ["number", "null"],
       "minimum": 0,
-      "description": "Replace this package's soft minimum-spend target. A number is valid only for seller-optimized allocation and requires advertised media_buy.features.seller_optimized_min_spend_targets; otherwise rejected with UNSUPPORTED_FEATURE."
+      "description": "Replace this package's soft minimum-spend target. A number is valid only for seller-optimized allocation and requires advertised media_buy.features.seller_optimized_min_spend_targets; otherwise rejected with UNSUPPORTED_FEATURE before any over-subscription validation."
     },
     "impressions": {
       "type": "number",

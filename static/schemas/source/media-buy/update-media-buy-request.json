@@ -202,7 +202,7 @@
           "$ref": "/schemas/core/budget-allocation.json"
         }
       ],
-      "description": "Updated allocation configuration. Switching between fixed and seller-optimized modes is allowed only when update_budget_allocation is advertised in available_actions and the resulting package constraints are valid. A resulting seller_optimized allocation requires advertised media_buy.features.seller_optimized_budget, and any package budget caps, min_spend_target values, or package pacing it retains require their own advertised sub-capability; otherwise the update is rejected with UNSUPPORTED_FEATURE."
+      "description": "Updated allocation configuration. Switching between fixed and seller-optimized modes is allowed only when update_budget_allocation is advertised in available_actions and the resulting package constraints are valid. A resulting seller_optimized allocation requires advertised media_buy.features.seller_optimized_budget, and any package budget caps, min_spend_target values, or package pacing it retains require their own advertised sub-capability; otherwise the update is rejected with UNSUPPORTED_FEATURE before any over-subscription validation."
     },
     "pacing": {
       "$ref": "/schemas/enums/pacing.json",

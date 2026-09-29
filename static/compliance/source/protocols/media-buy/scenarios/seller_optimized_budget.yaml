@@ -2,7 +2,7 @@ id: media_buy_seller/seller_optimized_budget
 version: "1.1.0"
 title: "Seller accepts and persists a seller-optimized budget across packages"
 category: media_buy_seller
-summary: "Verifies that a seller advertising seller_optimized_budget accepts and persists the core shared-budget contract (shared total, cross-package goals, media-buy pacing, allocation echo, over-subscription validation). Package caps, minimum-spend targets, and package pacing are graded only when their own sub-capability is advertised and must be rejected with UNSUPPORTED_FEATURE when it is not."
+summary: "Verifies that a seller advertising seller_optimized_budget accepts and persists the core shared-budget contract (shared total, cross-package goals, media-buy pacing, allocation echo). Package caps, minimum-spend targets, and package pacing are graded only when their own sub-capability is advertised, and must be rejected with UNSUPPORTED_FEATURE before any over-subscription validation when it is not."
 track: media_buy
 
 requires_capability:
@@ -29,8 +29,13 @@ narrative: |
   has a positive phase gated on its own declaration and two negative phases,
   one for an explicit false and one for an omitted declaration (exactly one
   runs for a seller), that require UNSUPPORTED_FEATURE rather than a silent
-  drop. Over-subscription validation stays under the parent gate because
-  INVALID_REQUEST takes precedence over the sub-capability rejection.
+  drop. The negative requests are deliberately over-subscribed: an undeclared
+  control is rejected with UNSUPPORTED_FEATURE before any over-subscription
+  validation, and INVALID_REQUEST over-subscription checks apply only to
+  declared controls. The aggregate minimum-spend check is therefore gated on
+  seller_optimized_min_spend_targets; a minimum above its own package cap is
+  graded by media_buy_seller/seller_optimized_min_spend_target_exceeds_package_cap,
+  which needs both package budgets and minimum-spend targets.
 
   The scenario verifies the configuration boundary rather than an internal
   optimizer algorithm: acceptance, aggregate budget and pacing echo, package
@@ -287,57 +292,12 @@ phases:
             value: "TERMS_REJECTED"
             description: "Seller enforces the single media-buy currency before mutation"
 
-  - id: reject_package_minimum_exceeds_budget
-    title: "Reject a package minimum-spend target that exceeds its own budget"
-    steps:
-      - id: create_oversubscribed_package_minimum
-        title: "Reject min_spend_target greater than the package budget"
-        task: create_media_buy
-        schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
-        doc_ref: "/media-buy/task-reference/create_media_buy"
-        stateful: false
-        expect_error: true
-        negative_path: payload_well_formed
-        expected: |
-          Reject before mutation because the prospecting package carries a
-          min_spend_target (80000) that exceeds its own budget (70000).
-          Over-subscription validation is core: INVALID_REQUEST takes
-          precedence over UNSUPPORTED_FEATURE even when the seller does not
-          advertise package budgets or minimum-spend targets.
-        sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-          brand:
-            domain: "acmeoutdoor.example"
-          total_budget:
-            amount: 100000
-            currency: "USD"
-          budget_allocation:
-            mode: "seller_optimized"
-            optimization_goals:
-              - kind: "metric"
-                metric: "clicks"
-                priority: 1
-          packages:
-            - product_id: "shared_budget_prospecting"
-              pricing_option_id: "prospecting_cpm"
-              budget: 70000
-              min_spend_target: 80000
-            - product_id: "shared_budget_retargeting"
-              pricing_option_id: "retargeting_cpm"
-          start_time: "asap"
-          end_time: "2099-06-30T23:59:59Z"
-          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_min_exceeds_package"
-        validations:
-          - check: error_code
-            value: "INVALID_REQUEST"
-            description: "Seller rejects a min_spend_target that exceeds the package budget before mutation"
-
   - id: reject_aggregate_minimum_exceeds_total
     title: "Reject package minimums that collectively exceed the total budget"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.seller_optimized_min_spend_targets
+      equals: true
     steps:
       - id: create_oversubscribed_aggregate_minimum
         title: "Reject sum(min_spend_target) greater than total_budget"
@@ -351,8 +311,8 @@ phases:
         expected: |
           Reject before mutation because the package minimum-spend targets
           (60000 + 50000 = 110000) collectively exceed total_budget (100000).
-          INVALID_REQUEST takes precedence over UNSUPPORTED_FEATURE even when
-          the seller does not advertise minimum-spend targets.
+          Graded only for sellers that declare minimum-spend targets; an
+          undeclared control is rejected with UNSUPPORTED_FEATURE instead.
         sample_request:
           account:
             brand:
@@ -795,7 +755,10 @@ phases:
         expected: |
           Reject before mutation because a package budget cap in a
           seller-optimized buy requires seller_optimized_package_budgets. The
-          seller MUST NOT drop the cap or treat it as a fixed allocation.
+          prospecting minimum (70000) also exceeds its cap (65000), but the
+          undeclared cap is rejected with UNSUPPORTED_FEATURE before any
+          over-subscription validation. The seller MUST NOT drop the cap or
+          treat it as a fixed allocation.
         sample_request:
           account:
             brand:
@@ -816,6 +779,7 @@ phases:
             - product_id: "shared_budget_prospecting"
               pricing_option_id: "prospecting_cpm"
               budget: 65000
+              min_spend_target: 70000
             - product_id: "shared_budget_retargeting"
               pricing_option_id: "retargeting_cpm"
           start_time: "asap"
@@ -847,7 +811,10 @@ phases:
         expected: |
           Reject before mutation because a package budget cap in a
           seller-optimized buy requires seller_optimized_package_budgets. The
-          seller MUST NOT drop the cap or treat it as a fixed allocation.
+          prospecting minimum (70000) also exceeds its cap (65000), but the
+          undeclared cap is rejected with UNSUPPORTED_FEATURE before any
+          over-subscription validation. The seller MUST NOT drop the cap or
+          treat it as a fixed allocation.
         sample_request:
           account:
             brand:
@@ -868,6 +835,7 @@ phases:
             - product_id: "shared_budget_prospecting"
               pricing_option_id: "prospecting_cpm"
               budget: 65000
+              min_spend_target: 70000
             - product_id: "shared_budget_retargeting"
               pricing_option_id: "retargeting_cpm"
           start_time: "asap"
@@ -898,8 +866,11 @@ phases:
         negative_path: payload_well_formed
         expected: |
           Reject before mutation because a package min_spend_target requires
-          seller_optimized_min_spend_targets. The seller MUST NOT drop the
-          target and accept the rest of the buy.
+          seller_optimized_min_spend_targets. The minimums (70000 + 40000)
+          also over-subscribe the 100000 total, but the undeclared control is
+          rejected with UNSUPPORTED_FEATURE before any over-subscription
+          validation. The seller MUST NOT drop the targets and accept the rest
+          of the buy.
         sample_request:
           account:
             brand:
@@ -919,9 +890,10 @@ phases:
           packages:
             - product_id: "shared_budget_prospecting"
               pricing_option_id: "prospecting_cpm"
-              min_spend_target: 15000
+              min_spend_target: 70000
             - product_id: "shared_budget_retargeting"
               pricing_option_id: "retargeting_cpm"
+              min_spend_target: 40000
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#seller_optimized_budget_reject_min_spend_targets_explicitly_disabled"
@@ -950,8 +922,11 @@ phases:
         negative_path: payload_well_formed
         expected: |
           Reject before mutation because a package min_spend_target requires
-          seller_optimized_min_spend_targets. The seller MUST NOT drop the
-          target and accept the rest of the buy.
+          seller_optimized_min_spend_targets. The minimums (70000 + 40000)
+          also over-subscribe the 100000 total, but the undeclared control is
+          rejected with UNSUPPORTED_FEATURE before any over-subscription
+          validation. The seller MUST NOT drop the targets and accept the rest
+          of the buy.
         sample_request:
           account:
             brand:
@@ -971,9 +946,10 @@ phases:
           packages:
             - product_id: "shared_budget_prospecting"
               pricing_option_id: "prospecting_cpm"
-              min_spend_target: 15000
+              min_spend_target: 70000
             - product_id: "shared_budget_retargeting"
               pricing_option_id: "retargeting_cpm"
+              min_spend_target: 40000
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#seller_optimized_budget_reject_min_spend_targets_not_advertised"

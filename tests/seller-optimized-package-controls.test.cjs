@@ -86,8 +86,17 @@ test('buyer required_features filters may request a sub-capability alone', async
   }
   const parent = legacy.properties.seller_optimized_budget.description;
   for (const feature of Object.keys(SUB_CAPABILITIES)) assert.ok(parent.includes(feature), `parent names ${feature}`);
-  assert.match(parent, /INVALID_REQUEST/, 'over-subscription validation stays in the core contract');
   assert.match(parent, /MUST NOT silently drop, soften, or coerce/);
+  assert.match(
+    parent,
+    /UNSUPPORTED_FEATURE` before any over-subscription validation/,
+    'undeclared controls are rejected before over-subscription validation',
+  );
+  assert.match(parent, /applies only to package controls the seller has declared/);
+  assert.doesNotMatch(parent, /takes precedence over the sub-capability/);
+  const minSpend = legacy.properties.seller_optimized_min_spend_targets.description;
+  assert.match(minSpend, /summing above total_budget with `INVALID_REQUEST`/);
+  assert.match(minSpend, /over-subscribed target sent to such a seller yields `UNSUPPORTED_FEATURE`/);
 });
 
 test('every package-control field names its gating capability', () => {
@@ -122,11 +131,8 @@ test('core storyboard phases use only core shared-budget controls', () => {
       .filter(phase => phase.requires_capability?.path?.startsWith('media_buy.features.seller_optimized_'))
       .map(phase => phase.id),
   );
-  // Over-subscription phases intentionally carry budget/min_spend_target under
-  // the parent gate: INVALID_REQUEST takes precedence over UNSUPPORTED_FEATURE.
-  const overSubscription = new Set(['reject_package_minimum_exceeds_budget', 'reject_aggregate_minimum_exceeds_total']);
   for (const phase of storyboard.phases) {
-    if (gatedPhases.has(phase.id) || overSubscription.has(phase.id)) continue;
+    if (gatedPhases.has(phase.id)) continue;
     for (const step of phase.steps) {
       for (const pkg of step.sample_request?.packages ?? []) {
         for (const field of Object.values(SUB_CAPABILITIES)) {
@@ -135,15 +141,29 @@ test('core storyboard phases use only core shared-budget controls', () => {
       }
     }
   }
-  for (const phaseId of overSubscription) {
-    const phase = storyboard.phases.find(candidate => candidate.id === phaseId);
-    assert.ok(phase, `${phaseId} exists`);
-    assert.equal(phase.requires_capability, undefined, `${phaseId} stays under the parent gate`);
-    assert.equal(
-      phase.steps[0].validations.find(validation => validation.check === 'error_code')?.value,
-      'INVALID_REQUEST',
-    );
-  }
+  // Over-subscription INVALID_REQUEST applies only to declared controls.
+  const aggregate = storyboard.phases.find(phase => phase.id === 'reject_aggregate_minimum_exceeds_total');
+  assert.deepEqual(aggregate.requires_capability, {
+    path: 'media_buy.features.seller_optimized_min_spend_targets',
+    equals: true,
+  });
+  assert.equal(
+    aggregate.steps[0].validations.find(validation => validation.check === 'error_code')?.value,
+    'INVALID_REQUEST',
+  );
+  assert.equal(
+    storyboard.phases.find(phase => phase.id === 'reject_package_minimum_exceeds_budget'),
+    undefined,
+    'the cross-control cap check lives in its own compound-gated scenario',
+  );
+  const capCheck = loadScenario('seller_optimized_min_spend_target_exceeds_package_cap');
+  assert.deepEqual(capCheck.requires_all_capabilities, [
+    { path: 'media_buy.features.seller_optimized_budget', equals: true },
+    { path: 'media_buy.features.seller_optimized_package_budgets', equals: true },
+    { path: 'media_buy.features.seller_optimized_min_spend_targets', equals: true },
+  ]);
+  const capStep = capCheck.phases.at(-1).steps[0];
+  assert.equal(capStep.validations.find(validation => validation.check === 'error_code')?.value, 'INVALID_REQUEST');
 });
 
 test('each sub-capability has a positive phase and explicit-false and absent negative phases', () => {
@@ -151,7 +171,9 @@ test('each sub-capability has a positive phase and explicit-false and absent neg
   for (const [feature, field] of Object.entries(SUB_CAPABILITIES)) {
     const path = `media_buy.features.${feature}`;
     const phases = storyboard.phases.filter(phase => phase.requires_capability?.path === path);
-    const positive = phases.filter(phase => phase.requires_capability.equals === true);
+    const positive = phases.filter(
+      phase => phase.requires_capability.equals === true && phase.steps[0].expect_error !== true,
+    );
     const explicitFalse = phases.filter(phase => phase.requires_capability.equals === false);
     const absent = phases.filter(phase => phase.requires_capability.present === false);
     assert.equal(positive.length, 1, `${feature} positive phase`);
@@ -163,6 +185,20 @@ test('each sub-capability has a positive phase and explicit-false and absent neg
     );
     for (const negative of [...explicitFalse, ...absent]) {
       const [step] = negative.steps;
+      const packages = step.sample_request.packages;
+      if (field === 'budget') {
+        assert.ok(
+          packages.some(pkg => pkg.min_spend_target > pkg.budget),
+          `${negative.id} probes UNSUPPORTED_FEATURE precedence over the cap check`,
+        );
+      }
+      if (field === 'min_spend_target') {
+        const minimums = packages.reduce((sum, pkg) => sum + (pkg.min_spend_target ?? 0), 0);
+        assert.ok(
+          minimums > step.sample_request.total_budget.amount,
+          `${negative.id} probes UNSUPPORTED_FEATURE precedence over the aggregate check`,
+        );
+      }
       assert.equal(step.expect_error, true);
       assert.ok(step.sample_request.packages.some(pkg => pkg[field] !== undefined));
       assert.equal(
@@ -185,6 +221,7 @@ test('proposal-derived package pacing is gated on all three required declaration
     fs.readFileSync(path.join(ROOT, 'static', 'compliance', 'source', 'protocols', 'media-buy', 'index.yaml'), 'utf8'),
   );
   assert.ok(JSON.stringify(index).includes('media_buy_seller/seller_optimized_proposal_package_pacing'));
+  assert.ok(JSON.stringify(index).includes('media_buy_seller/seller_optimized_min_spend_target_exceeds_package_cap'));
   const core = loadScenario('seller_optimized_budget');
   const coreProposal = core.phases.find(phase => phase.id === 'execute_seller_optimized_proposal');
   assert.ok(!JSON.stringify(coreProposal).includes('front_loaded'), 'core proposal phase grades no package pacing');
@@ -225,4 +262,9 @@ test('runner applies exactly one sub-capability branch for a core-only seller', 
   assert.equal(applicable.get('reject_package_pacing_explicitly_disabled'), true);
   assert.equal(applicable.get('reject_package_pacing_not_advertised'), false);
   assert.equal(applicable.get('create_shared_budget_buy'), true, 'core phases always apply');
+  assert.equal(
+    applicable.get('reject_aggregate_minimum_exceeds_total'),
+    false,
+    'aggregate over-subscription is not graded for an undeclared minimum-spend control',
+  );
 });

@@ -44,6 +44,7 @@ requires_scenarios:
   - media_buy_seller/dependency_impairment_cardinality
   - media_buy_seller/seller_optimized_budget
   - media_buy_seller/seller_optimized_proposal_package_pacing
+  - media_buy_seller/seller_optimized_min_spend_target_exceeds_package_cap
   - media_buy_seller/total_budget_redistribution
   - media_buy_seller/bidding_policy_placement
   - media_buy_seller/bidding_cost_binding
