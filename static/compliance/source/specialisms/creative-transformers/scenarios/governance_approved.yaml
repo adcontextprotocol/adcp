@@ -129,6 +129,10 @@ phases:
               countries: ["US"]
         context_outputs:
           - { name: plan_id, path: "plans[0].plan_id" }
+          # $generate aliases are phase-scoped; the intent check and the
+          # authorized build_creative read the exact request's key through
+          # context so the authorized payload matches the executed one.
+          - { name: creative_governance_approved_build_key, generate: uuid_v4 }
         validations:
           - check: response_schema
 
@@ -155,7 +159,7 @@ phases:
             transformer_id: "$context.transformer_id"
             target_capability_id: "$context.target_capability_id"
             message: "Produce a 30-second trail campaign voiceover."
-            idempotency_key: "$generate:uuid_v4#creative_governance_approved_build"
+            idempotency_key: "$context.creative_governance_approved_build_key"
         context_outputs:
           - { name: governance_context, path: "governance_context" }
         validations:
@@ -185,7 +189,7 @@ phases:
           transformer_id: "$context.transformer_id"
           target_capability_id: "$context.target_capability_id"
           message: "Produce a 30-second trail campaign voiceover."
-          idempotency_key: "$generate:uuid_v4#creative_governance_approved_build"
+          idempotency_key: "$context.creative_governance_approved_build_key"
           governance_context: "$context.governance_context"
         validations:
           - check: response_schema

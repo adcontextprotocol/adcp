@@ -135,6 +135,10 @@ phases:
               countries: ["US"]
         context_outputs:
           - { name: plan_id, path: "plans[0].plan_id" }
+          # $generate aliases are phase-scoped; the intent check and the
+          # authorized acquire_rights read the exact request's key through
+          # context so the authorized payload matches the executed one.
+          - { name: rights_governance_approved_acquire_key, generate: uuid_v4 }
         validations:
           - check: response_schema
 
@@ -172,7 +176,7 @@ phases:
               authentication:
                 schemes: ["Bearer"]
                 credentials: "pinnacle-revocation-webhook-secret-token"
-            idempotency_key: "$generate:uuid_v4#rights_governance_approved_acquire"
+            idempotency_key: "$context.rights_governance_approved_acquire_key"
         context_outputs:
           - { name: governance_context, path: "governance_context" }
         validations:
@@ -213,7 +217,7 @@ phases:
             authentication:
               schemes: ["Bearer"]
               credentials: "pinnacle-revocation-webhook-secret-token"
-          idempotency_key: "$generate:uuid_v4#rights_governance_approved_acquire"
+          idempotency_key: "$context.rights_governance_approved_acquire_key"
           governance_context: "$context.governance_context"
         validations:
           - check: response_schema

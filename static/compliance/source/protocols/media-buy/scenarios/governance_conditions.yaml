@@ -217,6 +217,11 @@ phases:
             path: "products[0].product_id"
           - name: pricing_option_id
             path: "products[0].pricing_options[0].pricing_option_id"
+          # $generate aliases are phase-scoped; the intent checks and the
+          # governed create_media_buy read the exact request's key through
+          # context so the authorized payload matches the executed one.
+          - name: governance_conditions_create_media_buy_key
+            generate: uuid_v4
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -270,7 +275,7 @@ phases:
               - product_id: "$context.product_id"
                 budget: 25000
                 pricing_option_id: "$context.pricing_option_id"
-            idempotency_key: "$generate:uuid_v4#governance_conditions_create_media_buy"
+            idempotency_key: "$context.governance_conditions_create_media_buy_key"
         context_outputs:
           - name: consultation_context
             path: "consultation_context"
@@ -342,7 +347,7 @@ phases:
               - product_id: "$context.product_id"
                 budget: 25000
                 pricing_option_id: "$context.pricing_option_id"
-            idempotency_key: "$generate:uuid_v4#governance_conditions_create_media_buy"
+            idempotency_key: "$context.governance_conditions_create_media_buy_key"
             ext:
               governance_policy_acknowledgements:
                 - "ctv_weekly_reporting"
@@ -413,7 +418,7 @@ phases:
             - product_id: "$context.product_id"
               budget: 25000
               pricing_option_id: "$context.pricing_option_id"
-          idempotency_key: "$generate:uuid_v4#governance_conditions_create_media_buy"
+          idempotency_key: "$context.governance_conditions_create_media_buy_key"
           ext:
             governance_policy_acknowledgements:
               - "ctv_weekly_reporting"
