@@ -110,3 +110,17 @@ export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (re
   const wrapped = v5Result as { accounts?: unknown[] };
   return (wrapped.accounts ?? []) as SyncAccountsResultRow[];
 };
+
+/**
+ * comply_test_controller carries its own account object: an account_id plus
+ * the required `sandbox: true` caller assertion, which core AccountRef forbids
+ * on account_id refs. Drop the assertion before canonicalizing; the resolved
+ * account record, not the flag, decides sandbox status.
+ */
+export function accountRefForResolution(ref: unknown, toolName: string | undefined): unknown {
+  if (toolName !== 'comply_test_controller' || ref == null || typeof ref !== 'object' || Array.isArray(ref)) return ref;
+  const record = ref as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, 'account_id') || record.sandbox !== true) return ref;
+  const { sandbox: _sandbox, ...identity } = record;
+  return identity;
+}

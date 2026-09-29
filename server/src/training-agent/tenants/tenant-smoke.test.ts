@@ -2300,32 +2300,45 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
-  it('rejects controller mutation for an unresolved opaque sandbox account', async () => {
+  it('isolates controller-forced get_signals tasks across opaque sandbox accounts', async () => {
     const { baseUrl, close } = await bootServer();
     try {
       const url = `${baseUrl}/signals/mcp`;
       await initializeTenant(url);
+      // comply_test_controller carries account_id plus the required sandbox
+      // assertion. The training agent treats every account as a sandbox
+      // account, so the controller admits opaque account_ids; isolation comes
+      // from per-account state, not from refusing the call.
       const account = { account_id: 'signals_opaque_task_account' };
-      const controllerAccount = { ...account, sandbox: true };
+      const otherAccount = { account_id: 'signals_opaque_task_account_b' };
       const taskId = 'task_training_signals_opaque_scope';
       const payload = (response: Record<string, unknown>) => (
         response as { result?: { structuredContent?: Record<string, unknown> } }
       ).result?.structuredContent;
+      const brief = {
+        discovery_mode: 'brief',
+        signal_spec: 'People researching electric vehicles',
+        pagination: { max_results: 5 },
+      };
 
       expect(payload(await callTenantTool(url, 20, 'comply_test_controller', {
-        account: controllerAccount,
+        account: { ...account, sandbox: true },
         scenario: 'force_get_signals_arm',
         params: { arm: 'submitted', task_id: taskId },
-      }))).toMatchObject({
-        adcp_error: {
-          code: 'PERMISSION_DENIED',
-          details: {
-            reason: 'sandbox-or-mock-required',
-            scope: 'sandbox-gate',
-            tool: 'comply_test_controller',
-          },
-        },
-      });
+      }))).toMatchObject({ success: true });
+
+      const other = payload(await callTenantTool(url, 21, 'get_signals', { account: otherAccount, ...brief }));
+      expect(other?.status).not.toBe('submitted');
+      expect(other?.task_id).toBeUndefined();
+
+      expect(payload(await callTenantTool(url, 22, 'list_tasks', {
+        account: otherAccount,
+        filters: { task_ids: [taskId], task_type: 'get_signals' },
+        pagination: { max_results: 1 },
+      }))).toMatchObject({ query_summary: { total_matching: 0, returned: 0 }, tasks: [] });
+
+      expect(payload(await callTenantTool(url, 23, 'get_signals', { account, ...brief })))
+        .toMatchObject({ status: 'submitted', task_id: taskId });
     } finally {
       await close();
     }
