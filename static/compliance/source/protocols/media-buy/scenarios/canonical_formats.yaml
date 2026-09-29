@@ -77,7 +77,12 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      # Non-guaranteed so this scenario is runnable by sales-non-guaranteed-only
+      # sellers: a guaranteed-only fixture made the create step fail with a
+      # terminal DELIVERY_MODE_NOT_SUPPORTED and cascaded every dependent phase,
+      # although nothing this storyboard grades depends on the delivery type.
+      # Same fix as the base media_buy_seller flow and available_actions.
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_300x250_image"
@@ -105,7 +110,7 @@ fixtures:
         - pricing_option_id: "canonical_formats_mrec_cpm"
           pricing_model: "cpm"
           currency: "USD"
-          fixed_price: 12
+          floor_price: 12
       reporting_capabilities:
         available_reporting_frequencies: ["daily"]
         expected_delay_minutes: 60
@@ -124,7 +129,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_728x90_image"
@@ -132,7 +137,7 @@ fixtures:
         - pricing_option_id: "canonical_formats_ids_only_cpm"
           pricing_model: "cpm"
           currency: "USD"
-          fixed_price: 10
+          floor_price: 10
       reporting_capabilities:
         available_reporting_frequencies: ["daily"]
         expected_delay_minutes: 60
@@ -151,7 +156,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_options:
         - format_kind: "image"
           format_option_id: "canonical_formats_image_leaderboard"
@@ -173,7 +178,7 @@ fixtures:
         - pricing_option_id: "canonical_formats_options_only_cpm"
           pricing_model: "cpm"
           currency: "USD"
-          fixed_price: 11
+          floor_price: 11
       reporting_capabilities:
         available_reporting_frequencies: ["daily"]
         expected_delay_minutes: 60
@@ -192,7 +197,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_options:
         - format_kind: "custom"
           format_option_id: "canonical_formats_custom_takeover"
@@ -220,7 +225,7 @@ fixtures:
         - pricing_option_id: "canonical_formats_custom_takeover_cpm"
           pricing_model: "cpm"
           currency: "USD"
-          fixed_price: 35
+          floor_price: 35
       reporting_capabilities:
         available_reporting_frequencies: ["daily"]
         expected_delay_minutes: 60
@@ -239,7 +244,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_300x250_image"
@@ -268,7 +273,7 @@ fixtures:
         - pricing_option_id: "canonical_formats_experimental_cpm"
           pricing_model: "cpm"
           currency: "USD"
-          fixed_price: 9
+          floor_price: 9
       reporting_capabilities:
         available_reporting_frequencies: ["daily"]
         expected_delay_minutes: 60
@@ -287,7 +292,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_300x250_image"
@@ -315,7 +320,7 @@ fixtures:
         - pricing_option_id: "canonical_formats_divergent_cpm"
           pricing_model: "cpm"
           currency: "USD"
-          fixed_price: 8
+          floor_price: 8
       reporting_capabilities:
         available_reporting_frequencies: ["daily"]
         expected_delay_minutes: 60
@@ -365,7 +370,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -468,7 +473,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -519,7 +524,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -579,7 +584,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -647,7 +652,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -717,7 +722,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -780,7 +785,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -837,6 +842,7 @@ phases:
             - product_id: "canonical_formats_mrec_display"
               budget: 1000
               pricing_option_id: "canonical_formats_mrec_cpm"
+              bid_price: 12
               format_option_refs:
                 - scope: "product"
                   format_option_id: "canonical_formats_image_mrec"
@@ -882,6 +888,7 @@ phases:
             - product_id: "canonical_formats_mrec_display"
               budget: 1000
               pricing_option_id: "canonical_formats_mrec_cpm"
+              bid_price: 12
               format_kind: "image"
               params:
                 width: 300
@@ -929,6 +936,7 @@ phases:
             - product_id: "canonical_formats_mrec_display"
               budget: 1000
               pricing_option_id: "canonical_formats_mrec_cpm"
+              bid_price: 12
               format_ids:
                 - agent_url: "https://creative.adcontextprotocol.org/"
                   id: "display_300x250_image"
@@ -975,6 +983,7 @@ phases:
             - product_id: "canonical_formats_mrec_display"
               budget: 1000
               pricing_option_id: "canonical_formats_mrec_cpm"
+              bid_price: 12
               format_option_refs:
                 - scope: "product"
                   format_option_id: "canonical_formats_image_mrec"
@@ -1024,6 +1033,7 @@ phases:
             - product_id: "canonical_formats_mrec_display"
               budget: 1000
               pricing_option_id: "canonical_formats_mrec_cpm"
+              bid_price: 12
               format_kind: "image"
               params:
                 width: 300
@@ -1077,6 +1087,7 @@ phases:
             - product_id: "canonical_formats_mrec_display"
               budget: 1000
               pricing_option_id: "canonical_formats_mrec_cpm"
+              bid_price: 12
               format_option_refs:
                 - scope: "product"
                   format_option_id: "canonical_formats_image_mrec"
@@ -1127,6 +1138,7 @@ phases:
             - product_id: "canonical_formats_mrec_display"
               budget: 1000
               pricing_option_id: "canonical_formats_mrec_cpm"
+              bid_price: 12
               format_option_refs:
                 - scope: "product"
                   format_option_id: "canonical_formats_image_mrec"
@@ -1178,6 +1190,7 @@ phases:
             - product_id: "canonical_formats_mrec_display"
               budget: 1000
               pricing_option_id: "canonical_formats_mrec_cpm"
+              bid_price: 12
               format_option_refs:
                 - scope: "product"
                   format_option_id: "canonical_formats_image_mrec"
@@ -1227,6 +1240,7 @@ phases:
             - product_id: "canonical_formats_mrec_display"
               budget: 1000
               pricing_option_id: "canonical_formats_mrec_cpm"
+              bid_price: 12
               format_kind: "image"
               context:
                 buyer_ref: "canonical_formats_bare_image_negative"
@@ -1270,6 +1284,7 @@ phases:
             - product_id: "canonical_formats_mrec_display"
               budget: 1000
               pricing_option_id: "canonical_formats_mrec_cpm"
+              bid_price: 12
               format_kind: "image"
               params:
                 width: 300

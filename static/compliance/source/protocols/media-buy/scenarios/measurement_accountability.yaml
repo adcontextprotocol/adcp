@@ -57,7 +57,12 @@ prerequisites:
 fixtures:
   products:
     - product_id: "ctv_premium_completed_views"
-      delivery_type: "guaranteed"
+      # Non-guaranteed so this scenario is runnable by sales-non-guaranteed-only
+      # sellers: a guaranteed-only fixture made the create step fail with a
+      # terminal DELIVERY_MODE_NOT_SUPPORTED and cascaded every dependent phase,
+      # although nothing this storyboard grades depends on the delivery type.
+      # Same fix as the base media_buy_seller flow and available_actions.
+      delivery_type: "non_guaranteed"
       channels: ["ctv"]
       format_options:
         - format_option_id: "video_15s"
@@ -69,7 +74,7 @@ fixtures:
       pricing_option_id: "cpm_standard"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 25.0
+      floor_price: 25.0
 
 phases:
   - id: discover_with_required_metrics
@@ -123,7 +128,7 @@ phases:
           brief: "CTV inventory with completed-view reporting for a Q2 CPCV campaign."
           filters:
             channels: ["ctv"]
-            is_fixed_price: true
+            is_fixed_price: false
             required_metrics:
               - "completed_views"
           account:
@@ -145,8 +150,8 @@ phases:
             path: "products[0].reporting_capabilities.available_metrics"
             description: "Matched product declares its available_metrics — schema validation confirms the superset relationship via the closed enum"
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].floor_price"
+            description: "The captured pricing option is floor-priced (auction); the create sends bid_price at the floor"
 
   - id: create_media_buy
     title: "Commit the media buy"
@@ -174,6 +179,7 @@ phases:
           packages:
             - product_id: "$context.product_id"
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 25
               budget: 25000
           idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_accountability_create"
         validations:

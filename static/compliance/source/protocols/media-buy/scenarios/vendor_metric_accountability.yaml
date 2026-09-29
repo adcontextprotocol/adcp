@@ -64,7 +64,12 @@ prerequisites:
 fixtures:
   products:
     - product_id: "display_premium_vendor_metrics"
-      delivery_type: "guaranteed"
+      # Non-guaranteed so this scenario is runnable by sales-non-guaranteed-only
+      # sellers: a guaranteed-only fixture made the create step fail with a
+      # terminal DELIVERY_MODE_NOT_SUPPORTED and cascaded every dependent phase,
+      # although nothing this storyboard grades depends on the delivery type.
+      # Same fix as the base media_buy_seller flow and available_actions.
+      delivery_type: "non_guaranteed"
       channels: ["display"]
       format_options:
         - format_option_id: "display_300x250"
@@ -97,7 +102,7 @@ fixtures:
       pricing_option_id: "cpm_standard_vendor"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 12.0
+      floor_price: 12.0
 
 phases:
   - id: discover_with_required_vendor_metrics
@@ -152,7 +157,7 @@ phases:
           brief: "Display inventory with attention measurement from attentionvendor."
           filters:
             channels: ["display"]
-            is_fixed_price: true
+            is_fixed_price: false
             required_vendor_metrics:
               - vendor:
                   domain: "attentionvendor.example"
@@ -181,8 +186,8 @@ phases:
             path: "products[0].reporting_capabilities.vendor_metrics[0].metric_id"
             description: "Each declared vendor metric entry carries a metric_id"
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].floor_price"
+            description: "The captured pricing option is floor-priced (auction); the create sends bid_price at the floor"
 
   - id: create_media_buy
     title: "Commit the media buy on the matched product"
@@ -215,6 +220,7 @@ phases:
           packages:
             - product_id: "$context.product_id"
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 12
               budget: 12000
               committed_metrics:
                 - scope: "vendor"
@@ -227,6 +233,7 @@ phases:
                   metric_id: "post_flight_brand_lift"
             - product_id: "$context.product_id"
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 12
               budget: 8000
               committed_metrics:
                 - scope: "vendor"

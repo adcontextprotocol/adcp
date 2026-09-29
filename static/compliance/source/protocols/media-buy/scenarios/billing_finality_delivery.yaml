@@ -40,7 +40,7 @@ caller:
 
 prerequisites:
   description: |
-    The runner seeds a guaranteed video product with measurement windows. The
+    The runner seeds a non-guaranteed video product with measurement windows. The
     comply_test_controller `simulate_delivery` scenario accepts finality fields
     (`is_final`, `finalized_at`, `measurement_window`) and projects them into
     subsequent `get_media_buy_delivery` responses.
@@ -50,7 +50,12 @@ prerequisites:
 fixtures:
   products:
     - product_id: "billing_finality_video_q3"
-      delivery_type: "guaranteed"
+      # Non-guaranteed so this scenario is runnable by sales-non-guaranteed-only
+      # sellers: a guaranteed-only fixture made the create step fail with a
+      # terminal DELIVERY_MODE_NOT_SUPPORTED and cascaded every dependent phase,
+      # although nothing this storyboard grades depends on the delivery type.
+      # Same fix as the base media_buy_seller flow and available_actions.
+      delivery_type: "non_guaranteed"
       channels: ["olv"]
       format_options:
         - format_option_id: "video_15s"
@@ -78,7 +83,7 @@ fixtures:
       pricing_option_id: "cpm_billing_finality"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 18.0
+      floor_price: 18.0
 
 phases:
   - id: setup
@@ -133,6 +138,7 @@ phases:
             - product_id: "billing_finality_video_q3"
               budget: 30000
               pricing_option_id: "cpm_billing_finality"
+              bid_price: 18
               measurement_terms:
                 billing_measurement:
                   vendor:
