@@ -1099,7 +1099,7 @@
         "delivery_date": {
           "type": "string",
           "format": "date",
-          "description": "UTC calendar date attributable to this simulated delivery batch. Used by simulate_delivery to seed deterministic date-range tests. When get_media_buy_delivery supplies start_date or end_date, dated batches are included when delivery_date is greater than or equal to start_date and strictly less than end_date. Omit to preserve cumulative, unfiltered simulation behavior."
+          "description": "Calendar date, in the product's reporting_capabilities.timezone, attributable to this simulated delivery batch. Used by simulate_delivery to seed deterministic date-range tests. When get_media_buy_delivery supplies start_date or end_date, dated batches are included when delivery_date is greater than or equal to start_date and strictly less than end_date. Omit to preserve cumulative, unfiltered simulation behavior."
         },
         "conversion_value": {
           "type": "number",

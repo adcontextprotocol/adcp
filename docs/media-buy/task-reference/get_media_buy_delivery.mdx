@@ -54,14 +54,14 @@ the same nondisclosing `REPORTING_REVISION_NOT_FOUND` result.
 | `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. |
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
 | `status_filter` | string \| string[] | No | Status filter: `"pending_creatives"`, `"pending_start"`, `"active"`, `"paused"`, `"completed"`. Defaults to `["active"]` when omitted. |
-| `start_date` | string | No | Report start date (YYYY-MM-DD), inclusive. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
-| `end_date` | string | No | Report end date (YYYY-MM-DD), **exclusive**. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
+| `start_date` | string | No | Report start date (YYYY-MM-DD), inclusive, as a calendar date in the product's reporting timezone (`reporting_capabilities.timezone`). Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
+| `end_date` | string | No | Report end date (YYYY-MM-DD), **exclusive**, in the same reporting timezone as `start_date`. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
 | `reporting_dimensions` | object | No | Request dimensional breakdowns within `by_package`. Include a key as an empty object (e.g., `"device_type": {}`) to activate with defaults. Keys: `geo`, `device_type`, `device_platform`, `format`, `audience`, `demographic`, `placement`, `property`, `collection`, `installment`, `collection_property`, `installment_property`, `placement_property`, `spot`, `creative`, `keyword`, `catalog_item`. Most accept optional `limit`, `sort_by`, and `sort_direction`. `format` groups rows by canonical `format_kind`, not duration or other format-option parameters. Demographic also accepts canonical `age_ranges`, each of which must match the product's independent demographic reporting capability exactly. `spot` accepts only `limit`, returns rows by `aired_at` ascending, and defaults to the complete log for the reporting period. Geo requires `geo_level`; include `system` for metro/postal levels. `creative`, `keyword`, and `catalog_item` are returned automatically when the seller supports them, even when omitted from this object — including one of their keys is optional and upgrades that breakdown to a negotiated contract (`limit`, `sort_by`, `sort_direction`, and a binding truncation/sort-echo disclosure) without changing the automatic default. Unsupported dimensions are silently omitted. When a requested dimension is supported, the seller returns its array (possibly empty) and truncation flag. Metric-sorted dimensions also return applied-sort echoes; demographic and property-grain arrays also return suppression flags. Spot has no sort echoes. Unsupported requested demographic ranges return [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); malformed requests return a validation error. |
 | `time_granularity` | string | No | Per-window slice granularity for pull recovery, matching `reporting_webhook.reporting_frequency` vocabulary (`hourly`, `daily`, `weekly`, `monthly`, `quarterly`, `post_campaign`). When set, the response includes `windows[]` slices shape-aligned with webhook fires at the same granularity. Capability-scoped — value MUST be in the product's `reporting_capabilities.windowed_pull_granularities`. See [Windowed pull recovery](#windowed-pull-recovery). |
 | `include_window_breakdown` | boolean | No | When `true` (and `time_granularity` is set), include the `windows[]` array on each media buy. Defaults to `false`. Ignored when `time_granularity` is omitted. |
 | `requested_metrics` | string[] | No | Narrow the response to a subset of metrics — same semantics as `reporting_webhook.requested_metrics`. Applies to `totals`, `by_package`, daily/window slices, and breakdown rows. When omitted, all available metrics are included (unchanged behavior). See [Requesting a metric subset](#requesting-a-metric-subset). |
 
-> **Date Range Behavior**: The date range is **start-inclusive, end-exclusive**. For example, `start_date: "2026-01-01"` and `end_date: "2026-01-02"` returns delivery data for January 1st only (from `2026-01-01 00:00:00` up to, but not including, `2026-01-02 00:00:00`). To get a full week of data (Jan 1-7), use `end_date: "2026-01-08"`.
+> **Date Range Behavior**: The date range is **start-inclusive, end-exclusive**, in the reporting timezone. For example, `start_date: "2026-01-01"` and `end_date: "2026-01-02"` returns delivery data for January 1st only (from `2026-01-01 00:00:00` up to, but not including, `2026-01-02 00:00:00` reporting-timezone time). To get a full week of data (Jan 1-7), use `end_date: "2026-01-08"`.
 
 ### Deterministic filter contract
 
@@ -70,11 +70,38 @@ Every `media_buy_deliveries[]` row MUST have a `media_buy_id` in
 `media_buy_ids` when that filter is present. A seller MUST NOT accept the filter
 and return delivery rows for other buys.
 
+Dates are calendar dates in the **reporting timezone**: the
+`reporting_capabilities.timezone` of the products behind the in-scope packages.
+It may equal `Account.timezone`, but buyers do not infer that. When the
+reporting timezone is `UTC`, the dates are UTC days.
+
 For an accepted `start_date` and `end_date`, `reporting_period.start` and
-`reporting_period.end` MUST represent those exact UTC day boundaries, and all
-aggregates, per-buy totals, daily rows, and requested window slices MUST be
-computed only from delivery in the start-inclusive, end-exclusive interval.
-Delivery outside that interval MUST NOT contribute to the response.
+`reporting_period.end` MUST be the instants at which those dates begin in the
+reporting timezone. All aggregates, per-buy totals, daily rows, and requested
+window slices MUST be computed only from delivery in that start-inclusive,
+end-exclusive interval. Delivery outside that interval MUST NOT contribute to
+the response. The boundaries stay RFC 3339 instants. For a product reporting in
+`America/New_York`, `start_date: "2026-04-15"` begins at
+`2026-04-15T00:00:00-04:00`, which can also be written as
+`2026-04-15T04:00:00Z`. Sellers SHOULD echo the reporting timezone in
+`reporting_period.timezone`. `daily_breakdown[].date` labels and daily, weekly,
+monthly, and quarterly `windows[]` use the same timezone. A reporting-timezone day can be 23
+or 25 hours long across a DST change.
+
+A date-bounded request covers one reporting timezone. When its in-scope packages
+span products with different reporting timezones, the seller MUST reject it with
+[`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error)
+rather than pick a timezone. The buyer narrows `media_buy_ids` to buys that
+share one reporting timezone, or omits both dates. There is no package filter,
+so a single buy whose own packages span reporting timezones can only be read
+without dates. Two additional constraints apply to lifetime reads when packages
+span multiple reporting timezones:
+- **Buy-level `daily_breakdown`**: Sellers MUST omit this aggregate breakdown when the media buy's packages span more than one reporting timezone. Package-level `daily_breakdown` remains, each in its own product's reporting timezone.
+- **`time_granularity` of `daily`, `weekly`, `monthly` or `quarterly`**: Sellers MUST reject with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) when the in-scope packages span more than one reporting timezone. The buyer narrows `media_buy_ids` to buys sharing one reporting timezone.
+
+Exact
+`reporting_revision_id` reads return the revision's own period, whose
+`source_timezone` names its calendar.
 
 A filtered request can legitimately return the same rows and values as a less
 restrictive request when all underlying delivery already matches. Conformance is
@@ -98,7 +125,7 @@ Returns delivery data as per-media-buy rows:
 
 | Field | Description |
 |-------|-------------|
-| `reporting_period` | Date range for report (start/end timestamps) |
+| `reporting_period` | Half-open report period: `start`/`end` instants on reporting-timezone day boundaries, plus `timezone`, the reporting timezone applied (sellers SHOULD return it; exact-revision reads carry the revision's `source_timezone` instead) |
 | `currency` | **Deprecated in 3.2; removed in 4.0.** Optional legacy response-wide currency for reports whose monetary values all share one denomination. Do not treat it as an aggregation currency. Prefer row or package currency. |
 | `attribution_window` | Attribution methodology: `post_click` and `post_view` (duration objects), and `model` (last_touch, first_touch, linear, time_decay, data_driven) |
 | `aggregated_totals` | **Deprecated in 3.2; removed in 4.0.** Legacy cross-buy aggregate. When present, the deprecated response-wide `currency` is required and denominates its spend. Optional `reach_aggregation` distinguishes cross-buy deduplicated reach from a sum of constituent reach values. Sellers should omit this aggregate and buyers should calculate only aggregates whose row currencies and metric semantics are compatible. |
@@ -117,7 +144,7 @@ Returns delivery data as per-media-buy rows:
 | `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`). In webhook context, may also be `reporting_delayed` or `failed`. Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
 | `totals` | Metrics aggregated within this media buy. Legacy or external mixed-currency buys omit monetary totals such as `spend`. |
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
-| `daily_breakdown` | Day-by-day delivery for single-currency rows. Omitted for legacy/external mixed-currency buys because daily rows have no package currency grain. |
+| `daily_breakdown` | Day-by-day delivery for single-currency rows, one row per calendar date in the reporting timezone. Omitted for legacy/external mixed-currency buys because daily rows have no package currency grain. |
 
 See the pinned [RC.1 schema](https://adcontextprotocol.org/schemas/3.2.0-rc.1/media-buy/get-media-buy-delivery-response.json) for the released field list, including exact-revision reads.
 
@@ -631,7 +658,7 @@ asyncio.run(main())
 ### Date Ranges
 - If dates not specified, returns campaign lifetime delivery data
 - Both `start_date` and `end_date` must be provided together — partial date ranges are invalid
-- Date format: `YYYY-MM-DD`
+- Date format: `YYYY-MM-DD`, a calendar date in the product's reporting timezone (`reporting_capabilities.timezone`)
 - **Start-inclusive, end-exclusive**: `start_date` is included, `end_date` is excluded. For example, `start_date: "2026-01-01"` and `end_date: "2026-01-02"` returns data for January 1st only.
 - Products declare date range support in `reporting_capabilities.date_range_support`
 - Products with `date_range_support: "lifetime_only"` reject requests that include `start_date`/`end_date` with an [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) error
@@ -667,7 +694,7 @@ asyncio.run(main())
 | [`AUTH_INVALID`](/docs/building/verification/compliance-catalog#error-code-auth-invalid) | Credentials rejected (expired / revoked) | Human credential rotation required; do not auto-retry |
 | [`MEDIA_BUY_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-media-buy-not-found) | Media buy doesn't exist | Verify `media_buy_id`; for legacy correlation use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) + `context.internal_campaign_id` |
 | [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | A date string or filter violates its schema constraints | Use YYYY-MM-DD dates and a documented status value |
-| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Only one date is present, or `end_date` is not after `start_date` | Supply both dates with `start_date < end_date`, or omit both for lifetime delivery |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Only one date is present, `end_date` is not after `start_date`, or a dated request spans products with different reporting timezones | Supply both dates with `start_date < end_date`. Narrow `media_buy_ids` to buys sharing one reporting timezone, or omit both dates for lifetime delivery |
 | [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |
 | [`UNSUPPORTED_GRANULARITY`](/docs/building/verification/compliance-catalog#error-code-unsupported-granularity) | Requested `time_granularity` is not in the product's `windowed_pull_granularities` | Re-issue with a granularity from `error.details.supported_granularities`, or omit `time_granularity` to fall back to cumulative date-range pulls. See [Windowed pull recovery](#windowed-pull-recovery). |
 
