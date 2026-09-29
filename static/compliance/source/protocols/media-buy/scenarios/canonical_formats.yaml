@@ -1,5 +1,5 @@
 id: media_buy_seller/canonical_formats
-version: "1.0.0"
+version: "1.0.1"
 title: "Canonical formats producer scenarios"
 category: media_buy_seller
 summary: "Validates that get_products can expose seeded canonical-format products through dual, v1-only, v2-only, custom, experimental, and divergent declaration shapes."
@@ -55,6 +55,8 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+# Fixtures and discovery filters use non_guaranteed so sales-non-guaranteed-only
+# sellers can run this scenario (#7754). Fixed-price so the creates need no bid.
 fixtures:
   products:
     - product_id: "canonical_formats_mrec_display"
@@ -64,7 +66,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_300x250_image"
@@ -111,7 +113,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_728x90_image"
@@ -138,7 +140,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_options:
         - format_kind: "image"
           format_option_id: "canonical_formats_image_leaderboard"
@@ -179,7 +181,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_options:
         - format_kind: "custom"
           format_option_id: "canonical_formats_custom_takeover"
@@ -226,7 +228,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_300x250_image"
@@ -274,7 +276,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_300x250_image"
@@ -351,7 +353,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -451,7 +453,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -499,7 +501,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -556,7 +558,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -621,7 +623,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -688,7 +690,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -745,7 +747,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"

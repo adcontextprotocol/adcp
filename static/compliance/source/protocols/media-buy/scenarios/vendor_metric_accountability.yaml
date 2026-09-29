@@ -1,5 +1,5 @@
 id: media_buy_seller/vendor_metric_accountability
-version: "1.0.0"
+version: "1.0.1"
 title: "End-to-end vendor-metric accountability: declaration → filter → emission"
 category: media_buy_seller
 summary: "Buyer discovers products that declare a vendor metric, creates a media buy, and verifies vendor-metric values appear in the delivery report."
@@ -60,7 +60,10 @@ prerequisites:
 fixtures:
   products:
     - product_id: "display_premium_vendor_metrics"
-      delivery_type: "guaranteed"
+      # Non-guaranteed so sales-non-guaranteed-only sellers can run this scenario
+      # (#7754). Fixed-price because discovery filters on is_fixed_price and the
+      # creates send no bid.
+      delivery_type: "non_guaranteed"
       channels: ["display"]
       format_ids:
         - id: "display_300x250"
