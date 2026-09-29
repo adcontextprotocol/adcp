@@ -6,6 +6,12 @@
  * dist/docs/<old-version>/ paths. New version labels are cloned from the live
  * default navigation, pinned to dist/docs/<release-version>/, and flattened so
  * Mintlify can route the non-default version correctly.
+ *
+ * A stable release on a minor line newer than the current default (for
+ * example `3.2.1 3.2` while 3.1 is the default) promotes that line: the new
+ * stable entry becomes the only default and the only `Latest` entry, the old
+ * default is demoted, and the line's beta/RC selectors leave the version
+ * picker. Their immutable dist/docs snapshots and redirects stay in place.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -14,6 +20,10 @@ import { pathToFileURL } from 'node:url';
 const DIST_DOCS_PREFIX_RE = /^dist\/docs\/[^/]+\//;
 const DIST_DOCS_ABSOLUTE_PREFIX_RE = /^\/dist\/docs\/[^/]+\//;
 const PRERELEASE_DOCS_LABEL_RE = /^(\d+)\.(\d+)-([0-9A-Za-z]+)$/;
+const STABLE_DOCS_LABEL_RE = /^(\d+)\.(\d+)$/;
+const STABLE_RELEASE_VERSION_RE = /^(\d+)\.(\d+)\.\d+$/;
+const ARCHIVED_LABEL_SUFFIX_RE = /\s*\(archived\)\s*$/i;
+const LATEST_TAG = 'Latest';
 const PRERELEASE_BANNER_VERSION_RE = /AdCP (\d+)\.(\d+) ([0-9A-Za-z]+)\.\d+/g;
 const OFFICIAL_PRERELEASE_RELEASE_URL_RE = /https:\/\/github\.com\/adcontextprotocol\/adcp\/releases\/tag\/v\d+\.\d+\.\d+-(?:beta|rc)\.\d+/g;
 const VERSION_LINE_RE = /^(\d+\.\d+)/;
@@ -142,6 +152,24 @@ function versionLine(value) {
   return typeof value === 'string' ? VERSION_LINE_RE.exec(value)?.[1] : undefined;
 }
 
+function compareVersionLines(left, right) {
+  const [leftMajor, leftMinor] = left.split('.').map(Number);
+  const [rightMajor, rightMinor] = right.split('.').map(Number);
+  return leftMajor - rightMajor || leftMinor - rightMinor;
+}
+
+function snapshotBuilds(groups) {
+  return new Set(
+    collectStrings(groups)
+      .map((value) => /^dist\/docs\/([^/]+)\//.exec(value)?.[1])
+      .filter(Boolean)
+  );
+}
+
+function isLiveDocsPath(value) {
+  return value.startsWith('docs/');
+}
+
 function removeObsoleteCurrentLlmsRedirects(config) {
   if (!Array.isArray(config.redirects)) return;
   config.redirects = config.redirects.filter(
@@ -160,11 +188,7 @@ export function renderCurrentLlmsIndex(config) {
     throw new Error('the current docs navigation entry must have a version');
   }
 
-  const builds = new Set(
-    collectStrings(current.groups)
-      .map((value) => /^dist\/docs\/([^/]+)\//.exec(value)?.[1])
-      .filter(Boolean)
-  );
+  const builds = snapshotBuilds(current.groups);
   if (builds.size !== 1) {
     throw new Error(
       `the current docs navigation must reference exactly one release build; found ${[...builds].join(', ') || 'none'}`
@@ -301,6 +325,98 @@ export function flattenVersionGroups(groups) {
   return flattened;
 }
 
+/**
+ * Decide whether a release promotes a new stable minor line to the default.
+ * Only a stable `X.Y` label for a line newer than the current default does.
+ */
+function shouldPromoteStableLine(versions, releaseVersion, majorMinor) {
+  if (!STABLE_DOCS_LABEL_RE.test(majorMinor)) return false;
+  const defaultEntry = versions.find((entry) => entry.default) ?? versions[0];
+  const defaultLine = versionLine(defaultEntry?.version);
+  if (!defaultLine || compareVersionLines(majorMinor, defaultLine) <= 0) {
+    return false;
+  }
+  if (!STABLE_RELEASE_VERSION_RE.test(releaseVersion) || versionLine(releaseVersion) !== majorMinor) {
+    throw new Error(
+      `stable docs line ${majorMinor} can only be promoted by a stable ${majorMinor}.N release; got ${releaseVersion}`
+    );
+  }
+  return true;
+}
+
+function promoteStableLine(config, releaseVersion, majorMinor) {
+  const versions = config.navigation.versions;
+  const previousDefaultIndex = versions.findIndex((entry) => entry.default);
+  const previousDefault = versions[previousDefaultIndex >= 0 ? previousDefaultIndex : 0];
+  const sameLinePrereleases = versions.filter((entry) => {
+    const match = PRERELEASE_DOCS_LABEL_RE.exec(entry.version ?? '');
+    return match && `${match[1]}.${match[2]}` === majorMinor;
+  });
+  const existingStable = versions.find((entry) => entry.version === majorMinor);
+  // Prefer an existing stable entry, then the newest same-line preview (the
+  // first one in the picker, i.e. RC before beta), then the old default.
+  const sourceEntry = existingStable ?? sameLinePrereleases[0] ?? previousDefault;
+  if (!sourceEntry) {
+    throw new Error('docs.json navigation.versions cannot be empty');
+  }
+
+  if (collectStrings(previousDefault.groups).some(isLiveDocsPath)) {
+    throw new Error(
+      `docs.json default ${previousDefault.version} still references live docs/ pages; ` +
+      `pin it to its dist/docs snapshot before promoting ${majorMinor}`
+    );
+  }
+
+  const {
+    version: _version,
+    default: _default,
+    tag: _tag,
+    groups: sourceGroups,
+    ...rest
+  } = clone(sourceEntry);
+  const promotedGroups = pinOpenApiSources(
+    mapStrings(sourceGroups, (value) => snapshotPath(releaseVersion, value)),
+    releaseVersion
+  );
+  const promoted = {
+    version: majorMinor,
+    tag: LATEST_TAG,
+    ...rest,
+    groups: promotedGroups,
+    default: true,
+  };
+
+  const retired = new Set([...sameLinePrereleases, existingStable].filter(Boolean));
+  const remaining = versions
+    .filter((entry) => !retired.has(entry))
+    .map((entry) => {
+      const demoted = { ...entry };
+      delete demoted.default;
+      if (demoted.tag === LATEST_TAG) delete demoted.tag;
+      if (entry === previousDefault) {
+        demoted.groups = flattenVersionGroups(demoted.groups);
+      }
+      return demoted;
+    });
+
+  // Mintlify requires the default version first.
+  config.navigation.versions = [promoted, ...remaining];
+
+  // Point clean /docs/* routes at the new default. Aliases for pages that only
+  // exist in the old default keep pointing at its immutable snapshot.
+  updateDefaultSnapshotAliases(config, [], promoted.groups);
+  updateReleaseStoryAliases(config, releaseVersion);
+  removeObsoleteCurrentLlmsRedirects(config);
+
+  return {
+    config,
+    action: 'promoted',
+    sourceVersion: sourceEntry.version,
+    previousDefault: previousDefault.version,
+    retired: sameLinePrereleases.map((entry) => entry.version),
+  };
+}
+
 export function updateDocsConfig(config, releaseVersion, majorMinor) {
   if (!releaseVersion || !majorMinor) {
     throw new Error('releaseVersion and majorMinor are required');
@@ -309,6 +425,10 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
   const versions = config?.navigation?.versions;
   if (!Array.isArray(versions)) {
     throw new Error('docs.json must contain navigation.versions');
+  }
+
+  if (shouldPromoteStableLine(versions, releaseVersion, majorMinor)) {
+    return promoteStableLine(config, releaseVersion, majorMinor);
   }
 
   const existingIndex = versions.findIndex((entry) => entry.version === majorMinor);
@@ -385,38 +505,44 @@ export function updateDockerignore(content, releaseVersion) {
   return `${content.slice(0, markerIndex)}${directoryRule}\n${contentsRule}\n${content.slice(markerIndex)}`;
 }
 
-export function updateSchemaTools(content, releaseVersion, majorMinor) {
-  const escapedKey = majorMinor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const releaseLinePattern = new RegExp(
-    `(export const DOCS_SCHEMA_RELEASES = Object\\.freeze\\(\\{[\\s\\S]*?\\n\\s*'${escapedKey}':\\s*')[^']+(',)`
-  );
-  if (releaseLinePattern.test(content)) {
-    return content.replace(releaseLinePattern, `$1${releaseVersion}$2`);
+/**
+ * Map each docs.json navigation version to the single release build it pins,
+ * in picker order. Addie's schema routing mirrors this exactly: the first
+ * entry is the docs default, and retired selectors disappear from both.
+ */
+export function docsSchemaReleases(config) {
+  const versions = config?.navigation?.versions;
+  if (!Array.isArray(versions) || versions.length === 0) {
+    throw new Error('docs.json must contain at least one navigation version');
   }
-
-  const prereleaseMatch = PRERELEASE_DOCS_LABEL_RE.exec(majorMinor);
-  if (!prereleaseMatch) {
-    throw new Error(`schema-tools.ts is missing docs release line ${majorMinor}`);
-  }
-
-  const releaseLine = `${prereleaseMatch[1]}.${prereleaseMatch[2]}`;
-  const escapedReleaseLine = releaseLine.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const sameLinePrereleasePattern = new RegExp(
-    `(export const DOCS_SCHEMA_RELEASES = Object\\.freeze\\(\\{[\\s\\S]*?)(\\n(\\s*)'${escapedReleaseLine}-[0-9A-Za-z]+':\\s*'[^']+',)`
+  const ordered = [...versions].sort(
+    (left, right) => Number(Boolean(right.default)) - Number(Boolean(left.default))
   );
-  if (!sameLinePrereleasePattern.test(content)) {
-    throw new Error(
-      `schema-tools.ts is missing docs release line ${majorMinor} and a ${releaseLine} prerelease source`
-    );
-  }
+  return ordered.map((entry) => {
+    const label = String(entry.version ?? '').replace(ARCHIVED_LABEL_SUFFIX_RE, '');
+    const builds = snapshotBuilds(entry.groups);
+    if (!label || builds.size !== 1) {
+      throw new Error(
+        `docs version ${label || '<unnamed>'} must reference exactly one dist/docs build; found ${[...builds].join(', ') || 'none'}`
+      );
+    }
+    return [label, [...builds][0]];
+  });
+}
 
-  // Keep the previous channel frozen and insert the newly promoted channel
-  // first. Runtime routing treats the first prerelease on a release line as
-  // its current preview while preserving explicit beta/RC selectors.
-  return content.replace(
-    sameLinePrereleasePattern,
-    `$1\n$3'${majorMinor}': '${releaseVersion}',$2`
-  );
+const SCHEMA_RELEASES_BLOCK_RE =
+  /(export const DOCS_SCHEMA_RELEASES(?:\s*:[^=]+)?\s*=\s*Object\.freeze\(\{\n)([\s\S]*?)(\n\}\);)/;
+
+export function updateSchemaTools(content, config) {
+  const match = SCHEMA_RELEASES_BLOCK_RE.exec(content);
+  if (!match) {
+    throw new Error('schema-tools.ts must declare DOCS_SCHEMA_RELEASES = Object.freeze({ ... })');
+  }
+  const indent = /^(\s*)'/m.exec(match[2])?.[1] ?? '  ';
+  const body = docsSchemaReleases(config)
+    .map(([label, build]) => `${indent}'${label}': '${build}',`)
+    .join('\n');
+  return content.replace(SCHEMA_RELEASES_BLOCK_RE, (_, open, _body, close) => `${open}${body}${close}`);
 }
 
 function main() {
@@ -435,20 +561,26 @@ function main() {
     process.exit(2);
   }
 
+  // Compute every output before writing so a failure leaves no partial update.
   const config = JSON.parse(readFileSync(docsJsonPath, 'utf8'));
-  const { action, sourceVersion } = updateDocsConfig(config, releaseVersion, majorMinor);
-  writeFileSync(docsJsonPath, `${JSON.stringify(config, null, 2)}\n`);
-  writeFileSync(currentLlmsIndexPath, renderCurrentLlmsIndex(config));
-  const dockerignore = readFileSync(dockerignorePath, 'utf8');
-  writeFileSync(dockerignorePath, updateDockerignore(dockerignore, releaseVersion));
-  const schemaTools = readFileSync(schemaToolsPath, 'utf8');
-  writeFileSync(
-    schemaToolsPath,
-    updateSchemaTools(schemaTools, releaseVersion, majorMinor)
-  );
+  const result = updateDocsConfig(config, releaseVersion, majorMinor);
+  const currentLlmsIndex = renderCurrentLlmsIndex(config);
+  const dockerignore = updateDockerignore(readFileSync(dockerignorePath, 'utf8'), releaseVersion);
+  const schemaTools = updateSchemaTools(readFileSync(schemaToolsPath, 'utf8'), config);
 
-  if (action === 'added') {
-    console.log(`Added docs.json version ${majorMinor} from ${sourceVersion}`);
+  writeFileSync(docsJsonPath, `${JSON.stringify(config, null, 2)}\n`);
+  writeFileSync(currentLlmsIndexPath, currentLlmsIndex);
+  writeFileSync(dockerignorePath, dockerignore);
+  writeFileSync(schemaToolsPath, schemaTools);
+
+  if (result.action === 'promoted') {
+    console.log(
+      `Promoted docs.json version ${majorMinor} (from ${result.sourceVersion}) to the default; ` +
+      `demoted ${result.previousDefault}` +
+      (result.retired.length > 0 ? `; retired selectors ${result.retired.join(', ')}` : '')
+    );
+  } else if (result.action === 'added') {
+    console.log(`Added docs.json version ${majorMinor} from ${result.sourceVersion}`);
   } else {
     console.log(`Updated docs.json version ${majorMinor}`);
   }

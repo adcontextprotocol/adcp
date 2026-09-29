@@ -1,8 +1,14 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   createSchemaToolHandlers,
   buildPreviewSchemaRouting,
+  buildSchemaVersionAliases,
+  DEFAULT_SCHEMA_VERSION,
   DOCS_SCHEMA_RELEASES,
+  resolveDefaultSchemaSelector,
   extractRegistryPaths,
   findClosestSchema,
   formatSchemaJson,
@@ -15,17 +21,81 @@ import {
 describe('schema version selection', () => {
   it('promotes the newest prerelease channel while preserving explicit beta routing', () => {
     const routing = buildPreviewSchemaRouting({
+      '3.1': '3.1.24',
       '3.2-rc': '3.2.0-rc.0',
       '3.2-beta': '3.2.0-beta.12',
-    }, '3.2');
+    });
 
-    expect(routing.current).toBe('3.2-rc');
+    expect(routing.selectors).toEqual(['3.2-rc', '3.2-beta']);
     expect(routing.aliases).toMatchObject({
       '3.2': '3.2-rc',
       '3.2 rc': '3.2-rc',
       '3.2.0-rc.0': '3.2-rc',
       '3.2 beta': '3.2-beta',
       '3.2.0-beta.12': '3.2-beta',
+    });
+  });
+
+  it('defaults to the first stable line, which mirrors the docs.json default', () => {
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+    const docsConfig = JSON.parse(fs.readFileSync(path.join(repoRoot, 'docs.json'), 'utf8')) as {
+      navigation: { versions: Array<{ version: string; default?: boolean }> };
+    };
+    const labels = docsConfig.navigation.versions.map(
+      ({ version }) => version.replace(/\s*\(archived\)\s*$/i, ''),
+    );
+    const docsDefault = docsConfig.navigation.versions.find((entry) => entry.default);
+
+    expect(Object.keys(DOCS_SCHEMA_RELEASES)).toEqual(labels);
+    expect(DEFAULT_SCHEMA_VERSION).toBe(docsDefault?.version);
+  });
+
+  describe('after a stable minor GA retires its preview selectors', () => {
+    const gaReleases = Object.freeze({
+      '3.2': '3.2.1',
+      '3.1': '3.1.24',
+      '3.0': '3.0.26',
+      '2.5': '2.5.3',
+    });
+
+    it('loads without any prerelease line and routes every moving alias to the new stable line', () => {
+      expect(buildPreviewSchemaRouting(gaReleases)).toEqual({ selectors: [], aliases: {} });
+      expect(resolveDefaultSchemaSelector(gaReleases)).toBe('3.2');
+
+      const aliases = buildSchemaVersionAliases(gaReleases);
+      expect(aliases).toMatchObject({
+        '3.2': '3.2',
+        '3.2.1': '3.2',
+        stable: '3.2',
+        current: '3.2',
+        latest: '3.2',
+        v3: '3.2',
+        '3.1': '3.1',
+        '3.1.24': '3.1',
+        '3.0': '3.0',
+        '2.5 (archived)': '2.5',
+        v2: 'v2',
+      });
+      expect(aliases).not.toHaveProperty('3.2-rc');
+      expect(aliases).not.toHaveProperty('3.2 rc');
+    });
+
+    it('never lets a lingering preview shadow the stable line', () => {
+      const aliases = buildSchemaVersionAliases({
+        '3.2': '3.2.1',
+        '3.2-rc': '3.2.0-rc.7',
+        '3.1': '3.1.24',
+      });
+
+      expect(aliases['3.2']).toBe('3.2');
+      expect(aliases['3.2 rc']).toBe('3.2-rc');
+      expect(aliases['3.2.0-rc.7']).toBe('3.2-rc');
+      expect(aliases.stable).toBe('3.2');
+    });
+
+    it('rejects a release map without a stable line', () => {
+      expect(() => resolveDefaultSchemaSelector({ '3.2-rc': '3.2.0-rc.7' }))
+        .toThrow('DOCS_SCHEMA_RELEASES must contain a stable release line');
     });
   });
 
