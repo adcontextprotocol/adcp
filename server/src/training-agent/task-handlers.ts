@@ -19052,13 +19052,26 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   // `${segment}:${destination}` shape.
   const activationKeyFor = (dest: Destination): string =>
     `${segmentId}:${destId(dest)}${dest.account ? `#${dest.account}` : ''}`;
+  // Match stored activations by their recorded destination rather than by map
+  // key, so sessions persisted under the older account-less key shape are
+  // still replaced on re-activation and removed on deactivation.
+  const removeActivationsFor = (dest: Destination): void => {
+    const id = destId(dest);
+    for (const [key, state] of session.signalActivations) {
+      if (
+        state.signalAgentSegmentId === segmentId
+        && state.destinationType === dest.type
+        && state.destinationId === id
+        && (state.account || undefined) === (dest.account || undefined)
+      ) {
+        session.signalActivations.delete(key);
+      }
+    }
+  };
 
   if (action === 'deactivate') {
     // Remove activations for this signal
-    for (const dest of destinations) {
-      const activationKey = activationKeyFor(dest);
-      session.signalActivations.delete(activationKey);
-    }
+    for (const dest of destinations) removeActivationsFor(dest);
 
     return {
       deployments: destinations.map(dest => ({
@@ -19086,6 +19099,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
       isLive: true,
       activatedAt: now,
     };
+    removeActivationsFor(dest);
     session.signalActivations.set(activationKey, activationState);
 
     return {

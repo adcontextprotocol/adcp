@@ -17249,6 +17249,54 @@ describe('activate_signal handler', () => {
     }
   });
 
+  it('replaces and deactivates platform activations persisted under the legacy account-less key', async () => {
+    // Sessions persisted before per-seat keys stored `${segment}:${platform}`.
+    const seedLegacy = async () => {
+      await runWithSessionContext(async () => {
+        const session = await getSession(sessionKeyFromArgs({ account }, 'open'));
+        session.signalActivations.set('shopgrid_category_buyer:pinnacle-dsp', {
+          signalAgentSegmentId: 'shopgrid_category_buyer',
+          destinationType: 'platform',
+          destinationId: 'pinnacle-dsp',
+          account: 'acme-seat',
+          isLive: true,
+          activatedAt: '2026-01-01T00:00:00.000Z',
+        });
+        await flushDirtySessions();
+      });
+    };
+    const call = async (tool: string, args: Record<string, unknown>) => {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      return (await simulateCallTool(server, tool, { account, ...args })).result;
+    };
+    const platformDeployments = async () => {
+      const result = await call('get_signals', { signal_ids: [{ id: 'shopgrid_category_buyer' }] });
+      return ((result.signals as Array<Record<string, unknown>>)[0].deployments as Array<Record<string, unknown>>)
+        .filter(d => d.type === 'platform');
+    };
+    const destination = { type: 'platform', platform: 'pinnacle-dsp', account: 'acme-seat' };
+
+    await seedLegacy();
+    expect(await platformDeployments()).toHaveLength(1);
+    await call('activate_signal', {
+      signal_agent_segment_id: 'shopgrid_category_buyer',
+      pricing_option_id: 'po_shopgrid_cat_cpm',
+      destinations: [destination],
+    });
+    const replaced = await platformDeployments();
+    expect(replaced).toHaveLength(1);
+    expect(replaced[0].deployed_at).not.toBe('2026-01-01T00:00:00.000Z');
+
+    clearSessions();
+    await seedLegacy();
+    await call('activate_signal', {
+      action: 'deactivate',
+      signal_agent_segment_id: 'shopgrid_category_buyer',
+      destinations: [destination],
+    });
+    expect(await platformDeployments()).toEqual([]);
+  });
+
   it('does not report one account\'s platform activation in another account\'s readback', async () => {
     const otherAccount = { brand: { domain: 'other-signal-test.example' }, operator: 'other-signal-test.example' };
     const server1 = createTrainingAgentServer(DEFAULT_CTX);
