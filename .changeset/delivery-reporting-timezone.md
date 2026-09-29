@@ -1,0 +1,12 @@
+---
+"adcontextprotocol": patch
+---
+
+media-buy: report `get_media_buy_delivery` dates on the seller's reporting timezone. This resolves a contradiction introduced during 3.2, before GA (#7736). One rule said `reporting_period` must be exact UTC day boundaries. The other said buyers must align daily and monthly reports to `reporting_capabilities.timezone`. A seller with a non-UTC product could not satisfy both. Neither rule shipped in a stable release.
+
+- `start_date`, `end_date`, and buy-level and package-level `daily_breakdown[].date` are calendar dates in the reporting timezone, which is the in-scope products' `reporting_capabilities.timezone`. They are UTC days only when that timezone is `UTC`.
+- `reporting_period.start` and `end` stay `date-time` instants. For a dated request they are the instants at which the requested dates begin in the reporting timezone, for example `2026-04-15T00:00:00-04:00`. Daily, weekly, and monthly `windows[]` use the same boundaries. The deterministic filter contract still requires a start-inclusive, end-exclusive interval, now measured in reporting-timezone days.
+- Adds optional `reporting_period.timezone` to the delivery response, and to the delivery webhook result for shape alignment. It echoes the reporting timezone applied, and sellers SHOULD return it on reads without `reporting_revision_id`. Exact-revision reads keep the revision period's `source_timezone`. This is additive and non-breaking.
+- A dated request whose in-scope packages span more than one reporting timezone MUST be rejected with `VALIDATION_ERROR`. The buyer then narrows `media_buy_ids` or omits both dates. There is no package filter, so a single buy that mixes zones across packages can only be read without dates. Lifetime requests are unaffected.
+- Removes the legacy "All periods use UTC timezone" wording and updates the `reporting_capabilities.timezone` description so the two rules agree. The `simulate_delivery` `delivery_date` is now a reporting-timezone calendar date. The webhook examples in the optimization and reporting guide now use half-open boundaries.
+- compliance: the `media_buy_seller/read_filter_behavior` fixture product declares a UTC reporting timezone. The storyboard checks that any echoed `reporting_period.timezone` is `UTC` and matches boundaries by pattern, so equivalent UTC spellings pass (`Z`, `+00:00`, optional fractional zeros). The runner compares strings, so it cannot check local-midnight offsets for arbitrary IANA zones.

@@ -26,7 +26,7 @@
     },
     "timezone": {
       "type": "string",
-      "description": "Timezone for this product's reporting periods. Use 'UTC' or an IANA timezone (e.g., 'America/New_York'). This explicit reporting clock may equal Account.timezone or differ when the upstream platform reports on a separate boundary; buyers MUST use this value for daily/monthly report alignment.",
+      "description": "Timezone for this product's reporting periods. Use 'UTC' or an IANA timezone (e.g., 'America/New_York'). This explicit reporting clock may equal Account.timezone or differ when the upstream platform reports on a separate boundary, so buyers MUST NOT infer it from Account.timezone. It is the reporting timezone for this product's delivery reporting: get_media_buy_delivery start_date, end_date, and daily_breakdown dates are calendar dates in it, and reporting_period boundaries and daily, weekly, or monthly windows fall on its calendar boundaries. Buyers MUST use this value for daily/monthly report alignment.",
       "examples": [
         "UTC",
         "America/New_York",

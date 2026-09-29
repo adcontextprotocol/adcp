@@ -78,17 +78,26 @@
     },
     "reporting_period": {
       "type": "object",
-      "description": "Half-open date range for the report: start is inclusive and end is exclusive. All periods use UTC timezone.",
+      "description": "Half-open period for the report: start is inclusive and end is exclusive. Both are instants. For a date-bounded request they are the instants at which start_date and end_date begin in the reporting timezone (the in-scope products' reporting_capabilities.timezone, echoed in timezone). They fall on UTC midnight only when that timezone is UTC. An exact reporting_revision_id read returns the revision's period instead, whose source_timezone names its calendar.",
       "properties": {
         "start": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 start timestamp in UTC (e.g., 2024-02-05T00:00:00Z)"
+          "description": "Inclusive RFC 3339 start instant. For a date-bounded request, the start of start_date in the reporting timezone, written with that zone's UTC offset or as the equivalent UTC instant (e.g., 2026-04-15T00:00:00-04:00 or 2026-04-15T04:00:00Z for America/New_York; 2026-04-15T00:00:00Z for UTC)."
         },
         "end": {
           "type": "string",
           "format": "date-time",
-          "description": "Exclusive ISO 8601 end timestamp in UTC (e.g., 2024-02-06T00:00:00Z for a report covering 2024-02-05)"
+          "description": "Exclusive RFC 3339 end instant. For a date-bounded request, the start of end_date in the reporting timezone (e.g., 2026-04-16T00:00:00-04:00 for a report covering 2026-04-15 in America/New_York)."
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Reporting timezone applied to this report, as 'UTC' or an IANA timezone identifier. It equals the in-scope products' reporting_capabilities.timezone. start_date, end_date, the reporting_period boundaries, daily_breakdown[].date, and daily, weekly, or monthly windows[] all use it, so a stored report stays interpretable if the product's capability later changes. Sellers SHOULD return it on reads without reporting_revision_id whenever every in-scope media buy shares one reporting timezone. Exact reporting_revision_id reads return the revision period, which carries source_timezone instead.",
+          "examples": [
+            "UTC",
+            "America/New_York"
+          ]
         }
       },
       "required": [
@@ -979,7 +988,7 @@
                           "date": {
                             "type": "string",
                             "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-                            "description": "Date (YYYY-MM-DD)"
+                            "description": "Calendar date (YYYY-MM-DD) in the reporting timezone: reporting_period.timezone when present, otherwise this package's product reporting_capabilities.timezone. The row covers that local day, which can be 23 or 25 hours long across a DST change."
                           },
                           "impressions": {
                             "type": "number",
@@ -1047,7 +1056,7 @@
                 "window_start": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "ISO 8601 start of the window slice (inclusive). UTC."
+                  "description": "ISO 8601 start of the window slice (inclusive). Daily, weekly, and monthly slices start on reporting-timezone calendar boundaries (see reporting_period.timezone), which are UTC midnights only when that timezone is UTC."
                 },
                 "window_end": {
                   "type": "string",
@@ -1117,7 +1126,7 @@
                 "date": {
                   "type": "string",
                   "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-                  "description": "Date (YYYY-MM-DD)"
+                  "description": "Calendar date (YYYY-MM-DD) in the reporting timezone: reporting_period.timezone when present, otherwise this media buy's product reporting_capabilities.timezone. The row covers that local day, which can be 23 or 25 hours long across a DST change."
                 },
                 "impressions": {
                   "type": "number",

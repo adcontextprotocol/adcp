@@ -70,6 +70,7 @@ import {
   getCoreRevisionContentPageForAccountDurably,
   hasCoreRevisionContentForAccountDurably,
   listReportingAccountsDurably,
+  reportingDayStart,
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { validateSourceSchema } from './source-schema.js';
@@ -2010,6 +2011,21 @@ function isValidDaypartTimezone(value: unknown): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Canonical reporting timezone for a product's reporting_capabilities.timezone,
+ * or undefined when a seeded fixture declares something Intl cannot resolve.
+ * Absent means the training agent's UTC default.
+ */
+function canonicalReportingTimezone(value: unknown): string | undefined {
+  if (value === undefined) return 'UTC';
+  if (typeof value !== 'string' || !DAYPART_IANA_TIMEZONE_SHAPE.test(value)) return undefined;
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: value }).resolvedOptions().timeZone;
+  } catch {
+    return undefined;
   }
 }
 
@@ -15410,11 +15426,44 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     )
     : undefined;
 
+  // start_date/end_date are calendar dates in the reporting timezone of the
+  // buy's products (reporting_capabilities.timezone). Catalog and default
+  // seeded products report in UTC. A dated request cannot pick one timezone
+  // for packages whose products report on different clocks. Zone names are
+  // canonicalized so aliases such as "utc" and "Etc/UTC" do not count as mixed.
+  const livePackages = mb.packages.filter(pkg => !pkg.canceled);
+  const reportingTimezoneList = (livePackages.length > 0 ? livePackages : mb.packages).map(pkg => (
+    canonicalReportingTimezone((productMap.get(pkg.productId)?.reporting_capabilities as { timezone?: unknown } | undefined)?.timezone)
+  ));
+  const hasInvalidReportingTimezone = reportingTimezoneList.includes(undefined);
+  const reportingTimezones = new Set(reportingTimezoneList.filter((tz): tz is string => tz !== undefined));
+  const dated = Boolean(req.start_date || req.end_date);
+  if (dated && hasInvalidReportingTimezone) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'A product in this media buy declares a reporting timezone that is not UTC or a recognized IANA identifier; request delivery without start_date/end_date.',
+        field: 'start_date',
+      }],
+    };
+  }
+  if (dated && reportingTimezones.size > 1) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: `Media buy ${mb.mediaBuyId} spans products with different reporting timezones (${[...reportingTimezones].sort().join(', ')}); narrow media_buy_ids or request delivery without start_date/end_date.`,
+        field: 'start_date',
+      }],
+    };
+  }
+  const echoReportingTimezone = !hasInvalidReportingTimezone && reportingTimezones.size === 1;
+  const reportingTimezone = reportingTimezones.size === 1 ? [...reportingTimezones][0] : 'UTC';
+
   const now = new Date();
   const start = new Date(mb.startTime);
   const end = new Date(mb.endTime);
-  const reportingStart = req.start_date ? new Date(`${req.start_date}T00:00:00.000Z`) : start;
-  const reportingEnd = req.end_date ? new Date(`${req.end_date}T00:00:00.000Z`) : now;
+  const reportingStart = req.start_date ? reportingDayStart(req.start_date, reportingTimezone) : start;
+  const reportingEnd = req.end_date ? reportingDayStart(req.end_date, reportingTimezone) : now;
   if (req.start_date && req.end_date && reportingStart.getTime() >= reportingEnd.getTime()) {
     return {
       errors: [{ code: 'VALIDATION_ERROR', message: 'start_date must be before end_date', field: 'start_date' }],
@@ -15428,7 +15477,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   // Read simulated delivery upfront so vendor_metric_values can be spread into
   // per-package entries inside the map below.
   const simDeliveryEarly = req.start_date || req.end_date
-    ? getDeliverySimulationForPeriod(session, mb.mediaBuyId, reportingStart, reportingEnd)
+    ? getDeliverySimulationForPeriod(session, mb.mediaBuyId, reportingStart, reportingEnd, reportingTimezone)
     : getDeliverySimulation(session, mb.mediaBuyId);
 
   // Build per-package metrics
@@ -15969,6 +16018,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     reporting_period: {
       start: reportingStart.toISOString(),
       end: reportingEnd.toISOString(),
+      ...(echoReportingTimezone && { timezone: reportingTimezone }),
     },
     currency: mb.currency,
     media_buy_deliveries: [{

@@ -395,7 +395,7 @@ Reporting webhooks send a full MCP webhook envelope. The delivery report itself 
     "next_expected_at": "2024-02-06T08:00:00Z",
     "reporting_period": {
       "start": "2024-02-05T00:00:00Z",
-      "end": "2024-02-05T23:59:59Z"
+      "end": "2024-02-06T00:00:00Z"
     },
     "currency": "USD",
     "media_buy_deliveries": [
@@ -424,7 +424,7 @@ The inner `result` object can be shown or stored separately, but this shape is n
   "sequence_number": 5,
   "reporting_period": {
     "start": "2024-02-05T00:00:00Z",
-    "end": "2024-02-05T23:59:59Z"
+    "end": "2024-02-06T00:00:00Z"
   },
   "currency": "USD",
   "media_buy_deliveries": [
@@ -457,29 +457,30 @@ Webhook signatures and content digests are computed over the exact raw bytes of 
 
 #### Timezone Handling
 
-**All reporting MUST use UTC.** This eliminates DST complexity, simplifies reconciliation, and ensures consistent 24-hour reporting periods.
+Each product declares its reporting timezone in `reporting_capabilities.timezone`, as `UTC` or an IANA identifier. It may differ from `Account.timezone`. Delivery reporting uses this timezone for calendar periods:
+
+- `get_media_buy_delivery` `start_date`/`end_date` and `daily_breakdown[].date` are calendar dates in the reporting timezone.
+- `reporting_period.start`/`end` are RFC 3339 instants on reporting-timezone boundaries. They fall on UTC midnight only when the reporting timezone is `UTC`.
+- Daily, weekly, and monthly periods follow reporting-timezone calendar days, so a day can be 23 or 25 hours long across a DST change. Hourly periods are always one hour.
+- Sellers SHOULD echo the applied timezone in `reporting_period.timezone`.
 
 ```json
 {
   "reporting_capabilities": {
-    "timezone": "UTC",
+    "timezone": "America/New_York",
     "available_reporting_frequencies": ["daily"],
     "date_range_support": "date_range"
   }
 }
 ```
 
-**Reporting periods:**
-- Daily: 00:00:00Z to 23:59:59Z (always 24 hours)
-- Hourly: Top of hour to 59:59 seconds (always 1 hour)
-- Monthly: First to last day of month
-
-**Example webhook payload:**
+**Example `get_media_buy_delivery` period** for `start_date: "2024-02-05"`, `end_date: "2024-02-06"` in `America/New_York`:
 ```json
 {
   "reporting_period": {
-    "start": "2024-02-05T00:00:00Z",
-    "end": "2024-02-05T23:59:59Z"
+    "start": "2024-02-05T00:00:00-05:00",
+    "end": "2024-02-06T00:00:00-05:00",
+    "timezone": "America/New_York"
   }
 }
 ```
@@ -605,7 +606,7 @@ The `media_buy_deliveries` array may contain 1 to N media buys per webhook. Buye
   "notification_type": "scheduled",
   "reporting_period": {
     "start": "2024-02-05T00:00:00Z",
-    "end": "2024-02-05T23:59:59Z"
+    "end": "2024-02-06T00:00:00Z"
   },
   "media_buy_deliveries": [{
     "media_buy_id": "mb_external_001",
@@ -649,7 +650,7 @@ Publishers SHOULD send aggregated webhooks containing all available data, using 
   "sequence_number": 5,
   "reporting_period": {
     "start": "2024-02-05T00:00:00Z",
-    "end": "2024-02-05T23:59:59Z"
+    "end": "2024-02-06T00:00:00Z"
   },
   "currency": "USD",
   "media_buy_deliveries": [
@@ -924,9 +925,9 @@ One media buy delivery per line (newline-delimited JSON). Each line contains a s
 
 **Example JSONL file:**
 ```jsonl
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_001", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_002", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_003", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-06T00:00:00Z"}, "currency": "USD", "media_buy_id": "mb_001", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-06T00:00:00Z"}, "currency": "USD", "media_buy_id": "mb_002", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-06T00:00:00Z"}, "currency": "USD", "media_buy_id": "mb_003", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
 ```
 
 #### CSV
@@ -938,10 +939,10 @@ CSV files require unnesting nested arrays. Each record should be unnested to the
 **Example CSV structure:**
 ```csv
 notification_type,sequence_number,next_expected_at,reporting_period_start,reporting_period_end,currency,media_buy_id,status,totals_impressions,totals_spend,totals_clicks,totals_ctr,by_package_package_id,by_package_impressions,by_package_spend,by_package_clicks,by_package_pacing_index,by_package_pricing_model,by_package_rate,by_package_currency
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,active,50000,1750.00,100,0.002,pkg_001,30000,1050.00,60,0.95,cpm,0.035,USD
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,active,50000,1750.00,100,0.002,pkg_002,20000,700.00,40,0.98,cpm,0.035,USD
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_002,active,200000,9000.00,400,0.002,pkg_003,200000,9000.00,400,1.02,cpm,45.00,USD
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_003,active,75000,3375.00,150,0.002,pkg_004,75000,3375.00,150,0.96,cpcv,0.045,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-06T00:00:00Z,USD,mb_001,active,50000,1750.00,100,0.002,pkg_001,30000,1050.00,60,0.95,cpm,0.035,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-06T00:00:00Z,USD,mb_001,active,50000,1750.00,100,0.002,pkg_002,20000,700.00,40,0.98,cpm,0.035,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-06T00:00:00Z,USD,mb_002,active,200000,9000.00,400,0.002,pkg_003,200000,9000.00,400,1.02,cpm,45.00,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-06T00:00:00Z,USD,mb_003,active,75000,3375.00,150,0.002,pkg_004,75000,3375.00,150,0.96,cpcv,0.045,USD
 ```
 
 #### Parquet
@@ -1196,7 +1197,7 @@ When late data arrives for a previously reported period, **resend that period** 
   "notification_type": "adjusted",
   "reporting_period": {
     "start": "2024-02-01T00:00:00Z",
-    "end": "2024-02-01T23:59:59Z"
+    "end": "2024-02-02T00:00:00Z"
   },
   "media_buy_deliveries": [{
     "media_buy_id": "mb_001",

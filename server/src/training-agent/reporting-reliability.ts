@@ -2405,6 +2405,45 @@ function zonedToUtc(target: ZonedParts, timeZone: string): number {
   return candidate;
 }
 
+/**
+ * Instant at which a YYYY-MM-DD calendar date begins in a reporting timezone.
+ * get_media_buy_delivery start_date/end_date are calendar dates in the
+ * product's reporting_capabilities.timezone, so their reporting_period bounds
+ * are the first instant of that local day, not UTC midnight. When local
+ * midnight does not exist (a DST gap at 00:00, e.g. America/Santiago on
+ * 2026-09-06), the day starts at the transition instant. Returns an invalid
+ * Date for a malformed or out-of-range date (e.g. 2026-02-30). The caller
+ * must pass a timezone Intl accepts.
+ */
+export function reportingDayStart(date: string, timeZone: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return new Date(Number.NaN);
+  const [year, month, day] = match.slice(1).map(Number);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth) return new Date(Number.NaN);
+  const target = year * 10_000 + month * 100 + day;
+  const localDate = (ms: number) => {
+    const parts = zonedParts(ms, timeZone);
+    return parts.year * 10_000 + parts.month * 100 + parts.day;
+  };
+  const candidate = zonedToUtc({ year, month, day, hour: 0, minute: 0, second: 0 }, timeZone);
+  const parts = zonedParts(candidate, timeZone);
+  if (localDate(candidate) === target && parts.hour === 0 && parts.minute === 0 && parts.second === 0) {
+    return new Date(candidate);
+  }
+  // Local midnight falls in a DST gap: find the first second whose local date
+  // is the requested date. Offsets change by at most a few hours, so the
+  // previous local day is before lo and the requested day has begun by hi.
+  let lo = candidate - 6 * HOUR_MS;
+  let hi = candidate + 6 * HOUR_MS;
+  while (hi - lo > 1000) {
+    const mid = lo + Math.floor((hi - lo) / 2000) * 1000;
+    if (localDate(mid) >= target) hi = mid;
+    else lo = mid;
+  }
+  return new Date(hi);
+}
+
 function civilDayStart(ms: number, timeZone: string): number {
   const local = zonedParts(ms, timeZone);
   return zonedToUtc({ ...local, hour: 0, minute: 0, second: 0 }, timeZone);

@@ -31,6 +31,7 @@ import {
   waitForForcedTaskCompletion,
 } from '../../src/training-agent/comply-test-controller.js';
 import { taskRegistryNamespaceForTenant } from '../../src/training-agent/task-registry-scope.js';
+import { reportingDayStart } from '../../src/training-agent/reporting-reliability.js';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'comply-test.example.com' }, operator: 'comply-tester', sandbox: true };
@@ -2862,6 +2863,7 @@ describe('comply_test_controller', () => {
       expect(delivery.reporting_period).toEqual({
         start: `${includedAtStart}T00:00:00.000Z`,
         end: `${excludedAtEnd}T00:00:00.000Z`,
+        timezone: 'UTC',
       });
       const totals = (delivery as any).media_buy_deliveries[0].totals;
       expect(totals.impressions).toBe(200);
@@ -2885,6 +2887,144 @@ describe('comply_test_controller', () => {
         code: 'VALIDATION_ERROR',
         field: 'start_date',
       }));
+    });
+
+    it('cuts dated delivery on the product reporting timezone and rejects mixed reporting timezones', async () => {
+      const seed = async (scenario: string, params: Record<string, unknown>) => {
+        const { result } = await simulateCallTool(server, 'comply_test_controller', {
+          scenario, params, account: ACCOUNT, brand: BRAND,
+        });
+        expect(result.success).toBe(true);
+      };
+      const product = (productId: string, timezone: string) => ({
+        product_id: productId,
+        fixture: {
+          delivery_type: 'non_guaranteed',
+          channels: ['display'],
+          reporting_capabilities: {
+            available_reporting_frequencies: ['daily'],
+            expected_delay_minutes: 60,
+            timezone,
+            supports_webhooks: false,
+            available_metrics: ['impressions', 'clicks', 'spend'],
+            date_range_support: 'date_range',
+          },
+        },
+      });
+      await seed('seed_product', product('tz_new_york_product', 'America/New_York'));
+      await seed('seed_product', product('tz_london_product', 'Europe/London'));
+      await seed('seed_product', product('tz_utc_alias_product', 'Etc/UTC'));
+      await seed('seed_product', product('tz_invalid_product', 'Not/A_Zone'));
+      await seed('seed_pricing_option', {
+        product_id: 'tz_new_york_product',
+        pricing_option_id: 'tz_new_york_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      });
+      await seed('seed_pricing_option', {
+        product_id: 'tz_london_product',
+        pricing_option_id: 'tz_london_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      });
+      for (const productId of ['tz_utc_alias_product', 'tz_invalid_product']) {
+        await seed('seed_pricing_option', {
+          product_id: productId,
+          pricing_option_id: `${productId}_cpm`,
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+        });
+      }
+      const buy = (mediaBuyId: string, packages: Array<[string, string, string]>) => ({
+        media_buy_id: mediaBuyId,
+        fixture: {
+          status: 'active',
+          currency: 'USD',
+          start_time: '2026-01-01T00:00:00Z',
+          end_time: '2099-12-31T00:00:00Z',
+          packages: packages.map(([packageId, productId, pricingOptionId]) => ({
+            package_id: packageId, product_id: productId, pricing_option_id: pricingOptionId, budget: 1000,
+          })),
+        },
+      });
+      await seed('seed_media_buy', buy('tz_new_york_buy', [['tz_ny_pkg', 'tz_new_york_product', 'tz_new_york_cpm']]));
+      await seed('seed_media_buy', buy('tz_mixed_buy', [
+        ['tz_mixed_ny_pkg', 'tz_new_york_product', 'tz_new_york_cpm'],
+        ['tz_mixed_london_pkg', 'tz_london_product', 'tz_london_cpm'],
+      ]));
+      await seed('seed_media_buy', buy('tz_utc_alias_buy', [['tz_alias_pkg', 'tz_utc_alias_product', 'tz_utc_alias_product_cpm']]));
+      await seed('seed_media_buy', buy('tz_invalid_buy', [['tz_invalid_pkg', 'tz_invalid_product', 'tz_invalid_product_cpm']]));
+
+      for (const [deliveryDate, impressions] of [['2026-04-14', 100], ['2026-04-15', 200], ['2026-04-16', 400]] as const) {
+        await seed('simulate_delivery', {
+          media_buy_id: 'tz_new_york_buy',
+          delivery_date: deliveryDate,
+          impressions,
+          reported_spend: { amount: impressions / 10, currency: 'USD' },
+        });
+      }
+
+      const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_new_york_buy'],
+        start_date: '2026-04-15',
+        end_date: '2026-04-16',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      // New York is UTC-4 in April: the reporting day starts at 04:00Z.
+      expect((delivery as any).reporting_period).toEqual({
+        start: '2026-04-15T04:00:00.000Z',
+        end: '2026-04-16T04:00:00.000Z',
+        timezone: 'America/New_York',
+      });
+      expect((delivery as any).media_buy_deliveries[0].totals.impressions).toBe(200);
+
+      const { result: mixed } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_mixed_buy'],
+        start_date: '2026-04-15',
+        end_date: '2026-04-16',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(mixed).toEqual(expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'start_date' }));
+
+      const { result: lifetime } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_mixed_buy'],
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect((lifetime as any).media_buy_deliveries[0].media_buy_id).toBe('tz_mixed_buy');
+      expect((lifetime as any).reporting_period.timezone).toBeUndefined();
+
+      // Aliases canonicalize: Etc/UTC is reported as UTC.
+      const { result: alias } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_utc_alias_buy'],
+        start_date: '2026-04-15',
+        end_date: '2026-04-16',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect((alias as any).reporting_period).toEqual({
+        start: '2026-04-15T00:00:00.000Z',
+        end: '2026-04-16T00:00:00.000Z',
+        timezone: 'UTC',
+      });
+
+      // An unresolvable seeded timezone is a validation error, and the raw
+      // fixture value is not echoed.
+      const { result: invalid } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_invalid_buy'],
+        start_date: '2026-04-15',
+        end_date: '2026-04-16',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(invalid).toEqual(expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'start_date' }));
+      expect(JSON.stringify(invalid)).not.toContain('Not/A_Zone');
+    });
+
+    it('starts a reporting day at the DST transition when local midnight does not exist', () => {
+      expect(reportingDayStart('2026-09-06', 'America/Santiago').toISOString()).toBe('2026-09-06T04:00:00.000Z');
+      expect(reportingDayStart('2026-03-08', 'America/Havana').toISOString()).toBe('2026-03-08T05:00:00.000Z');
+      expect(reportingDayStart('2026-11-01', 'America/New_York').toISOString()).toBe('2026-11-01T04:00:00.000Z');
+      expect(Number.isNaN(reportingDayStart('2026-02-30', 'UTC').getTime())).toBe(true);
     });
 
     it('rejects an invalid delivery_date without creating delivery state', async () => {

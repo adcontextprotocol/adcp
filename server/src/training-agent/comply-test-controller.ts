@@ -111,6 +111,7 @@ import {
   restateAfterReceivedReportingCoreLifecycleProbe,
   restateReportingCoreLifecycleProbeSnapshot,
   probeReportingSourceCalendarDst,
+  reportingDayStart,
   resolveReportingAccountDurably,
   updateReliableReportingManagedDeliveryProbe,
   withDurableReportingLedger,
@@ -312,6 +313,7 @@ export function getDeliverySimulationForPeriod(
   mediaBuyId: string,
   start: Date,
   end: Date,
+  reportingTimezone = 'UTC',
 ): ComplyDeliveryAccumulator | undefined {
   const cumulative = getDeliverySimulation(session, mediaBuyId);
   if (!cumulative?.datedSimulations?.length) return cumulative;
@@ -323,7 +325,8 @@ export function getDeliverySimulationForPeriod(
     conversions: 0,
   };
   for (const simulation of cumulative.datedSimulations) {
-    const timestamp = new Date(`${simulation.deliveryDate}T00:00:00.000Z`).getTime();
+    // delivery_date is a calendar date in the product's reporting timezone.
+    const timestamp = reportingDayStart(simulation.deliveryDate, reportingTimezone).getTime();
     if (timestamp < start.getTime() || timestamp >= end.getTime()) continue;
     const { impressions, clicks, plays, conversions, reportedSpend, ...extensions } = simulation.metrics;
     filtered.impressions += impressions;

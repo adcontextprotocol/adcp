@@ -45,7 +45,7 @@
     },
     "reporting_period": {
       "type": "object",
-      "description": "UTC date range covered by the delivery report.",
+      "description": "Period covered by the delivery report. start and end are instants on the reporting timezone's period boundaries (the products' reporting_capabilities.timezone, echoed in timezone). They fall on UTC midnight only when that timezone is UTC.",
       "properties": {
         "start": {
           "type": "string",
@@ -54,6 +54,15 @@
         "end": {
           "type": "string",
           "format": "date-time"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Reporting timezone applied to this report, as 'UTC' or an IANA timezone identifier. Same meaning as get_media_buy_delivery reporting_period.timezone. Sellers SHOULD return it whenever every reported media buy shares one reporting timezone.",
+          "examples": [
+            "UTC",
+            "America/New_York"
+          ]
         }
       },
       "required": [

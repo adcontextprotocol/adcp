@@ -871,7 +871,7 @@ Injects synthetic delivery data for a media buy. Subsequent calls to [`get_media
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `media_buy_id` | string | Yes | Media buy to add delivery to |
-| `delivery_date` | string (`YYYY-MM-DD`) | No | UTC calendar date assigned to this simulated batch for reporting-period tests |
+| `delivery_date` | string (`YYYY-MM-DD`) | No | Calendar date, in the product's reporting timezone, assigned to this simulated batch for reporting-period tests |
 | `impressions` | integer | No | Impressions to simulate |
 | `clicks` | integer | No | Clicks to simulate |
 | `reported_spend` | object | No | `{ amount: number, currency: string }` — spend as reported in delivery data, does not affect budget |
