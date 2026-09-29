@@ -1279,6 +1279,8 @@ A seller-optimized proposal names the eligible products and cross-package goal w
 
 Seller-optimized allocations MUST omit `allocation_percentage`. Minimum targets across allocations must sum to no more than 100, and maximums must collectively permit 100 percent of the budget to be spent. Optional allocation `pacing` becomes subordinate package pacing on execution; aggregate proposal pacing remains the media-buy pacing ceiling. When executed, the seller converts percentage constraints into absolute package constraints and continuously allocates the shared total budget. The seller's internal allocation changes are delivery decisions, not `update_media_buy` mutations.
 
+Each package-level constraint in a seller-optimized proposal maps to a separate seller capability: `max_spend_percentage` to `media_buy.features.seller_optimized_package_budgets`, `min_spend_target_percentage` to `seller_optimized_min_spend_targets`, and allocation `pacing` to `seller_optimized_package_pacing`. A seller emits a constraint only when it advertises the matching capability, so a seller advertising only `seller_optimized_budget` issues proposals with the shared goals and aggregate pacing alone. The example above requires all three.
+
 ### Iterating on Proposals
 
 Proposals can be refined using `buying_mode: "refine"` with the `refine` array. Reference proposals by ID — the seller returns an updated proposal with revised allocations, forecasts, and pricing:

@@ -139,7 +139,7 @@
           "$ref": "/schemas/core/budget-allocation.json"
         }
       ],
-      "description": "How budget is allocated across explicit packages. Omit for legacy fixed allocation. In proposal mode the committed proposal supplies this configuration and callers MUST omit it here."
+      "description": "How budget is allocated across explicit packages. Omit for legacy fixed allocation. seller_optimized requires advertised media_buy.features.seller_optimized_budget; inside it, package budget caps, min_spend_target, and package pacing each require their own advertised sub-capability (seller_optimized_package_budgets, seller_optimized_min_spend_targets, seller_optimized_package_pacing), otherwise the request is rejected with UNSUPPORTED_FEATURE. In proposal mode the committed proposal supplies this configuration and callers MUST omit it here."
     },
     "packages": {
       "type": "array",
