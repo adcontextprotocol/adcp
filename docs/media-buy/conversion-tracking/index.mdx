@@ -547,7 +547,7 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 | Metric | Unit | `threshold_rate` example | Description |
 |---|---|---|---|
 | `clicks` | count/impression | 0.001 (0.1% CTR) | Link clicks, swipe-throughs, CTA taps that navigate away |
-| `views` | count/impression | — | Viewable impressions, counted at the seller's platform threshold. For a viewability rate target, use `viewable_rate`, which names the standard and vendor. |
+| `views` | count/impression | — | Content views counted at the billable view threshold, as defined by delivery-metrics `views` (the quantity CPV bills on). For a viewability rate target, use `viewable_rate`, which names the standard and vendor. |
 | `completed_views` | count/impression | 0.85 (85% VCR) | Video or audio completions. Use `view_duration_seconds` to control the qualifying threshold (e.g., 2s, 6s, 15s). |
 | `viewed_seconds` | seconds/impression | 3.0 (3s in view) | Time in view per impression. Reported via `viewability.viewed_seconds`; governed by the viewability `standard`. Optionally set `standard` and `vendor` on the goal; otherwise the seller's default viewability measurement applies. |
 | `viewable_rate` | proportion (0–1) | 0.70 (70% MRC viewable) | Viewable impressions / measurable impressions under the goal's `standard`, optionally judged by the goal's `vendor`. Requires `standard`; accepts only `threshold_rate` targets, and `threshold_rate.value` MUST NOT exceed 1. Same leaf identity reported as `viewability.viewable_rate`. See [viewability goals and performance standards](#viewability-goals-and-performance-standards). |
