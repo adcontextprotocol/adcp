@@ -510,8 +510,8 @@ If unsure, default to no changeset and discuss whether the change belongs on
 
 During the beta phase, `.changeset/pre.json` put `main` in **beta pre mode**,
 so each Version Packages cut produced `3.2.0-beta.N`. The current file uses
-`"tag": "rc"` and produces `3.2.0-rc.N`; stable `3.2.0` requires the reviewed
-pre-mode exit below. The original beta entry procedure was:
+`"tag": "rc"` and produces `3.2.0-rc.N`; the stable cut (shipped as `3.2.1`
+over the withdrawn `3.2.0`) requires the reviewed pre-mode exit below. The original beta entry procedure was:
 
 ```bash
 npx changeset pre enter beta
@@ -550,7 +550,9 @@ git add -A && git commit -m "chore(release): exit pre mode for 3.2 stable cut"
 
 Do not exit pre mode until the 3.2 freeze and GA checklist are explicitly
 approved. The next Version Packages cut after the exit PR produces stable
-`3.2.0`.
+`3.2.1`: the reviewed `.changeset/withdrawn-release.json` marker skips the
+permanently withdrawn `3.2.0` (see `RELEASING.md`). Follow
+`.agents/shortcuts/cut-minor-ga.md`.
 
 #### App-token convention
 
@@ -561,8 +563,9 @@ Two Apps, two trust surfaces: release machinery uses the release App above; the 
 #### Runbooks
 
 - `.agents/shortcuts/cut-patch.md` — cutting a `3.1.X` patch
-- `RELEASING.md` — current `3.2.0-beta.N` pre-mode operation and release verification
+- `RELEASING.md` — current 3.2 RC pre-mode operation, the withdrawn-`3.2.0` skip, and release verification
 - `.agents/shortcuts/cut-beta.md` — active 3.2 beta.0 → SDKs → beta.1 runbook
+- `.agents/shortcuts/cut-minor-ga.md` — ordered 3.2 GA (`3.2.1`) runbook
 - `.agents/shortcuts/cut-major.md` — cutting a major (4.0 when its time comes)
 
 ### Addie Code Version

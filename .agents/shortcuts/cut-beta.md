@@ -185,7 +185,8 @@ Do not exit pre mode until:
 - a short freeze for new minor changes is announced.
 
 Run `npx changeset pre exit` in a dedicated PR. Between merging that PR and the
-`v3.2.0` tag landing, do not merge new minor protocol changes. Audit the final
+`v3.2.1` tag landing, do not merge new minor protocol changes (3.2 GA ships as
+`3.2.1`; see `cut-minor-ga.md`). Audit the final
 Version Packages PR exactly as for beta cuts.
 
 ## Verification checklist for every beta

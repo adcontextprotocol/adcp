@@ -689,6 +689,92 @@ describe('artifact CDN Worker', () => {
     );
   });
 
+  describe('3.2 GA over the withdrawn 3.2.0', () => {
+    const gaEnv = (withGa) => ({
+      ARTIFACTS: new MockBucket([
+        ...['3.1.24', '3.2.0', '3.2.0-rc.5', '3.2.0-rc.7', ...(withGa ? ['3.2.1'] : [])].flatMap((version) => [
+          object(`schemas/${version}/index.json`, JSON.stringify({ version })),
+          object(`compliance/${version}/index.json`, JSON.stringify({ version })),
+          object(`protocol/${version}.tgz`, `${version}-tarball`),
+        ]),
+      ]),
+    });
+    const fetchGa = async (path, withGa) => {
+      const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+      clearVersionCacheForTests();
+      return handleRequest(new Request(`https://artifacts.example${path}`), gaEnv(withGa), {});
+    };
+
+    it('marks 3.2.0-rc.5 unpublished like build-schemas and the server middleware', async () => {
+      const body = await (await fetchGa('/compliance/', false)).json();
+      assert.deepEqual(body.versions.find((entry) => entry.version === '3.2.0-rc.5'), {
+        version: '3.2.0-rc.5',
+        stability: 'unpublished',
+        prerelease: true,
+        deprecated: false,
+        published: false,
+        path: '/compliance/3.2.0-rc.5/',
+      });
+    });
+
+    it('does not claim the unpublished 3.2.0 supersedes the release candidates', async () => {
+      for (const mount of ['schemas', 'compliance']) {
+        const body = await (await fetchGa(`/${mount}/`, false)).json();
+        assert.deepEqual(body.versions.find((entry) => entry.version === '3.2.0-rc.7'), {
+          version: '3.2.0-rc.7',
+          stability: 'rc',
+          prerelease: true,
+          deprecated: false,
+          path: `/${mount}/3.2.0-rc.7/`,
+        });
+        assert.equal(body.latest_stable, '3.1.24');
+        assert.equal(body.aliases.find((entry) => entry.alias === 'v3.2'), undefined);
+      }
+    });
+
+    it('lets 3.2.1 win latest_stable, v3, and v3.2 and supersede the candidates', async () => {
+      for (const mount of ['schemas', 'compliance']) {
+        const body = await (await fetchGa(`/${mount}/`, true)).json();
+        assert.equal(body.latest_stable, '3.2.1');
+        assert.deepEqual(
+          body.aliases.filter((entry) => ['v3', 'v3.2'].includes(entry.alias)),
+          [
+            { alias: 'v3', resolves_to: '3.2.1', path: `/${mount}/v3/` },
+            { alias: 'v3.2', resolves_to: '3.2.1', path: `/${mount}/v3.2/` },
+          ],
+        );
+        assert.deepEqual(body.versions.find((entry) => entry.version === '3.2.0-rc.7'), {
+          version: '3.2.0-rc.7',
+          stability: 'rc',
+          prerelease: true,
+          deprecated: true,
+          superseded_by: '3.2.1',
+          path: `/${mount}/3.2.0-rc.7/`,
+        });
+        assert.deepEqual(body.versions.find((entry) => entry.version === '3.2.0'), {
+          version: '3.2.0',
+          stability: 'unpublished',
+          prerelease: false,
+          deprecated: false,
+          published: false,
+          path: `/${mount}/3.2.0/`,
+        });
+      }
+      const alias = await fetchGa('/schemas/v3.2/', true);
+      assert.equal(alias.status, 302);
+      assert.equal(alias.headers.get('location'), '/schemas/3.2.1/index.json');
+      const exact = await fetchGa('/schemas/3.2.0/index.json', true);
+      assert.equal(exact.status, 200);
+      assert.deepEqual(await exact.json(), { version: '3.2.0' });
+      const protocol = await (await fetchGa('/protocol/', true)).json();
+      assert.deepEqual(protocol.versions.map(({ version, stability }) => [version, stability]).slice(0, 3), [
+        ['3.2.1', undefined],
+        ['3.2.0', 'unpublished'],
+        ['3.2.0-rc.7', undefined],
+      ]);
+    });
+  });
+
   it('serves protocol files without alias rewriting', async () => {
     const response = await fetchPath('/protocol/latest.tgz');
 

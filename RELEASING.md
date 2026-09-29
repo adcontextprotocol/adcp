@@ -190,7 +190,50 @@ npx changeset pre exit
 ```
 
 The resulting Version Packages PR removes the prerelease suffix. Do not
-re-enter another tag before that stable versioning step.
+re-enter another tag before that stable versioning step. 3.2 GA ships as
+**`3.2.1`**, not `3.2.0` (see the next section). Follow the ordered GA runbook
+in [`.agents/shortcuts/cut-minor-ga.md`](.agents/shortcuts/cut-minor-ga.md):
+freeze gates, pre-exit PR contents, the Version Packages audit, CDN worker
+deploy and discovery refresh, docs snapshot, SDK stable releases, hosted
+surfaces, and the `3.2.x` branch and 3.3 pre-mode re-entry.
+
+## Shipping a stable release over a withdrawn version number
+
+A stable version number whose bytes were exposed without a release (for
+example the 2026-06-30 accidental `3.2.0` cut, reverted in #5769, whose
+signed artifacts remain on the artifact CDN) is permanently withdrawn. Its
+bytes are never overwritten, deleted, or retired, and it stays marked
+`unpublished` in `scripts/build-schemas.cjs`, `server/src/schemas-middleware.ts`,
+and `workers/artifact-cdn/src/index.js` so it never wins `latest_stable` or a
+`vN` / `vN.M` alias. `tests/schema-release-status.test.ts` keeps those three
+maps identical. Prerelease `superseded_by` is derived from the first
+*selectable* stable release on the minor line, so the 3.2 candidates point at
+`3.2.1` only once it exists.
+
+`npm run version` refuses to generate any withdrawn/unpublished number. To
+ship the line's first stable release as the next patch instead, land a
+reviewed `.changeset/withdrawn-release.json` while the line is still in pre
+mode. It binds:
+
+- `withdrawn_version` and `target_version` (must be the next patch);
+- `withdrawn_release_commit` (the accidental Version Packages commit, which
+  must commit that version) and `revert_commit` (whose first parent is that
+  commit);
+- `withdrawn_protocol_sha256`, the exposed tarball's digest; and
+- a concrete `reason`, which is copied into the changelog.
+
+During ordinary prerelease cuts, `scripts/version-packages.mjs` verifies the
+marker and leaves it in place. On the pre-exit cut it additionally proves that
+no tag or GitHub Release exists for the withdrawn number. Changesets then
+consumes the complete pending and archived pool and computes the withdrawn
+number. The step retitles that changelog block, moves the package to
+`target_version`, and deletes the marker. Any mismatch fails closed. Preview
+the effect without versioning:
+
+```bash
+GITHUB_REPOSITORY=adcontextprotocol/adcp node scripts/skip-withdrawn-release.mjs check --remote
+GITHUB_REPOSITORY=adcontextprotocol/adcp node scripts/skip-withdrawn-release.mjs preview
+```
 
 ## Recovery
 
