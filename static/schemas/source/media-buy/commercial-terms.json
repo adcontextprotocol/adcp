@@ -71,7 +71,10 @@
     },
     "budget_allocation": { "$ref": "/schemas/core/canonical-budget-allocation.json" },
     "pacing": { "$ref": "/schemas/enums/pacing.json" },
-    "bidding": { "$ref": "/schemas/core/bidding-policy.json" },
+    "bidding": {
+      "$ref": "/schemas/core/bidding-policy.json",
+      "description": "Media-buy bidding policy. A proposal answering criteria.outcome_target.cost_per states here the cost the seller can plan to, keeping the requested strength; the amount MAY exceed the ask and is denominated in the media-buy currency (total_budget.currency and purchase pricing currency), which equals cost_per.currency."
+    },
     "invoice_recipient": { "$ref": "/schemas/core/business-entity.json" },
     "purchase_order_ref": { "type": "string", "minLength": 1, "maxLength": 255 },
     "agency_estimate_number": { "type": "string", "maxLength": 100 },

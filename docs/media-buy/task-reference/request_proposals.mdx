@@ -70,9 +70,109 @@ Sellers declaring `media_buy.outcome_target` in [`get_adcp_capabilities`](/docs/
 }
 ```
 
-The `goal` is a compact planning-time object with two variants: a delivery metric (`kind: "metric"`, using the same `forecastable-metric` vocabulary forecast points report) or a conversion event (`kind: "event"`, using the same `event-type` vocabulary). That construction means every permitted goal has a defined answer: the seller responds with `total_budget_guidance` (`min`/`recommended`/`max`) on each proposal and forecasts whose points carry the goal's metric or event key in `metrics`, with `forecast_range_unit` `clicks` or `conversions` structuring the curve where those units apply. Execution machinery — targets, priorities, event sources, vendor bindings — belongs to the package-level `optimization-goal`, which shares this vocabulary, so buyers carry the same metric or event name from plan to buy.
+The `goal` is a compact planning-time object with two variants: a delivery metric (`kind: "metric"`, using the same `forecastable-metric` vocabulary forecast points report) or a conversion event (`kind: "event"`, using the same `event-type` vocabulary). That construction means every permitted goal has a defined answer: the seller responds with `total_budget_guidance` (`min`/`recommended`/`max`) on each proposal and forecasts whose points carry the goal's metric or event key in `metrics`, with `forecast_range_unit` `clicks` or `conversions` structuring the curve where those units apply. Priorities, event sources, and vendor bindings stay on the purchase `optimization_goals`, which share this vocabulary, so buyers carry the same metric or event name from plan to buy.
 
 An `outcome_target` is a planning input, not a delivery guarantee: pricing and delivery obligations arise only at proposal finalization, and any performance commitment lives in the committed terms, not in the forecast. Sellers that do not declare the capability MUST NOT silently ignore a structured `outcome_target` — they reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); buyers fall back to expressing the goal in `brief` prose. Declaring sellers MAY reject a goal they cannot plan against (for example `spend`, which restates budget) with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.goal`.
+
+### Cost targets
+
+A buyer who knows what it will pay per result, rather than how many results it needs, sends `cost_per` instead of, or alongside, `volume`. At least one of the two is required. `cost_per` is the 3.2 [`BiddingPolicy`](/docs/media-buy/task-reference/create_media_buy#biddingpolicy-object) `cost_per` plus a currency:
+
+- `amount`: the average cost per goal result.
+- `strength`: `cap` optimizes for an average at or below the amount and accepts underdelivery when necessary. `target` optimizes around the amount while balancing volume and spend. Neither is a per-result or per-auction guarantee.
+- `currency`: the ISO 4217 currency of `amount`. `BiddingPolicy.cost_per` has no currency because it inherits the media-buy currency, and no media buy exists at request time, so the request states it.
+
+The three request shapes are:
+
+| Request | Seller plans |
+|---------|--------------|
+| `volume` only | The budget that delivers the volume, answered with `total_budget_guidance`. Unchanged from the volume-only form above. |
+| `cost_per`, with a budget in `offer_filters.budget_range` or the brief | The volume it can deliver within that budget at or below (`cap`) or around (`target`) the amount. |
+| `cost_per` plus `volume` | Toward the volume at the cost. |
+
+**Answer.** Each proposal states the cost the seller can actually plan to in `commercial_terms.bidding.cost_per`. The seller keeps the buyer's `strength` and states only its own `amount`, which MAY be higher than the ask. A `cap` of 3 that the seller can only meet at 4.50 comes back as `{ "amount": 4.50, "strength": "cap" }`, never as `"target"`, because changing the strength would silently change the execution semantics the buyer asked for. A seller that will not plan under the buyer's strength at any amount rejects the request instead. The policy binds to the scope-bound primary optimization goal under the `BiddingPolicy` rules, and that goal MUST match `outcome_target.goal`. The forecast's points carry the goal volume planned at that cost.
+
+**Currency.** When `offer_filters.budget_range` is present, `cost_per.currency` MUST equal `budget_range.currency`. With or without a budget range, `cost_per.currency` is the currency of the answer: the proposal's `commercial_terms.total_budget.currency` (the media-buy currency that `bidding.cost_per` is denominated in), `total_budget_guidance.currency`, and `forecast.currency` MUST all equal it. Sellers MUST NOT convert currency, so a cost target in a currency the requested products are not priced in cannot be planned.
+
+**Rejection.** A seller that declares `media_buy.outcome_target` but cannot plan against the cost target, including a currency it cannot price the requested products in, rejects with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.cost_per`. A seller that does not declare the capability rejects the whole field with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), as for volume.
+
+The cost target is still a planning input. The execution policy is the accepted proposal's `bidding.cost_per`.
+
+In this worked example, a buyer asks for clicks at €3 or less on a €5,000 budget:
+
+```json
+{
+  "$schema": "/schemas/latest/media-buy/request-proposals-request.json",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441002",
+  "brief": "Drive traffic to the spring running collection page.",
+  "account": {
+    "brand": { "domain": "nova-athletics.example" },
+    "operator": "pinnacle-media.example"
+  },
+  "criteria": {
+    "product_ids": ["product_premium_video"],
+    "offer_filters": {
+      "budget_range": { "max": 5000, "currency": "EUR" }
+    },
+    "outcome_target": {
+      "goal": { "kind": "metric", "metric": "clicks" },
+      "cost_per": { "amount": 3, "currency": "EUR", "strength": "cap" }
+    }
+  }
+}
+```
+
+The seller can't plan clicks at €3 on this inventory. The best it can plan is €4.50, so it answers with a €4.50 cap and the roughly 1,111 clicks that €5,000 buys at that cost:
+
+```json
+{
+  "$schema": "/schemas/latest/core/canonical-proposal.json",
+  "proposal_id": "proposal_spring_clicks_01",
+  "proposal_kind": "new_media_buy",
+  "proposal_status": "draft",
+  "expires_at": "2027-01-16T17:00:00Z",
+  "name": "Spring collection traffic at a click cost cap",
+  "brief_alignment": "€3 per click is below what this inventory can plan to. The plan caps the average at €4.50 and plans about 1,111 clicks within €5,000.",
+  "commercial_terms": {
+    "brand": { "domain": "nova-athletics.example" },
+    "purchases": [
+      {
+        "product_id": "product_premium_video",
+        "pricing_option_id": "cpm_eur_fixed",
+        "pricing": {
+          "pricing_option_id": "cpm_eur_fixed",
+          "pricing_model": "cpm",
+          "currency": "EUR",
+          "fixed_price": 9
+        },
+        "budget": 5000,
+        "optimization_goals": [{ "kind": "metric", "metric": "clicks", "priority": 1 }],
+        "start_time": "2027-03-01T00:00:00Z",
+        "end_time": "2027-03-31T23:59:59Z"
+      }
+    ],
+    "start_time": "2027-03-01T00:00:00Z",
+    "end_time": "2027-03-31T23:59:59Z",
+    "total_budget": { "amount": 5000, "currency": "EUR" },
+    "bidding": {
+      "cost_per": { "amount": 4.5, "strength": "cap" }
+    }
+  },
+  "terms_digest": "sha256:IO3B2jLn52O7-u_xeztyhTFDUJWbV4mQrCcTfCWpAQg",
+  "total_budget_guidance": { "min": 4000, "recommended": 5000, "max": 5000, "currency": "EUR" },
+  "forecast": {
+    "method": "modeled",
+    "currency": "EUR",
+    "forecast_range_unit": "clicks",
+    "points": [
+      { "budget": 2500, "metrics": { "clicks": { "mid": 555 } } },
+      { "budget": 5000, "metrics": { "clicks": { "mid": 1111 } } }
+    ]
+  }
+}
+```
+
+The purchase's only optimization goal is `clicks`, so the media-buy `cost_per` binds to clicks. If the buyer had sent `"currency": "USD"` against this EUR-only product, the seller would reject with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per` rather than convert.
 
 Explicit hard requirements in the brief remain binding. When the seller's structured interpretation materially affects product eligibility, pricing, or forecasting, the response includes `targeting_resolution.brief_targeting`. Exact structured overlays are not echoed; any product-specific alternative appears as sparse `Product.targeting_resolution.modifications` for buyer approval.
 

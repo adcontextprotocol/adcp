@@ -4,14 +4,19 @@ import {
   createTrainingAgentServer,
   invalidateCache,
   clearTaskStore,
+  computeOutcomeTargetCostPlan,
 } from '../../src/training-agent/task-handlers.js';
 import { clearSessions } from '../../src/training-agent/state.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
+import { validateProductDiscoverySourceResponse } from '../../src/training-agent/source-schema.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'outcome-target.example.com' }, operator: 'outcome-tester', sandbox: true };
 const OUTCOME_TARGET_PRODUCT_ID = 'outcome_target_test_product';
+// Seeded fixtures outlive clearSessions, so a product with a different
+// pricing fixture needs its own id.
+const MULTI_CURRENCY_PRODUCT_ID = 'outcome_target_multi_currency_product';
 
 function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   if (!MUTATING_TOOLS.has(toolName)) return args;
@@ -38,38 +43,69 @@ async function callTool(
   return (parsed.adcp_error as Record<string, unknown> | undefined) ?? parsed;
 }
 
+const USD_FIXED_CPM_40 = {
+  pricing_option_id: 'po_outcome_target_fixed_cpm',
+  pricing_model: 'cpm',
+  currency: 'USD',
+  fixed_price: 40,
+};
+
 async function seedOutcomeTargetProduct(
   server: ReturnType<typeof createTrainingAgentServer>,
+  pricingOptions: Array<Record<string, unknown>> = [USD_FIXED_CPM_40],
+  productId = OUTCOME_TARGET_PRODUCT_ID,
 ): Promise<void> {
   const seed = await callTool(server, 'comply_test_controller', {
     scenario: 'seed_product',
     account: ACCOUNT,
     params: {
-      product_id: OUTCOME_TARGET_PRODUCT_ID,
+      product_id: productId,
       fixture: {
         delivery_type: 'non_guaranteed',
         channels: ['display'],
-        pricing_options: [{
-          pricing_option_id: 'po_outcome_target_fixed_cpm',
-          pricing_model: 'cpm',
-          currency: 'USD',
-          fixed_price: 40,
-        }],
+        pricing_options: pricingOptions,
       },
     },
   });
-  expect(seed.success).toBe(true);
+  expect(seed.success, JSON.stringify(seed)).toBe(true);
 }
 
-function requestProposalsArgs(outcomeTarget?: Record<string, unknown>): Record<string, unknown> {
+function requestProposalsArgs(
+  outcomeTarget?: Record<string, unknown>,
+  offerFilters?: Record<string, unknown>,
+  productId = OUTCOME_TARGET_PRODUCT_ID,
+): Record<string, unknown> {
   return {
     account: ACCOUNT,
     brief: 'Reverse-forecast planning test',
     criteria: {
-      product_ids: [OUTCOME_TARGET_PRODUCT_ID],
+      product_ids: [productId],
+      ...(offerFilters && { offer_filters: offerFilters }),
       ...(outcomeTarget && { outcome_target: outcomeTarget }),
     },
   };
+}
+
+const CLICKS_GOAL = { kind: 'metric', metric: 'clicks' };
+
+function expectValidResponse(result: Record<string, unknown>): void {
+  expect(
+    validateProductDiscoverySourceResponse('request-proposals-response', result),
+    JSON.stringify(result),
+  ).toBeUndefined();
+}
+
+function onlyProposal(result: Record<string, unknown>): Record<string, unknown> {
+  expect(result.outcome).toBe('proposed');
+  const proposals = result.proposals as Array<Record<string, unknown>>;
+  expect(proposals).toHaveLength(1);
+  return proposals[0]!;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function termsOf(proposal: Record<string, unknown>): Record<string, any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return proposal.commercial_terms as Record<string, any>;
 }
 
 describe('reverse-forecast outcome_target planning (training agent)', () => {
@@ -124,6 +160,12 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
       expect(points[0]).toEqual({ budget: 200000, metrics: { clicks: { mid: 5000 } } });
       expect(points[1]).toEqual({ budget: 400000, metrics: { clicks: { mid: 10000 } } });
       expect(points[2]).toEqual({ budget: 600000, metrics: { clicks: { mid: 15000 } } });
+
+      // Volume-only planning carries no cost answer.
+      const terms = termsOf(proposal);
+      expect(terms.bidding).toBeUndefined();
+      expect(terms.purchases[0].optimization_goals).toBeUndefined();
+      expectValidResponse(result);
     });
   });
 
@@ -165,6 +207,189 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
       expect(result.code).toBe('INVALID_REQUEST');
       expect(result.field).toBe('criteria.outcome_target.goal');
       expect(result.proposals).toBeUndefined();
+    });
+  });
+
+  describe('cost_per target', () => {
+    // Fixture: a $40 CPM and the modeled 1 click per 1,000 impressions give a
+    // plannable cost of $40 per click.
+
+    it('plans the volume a budget buys at a cap, answering a higher cap than asked', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: CLICKS_GOAL, cost_per: { amount: 3, currency: 'USD', strength: 'cap' } },
+        { budget_range: { max: 5000, currency: 'USD' } },
+      ));
+
+      expectValidResponse(result);
+      const proposal = onlyProposal(result);
+      const terms = termsOf(proposal);
+      // The seller can only plan to $40, so it answers { 40, cap }: a higher
+      // amount, never a changed strength.
+      expect(terms.bidding).toEqual({ cost_per: { amount: 40, strength: 'cap' } });
+      expect(terms.total_budget).toEqual({ amount: 5000, currency: 'USD' });
+      expect(terms.purchases).toHaveLength(1);
+      expect(terms.purchases[0].pricing.currency).toBe('USD');
+      expect(terms.purchases[0].optimization_goals).toEqual([{ kind: 'metric', metric: 'clicks', priority: 1 }]);
+      expect(proposal.total_budget_guidance).toEqual({ min: 4000, recommended: 5000, max: 5000, currency: 'USD' });
+      const forecast = proposal.forecast as Record<string, unknown>;
+      expect(forecast.currency).toBe('USD');
+      expect(forecast.forecast_range_unit).toBe('clicks');
+      expect(forecast.points).toEqual([
+        { budget: 2500, metrics: { clicks: { mid: 62 } } },
+        { budget: 5000, metrics: { clicks: { mid: 125 } } },
+        { budget: 7500, metrics: { clicks: { mid: 187 } } },
+      ]);
+    });
+
+    it('keeps a target strength when answering a higher amount', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: CLICKS_GOAL, cost_per: { amount: 3, currency: 'USD', strength: 'target' } },
+        { budget_range: { max: 5000, currency: 'USD' } },
+      ));
+
+      expectValidResponse(result);
+      expect(termsOf(onlyProposal(result)).bidding).toEqual({ cost_per: { amount: 40, strength: 'target' } });
+    });
+
+    it('plans toward a volume at the cost without a budget range, in the requested currency', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: CLICKS_GOAL,
+        volume: 1000,
+        cost_per: { amount: 50, currency: 'USD', strength: 'cap' },
+      }));
+
+      expectValidResponse(result);
+      const proposal = onlyProposal(result);
+      const terms = termsOf(proposal);
+      // An ask above the plannable cost is kept. A cap plans at the $40 the
+      // seller expects to average, so 1,000 clicks need $40,000.
+      expect(terms.bidding).toEqual({ cost_per: { amount: 50, strength: 'cap' } });
+      expect(terms.total_budget).toEqual({ amount: 40000, currency: 'USD' });
+      expect((proposal.total_budget_guidance as Record<string, unknown>).currency).toBe('USD');
+      const forecast = proposal.forecast as { currency: string; points: unknown[] };
+      expect(forecast.currency).toBe('USD');
+      expect(forecast.points[1]).toEqual({ budget: 40000, metrics: { clicks: { mid: 1000 } } });
+    });
+
+    it('plans a target at the answered amount', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: CLICKS_GOAL,
+        volume: 1000,
+        cost_per: { amount: 50, currency: 'USD', strength: 'target' },
+      }));
+
+      expectValidResponse(result);
+      const terms = termsOf(onlyProposal(result));
+      expect(terms.bidding).toEqual({ cost_per: { amount: 50, strength: 'target' } });
+      expect(terms.total_budget).toEqual({ amount: 50000, currency: 'USD' });
+    });
+
+    it('selects the pricing option in the requested currency on a multi-currency product', async () => {
+      await seedOutcomeTargetProduct(server, [
+        USD_FIXED_CPM_40,
+        { pricing_option_id: 'po_outcome_target_eur_cpm', pricing_model: 'cpm', currency: 'EUR', fixed_price: 36 },
+      ], MULTI_CURRENCY_PRODUCT_ID);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: CLICKS_GOAL, cost_per: { amount: 3, currency: 'EUR', strength: 'cap' } },
+        { budget_range: { max: 5000, currency: 'EUR' } },
+        MULTI_CURRENCY_PRODUCT_ID,
+      ));
+
+      expectValidResponse(result);
+      const proposal = onlyProposal(result);
+      const terms = termsOf(proposal);
+      expect(terms.purchases[0].pricing_option_id).toBe('po_outcome_target_eur_cpm');
+      expect(terms.purchases[0].pricing.currency).toBe('EUR');
+      expect(terms.total_budget).toEqual({ amount: 5000, currency: 'EUR' });
+      expect(terms.bidding).toEqual({ cost_per: { amount: 36, strength: 'cap' } });
+      expect((proposal.total_budget_guidance as Record<string, unknown>).currency).toBe('EUR');
+      expect((proposal.forecast as Record<string, unknown>).currency).toBe('EUR');
+    });
+
+    it('rejects a cost_per currency that differs from the budget range currency', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: CLICKS_GOAL, cost_per: { amount: 3, currency: 'EUR', strength: 'cap' } },
+        { budget_range: { max: 5000, currency: 'USD' } },
+      ));
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.cost_per');
+      expect(result.proposals).toBeUndefined();
+    });
+
+    it('rejects a cost_per in a currency no requested product is priced in', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: CLICKS_GOAL,
+        cost_per: { amount: 3, currency: 'EUR', strength: 'cap' },
+      }));
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.cost_per');
+      expect(String(result.message)).toContain('EUR');
+    });
+
+    it('rejects a cost target on an event goal it cannot bind without an event source', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: { kind: 'event', event_type: 'purchase' },
+        cost_per: { amount: 20, currency: 'USD', strength: 'cap' },
+      }));
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.cost_per');
+    });
+  });
+
+  describe('computeOutcomeTargetCostPlan', () => {
+    type PlanProposal = Parameters<typeof computeOutcomeTargetCostPlan>[4];
+    type PlanProducts = Parameters<typeof computeOutcomeTargetCostPlan>[5];
+    const proposal = {
+      proposal_id: 'plan',
+      name: 'Plan',
+      allocations: [{ product_id: 'p1', allocation_percentage: 100, pricing_option_id: 'po_outcome_target_fixed_cpm' }],
+    } as unknown as PlanProposal;
+    const productsById = new Map([
+      ['p1', { product_id: 'p1', pricing_options: [USD_FIXED_CPM_40] }],
+    ]) as unknown as PlanProducts;
+
+    it('bounds a volume plan by the buyer budget', () => {
+      const plan = computeOutcomeTargetCostPlan(
+        CLICKS_GOAL,
+        { amount: 3, currency: 'USD', strength: 'cap' },
+        1000,
+        20000,
+        proposal,
+        productsById,
+      );
+      expect(plan?.plannableCost).toBe(40);
+      expect(plan?.bidding).toEqual({ cost_per: { amount: 40, strength: 'cap' } });
+      expect(plan?.totalBudgetGuidance.recommended).toBe(20000);
+      expect(plan?.plannedVolume).toBe(500);
+    });
+
+    it('returns undefined when the proposal cannot be priced in the requested currency', () => {
+      expect(computeOutcomeTargetCostPlan(
+        CLICKS_GOAL,
+        { amount: 3, currency: 'GBP', strength: 'target' },
+        undefined,
+        5000,
+        proposal,
+        productsById,
+      )).toBeUndefined();
     });
   });
 
