@@ -8804,6 +8804,72 @@ describe('create_media_buy handler', () => {
       expect(accepted.result.errors, JSON.stringify(accepted.result)).toBeUndefined();
       expect(typeof accepted.result.media_buy_id).toBe('string');
     });
+
+    it('applies the same viewable_rate checks when package goals are updated', async () => {
+      const account = { brand: { domain: 'update-viewable.example' }, operator: 'update-viewable.example', sandbox: true };
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const productId = 'display_viewable_rate_update_unit';
+      await seedVendorMetricProduct(server, account, productId, {
+        name: 'Display Viewable Rate Optimization',
+        description: 'Display inventory that optimizes toward MRC viewable rate.',
+        delivery_type: 'non_guaranteed',
+        channels: ['display'],
+        metric_optimization: {
+          supported_metrics: ['clicks', 'viewable_rate'],
+          supported_viewability_standards: ['mrc'],
+          supported_targets: ['threshold_rate'],
+        },
+      });
+      const created = await createWithGoal(server, account, productId, `${productId}_cpm`, {
+        kind: 'metric',
+        metric: 'clicks',
+      });
+      expect(created.result.errors, JSON.stringify(created.result)).toBeUndefined();
+      const mediaBuyId = created.result.media_buy_id as string;
+      const packageId = (created.result.packages as Array<Record<string, unknown>>)[0].package_id as string;
+      const updateGoal = (goal: Record<string, unknown>) => simulateCallTool(server, 'update_media_buy', {
+        account,
+        media_buy_id: mediaBuyId,
+        packages: [{ package_id: packageId, optimization_goals: [goal] }],
+      });
+      const goal = {
+        kind: 'metric',
+        metric: 'viewable_rate',
+        standard: 'mrc',
+        target: { kind: 'threshold_rate', value: 0.7 },
+      };
+
+      const wrongStandard = await updateGoal({ ...goal, standard: 'groupm' });
+      expect(wrongStandard.result.code).toBe('TERMS_REJECTED');
+      expect(wrongStandard.result.field).toBe(`packages[${packageId}].optimization_goals[0].standard`);
+
+      const missingStandard = await updateGoal({ kind: 'metric', metric: 'viewable_rate' });
+      expect(missingStandard.result.code).toBe('INVALID_REQUEST');
+
+      const accepted = await updateGoal(goal);
+      expect(accepted.result.errors, JSON.stringify(accepted.result)).toBeUndefined();
+      expect(accepted.result.code).toBeUndefined();
+    });
+
+    it('rejects a viewable_rate goal update on a product without viewable_rate optimization', async () => {
+      const { productId, pricingOptionId } = findProductWithMetric('clicks');
+      const account = { brand: { domain: 'update-undeclared-viewable.example' }, operator: 'update-undeclared-viewable.example' };
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const created = await createWithGoal(server, account, productId, pricingOptionId, { kind: 'metric', metric: 'clicks' });
+      expect(created.result.errors, JSON.stringify(created.result)).toBeUndefined();
+      const packageId = (created.result.packages as Array<Record<string, unknown>>)[0].package_id as string;
+
+      const rejected = await simulateCallTool(server, 'update_media_buy', {
+        account,
+        media_buy_id: created.result.media_buy_id,
+        packages: [{
+          package_id: packageId,
+          optimization_goals: [{ kind: 'metric', metric: 'viewable_rate', standard: 'mrc' }],
+        }],
+      });
+      expect(rejected.result.code).toBe('TERMS_REJECTED');
+      expect(rejected.result.field).toBe(`packages[${packageId}].optimization_goals[0].metric`);
+    });
   });
 
   it('accepts vendor_metric optimization_goal with matching capability and committed metric', async () => {
