@@ -274,22 +274,22 @@ describe('wrapper contract', () => {
 
   it('caps hosted aliases at explicitly registered released compliance bundles', () => {
     expect(hostedComplianceTarget('3.0').version).toBe('3.0.25');
-    expect(hostedComplianceTarget('3.1').version).toBe('3.1.23');
+    expect(hostedComplianceTarget('3.1').version).toBe('3.1.24');
     expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
     expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
     expect(() => hostedComplianceTarget('3.1.12')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1-rc.15')).toThrow(/not available from a published/);
   });
 
-  it('loads the released 3.1.23 bundle with the pinned hosted SDK', () => {
+  it('loads the released 3.1.24 bundle with the pinned hosted SDK', () => {
     const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1']);
     const options = hostedComplianceOptions(target);
 
     expect(target.requested).toBe('3.1');
-    expect(target.version).toBe('3.1.23');
-    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.23$/);
-    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.23$/);
-    expect(loadComplianceIndex(options).adcp_version).toBe('3.1.23');
+    expect(target.version).toBe('3.1.24');
+    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.24$/);
+    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.24$/);
+    expect(loadComplianceIndex(options).adcp_version).toBe('3.1.24');
   });
 
   it('uses canonical hosted targets without silently upgrading 3.0-only agents', () => {
@@ -369,7 +369,7 @@ describe('wrapper contract', () => {
     expect(options.complianceDir).toContain(target.version);
   });
 
-  it.each(['3.1.18', '3.1.20', '3.1.22', '3.1.23'])('keeps exact stable target %s pinned for capability discovery', (version) => {
+  it.each(['3.1.18', '3.1.20', '3.1.22', '3.1.23', '3.1.24'])('keeps exact stable target %s pinned for capability discovery', (version) => {
     const target = hostedComplianceTarget(version);
     const options = withHostedTestOptions({}, target);
 
