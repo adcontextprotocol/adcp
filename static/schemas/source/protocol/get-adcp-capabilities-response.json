@@ -1462,6 +1462,48 @@
                   "catalog_management": { "const": true }
                 }
               }
+            },
+            {
+              "if": {
+                "required": ["seller_optimized_package_budgets"],
+                "properties": {
+                  "seller_optimized_package_budgets": { "const": true }
+                }
+              },
+              "then": {
+                "required": ["seller_optimized_budget"],
+                "properties": {
+                  "seller_optimized_budget": { "const": true }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": ["seller_optimized_min_spend_targets"],
+                "properties": {
+                  "seller_optimized_min_spend_targets": { "const": true }
+                }
+              },
+              "then": {
+                "required": ["seller_optimized_budget"],
+                "properties": {
+                  "seller_optimized_budget": { "const": true }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": ["seller_optimized_package_pacing"],
+                "properties": {
+                  "seller_optimized_package_pacing": { "const": true }
+                }
+              },
+              "then": {
+                "required": ["seller_optimized_budget"],
+                "properties": {
+                  "seller_optimized_budget": { "const": true }
+                }
+              }
             }
           ]
         },
