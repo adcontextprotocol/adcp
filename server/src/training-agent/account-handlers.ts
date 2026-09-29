@@ -17,7 +17,7 @@ import {
   governanceBindingStore,
   type GovernanceBindingRecord,
 } from './governance-binding-store.js';
-import { getAgentUrl } from './config.js';
+import { getAgentUrl, TRAINING_AGENT_URL } from './config.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { getCommercialRelationship } from './commercial-relationships.js';
 import { isPerAccountBillingRestricted } from './account-billing-relationships.js';
@@ -65,13 +65,28 @@ const ACCOUNT_WEBHOOK_PROOF_SYNC_DEADLINE_MS = 30_000;
  */
 const TRAINING_ACCEPTED_GOVERNANCE_AGENT_INPUT_URLS = [
   'https://governance.example/mcp',
-  'https://test-agent.adcontextprotocol.org',
+  TRAINING_AGENT_URL,
   'https://governance.pinnacle-agency.example',
 ] as const;
 
 export const TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS = TRAINING_ACCEPTED_GOVERNANCE_AGENT_INPUT_URLS
   .map(agentUrl => canonicalTargetUri(agentUrl));
 const TRAINING_ACCEPTED_GOVERNANCE_AGENT_URL_SET = new Set(TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS);
+
+/**
+ * The accepted entry that names this training agent's own governance service
+ * (the `/governance` tenant the multi-agent runner drives). Its tokens are not
+ * discovered through buyer brand.json: this deployment signs them, so once a
+ * buyer registers this entry through sync_governance, a governed tenant
+ * verifies them against the deployment's own governance issuer and the one
+ * sandbox governance key it publishes. Every other accepted authority keeps
+ * the byte-for-byte `iss` = registered URL rule and remote key discovery.
+ */
+const TRAINING_SELF_GOVERNANCE_AGENT_URL = canonicalTargetUri(TRAINING_AGENT_URL);
+
+export function isTrainingSelfGovernanceAuthority(agentUrl: string): boolean {
+  return agentUrl === TRAINING_SELF_GOVERNANCE_AGENT_URL;
+}
 
 export const TRAINING_ACCEPTED_GOVERNANCE_AGENTS = {
   any_of: TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS.map(agent_url => ({

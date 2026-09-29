@@ -13,7 +13,7 @@ import { getSandboxBrands } from '@adcp/sdk/testing';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { resolveGovernanceAgentsForAccount } from './account-handlers.js';
-import { getCanonicalBase } from './canonical-base.js';
+import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
 import { decodeOffsetCursor, encodeOffsetCursor } from './pagination.js';
 
 async function governedCommitmentRejection(
@@ -27,7 +27,7 @@ async function governedCommitmentRejection(
 ): Promise<string | undefined> {
   const result = await verifyGovernedServiceAuthorization({
     token: governanceContext,
-    expectedIssuer: `${getCanonicalBase()}/governance`,
+    expectedIssuer: getTrainingGovernanceIssuer(),
     expectedTask: task,
     expectedAudience,
     payload,

@@ -17,3 +17,13 @@ export function getCanonicalBase(): string {
   }
   return 'http://localhost';
 }
+
+/**
+ * `iss` of every governance token this deployment's `/governance` tenant
+ * signs. Governed tenants in the same deployment expect exactly this value,
+ * so it follows the deployment's canonical base: the production canonical
+ * base in production, the local origin in local and CI runs.
+ */
+export function getTrainingGovernanceIssuer(): string {
+  return `${getCanonicalBase()}/governance`;
+}

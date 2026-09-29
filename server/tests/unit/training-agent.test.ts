@@ -53,7 +53,7 @@ import {
 } from '../../src/training-agent/idempotency.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize, ProtocolClient } from '@adcp/sdk';
 
 function resignTermsDigest(proposal: Record<string, unknown>): void {
   proposal.terms_digest = `sha256:${createHash('sha256')
@@ -70,6 +70,11 @@ function futureFlight(): { start_time: string; end_time: string } {
 }
 import { getAgentUrl } from '../../src/training-agent/config.js';
 import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
+import {
+  CANONICAL_GOV_ISS,
+  clearGovernanceTokenReplayRegistry,
+  mintRevokedDemoToken,
+} from '../../src/training-agent/governance-verify.js';
 import {
   supportsSellerGovernanceDiscovery,
   TRAINING_AGENT_CURRENT_ADCP_RELEASE,
@@ -16844,6 +16849,236 @@ describe('activate_signal handler', () => {
     expect(result.governance_context).toBe(check.governance_context);
     const deployments = result.deployments as Array<Record<string, unknown>>;
     expect(deployments[0].is_live).toBe(true);
+  });
+
+  describe('with the training governance service registered as the authority (#7742)', () => {
+    const selfGovernanceAgentUrl = 'https://test-agent.adcontextprotocol.org';
+    const productionBase = 'https://agenticadvertising.org';
+    const localBase = 'http://127.0.0.1:4321/api/training-agent';
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      clearGovernanceTokenReplayRegistry();
+    });
+
+    function useCanonicalBase(base: string) {
+      if (base === productionBase) {
+        vi.stubEnv('BASE_URL', productionBase);
+        vi.stubEnv('TRAINING_AGENT_URL', '');
+      } else {
+        vi.stubEnv('BASE_URL', '');
+        vi.stubEnv('TRAINING_AGENT_URL', base);
+      }
+    }
+
+    async function registerAuthority(
+      server: ReturnType<typeof createTrainingAgentServer>,
+      url: string,
+    ) {
+      await simulateCallTool(server, 'sync_accounts', {
+        accounts: [{
+          brand: { domain: 'signal-test.example' },
+          operator: 'signal-test.example',
+          billing: 'operator',
+          payment_terms: 'net_30',
+        }],
+      });
+      const { result } = await simulateCallTool(server, 'sync_governance', {
+        accounts: [{
+          account,
+          governance_agents: [{
+            url,
+            authentication: { schemes: ['Bearer'], credentials: 'test-governance-token' },
+          }],
+        }],
+      });
+      const accounts = result.accounts as Array<Record<string, unknown>>;
+      expect(accounts[0].status).toBe('synced');
+    }
+
+    const activation = (idempotencyKey: string) => ({
+      account,
+      idempotency_key: idempotencyKey,
+      signal_agent_segment_id: 'trident_likely_ev_buyers',
+      pricing_option_id: 'po_trident_ev_cpm',
+      destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
+    });
+
+    async function approveActivation(
+      server: ReturnType<typeof createTrainingAgentServer>,
+      targetAgent: string,
+      idempotencyKey: string,
+    ): Promise<string> {
+      await simulateCallTool(server, 'sync_plans', {
+        account,
+        plans: [{
+          plan_id: 'plan-signal-self-authority',
+          brand: { domain: 'signal-test.example' },
+          objectives: 'Approve governed signal activation',
+          budget: { total: 10000, currency: 'USD', reallocation_threshold: 1000 },
+          flight: { start: '2099-01-01T00:00:00Z', end: '2099-12-31T23:59:59Z' },
+        }],
+      });
+      const { result } = await simulateCallTool(server, 'check_governance', {
+        account,
+        plan_id: 'plan-signal-self-authority',
+        caller: 'https://buyer.example',
+        target_agent: targetAgent,
+        purchase_type: 'signal_activation',
+        proposed_commitment: { amount: 50, currency: 'USD' },
+        tool: 'activate_signal',
+        payload: activation(idempotencyKey),
+      });
+      expect(result.status).toBe('approved');
+      return result.governance_context as string;
+    }
+
+    function tokenClaims(token: string): Record<string, unknown> {
+      return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    }
+
+    it.each([
+      ['production', productionBase],
+      ['local origin', localBase],
+    ])('accepts its own governance token on the %s canonical base', async (_label, base) => {
+      useCanonicalBase(base);
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      await registerAuthority(server, selfGovernanceAgentUrl);
+      const token = await approveActivation(server, `${base}/signals`, 'signal-self-authority-0001');
+
+      expect(tokenClaims(token)).toMatchObject({
+        iss: `${base}/governance`,
+        aud: `${base}/signals`,
+      });
+      const { result } = await simulateCallTool(server, 'activate_signal', {
+        ...activation('signal-self-authority-0001'),
+        governance_context: token,
+      });
+      expect(result.errors).toBeUndefined();
+      expect(result.code).toBeUndefined();
+      const deployments = result.deployments as Array<Record<string, unknown>>;
+      expect(deployments[0].is_live).toBe(true);
+    });
+
+    it.each([
+      ['production', productionBase],
+      ['local origin', localBase],
+    ])('runs the create_media_buy execution check against its own governance tenant on the %s canonical base', async (_label, base) => {
+      useCanonicalBase(base);
+      const product = buildCatalog()[0].product;
+      const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      await registerAuthority(server, selfGovernanceAgentUrl);
+      const flight = futureFlight();
+      await simulateCallTool(server, 'sync_plans', {
+        account,
+        plans: [{
+          plan_id: 'plan-sales-self-authority',
+          brand: { domain: 'signal-test.example' },
+          objectives: 'Approve a governed media buy',
+          budget: { total: 20000, currency: 'USD', reallocation_threshold: 20000 },
+          flight: { start: flight.start_time, end: '2099-12-31T23:59:59Z' },
+        }],
+      });
+      const createArgs = {
+        idempotency_key: `sales-self-authority-${base === productionBase ? 'prod' : 'local'}-0001`,
+        account,
+        brand: { domain: 'signal-test.example' },
+        ...flight,
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 10000,
+        }],
+      };
+      const { result: approval } = await simulateCallTool(server, 'check_governance', {
+        account,
+        plan_id: 'plan-sales-self-authority',
+        caller: 'https://buyer.example',
+        target_agent: `${base}/sales`,
+        tool: 'create_media_buy',
+        payload: createArgs,
+      });
+      expect(approval.status).toBe('approved');
+
+      const networkCall = vi.spyOn(ProtocolClient, 'callTool');
+      try {
+        const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+          ...createArgs,
+          governance_context: approval.governance_context,
+        });
+        expect(created.code, JSON.stringify(created)).toBeUndefined();
+        expect(created.media_buy_id).toEqual(expect.any(String));
+        expect(networkCall).not.toHaveBeenCalled();
+      } finally {
+        networkCall.mockRestore();
+      }
+    });
+
+    it('keeps the production governance issuer unchanged', async () => {
+      useCanonicalBase(productionBase);
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      await registerAuthority(server, selfGovernanceAgentUrl);
+      const token = await approveActivation(server, `${productionBase}/signals`, 'signal-self-authority-0002');
+      expect(tokenClaims(token).iss).toBe(CANONICAL_GOV_ISS);
+    });
+
+    it('rejects a token issued under a different deployment base', async () => {
+      useCanonicalBase(productionBase);
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      await registerAuthority(server, selfGovernanceAgentUrl);
+      const token = await approveActivation(server, `${localBase}/signals`, 'signal-self-authority-0003');
+
+      useCanonicalBase(localBase);
+      const { result } = await simulateCallTool(server, 'activate_signal', {
+        ...activation('signal-self-authority-0003'),
+        governance_context: token,
+      });
+      expect(result.code).toBe('PERMISSION_DENIED');
+      expect(result.message).toContain('issuer does not match');
+    });
+
+    it('rejects a token bound to another audience', async () => {
+      useCanonicalBase(localBase);
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      await registerAuthority(server, selfGovernanceAgentUrl);
+      const token = await approveActivation(
+        server,
+        'https://test-agent.adcontextprotocol.org/signals',
+        'signal-self-authority-0004',
+      );
+      const { result } = await simulateCallTool(server, 'activate_signal', {
+        ...activation('signal-self-authority-0004'),
+        governance_context: token,
+      });
+      expect(result.code).toBe('PERMISSION_DENIED');
+      expect(result.message).toContain('audience does not match');
+    });
+
+    it('does not accept the local revoked demo key for its own authority', async () => {
+      useCanonicalBase(productionBase);
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      await registerAuthority(server, selfGovernanceAgentUrl);
+      const { result } = await simulateCallTool(server, 'activate_signal', {
+        ...activation('signal-self-authority-0005'),
+        governance_context: await mintRevokedDemoToken(),
+      });
+      expect(result.code).toBe('PERMISSION_DENIED');
+      expect(result.message).toContain('signing key is unknown');
+    });
+
+    it('still requires a third-party authority to sign as its registered URL', async () => {
+      useCanonicalBase(localBase);
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      await registerAuthority(server, governanceAgentUrl);
+      const token = await approveActivation(server, `${localBase}/signals`, 'signal-self-authority-0006');
+      const { result } = await simulateCallTool(server, 'activate_signal', {
+        ...activation('signal-self-authority-0006'),
+        governance_context: token,
+      });
+      expect(result.code).toBe('PERMISSION_DENIED');
+      expect(result.message).toContain('issuer does not match');
+    });
   });
 
   it('returns error when destinations is empty', async () => {
