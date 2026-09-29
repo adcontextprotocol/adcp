@@ -35,7 +35,7 @@
     "prompt_catalog_tools_missing_runtime": 0,
     "always_available_tools": 6,
     "tool_reference_bytes": 40541,
-    "system_prompt_bytes": 204137,
+    "system_prompt_bytes": 205271,
     "maximum_slack_member_tools": 33,
     "maximum_slack_admin_tools": 35,
     "maximum_slack_public_tools": 205,

@@ -94,12 +94,12 @@
     "not_declared_to_router_scope": "Modern routed Slack Bolt profiles only"
   },
   "prompt": {
-    "rules_bytes": 154063,
+    "rules_bytes": 155203,
     "tool_reference_bytes": 40541,
     "complete_offline_tool_reference_bytes": 42589,
     "response_style_bytes": 9513,
-    "system_prompt_bytes": 204131,
-    "system_prompt_sha256": "0a812640f19cc2f59c62534fda7c5155be7a21751a6e371a432bd0b5eac729e3"
+    "system_prompt_bytes": 205271,
+    "system_prompt_sha256": "8dc6b472b6af6a267f65af352d2d24c5b4890284f2c80f9b6e9db1d9dd07cce6"
   },
   "catalog": {
     "missing_runtime_tool_count": 0,
@@ -39600,7 +39600,7 @@
       "prompt_catalog_tools_missing_runtime": -2,
       "always_available_tools": -13,
       "tool_reference_bytes": -3252,
-      "system_prompt_bytes": 2100,
+      "system_prompt_bytes": 3240,
       "maximum_slack_member_tools": -114,
       "maximum_slack_admin_tools": -181,
       "maximum_slack_public_tools": -3,
@@ -39622,7 +39622,7 @@
       "prompt_catalog_tools_missing_runtime": 0,
       "always_available_tools": 6,
       "tool_reference_bytes": 40541,
-      "system_prompt_bytes": 204137,
+      "system_prompt_bytes": 205271,
       "maximum_slack_member_tools": 33,
       "maximum_slack_admin_tools": 35,
       "maximum_slack_public_tools": 205,
