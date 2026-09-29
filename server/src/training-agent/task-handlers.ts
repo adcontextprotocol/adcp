@@ -18837,26 +18837,41 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
 
   // Build response signals with deployments
   const signals: SignalResponse[] = results.map(s => {
-    // Check if this signal has been activated in this session
-    const activationKey = `${s.signalAgentSegmentId}:${agentUrl}`;
-    const activation = session.signalActivations.get(activationKey);
-    const isLive = activation?.isLive ?? false;
-
-    const deployment = {
-      type: 'agent' as const,
-      agent_url: agentUrl,
-      is_live: isLive,
-      ...(isLive ? {
-        activation_key: {
-          type: 'key_value' as const,
-          key: 'audience_segment',
-          value: s.signalAgentSegmentId,
-        },
-        deployed_at: activation?.activatedAt,
-      } : {
-        estimated_activation_duration_minutes: 0, // sandbox: instant
-      }),
+    // Report every live activation of this signal recorded in the caller's
+    // session (the session is account-scoped, so another account's
+    // activations never appear here), plus this agent's own deployment.
+    // Ordering invariant: live deployments come first, most recently
+    // activated at [0]; this agent's own deployment is appended as
+    // not-live when nothing activated it.
+    const liveActivations = [...session.signalActivations.values()]
+      .filter(a => a.signalAgentSegmentId === s.signalAgentSegmentId && a.isLive)
+      .sort((a, b) => b.activatedAt.localeCompare(a.activatedAt));
+    const activationKey = {
+      type: 'key_value' as const,
+      key: 'audience_segment',
+      value: s.signalAgentSegmentId,
     };
+    const deployments: SignalDeployment[] = liveActivations.map(a => ({
+      type: a.destinationType,
+      ...(a.destinationType === 'agent'
+        ? { agent_url: a.destinationId }
+        : { platform: a.destinationId }),
+      ...(a.account ? { account: a.account } : {}),
+      is_live: true,
+      activation_key: activationKey,
+      deployed_at: a.activatedAt,
+    }));
+    const ownAgentLive = liveActivations.some(
+      a => a.destinationType === 'agent' && a.destinationId === agentUrl,
+    );
+    if (!ownAgentLive) {
+      deployments.push({
+        type: 'agent' as const,
+        agent_url: agentUrl,
+        is_live: false,
+        estimated_activation_duration_minutes: 0, // sandbox: instant
+      });
+    }
 
     const signal = {
       signal_agent_segment_id: s.signalAgentSegmentId,
@@ -18871,7 +18886,7 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
       signal_type: s.signalType,
       data_provider: s.providerName,
       coverage_percentage: s.coveragePercentage,
-      deployments: [deployment],
+      deployments,
       pricing_options: s.pricingOptions.map(po => ({
         pricing_option_id: po.pricingOptionId,
         model: po.model,
@@ -18945,6 +18960,20 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   if (!destinations?.length) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'destinations array is required' }] };
   }
+  for (const [i, dest] of destinations.entries()) {
+    const id = dest.type === 'agent' ? dest.agent_url : dest.platform;
+    if (typeof id !== 'string' || id.length === 0) {
+      const field = dest.type === 'agent' ? 'agent_url' : 'platform';
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: `destinations[${i}].${field} is required for a ${dest.type} destination.`,
+          field: `destinations[${i}].${field}`,
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+  }
 
   // Find the signal in our catalog
   const allSignals = getAllSignals();
@@ -19014,18 +19043,35 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
     };
   }
 
-  const agentUrl = getAgentUrl();
   const now = new Date().toISOString();
 
   const destId = (dest: Destination): string =>
-    dest.type === 'agent' ? dest.agent_url : dest.platform || agentUrl;
+    dest.type === 'agent' ? dest.agent_url : dest.platform;
+  // One activation per (destination, destination account): two seats on the
+  // same platform are distinct deployments. Account-less keys keep the
+  // `${segment}:${destination}` shape.
+  const activationKeyFor = (dest: Destination): string =>
+    `${segmentId}:${destId(dest)}${dest.account ? `#${dest.account}` : ''}`;
+  // Match stored activations by their recorded destination rather than by map
+  // key, so sessions persisted under the older account-less key shape are
+  // still replaced on re-activation and removed on deactivation.
+  const removeActivationsFor = (dest: Destination): void => {
+    const id = destId(dest);
+    for (const [key, state] of session.signalActivations) {
+      if (
+        state.signalAgentSegmentId === segmentId
+        && state.destinationType === dest.type
+        && state.destinationId === id
+        && (state.account || undefined) === (dest.account || undefined)
+      ) {
+        session.signalActivations.delete(key);
+      }
+    }
+  };
 
   if (action === 'deactivate') {
     // Remove activations for this signal
-    for (const dest of destinations) {
-      const activationKey = `${segmentId}:${destId(dest)}`;
-      session.signalActivations.delete(activationKey);
-    }
+    for (const dest of destinations) removeActivationsFor(dest);
 
     return {
       deployments: destinations.map(dest => ({
@@ -19041,7 +19087,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   // Activate: store activation state and return deployment info
   const deployments = destinations.map(dest => {
     const id = destId(dest);
-    const activationKey = `${segmentId}:${id}`;
+    const activationKey = activationKeyFor(dest);
 
     const activationState: SignalActivationState = {
       signalAgentSegmentId: segmentId,
@@ -19053,6 +19099,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
       isLive: true,
       activatedAt: now,
     };
+    removeActivationsFor(dest);
     session.signalActivations.set(activationKey, activationState);
 
     return {
