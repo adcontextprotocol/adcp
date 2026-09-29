@@ -52,6 +52,7 @@ import { buildBrandTenantConfig } from './brand.js';
 import { buildSiTenantConfig } from './si.js';
 import { createLogger } from '../../logger.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../types.js';
+import { releaseLineEchoEnhancer } from './release-line-echo.js';
 import { getCanonicalBase } from '../canonical-base.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
 import { sharedTrainingTaskStore } from '../mcp-task-store.js';
@@ -215,6 +216,8 @@ function buildDefaultServerOptions(
     legacyCreativeFormatConverter: projectionAdapters.legacyFormatConverter,
     canonicalFormatLegacyResolver: projectionAdapters.canonicalFormatLegacyResolver,
     exposeToolSchemas: true,
+    // Echo the negotiated `3.2` release line instead of the SDK bundle label.
+    responseEnhancer: releaseLineEchoEnhancer,
     validation: storyboardCompat?.version === '3.0'
       ? { requests: 'off', responses: 'off' }
       // SDK 14 surfaces several useful legacy-response diagnostics, but a

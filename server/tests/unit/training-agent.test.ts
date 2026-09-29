@@ -72,6 +72,7 @@ import { getAgentUrl } from '../../src/training-agent/config.js';
 import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
 import {
   supportsSellerGovernanceDiscovery,
+  TRAINING_AGENT_CURRENT_ADCP_RELEASE,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
   TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS,
   type TrainingContext,
@@ -120,6 +121,8 @@ const VALID_PRICING_MODELS = [
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
 const CURRENT_ADCP_VERSION = TRAINING_AGENT_CURRENT_ADCP_VERSION;
+// Highest advertised 3.x release: the release line of the current bundle.
+const CURRENT_ADCP_RELEASE = TRAINING_AGENT_CURRENT_ADCP_RELEASE;
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
 
@@ -3112,7 +3115,7 @@ describe('validate_input handler', () => {
     const parsed = response.structuredContent as Record<string, unknown>;
 
     expect(response.isError).not.toBe(true);
-    expect(parsed.adcp_version).toBe(CURRENT_ADCP_VERSION);
+    expect(parsed.adcp_version).toBe(CURRENT_ADCP_RELEASE);
     expect(parsed.results).toEqual([
       { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
     ]);
@@ -3173,7 +3176,7 @@ describe('validate_input handler', () => {
   ])('defaults unpinned %s to the highest route-compatible major-3 release', (toolName) => {
     expect(resolveServedAdcpVersionForTool(toolName, {})).toEqual({
       ok: true,
-      servedVersion: CURRENT_ADCP_VERSION,
+      servedVersion: CURRENT_ADCP_RELEASE,
     });
     expect(resolveServedAdcpVersionForTool(toolName, {}, ['3.0', '3.1-rc.15'])).toEqual({
       ok: true,
@@ -3206,7 +3209,7 @@ describe('validate_input handler', () => {
     const unpinned = await executeTrainingAgentTool('validate_input', args, DEFAULT_CTX);
     expect(unpinned.success).toBe(true);
     expect(unpinned.data).toMatchObject({
-      adcp_version: CURRENT_ADCP_VERSION,
+      adcp_version: CURRENT_ADCP_RELEASE,
       results: [{ target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' }],
     });
 
@@ -8699,6 +8702,174 @@ describe('create_media_buy handler', () => {
 
     expect(result.errors).toBeUndefined();
     expect(typeof result.media_buy_id).toBe('string');
+  });
+
+  describe('viewable_rate optimization goals', () => {
+    function createWithGoal(
+      server: ReturnType<typeof createTrainingAgentServer>,
+      account: Record<string, unknown>,
+      productId: string,
+      pricingOptionId: string,
+      goal: Record<string, unknown>,
+    ) {
+      return simulateCallTool(server, 'create_media_buy', {
+        account,
+        brand: account.brand,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 10000,
+          bid_price: 5.0,
+          optimization_goals: [goal],
+        }],
+      });
+    }
+
+    it('rejects a viewable_rate goal on a product that does not declare viewable_rate optimization', async () => {
+      const { productId, pricingOptionId } = findProductWithMetric('clicks');
+      const account = { brand: { domain: 'undeclared-viewable.example' }, operator: 'undeclared-viewable.example' };
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+
+      const { result } = await createWithGoal(server, account, productId, pricingOptionId, {
+        kind: 'metric',
+        metric: 'viewable_rate',
+        standard: 'mrc',
+        target: { kind: 'threshold_rate', value: 0.7 },
+      });
+
+      expect(result.code).toBe('TERMS_REJECTED');
+      expect(result.field).toBe('packages[0].optimization_goals[0].metric');
+      expect(result.media_buy_id).toBeUndefined();
+    });
+
+    it('rejects a viewable_rate goal without a viewability standard', async () => {
+      const { productId, pricingOptionId } = findProductWithMetric('clicks');
+      const account = { brand: { domain: 'standardless-viewable.example' }, operator: 'standardless-viewable.example' };
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+
+      const { result } = await createWithGoal(server, account, productId, pricingOptionId, {
+        kind: 'metric',
+        metric: 'viewable_rate',
+        target: { kind: 'threshold_rate', value: 0.7 },
+      });
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('packages[0].optimization_goals[0].standard');
+    });
+
+    it('honors declared viewable_rate support and rejects undeclared standards and vendors', async () => {
+      const account = { brand: { domain: 'declared-viewable.example' }, operator: 'declared-viewable.example', sandbox: true };
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const productId = 'display_viewable_rate_unit';
+      await seedVendorMetricProduct(server, account, productId, {
+        name: 'Display Viewable Rate Optimization',
+        description: 'Display inventory that optimizes toward MRC viewable rate.',
+        delivery_type: 'non_guaranteed',
+        channels: ['display'],
+        metric_optimization: {
+          supported_metrics: ['clicks', 'viewable_rate'],
+          supported_viewability_standards: ['mrc'],
+          supported_targets: ['threshold_rate'],
+        },
+      });
+      const pricingOptionId = `${productId}_cpm`;
+      const goal = {
+        kind: 'metric',
+        metric: 'viewable_rate',
+        standard: 'mrc',
+        target: { kind: 'threshold_rate', value: 0.7 },
+      };
+
+      const wrongStandard = await createWithGoal(server, account, productId, pricingOptionId, { ...goal, standard: 'groupm' });
+      expect(wrongStandard.result.code).toBe('TERMS_REJECTED');
+      expect(wrongStandard.result.field).toBe('packages[0].optimization_goals[0].standard');
+
+      const namedVendor = await createWithGoal(server, account, productId, pricingOptionId, {
+        ...goal,
+        vendor: { domain: 'viewability-vendor.example' },
+      });
+      expect(namedVendor.result.code).toBe('TERMS_REJECTED');
+      expect(namedVendor.result.field).toBe('packages[0].optimization_goals[0].vendor');
+
+      const overOne = await createWithGoal(server, account, productId, pricingOptionId, {
+        ...goal,
+        target: { kind: 'threshold_rate', value: 70 },
+      });
+      expect(overOne.result.code).toBe('INVALID_REQUEST');
+      expect(overOne.result.field).toBe('packages[0].optimization_goals[0].target.value');
+
+      const accepted = await createWithGoal(server, account, productId, pricingOptionId, goal);
+      expect(accepted.result.errors, JSON.stringify(accepted.result)).toBeUndefined();
+      expect(typeof accepted.result.media_buy_id).toBe('string');
+    });
+
+    it('applies the same viewable_rate checks when package goals are updated', async () => {
+      const account = { brand: { domain: 'update-viewable.example' }, operator: 'update-viewable.example', sandbox: true };
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const productId = 'display_viewable_rate_update_unit';
+      await seedVendorMetricProduct(server, account, productId, {
+        name: 'Display Viewable Rate Optimization',
+        description: 'Display inventory that optimizes toward MRC viewable rate.',
+        delivery_type: 'non_guaranteed',
+        channels: ['display'],
+        metric_optimization: {
+          supported_metrics: ['clicks', 'viewable_rate'],
+          supported_viewability_standards: ['mrc'],
+          supported_targets: ['threshold_rate'],
+        },
+      });
+      const created = await createWithGoal(server, account, productId, `${productId}_cpm`, {
+        kind: 'metric',
+        metric: 'clicks',
+      });
+      expect(created.result.errors, JSON.stringify(created.result)).toBeUndefined();
+      const mediaBuyId = created.result.media_buy_id as string;
+      const packageId = (created.result.packages as Array<Record<string, unknown>>)[0].package_id as string;
+      const updateGoal = (goal: Record<string, unknown>) => simulateCallTool(server, 'update_media_buy', {
+        account,
+        media_buy_id: mediaBuyId,
+        packages: [{ package_id: packageId, optimization_goals: [goal] }],
+      });
+      const goal = {
+        kind: 'metric',
+        metric: 'viewable_rate',
+        standard: 'mrc',
+        target: { kind: 'threshold_rate', value: 0.7 },
+      };
+
+      const wrongStandard = await updateGoal({ ...goal, standard: 'groupm' });
+      expect(wrongStandard.result.code).toBe('TERMS_REJECTED');
+      expect(wrongStandard.result.field).toBe(`packages[${packageId}].optimization_goals[0].standard`);
+
+      const missingStandard = await updateGoal({ kind: 'metric', metric: 'viewable_rate' });
+      expect(missingStandard.result.code).toBe('INVALID_REQUEST');
+
+      const accepted = await updateGoal(goal);
+      expect(accepted.result.errors, JSON.stringify(accepted.result)).toBeUndefined();
+      expect(accepted.result.code).toBeUndefined();
+    });
+
+    it('rejects a viewable_rate goal update on a product without viewable_rate optimization', async () => {
+      const { productId, pricingOptionId } = findProductWithMetric('clicks');
+      const account = { brand: { domain: 'update-undeclared-viewable.example' }, operator: 'update-undeclared-viewable.example' };
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const created = await createWithGoal(server, account, productId, pricingOptionId, { kind: 'metric', metric: 'clicks' });
+      expect(created.result.errors, JSON.stringify(created.result)).toBeUndefined();
+      const packageId = (created.result.packages as Array<Record<string, unknown>>)[0].package_id as string;
+
+      const rejected = await simulateCallTool(server, 'update_media_buy', {
+        account,
+        media_buy_id: created.result.media_buy_id,
+        packages: [{
+          package_id: packageId,
+          optimization_goals: [{ kind: 'metric', metric: 'viewable_rate', standard: 'mrc' }],
+        }],
+      });
+      expect(rejected.result.code).toBe('TERMS_REJECTED');
+      expect(rejected.result.field).toBe(`packages[${packageId}].optimization_goals[0].metric`);
+    });
   });
 
   it('accepts vendor_metric optimization_goal with matching capability and committed metric', async () => {
@@ -22832,7 +23003,7 @@ describe('AdCP protocol compliance', () => {
       brief: 'test',
     });
     expect(isError).toBeFalsy();
-    expect(result.adcp_version).toBe(CURRENT_ADCP_VERSION);
+    expect(result.adcp_version).toBe(CURRENT_ADCP_RELEASE);
     expect(Array.isArray(result.products)).toBe(true);
   });
 

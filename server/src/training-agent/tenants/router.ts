@@ -35,6 +35,7 @@ import {
 } from '../task-handlers.js';
 import { supportsAccountChangeFeed, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
+import { runWithReleaseLineEcho } from './release-line-echo.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
 import { runWithTrainingTaskScope, trainingTaskScope } from '../mcp-task-store.js';
@@ -518,13 +519,13 @@ function tenantMcpHandler(
         await resolved.server.connect(transport);
         logger.debug({ tenantId: resolved.tenantId, method: req.body?.method }, 'tenant MCP request');
         installConflictEnvelopeRedaction(res);
-        await runWithTrainingTaskScope(
+        await runWithReleaseLineEcho(req.body, () => runWithTrainingTaskScope(
           trainingTaskScope(resolved.tenantId, principal ?? 'anonymous'),
           () => runWithSessionContext(async () => {
             await transport.handleRequest(req, res, req.body);
             await flushDirtySessions();
           }),
-        );
+        ));
       } catch (err) {
         logger.error({ err, tenantId: resolved.tenantId }, 'tenant MCP error');
         if (!res.headersSent) {

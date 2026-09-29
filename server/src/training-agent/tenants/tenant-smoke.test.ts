@@ -797,29 +797,42 @@ describe('tenant routing smoke', () => {
         default_profile_ids: ['meta_political_advertising_acceptance'],
       });
 
-      for (const [id, adcpVersion] of [[31, '3.2'], [32, '3.0']] as const) {
-        const nonBetaCapabilities = await callTenantTool(url, id, 'get_adcp_capabilities', {
-          adcp_version: adcpVersion,
-          adcp_major_version: 3,
-        }) as {
-          result?: { structuredContent?: {
-            adcp_version?: string;
-            adcp?: { governance_enforcement?: { tasks?: Array<{ task?: string; modes?: string[] }> } };
-            media_buy?: {
-              lifecycle_tools?: string[];
-              proposal_refinement?: unknown;
-              acceptance_policy_discovery?: unknown;
-            };
-          } };
-        };
-        expect(nonBetaCapabilities.result?.structuredContent?.adcp_version).toBe(adcpVersion === '3.0' ? '3.0' : '3.1');
-        expect(nonBetaCapabilities.result?.structuredContent?.adcp?.governance_enforcement?.tasks).toEqual([
-          { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
-        ]);
-        expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.lifecycle_tools).toBeUndefined();
-        expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.proposal_refinement).toBeUndefined();
-        expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.acceptance_policy_discovery).toBeUndefined();
-      }
+      // The GA release pin `"3.2"` is served exactly from the newest 3.2
+      // bundle, so the profile route keeps its proposal surface.
+      const releasePinned = await callTenantTool(url, 31, 'get_adcp_capabilities', {
+        adcp_version: '3.2',
+        adcp_major_version: 3,
+      }) as typeof capabilitiesResponse;
+      expect(releasePinned.result?.structuredContent?.adcp_version).toBe('3.2');
+      expect(releasePinned.result?.structuredContent?.adcp?.supported_versions).toContain('3.2');
+      expect(releasePinned.result?.structuredContent?.media_buy?.lifecycle_tools)
+        .toEqual(mediaBuy?.lifecycle_tools);
+      expect(releasePinned.result?.structuredContent?.media_buy?.proposal_refinement)
+        .toEqual(mediaBuy?.proposal_refinement);
+      expect(releasePinned.result?.structuredContent?.media_buy?.acceptance_policy_discovery)
+        .toEqual(mediaBuy?.acceptance_policy_discovery);
+
+      const threeZeroCapabilities = await callTenantTool(url, 32, 'get_adcp_capabilities', {
+        adcp_version: '3.0',
+        adcp_major_version: 3,
+      }) as {
+        result?: { structuredContent?: {
+          adcp_version?: string;
+          adcp?: { governance_enforcement?: { tasks?: Array<{ task?: string; modes?: string[] }> } };
+          media_buy?: {
+            lifecycle_tools?: string[];
+            proposal_refinement?: unknown;
+            acceptance_policy_discovery?: unknown;
+          };
+        } };
+      };
+      expect(threeZeroCapabilities.result?.structuredContent?.adcp_version).toBe('3.0');
+      expect(threeZeroCapabilities.result?.structuredContent?.adcp?.governance_enforcement?.tasks).toEqual([
+        { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
+      ]);
+      expect(threeZeroCapabilities.result?.structuredContent?.media_buy?.lifecycle_tools).toBeUndefined();
+      expect(threeZeroCapabilities.result?.structuredContent?.media_buy?.proposal_refinement).toBeUndefined();
+      expect(threeZeroCapabilities.result?.structuredContent?.media_buy?.acceptance_policy_discovery).toBeUndefined();
 
       const requested = await callTenantTool(url, 4, 'request_proposals', {
         adcp_version: '3.2-rc.7',
@@ -1361,6 +1374,99 @@ describe('tenant routing smoke', () => {
         revision: 2,
       });
       expect(controlled.result?.structuredContent?.adcp_error).toBeUndefined();
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('serves the GA "3.2" release pin from the newest 3.2 bundle on /sales', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      type Capabilities = { result?: { structuredContent?: Record<string, unknown> & {
+        adcp_version?: string;
+        adcp?: { supported_versions?: string[] };
+      } } };
+      const exact = await callTenantTool(url, 2, 'get_adcp_capabilities', {
+        adcp_version: '3.2-rc.7',
+      }) as Capabilities;
+      const release = await callTenantTool(url, 3, 'get_adcp_capabilities', {
+        adcp_version: '3.2',
+        adcp_major_version: 3,
+      }) as Capabilities;
+      expect(release.result?.structuredContent?.adcp_version).toBe('3.2');
+      expect(release.result?.structuredContent?.adcp?.supported_versions).toEqual(
+        expect.arrayContaining(['3.2-rc.7', '3.2']),
+      );
+      // Same capability surface as the exact bundle pin: compact lifecycle,
+      // Reliable Reporting, frequency caps and the rest of the 3.2 projection.
+      const { adcp_version: _exactVersion, ...exactSurface } = exact.result!.structuredContent!;
+      const { adcp_version: _releaseVersion, ...releaseSurface } = release.result!.structuredContent!;
+      expect(releaseSurface).toEqual(exactSurface);
+      expect((releaseSurface.media_buy as { lifecycle_tools?: string[] }).lifecycle_tools)
+        .toEqual(expect.arrayContaining(['list_products', 'buy_products', 'control_media_buy']));
+
+      const account = {
+        brand: { domain: 'tenant-release-pin.example' },
+        operator: 'tenant-release-pin.example',
+      };
+      const listed = await callTenantTool(url, 4, 'list_products', {
+        adcp_version: '3.2',
+        account,
+        fields: ['pricing_options'],
+      }) as {
+        result?: { content?: Array<{ type?: string; text?: string }>; structuredContent?: {
+          adcp_version?: string;
+          outcome?: string;
+          feed_version?: string;
+          pricing_version?: string;
+          products?: Array<{ product_id?: string; pricing_options?: Array<{ pricing_option_id?: string }> }>;
+        } };
+      };
+      const catalog = listed.result?.structuredContent;
+      expect(catalog?.adcp_version).toBe('3.2');
+      expect(catalog?.outcome).toBe('listed');
+      // Text mirrors of the structured result carry the same echo.
+      for (const block of listed.result?.content ?? []) {
+        if (block.type === 'text' && block.text?.includes('adcp_version')) {
+          expect(block.text).not.toContain('3.2-rc.7');
+        }
+      }
+      const product = catalog?.products?.find(candidate => candidate.pricing_options?.[0]?.pricing_option_id);
+      expect(product?.product_id).toEqual(expect.any(String));
+
+      const bought = await callTenantTool(url, 5, 'buy_products', {
+        adcp_version: '3.2',
+        idempotency_key: 'tenant-release-pin-buy-products-0001',
+        account,
+        feed_version: catalog!.feed_version,
+        pricing_version: catalog!.pricing_version,
+        purchases: [{
+          product_id: product!.product_id,
+          pricing_option_id: product!.pricing_options![0]!.pricing_option_id,
+          budget: 10_000,
+        }],
+        total_budget: { amount: 10_000, currency: 'USD' },
+        start_time: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        end_time: new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString(),
+      }) as {
+        result?: { structuredContent?: {
+          adcp_version?: string;
+          adcp_error?: unknown;
+          status?: string;
+          media_buy_id?: string;
+          revision?: number;
+        } };
+      };
+      const commitment = bought.result?.structuredContent;
+      expect(commitment?.adcp_error, JSON.stringify(commitment)).toBeUndefined();
+      expect(commitment).toMatchObject({
+        adcp_version: '3.2',
+        status: 'completed',
+        media_buy_id: expect.any(String),
+        revision: 1,
+      });
     } finally {
       await close();
     }
@@ -2064,7 +2170,7 @@ describe('tenant routing smoke', () => {
       const previewRouteIds = creative?.preview?.routes?.map(route => route.capability_id) ?? [];
       expect(body.result?.structuredContent?.adcp_version).toBe('3.2-rc.7');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7']);
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
@@ -3561,7 +3667,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');
