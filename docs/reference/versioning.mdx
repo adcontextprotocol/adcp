@@ -53,6 +53,19 @@ When the response omits `adcp_version` (a legacy 3.0 seller that doesn't read th
 
 This lets buyers and sellers upgrade independently — sellers can declare multi-release support, and buyers can pin to a specific release without coordinating their migration.
 
+#### Serving an older pin
+
+**What the spec defines.** A seller echoes the release it served, and buyers SHOULD validate the response against that release's schema (step 4 above). Release-precision pinning exists so sellers can return responses shaped to the contract the buyer expects.
+
+**What the spec does not yet define.** No normative rule says a response served at release R must validate against R's published schema, and no rule covers shapes introduced after R. It is also undefined whether `get_adcp_capabilities`, which runs before negotiation completes, should vary with the request's `adcp_version`. [#7718](https://github.com/adcontextprotocol/adcp/issues/7718) tracks a normative rule for a future release.
+
+**Recommended practice (non-normative).** The guidance below follows the intent stated above. It adds no requirement.
+
+- **Sellers** serving an older release should project or omit shapes that release does not define. That covers new `oneOf`/`anyOf` arms, types widened from a scalar to an object, and new required-field alternatives. Examples: legacy booleans for `media_buy.execution.targeting.geo_regions` / `.language` when serving `"3.1"`, no `revenue_share` pricing options, and a failure response valid under 3.1 in place of the `get_products` `status: "rejected"` arm. New enum values stay governed by the unknown-value tolerance rule.
+- **Buyers** should parse capabilities and responses tolerantly. Accept unknown enum values and unknown union arms, and accept object forms of fields that were booleans in their pinned release. A strict older-release validator can then report drift without failing the integration.
+
+The [3.1 to 3.2 migration guide](/docs/reference/migration/3-1-to-3-2#version-negotiation-across-3-1-and-3-2) lists the 3.2 shapes this affects.
+
 #### Pre-release pins
 
 Pre-release tags (`"3.1-beta"`, `"3.1-rc.1"`) are matched **exactly** against `supported_versions`. They are not range-resolved: a buyer pinning `"3.1-beta"` against a server that lists `["3.0", "3.1"]` (no beta in the list) gets `VERSION_UNSUPPORTED`, not a downshift to `"3.0"`. Servers MUST NOT downshift a release pin onto a pre-release (`"3.1"` → `"3.1-beta"`); when both are advertised, the release wins exact match.
@@ -81,7 +94,7 @@ Per the three-tier model, patches introduce no stable AdCP contract change — t
 
 The `adcp_version` wire shape is `MAJOR.MINOR` or `MAJOR.MINOR-PRERELEASE`. **No patch component is valid on the wire**, even alongside a pre-release tag. SDKs that internally key bundles using full semver (`"3.1.0-beta.1"`) MUST normalize to release-precision (`"3.1-beta.1"`) before emitting. `"3.1.2"`, `"3.1.0-beta.1"`, `"v3.1"`, and `"3"` are all invalid wire values and will be rejected by validation.
 
-**Don't confuse the wire field with bundle metadata.** The schema registry, tarball manifest, compliance index, and the `/protocol/` HTTP discovery endpoint all expose a `published_version` field (e.g. `"3.1.0-beta.1"`) at full-semver precision — that's the version of the published artifact, not a wire value. A legacy `adcp_version` alias is also present on those meta-objects through 3.x for `@adcp/sdk.ComplianceIndex` compatibility, sunset at 4.0. **Never emit a meta-field value on the wire** — normalize to release-precision first. See [schemas-and-sdks](/docs/building/schemas-and-sdks#version-discovery) for the discovery URL.
+**Don't confuse the wire field with bundle metadata.** The schema registry, tarball manifest, compliance index, and the `/protocol/` HTTP discovery endpoint all expose a `published_version` field (e.g. `"3.1.0-beta.1"`) at full-semver precision — that's the version of the published artifact, not a wire value. A legacy `adcp_version` alias is also present on those meta-objects through 3.x for `@adcp/sdk.ComplianceIndex` compatibility, sunset at 4.0. **Never emit a meta-field value on the wire** — normalize to release-precision first. See [schemas-and-sdks](/docs/building/schemas-and-sdks#schema-urls) for the discovery URL.
 
 ### Major-precision negotiation (deprecated, kept through 3.x)
 
@@ -137,6 +150,8 @@ Schema changes are accepted in releases under the following conditions:
 - Changes to authentication, transport, or core security requirements
 - Changes that alter fundamental behavioral semantics
 
+AdCP 3.2 contains a bounded, recorded set of exceptions to these limits: one ratified field removal, one request-signing security correction, and a short list of tightened validation rules. See [3.2 exceptions to 3.x compatibility](#3-2-exceptions-to-3-x-compatibility).
+
 ### Deprecation policy
 
 Deprecation notices are published at least **6 months** before any feature is removed. Deprecated features remain functional for at least one full release cycle after deprecation, and are never removed within the same major version — a feature deprecated in 3.x will not be removed until 4.0 at the earliest.
@@ -176,15 +191,44 @@ This separation lets registry transport, verification machinery, and experimenta
 
 ## 3.x stability guarantees
 
-Implementations built against 3.0 can rely on the following stable-surface guarantees through the 3.x cycle. Experimental surfaces follow the notice and patch-classification rules below.
+Implementations built against 3.0 can rely on the following stable-surface guarantees through the 3.x cycle. Experimental surfaces follow the notice and patch-classification rules below. Each exception is recorded by release in [3.2 exceptions to 3.x compatibility](#3-2-exceptions-to-3-x-compatibility).
 
 | Artifact | Guarantee within 3.x |
 |---|---|
-| **Fields** | Never removed. May be renamed with a documented alias that accepts both names in the same release. Optional → required only after a prior deprecation release. |
+| **Fields** | Never removed, except for a recorded exception. The only one to date is the 3.2 removal of the deprecated body-level `status` alias (below). May be renamed with a documented alias that accepts both names in the same release. Optional → required only after a prior deprecation release. |
 | **Enums** | Only additive. Existing values are never removed or renamed. Clients must tolerate unknown values and fall back to sensible defaults. |
 | **Error codes** | Only additive. Existing codes retain their semantics. Clients that handle unknown error codes generically remain compatible. |
 | **Task names** | Never removed or renamed. New tasks may be added. |
-| **Authentication, transport, core security** | Never changed. These are version-level changes only. |
+| **Authentication, transport, core security** | Not changed within a version, except for recorded exceptions. To date these are the 3.2 request-signing profile correction and the Bearer-only `sync_governance` credential scheme (below). |
+
+### 3.2 exceptions to 3.x compatibility
+
+AdCP 3.2 contains a bounded set of stable-surface changes that can reject a payload a 3.1 implementation previously sent or emitted. Each one is a ratified exception, a security correction, or a validation rule whose basis is recorded below. A structural diff of the 3.1.24 and 3.2 schemas found no other stable-surface change that rejects a payload valid under 3.1. Additive response shapes that a strictly typed 3.1 parser may reject are listed separately in the [migration guide](/docs/reference/migration/3-1-to-3-2#wire-changes-from-3-1-to-3-2).
+
+**Removed field (ratified exception).** The deprecated body-level `status` (MediaBuyStatus) is removed from `create_media_buy` and `update_media_buy` success responses. It collided with the task-envelope `status` under MCP flattened serialization. Read `media_buy_status` instead. Record: [DR-0011](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0011-media-buy-status-removal-in-3-2.md), [Migrating to `media_buy_status`](/docs/reference/migration/media-buy-status).
+
+**Request-signing profile (security correction).** On an endpoint that advertises a 3.2 release, request `Signature` and `Content-Digest` values use RFC 8941 padded standard Base64 instead of the 3.0/3.1 unpadded Base64URL override. Every signed request with a body must cover `content-digest`. The endpoint selects the profile, not the request's `adcp_version`. A 3.1 signer is therefore rejected by a shared endpoint that advertises 3.2, even when the request pins `"3.1"`. Record: [Signed requests](/docs/building/by-layer/L1/security#signed-requests-transport-layer), [Mixed-version request signing](/docs/reference/migration/3-1-to-3-2#mixed-version-request-signing).
+
+**Tightened request validation.** These rules can reject a request that the 3.1.x schemas accepted:
+
+| Request schema | 3.2 rule | Basis |
+|---|---|---|
+| `create_media_buy` | Root `anyOf`: either explicit `packages` (each with a `budget` in fixed allocation, or with `total_budget` + `budget_allocation.mode: "seller_optimized"`) and no `proposal_id`, or `proposal_id` + `total_budget` with no `packages`. | Encodes 3.1 prose ("packages required when not using `proposal_id`"). Also rejects `proposal_id` sent together with `packages`. |
+| `create_media_buy` `total_budget.currency` | Must match `^[A-Z]{3}$` (uppercase ISO 4217). | Encodes the documented ISO 4217 value. |
+| `build_creative` | A non-refinement build carries exactly one target route (`target_capability_id`, `target_capability_ids`, `target_format_id`, or `target_format_ids`). A refinement (`refine_from_build_variant_id`) carries no target selector or `transformer_id`. `target_format_ids` has `maxItems: 50`. | Canonical creative formats. |
+| Package `format_kind: "image"` with `params` | `params.width` and `params.height` must appear together. | Canonical creative formats. |
+| `sync_governance` `authentication.schemes` | `"Bearer"` only. `"HMAC-SHA256"` is rejected. | The seller authenticates outbound `check_governance` calls with a Bearer credential. The shared webhook scheme list (`enums/auth-scheme.json`) is deprecated. Also counted as an authentication exception in the stability table. |
+| `notification_configs[].event_types` (`sync_accounts`) | Media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) are schema-invalid. | 3.1 prose already required sellers to reject them. |
+| `preview_creative` | `creative_manifest` and `creative_id` cannot both be sent. | Clarifies the single-input contract. |
+| `adcp_version` and `supported_versions[]` | No leading zeros in `MAJOR` or `MINOR`, and the prerelease segment must start and end with a letter or digit (no leading or trailing `.` or `-`). | Encodes the canonical `MAJOR.MINOR[-PRERELEASE]` wire shape. |
+
+**Tightened producer validation.** A 3.1 producer that emitted these values fails 3.2 validation:
+
+- `preview_creative` renders: `embedding.recommended_sandbox` must be `""`. Providers must not grant iframe sandbox capabilities.
+- Committed proposals (`proposal_status: "committed"`) must carry `allocations[].pricing_option_id`.
+- `get_adcp_capabilities`: `creative_specs.vast_versions` is a closed enum (`2.0`, `3.0`, `4.0`, `4.1`, `4.2`, `4.3`) with at least one unique item. `request_signing.required_for` / `supported_for` / `warn_for` entries must match `^[a-z][a-z0-9_]*$`.
+
+Experimental surfaces changed under their own notice contract and are not exceptions to these guarantees. See the [migration guide](/docs/reference/migration/3-1-to-3-2#wire-changes-from-3-1-to-3-2) for the governance, Trusted Match, and brand-rights changes.
 
 ### Experimental surfaces
 
@@ -215,7 +259,7 @@ Any change that requires an implementation to adapt — renamed field, required-
 
 The latest published tag must always reflect the same required-field set as source HEAD. A PR that changes any `required` array, changes a discriminator `const`, or tightens a validation constraint must be accompanied by a new tag cut before the change becomes the active implementation target for external consumers. This is in addition to any upstream obligations — for example, the deprecation requirement for optional→required transitions described in the stability guarantees above.
 
-**Why:** Implementors validate against a published tag (whether pinned to an exact version or resolved through the [version alias](/docs/building/schemas-and-sdks#schema-versioning)). If source HEAD's required fields grow beyond what that tag declares, an evaluator reading source and the implementor's validator reading the published tag will disagree — not because either is wrong, but because the published contract hasn't caught up. The implementor cannot reconcile the gap without reading source history.
+**Why:** Implementors validate against a published tag (whether pinned to an exact version or resolved through the [version alias](/docs/building/schemas-and-sdks#schema-urls)). If source HEAD's required fields grow beyond what that tag declares, an evaluator reading source and the implementor's validator reading the published tag will disagree — not because either is wrong, but because the published contract hasn't caught up. The implementor cannot reconcile the gap without reading source history.
 
 **During RC cycles:** The same invariant applies between RC tags. A schema change that lands between `rc.N` and `rc.N+1` requires cutting `rc.N+1` before the new required-field set is treated as active.
 
@@ -254,10 +298,10 @@ The v2 sunset is the documented exception to this commitment: v2 predates this p
 | **4.0** | Early 2027 — next major, accumulated breaking changes |
 
 The 3.2 cycle began with a protocol-first beta before SDK convergence. RC.7 is
-now the current signed protocol checkpoint. TypeScript SDK RC.49 embeds it
-exactly; Python SDK beta.15 embeds RC.3 and Go SDK `adcp/v3@v3.2.1` embeds
-RC.1. See the
-[3.2 prerelease program](/docs/reference/3-2-beta).
+now the current signed protocol checkpoint. TypeScript SDK RC.49 and Python
+SDK beta.18 embed it exactly; Go SDK `adcp/v3@v3.2.1` embeds RC.1. See the
+[3.2 prerelease program](/docs/reference/3-2-beta) and the
+[SDK versions for 3.2](/docs/reference/migration/3-1-to-3-2#sdk-versions-for-3-2).
 
 Further 3.x releases are scheduled based on implementation feedback and working group priorities, with at least 8 weeks between stable releases. Planned scope for each release is tracked on the [GitHub milestones page](https://github.com/adcontextprotocol/adcp/milestones) — open issues on the `3.1.0` and `3.2.0` milestones reflect current candidate work, not fixed commitments.
 
