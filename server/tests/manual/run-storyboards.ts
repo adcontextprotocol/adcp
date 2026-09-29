@@ -38,6 +38,7 @@ import {
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import {
   authForStoryboard,
+  multiAgentRoutingForStoryboard,
   testKitOptionsFromKit,
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
@@ -65,6 +66,7 @@ const { clearSeededCreativeFormats, clearForcedTaskCompletions } = await import(
 );
 const { clearCatalogEventStores } = await import('../../src/training-agent/catalog-event-handlers.js');
 const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
+const { getCanonicalBase } = await import('../../src/training-agent/canonical-base.js');
 
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose');
@@ -477,6 +479,7 @@ function patchStoryboardForLocalRunner(sb: Storyboard): Storyboard {
     || sb.id === 'governance_spend_authority/denied'
     || sb.id === 'governance_delivery_monitor'
     || sb.id === 'governance/failed_outcome_audit_persistence'
+    || sb.requires?.includes('multi_agent')
   ) {
     patched = structuredClone(patched) as Storyboard;
     const authenticatedCaller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
@@ -727,13 +730,6 @@ function brandFromKit(
     storyboardId === 'wholesale_feed_products_scope_isolation'
     || storyboardId === 'wholesale_feed_signals_scope_isolation'
   ) return undefined;
-  // This storyboard targets the seller's shared account (acc_luma_shared),
-  // whose brand is not the test-kit brand. The SDK runner addresses
-  // comply_test_controller by the natural key sync_accounts returned, and the
-  // brand invariant would swap in the test-kit brand. That key names no
-  // account the buyer synced, so the seeded creative would record no change
-  // and no account.change_recorded webhook would fire.
-  if (storyboardId === 'media_buy_seller/account_change_feed') return undefined;
   const domain = kit?.brand?.house?.domain;
   return domain ? { domain } : undefined;
 }
@@ -961,7 +957,16 @@ async function main() {
     const testKit = testKitOptionsFromKit(kit);
     const auth = authForStoryboard(storyboard.id, kit, AUTH_TOKEN);
     const previousTrainingAgentUrl = process.env.TRAINING_AGENT_URL;
-    if (storyboard.id === 'webhook_emission') {
+    // `requires: [multi_agent]` storyboards route each agent key to its
+    // sibling tenant in this same embedded process; the storyboard's
+    // default_agent stays on the tenant under test. Like webhook_emission,
+    // they run with the embedded agent's canonical base pinned to its actual
+    // local origin, so the governance issuer and the governed tenant's
+    // audience are this deployment's values. Everything else keeps the
+    // single-tenant positional URL and default canonical base.
+    const routesMultiAgent = storyboard.requires?.includes('multi_agent') === true;
+    const swapsCanonicalBase = storyboard.id === 'webhook_emission' || routesMultiAgent;
+    if (swapsCanonicalBase) {
       process.env.TRAINING_AGENT_URL = localAgentBaseUrl;
     }
 
@@ -1074,7 +1079,20 @@ async function main() {
         // with no request-signing advertisement or enforcement. Every storyboard
         // other than `signed_requests` stays on `/mcp` so bearer-authed unsigned
         // calls keep working.
-        const result = await runStoryboard(agentUrl, storyboard, {
+        const routing = multiAgentRoutingForStoryboard({
+          storyboard,
+          tenantPath: process.env.TENANT_PATH ?? '',
+          tenantAgentUrl: agentUrl,
+          trainingAgentBaseUrl: localAgentBaseUrl,
+          serviceIdentityBase: getCanonicalBase(),
+          auth,
+        });
+        if (routing.kind === 'routed' && verbose) {
+          // eslint-disable-next-line no-console
+          console.log(`    [multi-agent] ${storyboard.id} routes ${Object.entries(routing.agents)
+            .map(([key, entry]) => `${key}=${entry.url}`).join(', ')} (default_agent=${routing.default_agent}; context ${JSON.stringify(routing.context)})`);
+        }
+        const result = await runStoryboard(routing.kind === 'routed' ? '' : agentUrl, storyboard, {
           ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
           ...(wireAdcpVersion && { wireAdcpVersion }),
           ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
@@ -1089,6 +1107,11 @@ async function main() {
           },
           ...(brand && { brand }),
           ...(testKit && { test_kit: testKit }),
+          ...(routing.kind === 'routed' && {
+            agents: routing.agents,
+            default_agent: routing.default_agent,
+            context: routing.context,
+          }),
         });
         applyStepSkipList(storyboard.id, result);
         const summary = summarize(storyboard, result);
@@ -1105,7 +1128,7 @@ async function main() {
         console.log(`  ${storyboard.id.padEnd(40)} ⚠ ${summary.error}`);
       }
     }
-    if (storyboard.id === 'webhook_emission') {
+    if (swapsCanonicalBase) {
       if (previousTrainingAgentUrl === undefined) {
         delete process.env.TRAINING_AGENT_URL;
       } else {

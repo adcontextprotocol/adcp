@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   authForStoryboard,
+  multiAgentRoutingForStoryboard,
   testKitOptionsFromKit,
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
@@ -160,5 +161,70 @@ describe('storyboard runner option helpers', () => {
     const kit: LoadedTestKit = { auth: { api_key: 'kit-api-key' } };
 
     expect(() => testKitOptionsFromKit(kit, 'sales')).toThrow(/without auth\.probe_task/);
+  });
+});
+
+describe('multiAgentRoutingForStoryboard', () => {
+  const base = 'http://127.0.0.1:4321/api/training-agent';
+  const auth = { type: 'bearer' as const, token: 'storyboard-token' };
+  const governed = {
+    id: 'signal_marketplace/governance_approved',
+    requires: ['multi_agent'],
+    default_agent: 'signals',
+    context: {
+      governance_agent_url: 'https://test-agent.adcontextprotocol.org',
+      signal_agent_url: 'https://test-agent.adcontextprotocol.org/signals',
+    },
+    phases: [
+      { steps: [{ agent: 'signals' }, { agent: 'governance' }, {}] },
+    ],
+  };
+  const input = {
+    storyboard: governed,
+    tenantPath: 'signals',
+    tenantAgentUrl: `${base}/signals/mcp`,
+    trainingAgentBaseUrl: base,
+    serviceIdentityBase: base,
+    auth,
+  };
+
+  it('leaves storyboards without multi_agent on the single-tenant path', () => {
+    expect(multiAgentRoutingForStoryboard({
+      ...input,
+      storyboard: { id: 'signal_marketplace', default_agent: 'signals', phases: [] },
+    })).toEqual({ kind: 'single_agent' });
+  });
+
+  it('routes every agent key to its sibling tenant and keeps default_agent on the tenant under test', () => {
+    expect(multiAgentRoutingForStoryboard(input)).toEqual({
+      kind: 'routed',
+      default_agent: 'signals',
+      agents: {
+        signals: { url: `${base}/signals/mcp`, auth },
+        governance: { url: `${base}/governance/mcp`, auth },
+      },
+      // Only the governed-agent key is overridden; the registered governance
+      // service locator keeps its authored value.
+      context: { signal_agent_url: `${base}/signals` },
+    });
+  });
+
+  it('refuses to grade a storyboard from a tenant other than its default_agent', () => {
+    expect(() => multiAgentRoutingForStoryboard({ ...input, tenantPath: 'sales' }))
+      .toThrow(/run it from the signals tenant/);
+  });
+
+  it('refuses agent keys that are not training-agent tenants', () => {
+    expect(() => multiAgentRoutingForStoryboard({
+      ...input,
+      storyboard: { ...governed, phases: [{ steps: [{ agent: 'seller_eu' }] }] },
+    })).toThrow(/not a training-agent tenant/);
+  });
+
+  it('requires a default_agent', () => {
+    expect(() => multiAgentRoutingForStoryboard({
+      ...input,
+      storyboard: { ...governed, default_agent: undefined },
+    })).toThrow(/declares no default_agent/);
   });
 });
