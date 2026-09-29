@@ -678,7 +678,7 @@ and new tasks are omitted.
 | 7 | `build_creative`: exactly one target route; refinements carry none; `target_format_ids` `maxItems: 50` | Sender | Buyers and orchestrators calling creative agents | Send one of `target_capability_id(s)` / `target_format_id(s)`. |
 | 8 | Package `format_kind: "image"` with `params` requires `width` and `height` together | Sender | Buyers using canonical image selectors | Send both dimensions. |
 | 9 | `sync_governance` `authentication.schemes` is `"Bearer"` only | Sender | Buyers registering governance agents with HMAC | Use Bearer. |
-| 10 | Account `notification_configs[].event_types` rejects `scheduled`, `final`, `delayed`, `adjusted`, `impairment` | Sender | Buyers configuring `sync_accounts` notifications | Remove media-buy-anchored types. 3.1 prose already forbade them. |
+| 10 | Account `notification_configs[].event_types` rejects `scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment` | Sender | Buyers configuring `sync_accounts` notifications | Remove media-buy-anchored types. 3.1 prose already forbade them. |
 | 11 | `preview_creative`: `creative_manifest` and `creative_id` are mutually exclusive | Sender | Buyers sending both | Send one. |
 | 12 | `adcp_version` / `supported_versions[]` pattern rejects leading zeros and trailing separators | Sender | Hand-rolled clients | Emit canonical `MAJOR.MINOR[-PRERELEASE]`. |
 | 13 | Preview `embedding.recommended_sandbox` must be `""` | Producer | Creative agents | Emit `""`. |
