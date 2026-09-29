@@ -15459,6 +15459,20 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const echoReportingTimezone = !hasInvalidReportingTimezone && reportingTimezones.size === 1;
   const reportingTimezone = reportingTimezones.size === 1 ? [...reportingTimezones][0] : 'UTC';
 
+  // Lifetime reads with calendar-grain time_granularity require a single timezone
+  // anchor, just like dated requests. (post_campaign and hourly have no calendar
+  // boundaries, so they are unaffected.)
+  const CALENDAR_GRANULARITIES = new Set(['daily', 'weekly', 'monthly', 'quarterly']);
+  if (!dated && reportingTimezones.size > 1 && typeof req.time_granularity === 'string' && CALENDAR_GRANULARITIES.has(req.time_granularity)) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: `Media buy ${mb.mediaBuyId} spans products with different reporting timezones (${[...reportingTimezones].sort().join(', ')}); time_granularity of daily, weekly, monthly or quarterly requires a single reporting timezone — narrow media_buy_ids to buys sharing one reporting timezone.`,
+        field: 'time_granularity',
+      }],
+    };
+  }
+
   const now = new Date();
   const start = new Date(mb.startTime);
   const end = new Date(mb.endTime);

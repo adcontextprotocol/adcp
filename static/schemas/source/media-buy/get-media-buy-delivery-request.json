@@ -91,7 +91,7 @@
     },
     "time_granularity": {
       "$ref": "/schemas/enums/reporting-frequency.json",
-      "description": "Per-window slice granularity for the pull, using the same vocabulary as reporting_webhook.reporting_frequency. When set, the seller returns per-window delivery slices over the date range — useful for reconstructing data a buyer's webhook receiver missed, since the slice payload is shape-aligned with what reporting_webhook would have delivered for the same window. Capability-scoped: the value MUST be one of the seller's declared reporting_capabilities.windowed_pull_granularities; otherwise the seller MUST return UNSUPPORTED_GRANULARITY. When omitted, behavior is unchanged (cumulative aggregates plus optional daily breakdowns per existing fields)."
+      "description": "Per-window slice granularity for the pull, using the same vocabulary as reporting_webhook.reporting_frequency. When set, the seller returns per-window delivery slices over the date range — useful for reconstructing data a buyer's webhook receiver missed, since the slice payload is shape-aligned with what reporting_webhook would have delivered for the same window. Capability-scoped: the value MUST be one of the seller's declared reporting_capabilities.windowed_pull_granularities; otherwise the seller MUST return UNSUPPORTED_GRANULARITY. When set to daily, weekly, monthly, or quarterly and the in-scope packages span more than one reporting timezone, the seller MUST return VALIDATION_ERROR. When omitted, behavior is unchanged (cumulative aggregates plus optional daily breakdowns per existing fields)."
     },
     "include_window_breakdown": {
       "type": "boolean",

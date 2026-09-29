@@ -1056,7 +1056,7 @@
                 "window_start": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "ISO 8601 start of the window slice (inclusive). Daily, weekly, and monthly slices start on reporting-timezone calendar boundaries (see reporting_period.timezone), which are UTC midnights only when that timezone is UTC."
+                  "description": "ISO 8601 start of the window slice (inclusive). Daily, weekly, monthly, and quarterly slices start on reporting-timezone calendar boundaries (see reporting_period.timezone), which are UTC midnights only when that timezone is UTC. Weekly slices start Monday 00:00 in the reporting timezone (ISO 8601 weeks). Quarterly slices start on 1 January, 1 April, 1 July and 1 October."
                 },
                 "window_end": {
                   "type": "string",
@@ -1119,7 +1119,7 @@
           },
           "daily_breakdown": {
             "type": "array",
-            "description": "Day-by-day delivery for a media-buy row with one currency. Sellers MUST omit this aggregate breakdown for a legacy or externally created mixed-currency buy because these rows have no package currency field.",
+            "description": "Day-by-day delivery for a media-buy row with one currency. Sellers MUST omit this aggregate breakdown for a legacy or externally created mixed-currency buy because these rows have no package currency field. Sellers MUST also omit this aggregate breakdown when the media buy's packages span more than one reporting timezone; package-level daily_breakdown remains, each in its own product's reporting timezone.",
             "items": {
               "type": "object",
               "properties": {

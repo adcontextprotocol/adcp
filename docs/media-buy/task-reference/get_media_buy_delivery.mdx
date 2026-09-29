@@ -85,7 +85,7 @@ the response. The boundaries stay RFC 3339 instants. For a product reporting in
 `2026-04-15T00:00:00-04:00`, which can also be written as
 `2026-04-15T04:00:00Z`. Sellers SHOULD echo the reporting timezone in
 `reporting_period.timezone`. `daily_breakdown[].date` labels and daily, weekly,
-and monthly `windows[]` use the same timezone. A reporting-timezone day can be 23
+monthly, and quarterly `windows[]` use the same timezone. A reporting-timezone day can be 23
 or 25 hours long across a DST change.
 
 A date-bounded request covers one reporting timezone. When its in-scope packages
@@ -94,7 +94,12 @@ span products with different reporting timezones, the seller MUST reject it with
 rather than pick a timezone. The buyer narrows `media_buy_ids` to buys that
 share one reporting timezone, or omits both dates. There is no package filter,
 so a single buy whose own packages span reporting timezones can only be read
-without dates. Lifetime requests (no dates) are unaffected. Exact
+without dates. Two additional constraints apply to lifetime reads when packages
+span multiple reporting timezones:
+- **Buy-level `daily_breakdown`**: Sellers MUST omit this aggregate breakdown when the media buy's packages span more than one reporting timezone. Package-level `daily_breakdown` remains, each in its own product's reporting timezone.
+- **`time_granularity` of `daily`, `weekly`, `monthly` or `quarterly`**: Sellers MUST reject with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) when the in-scope packages span more than one reporting timezone. The buyer narrows `media_buy_ids` to buys sharing one reporting timezone.
+
+Exact
 `reporting_revision_id` reads return the revision's own period, whose
 `source_timezone` names its calendar.
 
