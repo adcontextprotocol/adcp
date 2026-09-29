@@ -22,8 +22,10 @@ narrative: |
   packages. The seller allocates the shared total continuously against
   budget_allocation.optimization_goals and paces the buy at media-buy level.
 
-  The core phases use only that contract: no package budgets, minimum-spend
-  targets, or package pacing. Those package controls are separate
+  The core phases use only that contract: omitted or even media-buy pacing
+  (a core seller MAY reject asap or front_loaded with UNSUPPORTED_FEATURE, so
+  those values are not graded) and no package budgets, minimum-spend targets,
+  or package pacing. Those package controls are separate
   sub-capabilities (seller_optimized_package_budgets,
   seller_optimized_min_spend_targets, seller_optimized_package_pacing). Each
   has a positive phase gated on its own declaration and two negative phases,

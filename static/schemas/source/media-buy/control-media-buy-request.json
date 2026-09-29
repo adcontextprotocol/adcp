@@ -91,7 +91,8 @@
       "$ref": "/schemas/core/canonical-budget-allocation.json"
     },
     "pacing": {
-      "$ref": "/schemas/enums/pacing.json"
+      "$ref": "/schemas/enums/pacing.json",
+      "description": "Replace aggregate media-buy pacing. In seller-optimized allocation, a seller declaring media_buy.features.seller_optimized_budget MUST accept omission and `even`; it MAY reject `asap` or `front_loaded` with UNSUPPORTED_FEATURE (error.field `pacing`) before any provider mutation and MUST NOT silently coerce them to `even`. Fixed-allocation semantics are unchanged."
     },
     "bidding": {
       "anyOf": [

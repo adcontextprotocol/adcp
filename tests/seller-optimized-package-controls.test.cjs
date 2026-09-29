@@ -268,3 +268,37 @@ test('runner applies exactly one sub-capability branch for a core-only seller', 
     'aggregate over-subscription is not graded for an undeclared minimum-spend control',
   );
 });
+
+test('core media-buy pacing guarantees only omitted or even pacing without coercion', () => {
+  const parent = readJson('static/schemas/source/core/media-buy-features.json').properties.seller_optimized_budget.description;
+  assert.match(parent, /MUST accept omitted media-buy pacing/);
+  assert.match(parent, /MAY reject `asap` or `front_loaded` with `UNSUPPORTED_FEATURE` \(error\.field `pacing`\)/);
+  assert.match(parent, /MUST NOT silently coerce them to `even`/);
+  for (const surface of [
+    'static/schemas/source/media-buy/create-media-buy-request.json',
+    'static/schemas/source/media-buy/update-media-buy-request.json',
+    'static/schemas/source/media-buy/buy-products-request.json',
+    'static/schemas/source/media-buy/control-media-buy-request.json',
+  ]) {
+    const description = readJson(surface).properties.pacing.description ?? '';
+    assert.match(description, /MAY reject `asap` or `front_loaded` with UNSUPPORTED_FEATURE/, `${surface} pacing`);
+    assert.match(description, /Fixed-allocation semantics are unchanged/, `${surface} leaves fixed mode alone`);
+  }
+  const storyboard = loadScenario('seller_optimized_budget');
+  for (const phase of storyboard.phases) {
+    for (const step of phase.steps) {
+      const pacing = step.sample_request?.pacing;
+      assert.ok(pacing === undefined || pacing === 'even', `${phase.id}/${step.id} uses only core media-buy pacing`);
+    }
+  }
+});
+
+test('buyer agents are told to send budget_allocation explicitly and ask when ambiguous', () => {
+  const create = readJson('static/schemas/source/media-buy/create-media-buy-request.json').properties.budget_allocation.description;
+  const core = readJson('static/schemas/source/core/budget-allocation.json').description;
+  for (const description of [create, core]) {
+    assert.match(description, /fixed allocation \(legacy-compatible\)/);
+    assert.match(description, /SHOULD send/);
+    assert.match(description, /SHOULD ask the principal rather than guess/);
+  }
+});

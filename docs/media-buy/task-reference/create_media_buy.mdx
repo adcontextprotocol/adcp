@@ -1251,6 +1251,10 @@ The media buy has one currency. Every selected pricing option MUST declare that 
 
 AdCP supports fixed package budgets and media-buy-level shared budgets. `budget_allocation.mode` makes the interpretation explicit; omission preserves the legacy fixed behavior.
 
+<Note>
+**Choosing an allocation mode.** Omitting `budget_allocation` still means fixed allocation, but buyer agents SHOULD send it explicitly: `{"mode": "fixed"}` or a `seller_optimized` block. If the principal's instruction does not settle whether the budget is one shared pool across packages or split per package (for example, "spend $100k across these two products"), the buyer agent SHOULD ask the principal rather than guess.
+</Note>
+
 | Field | Level | Type | Controls |
 |-------|-------|------|----------|
 | `total_budget.amount` + `total_budget.currency` | Media buy | TotalBudget | Hard aggregate lifetime spend cap. Required for proposals and seller-optimized allocation. |
@@ -1312,6 +1316,8 @@ Capability declarations in [`get_adcp_capabilities`](/docs/protocol/get_adcp_cap
 | `packages[].budget` (hard cap) | `seller_optimized_package_budgets` |
 | `packages[].min_spend_target` | `seller_optimized_min_spend_targets` |
 | `packages[].pacing` (when it differs from media-buy `pacing`) | `seller_optimized_package_pacing` |
+
+Media-buy `pacing` is part of the core contract only for `even`. A seller declaring `seller_optimized_budget` MUST accept omitted `pacing` (which defaults to `even` when `total_budget` is present) and `pacing: "even"`. It MAY reject `asap` or `front_loaded` with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) (`error.field` set to `pacing`) before any provider mutation, and MUST NOT silently coerce them to `even`. Fixed-allocation pacing is unchanged.
 
 A seller that declares the parent but not a given sub-capability MUST reject a seller-optimized request carrying that package control with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before any over-subscription validation or provider mutation, and MUST NOT silently drop or coerce it. Over-subscription `INVALID_REQUEST` checks apply only to declared controls, so a core-only seller that receives an over-subscribed `min_spend_target` returns `UNSUPPORTED_FEATURE`.
 

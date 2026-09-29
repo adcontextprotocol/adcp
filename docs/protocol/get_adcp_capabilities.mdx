@@ -818,7 +818,7 @@ Optional media-buy features. Boolean declarations are commitments when true. Str
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
 | `catalog_management` | Supports [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) for catalog feed management |
 | `catalog_item_availability_updates` | Supports buyer-pushed [`sync_catalogs` availability updates and queries](/docs/media-buy/task-reference/sync_catalogs#immediate-item-availability) for revision-guarded suppression, restoration, and current-state readback in buyer-managed catalogs |
-| `seller_optimized_budget` | Supports the core shared-budget contract: one hard `total_budget`, seller allocation across packages against cross-package goals, media-buy-level pacing, and allocation echo on reads |
+| `seller_optimized_budget` | Supports the core shared-budget contract: one hard `total_budget`, seller allocation across packages against cross-package goals, media-buy-level pacing (omitted or `even` MUST be accepted; `asap`/`front_loaded` MAY be rejected with `UNSUPPORTED_FEATURE`, never coerced), and allocation echo on reads |
 | `seller_optimized_package_budgets` | Honors package `budget` as an optional hard cap inside a seller-optimized buy. Requires `seller_optimized_budget: true` |
 | `seller_optimized_min_spend_targets` | Honors package `min_spend_target` as a soft minimum-spend target inside a seller-optimized buy, including over-subscription validation. Requires `seller_optimized_budget: true` |
 | `seller_optimized_package_pacing` | Honors package `pacing` beneath media-buy pacing inside a seller-optimized buy. Requires `seller_optimized_budget: true` |
