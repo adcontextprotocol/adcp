@@ -2993,6 +2993,45 @@ describe('comply_test_controller', () => {
       expect((lifetime as any).media_buy_deliveries[0].media_buy_id).toBe('tz_mixed_buy');
       expect((lifetime as any).reporting_period.timezone).toBeUndefined();
 
+      // A lifetime read of a mixed-zone buy cannot slice on calendar
+      // boundaries: daily/weekly/monthly/quarterly have no single anchor.
+      for (const granularity of ['daily', 'weekly', 'monthly', 'quarterly']) {
+        const { result: calendarGrain } = await simulateCallTool(server, 'get_media_buy_delivery', {
+          media_buy_ids: ['tz_mixed_buy'],
+          time_granularity: granularity,
+          account: ACCOUNT,
+          brand: BRAND,
+        });
+        expect(calendarGrain, granularity).toEqual(expect.objectContaining({
+          code: 'VALIDATION_ERROR',
+          field: 'time_granularity',
+        }));
+      }
+
+      // hourly and post_campaign have no calendar boundaries, so a mixed-zone
+      // lifetime read with either still returns delivery.
+      for (const granularity of ['hourly', 'post_campaign']) {
+        const { result: agnostic } = await simulateCallTool(server, 'get_media_buy_delivery', {
+          media_buy_ids: ['tz_mixed_buy'],
+          time_granularity: granularity,
+          account: ACCOUNT,
+          brand: BRAND,
+        });
+        expect((agnostic as any).code, granularity).toBeUndefined();
+        expect((agnostic as any).media_buy_deliveries[0].media_buy_id, granularity).toBe('tz_mixed_buy');
+      }
+
+      // A single-zone buy accepts calendar-grain granularity on a lifetime read.
+      const { result: singleZoneDaily } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_new_york_buy'],
+        time_granularity: 'daily',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect((singleZoneDaily as any).code).toBeUndefined();
+      expect((singleZoneDaily as any).media_buy_deliveries[0].media_buy_id).toBe('tz_new_york_buy');
+      expect((singleZoneDaily as any).reporting_period.timezone).toBe('America/New_York');
+
       // Aliases canonicalize: Etc/UTC is reported as UTC.
       const { result: alias } = await simulateCallTool(server, 'get_media_buy_delivery', {
         media_buy_ids: ['tz_utc_alias_buy'],
