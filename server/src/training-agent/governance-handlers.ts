@@ -27,7 +27,7 @@ import {
   findSessionMatching,
 } from './state.js';
 import { signGovernanceContext, type GovernancePhase, type PolicyDecision } from './governance-context.js';
-import { getCanonicalBase } from './canonical-base.js';
+import { getTrainingGovernanceIssuer } from './canonical-base.js';
 import {
   computeDeliveryStatementDigest,
   computeGovernanceAdjustmentHash,
@@ -2342,7 +2342,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       : undefined;
 
     effectiveContext = await signGovernanceContext({
-      issuer: `${getCanonicalBase()}/governance`,
+      issuer: getTrainingGovernanceIssuer(),
       audience: targetAudience,
       bindingId: governanceBindingId,
       phase,

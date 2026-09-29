@@ -123,7 +123,8 @@ import type {
 } from '@adcp/sdk';
 import { CreativeAssetSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
-import { getCanonicalBase } from './canonical-base.js';
+import { getGovernanceSigningPublicJwk } from './governance-signing.js';
+import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
 import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
 import { getPromotedFormatShapes } from '../services/format-shape-promotion-registry.js';
 import { validateCtvSemantics } from './ctv-experience-matrix.js';
@@ -3037,6 +3038,7 @@ import {
   resolveAccountCurrencyForRef,
   resolveAccountBrandForRef,
   resolveGovernanceAgentsForAccount,
+  isTrainingSelfGovernanceAuthority,
   handleSyncAccounts,
   handleSyncGovernance,
 } from './account-handlers.js';
@@ -4095,12 +4097,22 @@ async function governedCommitmentAuthorization(
   authority?: import('./account-handlers.js').GovernanceAgentEntry,
   buyerBrand?: GovernanceBuyerBrand,
 ) {
-  const verificationJwk = authority
-    ? await governanceVerificationJwk(authority, governanceContext, buyerBrand)
-    : undefined;
+  // A registered third-party authority must sign as its registered URL and
+  // publish its key through the buyer's brand.json. The training agent's own
+  // governance service signs as this deployment's governance issuer with the
+  // single key this deployment publishes; it is verified against exactly
+  // those values, never against a caller-supplied issuer or local demo keys.
+  const selfAuthority = authority !== undefined && isTrainingSelfGovernanceAuthority(authority.url);
+  const verificationJwk = selfAuthority
+    ? getGovernanceSigningPublicJwk()
+    : authority
+      ? await governanceVerificationJwk(authority, governanceContext, buyerBrand)
+      : undefined;
   return verifyGovernedServiceAuthorization({
     token: governanceContext,
-    expectedIssuer: authority?.url ?? `${getCanonicalBase()}/governance`,
+    expectedIssuer: authority === undefined || selfAuthority
+      ? getTrainingGovernanceIssuer()
+      : authority.url,
     expectedTask: expectedTool,
     expectedAudience,
     payload: actualPayload,
@@ -4150,6 +4162,7 @@ async function sellerGovernanceExecutionError(
   plannedDelivery: PlannedDelivery,
   intentClaims: Record<string, unknown>,
   buyerBrand: GovernanceBuyerBrand | undefined,
+  sellerCtx: TrainingContext,
 ): Promise<TaskError | undefined> {
   if (!agent.authentication.schemes.some(scheme => scheme.toLowerCase() === 'bearer')) {
     return {
@@ -4166,22 +4179,39 @@ async function sellerGovernanceExecutionError(
       plannedDelivery,
       phase: 'purchase',
     });
-    const testOverride = governanceAuthorityTestOverrides.get(agent.url);
-    const rawResponse = await ProtocolClient.callTool({
-      id: `governance-${createHash('sha256').update(agent.url).digest('hex').slice(0, 12)}`,
-      name: 'Registered governance agent',
-      agent_uri: agent.url,
-      protocol: 'mcp',
-      auth_token: agent.authentication.credentials,
-    }, 'check_governance', checkRequest as unknown as Record<string, unknown>, {
-      transport: {
-        trustedFetchFn: testOverride?.fetch ?? governanceSafeFetch,
-        allowPrivateIp: false,
-        requestTimeoutMs: GOVERNANCE_NETWORK_TIMEOUT_MS,
-        maxResponseBytes: GOVERNANCE_MAX_RESPONSE_BYTES,
-      },
-    });
-    const response = unwrapProtocolResponse(rawResponse, 'check_governance', 'mcp');
+    const selfAuthority = isTrainingSelfGovernanceAuthority(agent.url);
+    let response: unknown;
+    if (selfAuthority) {
+      // The training governance service is this deployment's /governance
+      // tenant. The seller consults it in process, authenticated as the
+      // seller identity it names in `caller`, instead of dialing the
+      // registered service locator over the network.
+      response = await handleCheckGovernance(checkRequest as unknown as ToolArgs, {
+        mode: sellerCtx.mode,
+        tenantId: 'governance',
+        ...(sellerCtx.userId !== undefined && { userId: sellerCtx.userId }),
+        ...(sellerCtx.moduleId !== undefined && { moduleId: sellerCtx.moduleId }),
+        ...(sellerCtx.principal !== undefined && { principal: sellerCtx.principal }),
+        authenticatedAgentUrl: callerUrl,
+      });
+    } else {
+      const testOverride = governanceAuthorityTestOverrides.get(agent.url);
+      const rawResponse = await ProtocolClient.callTool({
+        id: `governance-${createHash('sha256').update(agent.url).digest('hex').slice(0, 12)}`,
+        name: 'Registered governance agent',
+        agent_uri: agent.url,
+        protocol: 'mcp',
+        auth_token: agent.authentication.credentials,
+      }, 'check_governance', checkRequest as unknown as Record<string, unknown>, {
+        transport: {
+          trustedFetchFn: testOverride?.fetch ?? governanceSafeFetch,
+          allowPrivateIp: false,
+          requestTimeoutMs: GOVERNANCE_NETWORK_TIMEOUT_MS,
+          maxResponseBytes: GOVERNANCE_MAX_RESPONSE_BYTES,
+        },
+      });
+      response = unwrapProtocolResponse(rawResponse, 'check_governance', 'mcp');
+    }
     const verdict = normalizeGovernanceVerdict(response);
     if (verdict?.checkType !== 'execution' || verdict.verdict !== 'approved') {
       return {
@@ -4199,12 +4229,14 @@ async function sellerGovernanceExecutionError(
         message: 'The governance agent approved execution without a signed purchase authorization.',
       };
     }
-    const verificationJwk = await governanceVerificationJwk(agent, executionContext, buyerBrand);
+    const verificationJwk = selfAuthority
+      ? getGovernanceSigningPublicJwk()
+      : await governanceVerificationJwk(agent, executionContext, buyerBrand);
     const totalBudget = plannedDelivery.total_budget ?? 0;
     const currency = plannedDelivery.currency ?? 'USD';
     const verification = await verifyGovernedServiceAuthorization({
       token: executionContext,
-      expectedIssuer: agent.url,
+      expectedIssuer: selfAuthority ? getTrainingGovernanceIssuer() : agent.url,
       expectedAudience: callerUrl,
       expectedTask: 'create_media_buy',
       expectedPhase: 'purchase',
@@ -14968,6 +15000,7 @@ async function handleCreateMediaBuyUnlocked(
       plannedDelivery,
       governanceIntentClaims,
       governanceBuyerBrand,
+      ctx,
     );
     if (executionError) return { errors: [executionError] };
   }
