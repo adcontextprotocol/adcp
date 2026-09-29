@@ -27,13 +27,13 @@ What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cro
 
 | SDK | Current package | 3.2 RC support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TypeScript) | `14.0.0-rc.49` | Exact `3.2.0-rc.7` support | ✅ | ✅ | ✅ | ✅ |
+| **`@adcp/sdk`** (TypeScript) | `14.0.0-rc.50` | Exact `3.2.0-rc.7` support | ✅ | ✅ | ✅ | ✅ |
 | **`adcp`** (Python) | `8.0.0b18` | Exact `3.2.0-rc.7` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **`adcp/v3`** (Go) | `v3.2.1` | Exact `3.2.0-rc.1` generated schemas and types; higher layers remain role-dependent | ✅ | ⚠️ | ⚠️ | ⚠️ |
 
 Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. The L0–L3 columns describe the current package, not a 3.2 support claim.
 
-The current `rc` npm tag of `@adcp/sdk` matches this checkpoint and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`) and, from `14.0.0-rc.49`, the buyer-side consumer module (`@adcp/sdk/reporting/consumer`). Python `8.0.0b18` also embeds RC.7; Go remains on RC.1 until its next SDK wave.
+The current `rc` npm tag of `@adcp/sdk` matches this checkpoint and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`) and the buyer-side consumer module (`@adcp/sdk/reporting/consumer`). Python `8.0.0b18` also embeds RC.7; Go remains on RC.1 until its next SDK wave.
 
 For production on 3.1, use the 3.1 lines: `@adcp/sdk` 13.x (npm `latest`) and `adcp` 7.x. The [SDK version map](/docs/reference/migration/3-1-to-3-2#sdk-versions-for-3-2) lists the 3.1 and 3.2 line for each language, the stable 3.2 targets, and each SDK's upgrade guide.
 
@@ -95,7 +95,7 @@ documents coordinator options, continuation storage, and supported projections.
 [![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/sdk@14.0.0-rc.49
+npm install @adcp/sdk@14.0.0-rc.50
 ```
 
 ```javascript
@@ -206,11 +206,11 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ### JavaScript CLI
 
 ```bash
-npx @adcp/sdk@14.0.0-rc.49 --help
-npx @adcp/sdk@14.0.0-rc.49 --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@14.0.0-rc.49 my-agent list_products '{"adcp_version":"3.2-rc.7","account":{"account_id":"account_123"}}'
+npx @adcp/sdk@14.0.0-rc.50 --help
+npx @adcp/sdk@14.0.0-rc.50 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@14.0.0-rc.50 my-agent list_products '{"adcp_version":"3.2-rc.7","account":{"account_id":"account_123"}}'
 # or against the built-in public test agent:
-npx @adcp/sdk@14.0.0-rc.49 test-mcp list_products '{"adcp_version":"3.2-rc.7"}'
+npx @adcp/sdk@14.0.0-rc.50 test-mcp list_products '{"adcp_version":"3.2-rc.7"}'
 ```
 
 The `adcp_version` in the payload is a wire pin the CLI passes through, so it
