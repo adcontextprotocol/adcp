@@ -124,3 +124,15 @@ export function accountRefForResolution(ref: unknown, toolName: string | undefin
   const { sandbox: _sandbox, ...identity } = record;
   return identity;
 }
+
+/**
+ * AdCP 3.0 comply_test_controller requests may carry only the sandbox
+ * assertion (`{ sandbox: true }`) with no account identity. Resolve those to
+ * no account instead of rejecting the ref, so the framework's documented
+ * fallback for refs that name no account reads the sandbox assertion.
+ */
+export function isIdentitylessControllerRef(ref: unknown, toolName: string | undefined): boolean {
+  if (toolName !== 'comply_test_controller' || ref == null || typeof ref !== 'object' || Array.isArray(ref)) return false;
+  const keys = Object.keys(ref);
+  return keys.length === 1 && keys[0] === 'sandbox' && (ref as { sandbox?: unknown }).sandbox === true;
+}
