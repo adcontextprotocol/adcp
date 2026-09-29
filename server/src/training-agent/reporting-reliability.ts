@@ -1478,7 +1478,7 @@ export function publishReportingCoreLifecycleProbeRows(
     dimensions?: Record<string, string | number | boolean | null>;
     metrics?: Record<string, string | number | boolean | null>;
   }>,
-  revisionMetadata: Partial<Pick<ReportingRevision, 'created_at' | 'observed_at' | 'control_totals'>> = {},
+  revisionMetadata: Partial<Pick<ReportingRevision, 'reporting_revision_id' | 'created_at' | 'observed_at' | 'control_totals'>> = {},
 ): { reporting_revision_id: string; row_count: number; revision_content_sha256: string } {
   const ledger = ledgerFor(principal, accountId);
   const first = [...ledger.configs.values()][0];
@@ -1498,6 +1498,44 @@ export function publishReportingCoreLifecycleProbeRows(
   ledger.publishedRevisions.set(obligation, revision);
   ledger.version += 1;
   return { reporting_revision_id: revision.reporting_revision_id, row_count: revision.row_count, revision_content_sha256: revision.revision_content_sha256 };
+}
+
+/**
+ * The fixed two-row Core vector that `reporting_core_lifecycle_probe`
+ * `publish_nonempty` commits. `reporting-core.yaml` pins every byte of it
+ * (identity, totals, periods, dimensions, metrics) and the RFC 8785/JCS
+ * binding digest literally, and has shipped that vector since 3.2.0-rc.1,
+ * because the runner has no check that recomputes a digest from captured
+ * values. The revision identity is therefore part of the vector, not derived
+ * from the caller's account or obligation.
+ */
+export const REPORTING_CORE_NONEMPTY_VECTOR = {
+  reporting_revision_id: 'reporting-revision.ecc62efa00946aa1e2788ad9',
+  rows: [
+    {
+      period_start: '2026-08-01T00:00:00.000Z', period_end: '2026-08-01T01:00:00.000Z', impressions: 2,
+      dimensions: { media_buy_id: 'media-buy-core-001', package_id: 'package-core-001', country: 'US' },
+      metrics: { impressions: 2, clicks: 1 },
+    },
+    {
+      period_start: '2026-08-01T00:00:00.000Z', period_end: '2026-08-01T01:00:00.000Z', impressions: 3,
+      dimensions: { media_buy_id: 'media-buy-core-002', package_id: 'package-core-002', country: 'CA' },
+      metrics: { impressions: 3, clicks: 0 },
+    },
+  ],
+};
+
+/** Commit {@link REPORTING_CORE_NONEMPTY_VECTOR} for the prepared Core obligation. */
+export function publishReportingCoreLifecycleProbeVector(
+  principal: string | undefined,
+  accountId: string,
+): { reporting_revision_id: string; row_count: number; revision_content_sha256: string } {
+  return publishReportingCoreLifecycleProbeRows(
+    principal,
+    accountId,
+    structuredClone(REPORTING_CORE_NONEMPTY_VECTOR.rows),
+    { reporting_revision_id: REPORTING_CORE_NONEMPTY_VECTOR.reporting_revision_id },
+  );
 }
 
 /**

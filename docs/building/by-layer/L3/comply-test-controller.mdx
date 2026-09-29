@@ -432,6 +432,7 @@ canonical digest, or receipt is implied.
 | **advance_time** | `target_health: delayed` | Set `simulated_now` to `2026-08-01T02:05:00.000Z`, strictly after `expected_at`. The same obligation becomes `delayed` with a stable issue while automated recovery remains open. |
 | **advance_time** | `target_health: action_required` | Set `simulated_now` to `2026-08-01T04:05:00.000Z`, strictly after the returned `recovery_deadline`. The same obligation becomes `action_required`. |
 | **publish_zero_row** | none | Commit an immutable current revision with `row_count: 0`. The obligation becomes satisfied; this is empty reporting, not missing reporting. |
+| **publish_nonempty** | none | Commit the fixed two-row Core test vector from the [`reporting_core`](/compliance/latest/universal/reporting-core.yaml) storyboard for the prepared obligation: its literal rows and `impressions` control total, under the fixed `reporting_revision_id` `reporting-revision.ecc62efa00946aa1e2788ad9`, so `revision_content_sha256` equals the vector's RFC 8785/JCS digest `5199a776b3a99915f084e16c921b2e501fcedd949017236d51a2303c5c2f5cd1`. |
 | **restate_snapshot** | none | Commit a new immutable snapshot revision that names the current snapshot in `supersedes_reporting_revision_id`. Reject the operation when no snapshot exists or the current revision is official. |
 | **restate_after_received** | `received_reporting_revision_id`, optional `advance_to: within_grace \| past_grace` | Same restatement, but only against the revision the caller already read. Reject the operation unless `received_reporting_revision_id` names the caller's current required revision; a seller advertising `consumer_status_task` MUST additionally require a current `received` consumer status from that caller naming it. Return `stale_received_grace_deadline` and set `simulated_now` inside it (`within_grace`, the default) or one second past it (`past_grace`). Repeating the call is convergent: it reuses the committed restatement and only moves the clock. |
 | **omit_obligation** | none | Advance through a second elapsed period while deliberately suppressing its obligation. The response supplies the expected period and ID so a buyer can demonstrate denominator-based detection. Sandbox education only: this intentionally produces a non-conformant ledger. |
@@ -456,7 +457,9 @@ for the new snapshot plus `supersedes_reporting_revision_id`;
 `consumer_mismatch_escalation_deadline`, `expected_recommended_action`, and any
 still-future `stale_received_grace_deadline`. Implementations choose fixture
 identifiers — including the sandbox `account_id` — so callers capture the
-returned values rather than guessing them.
+returned values rather than guessing them. The one exception is
+`publish_nonempty`, whose revision identity is part of the fixed test vector,
+because the binding digest covers it.
 
 `restate_after_received` exists so the
 [stale-received grace projection](/docs/media-buy/task-reference/get_reporting_status#consumer-status-mismatch)

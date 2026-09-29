@@ -460,9 +460,14 @@ phases:
       Core reads contain no Managed materialization or receipt machinery. A
       mixed selector and an RC0 exact-read request are rejected.
 
+      The phase re-prepares the same sandbox account as the obligation
+      lifecycle. `prepare` is a deterministic reset, and runners address
+      controller calls with the test-kit account, so a second account ID
+      would name a ledger the controller never wrote to.
+
     steps:
       - id: prepare_nonempty_core
-        title: "Prepare a separate deterministic Core account"
+        title: "Reset the deterministic Core account for the non-empty vector"
         task: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
@@ -470,7 +475,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_core_nonempty_lab"
+            account_id: "reporting_core_lab"
             sandbox: true
           scenario: "reporting_core_lifecycle_probe"
           params:
@@ -493,7 +498,7 @@ phases:
             path: "simulated.reporting_revision_id"
         sample_request:
           account:
-            account_id: "reporting_core_nonempty_lab"
+            account_id: "reporting_core_lab"
             sandbox: true
           scenario: "reporting_core_lifecycle_probe"
           params:
@@ -529,7 +534,7 @@ phases:
             path: "revision"
         sample_request:
           account:
-            account_id: "reporting_core_nonempty_lab"
+            account_id: "reporting_core_lab"
           view: "revision"
           reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
         validations:
@@ -571,7 +576,7 @@ phases:
             path: "reporting_rows"
         sample_request:
           account:
-            account_id: "reporting_core_nonempty_lab"
+            account_id: "reporting_core_lab"
           reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
           pagination:
             max_results: 1
@@ -667,7 +672,7 @@ phases:
             path: "reporting_rows"
         sample_request:
           account:
-            account_id: "reporting_core_nonempty_lab"
+            account_id: "reporting_core_lab"
           reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
           pagination:
             max_results: 1
@@ -719,7 +724,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_core_nonempty_lab"
+            account_id: "reporting_core_lab"
           reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
           pagination:
             max_results: 1
@@ -744,10 +749,11 @@ phases:
         task: get_media_buy_delivery
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         comply_scenario: reporting_core_lifecycle_probe
+        expect_error: true
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_core_nonempty_lab"
+            account_id: "reporting_core_lab"
           reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
           include_package_daily_breakdown: false
         validations:
@@ -760,10 +766,11 @@ phases:
         task: get_media_buy_delivery
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         comply_scenario: reporting_core_lifecycle_probe
+        expect_error: true
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_core_nonempty_lab"
+            account_id: "reporting_core_lab"
           reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
           adcp_version: "3.2-rc.0"
         validations:
