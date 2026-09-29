@@ -2,7 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/list-account-changes-request.json",
   "title": "List Account Changes Request",
-  "description": "Read a durable, ordered feed of material changes to AdCP-visible state for one account. Use a latest checkpoint before snapshot bootstrap, then drain from that cursor to close the bootstrap race.",
+  "x-status": "experimental",
+  "description": "Read a durable, ordered feed of material changes to AdCP-visible state for one account. Use a latest checkpoint before snapshot bootstrap, then drain from that cursor to close the bootstrap race. Experimental in 3.2 (RFC #6810): sellers implementing this task MUST list account.change_feed in experimental_features.",
   "x-tool-summary": "List durable changes to authoritative AdCP-visible state for one account.",
   "type": "object",
   "properties": {

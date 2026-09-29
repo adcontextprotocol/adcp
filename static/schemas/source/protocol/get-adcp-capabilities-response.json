@@ -1090,7 +1090,8 @@
         },
         "change_feed": {
           "type": "object",
-          "description": "Whether the seller exposes a durable, ordered feed of material changes to authoritative account-scoped state. This is distinct from webhook_activity transport diagnostics and from current-state reads. Sellers claiming support MUST retain changes for at least 90 days after recording and MUST produce records regardless of whether a mutation originated through AdCP, a seller surface, another authorized principal, seller automation, or a connected platform within declared coverage.",
+          "x-status": "experimental",
+          "description": "Whether the seller exposes a durable, ordered feed of material changes to authoritative account-scoped state. This is distinct from webhook_activity transport diagnostics and from current-state reads. Sellers claiming support MUST retain changes for at least 90 days after recording and MUST produce records regardless of whether a mutation originated through AdCP, a seller surface, another authorized principal, seller automation, or a connected platform within declared coverage. Experimental in 3.2 (RFC #6810): sellers advertising supported: true MUST list account.change_feed in experimental_features.",
           "oneOf": [
             {
               "title": "AccountChangeFeedSupported",

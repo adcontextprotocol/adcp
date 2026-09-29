@@ -10,12 +10,13 @@ account, including changes made outside the observing buyer's calls. Use it
 after a snapshot bootstrap, after receiving `account.change_recorded`, or for
 an account-level audit of state transitions.
 
-<Warning>
-This is a 3.2 implementation draft for [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810). It is not normative until the RFC is ratified.
-</Warning>
+<Note>
+**Experimental.** The account change feed (`list_account_changes`, the `account.change_recorded` webhook, the `account.change_feed` capability block on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), and the [`CURSOR_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-cursor-expired) error code) is part of AdCP 3.2 as an experimental surface. [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810) is still open, so the surface may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any part of it MUST declare `account.change_feed` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
 
 The feed is optional and appears only when
-`get_adcp_capabilities.account.change_feed.supported` is `true`.
+`get_adcp_capabilities.account.change_feed.supported` is `true` and
+`experimental_features` contains `account.change_feed`.
 
 ## What the feed covers
 
@@ -31,7 +32,7 @@ increments, raw audience members, raw events, catalog item bodies, and webhook
 delivery attempts.
 
 For the complete coverage matrix and rationale, see the
-[account change feed draft](https://github.com/adcontextprotocol/adcp/blob/main/specs/account-change-feed.md).
+[account change feed design spec](https://github.com/adcontextprotocol/adcp/blob/main/specs/account-change-feed.md).
 
 ## Request
 

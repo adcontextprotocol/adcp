@@ -387,7 +387,7 @@ Account and authentication capabilities. All sellers should declare this section
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
 | `identity_updates` | object | Optional capability gate for reconciling an existing account's buyer-controlled operator identity through `sync_accounts` settings-update mode. `supported_changes` declares `operator_unit_name`, `operator_unit`, and/or `operator`. |
 | `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
-| `change_feed` | object | Optional. Declares the durable [`list_account_changes`](/docs/accounts/tasks/list_account_changes) feed and `account.change_recorded` wake-up. When supported, includes a retention floor of at least 90 days and the resource types covered. |
+| `change_feed` | object | Optional, experimental (`account.change_feed`). Declares the durable [`list_account_changes`](/docs/accounts/tasks/list_account_changes) feed and `account.change_recorded` wake-up. When supported, includes a retention floor of at least 90 days and the resource types covered. |
 | `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. Account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup. Buyer-declared accounts use `sandbox: true` in `sync_accounts`, or in the natural-key account reference when the seller uses unambiguous lazy provisioning — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
 
 #### account.notifications
@@ -424,8 +424,14 @@ This capability is separate from `account.notifications`, which covers the
 specialized account lifecycle invalidation, and from `webhook_activity`, which
 is only delivery-attempt diagnostics.
 
+The account change feed is [experimental](/docs/reference/experimental-status)
+in 3.2 while [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810)
+remains open. Sellers advertising `supported: true` MUST also list
+`account.change_feed` in `experimental_features`.
+
 ```json
 {
+  "experimental_features": ["account.change_feed"],
   "account": {
     "change_feed": {
       "supported": true,

@@ -1,13 +1,19 @@
 # Account Change Feed
 
-**Status:** Nonnormative draft pending RFC ratification
+**Status:** Experimental in AdCP 3.2 (feature id `account.change_feed`); RFC pending ratification
 
 **Target:** AdCP 3.2
 **RFC:** [#6810](https://github.com/adcontextprotocol/adcp/issues/6810)
 
-This document is the implementation draft for RFC #6810. It MUST NOT be
-treated as an accepted protocol requirement until the RFC completes the
-required review period and has an accepted decision record.
+This document is the design spec for RFC #6810. AdCP 3.2 ships the account
+change feed as an experimental surface under the
+[experimental status contract](../docs/reference/experimental-status.mdx):
+the schemas carry `x-status: experimental`, and sellers implementing any part
+of the feed MUST list `account.change_feed` in `experimental_features` on
+`get_adcp_capabilities`. The requirements below bind sellers that opt in, but
+the surface may change between 3.x releases with at least 6 weeks' notice. It
+graduates to stable only after the RFC has an accepted decision record and the
+surface meets the graduation criteria.
 
 ## Problem
 
