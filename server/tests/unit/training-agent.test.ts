@@ -17155,14 +17155,137 @@ describe('activate_signal handler', () => {
       account,
       signal_agent_segment_id: 'keystone_household_income',
       pricing_option_id: 'po_keystone_inc_cpm',
-      destinations: [{ type: 'platform', platform: 'the-trade-desk', account: 'agency-123' }],
+      destinations: [{ type: 'platform', platform: 'pinnacle-dsp', account: 'agency-123' }],
     });
 
     const deployments = result.deployments as Array<Record<string, unknown>>;
     expect(deployments[0].type).toBe('platform');
-    expect(deployments[0].platform).toBe('the-trade-desk');
+    expect(deployments[0].platform).toBe('pinnacle-dsp');
     expect(deployments[0].account).toBe('agency-123');
     expect(deployments[0].is_live).toBe(true);
+  });
+
+  // adcontextprotocol/adcp#7767: get_signals readback only looked up the
+  // training agent's own agent deployment, so a platform activation never
+  // surfaced (signal_marketplace/governance_approved readback step).
+  it('activated platform signal shows is_live true in subsequent get_signals', async () => {
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: activation } = await simulateCallTool(server1, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'shopgrid_category_buyer',
+      pricing_option_id: 'po_shopgrid_cat_cpm',
+      destinations: [{ type: 'platform', platform: 'pinnacle-dsp', account: 'acme-seat' }],
+    });
+    const activated = (activation.deployments as Array<Record<string, unknown>>)[0];
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_signals', {
+      account,
+      signal_ids: [{ id: 'shopgrid_category_buyer' }],
+    });
+
+    const deployments = (result.signals as Array<Record<string, unknown>>)[0]
+      .deployments as Array<Record<string, unknown>>;
+    expect(deployments[0]).toEqual({
+      type: 'platform',
+      platform: 'pinnacle-dsp',
+      account: 'acme-seat',
+      is_live: true,
+      activation_key: { type: 'key_value', key: 'audience_segment', value: 'shopgrid_category_buyer' },
+      deployed_at: activated.deployed_at,
+    });
+    // The agent's own (not yet activated) deployment is still reported.
+    expect(deployments.slice(1)).toEqual([{
+      type: 'agent',
+      agent_url: getAgentUrl(),
+      is_live: false,
+      estimated_activation_duration_minutes: 0,
+    }]);
+  });
+
+  it('reports every live deployment, most recent first, and drops deactivated ones', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const activate = async (destination: Record<string, unknown>, action = 'activate') => {
+        const server = createTrainingAgentServer(DEFAULT_CTX);
+        await simulateCallTool(server, 'activate_signal', {
+          account,
+          action,
+          signal_agent_segment_id: 'shopgrid_category_buyer',
+          pricing_option_id: 'po_shopgrid_cat_cpm',
+          destinations: [destination],
+        });
+      };
+      const readback = async () => {
+        const server = createTrainingAgentServer(DEFAULT_CTX);
+        const { result } = await simulateCallTool(server, 'get_signals', {
+          account,
+          signal_ids: [{ id: 'shopgrid_category_buyer' }],
+        });
+        return (result.signals as Array<Record<string, unknown>>)[0]
+          .deployments as Array<Record<string, unknown>>;
+      };
+
+      vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      await activate({ type: 'agent', agent_url: getAgentUrl() });
+      vi.setSystemTime(new Date('2026-01-01T00:01:00.000Z'));
+      await activate({ type: 'platform', platform: 'pinnacle-dsp', account: 'seat-a' });
+      vi.setSystemTime(new Date('2026-01-01T00:02:00.000Z'));
+      await activate({ type: 'platform', platform: 'pinnacle-dsp', account: 'seat-b' });
+
+      const live = await readback();
+      expect(live.map(d => [d.type, d.platform ?? d.agent_url, d.account, d.is_live])).toEqual([
+        ['platform', 'pinnacle-dsp', 'seat-b', true],
+        ['platform', 'pinnacle-dsp', 'seat-a', true],
+        ['agent', getAgentUrl(), undefined, true],
+      ]);
+      expect(live.every(d => d.activation_key !== undefined)).toBe(true);
+
+      await activate({ type: 'platform', platform: 'pinnacle-dsp', account: 'seat-b' }, 'deactivate');
+      const afterDeactivate = await readback();
+      expect(afterDeactivate.map(d => d.account ?? d.agent_url)).toEqual(['seat-a', getAgentUrl()]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not report one account\'s platform activation in another account\'s readback', async () => {
+    const otherAccount = { brand: { domain: 'other-signal-test.example' }, operator: 'other-signal-test.example' };
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server1, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'shopgrid_category_buyer',
+      pricing_option_id: 'po_shopgrid_cat_cpm',
+      destinations: [{ type: 'platform', platform: 'pinnacle-dsp', account: 'acme-seat' }],
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_signals', {
+      account: otherAccount,
+      signal_ids: [{ id: 'shopgrid_category_buyer' }],
+    });
+
+    const deployments = (result.signals as Array<Record<string, unknown>>)[0]
+      .deployments as Array<Record<string, unknown>>;
+    expect(deployments).toEqual([{
+      type: 'agent',
+      agent_url: getAgentUrl(),
+      is_live: false,
+      estimated_activation_duration_minutes: 0,
+    }]);
+  });
+
+  it('rejects a platform destination without a platform identifier', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'shopgrid_category_buyer',
+      pricing_option_id: 'po_shopgrid_cat_cpm',
+      destinations: [{ type: 'platform', platform: '', account: 'acme-seat' }],
+    });
+
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.field).toBe('destinations[0].platform');
   });
 });
 
