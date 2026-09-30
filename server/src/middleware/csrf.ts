@@ -38,9 +38,9 @@ const logger = createLogger("csrf");
  * Tenant segment is `[a-z][a-z0-9-]+` to match the live TENANT_IDS
  * (`signals`, `sales`, `governance`, `creative`, `creative-builder`, `brand`)
  * without requiring this file to import or stay in sync with that list.
- * Suffix variants enumerate the four production route shapes.
+ * Suffix variants enumerate the five production route shapes.
  */
-const PER_TENANT_MCP_PATH = /^\/[a-z][a-z0-9-]+\/mcp(-strict(-required|-forbidden)?)?$/;
+const PER_TENANT_MCP_PATH = /^\/[a-z][a-z0-9-]+\/mcp(-strict(-required(-legacy)?|-forbidden)?)?$/;
 
 const CSRF_COOKIE = "csrf-token";
 const CSRF_HEADER = "x-csrf-token";

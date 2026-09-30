@@ -18083,6 +18083,25 @@ describe('get_adcp_capabilities handler', () => {
     expect((forbidden.adcp as Record<string, unknown>).supported_versions).not.toContain(CURRENT_ADCP_VERSION);
   });
 
+  it('keeps the legacy-profile required-digest route off 3.2', async () => {
+    const legacyServer = createTrainingAgentServer({
+      mode: 'open', strict: true, digestMode: 'required', legacySigningProfile: true,
+    });
+    const [{ result: caps }, pinned, major] = await Promise.all([
+      simulateCallTool(legacyServer, 'get_adcp_capabilities', {}),
+      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_major_version: 3 }),
+    ]);
+
+    expect((caps.request_signing as Record<string, unknown>).covers_content_digest).toBe('required');
+    const versions = (caps.adcp as Record<string, unknown>).supported_versions as string[];
+    expect(versions).toContain('3.1');
+    expect(versions.some(version => version.startsWith('3.2'))).toBe(false);
+    expect(pinned.isError).toBe(true);
+    expect(pinned.result).toMatchObject({ code: 'VERSION_UNSUPPORTED' });
+    expect(major.result.adcp_version).toBe('3.1');
+  });
+
   it('rejects 3.2 pins on legacy signing profiles and accepts them on the required profile', async () => {
     const eitherServer = createTrainingAgentServer({ mode: 'open', strict: true });
     const forbiddenServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'forbidden' });

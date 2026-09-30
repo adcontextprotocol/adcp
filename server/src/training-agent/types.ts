@@ -239,6 +239,13 @@ export interface TrainingContext {
    * `/mcp-strict-required` uses `'required'`; `/mcp-strict-forbidden` uses `'forbidden'`.
    */
   digestMode?: 'either' | 'required' | 'forbidden';
+  /**
+   * Route verifies under the AdCP 3.0/3.1 legacy request-signing profile even
+   * though its digest mode is `'required'` (`/mcp-strict-required-legacy`).
+   * Such a route advertises only pre-3.2 releases. Set only by the trusted
+   * route, never from request input.
+   */
+  legacySigningProfile?: boolean;
 }
 
 export interface ShowSpecial {

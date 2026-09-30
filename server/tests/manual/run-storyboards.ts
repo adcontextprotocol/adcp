@@ -978,7 +978,10 @@ async function main() {
       //
       // `/mcp-strict` (either): baseline run — skip 007/018 which target
       //   specific digest profiles, skip 025 (SDK-internal JWK test).
-      // `/mcp-strict-required` (required): 007 fires here; skip 018/025.
+      // `/mcp-strict-required` (required, 3.2 signing profile): current
+      //   runs only; the verifier rejects Base64URL sf-binary at step 1.
+      // `/mcp-strict-required-legacy` (required, 3.0/3.1 signing profile):
+      //   frozen 3.0 runs; 007 fires here.
       // `/mcp-strict-forbidden` (forbidden): 018 fires here; skip 007/025.
       const strictVariants: Array<{ routeSuffix: string; skipVectors: string[] }> = isThreeZeroCompatRun
         ? [
@@ -987,7 +990,11 @@ async function main() {
               skipVectors: ['007-missing-content-digest', '018-digest-covered-when-forbidden', '025-jwk-alg-crv-mismatch'],
             },
             {
-              routeSuffix: '/mcp-strict-required',
+              // The frozen 3.0.x vectors are Base64URL-signed, which the
+              // 3.2-pinned `/mcp-strict-required` verifier MUST reject; the
+              // legacy route applies the same required-digest policy under
+              // the 3.0/3.1 signing profile.
+              routeSuffix: '/mcp-strict-required-legacy',
               // The frozen 3.0.x vector set predates per-route digest-profile
               // fixtures. Keep required-profile coverage by running only the
               // digest-bearing positive and digest-policy negatives here.
