@@ -415,11 +415,24 @@ Only use `patch`/`minor`/`major` when the change affects the published AdCP prot
 
 ### Release lines
 
-AdCP runs two active release lines:
+AdCP runs two active release lines until `v3.2.1` is tagged, and three after:
+
+Until `v3.2.1` is tagged:
 
 - **`3.1.x`** → stable maintenance patches (`3.1.4`, `3.1.5`, …)
-- **`main`** → the next minor, currently in Changesets RC pre mode
-  (`.changeset/pre.json`) to produce `3.2.0-rc.N` until GA exit
+- **`main`** → the 3.2 line, in Changesets RC pre mode
+  (`.changeset/pre.json`) until the reviewed GA pre-exit, whose Version
+  Packages cut produces `3.2.1` (`3.2.0` is withdrawn)
+
+After 3.2 GA (`.agents/shortcuts/cut-minor-ga.md` Phase 10):
+
+- **`3.2.x`** → stable maintenance patches (`3.2.2`, `3.2.3`, …), created from
+  the `v3.2.1` Version Packages merge
+- **`main`** → 3.3, back in Changesets **beta** pre mode the same day
+- **`3.1.x`** → security and critical fixes for a maintainer-decided window
+
+The cherry-pick and forward-merge rules below name `3.1.x`; after GA they apply
+to `3.2.x` in the same way (`forward-merge-3.2.yml`).
 
 Branch naming follows `<major>.<minor>.x` to match the existing `2.6.x` precedent. No `release/` prefix.
 

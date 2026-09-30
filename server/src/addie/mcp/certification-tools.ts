@@ -3096,7 +3096,7 @@ npx @adcp/sdk@14.0.0-rc.53 test-mcp get_products '{"adcp_version":"3.2-rc.7","bu
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.
 
-2. Validate the 3.2 targeting-aware objectives live with \`list_products\` and \`request_proposals\`: request decomposition, required future targeting support, disclosed modification acceptance/rejection, and effective package readback. First retain a capability response advertising the exact served version and relevant lifecycle tools. Then retain one supported and one unsupported requirement result, the RC.1 request/response envelopes, and the post-purchase package readback. An empty result for the unsupported requirement is evidence only when the same seller returns an eligible product for the supported control request.
+2. Validate the 3.2 targeting-aware objectives live with \`list_products\` and \`request_proposals\`: request decomposition, required future targeting support, disclosed modification acceptance/rejection, and effective package readback. First retain a capability response advertising the exact served version and relevant lifecycle tools. Then retain one supported and one unsupported requirement result, the 3.2 request/response envelopes, and the post-purchase package readback. An empty result for the unsupported requirement is evidence only when the same seller returns an eligible product for the supported control request.
 
 Paste the live output and validation results. We'll verify both the compatibility workflow and the native 3.2 behavior.
 

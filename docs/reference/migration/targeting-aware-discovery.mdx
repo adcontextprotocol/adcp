@@ -337,7 +337,7 @@ remains authoritative for the dimensions that can be selected later.
 Before sending `targeting_overlay` or `required_overlay_support`, a buyer:
 
 1. Reads `get_adcp_capabilities.adcp.supported_versions`.
-2. Selects a compatible 3.2 release or prerelease and sends that exact
+2. Selects a compatible 3.2 release (normally `"3.2"`) and sends that exact
    release-precision value in `adcp_version` (plus `adcp_major_version: 3`
    through 3.x).
 3. Validates the response against the echoed `adcp_version`.
