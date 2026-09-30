@@ -311,7 +311,8 @@ REQUIRED_EXACT_CURRENT_SALES=(
   # executed; a routing regression collapses them to a skipped row.
   "media_buy_seller/governance_approved:13:0"
   "media_buy_seller/governance_conditions:12:0"
-  "media_buy_seller/governance_denied:5:0"
+  "media_buy_seller/governance_denied:11:0"
+  "media_buy_seller/governance_denied_recovery:9:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"

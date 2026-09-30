@@ -729,7 +729,8 @@ jobs:
             # the governed calls ran against the governance tenant.
             "media_buy_seller/governance_approved:13:0"
             "media_buy_seller/governance_conditions:12:0"
-            "media_buy_seller/governance_denied:5:0"
+            "media_buy_seller/governance_denied:11:0"
+            "media_buy_seller/governance_denied_recovery:9:0"
           )
           for requirement in "${required_exact[@]}"; do
             storyboard_id="${requirement%%:*}"
