@@ -106,14 +106,14 @@ describe('outcome_target reverse-forecast criteria', () => {
   });
 
   it('pins cost_per.strength to the BiddingPolicy.cost_per strength vocabulary', () => {
-    // Named definitions give generated SDKs distinct type names
+    // Separate schemas give generated SDKs distinct type names
     // (OutcomeTargetCostPer, OutcomeTargetCostStrength) rather than a second
     // CostPer/Strength colliding with BiddingPolicy's; this pins the values.
     const outcomeTarget = readSchema('/schemas/media-buy/outcome-target.json');
-    const costPer = outcomeTarget.definitions.outcome_target_cost_per;
-    assert.equal(outcomeTarget.properties.cost_per.$ref, '#/definitions/outcome_target_cost_per');
-    assert.equal(costPer.properties.strength.$ref, '#/definitions/outcome_target_cost_strength');
-    const outcomeStrengths = outcomeTarget.definitions.outcome_target_cost_strength.enum;
+    assert.equal(outcomeTarget.properties.cost_per.$ref, '/schemas/core/outcome-target-cost-per.json');
+    const costPer = readSchema('/schemas/core/outcome-target-cost-per.json');
+    assert.equal(costPer.properties.strength.$ref, '/schemas/enums/outcome-target-cost-strength.json');
+    const outcomeStrengths = readSchema('/schemas/enums/outcome-target-cost-strength.json').enum;
     const biddingStrengths = readSchema('/schemas/core/bidding-policy.json').properties.cost_per.properties.strength.enum;
     assert.deepEqual(outcomeStrengths, biddingStrengths);
   });
