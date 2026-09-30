@@ -359,9 +359,10 @@ phases:
           Submitted only), so the seller populates `errors[].code: GOVERNANCE_DENIED`
           in the payload AND `adcp_error.code: GOVERNANCE_DENIED` on the envelope per
           the two-layer model, AND flips transport-level failure markers (HTTP 4xx /
-          MCP `isError: true` / A2A `failed`). Compare with `brand_rights/governance_denied`,
-          which exercises Case-1 (rejection arm is the canonical denial shape; no
-          error code on the wire; transport markers stay green).
+          MCP `isError: true` / A2A `failed`). Case-1 applies instead to operations
+          that define a rejection arm, such as `acquire_rights` →
+          `AcquireRightsRejected` (the arm is the canonical denial shape; no error
+          code on the wire; transport markers stay green).
         sample_request:
           brand:
             domain: "acmeoutdoor.example"

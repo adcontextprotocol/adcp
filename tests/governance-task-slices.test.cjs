@@ -16,8 +16,10 @@ const stepsById = (doc) => new Map(
 test('rights governance proof is task-gated and proves no grant persisted', () => {
   const doc = load('specialisms', 'brand-rights', 'scenarios', 'governance_denied.yaml');
   const steps = stepsById(doc);
-  const denied = steps.get('acquire_rights_denied');
+  const rejectedArm = steps.get('acquire_rights_denied_rejected_arm');
+  const permissionError = steps.get('acquire_rights_denied_permission_error');
   const noGrant = steps.get('rejected_grant_not_persisted');
+  const phases = new Map((doc.phases || []).map((phase) => [phase.id, phase]));
 
   assert.deepEqual(doc.requires_capability, {
     path: 'adcp.governance_enforcement.tasks',
@@ -27,9 +29,35 @@ test('rights governance proof is task-gated and proves no grant persisted', () =
     assert.ok(doc.required_tools.includes(tool), `${tool} must be declared`);
   }
   assert.equal(steps.has('sync_plans'), false, 'the service proof must not create provider policy');
-  assert.equal(denied.sample_request.governance_context, undefined);
-  assert.equal(denied.sample_request.campaign.estimated_impressions, 1000000);
-  assert.equal(denied.validations.some((validation) => validation.path === 'context'), false);
+  // Interim (#7790): the missing-token rejection may use the structured arm
+  // or PERMISSION_DENIED; both branches send the same unauthorized request.
+  for (const [phaseId, step] of [
+    ['denied_rejection_arm', rejectedArm],
+    ['denied_permission_error', permissionError],
+  ]) {
+    assert.ok(step, `${phaseId} step must exist`);
+    assert.deepEqual(phases.get(phaseId).branch_set, {
+      id: 'brand_rights_missing_governance_context_rejected',
+      semantics: 'any_of',
+    });
+    assert.equal(phases.get(phaseId).optional, true);
+    assert.equal(step.stateful, false, 'a failed branch must not cascade onto the no-grant proof');
+    assert.equal(step.contributes, true);
+    assert.equal(step.sample_request.governance_context, undefined);
+    assert.equal(step.sample_request.campaign.estimated_impressions, 1000000);
+    assert.equal(step.validations.some((validation) => validation.path === 'context'), false);
+  }
+  assert.equal(
+    rejectedArm.validations.find((validation) => validation.check === 'field_value')?.value,
+    'rejected',
+  );
+  assert.equal(
+    permissionError.validations.find((validation) => validation.check === 'error_code')?.value,
+    'PERMISSION_DENIED',
+  );
+  const assertion = steps.get('assert_missing_governance_context_rejected');
+  assert.equal(assertion.task, 'assert_contribution');
+  assert.deepEqual(assertion.validations[0].allowed_values, ['brand_rights_missing_governance_context_rejected']);
   assert.equal(
     noGrant.validations.find((validation) => validation.check === 'error_code')?.value,
     'REFERENCE_NOT_FOUND',
