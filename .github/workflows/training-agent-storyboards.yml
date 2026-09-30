@@ -384,6 +384,33 @@ jobs:
             exit 1
           fi
 
+      - name: Enforce routed multi-agent governance storyboards
+        if: matrix.surface == 'current' && (matrix.tenant == 'signals' || matrix.tenant == 'brand' || matrix.tenant == 'creative-builder')
+        env:
+          TENANT: ${{ matrix.tenant }}
+        run: |
+          set -euo pipefail
+          # requires: [multi_agent] storyboards route their governance steps to
+          # the governance tenant. Exact counts prove the governed call ran; a
+          # routing regression collapses the row to a single skipped step.
+          case "${TENANT}" in
+            signals) requirement="signal_marketplace/governance_approved:7:0" ;;
+            brand) requirement="brand_rights/governance_approved:7:0" ;;
+            creative-builder) requirement="creative_transformers/governance_approved:6:0" ;;
+            *) echo "::error::No routed governance storyboard is pinned for /${TENANT}; update this step with its if: condition."; exit 1 ;;
+          esac
+          storyboard_id="${requirement%%:*}"
+          counts="${requirement#*:}"
+          expected_passed="${counts%%:*}"
+          expected_skipped="${counts##*:}"
+          if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓[[:space:]]+${expected_passed}P / ${expected_skipped}S" /tmp/storyboards.log >/dev/null; then
+            echo "Required-exact storyboard passed: ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
+          else
+            echo "::error::Required-exact storyboard counts changed on /${TENANT} current surface: ${storyboard_id}"
+            grep -F "${storyboard_id}" /tmp/storyboards.log || true
+            exit 1
+          fi
+
       - name: Enforce creative required-clean storyboards
         if: matrix.surface == 'current' && matrix.tenant == 'creative'
         run: |
@@ -698,6 +725,11 @@ jobs:
             "media_buy_seller/governance_agent_binding_acceptance:5:0"
             "media_buy_seller/external_audience_source_binding:9:0"
             "media_buy_seller/get_products_async:11:0"
+            # Routed requires: [multi_agent] storyboards: exact counts prove
+            # the governed calls ran against the governance tenant.
+            "media_buy_seller/governance_approved:13:0"
+            "media_buy_seller/governance_conditions:12:0"
+            "media_buy_seller/governance_denied:5:0"
           )
           for requirement in "${required_exact[@]}"; do
             storyboard_id="${requirement%%:*}"
