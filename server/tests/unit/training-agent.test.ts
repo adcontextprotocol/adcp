@@ -19324,7 +19324,6 @@ describe('proposal lifecycle', () => {
       outcome: 'listed',
       products: [{
         product_id: expect.stringMatching(/^configured_[a-f0-9]{24}$/),
-        is_custom: true,
         expires_at: expect.any(String),
         overlay_support: {
           geo_countries: { max_values_per_package: 2 },
@@ -19333,6 +19332,11 @@ describe('proposal lifecycle', () => {
       }],
     });
     const configuredProduct = (listed.result.products as Array<Record<string, unknown>>)[0]!;
+    // Canonical products carry no is_custom; expires_at marks the
+    // request-specific configured offer.
+    expect(configuredProduct).not.toHaveProperty('is_custom');
+    const configuredValidation = validateSourceSchema('core/canonical-product.json', configuredProduct);
+    expect(configuredValidation.valid, JSON.stringify(configuredValidation.errors)).toBe(true);
     const configuredPricing = (configuredProduct.pricing_options as Array<Record<string, unknown>>)
       .find(option => option.pricing_option_id === 'targeting_fixed_cpm')!;
     const purchased = await executeTrainingAgentTool('buy_products', {
@@ -20347,7 +20351,7 @@ describe('proposal lifecycle', () => {
     }]);
   });
 
-  it('keeps legacy collection composition out of the default compact product projection', async () => {
+  it('preserves collection composition in the default compact product projection', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const productId = `collection-projection-${randomUUID()}`;
     const seeded = await simulateCallTool(server, 'comply_test_controller', {
@@ -20375,12 +20379,21 @@ describe('proposal lifecycle', () => {
     });
 
     expect(listed.isError, JSON.stringify(listed.result)).toBeFalsy();
-    expect(listed.result).toMatchObject({ outcome: 'listed', products: [{ product_id: productId }] });
-    // core/canonical-product.json is closed and has no collection composition
-    // fields; they remain on the legacy get_products Product.
+    expect(listed.result).toMatchObject({
+      outcome: 'listed',
+      products: [{
+        product_id: productId,
+        collections: [{
+          publisher_domain: 'channel-owner.example',
+          collection_ids: ['retro_news'],
+        }],
+        collection_targeting_allowed: true,
+      }],
+    });
+    // Installments stay legacy-only until installment.json drops the
+    // deprecated collection_id shorthand (deferred to 3.3).
     const [compact] = listed.result.products as Array<Record<string, unknown>>;
-    expect(compact).not.toHaveProperty('collections');
-    expect(compact).not.toHaveProperty('collection_targeting_allowed');
+    expect(compact).not.toHaveProperty('installments');
     const validation = validateSourceSchema('core/canonical-product.json', compact);
     expect(validation.valid, JSON.stringify(validation.errors)).toBe(true);
 
