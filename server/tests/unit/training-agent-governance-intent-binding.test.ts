@@ -402,6 +402,65 @@ describe('check_governance request-shape binding', () => {
     });
   });
 
+  it('checks the bidding profile only after the governance gate on a governed buy', async () => {
+    await withPlan(async () => {
+      const session = await getSession('open:intent-binding.example');
+      session.mediaBuys.set('mb_governed_bidding', {
+        mediaBuyId: 'mb_governed_bidding',
+        accountRef: { brand: { domain: 'intent-binding.example' } },
+        status: 'active',
+        currency: 'USD',
+        totalBudget: 1_000,
+        budgetAllocation: { mode: 'fixed' },
+        packages: [{
+          packageId: 'pkg_governed_bidding',
+          productId: 'display_standard',
+          pricingOptionId: 'cpm_standard',
+          budget: 1_000,
+          paused: false,
+          startTime: '2027-01-01T00:00:00Z',
+          endTime: '2027-12-31T23:59:59Z',
+          creativeAssignments: [],
+        }],
+        startTime: '2027-01-01T00:00:00Z',
+        endTime: '2027-12-31T23:59:59Z',
+        revision: 1,
+        confirmedAt: '2027-01-01T00:00:00Z',
+        createdAt: '2027-01-01T00:00:00Z',
+        updatedAt: '2027-01-01T00:00:00Z',
+        history: [],
+      });
+      await flushDirtySessions();
+      const businessPayload = {
+        account: { brand: { domain: 'intent-binding.example' } },
+        media_buy_id: 'mb_governed_bidding',
+        revision: 1,
+        bidding: { automatic: true },
+      };
+
+      // Unauthorized: the governance gate answers first.
+      const withoutContext = await handleUpdateMediaBuy(businessPayload, CTX) as Record<string, any>;
+      expect(withoutContext.errors?.[0]?.code).toBe('GOVERNANCE_DENIED');
+
+      // Authorized: the policy is then checked against the advertised
+      // profile, and the rejected update leaves the buy untouched.
+      const intent = await check({
+        tool: 'update_media_buy',
+        target_agent: `${getCanonicalBase()}/sales`,
+        proposed_commitment: { amount: 0, currency: 'USD' },
+        payload: businessPayload,
+      });
+      const authorized = await handleUpdateMediaBuy({
+        ...businessPayload,
+        governance_context: intent.governance_context,
+      }, CTX) as Record<string, any>;
+      expect(authorized.errors?.[0]).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: 'bidding' });
+      const rejected = (await getSession('open:intent-binding.example')).mediaBuys.get('mb_governed_bidding');
+      expect(rejected?.revision).toBe(1);
+      expect(rejected?.aggregateBidding).toBeUndefined();
+    });
+  });
+
   it('does not let a caller-supplied lifecycle phase override an intent-shaped request', async () => {
     const payload = await withPlan(async () => claims(await check({
       tool: 'create_media_buy',
