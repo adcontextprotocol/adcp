@@ -54,7 +54,7 @@ When both are present, the buyer selects the model by including or omitting `cur
 
 This field determines the authentication model and the account reference shape:
 
-When `false` (default) — **buyer-declared accounts**: the seller trusts the agent. The agent authenticates once and declares accounts via `sync_accounts`. On subsequent requests, the buyer passes the natural key (`brand` + `operator`) and the seller resolves internally.
+When `false` (default) — **buyer-declared accounts**: the seller trusts the agent. The agent authenticates once and declares accounts via `sync_accounts`. On subsequent requests, the buyer passes the natural key (`brand` + `operator`) and the seller resolves internally. See [Seller walkthrough: buyer-declared accounts](#seller-walkthrough-buyer-declared-accounts) for how the seller identifies the agent and where each field comes from.
 
 When `true` — **account-id namespaces**: each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using the seller's `authorization_endpoint`, or via API key out-of-band. Subsequent requests pass a seller-assigned `account_id`. If a credential may access more than one account, the seller MUST expose `list_accounts` and the buyer MUST resolve an explicit account before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose `list_accounts` returning that singleton; a seller MAY omit `list_accounts` only when it supplies the same explicit account ID through another declared path or out-of-band onboarding.
 
@@ -481,6 +481,95 @@ When multiple natural keys resolve to the same scope, the `account_scope` explai
 
 For buyer-declared accounts (`require_operator_auth: false`), use the complete natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, buyer-selected `timezone`, and `sandbox`) on subsequent requests. A seller may also return an `account_id` from `sync_accounts` as its internal handle, but the seller MUST continue accepting the natural-key `AccountRef` for every account provisioned this way and MUST return its natural-key fields from `list_accounts`. For account-id namespaces (`require_operator_auth: true`), discover seller/storefront account IDs via `list_accounts` for upstream-managed namespaces, or receive them out-of-band for seller-defined namespaces — including sandbox test accounts.
 
+## Seller walkthrough: buyer-declared accounts
+
+This walkthrough is for a seller that declares `require_operator_auth: false` (or omits it). It covers how the seller identifies the calling agent, where the account's operator comes from, and which error applies when.
+
+Three identities show up on every request. Keep them apart:
+
+| Identity | Where the seller gets it | Example |
+|---|---|---|
+| **Calling agent** | The transport: a verified request signature, or a credential the seller issued at onboarding | `https://agent.orbit-buying.example/mcp` |
+| **Agent's operator** | The brand.json that lists the agent in `agents[]`, meaning whoever runs the agent | `orbit-buying.example` |
+| **Account operator** | The request payload: `accounts[].operator` on `sync_accounts`, `account.operator` on later calls | `pinnacle-media.com` |
+
+### 1. Onboard the agent
+
+Before the agent's first account-scoped call, the seller records the agent in its onboarding system: the agent's canonical URL, how it authenticates, and its commercial state (see [Buyer-agent identity](#buyer-agent-identity)).
+
+- **Signed requests.** The buyer gives the seller its agent URL during onboarding. From that URL, the seller runs [`brand_json_url` discovery](/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url): capabilities, then `identity.brand_json_url`, then the brand.json `agents[]` entry, then `jwks_uri`. It indexes each `kid` in that JWKS against the agent's canonical URL. Rebuild the index whenever you refresh an agent's JWKS or brand.json, so a rotated `kid` still resolves and a delisted agent drops out. That cache is bounded by the revocation polling interval.
+- **Seller-issued credential.** The seller issues an API key or OAuth client and maps it to the agent in the onboarding record. Before mapping a credential to an agent URL, confirm the counterparty controls that agent, for example with a signed onboarding request from it.
+
+<Note>
+For now, the agent URL has to come from outside the request: onboarding, or a registry cache the seller trusts. A signed request carries only a `keyid`. Each signer picks its own `keyid` values, and nothing namespaces them, so a seller can't map a `keyid` it has never seen to an agent URL. AdCP 3.2 doesn't put the signer's agent URL on the wire. A discoverable signer agent URL is under discussion in [#7817](https://github.com/adcontextprotocol/adcp/issues/7817).
+</Note>
+
+### 2. Identify the caller on each request
+
+- **Signed request:** the verifier resolves the `keyid` against the agents it has onboarded. The `keyid` has to resolve under exactly one canonical `agents[].url` ([verifier checklist](/docs/building/by-layer/L1/security#verifier-checklist-requests), step 7). A `keyid` that isn't in any onboarded agent's JWKS, even after the one refetch step 7 allows, fails with `request_signature_key_unknown`. A `keyid` that more than one onboarded agent publishes also fails. The verifier never picks one, and never tries each agent's keys in turn. Agents that share a JWKS can't be told apart by signature alone, so use a seller-issued credential for them. On success, the authenticated caller is the canonical agent URL. It isn't the `keyid`, the domain, or the JWKS URI ([Agent identity](/docs/building/by-layer/L1/security#agent-identity)).
+- **Unsigned request with a seller-issued credential:** the seller looks up the credential in its onboarding record, and the mapped agent is the caller.
+
+Nothing in the request body identifies the caller.
+
+### 3. Read the account operator from the request
+
+The authenticated caller is the agent. The operator belongs to the account the agent names in the payload. One agent often acts for many operators. Here one buying agent, with one signing identity, declares accounts for two agencies:
+
+```json
+{
+  "idempotency_key": "sync-7f3c2a90-4d1e-4b8a-9c55-2e61f0a7b3d4",
+  "accounts": [
+    { "brand": { "domain": "nova-brands.com", "brand_id": "spark" }, "operator": "pinnacle-media.com", "billing": "agent" },
+    { "brand": { "domain": "acme-corp.com" }, "operator": "summit-agency.jp", "billing": "agent" }
+  ]
+}
+```
+
+The seller takes `operator` from each entry, and later from `account.operator`. It doesn't substitute a value from the transport, such as the agent URL, the agent's brand.json domain, or an `operator` field an SDK attaches to the authenticated principal. If it did, both accounts would be attributed to `orbit-buying.example` instead of their agencies, and invoices would go to the wrong party. Two agencies buying the same brand through this agent would also share one account and see each other's buys and reporting.
+
+Authentication still limits what the payload can reach. On calls after provisioning, each account the agent references has to be in that agent's authorized set ([Agent and account isolation](/docs/building/by-layer/L1/security#agent-and-account-isolation)). This matches [Tenant resolution](/docs/building/by-layer/L2/authentication#tenant-resolution): the authenticated principal decides which accounts are reachable, and the account reference only selects one. For each `sync_accounts` entry the seller also runs the [brand-operator check](#authorized-operators) and checks the agent's commercial state against the requested `billing`.
+
+`sync_accounts` is how an account enters the calling agent's authorized set. The brand-operator check shows that the operator may represent the brand. It doesn't show that this agent acts for that operator. If the seller maps a declaration onto an account another agent already uses, the caller gets every object bound to that account. Decide that deliberately before joining an existing account, for example by keeping accounts per agent or confirming out of band.
+
+### 4. Discover products with the natural key
+
+Once `sync_accounts` returns `status: "active"`, the agent sends the same natural key on `get_products`:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Q3 awareness for Spark in the US",
+  "account": {
+    "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+    "operator": "pinnacle-media.com"
+  }
+}
+```
+
+When `account.required_for_products` is `true`, `get_products` needs this account. Otherwise the account is optional and selects account-specific pricing. A seller can instead provision lazily on the first account-scoped request, but only when billing and other required settings are clear from its capabilities or onboarding defaults. Such a seller still has to accept the natural key and expose `list_accounts`. If it needs buyer input before the account is usable, it has to expose `sync_accounts` (see [`require_operator_auth`](/docs/protocol/get_adcp_capabilities#account)).
+
+### 5. Which error applies when
+
+Authentication resolves first. Signature failures are transport errors, returned as `401` with `WWW-Authenticate: Signature error="<code>"` ([transport error taxonomy](/docs/building/by-layer/L1/security#transport-error-taxonomy)). Everything after that is an AdCP error: task-level `errors[]`, or on `sync_accounts` the per-entry `accounts[].errors` with `action: "failed"`.
+
+| Request | Result |
+|---|---|
+| `Signature` or `Signature-Input` present without the other, or malformed | `request_signature_header_malformed`. The seller doesn't fall back to other credentials. |
+| Signed, and fails the verifier checklist (unknown `keyid`, bad window, bad digest, and so on) | The checklist's code, such as `request_signature_key_unknown` (also `request_target_uri_malformed` or `request_body_malformed`). The seller doesn't fall back to other credentials. Exception: for an operation in `warn_for` (or a method in `protocol_methods_warn_for`), a well-formed signature that fails is logged, establishes no signer identity, and the request continues only if another credential authenticates it. |
+| Unsigned. No credential the seller accepts for this operation. Operation is in `required_for`, or its JSON-RPC method is in `protocol_methods_required_for` | `request_signature_required`. This applies even if an unrecognized bearer token was sent. |
+| Unsigned, the seller supports request signing, and the payload carries a webhook `authentication` block (`accounts[].notification_configs[].authentication`, `push_notification_config.authentication`) | `request_signature_required`, even with a valid credential ([webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks)) |
+| Unsigned, with a credential the seller accepts for this operation | Authenticated through that credential. This holds for `required_for` operations too, unless the payload carries a webhook `authentication` block (previous row), or the seller configured that authenticator to reject the operation ([composition with fallback authenticators](/docs/building/by-layer/L1/security#composition-with-fallback-authenticators)). |
+| Unsigned, the operation needs authentication and doesn't require a signature, and no credentials | `AUTH_MISSING` |
+| Unsigned, the operation doesn't require a signature, and the credential was presented but rejected | `AUTH_INVALID` |
+| Authenticated agent is suspended or blocked | `AGENT_SUSPENDED` or `AGENT_BLOCKED` |
+| Requested `billing` not available | `BILLING_NOT_SUPPORTED`, or `BILLING_NOT_PERMITTED_FOR_AGENT` for a passthrough-only agent |
+| Natural key doesn't resolve (and the seller doesn't provision lazily), or resolves to an account outside the agent's authorized set | `ACCOUNT_NOT_FOUND`. The response is the same in both cases, so it doesn't reveal whether the account exists. |
+| Former natural key retired by an account rekey, and the caller is authorized for the current account | `ACCOUNT_MOVED`, with `details.current_account` |
+| Natural key matches more than one account in the agent's authorized set | `ACCOUNT_AMBIGUOUS` |
+| An account in the authorized set is found, but its state blocks the call | `ACCOUNT_SETUP_REQUIRED`, `ACCOUNT_SUSPENDED`, or `ACCOUNT_PAYMENT_REQUIRED` ([Error codes](#error-codes)) |
+
+Resolve and disambiguate only within the agent's authorized set. To the caller, an account outside that set doesn't exist.
+
 ## Error codes
 
 | Code | When returned | Resolution |
@@ -489,7 +578,7 @@ For buyer-declared accounts (`require_operator_auth: false`), use the complete n
 | `ACCOUNT_NOT_FOUND` | `account_id` doesn't exist or agent lacks access | Check account reference, re-run `sync_accounts` |
 | `ACCOUNT_SETUP_REQUIRED` | Natural key resolved but account needs setup | Check `details.setup` for URL/message |
 | `ACCOUNT_AMBIGUOUS` | Natural key resolves to multiple accounts | Pass `account_id` or more specific natural key |
-| `PAYMENT_REQUIRED` | Credit limit reached or funds depleted | Add funds, route to another account |
+| `ACCOUNT_PAYMENT_REQUIRED` | Credit limit reached or funds depleted | Add funds, route to another account |
 | `ACCOUNT_SUSPENDED` | Account not in good standing | Contact seller |
 | `BRAND_REQUIRED` | Billable operation without brand reference | Include `brand` in request |
 
