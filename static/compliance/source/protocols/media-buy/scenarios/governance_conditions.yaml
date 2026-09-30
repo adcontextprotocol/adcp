@@ -155,7 +155,7 @@ phases:
         doc_ref: "/accounts/tasks/sync_accounts"
         stateful: true
         expected: |
-          Return an active account for Acme Outdoor and Pinnacle Agency.
+          Return an active account for the hosted-grader test brand and Pinnacle Agency.
         sample_request:
           accounts:
             - brand:

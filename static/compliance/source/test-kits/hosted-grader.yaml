@@ -23,8 +23,9 @@
 # the request.
 #
 # Sandbox only. The sandbox governance agent's signing key is public test
-# material, so a seller MUST limit the trust this brand.json grants to the
-# sandbox account(s) it provisions for hosted grading.
+# material: anyone can mint a token that passes the issuer cross-check and key
+# checks for this brand. Trust it only for the sandbox account(s) a seller
+# provisions for hosted grading.
 
 id: hosted_grader
 name: "Hosted grader test brand"
