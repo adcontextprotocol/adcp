@@ -948,6 +948,19 @@ const OwnerComplianceEligibilitySchema = z.object({
   }),
 }).openapi('OwnerComplianceEligibility');
 
+export const StoryboardSkippedStepSchema = z
+  .object({
+    step_id: z.string().nullable().openapi({ description: "Skipped step id (derived from the title when the runner omits it)." }),
+    title: z.string().nullable(),
+    task: z.string().nullable(),
+    reason: z.string().nullable().openapi({ description: "Runner skip reason, e.g. prerequisite_failed or controller_seeding_failed." }),
+    detail: z.string().nullable().openapi({ description: "Redacted runner skip detail. May echo agent-supplied text." }),
+    blocked_by_step_id: z.string().nullable().openapi({ description: "Nearest earlier step in the same storyboard that did not pass, when one exists." }),
+    blocked_by_step_title: z.string().nullable(),
+    blocked_by_reason: z.string().nullable().openapi({ description: "'failed', or the skip reason of the earlier step." }),
+  })
+  .openapi("StoryboardSkippedStep");
+
 export const AgentComplianceDetailSchema = z
   .object({
     provenance: ComplianceRunProvenanceSchema.nullable().optional(),
@@ -1023,6 +1036,7 @@ export const AgentComplianceDetailSchema = z
       first_failed_step_task: z.string().nullable(),
       first_failure_message: z.string().nullable(),
       first_failure_validations: z.array(z.any()).openapi({ description: "Validation evidence for the first failure. Populated only for owners and empty for other callers." }),
+      skipped_steps: z.array(StoryboardSkippedStepSchema).openapi({ description: "Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step. Populated only for owners and empty for other callers." }),
       last_tested_at: z.string().nullable(),
       last_passed_at: z.string().nullable(),
     })).optional().openapi({ description: "Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers." }),
@@ -1075,6 +1089,7 @@ export const StoryboardStatusSchema = z
     first_failed_step_title: z.string().nullable().openapi({ description: "First root failing or actionable skipped step title, when captured." }),
     first_failed_step_task: z.string().nullable().openapi({ description: "Task/tool name for the first root failing or actionable skipped step, when captured." }),
     first_failure_message: z.string().nullable().openapi({ description: "Runner error/detail text for the first root failing or actionable skipped step, when captured." }),
+    skipped_steps: z.array(StoryboardSkippedStepSchema).openapi({ description: "Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step, when captured. Owner-scoped; empty for other callers." }),
     last_tested_at: z.string().nullable(),
     last_passed_at: z.string().nullable(),
   })

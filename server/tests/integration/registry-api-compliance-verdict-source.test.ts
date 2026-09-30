@@ -43,6 +43,16 @@ const STATIC_ADMIN_USER_ID = 'admin_api_key';
 const OWNER_ORG_ID = `org_verdict_owner_${RUN_SUFFIX}`;
 const CROSS_ORG_ID = `org_verdict_cross_${RUN_SUFFIX}`;
 const AGENT_URL = `https://verdict-source-${RUN_SUFFIX}.example.com/mcp`;
+const DEBUG_SKIPPED_STEP = {
+  step_id: 'debug_followup',
+  title: 'Debug follow-up',
+  task: 'get_media_buy_delivery',
+  reason: 'prerequisite_failed',
+  detail: 'Skipped: a prerequisite did not pass',
+  blocked_by_step_id: 'debug_step',
+  blocked_by_step_title: 'Debug step',
+  blocked_by_reason: 'failed',
+};
 
 // optAuth on the compliance endpoint stamps req.user only when the auth
 // header parses successfully. Tests toggle currentUserId between owner,
@@ -224,10 +234,11 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
          agent_url, storyboard_id, status, last_tested_at, run_id,
          steps_passed, steps_total, failure_count, skipped_count,
          first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
-         triggered_by
+         skipped_steps_jsonb, triggered_by
        ) VALUES (
          $1, 'debug_storyboard', 'failing', NOW(), $2, 1, 2, 1, 1,
-         'debug_step', 'Debug step', 'get_products', 'debug failure', 'owner_test'
+         'debug_step', 'Debug step', 'get_products', 'debug failure',
+         $3::jsonb, 'owner_test'
        )
        ON CONFLICT (agent_url, storyboard_id) DO UPDATE
          SET status = EXCLUDED.status,
@@ -241,8 +252,9 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
              first_failed_step_title = EXCLUDED.first_failed_step_title,
              first_failed_step_task = EXCLUDED.first_failed_step_task,
              first_failure_message = EXCLUDED.first_failure_message,
+             skipped_steps_jsonb = EXCLUDED.skipped_steps_jsonb,
              triggered_by = EXCLUDED.triggered_by`,
-      [AGENT_URL, complianceRunId],
+      [AGENT_URL, complianceRunId, JSON.stringify([DEBUG_SKIPPED_STEP])],
     );
     await pool.query(
       `INSERT INTO agent_compliance_step_diagnostics (
@@ -368,6 +380,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         // The card endpoint never loads the separate diagnostics table. Owner
         // callers still see the denormalized first-failure fields above.
         first_failure_validations: [],
+        skipped_steps: options.includeDiagnostics ? [DEBUG_SKIPPED_STEP] : [],
       }),
     ]);
     expect(body.storyboards_passing).toBe(0);
@@ -555,6 +568,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         first_failed_step_title: 'Debug step',
         first_failed_step_task: 'get_products',
         first_failure_message: 'debug failure',
+        skipped_steps: [DEBUG_SKIPPED_STEP],
       }),
     ]));
   });
@@ -575,6 +589,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         first_failed_step_title: null,
         first_failed_step_task: null,
         first_failure_message: null,
+        skipped_steps: [],
       }),
     ]));
   });

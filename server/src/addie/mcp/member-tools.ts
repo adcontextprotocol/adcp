@@ -1,4 +1,5 @@
 import { isAuthoritativeComplianceRun } from '../../compliance/run-publication.js';
+import { withStoryboardSkipDetails } from '../../compliance/storyboard-skip-details.js';
 import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../admin-status-lookup.js';
 /**
  * Addie Member Tools
@@ -5027,12 +5028,12 @@ export function createMemberToolHandlers(
             // Skip canonical write if the owner has opted out of compliance monitoring.
             if (!metadata?.compliance_opt_out) {
               const dbInput = {
-                ...complianceResultToDbInput(
+                ...withStoryboardSkipDetails(complianceResultToDbInput(
                   result,
                   resolved.resolvedUrl,
                   metadata?.lifecycle_stage ?? 'production',
                   'owner_test',
-                ),
+                ), result),
                 // Track-filtered evaluations are diagnostic slices, not an
                 // authoritative replacement for every storyboard row.
                 replace_storyboard_statuses: !tracks,
