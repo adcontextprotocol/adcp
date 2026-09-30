@@ -228,6 +228,8 @@ AdCP 3.2 contains a bounded set of stable-surface changes that can reject a payl
 - Committed proposals (`proposal_status: "committed"`) must carry `allocations[].pricing_option_id`.
 - `get_adcp_capabilities`: `creative_specs.vast_versions` is a closed enum (`2.0`, `3.0`, `4.0`, `4.1`, `4.2`, `4.3`) with at least one unique item. `request_signing.required_for` / `supported_for` / `warn_for` entries must match `^[a-z][a-z0-9_]*$`.
 
+**Clarified delivery-date semantics.** 3.1 described `get_media_buy_delivery` periods as UTC, while the required `reporting_capabilities.timezone` could name another zone. In 3.2, `start_date`, `end_date`, and `daily_breakdown[].date` are calendar dates in the reporting timezone. A dated or windowed (`time_granularity`) request whose in-scope packages span more than one reporting timezone MUST be rejected with `VALIDATION_ERROR`. Products that report in `UTC` are unaffected. Sellers serving a `"3.1"` pin may keep their existing 3.1 delivery-date behavior; the reporting-timezone semantics and `reporting_period.timezone` apply to `"3.2"`.
+
 Experimental surfaces changed under their own notice contract and are not exceptions to these guarantees. See the [migration guide](/docs/reference/migration/3-1-to-3-2#wire-changes-from-3-1-to-3-2) for the governance, Trusted Match, and brand-rights changes.
 
 ### Experimental surfaces
@@ -294,16 +296,15 @@ The v2 sunset is the documented exception to this commitment: v2 predates this p
 |---------|--------|
 | **3.0** | April 2026 — GA release |
 | **3.1** | Late June 2026 |
-| **3.2** | RC.7 published September 2026; GA targeted for late September 2026 |
+| **3.2** | GA September 30, 2026 (release `3.2.1`; `3.2.0` was never released) |
 | **4.0** | Early 2027 — next major, accumulated breaking changes |
 
-The 3.2 cycle began with a protocol-first beta before SDK convergence. RC.7 is
-now the current signed protocol checkpoint. TypeScript SDK RC.49 and Python
-SDK beta.18 embed it exactly; Go SDK `adcp/v3@v3.2.1` embeds RC.1. See the
-[3.2 prerelease program](/docs/reference/3-2-beta) and the
-[SDK versions for 3.2](/docs/reference/migration/3-1-to-3-2#sdk-versions-for-3-2).
+3.2 shipped after a protocol-first beta and seven published release candidates; see the
+[3.2 prerelease history](/docs/reference/3-2-beta). The stable TypeScript
+(`@adcp/sdk@14.0.0`) and Python (`adcp==8.0.0`) SDKs follow the protocol
+release; see [SDK versions for 3.2](/docs/reference/migration/3-1-to-3-2#sdk-versions-for-3-2).
 
-Further 3.x releases are scheduled based on implementation feedback and working group priorities, with at least 8 weeks between stable releases. Planned scope for each release is tracked on the [GitHub milestones page](https://github.com/adcontextprotocol/adcp/milestones) — open issues on the `3.1.0` and `3.2.0` milestones reflect current candidate work, not fixed commitments.
+Further 3.x releases are scheduled based on implementation feedback and working group priorities, with at least 8 weeks between stable releases. Planned scope for each release is tracked on the [GitHub milestones page](https://github.com/adcontextprotocol/adcp/milestones) — open issues on the next release milestone reflect current candidate work, not fixed commitments.
 
 ---
 

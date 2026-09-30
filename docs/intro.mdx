@@ -9,16 +9,12 @@ description: "AdCP is an open agentic advertising standard. Follow Alex's team f
 <img src="/images/walkthrough/adcp-01-fragmentation.png" alt="Alex stands arms crossed in a war room of mismatched screens and tangled cables, surveying the chaos — her team hunched over laptops in the background" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
 <Info>
-AdCP 3.2 is in release candidate. RC.7 is the current signed protocol bundle;
-it combines the proposal-to-operation lifecycle, an experimental
-authenticated-principal connection layer, a hardened experimental Reliable
-Reporting consumer-status loop, and shared MediaBuy-level frequency caps.
-TypeScript SDK RC.49 and Python beta.18 embed RC.7, and Go v3.2.1
-embeds RC.1. Match each SDK to its checkpoint. Keep production traffic
-on 3.1 until 3.2 reaches GA.
-See
+AdCP 3.2 is generally available (release `3.2.1`, wire pin `"3.2"`). It adds a
+proposal-to-operation lifecycle buyers and sellers can audit, shared
+MediaBuy-level frequency caps, and experimental Reliable Reporting and
+authenticated principals. Existing 3.1 integrations keep working. See
 [what's new in 3.2](/docs/reference/whats-new-in-3-2) and the
-[prerelease program](/docs/reference/3-2-beta) before testing.
+[3.1 to 3.2 migration guide](/docs/reference/migration/3-1-to-3-2).
 </Info>
 
 Alex runs media operations at Pinnacle Agency. Her team buys across six channels — CTV, display, audio, social, retail media, and digital out-of-home. Each channel has its own buying methods, its own terminology, its own way of handling creatives, targeting, and reporting. IOs for some. APIs for others. DSPs for programmatic. Dashboards for everything.

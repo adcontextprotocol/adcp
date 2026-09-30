@@ -5,150 +5,197 @@ description: "Authoritative AdCP version-by-version release record with cumulati
 ---
 
 
-Authoritative version-by-version release record for AdCP, with cumulative change detail, migration guidance, and per-version adoption notes. For the 3.2 adopter overview, see [What's New in AdCP 3.2](/docs/reference/whats-new-in-3-2); for the upgrade checklist, see [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2); and for prerelease artifact and SDK timing, see the [3.2 prerelease program](/docs/reference/3-2-beta). For the at-a-glance status of every published version, see [Versions & Compatibility](/docs/reference/versions). For source-level changelogs, see [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md). For version stability, schema-change scope, and the 3.x guarantees see [Versioning & Governance](/docs/reference/versioning). For v2 end-of-life see the [v2 sunset page](/docs/reference/v2-sunset).
+Authoritative version-by-version release record for AdCP, with cumulative change detail, migration guidance, and per-version adoption notes. For the 3.2 adopter overview, see [What's New in AdCP 3.2](/docs/reference/whats-new-in-3-2); for the upgrade checklist, see [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2); and for beta and RC history, see the [3.2 prerelease history](/docs/reference/3-2-beta). For the at-a-glance status of every published version, see [Versions & Compatibility](/docs/reference/versions). For source-level changelogs, see [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md). For version stability, schema-change scope, and the 3.x guarantees see [Versioning & Governance](/docs/reference/versioning). For v2 end-of-life see the [v2 sunset page](/docs/reference/v2-sunset).
 
 ---
 
-## Version 3.2.0
+## Version 3.2.1
 
-**Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.7 is the current signed protocol checkpoint. It adds the `viewable_rate` metric optimization goal with a required viewability `standard` and optional measurement `vendor`. TypeScript `@adcp/sdk@14.0.0-rc.53` and Python `adcp==8.0.0b18` embed RC.7 exactly, and Go `adcp/v3@v3.2.1` embeds RC.1, with role-dependent higher-level coverage. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup, the request-signature encoding migration, and the tightened request validation listed in [3.2 exceptions to 3.x compatibility](/docs/reference/versioning#3-2-exceptions-to-3-x-compatibility); explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
+**Status:** General availability, published 2026-09-30. AdCP 3.2 is a minor release. The release artifact and Git tag are `3.2.1` / `v3.2.1`, and the stable wire value is `"3.2"`. The number `3.2.0` was never released, so `3.2.1` is the first stable 3.2 artifact. 3.1 stays supported for integrations pinned to `"3.1"`. Send `"3.2"` only after a peer lists it in `get_adcp_capabilities.adcp.supported_versions`.
+
+**Where to start:** [What's new in AdCP 3.2](/docs/reference/whats-new-in-3-2) is the adopter overview. [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2) has the role-based checklist. Beta and RC adopters should read the [3.2 prerelease history](/docs/reference/3-2-beta). The per-PR record is the `3.2.1` entry in [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md).
+
+### Why 3.2 matters
+
+3.1 made agents safe to operate. 3.2 makes the deal between them explicit, so both sides can audit a media buy from brief to report. A buyer agent can take a brief to seller-authored proposals, negotiate typed terms, hold inventory, and accept one exact snapshot that the campaign then runs under. Sellers declare what they actually sell, down to the specialism, the product, and the shared-budget controls they honor, and conformance is scoped to exactly those claims. Agent builders get task-specific tools whose MCP schemas are 72–94% smaller than the 3.1 facades they replace, and there is no flag day: 3.1 integrations keep working while you opt into `"3.2"` per peer and adopt new tools one capability at a time.
+
+3.2 is additive over 3.1 for stable surfaces, apart from a short, recorded list of exceptions: see [Breaking changes and 3.2 exceptions](#breaking-changes-and-3-2-exceptions). Experimental surfaces carry changes announced under the [experimental-status contract](/docs/reference/experimental-status).
+
+### 3.2 by the numbers
+
+| Published surface | 3.1.0 | 3.2.1 | Change |
+|---|---:|---:|---:|
+| Manifested tools | 64 | 78 | +15 added, 1 webhook payload removed from the manifest |
+| Specialisms | 21 | 31 | +10 |
+| Standard error codes | 92 | 120 | +28 |
+| Source JSON Schema files | 648 | 1,012 | +364 |
+| Compliance YAML files | 137 | 235 | +98 |
+
+The corpus grew, but each operation got lighter: the compact tools' MCP `2026-07-28` request and response schemas are 72% (`request_proposals`) to 94% (`control_media_buy`) smaller than the 3.1 bundled schemas of the facades they replace. These are schema artifact sizes, not request-body sizes or latency; see [the per-operation table](/docs/reference/whats-new-in-3-2#3-1-to-3-2-by-the-numbers).
+
+### Themes
+
+Each theme leads with what it lets you do, then names the surfaces that deliver it.
+
+- **Compact commercial lifecycle: both sides can point to exactly what was agreed.** New tasks: `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy`, each marking one business boundary. Proposals are immutable and carry an RFC 8785 `terms_digest`, holds are explicit, and in-flight changes stay inside the accepted terms. Sellers advertise the subset they serve in `media_buy.lifecycle_tools`; when it is absent, use the 3.x facades.
+- **Targeting that survives execution: what the buyer asked for is what gets priced, bought, and read back.** One model from discovery to readback: `required_overlay_support`, `targeting_resolution`, basis-aware age and demographic predicates, named places (`geo_places`), ISO subdivisions, browser families, `property_list_exclude`, `collection_selection`, BCP 47 language ranges, and daypart on inventory-local time or a named IANA zone. Request-only inputs accept `null` to clear a dimension.
+- **Frequency management: cap a whole buy, not each package on its own.** A MediaBuy-level `frequency_cap` counts once across every package (`media_buy.aggregate_frequency_capping`, product `media_buy_support`). Products declare exact package-cap constraints in `overlay_support.frequency_cap_support`, and the `update_media_buy_frequency_cap` action changes the cap after purchase.
+- **Budgets, bidding, and pricing: let the seller optimize a shared budget, with every control either honored or explicitly rejected.** Seller-optimized shared budgets (`budget_allocation`) with a narrow core contract and separately gated package controls (see below), a `bidding` block, hard `daily_budget_cap` with `budget_cap_timezone`, atomic total-budget updates, `revenue_share` pricing, package creative rotation, the shared MediaBuy `name`, structured warnings and durable indicators, and seller-policy `decline_reason`.
+- **Planning: ask which dates are available, or what budget reaches an outcome, before you commit.** Availability windows (`offer_filters.availability_horizon`), reverse forecasting from `criteria.outcome_target` (by volume, or by an optional `cost_per` target such as clicks at 3 or less on a 5,000 budget), and structured refusal through `GetProductsRejected`.
+- **Reliable Reporting 1.0 (experimental): a missing report shows up as missing, not as silence.** Expected-period obligations, immutable revisions, and health through `get_reporting_status`; opt-in `sync_reporting_status`; `sync_reporting_receipts`; across the Core, Managed Delivery, and Reconciled Billing tiers.
+- **Delivery reporting and measurement: pull only what you need, optimize for viewability, and know who measured it.** `requested_metrics`, negotiable, sortable, and paginated breakdowns, `by_format`, `time_based_views`, leaf metric identities, the `viewable_rate` goal, `vendor_relationship`, play-based denominators, demographic and spot-level delivery, row-level currency, and dates on the seller's reporting timezone.
+- **Accounts and principals: keep shared account state in sync, including changes you didn't make.** Operator reconciliation through `sync_accounts` with `ACCOUNT_MOVED`, account timezone and currency modes, `capabilities.changed` and `account.status_changed`, the experimental account change feed (`list_account_changes`), and the experimental authenticated-principal layer (`sync_principal`, `get_principal`).
+- **Seller specialisms and channels: sellers claim the business they actually run.** `sales-dooh` (stable) and preview `sales-exchange`, `sales-retail-media`, and `sales-streaming-tv`. DOOH placement attributes and share of voice, static OOH and radio measurement (experimental), `audio_vast`, CTV experience profiles, and programmed channel collections.
+- **Creative: one traceable identity from brief to post-flight replay.** Canonical formats become the authoring and discovery path, with revision and served-variant identity, representation sets, tracker execution contracts, VAST 4.3 and validation levels, pixel-density and rendition sets, localization, async preview, accessibility rejection detail, and synthetic-depiction provenance.
+- **Trust and runtime: every failure is classifiable, every signed body is bound, every retry is safe.** Required `error.recovery` and integer `retry_after`, 28 new error codes, body-bound request signing with RFC 8941 encoding, a published signing-error vocabulary, non-authoritative MCP sessions, durable idempotency ledgers with `COMMITTED_RESOURCE_PURGED`, portable attestations, `anonymous_discovery`, compact MCP `2026-07-28` schemas, and the A2A 1.0 profile extension.
+- **Conformance: agents are graded on the capabilities they claim, and buyers get a track too.** Preview buyer and orchestrator specialisms with a buyer-orchestrator compliance track, capability-scoped grading, owner-selectable Legacy and Strict Spec grading, and 3.2 request-signing vectors.
+
+### Upgrade essentials
+
+3.2 is opt-in per peer. Upgrade your SDK first with the wire pin still at `"3.1"`, then work through what applies to you before you advertise or send `"3.2"`. The [upgrade checklist](/docs/reference/migration/3-1-to-3-2#upgrade-checklist) and the [day-one checklists by role](/docs/reference/migration/3-1-to-3-2#day-one-checklists-by-role) have the detail.
+
+1. **Negotiate the release.** Sellers list `"3.2"` in `adcp.supported_versions` alongside every release they still serve and echo `adcp_version` on responses. Buyers send `"3.2"` only to peers that list it, and replace any `"3.2-rc.N"` or `"3.2-beta.N"` pin with `"3.2"`.
+2. **Read `media_buy_status`.** Body-level `status` is gone from `create_media_buy` and `update_media_buy` success payloads.
+3. **Re-check request signing.** A 3.2 signing endpoint requires `content-digest` coverage and RFC 8941 padded standard Base64, and the endpoint, not the request pin, selects the profile. Read [Mixed-version request signing](/docs/reference/migration/3-1-to-3-2#mixed-version-request-signing) before a counterparty advertises 3.2 on an endpoint you already call.
+4. **Make errors actionable.** Emit `error.recovery` on every error and integer `retry_after`, while still decoding 3.1 errors that omit `recovery`.
+5. **Harden replay and sessions.** Keep idempotency ledgers longer than the resources they create, and never derive identity or authority from `Mcp-Session-Id`.
+6. **Move delivery reporting to row-level semantics.** Emit currency at media-buy or package grain, stop producing new `aggregated_totals`, and report dates on the products' reporting timezone.
+7. **Say which budget you mean.** Buyer agents should send `budget_allocation` explicitly. Sellers that declare `seller_optimized_budget` also declare the package-control sub-capabilities they honor.
+8. **Generate from the release.** SDK and codegen maintainers build from the signed [`3.2.1` tarball](https://adcontextprotocol.org/protocol/3.2.1.tgz), not from `main` or `/schemas/latest/`.
+
+Everything else in 3.2, including the compact lifecycle tools, is adopted by capability: see [Adopt by capability](/docs/reference/migration/3-1-to-3-2#adopt-by-capability).
+
+### Seller-optimized budgets: a core contract plus three package controls
+
+`media_buy.features.seller_optimized_budget` (`core/media-buy-features.json`) covers only the core shared-budget contract: one hard `total_budget`, seller allocation across packages against `budget_allocation.optimization_goals`, media-buy-level pacing, and allocation echo on read surfaces. Package controls inside a seller-optimized buy are separate optional capabilities, each meaningful only alongside the parent:
+
+| Capability | Gates |
+|---|---|
+| `seller_optimized_package_budgets` | Package `budget` hard caps, and proposal `max_spend_percentage` |
+| `seller_optimized_min_spend_targets` | Package `min_spend_target`, over-subscription validation, and proposal `min_spend_target_percentage` |
+| `seller_optimized_package_pacing` | Package `pacing` that differs from media-buy pacing, and proposal allocation `pacing` |
+
+- A seller that declares the parent without a sub-capability MUST reject a seller-optimized request carrying that control with `UNSUPPORTED_FEATURE`, before any over-subscription check or provider mutation. It MUST NOT drop or coerce the control.
+- Core pacing: the seller MUST accept omitted media-buy `pacing` (which defaults to `even` when `total_budget` is present) and `pacing: "even"`. It MAY reject `asap` or `front_loaded` with `UNSUPPORTED_FEATURE` (`error.field: "pacing"`) and MUST NOT coerce them to `even`.
+- Buyers: omitting `budget_allocation` still means fixed allocation, but buyer agents SHOULD send it explicitly (`{"mode": "fixed"}` or a `seller_optimized` block). When the principal's instruction doesn't say whether the budget is one shared pool or split per package, the buyer agent SHOULD ask rather than guess.
+
+Sellers that declared `seller_optimized_budget: true` against a release candidate and honor package caps, minimum-spend targets, or package pacing must now also declare the matching sub-capabilities. The `media_buy_seller/seller_optimized_budget` storyboard (1.1.0) grades each control positively when declared and expects `UNSUPPORTED_FEATURE` when it is not.
+
+### Delivery dates on the reporting timezone
+
+`get_media_buy_delivery` `start_date`, `end_date`, and `daily_breakdown[].date` are calendar dates in the reporting timezone: the in-scope products' `reporting_capabilities.timezone`. They are UTC days only when that timezone is `UTC`. `reporting_period.start` and `end` stay RFC 3339 instants marking where those dates begin in that zone, as a start-inclusive, end-exclusive interval. The new optional `reporting_period.timezone` echoes the zone applied (`media-buy/get-media-buy-delivery-response.json`, and `media-buy/media-buy-delivery-webhook-result.json` for shape alignment). A dated request, or a request with `time_granularity` `daily`, `weekly`, `monthly`, or `quarterly`, whose in-scope packages span more than one reporting timezone MUST be rejected with `VALIDATION_ERROR`. Narrow `media_buy_ids`, or omit both dates and `time_granularity` for lifetime totals. Sellers serving a `"3.1"` pin may keep their existing 3.1 delivery-date behavior; the reporting-timezone semantics and `reporting_period.timezone` apply to `"3.2"` (see [Serving an older pin](/docs/reference/versioning#serving-an-older-pin)). This replaces 3.1's "all periods use UTC" wording, which conflicted with non-UTC reporting timezones.
+
+### Reliable Reporting 1.0 (experimental)
+
+Reliable Reporting treats reporting as an accountable ledger. For each period the seller owes, the buyer can see whether the obligation is waiting, healthy, delayed, or needs action; whether an official revision exists; and whether an empty revision is correct. It is discovered through `media_buy.reporting_delivery` with `reliable_reporting_version: "1.0"`, and sellers list `media_buy.reporting_delivery` in `experimental_features`.
+
+| Tier | Adds | Tasks |
+|---|---|---|
+| Core | Obligations derived from the schedule, immutable revisions, post-official adjustments, and health. A polling-only seller can implement it. | `get_reporting_status`, with `sync_reporting_status` opt-in |
+| Managed Delivery | File, dataset-share, and warehouse deliveries bound to exact revisions, destinations, retention, and revocation | `sync_accounts.reporting_delivery_configs[]` |
+| Reconciled Billing | Authenticated consumer receipts and canonical content agreement. It does not create or settle invoices. | `sync_reporting_receipts` |
+
+With `sync_reporting_status` the buyer reports each period as received, omitted, missing its revision, unreadable, or `content_mismatch` (with a closed `mismatch_code`). The buyer owes a status by `expected_at + automated_recovery_window_seconds`; a miss counts in `obligation_counts.consumer_status_pending` and never changes seller health. A seller restatement gets a bounded re-read grace window before it escalates. `authoritative_party: "consumer"` is reserved, and sellers reject it with `UNSUPPORTED_FEATURE`.
 
 <Warning>
-**Reliable Reporting breaking-change notice — published September 12, 2026.**
-RC.2 publishes opt-in `sync_reporting_status` so a buyer can report missing,
-unreadable, contradictory, or exactly received reporting back to the seller; the
-seller can then detect when a received revision becomes stale after restatement.
-RC.3 hardens the loop: a stale `received` gets a bounded re-read grace
-window before it escalates, buyers owe a status by
-`expected_at + automated_recovery_window_seconds` (counted in
-`obligation_counts.consumer_status_pending`, never in health), issues carry
-`opened_at` / `issue_state` / `external_ref` with an optional
-`consumer_mismatch_escalation_seconds` and `operations_contact`, and
-`content_mismatch` names contract-fact disagreements through a closed
-`mismatch_code`. RC.3's `reporting-delivery-config.json` also reserves
-`authoritative_party`; sellers MUST reject `consumer` with `UNSUPPORTED_FEATURE`
-until a later minor defines the buyer-deposited revision task
-([#7440](https://github.com/adcontextprotocol/adcp/issues/7440)). Sellers advertise
-`consumer_status_task` only when implemented; RC.1 remains unchanged. The next
-eligible minor makes this task required Core no earlier than October 24, 2026.
-See the [migration guide](/docs/reference/migration/reliable-reporting-status-loop).
+**Active breaking-change notice for experimental Reliable Reporting.** `sync_reporting_status` is opt-in in 3.2. Sellers advertise `consumer_status_task` only when they implement it. The task becomes required Core in the next eligible minor after October 24, 2026. See [the status-loop migration](/docs/reference/migration/reliable-reporting-status-loop) and [Implementing Reliable Reporting Core](/docs/media-buy/reporting-core-implementation-guide).
 </Warning>
 
-### Prerelease checkpoints
+### Optimization goals
 
-| Release | Purpose | SDK posture |
+- `viewable_rate` is a `kind: "metric"` goal. It requires a viewability `standard` (`mrc` or `groupm`), accepts an optional measurement `vendor`, and bounds `threshold_rate.value` to at most 1. Products can declare `metric_optimization.supported_viewability_standards` (goal: `core/optimization-goal.json`, `core/canonical-optimization-goal.json`; declaration: `core/product.json`).
+- The `views` metric goal now matches its delivery-metrics definition: content views counted toward the billable view threshold, the quantity CPV bills on. The 3.1 goal description said "viewable impressions", which contradicted delivery metrics. Use `viewable_rate` for viewability goals.
+
+### Planning to a cost, and products that state their prerequisites
+
+- **Cost targets in `outcome_target`.** `criteria.outcome_target.cost_per` (`amount`, `strength` of `cap` or `target`, `currency`) lets a buyer ask for "clicks at 3 or less on a 5,000 budget" without pre-computing a volume; `volume` becomes optional, and at least one of the two is required. The seller answers in the proposal's `commercial_terms.bidding.cost_per`, which the buyer adopts on acceptance. The answer keeps the buyer's `strength` and is never below the ask: a cap of 3 the seller can only meet at 4.50 comes back as a cap of 4.50, never as a target. It is an execution control, not a price; billing stays on the selected pricing option, and sellers MUST NOT convert currency. A target that cannot be represented or bound is rejected with `INVALID_REQUEST`. On `list_products`, `criteria.outcome_target` is inert for every seller: it does not filter, rank, or answer, and it MUST NOT cause a rejection beyond schema validation. So one `criteria` object can be reused across `list_products` and `request_proposals`. The `media_buy_seller/outcome_target` storyboard moves to 1.1.0.
+- **Execution requirements (experimental, `media_buy.execution_requirements`).** A product can declare the account resources a package needs before `create_media_buy` succeeds: an `event_source`, a `catalog` (including `app` for app promotion), or a `downstream_connection` such as a publisher identity. The declaration is the same for every account, so wholesale catalogs stay publicly cacheable. An unmet event-source or catalog requirement is rejected with `VALIDATION_ERROR` at the binding, with `execution-requirement-unmet` details; unmet connections keep using `AUTHORIZATION_REQUIRED`. Per-account readiness is planned for 3.3.
+
+### Accounts, principals, and change visibility
+
+- **Operator reconciliation.** Revision-checked `sync_accounts` updates can rekey an account's operator identity. Former natural keys return `ACCOUNT_MOVED`, and settings-update rows echo `account`.
+- **Account clocks and currency.** `account.timezone` and `account.supported_account_currency_modes`.
+- **Change notifications.** `capabilities.changed` and `account.status_changed` invalidate cached state.
+- **Account change feed (experimental, `account.change_feed`).** `list_account_changes` returns material changes to a shared account, including changes made outside your own calls. Sellers gate it on `account.change_feed.supported` and MUST list `account.change_feed` in `experimental_features`. The surface ships while [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810) is open and may change with six weeks' notice.
+- **Authenticated principals (experimental, `protocol.principal`).** `sync_principal` and `get_principal` hold a caller's standing configuration: caller-level webhooks, reusable reporting destinations, and declarations of the async versions, signing algorithms, and experimental features the caller can consume. `principal.changed` triggers repair. Principal configuration never grants advertiser-account authority.
+
+### Seller specialisms
+
+| Specialism | Status | What it grades |
 |---|---|---|
-| `3.2.0-beta.0` | Publish signed schemas, compliance assets, skills, and manifest for implementation feedback | SDK support follows this cut; beta.0 is not an SDK-backed certification target |
-| `3.2.0-beta.1` | Incorporate the first round of integration corrections | Superseded by beta.2 for new beta testing |
-| `3.2.0-beta.2` | Publish the second integration checkpoint | Superseded by beta.3 for new beta testing |
-| `3.2.0-beta.3` | Corrected protocol checkpoint, superseded by beta.4 | Superseded; remains available for pinned prerelease adopters |
-| `3.2.0-beta.4` | Publish flexible-window availability, outcome_target reverse forecasting, and availability conformance | Superseded; remains available for pinned prerelease adopters |
-| `3.2.0-beta.5` | Add cross-transport async identity and convergence, policy-backed creative rejection compliance, and outcome-target conformance | Exact TypeScript support in `@adcp/sdk@14.0.0-beta.7`; exact Python schema/type parity in `adcp==8.0.0b7`; Go remains pending |
-| `3.2.0-beta.6` | Expand reporting negotiation and breakdowns; add CTV experience profiles and premium display canonicals; align A2A request-signing method names | Exact TypeScript support in `@adcp/sdk@14.0.0-beta.13` and exact Python schema/type parity in `adcp==8.0.0b9`; direct artifact, raw-wire, and code-generation testing |
-| `3.2.0-beta.7` | Add audience activation and external-source contracts, creative delivery and tracker execution contracts, static OOH and radio measurement declarations, viewed-seconds distributions, and expanded conformance coverage | Previous protocol checkpoint; remains available for pinned prerelease adopters |
-| `3.2.0-beta.8` | Prove metric-container subsumption behavior end to end and repair versioned documentation snapshot builds | Previous protocol checkpoint; remains available for pinned prerelease adopters |
-| `3.2.0-beta.9` | Add the draft account change feed, product-scoped inventory-list receipts, authority-discriminated inventory delivery identity, seller policy and change-right contracts, and broader conformance coverage | Previous protocol checkpoint; remains available for pinned prerelease adopters |
-| `3.2.0-beta.10` | Add managed reporting delivery, authenticated principals, audio VAST and DOOH support, programmed channel collections, committed collection selection, and expanded conformance coverage | Previous protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.28` and exact Python schema/type support in `adcp==8.0.0b11` |
-| `3.2.0-beta.11` | Add `get_principal` to the MCP media-buy role profile and align the public training agent with the latest beta bundle | Previous protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.29` and exact Python schema/type support in `adcp==8.0.0b12` |
-| `3.2.0-rc.0` | Publish the first 3.2 release candidate after beta integration fixes and expand reporting lifecycle conformance | Previous checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.31` and exact Python schema/type support in `adcp==8.0.0b13` |
-| `3.2.0-rc.1` | Complete the experimental Reliable Reporting 1.0 contract and harden delivery currency, aggregate reach, vendor-metric identity, and integration behavior | Previous checkpoint with exact Python support in `adcp==8.0.0b14` and exact Go support in `adcp/v3@v3.2.1` |
-| `3.2.0-rc.2` | Add the opt-in experimental Reliable Reporting `sync_reporting_status` consumer-status loop, buyer and orchestrator storyboards with a buyer-orchestrator compliance track, cursor pagination for truncated `get_media_buy_delivery` breakdowns, sub-country product coverage filters, and restored `canonical-forecast-point` constraints | Previous checkpoint. No maintained SDK embeds it; test it from the signed bundle |
-| `3.2.0-rc.3` | Harden the consumer-status loop (`content_mismatch` and `mismatch_code`, a bounded grace window for a stale `received`, the buyer posting deadline and `obligation_counts.consumer_status_pending`, issue lifecycle fields, `operations_contact`, and the reserved `authoritative_party`), add a shared MediaBuy-level `frequency_cap` with structured product frequency-cap constraints, add request-only targeting with `null`-clear semantics, and retire superseded beta artifacts | Previous checkpoint with exact TypeScript support in TypeScript SDK RC.40 and Python support in `adcp==8.0.0b15` |
-| `3.2.0-rc.4` | Add anonymous catalog discovery declarations, require `recovery` on 3.2 producer errors, echo `account` on `sync_accounts` settings-update rows, and publish supply-path verification vectors | Previous checkpoint with exact TypeScript support in TypeScript SDK RC.44 |
-| `3.2.0-rc.5` | Not published; the release process withheld this bundle | Superseded by RC.6 |
-| `3.2.0-rc.6` | Add the shared MediaBuy `name`, seller-policy decline reasons, the request-signing error vocabulary, and the streaming-TV, retail-media, and exchange sales specialisms, and reconcile Reliable Reporting waivers | Previous checkpoint with exact TypeScript support in TypeScript SDK RC.48 |
-| `3.2.0-rc.7` | Add the `viewable_rate` metric optimization goal with viewability `standard` and `vendor`, allow both on `viewed_seconds` goals, and declare the deprecated `account` field on the media-buy `list_creative_formats` request | Current signed protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-rc.53` and exact Python support in `adcp==8.0.0b18`; served by the public training agent |
+| `sales-dooh` | Stable | Non-guaranteed DOOH: typed placement identifiers, loop and slot timing, `plays` and `dooh_metrics` |
+| `sales-exchange` | Preview | Exchange discovery with floors and bid guidance, auction-priced buys, in-flight bid adjustment, auction transparency |
+| `sales-retail-media` | Preview | Catalog sync, keyword-targeted sponsored search, item availability, retail product discovery |
+| `sales-streaming-tv` | Preview | CTV discovery, VAST creative sync, household frequency-capped buys, household reach reporting |
 
-Each prerelease is immutable. The `3.2-rc` documentation selector advances to the latest release candidate; the `3.2-beta` selector remains frozen at beta.11. Pinned protocol, schema, compliance, and documentation artifacts remain available. See the [3.2 prerelease program](/docs/reference/3-2-beta).
+### Breaking changes and 3.2 exceptions
 
-### 3.2 feature index
+The complete, verified list is [3.2 exceptions to 3.x compatibility](/docs/reference/versioning#3-2-exceptions-to-3-x-compatibility). In short:
 
-- **Media buying:** compact listing, immutable proposal negotiation, direct purchase, proposal acceptance, operational control, seller-optimized budgets and bidding, atomic total-budget changes, revenue-share pricing, creative rotation, warnings, and durable indicators.
-- **Identity and connections:** an experimental authenticated-principal layer for caller-scoped webhooks, reusable reporting destinations, asynchronous capability declarations, optimistic replacement, and `principal.changed` repair.
-- **Targeting and audiences:** targeting-aware discovery, portable demographic predicates, named places, value-aware regions, browser families, property exclusions, audience evidence, exact package readback, and request-only targeting inputs where each dimension distinguishes omission, a non-null replacement, and an explicit `null` that clears it.
-- **Frequency management:** a shared MediaBuy-level `frequency_cap` counted once across every package, advertised through `media_buy.aggregate_frequency_capping` and product `media_buy_support`, plus structured product frequency-cap constraints on `overlay_support.frequency_cap_support` and the `update_media_buy_frequency_cap` action.
-- **Inventory identity:** first-class programmed channel collections, including FAST and virtual linear streams, with host-property carriage mapping and collection-scoped host attestation for owner-sold avails.
-- **Creative:** canonical capability discovery, image pixel density and rendition sets, localization, async preview opt-in, audio loudness, VAST 4.3 and validation levels, accessibility detail, and synthetic depiction provenance.
-- **Security and evidence:** required body binding for 3.2 request-signing profiles, OAuth discovery grading, portable attestations, rights and signal evidence, signed brand-response verification, and safer secured asset access.
-- **Errors and recovery:** required `error.recovery` emission for 3.2 producers with schema-compatible 3.1 decoding, bounded unknown-code fallback, and reference vectors for classification and `retry_after` scheduling.
-- **Operations and measurement:** capability/account change notifications, snapshot-and-log repair, demographic and spot delivery, metric accountability, deterministic filters, fixture resolution, and capability-selected runtime projections.
-- **Reliable Reporting:** a separately discovered, versioned experimental three-tier contract for expected-period obligations, immutable official revisions, managed materializations, authenticated receipts, correction ledgers, and repairable status. RC.1 completes Reliable Reporting 1.0; RC.2 adds the opt-in two-sided `sync_reporting_status` consumer-status loop; RC.3 hardens that loop and reserves `authoritative_party` for a later minor.
-- **Experimental surfaces:** cross-role campaign governance revisions and Trusted Match authentication, routing, attribution, and creative-data cleanup under their existing experimental declarations.
+- **One removed field (ratified, DR-0011).** Body-level `status` is removed from `create_media_buy` and `update_media_buy` success payloads. Read `media_buy_status`. See [Migrating to `media_buy_status`](/docs/reference/migration/media-buy-status).
+- **One request-signing security correction.** On an endpoint that advertises 3.2, request `Signature` and `Content-Digest` values use RFC 8941 padded standard Base64, and every signed request with a body covers `content-digest`. The endpoint selects the profile, not the request pin, so a shared endpoint that advertises 3.2 rejects legacy-signed 3.1 requests. See [Mixed-version request signing](/docs/reference/migration/3-1-to-3-2#mixed-version-request-signing). Webhook v1 signing keeps its legacy encoding throughout 3.x.
+- **Eight tightened request rules**, most encoding rules 3.1 already documented: `create_media_buy` shape and currency, `build_creative` routes, image package dimensions, `sync_governance` Bearer-only schemes, account notification `event_types`, `preview_creative` inputs, and the `adcp_version` pattern.
+- **Clarified delivery-date semantics.** Delivery dates move from UTC to the reporting timezone, and mixed-timezone dated or windowed requests are rejected with `VALIDATION_ERROR` (see [Delivery dates on the reporting timezone](#delivery-dates-on-the-reporting-timezone)).
+- **Three producer-side tightenings**: preview `recommended_sandbox`, committed-proposal `pricing_option_id`, and capability `vast_versions` / `request_signing` list patterns.
 
-### Adopter action
+3.2 producers populate `error.recovery` on every error and emit integer `retry_after`. To claim 3.2 you also need `supported_versions` plus the response `adcp_version` echo; durable idempotency ledgers that outlive the resources they create; and verifiers that never derive identity or authority from `Mcp-Session-Id`. The shared schemas stay permissive, so 3.1 errors and responses still decode. Qualify decoders against the [error-recovery reference vectors](https://adcontextprotocol.org/compliance/3.2.1/test-vectors/error-recovery/vectors.json).
 
-| If you are… | Before advertising or sending 3.2 |
-|---|---|
-| A buyer | Discover the exact prerelease, gate every compact tool and optional field on capabilities, keep a 3.1 route during prerelease, and retain bounded recovery fallback for legacy errors. |
-| A seller or service | Advertise and echo the exact prerelease served, populate `error.recovery` on every 3.2 error, emit canonical status/retry shapes, and declare only capabilities actually implemented. |
-| A signing implementation | Require `content-digest` coverage for every signed request body on a 3.2 signing endpoint. |
-| A creative implementation | Prefer canonical capability and product format discovery; isolate named-format conversion at compatibility boundaries. |
-| An SDK maintainer | Generate from the current signed RC.7 tarball, publish an exact support statement, and route accepted protocol corrections into a later prerelease. |
-| A compliance operator | Pair `@adcp/sdk@14.0.0-rc.53` or `adcp==8.0.0b18` with RC.7, and Go `adcp/v3@v3.2.1` with RC.1. Retain exact package and wire versions and do not issue a 3.2 badge from a prerelease checkpoint. |
+Widened response shapes that a strict 3.1 parser can reject (for example `delivery_status: "not_delivering"`, BCP 47 language values, nullable `quartile_data`, the structured `ACTION_NOT_ALLOWED.details.attempted_action`, and the `revenue_share` pricing arm) are listed in [Wire changes from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2#wire-changes-from-3-1-to-3-2).
 
-### Required 3.2 migrations
+### Experimental surface changes
 
-- `create_media_buy` and `update_media_buy` success bodies use `media_buy_status`; root `status` is the task-envelope state. See [Migrating to `media_buy_status`](/docs/reference/migration/media-buy-status).
-- A 3.2 request-signing profile advertises `covers_content_digest: "required"`; every accepted signature on a body-bearing request covers the digest.
-- 3.2 request `Signature` and `Content-Digest` values use RFC 8941 padded standard Base64 `sf-binary`, not the 3.0/3.1 unpadded Base64URL override. Webhook v1 retains its separately routed legacy encoding. The endpoint, not the request pin, selects the profile: a shared endpoint that advertises 3.2 rejects signed 3.1 requests even when they pin `"3.1"`. See [Mixed-version request signing](/docs/reference/migration/3-1-to-3-2#mixed-version-request-signing).
-- 3.2 producers populate `error.recovery` on every error. The shared schema remains permissive for 3.1 compatibility; SDK consumers should qualify against the [error-recovery reference vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/error-recovery/vectors.json).
-- 3.2 producers emit integer `error.retry_after` seconds.
-- A 3.2 verification claim requires release advertisement and response echo even though those fields remain schema-optional for 3.x compatibility.
-- Idempotency replay is required for state-mutating requests, not pure reads. Read wrappers must tolerate an optional `idempotency_key`, but may ignore it; buyers cannot infer read-response replay from `adcp.idempotency.supported: true`.
-- Product and signal agents may declare `anonymous_discovery` in their respective capability block. `true` permits an anonymous discovery response without claiming catalog completeness; `false` requires an authenticated principal; absence preserves legacy probe-and-handle behavior. Mutations and private or account-scoped reads remain authenticated by protocol rule rather than seller-variable capability.
+These surfaces keep `x-status: experimental`. Implementers inspect `experimental_features` and pin an exact release. Their notice windows ran during the 3.2 prerelease cycle.
 
-### Compact product and MediaBuy lifecycle (#6115)
+- **Campaign governance (`governance.campaign`).** Task-scoped enforcement, `x-governed-commitment`, opaque plan binding, intent-only `conditions`, critical JWS bindings, governance-authoritative outcome accounting, and a two-party campaign adjustment lifecycle. Breaking for the `check_governance` `delivery_metrics` and `report_plan_outcome` `delivery` shapes. See the [cross-role governance migration](/docs/reference/migration/cross-role-governance-enforcement).
+- **Trusted Match (`trusted_match.core`).** Publisher authentication is required (HTTP 401 on failure), provider-attributed key-values move to `signals_by_provider[provider_id].targeting_kvs`, Offer `macros` is renamed to `creative_data` with no alias, and Context Match embeddings derived from non-public single-user content are prohibited.
+- **Brand rights (`brand.rights_lifecycle`).** Acquired `rights_constraint` requires `rights_holder`, `grant_status`, `content_digest`, and `attestation_refs`. See [Rights-grant attestation](/docs/building/by-layer/L1/security#rights-grant-attestation-profile-3-2).
+- **Audience activation (`media_buy.audience_activation`).** Product activation-method declarations and external `source` references on `sync_audiences` with `SOURCE_ACCESS_FAILED`.
+- **New experimental in 3.2:** `account.change_feed`, `protocol.principal`, `media_buy.reporting_delivery`, `media_buy.product_identity`, `media_buy.execution_requirements`, `measurement.core`, and `measurement.gateway`. The static OOH delivery block and the `seller_rendered_stateful_display` and `coordinated_placements` canonical formats are also experimental.
 
-AdCP 3.2 adds `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy` as compact, task-specific contracts. The broad `get_products`, `create_media_buy`, and `update_media_buy` facades remain functional throughout 3.x but are deprecated for new integrations.
+### Deprecations and removals
 
-- `list_products` is a synchronous, naturally idempotent product-offer read.
-- `request_proposals` creates immutable draft proposals from a brief and optional listed product IDs.
-- `refine_proposals` creates draft revisions or atomically finalizes drafts into committed inventory holds; `decline_proposals` records terminal buyer feedback and prevents later execution.
-- `buy_products` accepts published product offers directly; `accept_proposal` applies new-buy, amendment, or negotiated-cancellation proposals; `control_media_buy` handles revision-checked operational controls inside accepted terms.
-- Canonical proposals carry typed `commercial_terms` plus an RFC 8785 SHA-256 `terms_digest`. Changed terms mint a new `proposal_id`; accepted MediaBuys expose the current proposal pointer for restart-safe refinement.
-- New purchase and control tools never accept inline creatives. Creative bodies and assignments use the dedicated creative lifecycle.
-- Optional shared `opportunity` context connects proposal request, refinement, decline, and purchase; proposal snapshots retain the association without making it proposal identity.
-- Each stateful task requires an idempotency key and retains its own replay identity. Retries use the same tool name.
-- Brand input is an identity-only key, catalogs are compact selections, and offer filters are separated from exact targeting and future targeting support.
-- `media_buy.lifecycle_tools` advertises the compact product and MediaBuy lifecycle. Its absence means callers use the 3.x compatibility facades.
-- The release manifest labels each legacy fallback as `direct`, `orchestrated`, or `none`, so SDKs can expose the split API without claiming lossy calls are aliases.
-- `task_result_resolution` maps each tracked `task_type` to its tool `response_schema` or a retained 3.x event override, letting SDKs generate `TaskStatus<Result>` without embedding the global async-result union in `getTaskStatus`.
+| Surface | 3.2 status | Earliest removal | Migration |
+|---|---|---|---|
+| Body-level `status` on `create_media_buy` and `update_media_buy` success | **Removed** | — | [media_buy_status](/docs/reference/migration/media-buy-status) |
+| `get_products`, `create_media_buy`, and `update_media_buy` for new integrations | Compatibility facades | Not in 3.x | [3.1 to 3.2](/docs/reference/migration/3-1-to-3-2) |
+| `list_creative_formats` | Deprecated for new discovery | Own schedule, not tied to 4.0 | [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) |
+| `list_creative_formats` pricing request fields, and the media-buy `account` field | Deprecated | 4.0 | `list_transformers` and `Product.format_options[]` |
+| Exact plural `format_ids` fields | Deprecated | 4.0 | [Canonical formats migration](/docs/creative/canonical-formats-migration) |
+| Targeting-like product filters | Deprecated | 4.0 | [Targeting-aware discovery](/docs/reference/migration/targeting-aware-discovery) |
+| `get_media_buy_delivery` response-wide `currency` and `aggregated_totals` | Deprecated | 4.0 | [Row-level semantics](/docs/reference/migration/3-1-to-3-2#move-delivery-reporting-to-row-level-semantics) |
+| 3.1 `terms_ref` action-link overload | Deprecated | 4.0 | `change_term_id` |
+| `bid_price` and pricing-option `max_bid` | Deprecated | 4.0 | `bidding.bid_amount` / `bidding.max_bid` |
+| `service_account.credentials` in secured artifact access | Deprecated | 4.0 or later, after both policy gates | [Secured asset access](/docs/reference/migration/asset-access) |
+| `video_vast.linear_required`, flat-rate `loop_duration_seconds` | Superseded | 4.0 | `creative_type`, `dooh_placement_attributes` |
 
-New integrations SHOULD use the compact tools. Existing integrations do not need an immediate migration: the three compatibility facades retain their 3.x request shapes. On `get_products`, the key remains optional on every arm. A seller may ignore it for a guaranteed side-effect-free synchronous read. Buyers should supply it whenever the request may allocate a task or change observable state. When supplied and the seller declares `adcp.idempotency.supported: true`, the seller fences replay before that effect.
+`list_creative_formats` stays functional through 4.x on its own schedule. Buyers MUST NOT assume it is present on a 3.2 agent that declares canonical-format discovery (`Product.format_options[]`, `creative.supported_formats`). Inline asset-access credentials remain schema-valid for 3.x, but consumers must not activate received credentials automatically.
 
-### Inline asset-access credentials deprecated (#5698)
+### Conformance
 
-`service_account.credentials` in secured content-artifact access is deprecated. New producers must omit it. For one-off delivery, use an asset-scoped, short-lived signed URL; established integrations may use the fetching component's pre-authorized workload identity, and origins that require an Authorization header may use a short-lived, asset-scoped bearer token.
+- **New specialisms.** `buyer-discovery`, `buyer-activation`, `buyer-negotiation`, `buyer-monitoring`, `buyer-recovery`, and `orchestrator-multi-agent` form a buyer-orchestrator compliance track, alongside the four new seller specialisms. All six buyer and orchestrator specialisms are preview: agents may claim them, and the runner reports a `preview` result instead of a verified pass or fail. See the [compliance catalog](/docs/building/verification/compliance-catalog).
+- **Grading.** Optional scenarios run only when an agent advertises the matching capability, and fixture gaps grade as `not_applicable`. Verified-agent owners can select Legacy or Strict Spec grading ([AAO Verified](/docs/building/verification/aao-verified)). 3.2 badges are issued once hosted grading moves to the `3.2.1` compliance bundle, graded against `3.2.1` with a `"3.2"` advertisement and response echo; prerelease runs are diagnostic only.
+- **Governance storyboards.** `media_buy_seller/governance_denied` and `governance_denied_recovery` now exercise the seller's own execution check: an approved intent, a plan amendment, then a denied purchase check that the seller answers with `GOVERNANCE_DENIED`. Previously they sent `create_media_buy` without a governance token, which a correct seller must reject with `PERMISSION_DENIED`. `brand_rights` `acquire_rights_denied` accepts either the rejection arm or `PERMISSION_DENIED` while the working group settles the single correct response ([#7790](https://github.com/adcontextprotocol/adcp/issues/7790)). The seven governance storyboards now name a resolvable test buyer, `hosted-grader.adcontextprotocol.org`, whose `brand.json` lists the sandbox governance agent, and use the fixed grader buyer agent `https://hosted-grader.adcontextprotocol.org/buyer` as the intent `caller`, so a seller can verify governance authorization exactly as it would in production. Hosted grading of these multi-agent storyboards for third-party `governance-aware-seller` claims follows in a 3.2.x hosted-grading update ([#7758](https://github.com/adcontextprotocol/adcp/issues/7758)); until then they grade as `partial`, never `failing`.
+- **Request-signing vectors.** `test-vectors/request-signing/profile-3.2/` now holds 30 vectors (11 positive, 19 negative). 27 were added before GA as content-digest-covered counterparts of the root positives and the checklist step 2–12 negatives, so a verifier that advertises `covers_content_digest: "required"` can grade those steps.
+- **Storyboard fixes before GA.** `reporting_core` completes on a conformant seller; `creative/get_creative_features_idempotency` applies only to agents that expose `get_creative_features`; `canonical_formats`, `billing_finality_delivery`, `measurement_accountability`, and `vendor_metric_accountability` run for sellers that claim only `sales-non-guaranteed`; `account_change_feed` and the governance-approved scenarios carry generated IDs across phases, now enforced by a build-time lint.
+- **Reference agent.** The public training agent answers `"3.2"` and moves to the `3.2.1` bundle with `@adcp/sdk@14.0.0`. It rejects `viewable_rate` goals it cannot honor instead of silently accepting them, and resolves controller-seeded rights grants for operator-unit accounts.
 
-The legacy field remains schema-valid for 3.x wire compatibility. Consumers must not activate received credentials automatically: they may process the legacy form only for an explicitly allowlisted peer and otherwise must reject or quarantine it. The field is eligible for removal in 4.0 or later only after both deprecation-policy gates are satisfied: at least six months from publication of this notice and at least one full release cycle. See [Migrating secured asset access](/docs/reference/migration/asset-access) and [#5699](https://github.com/adcontextprotocol/adcp/issues/5699) for removal tracking.
+### SDKs
 
-### Cross-role governance enforcement
+The protocol publishes first; the stable TypeScript and Python SDKs follow it and embed `3.2.1`.
 
-**Breaking-change notice for the experimental governance-task surface. The implementation may merge during 3.2 development; the beta-to-GA period provides the six-week notice window before production availability. This notice does not relax authentication, transport, or core security requirements: authenticated caller binding follows the stable version-level contract.**
-
-The experimental campaign-governance surface gains task-scoped service enforcement, opaque plan binding, intent-only conditions negotiation, authenticated caller binding, phase-correct media-buy identifiers, and governance-authoritative outcome accounting. Modern responses carry `check_type`; a legacy response arm remains valid for 3.x migration. See the [cross-role governance migration guide](/docs/reference/migration/cross-role-governance-enforcement) and [#5944](https://github.com/adcontextprotocol/adcp/issues/5944).
-
-### Creative-format discovery deprecation posture (#5779)
-
-`list_creative_formats` is **deprecated for new discovery**. Prefer:
-
-| Role | Preferred 3.2+ discovery | Notes |
+| Language | 3.2 package | 3.1 line |
 |---|---|---|
-| Sales agents | `get_products.format_options[]` | Product-level accepted formats |
-| Creative agents | `get_adcp_capabilities.creative.supported_formats` | Producible-format catalog |
+| TypeScript | `@adcp/sdk@14.0.0` (npm `latest` and `adcp-3.2`) | `@adcp/sdk` 13.x (npm `adcp-3.1`) |
+| Python | `adcp==8.0.0` | `adcp` 7.x |
+| Go and Java | Final 3.2 support is planned as a follow-up | Current releases |
 
-The v1 task remains **functional through 4.x** on its own compatibility schedule. Its lifecycle is not coupled to exact plural `format_ids`, which is deprecated in 3.2 and removed in 4.0.
+A TypeScript verifier pinned to `"3.2"` accepts only padded standard Base64 in `Signature` and `Content-Digest` and rejects Base64URL `sf-binary` as `request_signature_header_malformed` at checklist step 1, as vector `profile-3.2/negative/001` requires ([adcp-client#3073](https://github.com/adcontextprotocol/adcp-client/issues/3073)). Endpoints that advertise 3.2 must pin the verifier's `adcpVersion`; serve 3.0/3.1 signers, which use Base64URL, from an endpoint pinned to `"3.1"`.
 
-**Not deprecated by this change:**
+SDK 14 and SDK 8 still call and serve 3.0 and 3.1 peers. Upgrade the SDK first with the wire pin at `"3.1"`, then opt into `"3.2"` per peer. SDK and codegen maintainers generate from the signed [`3.2.1` tarball](https://adcontextprotocol.org/protocol/3.2.1.tgz), not from `main` or `/schemas/latest/`. See [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) and the [SDK version map](/docs/reference/migration/3-1-to-3-2#sdk-versions-for-3-2).
 
-- [`list_creatives`](/docs/creative/task-reference/list_creatives) remains the creative-library query task.
-- Singular `format_id` and named-format definitions retain their separate compatibility schedules; exact plural `format_ids` fields are removed in 4.0.
+### Why the first stable release is 3.2.1
 
-**Consumer conformance:** buyers and other consumers MUST NOT assume `list_creative_formats` is present on 3.2+ agents when equivalent canonical-format discovery is declared.
-
-**Compliance:** current 3.2 sales and creative lifecycle storyboards use canonical product declarations and `creative.supported_formats`. Compatibility-only storyboards that exercise `list_creative_formats` are gated with `requires_tool`, producing an explicit non-failing `missing_tool` skip when an agent does not expose the deprecated task.
-
-See [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats), [Creative Protocol specification § Conformance](/docs/creative/specification#conformance), and [Implementing creative agents](/docs/creative/implementing-creative-agents).
+On 2026-06-30 an accidental release cut published `3.2.0` artifacts built from 3.1-era content. The tag and GitHub Release were removed ([#5769](https://github.com/adcontextprotocol/adcp/pull/5769)), but released artifacts are immutable, so the signed schemas, compliance bundles, and tarball at `3.2.0` URLs remain and the number cannot be reused. Do not use `3.2.0` artifacts. The wire pin is `"3.2"` either way, since patch numbers are never negotiated. See [Versions & Compatibility](/docs/reference/versions).
 
 ---
 

@@ -6,12 +6,32 @@ maintenance-line checklist, see `.agents/shortcuts/cut-patch.md`.
 
 ## Current topology
 
+AdCP 3.2 GA ships as `3.2.1` (tag `v3.2.1`, wire pin `"3.2"`); `3.2.0` is
+permanently withdrawn. The branch topology changes on GA day, in the order in
+[`.agents/shortcuts/cut-minor-ga.md`](.agents/shortcuts/cut-minor-ga.md):
+
+**Until `v3.2.1` is tagged:**
+
 - `3.1.x` is the stable maintenance line. Patch fixes are reviewed on `main`
   first, then cherry-picked to a PR targeting `3.1.x`.
-- `main` is the next-minor line. It is currently in Changesets RC pre mode
-  (`.changeset/pre.json` with `"tag": "rc"`), so Version Packages PRs produce
-  `3.2.0-rc.N` until the separately reviewed GA pre-mode exit.
-- Forward merges are one-way: `3.1.x → main`. Never merge `main` into the
+- `main` is the 3.2 line. It stays in Changesets RC pre mode
+  (`.changeset/pre.json` with `"tag": "rc"`) until the separately reviewed
+  pre-exit PR; the next Version Packages cut after that exit produces `3.2.1`.
+- Forward merges are one-way: `3.1.x → main`.
+
+**After `v3.2.1` (GA runbook Phase 10):**
+
+- `3.2.x` is created from the `v3.2.1` Version Packages merge and becomes the
+  stable maintenance line. Patches continue as `3.2.2`, `3.2.3`, and so on.
+  Fixes land on `main` first and are cherry-picked to `3.2.x`.
+- `main` re-enters Changesets **beta** pre mode for 3.3 the same day
+  (`npx changeset pre enter beta`), so minor changesets can never cut an
+  accidental stable release.
+- `3.1.x` stays a security and critical-fix line for a maintainer-decided
+  window; the fix flow among `3.1.x`, `3.2.x`, and `main` is recorded when
+  `3.2.x` is created.
+- Forward merges stay one-way from maintenance lines toward `main`
+  (`3.2.x → main` through `forward-merge-3.2.yml`). Never merge `main` into a
   maintenance branch.
 
 The root `adcontextprotocol` package is private. Its version is release
@@ -33,7 +53,7 @@ stable protocol surface, and `major` for breaking stable changes. Addie,
 website, infrastructure, internal tooling, and non-normative docs do not get a
 protocol changeset.
 
-For a fix that must ship in 3.1.x:
+For a fix that must ship in 3.1.x (after GA, the same flow applies to `3.2.x`):
 
 1. Land the normal PR on `main`.
 2. Confirm every protocol changeset in the merged commit is `patch`.
@@ -43,7 +63,7 @@ For a fix that must ship in 3.1.x:
    `changeset-release/3.1.x` Version Packages PR.
 
 Do not downgrade a `minor` or `major` changeset during a backport. Reclassify
-the change on `main` first or leave it for 3.2.
+the change on `main` first or leave it for the next minor.
 
 ## Cutting a 3.1.x patch
 

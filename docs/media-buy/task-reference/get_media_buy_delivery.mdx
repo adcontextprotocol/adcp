@@ -8,11 +8,9 @@ testable: true
 
 Retrieve comprehensive delivery metrics and performance data for media buy reporting.
 
-{/* Exact RC.1 is pinned because the stable /schemas/v3 surface does not include
-    the release-candidate exact-revision contract. */}
-**Request schema:** [`get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.1/media-buy/get-media-buy-delivery-request.json)
+**Request schema:** [`get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/get-media-buy-delivery-request.json)
 
-**Response schema:** [`get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.1/media-buy/get-media-buy-delivery-response.json)
+**Response schema:** [`get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/get-media-buy-delivery-response.json)
 
 **Response Time**: ~60 seconds (reporting query)
 
@@ -22,8 +20,8 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 
 ## Exact Reliable Reporting revision read
 
-Reliable Reporting adds the mutually exclusive `reporting_revision_id` selector
-in RC.1. It returns the immutable content for exactly that revision,
+Reliable Reporting (AdCP 3.2) adds the mutually exclusive `reporting_revision_id`
+selector. It returns the immutable content for exactly that revision,
 not a newly calculated date-range result. The response carries the full
 `reporting_revision` metadata, authoritative `reporting_rows`, and
 `reporting_revision_binding` with the same revision ID, row count, control totals,
@@ -146,7 +144,7 @@ Returns delivery data as per-media-buy rows:
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
 | `daily_breakdown` | Day-by-day delivery for single-currency rows, one row per calendar date in the reporting timezone. Omitted for legacy/external mixed-currency buys because daily rows have no package currency grain. |
 
-See the pinned [RC.1 schema](https://adcontextprotocol.org/schemas/3.2.0-rc.1/media-buy/get-media-buy-delivery-response.json) for the released field list, including exact-revision reads.
+See the pinned [3.2.1 schema](https://adcontextprotocol.org/schemas/3.2.1/media-buy/get-media-buy-delivery-response.json) for the released field list, including exact-revision reads.
 
 ### Final vs provisional numbers
 

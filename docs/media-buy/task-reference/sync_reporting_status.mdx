@@ -5,9 +5,8 @@ description: "sync_reporting_status tells a seller whether expected Reliable Rep
 ---
 
 <Warning>
-`sync_reporting_status` is an additive, opt-in Reliable Reporting extension
-published in `3.2.0-rc.2` and hardened in `3.2.0-rc.3`. RC.1 implementations do
-not expose it. Sellers that implement it advertise `consumer_status_task`; the
+`sync_reporting_status` is an additive, opt-in Reliable Reporting extension in
+AdCP 3.2. Sellers that implement it advertise `consumer_status_task`; the
 task stays opt-in until the active breaking-change notice window closes on
 October 24, 2026, and becomes required Core only in the next eligible minor
 after that date.
@@ -25,20 +24,19 @@ observations about a user. It also is not a Reconciled Billing receipt:
 `received` proves only that the buyer consumed the exact Core revision binding,
 not that Managed materialization evidence or billing control totals matched.
 
-{/* The stable /schemas/v3 alias does not expose this prerelease-only task yet. */}
-**Request schema:** [`sync-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.7/media-buy/sync-reporting-status-request.json)
+**Request schema:** [`sync-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/sync-reporting-status-request.json)
 
-{/* The stable /schemas/v3 alias does not expose this prerelease-only task yet. */}
-**Response schema:** [`sync-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.7/media-buy/sync-reporting-status-response.json)
+**Response schema:** [`sync-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/sync-reporting-status-response.json)
 
 <Note>
-`3.2.0-rc.2` published the task itself; `3.2.0-rc.3` published the hardening
-described on this page — the `content_mismatch` status and its `mismatch_code`,
-the stale-`received` grace window, `obligation_counts.consumer_status_pending`,
-issue `opened_at` / `issue_state` / `external_ref`, and the
-`operations_contact` / `consumer_mismatch_escalation_seconds` capability fields.
-An RC.2 seller that already emits `CONSUMER_STATUS_MISMATCH` must add
-`opened_at` before validating against RC.3.
+**Pinned 3.2 prerelease adopters.** `3.2.0-rc.2` published the task itself;
+`3.2.0-rc.3` published the hardening described on this page — the
+`content_mismatch` status and its `mismatch_code`, the stale-`received` grace
+window, `obligation_counts.consumer_status_pending`, issue `opened_at` /
+`issue_state` / `external_ref`, and the `operations_contact` /
+`consumer_mismatch_escalation_seconds` capability fields. A seller built
+against `3.2.0-rc.2` that already emits `CONSUMER_STATUS_MISMATCH` must add
+`opened_at` before validating against the final 3.2 schemas.
 </Note>
 
 ## Status values
