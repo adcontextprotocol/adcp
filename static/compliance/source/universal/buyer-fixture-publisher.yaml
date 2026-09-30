@@ -158,6 +158,15 @@ authoring_rules:
     permitted_values:
       - list_products
 
+  product_shape_constraint:
+    description: |
+      Every product in fixtures.fixture_publisher.products MUST validate as
+      both the legacy Product (core/product.json) and the canonical Product
+      (core/canonical-product.json). get_products and list_products serve the
+      same product set, so a product valid under only one shape sends a
+      conformant buyer a response that fails its schema on the other tool.
+      Enforced by tests/buyer-fixture-products-schema.test.cjs.
+
 # Idempotency enforcement. The fixture publisher MUST enforce idempotency
 # on mutating tools (create_media_buy, sync_creatives) per the same rules
 # as a production seller. This is tested by the buyer-activation storyboard.

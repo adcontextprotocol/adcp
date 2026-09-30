@@ -1,5 +1,5 @@
 id: buyer_discovery
-version: "0.1.1"
+version: "0.1.2"
 title: "Buyer agent product discovery and candidate selection"
 protocol: media-buy
 category: buyer_discovery
@@ -32,7 +32,7 @@ narrative: |
   - Capability gating: agent does not attempt compact lifecycle tools unless
     the seller declares lifecycle_tools support
   - Product interpretation: agent correctly reads delivery_type, pricing_options,
-    format_options, and audience_activation methods
+    and format_options
   - Brief-to-filter translation: agent maps the human brief into structured
     get_products filters or a brief string
   - Candidate ranking: agent presents products sorted by relevance to the brief
@@ -72,13 +72,24 @@ fixtures:
     products:
       - product_id: "ctv_premium_guaranteed"
         name: "Premium CTV — Guaranteed"
+        description: "Guaranteed 30-second spots across premium connected-TV apps."
+        publisher_properties:
+          - publisher_domain: "streamhaus.example"
+            selection_type: "all"
+        reporting_capabilities: &fixture_reporting
+          available_reporting_frequencies: ["daily"]
+          expected_delay_minutes: 240
+          timezone: "UTC"
+          supports_webhooks: true
+          available_metrics: ["impressions", "spend", "completed_views"]
+          date_range_support: "date_range"
         delivery_type: "guaranteed"
         channels: ["ctv"]
         pricing_options:
           - pricing_option_id: "cpm_guaranteed"
             pricing_model: "cpm"
             currency: "USD"
-            rate: 35.00
+            fixed_price: 35.00
         format_options:
           - format_option_id: "video_30s_ctv"
             format_kind: "video_hosted"
@@ -86,11 +97,13 @@ fixtures:
               duration_ms_exact: 30000
               width: 1920
               height: 1080
-        audience_activation:
-          methods:
-            - pattern: "sync_audiences"
       - product_id: "display_ron_auction"
         name: "Run of Network Display — Auction"
+        description: "Auction-priced 300x250 display across the network's sites."
+        publisher_properties:
+          - publisher_domain: "pagenetwork.example"
+            selection_type: "all"
+        reporting_capabilities: *fixture_reporting
         delivery_type: "non_guaranteed"
         channels: ["display"]
         pricing_options:
@@ -190,7 +203,7 @@ phases:
     narrative: |
       The buyer agent interprets the discovered products and assembles a
       candidate shortlist. This phase verifies the agent correctly reads
-      delivery_type, pricing, format requirements, and activation methods.
+      delivery_type, pricing, and format requirements.
 
     steps:
       - id: interpret_products
@@ -198,16 +211,15 @@ phases:
         narrative: |
           The buyer agent must distinguish guaranteed from non-guaranteed
           products, read pricing (fixed rate vs auction with floor/guidance),
-          understand creative format requirements, and note audience activation
-          methods. The agent presents a shortlist to the operator.
+          and understand creative format requirements. The agent presents a
+          shortlist to the operator.
         expected: |
           The buyer agent:
           1. Distinguishes delivery_type: guaranteed from non_guaranteed
           2. Reads pricing_model and rate/floor_price/price_guidance correctly
           3. Notes format_options requirements (video 30s 1080p for CTV, 300x250 image for display)
-          4. Notes audience_activation methods (sync_audiences for CTV)
-          5. Does not present products as guaranteed when they are non_guaranteed or vice versa
-          6. Presents a candidate shortlist with pricing and format context
+          4. Does not present products as guaranteed when they are non_guaranteed or vice versa
+          5. Presents a candidate shortlist with pricing and format context
         validations:
           - check: output_contains
             field: "candidates"
