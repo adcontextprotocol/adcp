@@ -22,7 +22,8 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 - **Platform power.** Social and other self-optimizing platforms can take one shared budget, optimize it natively against the buyer's cost caps, cost targets, and ROAS targets, and plan to an outcome such as clicks at a stated cost. Products state what a buy needs before it runs: a conversion event source, an app catalog, or a page or profile connection. An agent buys what the platform actually sells, not a lowest common denominator.
 - **Reliable Reporting.** The reporting pipeline is part of the protocol. Every report a seller owes is tracked, a missing one shows up as missing, corrections become new revisions, and deliveries can land in a warehouse or data share (experimental, `media_buy.reporting_delivery`).
 - **Data collaboration.** Products declare how buyer audience data can reach them: direct sync, identity match, file transfer, dataset query, clean room, or platform distribution (experimental, `media_buy.audience_activation`).
-- **Compact lifecycle.** Each step of a buy, from discovery through proposals, purchase, and in-flight control, has its own task-specific tool. Their MCP schemas are 72–94% smaller than the 3.1 facades they replace, so agents spend fewer tokens and builders implement less.
+- **Compact lifecycle.** Each step of a buy, from discovery through proposals, purchase, and in-flight control, has its own task-specific tool. Their MCP schemas are 71–94% smaller than the 3.1 facades they replace, so agents spend fewer tokens and builders implement less.
+- **Trust you can check.** Creatives declare AI-generated (synthetic) depictions, buyers pass do-not-run property lists that sellers honor, and sellers disclose whether measurement is first-party, affiliated, or third-party. Rights grants for licensed talent and voice carry portable, verifiable attestations (experimental, `brand.rights_lifecycle`).
 
 There is no flag day: 3.1 integrations keep working while you opt into `"3.2"` per peer and adopt new tools one capability at a time.
 
@@ -35,10 +36,10 @@ There is no flag day: 3.1 integrations keep working while you opt into `"3.2"` p
 | Manifested tools | 64 | 78 | +15 added, 1 webhook payload removed from the manifest |
 | Specialisms | 21 | 31 | +10 |
 | Standard error codes | 92 | 120 | +28 |
-| Source JSON Schema files | 648 | 1,012 | +364 |
-| Compliance YAML files | 137 | 235 | +98 |
+| Source JSON Schema files | 648 | 1,017 | +369 |
+| Compliance YAML files | 137 | 237 | +100 |
 
-The corpus grew, but each operation got lighter: the compact tools' MCP `2026-07-28` request and response schemas are 72% (`request_proposals`) to 94% (`control_media_buy`) smaller than the 3.1 bundled schemas of the facades they replace. These are schema artifact sizes, not request-body sizes or latency; see [the per-operation table](/docs/reference/whats-new-in-3-2#3-1-to-3-2-by-the-numbers).
+The corpus grew, but each operation got lighter: the compact tools' MCP `2026-07-28` request and response schemas are 71% (`request_proposals`) to 94% (`control_media_buy`) smaller than the 3.1 bundled schemas of the facades they replace. These are schema artifact sizes, not request-body sizes or latency; see [the per-operation table](/docs/reference/whats-new-in-3-2#3-1-to-3-2-by-the-numbers).
 
 ### Themes
 
