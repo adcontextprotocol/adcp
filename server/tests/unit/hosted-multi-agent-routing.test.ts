@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 import { loadStoryboardFile, type Storyboard } from '@adcp/sdk/testing';
+import { verifyApiKey } from '@adcp/sdk/server';
 
 import {
   HOSTED_GOVERNANCE_AGENT_KEY,
@@ -335,8 +335,14 @@ describe('hostedGovernanceAgent', () => {
 
   it('derives the same caller identity the training agent binds to the credential', async () => {
     const token = 'identity-check-token';
-    const keyId = createHash('sha256').update(token).digest('hex').slice(0, 32);
-    const agent = await trainingBuyerAgentRegistry.resolve({ credential: { kind: 'api_key', key_id: keyId } });
+    // Take key_id from the SDK authenticator the training agent uses, not
+    // from our own derivation, so a format change (e.g. a `sha256:` prefix)
+    // breaks this test.
+    const authenticate = verifyApiKey({ keys: { [token]: { principal: 'static:public' } } });
+    const principal = await authenticate({ headers: { authorization: `Bearer ${token}` } } as never);
+    const credential = (principal as { credential?: { kind: 'api_key'; key_id: string } } | null)?.credential;
+    expect(credential?.kind).toBe('api_key');
+    const agent = await trainingBuyerAgentRegistry.resolve({ credential: credential! });
     expect(agent?.agent_url).toBe(trainingAgentCallerIdentityForToken(token));
   });
 });
