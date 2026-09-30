@@ -361,50 +361,99 @@ app.post(
 ```
 </Tab>
 <Tab title="Python">
-The Python SDK ships framework wrappers for Flask and Starlette/FastAPI. Both call into the same `verify_request_signature` and raise `SignatureVerificationError` on rejection — map that to a 401 with `unauthorized_response_headers`:
+The Python SDK ships framework wrappers for Flask and Starlette/FastAPI. Both call into the same `verify_request_signature` and raise `SignatureVerificationError` on rejection. Map that to a 401 with `unauthorized_response_headers`.
 
-```python
-from fastapi import FastAPI, Request, HTTPException
+A `CachingJwksResolver` covers one JWKS, so it's bound to one buyer agent's `jwks_uri`. A seller with several buyers keeps one resolver per onboarded agent and picks it by `keyid`. The request carries no agent URL, so the `keyid` → agent index is built at onboarding (see [Seller walkthrough: buyer-declared accounts](/docs/building/by-layer/L2/accounts-and-agents#seller-walkthrough-buyer-declared-accounts)). `VerifyOptions` also needs the per-request `now` and `operation`, so build it for each request and reuse one replay store:
+
+```python test=false
+import json
+import time
+
+from fastapi import FastAPI, HTTPException, Request
 from adcp.signing import (
-    VerifyOptions,
-    VerifierCapability,
     CachingJwksResolver,
     InMemoryReplayStore,
-    StaticRevocationChecker,
-)
-from adcp.signing.middleware import (
-    verify_starlette_request,
-    unauthorized_response_headers,
+    StaticJwksResolver,
+    VerifierCapability,
+    VerifyOptions,
+    parse_signature_input_header,
 )
 from adcp.signing.errors import SignatureVerificationError
+from adcp.signing.middleware import (
+    unauthorized_response_headers,
+    verify_starlette_request,
+)
 
 app = FastAPI()
 
-verify_options = VerifyOptions(
-    capability=VerifierCapability(
-        supported=True,
-        covers_content_digest="required",
-        required_for={"create_media_buy", "update_media_buy"},
-    ),
-    jwks_resolver=CachingJwksResolver(),
-    replay_store=InMemoryReplayStore(),
-    revocation_checker=StaticRevocationChecker(set()),
+CAPABILITY = VerifierCapability(
+    supported=True,
+    covers_content_digest="required",
+    supported_for=frozenset({"create_media_buy", "update_media_buy"}),
+    required_for=frozenset({"create_media_buy", "update_media_buy"}),
 )
+REPLAY_STORE = InMemoryReplayStore()  # one per process; use a shared store across replicas
+
+# Populated at onboarding. The jwks_uri comes from the agent's brand.json
+# agents[] entry. Index each agent's kids and reject a kid that another
+# onboarded agent already publishes, so every keyid maps to one agent.
+JWKS_BY_AGENT = {
+    "https://agent.orbit-buying.example/mcp": CachingJwksResolver(
+        jwks_uri="https://agent.orbit-buying.example/.well-known/jwks.json",
+    ),
+}
+AGENT_BY_KEYID = {"orbit-2026-01": "https://agent.orbit-buying.example/mcp"}
+NO_KEYS = StaticJwksResolver({"keys": []})  # unknown keyid -> request_signature_key_unknown
+
+
+def onboarded_agent(headers) -> str | None:
+    try:
+        label = parse_signature_input_header(headers.get("signature-input", ""))["sig1"]
+    except (ValueError, KeyError):
+        return None  # the verifier reports the precise header error
+    return AGENT_BY_KEYID.get(str(label.params.get("keyid")))
+
+
+def mcp_operation(body: bytes) -> str:
+    envelope = json.loads(body)
+    if envelope.get("method") == "tools/call":
+        return envelope["params"]["name"]
+    return envelope.get("method", "")
+
 
 @app.post("/mcp")
 async def mcp(request: Request):
+    body = await request.body()
+    operation = mcp_operation(body)
+    if "signature" not in request.headers and "signature-input" not in request.headers:
+        # Unsigned: authenticate with the seller-issued credential. Reject with
+        # request_signature_required if the operation is in required_for and no
+        # credential you accept for it is present.
+        return await handle_unsigned(request, body, operation)
+
+    agent_url = onboarded_agent(request.headers)
+    options = VerifyOptions(
+        now=time.time(),
+        capability=CAPABILITY,
+        operation=operation,
+        jwks_resolver=JWKS_BY_AGENT.get(agent_url, NO_KEYS),
+        agent_url=agent_url,  # copied onto signer.agent_url
+        replay_store=REPLAY_STORE,
+        signing_profile_version="3.2",
+    )
     try:
-        signer = await verify_starlette_request(request, options=verify_options)
+        signer = await verify_starlette_request(request, options=options)
     except SignatureVerificationError as exc:
         raise HTTPException(
             status_code=401,
             detail=exc.code,
             headers=unauthorized_response_headers(exc),
         )
-    # signer.key_id, signer.agent_url, signer.verified_at available for audit.
-    body = await request.body()
+    # signer.key_id, signer.agent_url, signer.verified_at are available for audit.
     return await handle_mcp(body, signer)
 ```
+
+`handle_unsigned` and `handle_mcp` stand for your own handlers, which is why the block is marked `test=false`. The SDK doesn't derive `signer.agent_url` from the request. It copies the `agent_url` you pass in `VerifyOptions`, and it's `None` when you pass none. When you have an agent URL and want the SDK to walk brand.json itself, `verify_from_agent_url(request, agent_url, agent_type="buying", operation=...)` runs the full discovery chain on each call and fills `agent_url` from the matched `agents[]` entry. Pass `revocation_checker` (for example, `CachingRevocationChecker`) if you track revoked keys.
 
 For Flask: swap `verify_starlette_request` for `verify_flask_request` (sync). For non-Starlette ASGI frameworks, call `verify_request_signature` directly.
 </Tab>

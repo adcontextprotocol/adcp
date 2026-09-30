@@ -1226,6 +1226,34 @@ The `expected_signature_base` field in the conformance vectors is independent of
 
 The matched value is the decoded JSON string in the JSON-RPC envelope's `method` field, **not** the MCP `tools/call` `params.name`. Matching MUST use exact, case-sensitive string equality after JSON decoding: `tasks/cancel`, `CancelTask`, and `cancelTask` are distinct strings, while JSON escape spellings that decode to the same string are not distinct method names. Implementations MUST NOT translate, case-fold, apply Unicode normalization, or otherwise normalize names between A2A versions. A dual-stack agent therefore lists every wire name it covers; declaring `tasks/cancel` does not also declare `CancelTask`.
 
+The two A2A versions name the same methods differently, so check the pairs you care about:
+
+| A2A 0.3 | A2A 1.0 |
+|---|---|
+| `message/send` | `SendMessage` |
+| `message/stream` | `SendStreamingMessage` |
+| `tasks/get` | `GetTask` |
+| `tasks/cancel` | `CancelTask` |
+| `tasks/resubscribe` | `SubscribeToTask` |
+| `tasks/pushNotificationConfig/set` | `CreateTaskPushNotificationConfig` |
+
+The full valid lists for both versions are in [`protocol-method-names.json`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/protocol-method-names.json). Say a seller serves A2A 0.3 and 1.0 clients and requires signatures on task cancellation and push-notification registration. It declares both spellings of each method:
+
+```json
+{
+  "request_signing": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "supported_for": ["create_media_buy"],
+    "required_for": ["create_media_buy"],
+    "protocol_methods_supported_for": ["tasks/cancel", "CancelTask", "tasks/pushNotificationConfig/set", "CreateTaskPushNotificationConfig"],
+    "protocol_methods_required_for": ["tasks/cancel", "CancelTask", "tasks/pushNotificationConfig/set", "CreateTaskPushNotificationConfig"]
+  }
+}
+```
+
+An A2A 1.0 client cancels with `{"jsonrpc": "2.0", "method": "CancelTask", ...}`. That matches `CancelTask`. If the seller had listed only `tasks/cancel`, the request wouldn't match, and an unsigned 1.0 cancel wouldn't get `request_signature_required`. `message/send` works the same way: listing it doesn't cover A2A 1.0 `SendMessage` requests, and listing `SendMessage` covers every A2A 1.0 message no matter which AdCP operation it carries.
+
 `lower_snake_case` AdCP operation names such as `create_media_buy` MUST NOT appear in any `protocol_methods_*` array. The reserved MCP envelope method `tools/call` also MUST NOT appear there because its AdCP operation identity is the decoded `params.name`, which is matched against `supported_for` / `warn_for` / `required_for`. JSON-RPC protocol method names — slash-path A2A 0.3 names or PascalCase A2A 1.0 names — MUST NOT appear in those AdCP-operation arrays. Verifiers MUST reject capability blocks that violate the namespace split with a configuration-time error rather than silently coercing strings between the two. **Verifiers MUST NOT cross-namespace match: a `protocol_methods_required_for` membership MUST NOT be satisfied by a body whose JSON-RPC `method` is `tools/call` (even if `params.name` happens to equal a listed method string), and a `required_for` membership MUST NOT be satisfied by a body whose JSON-RPC `method` is anything other than `tools/call`.** The two buckets are matched against disjoint decoded envelope fields.
 
 The signature-base construction is identical for both namespaces and both A2A versions: the same RFC 9421 covered components apply (`@target-uri`, `@method`, `content-digest` per the seller's `covers_content_digest` policy, `authorization` when present), with `@target-uri` and `@method` reflecting the actual HTTP request — not the JSON-RPC method string. Buyers signing a `tasks/cancel` or `CancelTask` POST sign exactly as they would for any other mutating call; the protocol-method fields only change the seller's declaration of which JSON-RPC methods are in scope for verification.
@@ -1273,7 +1301,7 @@ Verifiers MUST NOT accept signatures from a `keyid` they cannot resolve to a spe
 
 #### Discovering an agent's signing keys via `brand_json_url`
 
-The `identity.brand_json_url` field on `get_adcp_capabilities` (added in 3.x, see schema `static/schemas/source/protocol/get-adcp-capabilities-response.json`) is the on-wire bootstrap for the agent → operator → keys chain. The field name reflects the artifact it points at (the operator's `brand.json` file), independent of whether the operator structure is a single brand, a house with sub-brands, an agency, or a pure operator record. Given only an agent URL `A`, a verifier resolves the agent's signing keys via:
+The `identity.brand_json_url` field on `get_adcp_capabilities` (added in 3.x, see schema `static/schemas/source/protocol/get-adcp-capabilities-response.json`) is the on-wire bootstrap for the agent → operator → keys chain. The field name reflects the artifact it points at (the operator's `brand.json` file), independent of whether the operator structure is a single brand, a house with sub-brands, an agency, or a pure operator record. In this section, *operator* means the agent's operator: whoever publishes the brand.json that lists the agent and its keys. It isn't the `operator` in an account's natural key. For buyer-declared accounts, that value comes from `account.operator` in the request, and one agent can act for many account operators (see [Seller walkthrough: buyer-declared accounts](/docs/building/by-layer/L2/accounts-and-agents#seller-walkthrough-buyer-declared-accounts)). Given only an agent URL `A`, a verifier resolves the agent's signing keys via:
 
 1. Fetch `A`'s `get_adcp_capabilities` response with SSRF validation per [Webhook URL validation](#webhook-url-validation-ssrf) (HTTPS only — the URL `A` is supplied by the caller and MUST go through the same address-family + private-IP filtering used for webhook callbacks). On unreachable/timeout, reject with `request_signature_capabilities_unreachable`.
 2. Read `identity.brand_json_url`. If absent and the request is signed, reject with `request_signature_brand_json_url_missing`. Reject with the same code if the value is non-HTTPS (the schema enforces `^https://` but verifiers MUST restate the check; a 3.x parser tolerating a malformed value MUST NOT proceed). The required-when rule is: `identity.brand_json_url` MUST be present when the agent declares `request_signing.supported_for`/`required_for` non-empty, `webhook_signing.supported === true`, or any field under `identity.key_origins`. This is storyboard-enforced in 3.x. In 4.0 the rule becomes schema-required when the response declares `supported_versions` containing any 4.x release; cross-version verifiers (4.0 talking to a 3.x agent that does not advertise 4.x support) MUST continue to accept absent `identity.brand_json_url`.
@@ -1308,7 +1336,7 @@ The `identity.brand_json_url` field on `get_adcp_capabilities` (added in 3.x, se
 **Adopting `brand_json_url` while pinned to AdCP 3.0.** The field lands in 3.x's next minor as a strictly-additive schema change; AdCP doesn't ship new fields in patch releases (3.0.x), so a formal backport isn't on the table. But you don't have to wait for the version bump to start using it. The wire shape is forward-compatible:
 
 - A 3.0-conformant **seller** MAY populate `identity.brand_json_url` on its `get_adcp_capabilities` response today. A 3.0 verifier ignoring the field continues to work; a 3.x verifier picks it up automatically. No coordination, no version bump.
-- A 3.0-conformant **verifier** MAY read the field opportunistically (via `caps.identity?.brand_json_url`) and run the 8-step chain when present, falling back to your existing out-of-band agent → operator mapping when absent. The chain itself is just HTTPS fetches and JSON parsing — nothing in it requires a 3.x SDK.
+- A 3.0-conformant **verifier** MAY read the field opportunistically (via `caps.identity?.brand_json_url`) and run the 8-step chain when present, falling back to your existing out-of-band mapping from agent URL to the agent's brand.json when absent. The chain itself is just HTTPS fetches and JSON parsing — nothing in it requires a 3.x SDK.
 
 This is the recommended path for sellers like [Scope3](https://github.com/scope3) building signature verification today: ship the field on your capabilities response, document the chain for your counterparties, and let the 3.x rollout happen passively.
 </Info>
@@ -1388,7 +1416,7 @@ Each SDK ships a CLI for dev-loop debugging — `npx @adcp/sdk@latest resolve <u
 
 #### Agent identity
 
-A valid signature establishes exactly one fact: **the request was issued by the agent whose `jwks_uri` contains the `keyid`.** The verifier learns which specific agent signed, not just which operator. The agent's containing brand.json (discovered via the verifier's existing agent mapping) tells the verifier which operator runs that agent.
+A valid signature establishes exactly one fact: **the request was issued by the agent whose `jwks_uri` contains the `keyid`.** The verifier learns which specific agent signed, not just which operator. The agent's containing brand.json (discovered via the verifier's existing agent mapping) tells the verifier which operator runs that agent. That's the agent's operator, not the account operator a buyer names in `account.operator`.
 
 **`agent_url` derivation.** The canonical buyer-agent identifier on the verifier's request context is the `url` field of the `agents[]` entry whose `jwks_uri` resolved the `keyid` at step 7 of the [verifier checklist](#verifier-checklist-requests). `agent_url` is **not** a JWK claim, JWS claim, or signed envelope field — it is the publication coordinate the verifier already used to fetch the JWKS. This makes derivation deterministic from inputs the verifier has fully controlled (the agent mapping established at onboarding, plus the JWKS it just fetched) and removes any wire affordance for the signer to assert a different `agent_url` than the one whose key signed the request. SDKs that surface a resolved-signer object to adopters MUST source `agent_url` from this derivation; they MUST NOT accept a buyer-asserted `agent_url` field on the envelope and treat it as cryptographically established. (Buyer-asserted *verifier* references like `creative.verify_agent.agent_url` and `governance.accepted_verifiers[].agent_url` are a separate construct — they name agents the seller will invoke under a published allowlist, not the signer of the inbound request, and remain permitted.)
 
