@@ -7,7 +7,10 @@ import {
   computeOutcomeTargetCostPlan,
   createMediaBuyBiddingPolicyError,
 } from '../../src/training-agent/task-handlers.js';
-import { clearCatalogEventStores } from '../../src/training-agent/catalog-event-handlers.js';
+import {
+  clearCatalogEventStores,
+  SELLER_MANAGED_PURCHASE_SOURCE_ID,
+} from '../../src/training-agent/catalog-event-handlers.js';
 import { clearSessions } from '../../src/training-agent/state.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import { validateProductDiscoverySourceResponse } from '../../src/training-agent/source-schema.js';
@@ -89,6 +92,13 @@ function requestProposalsArgs(
 }
 
 const CLICKS_GOAL = { kind: 'metric', metric: 'clicks' };
+
+// The one window the seller advertises in conversion_tracking.attribution_windows.
+const EVENT_ATTRIBUTION_WINDOW = {
+  post_click: { interval: 7, unit: 'days' },
+  post_view: { interval: 1, unit: 'days' },
+  model: 'last_touch',
+};
 
 function expectValidResponse(result: Record<string, unknown>): void {
   expect(
@@ -406,19 +416,8 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
       expect(guidance.max).toBeLessThanOrEqual(5000);
     });
 
-    it('binds an event-goal cost target to event sources registered on the account', async () => {
+    it('binds the seller-managed purchase source for a CPA target with no buyer pixel', async () => {
       await seedOutcomeTargetProduct(server);
-      const synced = await callTool(server, 'sync_event_sources', {
-        account: ACCOUNT,
-        event_sources: [
-          { event_source_id: 'web_pixel_main', name: 'Main site pixel', event_types: ['purchase', 'add_to_cart'] },
-          // A second purchase source: without multi_source_event_dedup the
-          // seller binds exactly one.
-          { event_source_id: 'server_events', name: 'Server events', event_types: ['purchase'] },
-          { event_source_id: 'lead_form', name: 'Lead form', event_types: ['lead'] },
-        ],
-      });
-      expect(Array.isArray(synced.event_sources), JSON.stringify(synced)).toBe(true);
 
       const result = await callTool(server, 'request_proposals', requestProposalsArgs({
         goal: { kind: 'event', event_type: 'purchase' },
@@ -431,22 +430,31 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
       expect(terms.bidding).toEqual({ cost_per: { amount: 200, strength: 'cap' } });
       expect(terms.purchases[0].optimization_goals).toEqual([{
         kind: 'event',
-        event_sources: [{ event_source_id: 'web_pixel_main', event_type: 'purchase' }],
-        attribution_window: {
-          post_click: { interval: 7, unit: 'days' },
-          post_view: { interval: 1, unit: 'days' },
-          model: 'last_touch',
-        },
+        event_sources: [{ event_source_id: SELLER_MANAGED_PURCHASE_SOURCE_ID, event_type: 'purchase' }],
+        attribution_window: EVENT_ATTRIBUTION_WINDOW,
         priority: 1,
       }]);
       expect(terms.purchases[0].bidding).toBeUndefined();
+
+      // The stated window is one the seller advertises.
+      const caps = await callTool(server, 'get_adcp_capabilities', {}) as {
+        media_buy: { conversion_tracking: { attribution_windows: Array<{ post_click: unknown[]; post_view: unknown[] }> } };
+      };
+      const advertised = caps.media_buy.conversion_tracking.attribution_windows;
+      expect(advertised.some(window => (
+        window.post_click.some(entry => JSON.stringify(entry) === JSON.stringify(EVENT_ATTRIBUTION_WINDOW.post_click))
+        && window.post_view.some(entry => JSON.stringify(entry) === JSON.stringify(EVENT_ATTRIBUTION_WINDOW.post_view))
+      ))).toBe(true);
     });
 
-    it('rejects an event-goal cost target when no registered source tracks the event', async () => {
+    it('prefers the seller-managed source over buyer-synced purchase sources and binds exactly one', async () => {
       await seedOutcomeTargetProduct(server);
       await callTool(server, 'sync_event_sources', {
         account: ACCOUNT,
-        event_sources: [{ event_source_id: 'lead_form', name: 'Lead form', event_types: ['lead'] }],
+        event_sources: [
+          { event_source_id: 'web_pixel_main', name: 'Main site pixel', event_types: ['purchase', 'add_to_cart'] },
+          { event_source_id: 'server_events', name: 'Server events', event_types: ['purchase'] },
+        ],
       });
 
       const result = await callTool(server, 'request_proposals', requestProposalsArgs({
@@ -454,9 +462,59 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
         cost_per: { amount: 20, currency: 'USD', strength: 'cap' },
       }));
 
+      expectValidResponse(result);
+      const goal = termsOf(onlyProposal(result)).purchases[0].optimization_goals[0];
+      // Without multi_source_event_dedup the seller binds exactly one source.
+      expect(goal.event_sources).toEqual([{ event_source_id: SELLER_MANAGED_PURCHASE_SOURCE_ID, event_type: 'purchase' }]);
+      expect(goal.attribution_window).toEqual(EVENT_ATTRIBUTION_WINDOW);
+    });
+
+    it('binds the first registered buyer source for an event no seller-managed source tracks', async () => {
+      await seedOutcomeTargetProduct(server);
+      const synced = await callTool(server, 'sync_event_sources', {
+        account: ACCOUNT,
+        event_sources: [
+          { event_source_id: 'web_pixel_main', name: 'Main site pixel', event_types: ['purchase', 'add_to_cart'] },
+          // A second add_to_cart source: without multi_source_event_dedup the
+          // seller binds exactly one.
+          { event_source_id: 'server_events', name: 'Server events', event_types: ['add_to_cart'] },
+          { event_source_id: 'lead_form', name: 'Lead form', event_types: ['lead'] },
+        ],
+      });
+      expect(Array.isArray(synced.event_sources), JSON.stringify(synced)).toBe(true);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: { kind: 'event', event_type: 'add_to_cart' },
+        cost_per: { amount: 20, currency: 'USD', strength: 'cap' },
+      }));
+
+      expectValidResponse(result);
+      const terms = termsOf(onlyProposal(result));
+      expect(terms.bidding).toEqual({ cost_per: { amount: 200, strength: 'cap' } });
+      expect(terms.purchases[0].optimization_goals).toEqual([{
+        kind: 'event',
+        event_sources: [{ event_source_id: 'web_pixel_main', event_type: 'add_to_cart' }],
+        attribution_window: EVENT_ATTRIBUTION_WINDOW,
+        priority: 1,
+      }]);
+      expect(terms.purchases[0].bidding).toBeUndefined();
+    });
+
+    it('rejects an event-goal cost target when no buyer-synced or seller-managed source tracks the event', async () => {
+      await seedOutcomeTargetProduct(server);
+      await callTool(server, 'sync_event_sources', {
+        account: ACCOUNT,
+        event_sources: [{ event_source_id: 'lead_form', name: 'Lead form', event_types: ['lead'] }],
+      });
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: { kind: 'event', event_type: 'add_to_cart' },
+        cost_per: { amount: 20, currency: 'USD', strength: 'cap' },
+      }));
+
       expect(result.code).toBe('INVALID_REQUEST');
       expect(result.field).toBe('criteria.outcome_target.cost_per');
-      expect(String(result.message)).toContain('purchase');
+      expect(String(result.message)).toContain('add_to_cart');
     });
   });
 
@@ -490,16 +548,25 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
       await seedOutcomeTargetProduct(server);
       await callTool(server, 'sync_event_sources', {
         account: { brand: { domain: 'other-advertiser.example' }, operator: 'outcome-tester', sandbox: true },
-        event_sources: [{ event_source_id: 'other_pixel', name: 'Other pixel', event_types: ['purchase'] }],
+        event_sources: [{ event_source_id: 'other_pixel', name: 'Other pixel', event_types: ['purchase', 'add_to_cart'] }],
       });
 
-      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+      const rejected = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: { kind: 'event', event_type: 'add_to_cart' },
+        cost_per: { amount: 20, currency: 'USD', strength: 'cap' },
+      }));
+      expect(rejected.code).toBe('INVALID_REQUEST');
+      expect(rejected.field).toBe('criteria.outcome_target.cost_per');
+
+      // A purchase goal binds this account's own seller-managed source, never
+      // the other account's buyer pixel.
+      const purchase = await callTool(server, 'request_proposals', requestProposalsArgs({
         goal: { kind: 'event', event_type: 'purchase' },
         cost_per: { amount: 20, currency: 'USD', strength: 'cap' },
       }));
-
-      expect(result.code).toBe('INVALID_REQUEST');
-      expect(result.field).toBe('criteria.outcome_target.cost_per');
+      expectValidResponse(purchase);
+      expect(termsOf(onlyProposal(purchase)).purchases[0].optimization_goals[0].event_sources)
+        .toEqual([{ event_source_id: SELLER_MANAGED_PURCHASE_SOURCE_ID, event_type: 'purchase' }]);
     });
   });
 
