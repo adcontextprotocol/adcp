@@ -13,8 +13,9 @@
  * render time.
  */
 
-import type { ComplianceResult } from '@adcp/sdk/testing';
+import { getComplianceStoryboardById, type ComplianceResult } from '@adcp/sdk/testing';
 import { redactForDiagnostics } from '../addie/services/compliance-testing.js';
+import { hostedComplianceOptions, hostedComplianceTarget } from '../services/hosted-compliance-version.js';
 import type { RecordComplianceRunInput, StoryboardSkippedStep } from '../db/compliance-db.js';
 import { classifyComplianceStep } from './step-disposition.js';
 
@@ -32,6 +33,36 @@ type RunnerStep = {
   error?: unknown;
   details?: unknown;
   warnings?: unknown;
+};
+
+/** Resolves the pinned storyboard step's `requires_tool`, if unambiguous. */
+export type StepRequiredToolResolver = (
+  result: ComplianceResult,
+  storyboardId: string,
+  phaseId: string,
+  step: { step_id?: unknown; step?: unknown; task?: unknown },
+) => string | undefined;
+
+/**
+ * Same lookup as compliance-testing.ts classifyRunStep: in the pinned
+ * version/phase, match by step id, else by an unambiguous title+task pair.
+ */
+export const pinnedStepRequiredTool: StepRequiredToolResolver = (result, storyboardId, phaseId, step) => {
+  if (!result.adcp_version) return undefined;
+  try {
+    const storyboard = getComplianceStoryboardById(
+      storyboardId,
+      hostedComplianceOptions(hostedComplianceTarget(result.adcp_version)),
+    );
+    const phase = storyboard?.phases.find(candidate => candidate.id === phaseId);
+    const matches = phase?.steps.filter(candidate => step.step_id
+      ? candidate.id === step.step_id
+      : candidate.title === step.step && candidate.task === step.task) ?? [];
+    const tool = matches.length === 1 ? matches[0].requires_tool : undefined;
+    return typeof tool === 'string' ? tool : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 interface Blocker {
@@ -87,12 +118,22 @@ function skipReason(step: RunnerStep): string | null {
 /**
  * Collect cascaded prerequisite skips per storyboard, in runner order.
  *
- * Mirrors the `dependency_failed` disposition that feeds `skipped_count`
- * (classifyComplianceStep), including the fixture-abort rule: prerequisite
- * skips after a `fixture_unavailable` preflight abort are setup gaps and are
- * not counted.
+ * Mirrors how deriveStoryboardStatuses (via classifyRunStep) counts
+ * `skipped_count`: a `dependency_failed` disposition, minus prerequisite
+ * skips whose pinned step requires an optional tool the agent does not
+ * advertise (not_applicable), minus prerequisite skips after a
+ * `fixture_unavailable` preflight abort (setup gaps).
  */
-export function collectStoryboardSkippedSteps(result: ComplianceResult): Map<string, StoryboardSkippedStep[]> {
+export function collectStoryboardSkippedSteps(
+  result: ComplianceResult,
+  resolveRequiredTool: StepRequiredToolResolver = pinnedStepRequiredTool,
+): Map<string, StoryboardSkippedStep[]> {
+  const advertisedTools = Array.isArray(result.agent_profile?.tools) ? result.agent_profile.tools : null;
+  const optionalToolUnavailable = (storyboardId: string, phaseId: string, step: RunnerStep): boolean => {
+    if (!advertisedTools || !result.adcp_version) return false;
+    const tool = resolveRequiredTool(result, storyboardId, phaseId, step);
+    return typeof tool === 'string' && !advertisedTools.includes(tool);
+  };
   const out = new Map<string, StoryboardSkippedStep[]>();
   const lastBlocker = new Map<string, Blocker>();
   const fixtureAborted = new Set<string>();
@@ -103,12 +144,16 @@ export function collectStoryboardSkippedSteps(result: ComplianceResult): Map<str
       const sepIdx = scenarioId.lastIndexOf('/');
       if (sepIdx <= 0) continue;
       const storyboardId = scenarioId.slice(0, sepIdx);
+      const phaseId = scenarioId.slice(sepIdx + 1);
       const steps = (scenario as { steps?: RunnerStep[] }).steps;
       if (!Array.isArray(steps)) continue;
 
       for (const step of steps) {
         const reason = skipReason(step);
         if (step.skipped && reason === 'fixture_unavailable') fixtureAborted.add(storyboardId);
+        // Graded not_applicable, not a cascade and not a blocker for later steps.
+        if (step.skipped && step.skip_reason === 'prerequisite_failed' &&
+          optionalToolUnavailable(storyboardId, phaseId, step)) continue;
 
         const disposition = classifyComplianceStep(step as Parameters<typeof classifyComplianceStep>[0], scenarioId);
         if (disposition === 'dependency_failed' && !fixtureAborted.has(storyboardId)) {

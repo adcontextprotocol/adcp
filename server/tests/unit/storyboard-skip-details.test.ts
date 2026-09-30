@@ -151,6 +151,25 @@ describe('collectStoryboardSkippedSteps', () => {
     expect(collectStoryboardSkippedSteps(result).get('creative_sync')).toBeUndefined();
   });
 
+  it('drops prerequisite skips graded not_applicable for an unadvertised optional tool, matching skipped_count', () => {
+    const result = makeResult([
+      {
+        scenario: 'sb/phase',
+        steps: [
+          { step: 'Create media buy', task: 'create_media_buy', passed: false, error: 'boom' },
+          { step: 'Check delivery', task: 'get_media_buy_delivery', passed: false, skipped: true, skip_reason: 'prerequisite_failed' },
+          { step: 'Optional audit', task: 'get_audit_log', passed: false, skipped: true, skip_reason: 'prerequisite_failed' },
+        ],
+      },
+    ]);
+    (result as { adcp_version?: string }).adcp_version = '3.0';
+    const resolver = (_r: unknown, _sb: string, _phase: string, step: { task?: unknown }) =>
+      step.task === 'get_audit_log' ? 'get_audit_log' : undefined;
+
+    const skipped = collectStoryboardSkippedSteps(result, resolver).get('sb')!;
+    expect(skipped.map(s => s.step_id)).toEqual(['check_delivery']);
+  });
+
   it('caps stored skips per storyboard and redacts secrets in detail', () => {
     const steps: Step[] = [{ step: 'Create media buy', passed: false, error: 'boom' }];
     for (let i = 0; i < MAX_SKIPPED_STEPS_PER_STORYBOARD + 3; i++) {
