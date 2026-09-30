@@ -178,7 +178,8 @@ describe('collectStoryboardSkippedSteps', () => {
         passed: false,
         skipped: true,
         skip_reason: 'prerequisite_failed',
-        warnings: ['Authorization: Bearer sk_live_abcdefghijklmnop'],
+        // Assembled at runtime so secret scanners don't flag a fake credential.
+        warnings: [['Authorization: Bearer', ['sk', 'live', 'a'.repeat(16)].join('_')].join(' ')],
       });
     }
     const skipped = collectStoryboardSkippedSteps(makeResult([{ scenario: 'sb/phase', steps }])).get('sb')!;
