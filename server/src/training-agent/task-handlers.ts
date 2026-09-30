@@ -8878,13 +8878,15 @@ export function computeOutcomeTargetCostPlan(
   };
 }
 
-// ── create_media_buy bidding-policy validation ───────────────────────────────
+// ── Canonical bidding-policy validation (create, update, control) ────────────
 
 const BIDDING_POLICY_MODES = ['automatic', 'bid_amount', 'max_bid', 'cost_per', 'roas'] as const;
 
 type BiddingScopeProfile = { modes: readonly string[]; cost_per_strengths?: readonly string[] };
 
-function advertisedBiddingProfile(scope: 'media_buy' | 'package', allocation: 'fixed' | 'seller_optimized'): BiddingScopeProfile | undefined {
+type BiddingAllocation = 'fixed' | 'seller_optimized';
+
+function advertisedBiddingProfile(scope: 'media_buy' | 'package', allocation: BiddingAllocation): BiddingScopeProfile | undefined {
   const scopes = TRAINING_BIDDING_POLICY_CAPABILITY as unknown as Record<string, Record<string, BiddingScopeProfile> | undefined>;
   return scopes[scope]?.[allocation];
 }
@@ -8894,7 +8896,7 @@ function advertisedBiddingProfile(scope: 'media_buy' | 'package', allocation: 'f
 function unadvertisedBiddingPolicyReason(
   bidding: Record<string, unknown>,
   scope: 'media_buy' | 'package',
-  allocation: 'fixed' | 'seller_optimized',
+  allocation: BiddingAllocation,
 ): string | undefined {
   const modes = BIDDING_POLICY_MODES.filter(mode => bidding[mode] !== undefined);
   const profile = advertisedBiddingProfile(scope, allocation);
@@ -8950,6 +8952,45 @@ function costPerResultUnit(goal: Record<string, unknown>): string {
   return canonicalize(goal);
 }
 
+function biddingAllocationMode(budgetAllocation: unknown): BiddingAllocation {
+  return isRecord(budgetAllocation) && budgetAllocation.mode === 'seller_optimized' ? 'seller_optimized' : 'fixed';
+}
+
+/** UNSUPPORTED_FEATURE for a canonical bidding block outside the advertised
+ * profile, naming the request field that carries it. */
+function unsupportedBiddingPolicyError(
+  bidding: Record<string, unknown>,
+  scope: 'media_buy' | 'package',
+  allocation: BiddingAllocation,
+  field: string,
+): TaskError | undefined {
+  const reason = unadvertisedBiddingPolicyReason(bidding, scope, allocation);
+  if (!reason) return undefined;
+  return { code: 'UNSUPPORTED_FEATURE', message: `Unsupported bidding policy: ${reason}.`, field, recovery: 'correctable' };
+}
+
+/** Result unit of a package's primary optimization goal, or undefined when it
+ * has no goal a cost_per can bind to. */
+function primaryGoalResultUnit(goals: unknown): string | undefined {
+  const primary = primaryOptimizationGoal(goals);
+  return primary ? costPerResultUnit(primary) : undefined;
+}
+
+/** A fixed media-buy cost_per is valid only when every inheriting package has
+ * a primary goal and all of them share one result unit. */
+function inheritorsShareOneResultUnit(units: Array<string | undefined>): boolean {
+  return !units.some(unit => unit === undefined) && new Set(units).size <= 1;
+}
+
+function fixedCostPerPlacementError(field: string): TaskError {
+  return {
+    code: 'BIDDING_PLACEMENT_CONFLICT',
+    message: 'A fixed media-buy cost_per binds to each inheriting package\'s primary optimization goal, and those goals do not share one result unit.',
+    field,
+    recovery: 'correctable',
+  };
+}
+
 /** Validate canonical bidding blocks on a create_media_buy request against
  * the advertised features.bidding_policy profile and the fixed media-buy
  * cost_per binding rule, before any mutation. Legacy bid_price is outside
@@ -8959,40 +9000,136 @@ export function createMediaBuyBiddingPolicyError(
   options: { packagesField?: 'packages' | 'purchases' } = {},
 ): TaskError | undefined {
   const packagesField = options.packagesField ?? 'packages';
-  const allocation = isRecord(request.budget_allocation) && request.budget_allocation.mode === 'seller_optimized'
-    ? 'seller_optimized'
-    : 'fixed';
+  const allocation = biddingAllocationMode(request.budget_allocation);
   const packages = Array.isArray(request.packages) ? request.packages.filter(isRecord) : [];
   if (isRecord(request.bidding)) {
-    const reason = unadvertisedBiddingPolicyReason(request.bidding, 'media_buy', allocation);
-    if (reason) {
-      return { code: 'UNSUPPORTED_FEATURE', message: `Unsupported bidding policy: ${reason}.`, field: 'bidding', recovery: 'correctable' } as TaskError;
-    }
+    const error = unsupportedBiddingPolicyError(request.bidding, 'media_buy', allocation, 'bidding');
+    if (error) return error;
   }
   for (let index = 0; index < packages.length; index += 1) {
     const bidding = packages[index]!.bidding;
     if (!isRecord(bidding)) continue;
-    const reason = unadvertisedBiddingPolicyReason(bidding, 'package', allocation);
-    if (reason) {
-      return { code: 'UNSUPPORTED_FEATURE', message: `Unsupported bidding policy: ${reason}.`, field: `${packagesField}[${index}].bidding`, recovery: 'correctable' } as TaskError;
-    }
+    const error = unsupportedBiddingPolicyError(bidding, 'package', allocation, `${packagesField}[${index}].bidding`);
+    if (error) return error;
   }
   if (isRecord(request.bidding) && request.bidding.cost_per !== undefined && allocation === 'fixed') {
-    const inheriting = packages.filter(pkg => pkg.bidding === undefined);
-    const units = inheriting.map(pkg => {
-      const primary = primaryOptimizationGoal(pkg.optimization_goals);
-      return primary ? costPerResultUnit(primary) : undefined;
-    });
-    if (units.some(unit => unit === undefined) || new Set(units).size > 1) {
-      return {
-        code: 'BIDDING_PLACEMENT_CONFLICT',
-        message: 'A fixed media-buy cost_per binds to each inheriting package\'s primary optimization goal, and those goals do not share one result unit.',
-        field: 'bidding.cost_per',
-        recovery: 'correctable',
-      } as TaskError;
-    }
+    const units = packages
+      .filter(pkg => pkg.bidding === undefined)
+      .map(pkg => primaryGoalResultUnit(pkg.optimization_goals));
+    if (!inheritorsShareOneResultUnit(units)) return fixedCostPerPlacementError('bidding.cost_per');
   }
   return undefined;
+}
+
+/** Validate the bidding an update_media_buy or control_media_buy request
+ * leaves in effect, before any mutation. Bidding blocks replace completely:
+ * a non-null block replaces the authored block at its scope, and null clears
+ * it, so a cleared package inherits the media-buy block. Checked against the
+ * advertised profile for the resulting allocation mode:
+ * - every block the request authors (bidding, packages[i].bidding,
+ *   new_packages[i].bidding);
+ * - retained blocks when the request changes the allocation mode, since they
+ *   are then read against a different profile entry.
+ * The fixed media-buy cost_per result-unit rule is checked against the
+ * resulting inheriting packages whenever the request changes the media-buy
+ * policy, the allocation mode, or an inheriting package's goals or override,
+ * or adds packages. Cancellation dominates a package's sibling fields, and a
+ * canceled package no longer inherits. Blocks the request leaves untouched
+ * were validated when they were authored. */
+function mediaBuyUpdateBiddingPolicyError(
+  mb: MediaBuyState,
+  request: Record<string, unknown>,
+): TaskError | undefined {
+  const currentAllocation = biddingAllocationMode(mb.budgetAllocation);
+  const allocation = isRecord(request.budget_allocation)
+    ? biddingAllocationMode(request.budget_allocation)
+    : currentAllocation;
+  const allocationChanged = allocation !== currentAllocation;
+
+  const mediaBuyBiddingAuthored = request.bidding !== undefined;
+  const mediaBuyBidding = mediaBuyBiddingAuthored
+    ? (isRecord(request.bidding) ? request.bidding : undefined)
+    : mb.aggregateBidding;
+  if (mediaBuyBidding && (mediaBuyBiddingAuthored || allocationChanged)) {
+    const error = unsupportedBiddingPolicyError(
+      mediaBuyBidding,
+      'media_buy',
+      allocation,
+      mediaBuyBiddingAuthored ? 'bidding' : 'budget_allocation',
+    );
+    if (error) return error;
+  }
+
+  const updates = Array.isArray(request.packages) ? request.packages : [];
+  const canceledIds = new Set<string>();
+  const liveUpdates = new Map<string, { update: Record<string, unknown>; index: number }>();
+  for (const [index, update] of updates.entries()) {
+    if (!isRecord(update)) continue;
+    const packageId = typeof update.package_id === 'string' ? update.package_id : undefined;
+    if (update.canceled === true) {
+      if (packageId !== undefined) canceledIds.add(packageId);
+      continue;
+    }
+    if (isRecord(update.bidding)) {
+      const error = unsupportedBiddingPolicyError(update.bidding, 'package', allocation, `packages[${index}].bidding`);
+      if (error) return error;
+    }
+    if (packageId !== undefined) liveUpdates.set(packageId, { update, index });
+  }
+
+  // The packages the buy will have, with the policy and goals each resolves.
+  // `field` names the request element that changed a package's policy or
+  // goals, so a result-unit conflict it introduces points at it.
+  const resulting: Array<{ bidding?: Record<string, unknown>; goals: unknown; field?: string }> = [];
+  for (const pkg of mb.packages) {
+    if (pkg.canceled || canceledIds.has(pkg.packageId)) continue;
+    const entry = liveUpdates.get(pkg.packageId);
+    const biddingAuthored = entry !== undefined && entry.update.bidding !== undefined;
+    const bidding = biddingAuthored
+      ? (isRecord(entry.update.bidding) ? entry.update.bidding : undefined)
+      : pkg.bidding;
+    const goalsReplaced = entry !== undefined && Array.isArray(entry.update.optimization_goals);
+    if (bidding && !biddingAuthored && allocationChanged) {
+      const error = unsupportedBiddingPolicyError(bidding, 'package', allocation, 'budget_allocation');
+      if (error) return error;
+    }
+    resulting.push({
+      bidding,
+      goals: goalsReplaced ? entry.update.optimization_goals : pkg.optimizationGoals,
+      ...(entry && (biddingAuthored || goalsReplaced) && {
+        field: goalsReplaced ? `packages[${entry.index}].optimization_goals` : `packages[${entry.index}].bidding`,
+      }),
+    });
+  }
+  const newPackages = Array.isArray(request.new_packages) ? request.new_packages : [];
+  for (const [index, npkg] of newPackages.entries()) {
+    if (!isRecord(npkg)) continue;
+    if (isRecord(npkg.bidding)) {
+      const error = unsupportedBiddingPolicyError(npkg.bidding, 'package', allocation, `new_packages[${index}].bidding`);
+      if (error) return error;
+    }
+    resulting.push({
+      bidding: isRecord(npkg.bidding) ? npkg.bidding : undefined,
+      goals: npkg.optimization_goals,
+      field: `new_packages[${index}].optimization_goals`,
+    });
+  }
+
+  if (allocation !== 'fixed' || mediaBuyBidding?.cost_per === undefined) return undefined;
+  const inheriting = resulting
+    .filter(pkg => pkg.bidding === undefined)
+    .map(pkg => ({ field: pkg.field, unit: primaryGoalResultUnit(pkg.goals) }));
+  const changed = inheriting.filter(pkg => pkg.field !== undefined);
+  if (!mediaBuyBiddingAuthored && !allocationChanged && changed.length === 0) return undefined;
+  if (inheritorsShareOneResultUnit(inheriting.map(pkg => pkg.unit))) return undefined;
+  if (mediaBuyBiddingAuthored) return fixedCostPerPlacementError('bidding.cost_per');
+  if (allocationChanged) return fixedCostPerPlacementError('budget_allocation');
+  // Name the first changed package that has no primary goal or leaves the
+  // unit the unchanged inheritors share.
+  const baseline = inheriting.find(pkg => pkg.field === undefined && pkg.unit !== undefined)?.unit
+    ?? changed.find(pkg => pkg.unit !== undefined)?.unit;
+  const offender = changed.find(pkg => pkg.unit === undefined || pkg.unit !== baseline);
+  return fixedCostPerPlacementError(offender?.field ?? 'bidding.cost_per');
 }
 
 /** Project the broad 3.x handler result into the compact split-tool domain
@@ -17959,6 +18096,17 @@ async function handleUpdateMediaBuyUnlocked(
         message: 'This media-buy update increases or widens the governed obligation. Call check_governance and provide governance_context.',
       }] as TaskError[],
     };
+  }
+
+  // Canonical bidding the update would leave in effect must stay inside the
+  // advertised features.bidding_policy profile, as on create. This runs after
+  // the governance gate, so a governed buy still answers GOVERNANCE_DENIED
+  // first (the spec does not order the two), and before the detached copy is
+  // mutated, so a rejected update leaves the buy untouched. Accepted proposal
+  // terms are applied as accepted and are not re-validated here.
+  if (!options.acceptedProposalExecution) {
+    const biddingPolicyError = mediaBuyUpdateBiddingPolicyError(mb, validationReq as unknown as Record<string, unknown>);
+    if (biddingPolicyError) return { errors: [biddingPolicyError] };
   }
 
   const now = new Date().toISOString();
