@@ -31,8 +31,11 @@ narrative: |
   A buyer can also state the cost it will pay per result in
   `outcome_target.cost_per`, with a budget range, a volume, or both. The seller
   answers in `commercial_terms.bidding.cost_per` with the cost it can actually
-  plan to: the amount MAY exceed the ask, but the strength stays the buyer's,
-  and the answer is denominated in `cost_per.currency`. Sellers never convert
+  plan to: the amount is never below the ask, the strength stays the buyer's,
+  and the answer is denominated in `cost_per.currency`. The answering phases
+  run for sellers advertising fixed media-buy cost caps in
+  `features.bidding_policy`; the currency rejection runs for every seller
+  declaring `media_buy.outcome_target`. Sellers never convert
   currency, so a cost target in a currency the requested products are not
   priced in is rejected with `INVALID_REQUEST` naming
   `criteria.outcome_target.cost_per`.
@@ -251,13 +254,17 @@ phases:
   - id: cost_target_with_budget
     title: "Plan a clicks cost cap within a buyer budget"
     depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.bidding_policy.media_buy.fixed.cost_per_strengths
+      contains: cap
     narrative: |
-      The buyer states a cost, not a volume: clicks at 3 USD or less within a
-      5,000 USD budget. The seller plans the clicks it can deliver within the
-      budget and states the cost it can actually plan to in
-      commercial_terms.bidding.cost_per. The amount is seller-specific and MAY
-      exceed the ask; the strength MUST stay the buyer's cap, and the answer is
-      denominated in the requested currency.
+      Runs for sellers advertising fixed media-buy cost caps in
+      features.bidding_policy. The buyer states a cost, not a volume: clicks
+      at 3 USD or less within a 5,000 USD budget. The seller plans the clicks
+      it can deliver within the budget and states the cost it can actually
+      plan to in commercial_terms.bidding.cost_per. The amount is seller-specific but
+      never below the ask; the strength MUST stay the buyer's cap, and the
+      answer is denominated in the requested currency.
     steps:
       - id: request_clicks_cost_cap
         title: "Request proposals for clicks at a 3 USD cap on a 5,000 USD budget"
@@ -270,7 +277,7 @@ phases:
           Return outcome proposed with at least one proposal carrying:
           - commercial_terms.bidding.cost_per with strength "cap" and the
             amount the seller can plan to (MAY be higher than 3)
-          - commercial_terms.total_budget in USD
+          - purchases priced in USD (and total_budget, when present, in USD)
           - forecast in USD whose points carry metrics.clicks
 
         sample_request:
@@ -311,9 +318,13 @@ phases:
             value: "cap"
             description: "The answer keeps the buyer's strength; a higher cost comes back as a higher cap, never as a target"
           - check: field_value
+            path: "proposals[0].commercial_terms.purchases[0].pricing.currency"
+            value: "USD"
+            description: "The purchase pricing currency, which bidding amounts are denominated in, equals cost_per.currency"
+          - check: field_value_or_absent
             path: "proposals[0].commercial_terms.total_budget.currency"
             value: "USD"
-            description: "The media-buy currency that bidding.cost_per is denominated in equals cost_per.currency"
+            description: "total_budget, when present, is in the requested currency"
           - check: field_value_or_absent
             path: "proposals[0].total_budget_guidance.currency"
             value: "USD"
@@ -336,11 +347,15 @@ phases:
   - id: cost_target_with_volume
     title: "Plan a clicks volume at a cost cap without a budget range"
     depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.bidding_policy.media_buy.fixed.cost_per_strengths
+      contains: cap
     narrative: |
       The buyer states both a volume and a cost, with no budget range: 1,000
       clicks at 3 USD or less. The seller plans toward the volume at the cost.
-      With no budget range to anchor the currency, cost_per.currency alone
-      decides it: the answer MUST come back in USD.
+      Runs for sellers advertising fixed media-buy cost caps. With no budget
+      range to anchor the currency, cost_per.currency alone decides it: the
+      answer MUST come back in USD.
     steps:
       - id: request_clicks_volume_at_cost_cap
         title: "Request proposals for 1,000 clicks at a 3 USD cap"
@@ -352,7 +367,8 @@ phases:
         expected: |
           Return outcome proposed with at least one proposal carrying:
           - commercial_terms.bidding.cost_per with strength "cap"
-          - commercial_terms.total_budget in USD, the currency of cost_per
+          - purchases priced in USD, the currency of cost_per (and
+            total_budget, when present, in USD)
           - forecast in USD whose points carry metrics.clicks
 
         sample_request:
@@ -390,9 +406,13 @@ phases:
             value: "cap"
             description: "The answer keeps the buyer's strength"
           - check: field_value
+            path: "proposals[0].commercial_terms.purchases[0].pricing.currency"
+            value: "USD"
+            description: "The purchase pricing currency, which bidding amounts are denominated in, equals cost_per.currency"
+          - check: field_value_or_absent
             path: "proposals[0].commercial_terms.total_budget.currency"
             value: "USD"
-            description: "Without a budget range, cost_per.currency becomes the media-buy currency of the answer"
+            description: "Without a budget range, total_budget, when present, is still in cost_per.currency"
           - check: field_value_or_absent
             path: "proposals[0].total_budget_guidance.currency"
             value: "USD"
@@ -417,9 +437,13 @@ phases:
     depends_on: [setup]
     narrative: |
       The seeded product is priced only in USD, and sellers MUST NOT convert
-      currency. A cost target in EUR therefore cannot be answered in its own
-      currency, so every declaring seller rejects it with INVALID_REQUEST
-      naming criteria.outcome_target.cost_per rather than returning a USD plan.
+      currency. The buyer's EUR budget range and EUR cost target agree with
+      each other, so currency against the product is the only defect. The
+      target cannot be answered in its own currency, so every seller
+      declaring media_buy.outcome_target rejects it with INVALID_REQUEST
+      naming criteria.outcome_target.cost_per rather than returning a USD
+      plan. This phase is not gated on bidding capability: a seller that
+      cannot plan cost targets at all rejects with the same error.
     steps:
       - id: request_clicks_cost_cap_in_unpriced_currency
         title: "Reject clicks at a 3 EUR cap against a USD-only product"
@@ -444,6 +468,10 @@ phases:
           brief: "Drive qualified traffic to the Trail Pro 3000 launch page using the seeded video placement."
           criteria:
             product_ids: ["outcome_target_video"]
+            offer_filters:
+              budget_range:
+                max: 5000
+                currency: "EUR"
             outcome_target:
               goal:
                 kind: "metric"

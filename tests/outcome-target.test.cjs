@@ -105,6 +105,12 @@ describe('outcome_target reverse-forecast criteria', () => {
     }
   });
 
+  it('pins cost_per.strength to the BiddingPolicy.cost_per strength vocabulary', () => {
+    const outcomeStrengths = readSchema('/schemas/media-buy/outcome-target.json').properties.cost_per.properties.strength.enum;
+    const biddingStrengths = readSchema('/schemas/core/bidding-policy.json').properties.cost_per.properties.strength.enum;
+    assert.deepEqual(outcomeStrengths, biddingStrengths);
+  });
+
   it('keeps the deprecated optimization-goal target shape out of outcome_target', () => {
     assert.equal(
       validateCriteria({

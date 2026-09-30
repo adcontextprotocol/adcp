@@ -59,7 +59,7 @@
     },
     "forecast": {
       "allOf": [{ "$ref": "/schemas/core/canonical-delivery-forecast.json" }],
-      "description": "Aggregate forecasted delivery for the proposal. For outcome_target requests, points carry the goal's metric or event key in metrics; with cost_per, that is the goal volume planned at commercial_terms.bidding.cost_per, and currency equals cost_per.currency."
+      "description": "Aggregate forecasted delivery for the proposal. For outcome_target requests, points carry the goal's metric or event key in metrics; with cost_per, that is the goal volume planned under the commercial_terms.bidding policy, and currency equals cost_per.currency."
     }
   },
   "required": ["proposal_id", "proposal_kind", "proposal_status", "name", "commercial_terms", "terms_digest"],

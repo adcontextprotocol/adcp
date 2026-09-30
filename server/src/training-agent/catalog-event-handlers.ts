@@ -162,6 +162,17 @@ export function findEventSourceInSession(sessionKey: string, eventSourceId: stri
   return eventSourceStore.get(sessionKey)?.get(eventSourceId) ?? findEventSourceAnywhere(eventSourceId);
 }
 
+/** Event sources registered on one caller's account through
+ *  sync_event_sources, with the event types each tracks. Used to bind an
+ *  outcome_target cost target to an event goal; there is no cross-session
+ *  fallback because the sources must belong to the buyer's account. */
+export function registeredEventSourcesInSession(sessionKey: string): Array<{ event_source_id: string; event_types: string[] }> {
+  return Array.from(eventSourceStore.get(sessionKey)?.values() ?? []).map(source => ({
+    event_source_id: source.eventSourceId,
+    event_types: [...source.eventTypes],
+  }));
+}
+
 /** Exported for testing */
 export function clearCatalogEventStores(): void {
   catalogStore.clear();

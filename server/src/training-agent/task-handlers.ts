@@ -53,7 +53,7 @@ import {
 import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
-import { supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -3057,6 +3057,7 @@ import {
   handleLogEvent,
   handleProvidePerformanceFeedback,
   findEventSourceInSession,
+  registeredEventSourcesInSession,
 } from './catalog-event-handlers.js';
 import {
   AUDIENCE_TOOLS,
@@ -8625,18 +8626,33 @@ function computeOutcomeTargetPlan(
 //
 // A cost target is answered through BiddingPolicy: the proposal's
 // commercial_terms.bidding.cost_per carries the cost the seller can plan to,
-// with the buyer's strength, and every purchase carries the matching primary
-// optimization goal so the fixed media-buy policy binds to it. The reference
-// model only binds metric goals that have a canonical optimization-goal form.
-// An event goal's canonical form needs an event source the request does not
-// name, so the training agent rejects a cost target on one rather than invent
-// an event_source_id.
+// with the buyer's strength and an amount no lower than the ask, and every
+// purchase carries the matching primary optimization goal so the fixed
+// media-buy policy binds to it. Purchases never carry their own bidding.
+// Metric goals bind when they have a canonical optimization-goal form; event
+// goals bind through event sources registered on the buyer's account
+// (sync_event_sources), with the attribution window the seller will use.
 
 export type OutcomeTargetCostPer = { amount: number; currency: string; strength: 'cap' | 'target' };
+export type OutcomeTargetBudgetRange = { min?: number; max?: number };
 
 const OUTCOME_TARGET_COST_BINDABLE_METRICS: ReadonlySet<string> = new Set([
   'clicks', 'views', 'completed_views', 'engagements', 'follows', 'saves', 'profile_visits', 'reach',
 ]);
+
+/** Training-fixture model of the impressions a proposal can deliver over its
+ * flight. It sizes a cost target that has neither a volume nor a buyer
+ * budget: the seller plans the volume it can deliver at the cost and states
+ * the resulting spend. Not a market claim. */
+const OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS = 10_000_000;
+
+/** Attribution the reference seller states on an event goal it fills from
+ * the buyer's registered event sources. */
+const OUTCOME_TARGET_EVENT_ATTRIBUTION_WINDOW = {
+  post_click: { interval: 7, unit: 'days' },
+  post_view: { interval: 1, unit: 'days' },
+  model: 'last_touch',
+} as const;
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -8649,23 +8665,48 @@ function readOutcomeTargetCostPer(value: unknown): OutcomeTargetCostPer | undefi
   return { amount: value.amount, currency: value.currency, strength: value.strength };
 }
 
-/** The canonical optimization goal a cost target binds to, or undefined when
- * the reference model cannot express one for this outcome_target goal. */
-function outcomeTargetOptimizationGoal(goal: Record<string, unknown>): Record<string, unknown> | undefined {
-  if (goal.kind !== 'metric' || typeof goal.metric !== 'string') return undefined;
-  if (!OUTCOME_TARGET_COST_BINDABLE_METRICS.has(goal.metric)) return undefined;
-  return { kind: 'metric', metric: goal.metric, priority: 1 };
+function trainingMediaBuyCostPerStrengthSupported(strength: string): boolean {
+  return (TRAINING_BIDDING_POLICY_CAPABILITY.media_buy.fixed.cost_per_strengths as readonly string[])
+    .includes(strength);
 }
 
-/** The buyer budget a cost target plans within: the upper bound of
- * offer_filters.budget_range, else its lower bound. The reference model does
- * not parse prose budgets from the brief. */
-function outcomeTargetBuyerBudget(filters: unknown): number | undefined {
+/** The canonical optimization goal a cost target binds to, or undefined when
+ * the goal has no canonical form the seller can fill. Event goals take every
+ * registered source tracking the event, plus the stated attribution window. */
+export function outcomeTargetOptimizationGoal(
+  goal: Record<string, unknown>,
+  registeredEventSources: ReadonlyArray<{ event_source_id: string; event_types: readonly string[] }> = [],
+): Record<string, unknown> | undefined {
+  if (goal.kind === 'metric') {
+    if (typeof goal.metric !== 'string' || !OUTCOME_TARGET_COST_BINDABLE_METRICS.has(goal.metric)) return undefined;
+    return { kind: 'metric', metric: goal.metric, priority: 1 };
+  }
+  if (goal.kind === 'event' && typeof goal.event_type === 'string') {
+    const eventType = goal.event_type;
+    const sources = registeredEventSources.filter(source => source.event_types.includes(eventType));
+    if (sources.length === 0) return undefined;
+    return {
+      kind: 'event',
+      event_sources: sources.map(source => ({
+        event_source_id: source.event_source_id,
+        event_type: eventType,
+        ...(eventType === 'custom' && typeof goal.custom_event_name === 'string'
+          && { custom_event_name: goal.custom_event_name }),
+      })),
+      attribution_window: structuredClone(OUTCOME_TARGET_EVENT_ATTRIBUTION_WINDOW),
+      priority: 1,
+    };
+  }
+  return undefined;
+}
+
+/** The buyer budget bounds for a cost target: offer_filters.budget_range. */
+function outcomeTargetBudgetRange(filters: unknown): OutcomeTargetBudgetRange | undefined {
   if (!isRecord(filters) || !isRecord(filters.budget_range)) return undefined;
   const range = filters.budget_range;
-  if (typeof range.max === 'number' && range.max > 0) return range.max;
-  if (typeof range.min === 'number' && range.min > 0) return range.min;
-  return undefined;
+  const min = typeof range.min === 'number' && range.min > 0 ? range.min : undefined;
+  const max = typeof range.max === 'number' && range.max > 0 ? range.max : undefined;
+  return min === undefined && max === undefined ? undefined : { ...(min !== undefined && { min }), ...(max !== undefined && { max }) };
 }
 
 function pricingOptionInCurrency(product: Product | undefined, currency: string): PricingOptionView | undefined {
@@ -8675,25 +8716,33 @@ function pricingOptionInCurrency(product: Product | undefined, currency: string)
 
 /** Validate a cost target before any plan is built. Returns the rejection
  * message for INVALID_REQUEST at criteria.outcome_target.cost_per, or
- * undefined when the target is plannable. Currency is never converted: the
- * answer is denominated in cost_per.currency, so a budget range, a
- * currency-bound account, or a product set in another currency makes the
+ * undefined when the target can be represented and bound. A valid target
+ * with no viable inventory is a separate outcome ("rejected"). Currency is
+ * never converted: a budget range, pricing_currencies filter,
+ * currency-bound account, or product set in another currency makes the
  * target unplannable. */
 function outcomeTargetCostPerRejection(
   goal: Record<string, unknown>,
   costPer: OutcomeTargetCostPer,
+  optimizationGoal: Record<string, unknown> | undefined,
   request: { filters?: unknown; account?: unknown },
   requestedProducts: readonly Product[],
 ): string | undefined {
-  if (!outcomeTargetOptimizationGoal(goal)) {
+  if (!trainingMediaBuyCostPerStrengthSupported(costPer.strength)) {
+    return `The seller does not advertise media-buy cost_per strength '${costPer.strength}' in features.bidding_policy.`;
+  }
+  if (!optimizationGoal) {
     return goal.kind === 'event'
-      ? 'The seller cannot bind a cost target to an event goal at request time: the matching optimization goal needs an event source the request does not name. Plan the event goal by volume, or put the cost target on a delivery-metric goal.'
-      : `The seller cannot plan a cost target for metric '${String(goal.metric)}': it has no optimization-goal form the bidding policy can bind to.`;
+      ? `No event source registered on this account tracks '${String(goal.event_type)}', so the seller cannot bind a cost target to the event goal. Register one with sync_event_sources, or plan the goal by volume.`
+      : `A cost target requires a goal expressible as a canonical optimization goal; metric '${String(goal.metric)}' has none. Plan it by volume instead.`;
   }
   const filters = isRecord(request.filters) ? request.filters : undefined;
   const budgetRange = isRecord(filters?.budget_range) ? filters.budget_range : undefined;
   if (typeof budgetRange?.currency === 'string' && budgetRange.currency !== costPer.currency) {
     return `cost_per.currency ${costPer.currency} must equal offer_filters.budget_range.currency ${budgetRange.currency}; the seller does not convert currency.`;
+  }
+  if (Array.isArray(filters?.pricing_currencies) && !filters.pricing_currencies.includes(costPer.currency)) {
+    return `cost_per.currency ${costPer.currency} is excluded by offer_filters.pricing_currencies; the seller does not convert currency.`;
   }
   const account = isRecord(request.account) ? request.account : undefined;
   if (typeof account?.currency === 'string' && account.currency !== costPer.currency) {
@@ -8717,24 +8766,26 @@ export type OutcomeTargetCostPlan = {
 
 /** Plan one proposal against a cost target. The plannable cost per goal
  * result is the selected CPM divided by the modeled results per thousand
- * impressions. The answered amount is max(ask, plannable cost) for both
- * strengths, and the strength is always the buyer's: a cap the seller can
- * only meet at a higher cost comes back as a higher cap, never as a target.
- * A cap plans volume at the plannable cost (the average it expects at or
- * below the cap); a target plans volume at the answered amount. Budget is the
- * volume at that cost (bounded by any buyer budget) when volume is present,
- * else the buyer budget, else the proposal's indicative budget. Returns
- * undefined when some allocation has no pricing option in the currency. */
+ * impressions. The answered amount is the ask when the seller can plan to
+ * it, otherwise the lowest amount it can plan to, max(ask, plannable cost);
+ * it is never below the ask, and the strength is always the buyer's. A cap
+ * plans volume at the plannable cost (the average it expects at or below the
+ * cap); a target plans volume at the answered amount. The spend is:
+ * - with a volume, the volume at that cost, clamped into any budget range;
+ * - with only a budget range, its max (else min);
+ * - with neither, the spend for the volume the proposal can deliver.
+ * Returns undefined when some allocation has no pricing option in the
+ * currency. */
 export function computeOutcomeTargetCostPlan(
   goal: Record<string, unknown>,
+  optimizationGoal: Record<string, unknown>,
   costPer: OutcomeTargetCostPer,
   volume: number | undefined,
-  buyerBudget: number | undefined,
+  budgetRange: OutcomeTargetBudgetRange | undefined,
   proposal: Proposal,
   productsById: Map<string, Product>,
 ): OutcomeTargetCostPlan | undefined {
-  const optimizationGoal = outcomeTargetOptimizationGoal(goal);
-  if (!optimizationGoal || proposal.allocations.length === 0) return undefined;
+  if (proposal.allocations.length === 0) return undefined;
   const pricings = proposal.allocations.map(allocation => (
     pricingOptionInCurrency(productsById.get(allocation.product_id), costPer.currency)
   ));
@@ -8743,22 +8794,24 @@ export function computeOutcomeTargetCostPlan(
     ...allocation,
     pricing_option_id: pricings[index]!.pricing_option_id,
   })) as Proposal['allocations'];
-  const plannableCost = roundMoney(outcomeTargetCpm(pricings[0]) / (1000 * outcomeTargetResponseRate(goal)));
+  const responseRate = outcomeTargetResponseRate(goal);
+  const plannableCost = roundMoney(outcomeTargetCpm(pricings[0]) / (1000 * responseRate));
   const answeredAmount = roundMoney(Math.max(costPer.amount, plannableCost));
   const planningCost = costPer.strength === 'cap' ? plannableCost : answeredAmount;
-  const indicativeBudget = typeof proposal.total_budget_guidance?.recommended === 'number'
-    ? proposal.total_budget_guidance.recommended
-    : 1000;
+  const rangeFloor = budgetRange?.min ?? 0;
+  const rangeCeiling = budgetRange?.max ?? Number.POSITIVE_INFINITY;
   const budget = roundMoney(volume !== undefined
-    ? Math.min(volume * planningCost, buyerBudget ?? Number.POSITIVE_INFINITY)
-    : buyerBudget ?? indicativeBudget);
+    ? Math.min(Math.max(volume * planningCost, rangeFloor), rangeCeiling)
+    : budgetRange
+      ? budgetRange.max ?? budgetRange.min!
+      : OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS * responseRate * planningCost);
   const goalKey = outcomeTargetGoalKey(goal);
   const now = Date.now();
   return {
     totalBudgetGuidance: {
-      min: roundMoney(0.8 * budget),
+      min: roundMoney(Math.min(budget, Math.max(rangeFloor, 0.8 * budget))),
       recommended: budget,
-      max: roundMoney(Math.max(budget, buyerBudget ?? 1.25 * budget)),
+      max: roundMoney(Math.max(budget, budgetRange?.max ?? 1.25 * budget)),
       currency: costPer.currency,
     },
     forecast: {
@@ -8773,11 +8826,115 @@ export function computeOutcomeTargetCostPlan(
       valid_until: toUtcSecondsIso(now + 5 * 60 * 1000),
     },
     bidding: { cost_per: { amount: answeredAmount, strength: costPer.strength } },
-    optimizationGoal,
+    optimizationGoal: structuredClone(optimizationGoal),
     allocations,
     plannableCost,
     plannedVolume: Math.floor(budget / planningCost),
   };
+}
+
+// ── create_media_buy bidding-policy validation ───────────────────────────────
+
+const BIDDING_POLICY_MODES = ['automatic', 'bid_amount', 'max_bid', 'cost_per', 'roas'] as const;
+
+type BiddingScopeProfile = { modes: readonly string[]; cost_per_strengths?: readonly string[] };
+
+function advertisedBiddingProfile(scope: 'media_buy' | 'package', allocation: 'fixed' | 'seller_optimized'): BiddingScopeProfile | undefined {
+  const scopes = TRAINING_BIDDING_POLICY_CAPABILITY as unknown as Record<string, Record<string, BiddingScopeProfile> | undefined>;
+  return scopes[scope]?.[allocation];
+}
+
+/** Why a canonical bidding block falls outside the advertised profile for its
+ * scope and allocation mode, or undefined when it is supported. */
+function unadvertisedBiddingPolicyReason(
+  bidding: Record<string, unknown>,
+  scope: 'media_buy' | 'package',
+  allocation: 'fixed' | 'seller_optimized',
+): string | undefined {
+  const modes = BIDDING_POLICY_MODES.filter(mode => bidding[mode] !== undefined);
+  const profile = advertisedBiddingProfile(scope, allocation);
+  if (!profile) return `${scope} bidding is not supported under ${allocation} allocation`;
+  if (modes.length !== 1) return `the ${modes.join(' + ')} combination is not supported at ${scope} scope`;
+  const mode = modes[0]!;
+  if (!profile.modes.includes(mode)) return `${mode} is not supported at ${scope} scope under ${allocation} allocation`;
+  if (mode === 'cost_per') {
+    const strength = isRecord(bidding.cost_per) ? bidding.cost_per.strength : undefined;
+    if (typeof strength !== 'string' || !profile.cost_per_strengths?.includes(strength)) {
+      return `cost_per strength '${String(strength)}' is not supported at ${scope} scope`;
+    }
+  }
+  return undefined;
+}
+
+/** The primary goal: earliest entry among goals tied for the lowest explicit
+ * priority; unprioritized goals follow prioritized ones. */
+function primaryOptimizationGoal(goals: unknown): Record<string, unknown> | undefined {
+  if (!Array.isArray(goals)) return undefined;
+  const records = goals.filter(isRecord);
+  const prioritized = records.filter(goal => typeof goal.priority === 'number');
+  if (prioritized.length === 0) return records[0];
+  const lowest = Math.min(...prioritized.map(goal => goal.priority as number));
+  return prioritized.find(goal => goal.priority === lowest);
+}
+
+/** Result-unit identity of a goal for cost_per compatibility: metric plus its
+ * result-defining qualifiers, vendor plus metric_id, or the event identity
+ * set plus the attribution window. */
+function costPerResultUnit(goal: Record<string, unknown>): string {
+  const kind = typeof goal.kind === 'string' ? goal.kind : (typeof goal.metric === 'string' ? 'metric' : 'unknown');
+  if (kind === 'metric') {
+    const { priority: _priority, target: _target, kind: _kind, ...qualifiers } = goal;
+    return canonicalize({ kind, ...qualifiers });
+  }
+  if (kind === 'vendor_metric') return canonicalize({ kind, vendor: goal.vendor, metric_id: goal.metric_id });
+  if (kind === 'event') {
+    const events = Array.isArray(goal.event_sources)
+      ? [...new Set(goal.event_sources.filter(isRecord).map(source => `${String(source.event_type)}:${String(source.custom_event_name ?? '')}`))].sort()
+      : [];
+    return canonicalize({ kind, events, attribution_window: goal.attribution_window ?? null });
+  }
+  return canonicalize(goal);
+}
+
+/** Validate canonical bidding blocks on a create_media_buy request against
+ * the advertised features.bidding_policy profile and the fixed media-buy
+ * cost_per binding rule, before any mutation. Legacy bid_price is outside
+ * this check. */
+export function createMediaBuyBiddingPolicyError(request: Record<string, unknown>): TaskError | undefined {
+  const allocation = isRecord(request.budget_allocation) && request.budget_allocation.mode === 'seller_optimized'
+    ? 'seller_optimized'
+    : 'fixed';
+  const packages = Array.isArray(request.packages) ? request.packages.filter(isRecord) : [];
+  if (isRecord(request.bidding)) {
+    const reason = unadvertisedBiddingPolicyReason(request.bidding, 'media_buy', allocation);
+    if (reason) {
+      return { code: 'UNSUPPORTED_FEATURE', message: `Unsupported bidding policy: ${reason}.`, field: 'bidding', recovery: 'correctable' } as TaskError;
+    }
+  }
+  for (let index = 0; index < packages.length; index += 1) {
+    const bidding = packages[index]!.bidding;
+    if (!isRecord(bidding)) continue;
+    const reason = unadvertisedBiddingPolicyReason(bidding, 'package', allocation);
+    if (reason) {
+      return { code: 'UNSUPPORTED_FEATURE', message: `Unsupported bidding policy: ${reason}.`, field: `packages[${index}].bidding`, recovery: 'correctable' } as TaskError;
+    }
+  }
+  if (isRecord(request.bidding) && request.bidding.cost_per !== undefined && allocation === 'fixed') {
+    const inheriting = packages.filter(pkg => pkg.bidding === undefined);
+    const units = inheriting.map(pkg => {
+      const primary = primaryOptimizationGoal(pkg.optimization_goals);
+      return primary ? costPerResultUnit(primary) : undefined;
+    });
+    if (units.some(unit => unit === undefined) || new Set(units).size > 1) {
+      return {
+        code: 'BIDDING_PLACEMENT_CONFLICT',
+        message: 'A fixed media-buy cost_per binds to each inheriting package\'s primary optimization goal, and those goals do not share one result unit.',
+        field: 'bidding.cost_per',
+        recovery: 'correctable',
+      } as TaskError;
+    }
+  }
+  return undefined;
 }
 
 /** Project the broad 3.x handler result into the compact split-tool domain
@@ -11076,6 +11233,14 @@ async function handleGetProductsUnlocked(
       recovery: 'correctable',
     }] as TaskError[],
   });
+  const outcomeTargetOptimization = outcomeTargetGoal && outcomeTargetCostPer
+    ? outcomeTargetOptimizationGoal(
+        outcomeTargetGoal,
+        outcomeTargetGoal.kind === 'event'
+          ? registeredEventSourcesInSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId))
+          : [],
+      )
+    : undefined;
   if (outcomeTargetGoal && outcomeTargetCostPer) {
     const requestRecord = req as unknown as Record<string, unknown>;
     const requestedIds = Array.isArray(requestRecord.product_ids)
@@ -11087,6 +11252,7 @@ async function handleGetProductsUnlocked(
     const rejection = outcomeTargetCostPerRejection(
       outcomeTargetGoal,
       outcomeTargetCostPer,
+      outcomeTargetOptimization,
       { filters: requestRecord.filters, account: requestRecord.account },
       requestedProducts,
     );
@@ -11195,7 +11361,7 @@ async function handleGetProductsUnlocked(
       ...(typeof requestAccount?.sandbox === 'boolean' && { sandbox: requestAccount.sandbox }),
     });
     const outcomeTargetVolume = typeof outcomeTarget?.volume === 'number' ? outcomeTarget.volume : undefined;
-    const outcomeTargetBudget = outcomeTargetCostPer ? outcomeTargetBuyerBudget(requestRecord.filters) : undefined;
+    const outcomeTargetBudget = outcomeTargetCostPer ? outcomeTargetBudgetRange(requestRecord.filters) : undefined;
     const proposalsBeforeCostPlan = proposals.length;
     proposals = proposals.flatMap((proposal, index) => {
       const digest = createHash('sha256')
@@ -11205,9 +11371,10 @@ async function handleGetProductsUnlocked(
       const proposalId = `proposal_request_${digest}`;
       // A cost target is answered in cost_per.currency or not at all: a
       // proposal whose products cannot all be priced in it is dropped.
-      const costPlan = outcomeTargetGoal && outcomeTargetCostPer
+      const costPlan = outcomeTargetGoal && outcomeTargetCostPer && outcomeTargetOptimization
         ? computeOutcomeTargetCostPlan(
             outcomeTargetGoal,
+            outcomeTargetOptimization,
             outcomeTargetCostPer,
             outcomeTargetVolume,
             outcomeTargetBudget,
@@ -14028,6 +14195,11 @@ async function handleCreateMediaBuyUnlocked(
       }] as TaskError[],
     };
   }
+  // Canonical bidding outside the advertised features.bidding_policy
+  // profile, or a fixed media-buy cost_per without one shared result unit,
+  // is rejected before any mutation.
+  const biddingPolicyError = createMediaBuyBiddingPolicyError(req as unknown as Record<string, unknown>);
+  if (biddingPolicyError) return { errors: [biddingPolicyError] };
   const mediaBuyCurrency = accountCurrency ?? req.total_budget?.currency ?? 'USD';
   let executedCompactProposal: Proposal | undefined;
   let executedCompactProposalSession: SessionState | undefined;
@@ -18763,6 +18935,12 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       features: {
         inline_creative_management: true,
         catalog_management: true,
+        // Canonical bidding the agent preserves: fixed media-buy cost_per.
+        // The outcome_target planner answers cost targets inside this
+        // profile; create_media_buy rejects canonical policies outside it.
+        ...(supportsBiddingPolicyCapability(servedAdcpVersion) && {
+          bidding_policy: structuredClone(TRAINING_BIDDING_POLICY_CAPABILITY),
+        }),
       },
       portfolio: {
         publisher_domains: publisherDomains,

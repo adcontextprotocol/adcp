@@ -117,6 +117,27 @@ export function supportsSellerGovernanceDiscovery(servedVersion: string | undefi
   return atLeastAdcpVersion(servedVersion, SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION);
 }
 
+/** First served checkpoint whose media-buy features carry the structured
+ * bidding_policy capability object (older bundles only allow booleans). */
+export const BIDDING_POLICY_CAPABILITY_ADCP_VERSION = '3.2-beta.6' as const;
+
+export function supportsBiddingPolicyCapability(servedVersion: string | undefined): boolean {
+  return atLeastAdcpVersion(servedVersion, BIDDING_POLICY_CAPABILITY_ADCP_VERSION);
+}
+
+/** The canonical bidding policies the training agent preserves, advertised as
+ * media_buy.features.bidding_policy on 3.2 responses. The outcome_target
+ * planner answers cost targets only inside this profile, and create_media_buy
+ * rejects canonical policies outside it. */
+export const TRAINING_BIDDING_POLICY_CAPABILITY = {
+  media_buy: {
+    fixed: {
+      modes: ['cost_per'],
+      cost_per_strengths: ['cap', 'target'],
+    },
+  },
+} as const;
+
 /** Reliable Reporting 1.0 is available only from its matching RC.1 candidate. */
 export function supportsReliableReporting(servedVersion: string | undefined): boolean {
   return atLeastAdcpVersion(servedVersion, RELIABLE_REPORTING_ADCP_VERSION);

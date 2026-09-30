@@ -5,7 +5,9 @@ import {
   invalidateCache,
   clearTaskStore,
   computeOutcomeTargetCostPlan,
+  createMediaBuyBiddingPolicyError,
 } from '../../src/training-agent/task-handlers.js';
+import { clearCatalogEventStores } from '../../src/training-agent/catalog-event-handlers.js';
 import { clearSessions } from '../../src/training-agent/state.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import { validateProductDiscoverySourceResponse } from '../../src/training-agent/source-schema.js';
@@ -116,6 +118,7 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
     clearIdempotencyCache();
     invalidateCache();
     clearTaskStore();
+    clearCatalogEventStores();
     server = createTrainingAgentServer(DEFAULT_CTX);
   });
 
@@ -341,8 +344,105 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
       expect(String(result.message)).toContain('EUR');
     });
 
-    it('rejects a cost target on an event goal it cannot bind without an event source', async () => {
+    it('rejects a cost_per currency excluded by offer_filters.pricing_currencies', async () => {
       await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: CLICKS_GOAL, cost_per: { amount: 3, currency: 'USD', strength: 'cap' } },
+        { pricing_currencies: ['EUR'] },
+      ));
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.cost_per');
+    });
+
+    it('rejects a cost target on a goal with no canonical optimization-goal form, naming cost_per', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: { kind: 'metric', metric: 'impressions' },
+        cost_per: { amount: 3, currency: 'USD', strength: 'cap' },
+      }));
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.cost_per');
+    });
+
+    it('plans the volume it can deliver and states the spend when there is neither volume nor budget', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: CLICKS_GOAL,
+        cost_per: { amount: 3, currency: 'USD', strength: 'cap' },
+      }));
+
+      expectValidResponse(result);
+      const proposal = onlyProposal(result);
+      // 10,000,000 deliverable impressions x 0.1% = 10,000 clicks at $40.
+      expect(termsOf(proposal).bidding).toEqual({ cost_per: { amount: 40, strength: 'cap' } });
+      expect((proposal.total_budget_guidance as Record<string, unknown>).recommended).toBe(400000);
+      const forecast = proposal.forecast as { points: unknown[] };
+      expect(forecast.points[1]).toEqual({ budget: 400000, metrics: { clicks: { mid: 10000 } } });
+    });
+
+    it('keeps total_budget inside a two-sided budget range', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: CLICKS_GOAL, volume: 10, cost_per: { amount: 50, currency: 'USD', strength: 'cap' } },
+        { budget_range: { min: 1000, max: 5000, currency: 'USD' } },
+      ));
+
+      expectValidResponse(result);
+      const proposal = onlyProposal(result);
+      // 10 clicks at $40 is $400, below the $1,000 floor, so the plan spends
+      // the floor and forecasts the 25 clicks it buys at the kept $50 cap.
+      expect(termsOf(proposal).total_budget).toEqual({ amount: 1000, currency: 'USD' });
+      expect(termsOf(proposal).bidding).toEqual({ cost_per: { amount: 50, strength: 'cap' } });
+      const guidance = proposal.total_budget_guidance as Record<string, number>;
+      expect(guidance.min).toBeGreaterThanOrEqual(1000);
+      expect(guidance.max).toBeLessThanOrEqual(5000);
+    });
+
+    it('binds an event-goal cost target to event sources registered on the account', async () => {
+      await seedOutcomeTargetProduct(server);
+      const synced = await callTool(server, 'sync_event_sources', {
+        account: ACCOUNT,
+        event_sources: [
+          { event_source_id: 'web_pixel_main', name: 'Main site pixel', event_types: ['purchase', 'add_to_cart'] },
+          { event_source_id: 'lead_form', name: 'Lead form', event_types: ['lead'] },
+        ],
+      });
+      expect(Array.isArray(synced.event_sources), JSON.stringify(synced)).toBe(true);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: { kind: 'event', event_type: 'purchase' },
+        cost_per: { amount: 20, currency: 'USD', strength: 'cap' },
+      }));
+
+      expectValidResponse(result);
+      const terms = termsOf(onlyProposal(result));
+      // $40 CPM at 1 purchase per 5,000 impressions plans to $200.
+      expect(terms.bidding).toEqual({ cost_per: { amount: 200, strength: 'cap' } });
+      expect(terms.purchases[0].optimization_goals).toEqual([{
+        kind: 'event',
+        event_sources: [{ event_source_id: 'web_pixel_main', event_type: 'purchase' }],
+        attribution_window: {
+          post_click: { interval: 7, unit: 'days' },
+          post_view: { interval: 1, unit: 'days' },
+          model: 'last_touch',
+        },
+        priority: 1,
+      }]);
+      expect(terms.purchases[0].bidding).toBeUndefined();
+    });
+
+    it('rejects an event-goal cost target when no registered source tracks the event', async () => {
+      await seedOutcomeTargetProduct(server);
+      await callTool(server, 'sync_event_sources', {
+        account: ACCOUNT,
+        event_sources: [{ event_source_id: 'lead_form', name: 'Lead form', event_types: ['lead'] }],
+      });
 
       const result = await callTool(server, 'request_proposals', requestProposalsArgs({
         goal: { kind: 'event', event_type: 'purchase' },
@@ -351,12 +451,70 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
 
       expect(result.code).toBe('INVALID_REQUEST');
       expect(result.field).toBe('criteria.outcome_target.cost_per');
+      expect(String(result.message)).toContain('purchase');
+    });
+  });
+
+  describe('bidding_policy capability', () => {
+    it('advertises fixed media-buy cost_per on 3.2 responses only', async () => {
+      const current = await callTool(server, 'get_adcp_capabilities', { adcp_version: '3.2-rc.7' }) as {
+        media_buy: { features: Record<string, unknown> };
+      };
+      expect(current.media_buy.features.bidding_policy).toEqual({
+        media_buy: { fixed: { modes: ['cost_per'], cost_per_strengths: ['cap', 'target'] } },
+      });
+      const legacy = await callTool(server, 'get_adcp_capabilities', {}) as {
+        media_buy: { features: Record<string, unknown> };
+      };
+      expect(legacy.media_buy.features.bidding_policy).toBeUndefined();
+    });
+  });
+
+  describe('createMediaBuyBiddingPolicyError', () => {
+    const clicksPackage = {
+      product_id: 'a', pricing_option_id: 'a_cpm', budget: 100,
+      optimization_goals: [{ kind: 'metric', metric: 'clicks', priority: 1 }],
+    };
+    const viewsPackage = {
+      product_id: 'b', pricing_option_id: 'b_cpm', budget: 100,
+      optimization_goals: [{ kind: 'metric', metric: 'views', priority: 1 }],
+    };
+
+    it('accepts a fixed media-buy cost_per whose inheriting packages share one result unit', () => {
+      expect(createMediaBuyBiddingPolicyError({
+        budget_allocation: { mode: 'fixed' },
+        bidding: { cost_per: { amount: 4, strength: 'cap' } },
+        packages: [clicksPackage, { ...clicksPackage, product_id: 'c' }],
+      })).toBeUndefined();
+    });
+
+    it('rejects a fixed media-buy cost_per across incompatible result units', () => {
+      expect(createMediaBuyBiddingPolicyError({
+        budget_allocation: { mode: 'fixed' },
+        bidding: { cost_per: { amount: 4, strength: 'cap' } },
+        packages: [clicksPackage, viewsPackage],
+      })).toMatchObject({ code: 'BIDDING_PLACEMENT_CONFLICT', field: 'bidding.cost_per' });
+    });
+
+    it('rejects canonical policies outside the advertised profile', () => {
+      expect(createMediaBuyBiddingPolicyError({
+        bidding: { max_bid: 7 },
+        packages: [clicksPackage],
+      })).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: 'bidding' });
+      expect(createMediaBuyBiddingPolicyError({
+        packages: [{ ...clicksPackage, bidding: { automatic: true } }],
+      })).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: 'packages[0].bidding' });
+      expect(createMediaBuyBiddingPolicyError({
+        budget_allocation: { mode: 'seller_optimized', optimization_goals: [{ kind: 'metric', metric: 'clicks' }] },
+        bidding: { cost_per: { amount: 4, strength: 'cap' } },
+        packages: [clicksPackage],
+      })).toMatchObject({ code: 'UNSUPPORTED_FEATURE', field: 'bidding' });
     });
   });
 
   describe('computeOutcomeTargetCostPlan', () => {
-    type PlanProposal = Parameters<typeof computeOutcomeTargetCostPlan>[4];
-    type PlanProducts = Parameters<typeof computeOutcomeTargetCostPlan>[5];
+    type PlanProposal = Parameters<typeof computeOutcomeTargetCostPlan>[5];
+    type PlanProducts = Parameters<typeof computeOutcomeTargetCostPlan>[6];
     const proposal = {
       proposal_id: 'plan',
       name: 'Plan',
@@ -365,28 +523,47 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
     const productsById = new Map([
       ['p1', { product_id: 'p1', pricing_options: [USD_FIXED_CPM_40] }],
     ]) as unknown as PlanProducts;
+    const clicksOptimizationGoal = { kind: 'metric', metric: 'clicks', priority: 1 };
 
-    it('bounds a volume plan by the buyer budget', () => {
+    it('bounds a volume plan by the buyer budget and forecasts the lower volume at the same cap', () => {
       const plan = computeOutcomeTargetCostPlan(
         CLICKS_GOAL,
-        { amount: 3, currency: 'USD', strength: 'cap' },
+        clicksOptimizationGoal,
+        { amount: 50, currency: 'USD', strength: 'cap' },
         1000,
-        20000,
+        { max: 20000 },
         proposal,
         productsById,
       );
       expect(plan?.plannableCost).toBe(40);
-      expect(plan?.bidding).toEqual({ cost_per: { amount: 40, strength: 'cap' } });
+      expect(plan?.bidding).toEqual({ cost_per: { amount: 50, strength: 'cap' } });
       expect(plan?.totalBudgetGuidance.recommended).toBe(20000);
       expect(plan?.plannedVolume).toBe(500);
+    });
+
+    it('never answers below the ask', () => {
+      for (const amount of [3, 40, 75]) {
+        const plan = computeOutcomeTargetCostPlan(
+          CLICKS_GOAL,
+          clicksOptimizationGoal,
+          { amount, currency: 'USD', strength: 'target' },
+          undefined,
+          { max: 5000 },
+          proposal,
+          productsById,
+        );
+        expect(plan?.bidding.cost_per.amount).toBe(Math.max(amount, 40));
+        expect(plan?.bidding.cost_per.strength).toBe('target');
+      }
     });
 
     it('returns undefined when the proposal cannot be priced in the requested currency', () => {
       expect(computeOutcomeTargetCostPlan(
         CLICKS_GOAL,
+        clicksOptimizationGoal,
         { amount: 3, currency: 'GBP', strength: 'target' },
         undefined,
-        5000,
+        { max: 5000 },
         proposal,
         productsById,
       )).toBeUndefined();
