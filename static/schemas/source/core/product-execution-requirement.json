@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-execution-requirement.json",
   "title": "Product Execution Requirement",
-  "description": "Experimental. One account resource a buyer must bind on the request, or establish on the account, before a package on this product can be created. The kind determines where the resource goes: `event_source` binds through `packages[].optimization_goals[].event_sources[].event_source_id`, `catalog` binds through `packages[].catalogs[]`, and `downstream_connection` is satisfied by completing the connection rather than by a request field. The requirement states what the product needs, never whether a particular account has it, and MUST NOT carry account-specific resource IDs or names. Alternatives listed inside one requirement are any-of.",
+  "description": "Experimental. One account resource a package on the product needs before it can be created. `kind` determines the binding: `event_source` via `packages[].optimization_goals[].event_sources[]`, `catalog` via `packages[].catalogs[]`, `downstream_connection` by completing the connection. Account-independent: MUST NOT carry account-specific resource IDs or names. Alternatives inside one requirement are any-of.",
   "discriminator": {
     "propertyName": "kind"
   },
@@ -10,7 +10,7 @@
     {
       "type": "object",
       "title": "Event source requirement",
-      "description": "Each package on this product needs an optimization goal fed by a conversion event source. Satisfied when at least one `optimization_goals[]` entry of `kind: \"event\"` on the package has an `event_sources[]` entry that references an event source available to the account — registered through `sync_event_sources`, or seller-managed when the product declares `conversion_tracking.platform_managed: true` — with an `event_type` accepted here. Typical for conversion, website-sales, and app-event products.",
+      "description": "Each package needs a conversion event source. Satisfied when at least one `optimization_goals[]` entry of `kind: \"event\"` on the package has an `event_sources[]` entry referencing an event source available to the account (registered via `sync_event_sources`, or seller-managed under `conversion_tracking.platform_managed: true`) with an `event_type` accepted here.",
       "properties": {
         "kind": {
           "type": "string",
@@ -35,7 +35,7 @@
     {
       "type": "object",
       "title": "Catalog requirement",
-      "description": "Each package on this product needs a catalog. Satisfied when the package carries a `packages[].catalogs[]` entry whose `type` is one of `catalog_types`. Use `catalog_types: [\"app\"]` for app-promotion products: an app catalog item carries the store identifiers (`app_id`, `bundle_id`, `apple_id`, `store_url`) that platforms need to promote an app. Every listed type MUST also appear in the product's `catalog_types`.",
+      "description": "Each package needs a catalog. Satisfied by a `packages[].catalogs[]` entry whose `type` is in `catalog_types`. App promotion uses `[\"app\"]`; app items carry `app_id`, `bundle_id`, `apple_id`, and `store_url`. Every listed type MUST also appear in the product's `catalog_types`.",
       "properties": {
         "kind": {
           "type": "string",
@@ -60,7 +60,7 @@
     {
       "type": "object",
       "title": "Downstream connection requirement",
-      "description": "The product needs a seller-side platform connection or grant, such as an advertiser account or the publisher identity (page, profile, channel) the ads run as. It is satisfied by completing the connection, not by a request field. A missing, pending, expired, or revoked connection fails with `AUTHORIZATION_REQUIRED` and `error.details.missing_connections[]` per `error-details/authorization-required.json`. Because a declared list is complete for its kinds, a seller that would reject a buy with `AUTHORIZATION_REQUIRED` for a missing connection — including the advertiser account itself — MUST declare that connection here. When the account has several eligible connected identities, the seller applies its documented default; buyer-directed selection is not part of this surface.",
+      "description": "The product needs a seller-side platform connection or grant, such as the advertiser account or the publisher identity the ads run as. Satisfied by completing the connection, not by a request field; a missing, pending, expired, or revoked connection fails with `AUTHORIZATION_REQUIRED` per `error-details/authorization-required.json`. Because a declared list is complete, a seller that would reject for a missing connection, including the advertiser account, MUST declare it. With several eligible connected identities, the seller applies its documented default.",
       "properties": {
         "kind": {
           "type": "string",
@@ -69,10 +69,18 @@
         "connection": {
           "description": "The required connection. Because the declaration is account-independent, `status` is omitted or `unknown` and `resource_ref` MUST be omitted.",
           "allOf": [
-            { "$ref": "/schemas/core/downstream-connection-requirement.json" },
             {
-              "properties": { "status": { "const": "unknown" } },
-              "not": { "required": ["resource_ref"] }
+              "$ref": "/schemas/core/downstream-connection-requirement.json"
+            },
+            {
+              "properties": {
+                "status": {
+                  "const": "unknown"
+                }
+              },
+              "not": {
+                "required": ["resource_ref"]
+              }
             }
           ]
         },
@@ -85,15 +93,9 @@
     }
   ],
   "examples": [
-    { "kind": "event_source", "event_types": ["purchase"] },
-    { "kind": "catalog", "catalog_types": ["app"] },
     {
-      "kind": "downstream_connection",
-      "connection": {
-        "connection_type": "publisher_identity",
-        "scope": "identity",
-        "required_for": ["create_media_buy"]
-      }
+      "kind": "catalog",
+      "catalog_types": ["app"]
     }
   ]
 }

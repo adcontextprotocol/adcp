@@ -1110,7 +1110,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   for (const [relativePath, { bytes, fixtures, sourceSchema }] of paritySchemas) {
     assert.ok(
       bytes <= PARITY_COMPILE_LIMIT,
-      `${relativePath} example-bearing schema exceeds parity compile limit`
+      `${relativePath} example-bearing schema exceeds parity compile limit (${bytes} > ${PARITY_COMPILE_LIMIT} bytes)`
     );
     const sourcePath = path.join(SOURCE_DIR, relativePath);
     const compactSource = compactDraft07Schema(sourceSchema, sourcePath, SOURCE_DIR);
