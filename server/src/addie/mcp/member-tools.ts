@@ -84,6 +84,11 @@ import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { getTestKitForStoryboard } from '../../services/storyboards.js';
 import {
+  hostedGovernanceAgent,
+  hostedMultiAgentRoutingForStoryboard,
+  withHostedMultiAgentRouting,
+} from '../../compliance/hosted-multi-agent-routing.js';
+import {
   hostedComplianceTarget,
   hostedComplianceOptions,
   HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS,
@@ -5757,14 +5762,24 @@ export function createMemberToolHandlers(
       // authored against; the run-auth bearer substitution no-ops when the
       // kit already carries auth.
       const declaredTestKit = getTestKitForStoryboard(storyboardId, runOptions);
-      const result = await runStoryboard(
-        resolved.resolvedUrl,
-        sb,
-        withSdkSafeTransport(withHostedStoryboardRunOptions({
-          ...(declaredTestKit && { test_kit: declaredTestKit }),
-          ...(authOption && { auth: authOption }),
-        }, runTarget, authProbeTask)),
-      );
+      const storyboardRunOptions = withSdkSafeTransport(withHostedStoryboardRunOptions({
+        ...(declaredTestKit && { test_kit: declaredTestKit }),
+        ...(authOption && { auth: authOption }),
+      }, runTarget, authProbeTask));
+      // adcp#7758 — `requires: [multi_agent]` storyboards route governance
+      // steps to the public governance agent and everything else to the agent
+      // under test. Unroutable ones are reported, never sent to the agent.
+      const routing = hostedMultiAgentRoutingForStoryboard({
+        storyboard: sb,
+        agentUnderTest: { url: resolved.resolvedUrl, ...(authOption && { auth: authOption }) },
+        governance: hostedGovernanceAgent(),
+      });
+      if (routing.kind === 'unroutable') {
+        return `**Not runnable here:** ${routing.reason}`;
+      }
+      const result = routing.kind === 'routed'
+        ? await runStoryboard('', routing.storyboard, withHostedMultiAgentRouting(storyboardRunOptions, routing))
+        : await runStoryboard(resolved.resolvedUrl, sb, storyboardRunOptions);
 
       // runStoryboard catches its own throws and surfaces them as step
       // errors. Detect OAuth on the first failing step before rendering a
