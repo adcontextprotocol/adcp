@@ -80,6 +80,7 @@ describe('csrfProtection', () => {
     '/sales/mcp/',
     '/sales/mcp-strict',
     '/sales/mcp-strict-required',
+    '/sales/mcp-strict-required-legacy',
     '/sales/mcp-strict-forbidden',
     '/governance/mcp-strict',
     '/signals/mcp-strict-required',
@@ -103,6 +104,7 @@ describe('csrfProtection', () => {
     '/sales/mcp-strict/extra',     // appended path segment
     '/sales/mcp-strictly',          // strict-prefix-but-not-equal
     '/sales/mcp-extra',             // not a known suffix
+    '/sales/mcp-strict-forbidden-legacy', // legacy suffix only on required
     '/mcp-strict',                  // root-level (handled by EXEMPT_EXACT, not this rule)
     '//mcp',                        // empty tenant segment
     '/sales/sub/mcp',               // two-segment tenant prefix

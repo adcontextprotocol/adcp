@@ -3089,7 +3089,12 @@ import {
   REPLAY_TTL_SECONDS,
 } from './idempotency.js';
 import { maybeEmitCompletionWebhook } from './webhooks.js';
-import { isProtocolMethodName, selectSigningCapability } from './request-signing.js';
+import {
+  CURRENT_REQUEST_SIGNING_PROFILE_VERSION,
+  isProtocolMethodName,
+  requestSigningProfileVersion,
+  selectSigningCapability,
+} from './request-signing.js';
 import {
   getScopedTrainingTaskStore,
   resetTrainingTaskStore,
@@ -3247,7 +3252,11 @@ function highestSupportedRelease(
 
 function signingCompatibleReleaseVersions(ctx: TrainingContext): readonly string[] {
   const signingCap = selectSigningCapability(ctx);
-  if (!signingCap.supported || signingCap.covers_content_digest === 'required') {
+  // Only a route whose verifier is pinned to the 3.2 signing profile may
+  // advertise 3.2: the route pin, not the request, selects the sf-binary
+  // parser. Legacy-profile routes (either/forbidden digest policy, or the
+  // required-digest legacy route) advertise 3.0/3.1 only.
+  if (!signingCap.supported || requestSigningProfileVersion(ctx) === CURRENT_REQUEST_SIGNING_PROFILE_VERSION) {
     return SUPPORTED_RELEASE_VERSIONS;
   }
   return SUPPORTED_RELEASE_VERSIONS.filter(version => {
@@ -18870,9 +18879,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         'query_provenance_audit_observations',
       ];
   // AdCP 3.2 requires every signing-capable endpoint to require
-  // content-digest coverage. The legacy conformance routes intentionally
-  // exercise the 3.0/3.1 `either` and `forbidden` policies, so they must not
-  // claim support for releases whose schema forbids those postures.
+  // content-digest coverage and to verify under the 3.2 sf-binary profile.
+  // The legacy conformance routes intentionally exercise the 3.0/3.1
+  // `either` and `forbidden` policies or the 3.0/3.1 Base64URL encoding, so
+  // they must not claim support for releases whose profile forbids them.
   const supportedReleaseVersions = [...signingCompatibleReleaseVersions(ctx)];
   const requestedRelease = parseAdcpReleaseVersion((args as unknown as Record<string, unknown>).adcp_version);
   if (
