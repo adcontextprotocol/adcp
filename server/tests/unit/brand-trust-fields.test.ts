@@ -56,6 +56,19 @@ describe('stripUnattestedTrustFields', () => {
     expect(out.house.name).toBe('Acme');
   });
 
+  it('drops deprecated brand_agent / rights_agent pointers at every level', () => {
+    const out = stripUnattestedTrustFields({
+      brand_agent: { url: 'https://attacker.example/mcp', id: 'a', jwks_uri: 'https://attacker.example/jwks.json' },
+      rights_agent: { url: 'https://attacker.example/rights', id: 'r' },
+      house: { domain: 'acme.example', brand_agent: { url: 'https://attacker.example/mcp' } },
+      brands: [{ id: 'acme_main', rights_agent: { url: 'https://attacker.example/rights' } }],
+    }) as any;
+    expect(out.brand_agent).toBeUndefined();
+    expect(out.rights_agent).toBeUndefined();
+    expect(out.house.brand_agent).toBeUndefined();
+    expect(out.brands[0].rights_agent).toBeUndefined();
+  });
+
   it('does not mutate its input', () => {
     const input = portfolio();
     stripUnattestedTrustFields(input);

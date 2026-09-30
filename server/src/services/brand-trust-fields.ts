@@ -69,12 +69,13 @@ export function stripBrandTrustFields(manifest: Manifest): Manifest {
  * AAO's member-profile flow publishes an organization's hostname-verified
  * agents (`type`, `url`, `id`, `description` — never keys) into its registry
  * row, so those listings stay. Keys, operator delegation, relying parties,
- * and portfolio claims do not.
+ * portfolio claims, and the deprecated `brand_agent` / `rights_agent`
+ * pointers (whose URL origin is itself a default key source) do not.
  */
 export function stripUnattestedTrustFields(manifest: Manifest): Manifest {
   const out = withoutKeys(manifest, ['authorized_operators', 'identity_relying_parties', 'brand_refs']);
   const scrubAgents = (container: Manifest): Manifest => {
-    const next = withoutKeys(container, ['identity_relying_parties']);
+    const next = withoutKeys(container, ['identity_relying_parties', 'brand_agent', 'rights_agent']);
     if (Array.isArray(next.agents)) {
       next.agents = next.agents.map((a) => (isRecord(a) ? withoutKeys(a, ['jwks_uri']) : a));
     }
