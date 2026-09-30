@@ -8,7 +8,7 @@
     "url": {
       "type": "string",
       "format": "uri",
-      "description": "The authorized agent's API endpoint URL. Callers comparing this URL against a registry (sales-agent list, signal-provider registry, TMP provider lookup, etc.) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent. See docs/reference/url-canonicalization."
+      "description": "The authorized agent's protocol endpoint URL: the exact agent URL buyers are given and send AdCP requests to, including the path (e.g., `https://agent.example.com/mcp`). A bare origin matches only an agent served at the root. An agent reachable at more than one agent URL (for example, separate MCP and A2A endpoints) needs one entry per URL. Callers comparing this URL against a registry (sales-agent list, signal-provider registry, TMP provider lookup, etc.) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent. See docs/reference/url-canonicalization."
     },
     "authorized_for": {
       "type": "string",
