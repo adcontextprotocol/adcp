@@ -21,7 +21,14 @@ import {
   canManageAgentForOrg,
   resolveOwnerOrgForUser,
 } from "../services/agent-ownership.js";
-import { AdCPClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
+import {
+  AdCPClient,
+  SingleAgentClient,
+  exchangeClientCredentials,
+  ClientCredentialsExchangeError,
+  UnsupportedBuyingModeError,
+  AccountRequiredError,
+} from "@adcp/sdk";
 import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
@@ -2643,6 +2650,10 @@ registry.registerPath({
   responses: {
     200: { description: "Products", content: { "application/json": { schema: z.object({ success: z.boolean(), products: z.array(z.unknown()) }) } } },
     ...PublicAgentProxyErrorResponses,
+    422: {
+      description: "Agent does not offer public product browsing (no wholesale buying mode, or a buyer account is required)",
+      content: { "application/json": { schema: z.object({ error: z.string(), message: z.string() }) } },
+    },
   },
 });
 
@@ -11848,6 +11859,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       if (error instanceof Error && error.name === "TimeoutError") {
         return res.status(504).json({ error: "Connection timeout", message: "Agent did not respond within the timeout period" });
+      }
+
+      // The SDK refuses before dispatch when the seller doesn't declare
+      // wholesale buying or requires a buyer account for product discovery.
+      // That is the seller's declared policy, not an agent failure.
+      if (error instanceof UnsupportedBuyingModeError || error instanceof AccountRequiredError) {
+        return res.status(422).json({
+          error: "Product browsing not supported",
+          message: "This agent does not offer public product browsing; it requires a campaign brief or a buyer account.",
+        });
       }
 
       return res.status(502).json({ error: "Failed to fetch products" });

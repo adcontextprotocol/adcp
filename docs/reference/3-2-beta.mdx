@@ -16,12 +16,12 @@ change 3.2 surfaces before GA.
 
 The 3.2 prerelease cycle started with a protocol-first beta checkpoint.
 RC.7 is the current signed protocol checkpoint. TypeScript SDK
-`14.0.0-rc.50` and Python SDK `8.0.0b18` embed it exactly, and Go SDK
+`14.0.0-rc.51` and Python SDK `8.0.0b18` embed it exactly, and Go SDK
 `adcp/v3@v3.2.1` embeds `3.2.0-rc.1`:
 
 <Info>
 **Match every SDK to its embedded checkpoint.** TypeScript
-`@adcp/sdk@14.0.0-rc.50` and Python `adcp==8.0.0b18` are RC.7 evidence, and
+`@adcp/sdk@14.0.0-rc.51` and Python `adcp==8.0.0b18` are RC.7 evidence, and
 Go `adcp/v3@v3.2.1` remains RC.1 evidence. Use the signed RC.7 bundle for raw-wire
 validation and code generation, and do not infer compatibility from a floating
 package tag or from an SDK generated against an earlier checkpoint.
@@ -48,8 +48,8 @@ package tag or from an SDK generated against an earlier checkpoint.
 | `3.2.0-rc.4` | Previous protocol checkpoint for anonymous catalog discovery declarations, required `recovery` on 3.2 producer errors, and the `sync_accounts` settings-update account echo | TypeScript SDK-backed testing with TypeScript SDK RC.44 |
 | `3.2.0-rc.5` | Not published; the release process withheld it and RC.6 superseded it | — |
 | `3.2.0-rc.6` | Previous protocol checkpoint for the shared MediaBuy `name`, seller-policy decline reasons, the request-signing error vocabulary, three additional sales specialisms, and Reliable Reporting waiver reconciliation | TypeScript SDK-backed testing with TypeScript SDK RC.48 |
-| `3.2.0-rc.7` | Current protocol checkpoint for the `viewable_rate` optimization goal with viewability `standard` and `vendor`, and the deprecated `account` field on the media-buy `list_creative_formats` request | SDK-backed testing with `@adcp/sdk@14.0.0-rc.50` or `adcp==8.0.0b18`, testing against the public training agent, plus raw-wire, signed-artifact, and code-generation integration testing |
-| Current SDK wave | `@adcp/sdk@14.0.0-rc.50` and Python `adcp==8.0.0b18` embed `3.2.0-rc.7`; Go `adcp/v3@v3.2.1` embeds `3.2.0-rc.1` | Exact RC.7 TypeScript and Python schema/type testing; Python higher layers and Go coverage per the SDK matrix, which remains role-dependent |
+| `3.2.0-rc.7` | Current protocol checkpoint for the `viewable_rate` optimization goal with viewability `standard` and `vendor`, and the deprecated `account` field on the media-buy `list_creative_formats` request | SDK-backed testing with `@adcp/sdk@14.0.0-rc.51` or `adcp==8.0.0b18`, testing against the public training agent, plus raw-wire, signed-artifact, and code-generation integration testing |
+| Current SDK wave | `@adcp/sdk@14.0.0-rc.51` and Python `adcp==8.0.0b18` embed `3.2.0-rc.7`; Go `adcp/v3@v3.2.1` embeds `3.2.0-rc.1` | Exact RC.7 TypeScript and Python schema/type testing; Python higher layers and Go coverage per the SDK matrix, which remains role-dependent |
 
 Earlier betas and RC.0 remain useful as pinned implementation checkpoints.
 TypeScript SDK beta.31 and Python SDK beta.13 are historical RC.0 pairings;
@@ -83,7 +83,7 @@ The TypeScript SDK has exact RC.7 support. The npm `latest` tag remains on
 SDK 13, so opt into the release-candidate channel explicitly:
 
 ```bash
-npm install @adcp/sdk@14.0.0-rc.50
+npm install @adcp/sdk@14.0.0-rc.51
 ```
 
 SDK 14 includes typed caller and server support for the compact media-buy
