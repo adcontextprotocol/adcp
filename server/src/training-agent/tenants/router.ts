@@ -1079,7 +1079,7 @@ function projectTenantCapabilities(
           ...salesProjection.features,
           // Fixed media-buy cost_per, the policy outcome_target cost answers
           // use (3.2 bundles only; earlier features allow booleans only).
-          ...(supportsBiddingPolicyCapability(servedVersion) && {
+          ...(storyboardCompat?.version !== '3.0' && supportsBiddingPolicyCapability(servedVersion) && {
             bidding_policy: structuredClone(TRAINING_BIDDING_POLICY_CAPABILITY),
           }),
         },

@@ -3676,6 +3676,54 @@ describe('tenant routing smoke', () => {
     }
   }, 15000);
 
+  it('advertises features.bidding_policy only on current 3.2 tenant capabilities', async () => {
+    type CapabilitiesResponse = {
+      result?: { structuredContent?: { media_buy?: { features?: Record<string, unknown> } } };
+    };
+    const featuresOf = (response: Record<string, unknown>) => (
+      (response as CapabilitiesResponse).result?.structuredContent?.media_buy?.features
+    );
+    const expected = {
+      media_buy: { fixed: { modes: ['cost_per'], cost_per_strengths: ['cap', 'target'] } },
+      package: { fixed: { modes: ['bid_amount', 'max_bid'] } },
+    };
+    const current = await bootServer();
+    try {
+      const url = `${current.baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      expect(featuresOf(await callTenantTool(url, 2, 'get_adcp_capabilities', {
+        adcp_version: '3.2-rc.7',
+        adcp_major_version: 3,
+      }))?.bidding_policy).toEqual(expected);
+      // 3.1 and 3.0 media-buy features only allow booleans.
+      expect(featuresOf(await callTenantTool(url, 3, 'get_adcp_capabilities', {
+        adcp_version: '3.1',
+        adcp_major_version: 3,
+      }))?.bidding_policy).toBeUndefined();
+      expect(featuresOf(await callTenantTool(url, 4, 'get_adcp_capabilities', {
+        adcp_version: '3.0',
+        adcp_major_version: 3,
+      }))?.bidding_policy).toBeUndefined();
+    } finally {
+      await current.close();
+    }
+    // Frozen 3.0 storyboard compat may resolve a newer served version on some
+    // routes; no tenant may leak the object-valued feature into it.
+    const compat = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      for (const [index, tenant] of ['sales', 'si', 'creative-builder', 'signals', 'governance', 'creative', 'brand'].entries()) {
+        const url = `${compat.baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        for (const [offset, args] of [{}, { adcp_version: '3.2-rc.7', adcp_major_version: 3 }].entries()) {
+          const features = featuresOf(await callTenantTool(url, 10 + index * 2 + offset, 'get_adcp_capabilities', args));
+          expect(features?.bidding_policy, `${tenant} ${JSON.stringify(args)}`).toBeUndefined();
+        }
+      }
+    } finally {
+      await compat.close();
+    }
+  }, 30000);
+
   it('does not advertise 3.1 measurement-catalog seeding in 3.0 storyboard compat mode', async () => {
     const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
     try {

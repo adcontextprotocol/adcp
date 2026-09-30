@@ -126,14 +126,24 @@ export function supportsBiddingPolicyCapability(servedVersion: string | undefine
 }
 
 /** The canonical bidding policies the training agent preserves, advertised as
- * media_buy.features.bidding_policy on 3.2 responses. The outcome_target
- * planner answers cost targets only inside this profile, and create_media_buy
- * rejects canonical policies outside it. */
+ * media_buy.features.bidding_policy on 3.2 responses:
+ * - media-buy scope, fixed allocation: cost_per (cap, target), the policy the
+ *   outcome_target planner answers cost targets with;
+ * - package scope, fixed allocation: bid_amount and max_bid, which the agent
+ *   has long accepted on buy_products purchases, preserves on readback, and
+ *   submits as the package bid on auction-priced options (a max_bid is bid
+ *   at its ceiling).
+ * create_media_buy and buy_products reject canonical policies outside it. */
 export const TRAINING_BIDDING_POLICY_CAPABILITY = {
   media_buy: {
     fixed: {
       modes: ['cost_per'],
       cost_per_strengths: ['cap', 'target'],
+    },
+  },
+  package: {
+    fixed: {
+      modes: ['bid_amount', 'max_bid'],
     },
   },
 } as const;

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/outcome-target.json",
   "title": "Outcome Target",
-  "description": "Reverse-forecast planning input: a goal plus a volume, a cost_per target, or both (at least one). Goals use the forecastable-metric and event-type vocabularies, so forecast points always carry the goal's metric or event key in metrics, with forecast_range_unit 'clicks' or 'conversions' where those units apply. volume and cost_per define the request shapes and answers. Sellers not declaring media_buy.outcome_target MUST reject the field with UNSUPPORTED_FEATURE rather than silently ignore it; declaring sellers MAY reject a goal they cannot plan against at all (for example 'spend', which restates budget) with INVALID_REQUEST naming criteria.outcome_target.goal. A planning input, not a delivery guarantee: obligations arise only at proposal finalization.",
+  "description": "Reverse-forecast planning input: a goal plus a volume, a cost_per target, or both (at least one). Goals use the forecastable-metric and event-type vocabularies, so forecast points always carry the goal's metric or event key in metrics, with forecast_range_unit 'clicks' or 'conversions' where those units apply. volume and cost_per define the request shapes and answers, which travel on request_proposals proposals; list_products returns no proposals and gives outcome_target no answer. Sellers not declaring media_buy.outcome_target MUST reject the field with UNSUPPORTED_FEATURE rather than silently ignore it; declaring sellers MAY reject a goal they cannot plan against at all (for example 'spend', which restates budget) with INVALID_REQUEST naming criteria.outcome_target.goal. A planning input, not a delivery guarantee: obligations arise only at proposal finalization.",
   "type": "object",
   "properties": {
     "goal": {
@@ -50,33 +50,44 @@
     "volume": {
       "type": "number",
       "exclusiveMinimum": 0,
-      "description": "Desired total volume of the goal's metric or event across the planned flight. Alone, the seller solves for budget and answers with total_budget_guidance and a forecast. With cost_per, the seller plans toward the volume at the cost; under a cap it SHOULD keep the buyer's amount and forecast the lower volume it can deliver, unless no volume can be planned at that amount."
+      "description": "Desired total volume of the goal's metric or event across the planned flight. Alone, the seller solves for budget and answers with total_budget_guidance and a forecast. With cost_per, the seller plans toward the volume at the cost: under a cap it SHOULD keep the buyer's amount and forecast the lower volume it can deliver, unless no volume can be planned at that amount; under a target the ask is plannable when the seller can forecast the volume around it."
     },
     "cost_per": {
-      "type": "object",
-      "description": "Average cost the buyer will pay per goal result: BiddingPolicy.cost_per plus a currency. It requires a goal expressible as a canonical optimization goal; otherwise the seller rejects with INVALID_REQUEST naming criteria.outcome_target.cost_per, since the goal stays plannable by volume. With a buyer budget (offer_filters.budget_range max, else min, or the brief), the seller plans the volume it can deliver within it at or below (cap) or around (target) the cost; with volume, see volume; with neither, it plans the volume it can deliver at the cost and states the spend in total_budget_guidance. Each proposal answers in commercial_terms.bidding.cost_per, which the buyer adopts on acceptance. The answer MUST NOT carry purchase-level bidding. Under fixed or omitted budget_allocation every purchase's primary optimization goal, and under seller_optimized the primary budget_allocation.optimization_goals goal, MUST match goal: same kind and metric, or event_type and custom_event_name. The seller MAY add result-defining qualifiers (such as view_duration_seconds or reach_unit), visible in the proposal. For an event goal the seller fills event_sources from sources registered on the buyer's account for that event and states attribution_window, and rejects when none is registered. A seller MUST NOT answer with a bidding policy outside its advertised features.bidding_policy profile for the proposal's scope and allocation mode; a declaring seller without one rejects. Rejections of a target that cannot be represented or bound (strength, currency, goal, capability) use INVALID_REQUEST naming criteria.outcome_target.cost_per; a valid target with no viable inventory is outcome 'rejected'. Forecast points carry the goal volume planned under the answered policy.",
-      "properties": {
-        "amount": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "description": "Average cost amount per goal result, denominated in currency. The answered commercial_terms.bidding.cost_per.amount MUST be greater than or equal to it: the requested amount when the seller can plan to it, otherwise the lowest amount it can plan to."
-        },
-        "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
-          "description": "ISO 4217 currency of amount. BiddingPolicy.cost_per has no currency because it inherits the media-buy currency, and no media buy exists at request time, so the request states it. It becomes the answer's currency: every answering proposal's purchases[].pricing.currency (which bidding amounts use) and forecast.currency MUST equal it, as MUST commercial_terms.total_budget.currency and total_budget_guidance.currency when present; sellers MUST NOT convert currency. It MUST equal offer_filters.budget_range.currency when present, and when both budget_range bounds are present total_budget MUST fall within them. A seller rejects a conflict with budget_range, pricing_currencies, the account currency, or the requested products' pricing currencies with INVALID_REQUEST naming criteria.outcome_target.cost_per."
-        },
-        "strength": {
-          "type": "string",
-          "enum": ["cap", "target"],
-          "description": "`cap` optimizes for an average at or below the amount and accepts underdelivery when necessary; `target` optimizes around the amount while balancing volume and spend. Neither is a per-result or per-auction guarantee. The answer MUST keep this strength: a cap of 3 the seller can only meet at 4.50 returns {amount: 4.50, strength: 'cap'}, never 'target'. A seller that will not plan at any amount under this strength rejects instead."
-        }
-      },
-      "required": ["amount", "currency", "strength"],
-      "additionalProperties": false
+      "$ref": "#/definitions/outcome_target_cost_per"
     }
   },
   "required": ["goal"],
   "anyOf": [{ "required": ["volume"] }, { "required": ["cost_per"] }],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "definitions": {
+    "outcome_target_cost_per": {
+      "title": "Outcome Target Cost Per",
+      "type": "object",
+      "description": "Average cost the buyer will pay per goal result: BiddingPolicy.cost_per plus a currency. It requires a goal expressible as a canonical optimization goal; otherwise the seller rejects with INVALID_REQUEST naming criteria.outcome_target.cost_per, since the goal stays plannable by volume. With a buyer budget (offer_filters.budget_range or the brief), the seller plans the volume it can deliver within it at or below (cap) or around (target) the cost; with volume, see volume; with neither, it MUST state the spend for the volume it can deliver at the cost in total_budget_guidance. Each proposal answers in commercial_terms.bidding.cost_per, which the buyer adopts on acceptance; it is an execution control, not an expected price, and billing stays on the selected pricing option. The answer MUST NOT carry purchase-level bidding. Under fixed or omitted budget_allocation every purchase's primary optimization goal, and under seller_optimized the primary budget_allocation.optimization_goals goal, MUST match goal and resolve to one result unit as BiddingPolicy.cost_per defines it: the same metric and result-defining qualifiers, or for an event goal every event_sources[] entry carrying the goal's event_type (and custom_event_name) with one resolved attribution_window. Seller-added qualifiers (such as view_duration_seconds or reach_unit) are permitted and visible in the proposal. For an event goal the seller fills event_sources from sources available on the buyer's account for that event, buyer-synced or seller-managed, exactly one unless it advertises conversion_tracking.multi_source_event_dedup, and states attribution_window, which SHOULD be one advertised in conversion_tracking.attribution_windows; with none available it rejects. A seller MUST NOT answer with a bidding policy outside its advertised features.bidding_policy profile for the proposal's scope and allocation mode; a declaring seller without one rejects. Rejections of a target that cannot be represented or bound (strength, currency, goal, capability) use INVALID_REQUEST naming criteria.outcome_target.cost_per; a valid target with no viable inventory is outcome 'rejected'.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Average cost amount per goal result, denominated in currency. The answered commercial_terms.bidding.cost_per.amount MUST be greater than or equal to it: the requested amount when it is plannable, otherwise the lowest plannable amount. An amount is plannable when the seller can forecast goal volume at or below (cap) or around (target) it within the buyer's budget, spending at least offer_filters.budget_range.min when present. When the planned spend at the answered amount is below commercial_terms.total_budget, each forecast point MUST carry metrics.spend. A seller MAY return additional proposals at higher amounts under the same strength to show what volume a higher cost buys."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "ISO 4217 currency of amount. BiddingPolicy.cost_per has no currency because it inherits the media-buy currency, and no media buy exists at request time, so the request states it. It becomes the answer's currency: every answering proposal's purchases[].pricing.currency (which bidding amounts use) and forecast.currency MUST equal it, as MUST commercial_terms.total_budget.currency and total_budget_guidance.currency when present; sellers MUST NOT convert currency. It MUST equal offer_filters.budget_range.currency when present. The seller plans within budget_range.max when present, else at or above budget_range.min, and total_budget MUST NOT exceed max or fall below min. A seller rejects a conflict with budget_range, pricing_currencies, the account currency, or the requested products' pricing currencies with INVALID_REQUEST naming criteria.outcome_target.cost_per."
+        },
+        "strength": {
+          "$ref": "#/definitions/outcome_target_cost_strength",
+          "description": "BiddingPolicy.cost_per strength: `cap` optimizes for an average at or below the amount and accepts underdelivery when necessary; `target` optimizes around the amount while balancing volume and spend. Neither is a per-result or per-auction guarantee. The answer MUST keep this strength: a cap of 3 the seller can only meet at 4.50 returns {amount: 4.50, strength: 'cap'}, never 'target'. A seller that will not plan at any amount under this strength rejects instead."
+        }
+      },
+      "required": ["amount", "currency", "strength"],
+      "additionalProperties": false
+    },
+    "outcome_target_cost_strength": {
+      "title": "Outcome Target Cost Strength",
+      "type": "string",
+      "enum": ["cap", "target"],
+      "description": "The BiddingPolicy.cost_per strength vocabulary, kept identical to it by test. A named definition gives generated SDKs a distinct type instead of a second colliding Strength."
+    }
+  }
 }

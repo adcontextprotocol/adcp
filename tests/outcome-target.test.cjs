@@ -106,7 +106,14 @@ describe('outcome_target reverse-forecast criteria', () => {
   });
 
   it('pins cost_per.strength to the BiddingPolicy.cost_per strength vocabulary', () => {
-    const outcomeStrengths = readSchema('/schemas/media-buy/outcome-target.json').properties.cost_per.properties.strength.enum;
+    // Named definitions give generated SDKs distinct type names
+    // (OutcomeTargetCostPer, OutcomeTargetCostStrength) rather than a second
+    // CostPer/Strength colliding with BiddingPolicy's; this pins the values.
+    const outcomeTarget = readSchema('/schemas/media-buy/outcome-target.json');
+    const costPer = outcomeTarget.definitions.outcome_target_cost_per;
+    assert.equal(outcomeTarget.properties.cost_per.$ref, '#/definitions/outcome_target_cost_per');
+    assert.equal(costPer.properties.strength.$ref, '#/definitions/outcome_target_cost_strength');
+    const outcomeStrengths = outcomeTarget.definitions.outcome_target_cost_strength.enum;
     const biddingStrengths = readSchema('/schemas/core/bidding-policy.json').properties.cost_per.properties.strength.enum;
     assert.deepEqual(outcomeStrengths, biddingStrengths);
   });

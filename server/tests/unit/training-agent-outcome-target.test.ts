@@ -239,10 +239,10 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
       const forecast = proposal.forecast as Record<string, unknown>;
       expect(forecast.currency).toBe('USD');
       expect(forecast.forecast_range_unit).toBe('clicks');
+      // Points stop at the $5,000 budget ceiling and carry the planned spend.
       expect(forecast.points).toEqual([
-        { budget: 2500, metrics: { clicks: { mid: 62 } } },
-        { budget: 5000, metrics: { clicks: { mid: 125 } } },
-        { budget: 7500, metrics: { clicks: { mid: 187 } } },
+        { budget: 2500, metrics: { clicks: { mid: 62 }, spend: { mid: 2480 } } },
+        { budget: 5000, metrics: { clicks: { mid: 125 }, spend: { mid: 5000 } } },
       ]);
     });
 
@@ -277,7 +277,7 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
       expect((proposal.total_budget_guidance as Record<string, unknown>).currency).toBe('USD');
       const forecast = proposal.forecast as { currency: string; points: unknown[] };
       expect(forecast.currency).toBe('USD');
-      expect(forecast.points[1]).toEqual({ budget: 40000, metrics: { clicks: { mid: 1000 } } });
+      expect(forecast.points[1]).toEqual({ budget: 40000, metrics: { clicks: { mid: 1000 }, spend: { mid: 40000 } } });
     });
 
     it('plans a target at the answered amount', async () => {
@@ -382,7 +382,7 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
       expect(termsOf(proposal).bidding).toEqual({ cost_per: { amount: 40, strength: 'cap' } });
       expect((proposal.total_budget_guidance as Record<string, unknown>).recommended).toBe(400000);
       const forecast = proposal.forecast as { points: unknown[] };
-      expect(forecast.points[1]).toEqual({ budget: 400000, metrics: { clicks: { mid: 10000 } } });
+      expect(forecast.points[1]).toEqual({ budget: 400000, metrics: { clicks: { mid: 10000 }, spend: { mid: 400000 } } });
     });
 
     it('keeps total_budget inside a two-sided budget range', async () => {
@@ -396,7 +396,9 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
       expectValidResponse(result);
       const proposal = onlyProposal(result);
       // 10 clicks at $40 is $400, below the $1,000 floor, so the plan spends
-      // the floor and forecasts the 25 clicks it buys at the kept $50 cap.
+      // the floor. The $50 ask is above the $40 plannable cost, so the cap
+      // keeps $50, and the plan forecasts the 25 clicks $1,000 buys at the
+      // $40 average it expects under that cap.
       expect(termsOf(proposal).total_budget).toEqual({ amount: 1000, currency: 'USD' });
       expect(termsOf(proposal).bidding).toEqual({ cost_per: { amount: 50, strength: 'cap' } });
       const guidance = proposal.total_budget_guidance as Record<string, number>;
@@ -410,6 +412,9 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
         account: ACCOUNT,
         event_sources: [
           { event_source_id: 'web_pixel_main', name: 'Main site pixel', event_types: ['purchase', 'add_to_cart'] },
+          // A second purchase source: without multi_source_event_dedup the
+          // seller binds exactly one.
+          { event_source_id: 'server_events', name: 'Server events', event_types: ['purchase'] },
           { event_source_id: 'lead_form', name: 'Lead form', event_types: ['lead'] },
         ],
       });
@@ -455,18 +460,67 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
     });
   });
 
+  describe('cost_per edge cases', () => {
+    it('drops a plan whose budget buys less than one result and rejects when none remain', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: CLICKS_GOAL, cost_per: { amount: 3, currency: 'USD', strength: 'cap' } },
+        { budget_range: { max: 10, currency: 'USD' } },
+      ));
+
+      expect(result.outcome).toBe('rejected');
+      expect(result.proposals).toBeUndefined();
+    });
+
+    it('rejects a cost_per currency that conflicts with a currency-bound account', async () => {
+      await seedOutcomeTargetProduct(server);
+
+      const result = await callTool(server, 'request_proposals', {
+        ...requestProposalsArgs({ goal: CLICKS_GOAL, cost_per: { amount: 3, currency: 'USD', strength: 'cap' } }),
+        account: { ...ACCOUNT, currency: 'EUR' },
+      });
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.cost_per');
+      expect(String(result.message)).toContain('account');
+    });
+
+    it('never binds event sources registered on another account', async () => {
+      await seedOutcomeTargetProduct(server);
+      await callTool(server, 'sync_event_sources', {
+        account: { brand: { domain: 'other-advertiser.example' }, operator: 'outcome-tester', sandbox: true },
+        event_sources: [{ event_source_id: 'other_pixel', name: 'Other pixel', event_types: ['purchase'] }],
+      });
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: { kind: 'event', event_type: 'purchase' },
+        cost_per: { amount: 20, currency: 'USD', strength: 'cap' },
+      }));
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.cost_per');
+    });
+  });
+
   describe('bidding_policy capability', () => {
-    it('advertises fixed media-buy cost_per on 3.2 responses only', async () => {
-      const current = await callTool(server, 'get_adcp_capabilities', { adcp_version: '3.2-rc.7' }) as {
-        media_buy: { features: Record<string, unknown> };
-      };
+    type Capabilities = { media_buy: { features: Record<string, unknown> } };
+    it('advertises fixed media-buy cost_per and package bids on 3.2 responses only', async () => {
+      const current = await callTool(server, 'get_adcp_capabilities', { adcp_version: '3.2-rc.7' }) as Capabilities;
       expect(current.media_buy.features.bidding_policy).toEqual({
         media_buy: { fixed: { modes: ['cost_per'], cost_per_strengths: ['cap', 'target'] } },
+        package: { fixed: { modes: ['bid_amount', 'max_bid'] } },
       });
-      const legacy = await callTool(server, 'get_adcp_capabilities', {}) as {
-        media_buy: { features: Record<string, unknown> };
-      };
-      expect(legacy.media_buy.features.bidding_policy).toBeUndefined();
+      for (const args of [{}, { adcp_version: '3.0' }, { adcp_version: '3.1' }]) {
+        const legacy = await callTool(server, 'get_adcp_capabilities', args) as Capabilities;
+        expect(legacy.media_buy.features.bidding_policy, JSON.stringify(args)).toBeUndefined();
+      }
+    });
+
+    it('does not leak the object-valued feature into 3.0 storyboard compat on a newer served version', async () => {
+      const compatServer = createTrainingAgentServer({ mode: 'open', storyboardCompat: { version: '3.0' } });
+      const caps = await callTool(compatServer, 'get_adcp_capabilities', { adcp_version: '3.2-rc.7' }) as Capabilities;
+      expect(caps.media_buy.features.bidding_policy).toBeUndefined();
     });
   });
 
@@ -555,6 +609,20 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
         expect(plan?.bidding.cost_per.amount).toBe(Math.max(amount, 40));
         expect(plan?.bidding.cost_per.strength).toBe('target');
       }
+    });
+
+    it('keeps an ask that is not a whole cent rather than rounding it below itself', () => {
+      const plan = computeOutcomeTargetCostPlan(
+        CLICKS_GOAL,
+        clicksOptimizationGoal,
+        { amount: 40.004, currency: 'USD', strength: 'cap' },
+        undefined,
+        { max: 5000 },
+        proposal,
+        productsById,
+      );
+      expect(plan?.bidding.cost_per.amount).toBe(40.004);
+      expect(plan!.bidding.cost_per.amount).toBeGreaterThanOrEqual(40.004);
     });
 
     it('returns undefined when the proposal cannot be priced in the requested currency', () => {

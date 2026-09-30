@@ -61,8 +61,11 @@ caller:
 prerequisites:
   description: |
     The caller needs a brand identity and operator credentials. The runner
-    seeds one product with fixed pricing so the seller's reverse forecast has
-    a deterministic rate card to plan against.
+    seeds a fixed-price USD product, so the volume phases have a
+    deterministic rate card and the currency rejection has a USD-only
+    product, and an auction-priced USD product (floor 1.50), so a seller
+    that applies cost caps only to auction-priced options can plan the cost
+    phases.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -78,12 +81,27 @@ fixtures:
           format_kind: "video_hosted"
           params:
             duration_ms_exact: 30000
+    - product_id: "outcome_target_auction_video"
+      name: "Outcome Target Auction Video"
+      description: "Compliance fixture: auction-priced video inventory for cost-target planning."
+      delivery_type: "non_guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "outcome_target_auction_video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
   pricing_options:
     - product_id: "outcome_target_video"
       pricing_option_id: "outcome_target_fixed"
       pricing_model: "cpm"
       currency: "USD"
       fixed_price: 40.0
+    - product_id: "outcome_target_auction_video"
+      pricing_option_id: "outcome_target_auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.50
 
 phases:
   - id: setup
@@ -288,7 +306,7 @@ phases:
             operator: "pinnacle-agency.example"
           brief: "Drive qualified traffic to the Trail Pro 3000 launch page using the seeded video placement."
           criteria:
-            product_ids: ["outcome_target_video"]
+            product_ids: ["outcome_target_auction_video"]
             offer_filters:
               budget_range:
                 max: 5000
@@ -310,9 +328,13 @@ phases:
             path: "outcome"
             value: "proposed"
             description: "The seller returns at least one proposal"
-          - check: field_present
+          - check: field_greater_than
             path: "proposals[0].commercial_terms.bidding.cost_per.amount"
-            description: "The seller states the cost it can plan to"
+            value: 2.99
+            description: "The answered cost is never below the 3 USD ask (strict greater-than against 2.99 with a 0.01 epsilon, the cent precision of the amount)"
+          - check: field_absent
+            path: "proposals[0].commercial_terms.purchases[0].bidding"
+            description: "The answer carries no purchase-level bidding, so the media-buy cost_per binds to the purchase's primary goal"
           - check: field_value
             path: "proposals[0].commercial_terms.bidding.cost_per.strength"
             value: "cap"
@@ -379,7 +401,7 @@ phases:
             operator: "pinnacle-agency.example"
           brief: "Drive 1,000 qualified visits to the Trail Pro 3000 launch page using the seeded video placement."
           criteria:
-            product_ids: ["outcome_target_video"]
+            product_ids: ["outcome_target_auction_video"]
             outcome_target:
               goal:
                 kind: "metric"
@@ -398,9 +420,13 @@ phases:
             path: "outcome"
             value: "proposed"
             description: "The seller returns at least one proposal"
-          - check: field_present
+          - check: field_greater_than
             path: "proposals[0].commercial_terms.bidding.cost_per.amount"
-            description: "The seller states the cost it can plan to"
+            value: 2.99
+            description: "The answered cost is never below the 3 USD ask (strict greater-than against 2.99 with a 0.01 epsilon, the cent precision of the amount)"
+          - check: field_absent
+            path: "proposals[0].commercial_terms.purchases[0].bidding"
+            description: "The answer carries no purchase-level bidding, so the media-buy cost_per binds to the purchase's primary goal"
           - check: field_value
             path: "proposals[0].commercial_terms.bidding.cost_per.strength"
             value: "cap"
@@ -436,9 +462,9 @@ phases:
     title: "Reject a cost target in a currency the products are not priced in"
     depends_on: [setup]
     narrative: |
-      The seeded product is priced only in USD, and sellers MUST NOT convert
-      currency. The buyer's EUR budget range and EUR cost target agree with
-      each other, so currency against the product is the only defect. The
+      The seeded fixed-price product is priced only in USD, and sellers MUST
+      NOT convert currency. The request carries no budget range, so the EUR
+      cost target against the USD-only product is its only defect. The
       target cannot be answered in its own currency, so every seller
       declaring media_buy.outcome_target rejects it with INVALID_REQUEST
       naming criteria.outcome_target.cost_per rather than returning a USD
@@ -468,10 +494,6 @@ phases:
           brief: "Drive qualified traffic to the Trail Pro 3000 launch page using the seeded video placement."
           criteria:
             product_ids: ["outcome_target_video"]
-            offer_filters:
-              budget_range:
-                max: 5000
-                currency: "EUR"
             outcome_target:
               goal:
                 kind: "metric"

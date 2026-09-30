@@ -73,7 +73,7 @@
     "pacing": { "$ref": "/schemas/enums/pacing.json" },
     "bidding": {
       "$ref": "/schemas/core/bidding-policy.json",
-      "description": "Media-buy bidding policy. A proposal answering criteria.outcome_target.cost_per states here the cost the seller can plan to, which the buyer adopts on acceptance: the requested strength, and an amount greater than or equal to the ask (the ask when plannable, otherwise the lowest plannable amount), denominated in the purchases' pricing currency, which equals cost_per.currency. See outcome-target.json for goal binding."
+      "description": "Media-buy bidding policy. A proposal answering criteria.outcome_target.cost_per states here the cost the seller can plan to, which the buyer adopts on acceptance: the requested strength, and an amount greater than or equal to the ask (the ask when the seller can forecast goal volume under it within the buyer's budget, otherwise the lowest such amount), denominated in the purchases' pricing currency, which equals cost_per.currency. It is an execution control, not an expected price; when the planned spend at that amount is below total_budget, forecast points carry metrics.spend. See outcome-target.json for goal binding."
     },
     "invoice_recipient": { "$ref": "/schemas/core/business-entity.json" },
     "purchase_order_ref": { "type": "string", "minLength": 1, "maxLength": 255 },

@@ -71,8 +71,14 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // at 440 KiB. The viewable_rate optimization goal adds viewability standard and
 // vendor fields plus one conditional to the canonical goal carried by
 // control_media_buy and buy_products (~1.3 KiB each), bounded at 442 KiB.
+// outcome_target.cost_per adds amount/currency/strength plus two named
+// definitions (outcome_target_cost_per, outcome_target_cost_strength) that
+// keep generated SDK type names from colliding with BiddingPolicy's CostPer
+// and Strength. It is embedded in list_products, request_proposals, and
+// refine_proposals (~0.5 KiB each), measured at 453,019 bytes (442.4 KiB) and
+// bounded at 443 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 442,
+  'media-buy': 443,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
