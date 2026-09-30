@@ -17080,8 +17080,11 @@ describe('activate_signal handler', () => {
       await registerAuthority(server, selfGovernanceAgentUrl);
       const token = await approveActivation(server, `${base}/signals`, 'signal-self-authority-0001');
 
+      // The governance issuer is the training agent's own URL (the URL the
+      // storyboards register), while the governed tenant's audience follows
+      // the canonical base.
       expect(tokenClaims(token)).toMatchObject({
-        iss: `${base}/governance`,
+        iss: base === productionBase ? CANONICAL_GOV_ISS : base,
         aud: `${base}/signals`,
       });
       const { result } = await simulateCallTool(server, 'activate_signal', {
@@ -17149,7 +17152,7 @@ describe('activate_signal handler', () => {
       }
     });
 
-    it('keeps the production governance issuer unchanged', async () => {
+    it('signs production governance tokens as the public training-agent URL', async () => {
       useCanonicalBase(productionBase);
       const server = createTrainingAgentServer(DEFAULT_CTX);
       await registerAuthority(server, selfGovernanceAgentUrl);

@@ -56,6 +56,7 @@ import {
   STRICT_PROTOCOL_METHODS_REQUIRED_FOR,
 } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
+import { buildGovernanceAgentCredentialAuthenticator } from './governance-agent-credentials.js';
 
 const logger = createLogger('training-agent-routes');
 
@@ -290,6 +291,15 @@ function buildRequireToken(authenticator: Authenticator | null) {
 }
 
 const requireTokenDefault = buildRequireToken(defaultAuthenticator);
+// Governance tenant routes additionally accept minted sandbox
+// governance-agent credentials, checked first so a valid one never reaches
+// the WorkOS verifier (an invalid one falls through and fails that chain's
+// key-format checks). They authenticate on no other route.
+const requireTokenGovernance = buildRequireToken(
+  defaultAuthenticator
+    ? anyOf(buildGovernanceAgentCredentialAuthenticator(), defaultAuthenticator)
+    : null,
+);
 const requireTokenStrict = buildRequireToken(strictAuthenticator);
 const requireTokenStrictRequired = buildRequireToken(strictRequiredAuthenticator);
 const requireTokenStrictForbidden = buildRequireToken(strictForbiddenAuthenticator);
@@ -379,6 +389,7 @@ export function createTrainingAgentRouter(options: {
   mountTenantRoutes(router, TENANT_IDS, {
     ...(!options.disableRateLimit && { rateLimit: mcpRateLimiter }),
     requireAuth: requireTokenDefault,
+    requireGovernanceAuth: requireTokenGovernance,
     storyboardCompat: options.storyboardCompat,
   });
 

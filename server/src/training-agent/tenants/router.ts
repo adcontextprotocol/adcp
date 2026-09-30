@@ -14,7 +14,15 @@ import { Router, type Request, type Response, type RequestHandler } from 'expres
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
-import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
+import { createRegistryHolder, resolveTenantHost, type RegistryHolder } from './registry.js';
+import { getTrainingGovernanceIssuer } from '../canonical-base.js';
+import {
+  GOVERNANCE_AGENT_CREDENTIAL_EXTRA_KEY,
+  governanceAgentCredentialFromRequest,
+  isGovernanceAgentCredentialPrincipal,
+  isGovernanceAgentCredentialRequestAllowed,
+  type GovernanceAgentCredentialExtra,
+} from '../governance-agent-credentials.js';
 import { buildSignedRevocationList } from '../governance-revocations.js';
 import {
   resolveTrainingSalesRequestContext,
@@ -348,6 +356,36 @@ function tenantMcpHandler(
     // / `static:primary` / `workos:<orgId>` principal shapes; downstream
     // gates dispatch on those prefixes.
     const principal = res.locals.trainingPrincipal as string | undefined;
+    // A minted governance-agent credential authenticates as exactly one
+    // seller URL, only on the governance tenant, and only for the seller's
+    // side of the governance loop. Re-verify it here and stamp the verified
+    // scope on the trusted auth bridge; nothing request-supplied reaches it.
+    let governanceAgentCredential: GovernanceAgentCredentialExtra | undefined;
+    if (isGovernanceAgentCredentialPrincipal(principal)) {
+      const claims = tenantId === 'governance' ? governanceAgentCredentialFromRequest(req) : null;
+      if (!claims) {
+        setCORSHeaders(res);
+        res.status(401).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32001, message: 'This credential is not valid for this endpoint.' },
+        });
+        return;
+      }
+      if (!isGovernanceAgentCredentialRequestAllowed(req.body)) {
+        setCORSHeaders(res);
+        res.status(403).json({
+          jsonrpc: '2.0',
+          id: (req.body as { id?: unknown } | undefined)?.id ?? null,
+          error: {
+            code: -32001,
+            message: 'A seller governance credential may only call check_governance (execution checks) and report_plan_adjustment.',
+          },
+        });
+        return;
+      }
+      governanceAgentCredential = { agent_url: claims.agentUrl, nonce: claims.nonce };
+    }
     if (principal && !(req as { auth?: unknown }).auth) {
       // Shape mirrors @adcp/sdk@6.7.0 server/serve.js attachAuthInfo —
       // `token: ''` matches the framework's no-token path verbatim, so any
@@ -369,6 +407,9 @@ function tenantMcpHandler(
         scopes: [],
         extra: {
           ...(demoToken !== undefined && { demo_token: demoToken }),
+          ...(governanceAgentCredential && {
+            [GOVERNANCE_AGENT_CREDENTIAL_EXTRA_KEY]: governanceAgentCredential,
+          }),
           credential: apiKeyCredential(req, principal),
         },
       };
@@ -1265,6 +1306,13 @@ export interface TenantRouteMiddleware {
   rateLimit?: RequestHandler;
   /** Bearer-auth middleware applied to every tenant POST (sets `res.locals.trainingPrincipal`). */
   requireAuth?: RequestHandler;
+  /**
+   * Bearer-auth middleware for the governance tenant's routes. Accepts the
+   * shared credentials plus minted sandbox governance-agent credentials
+   * (governance-agent-credentials.ts), which authenticate nowhere else.
+   * Falls back to `requireAuth`.
+   */
+  requireGovernanceAuth?: RequestHandler;
   /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
   storyboardCompat?: TrainingContext['storyboardCompat'];
 }
@@ -1338,12 +1386,20 @@ export function mountTenantRoutes(
   const mw: RequestHandler[] = [];
   if (middleware.rateLimit) mw.push(middleware.rateLimit);
   if (middleware.requireAuth) mw.push(middleware.requireAuth);
+  const governanceMw: RequestHandler[] = [];
+  if (middleware.rateLimit) governanceMw.push(middleware.rateLimit);
+  const governanceAuth = middleware.requireGovernanceAuth ?? middleware.requireAuth;
+  if (governanceAuth) governanceMw.push(governanceAuth);
   for (const tenantId of tenantIds) {
     parent.options(`/${tenantId}/mcp`, (_req, res) => {
       setCORSHeaders(res);
       res.status(204).end();
     });
-    parent.post(`/${tenantId}/mcp`, ...mw, tenantMcpHandler(holder, tenantId, middleware.storyboardCompat));
+    parent.post(
+      `/${tenantId}/mcp`,
+      ...(tenantId === 'governance' ? governanceMw : mw),
+      tenantMcpHandler(holder, tenantId, middleware.storyboardCompat),
+    );
     parent.get(`/${tenantId}/mcp`, (_req, res) => {
       setCORSHeaders(res);
       res.setHeader('Allow', 'POST, OPTIONS');
@@ -1353,6 +1409,19 @@ export function mountTenantRoutes(
         error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
       });
     });
+  }
+
+  // The training agent's own URL is the governance agent the storyboards
+  // register (`governance_agent_url: https://test-agent.adcontextprotocol.org`)
+  // and the `iss` its governance tokens carry. A seller calls
+  // `check_governance` at that registered URL over MCP, so the root serves
+  // the governance tenant. Browsers' GET / is untouched.
+  if (tenantIds.includes('governance')) {
+    parent.options('/', (_req, res) => {
+      setCORSHeaders(res);
+      res.status(204).end();
+    });
+    parent.post('/', ...governanceMw, tenantMcpHandler(holder, 'governance', middleware.storyboardCompat));
   }
 
   if (
@@ -1398,7 +1467,7 @@ export function mountTenantRoutes(
   // parse conformance tests to pass.
   parent.get('/.well-known/governance-revocations.json', async (_req, res, next) => {
     try {
-      const signed = await buildSignedRevocationList(`${getCanonicalBase()}/governance`);
+      const signed = await buildSignedRevocationList(getTrainingGovernanceIssuer());
       res.setHeader('Cache-Control', 'public, max-age=60');
       res.json(signed);
     } catch (err) {

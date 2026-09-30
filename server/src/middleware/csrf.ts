@@ -67,6 +67,11 @@ const EXEMPT_MCP_EXACT = [
   "/mcp-strict",
   "/mcp-strict-required",
   "/mcp-strict-forbidden",
+  // Training-agent root: the sandbox governance agent's registered URL
+  // (https://test-agent.adcontextprotocol.org) serves MCP so sellers can call
+  // check_governance there. Bearer-authenticated; no cookie route handles
+  // POST / on any host.
+  "/",
 ];
 
 /** Other exact paths exempt from CSRF (not prefix-matched to avoid over-matching). */

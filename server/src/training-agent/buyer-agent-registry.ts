@@ -54,6 +54,7 @@
 
 import { BuyerAgentRegistry, type BuyerAgent } from '@adcp/sdk/server';
 import { getCommercialRelationship } from './commercial-relationships.js';
+import { governanceAgentCredentialFromExtra } from './governance-agent-credentials.js';
 
 const TRAINING_AGENT_BASE_URL = 'https://training-agent.adcontextprotocol.org';
 
@@ -92,9 +93,24 @@ function neutralAuthenticatedAgent(credential: { key_id: string }): BuyerAgent {
   };
 }
 
+const NO_BILLING_CAPABILITIES: ReadonlySet<never> = new Set();
+
 export const trainingBuyerAgentRegistry = BuyerAgentRegistry.bearerOnly({
   resolveByCredential: async (credential, extra) => {
     if (credential.kind !== 'api_key') return null;
+    // Set only by the tenant router after verifying a minted sandbox
+    // governance-agent credential on the governance tenant: the caller is
+    // exactly the seller URL that credential binds (spec: the governance
+    // agent resolves the registered credential to the registered agent URL).
+    const governanceCredential = governanceAgentCredentialFromExtra(extra);
+    if (governanceCredential) {
+      return {
+        agent_url: governanceCredential.agentUrl,
+        display_name: 'Sandbox governance seller credential',
+        status: 'active',
+        billing_capabilities: NO_BILLING_CAPABILITIES,
+      };
+    }
     const token = extra?.demo_token;
     if (typeof token !== 'string') return neutralAuthenticatedAgent(credential);
 

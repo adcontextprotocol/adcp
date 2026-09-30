@@ -28,11 +28,16 @@ import { compactVerify, FlattenedSign, importJWK } from 'jose';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { getGovernanceSigningPublicJwk, getGovernanceSigningKey } from './governance-signing.js';
 import { computeGovernedPayloadHash } from './governance-payload-hash.js';
+import { getTrainingGovernanceIssuer } from './canonical-base.js';
 
 /** Canonical seller audience a real training-agent governance token is bound to. */
 export const CANONICAL_SELLER_AUD = 'https://agenticadvertising.org/sales';
-/** Canonical governance issuer a real training-agent token carries. */
-export const CANONICAL_GOV_ISS = 'https://agenticadvertising.org/governance';
+/**
+ * Governance issuer a real production training-agent token carries. Runtime
+ * checks use getTrainingGovernanceIssuer(), which resolves to this value in
+ * production and to the local mount in local and CI runs.
+ */
+export const CANONICAL_GOV_ISS = 'https://test-agent.adcontextprotocol.org';
 
 const ED25519_PKCS8_PREFIX = '302e020100300506032b657004220420';
 const REVOKED_DEMO_LABEL = 'adcp-training-agent:sandbox:governance-signing:revoked-demo:v1';
@@ -60,7 +65,7 @@ export async function mintRevokedDemoToken(): Promise<string> {
   const { kid, privateKey } = getRevokedDemoKey();
   const now = Math.floor(Date.now() / 1000);
   const payload = new TextEncoder().encode(JSON.stringify({
-    iss: CANONICAL_GOV_ISS, sub: 'plan-revoked-demo',
+    iss: getTrainingGovernanceIssuer(), sub: 'plan-revoked-demo',
     aud: CANONICAL_SELLER_AUD, iat: now, exp: now + 900, jti: `revoked-demo-${now}`, phase: 'intent',
   }));
   const jws = await new FlattenedSign(payload).setProtectedHeader({ alg: 'EdDSA', typ: 'adcp-gov+jws', kid }).sign(privateKey);
@@ -79,7 +84,7 @@ export async function mintWrongAudDemoToken(): Promise<string> {
   const { kid, privateKey } = getGovernanceSigningKey();
   const now = Math.floor(Date.now() / 1000);
   const payload = new TextEncoder().encode(JSON.stringify({
-    iss: CANONICAL_GOV_ISS, sub: 'plan-wrong-aud-demo',
+    iss: getTrainingGovernanceIssuer(), sub: 'plan-wrong-aud-demo',
     aud: 'https://other-seller.example/sales', iat: now, exp: now + 900, jti: `wrong-aud-demo-${now}`, phase: 'intent',
   }));
   const jws = await new FlattenedSign(payload).setProtectedHeader({ alg: 'EdDSA', typ: 'adcp-gov+jws', kid }).sign(privateKey);
@@ -357,11 +362,12 @@ export async function verifyGovernanceToken(token: string): Promise<ChecklistRes
     : 'no unrecognized critical headers');
 
   // 5. Resolve iss -> JWKS -> kid. iss must be the canonical governance issuer; kid must be published.
-  if (claims.iss !== CANONICAL_GOV_ISS) { fail(5, 'iss_resolve', `iss=${String(claims.iss)} is not the expected governance issuer`); return reject('governance_token_invalid'); }
+  const expectedIssuer = getTrainingGovernanceIssuer();
+  if (claims.iss !== expectedIssuer) { fail(5, 'iss_resolve', `iss=${String(claims.iss)} is not the expected governance issuer`); return reject('governance_token_invalid'); }
   const kid = typeof header.kid === 'string' ? header.kid : '';
   const jwk = resolveJwk(kid);
   if (!jwk) { fail(5, 'iss_resolve', `kid ${kid || '(none)'} not found in the issuer JWKS`); return reject('governance_key_unknown'); }
-  pass(5, 'iss_resolve', `iss ${CANONICAL_GOV_ISS} resolved; kid ${kid} present in JWKS`);
+  pass(5, 'iss_resolve', `iss ${expectedIssuer} resolved; kid ${kid} present in JWKS`);
 
   // 6. JWK use — the resolved key must be a governance signing/verify key.
   if (jwk.adcp_use !== 'governance-signing' || (Array.isArray(jwk.key_ops) && !jwk.key_ops.includes('verify'))) {

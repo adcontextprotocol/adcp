@@ -737,11 +737,11 @@ function sanitizeAgentField(value: unknown, maxLen = 200): string {
     .slice(0, maxLen);
 }
 
-const SENSITIVE_VALIDATION_ID_PATTERN = /\b(?:sk_(?:live|test)_[A-Za-z0-9_]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/;
+const SENSITIVE_VALIDATION_ID_PATTERN = /\b(?:adcp-sandbox-gov\.v1\.[A-Za-z0-9_.-]+|sk_(?:live|test)_[A-Za-z0-9_]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/;
 const SENSITIVE_VALIDATION_TEXT_PATTERN =
   /(?:-----BEGIN [A-Z ]+PRIVATE KEY-----|\bbearer\s+\S+|\b(?:authorization|auth|cookie|set-cookie|session(?:[_ -]?id)?|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|password|credential|private[_ -]?key|signing[_ -]?key|client[_ -]?secret|oauth[_ -]?(?:code|verifier)|jwt)\b\s*[:=]\s*\S+)/i;
 const SENSITIVE_VALIDATION_KEY_PATTERN =
-  /^(?:authorization|auth|token|secret|password|cookie|set-cookie|session(?:[_-]?id)?|credential|api[_-]?key|access[_-]?(?:key|token)|refresh[_-]?token|private[_-]?key|signing[_-]?key|client[_-]?secret|oauth[_-]?(?:code|verifier)|jwt)$/i;
+  /^(?:authorization|auth|token|secret|password|cookie|set-cookie|session(?:[_-]?id)?|credentials?|api[_-]?key|access[_-]?(?:key|token)|refresh[_-]?token|private[_-]?key|signing[_-]?key|client[_-]?secret|oauth[_-]?(?:code|verifier)|jwt)$/i;
 const BASIC_AUTH_PATTERN = /\bbasic\s+[A-Za-z0-9+/=]{8,}\b/i;
 const PROMPT_INJECTION_VALIDATION_ID_PATTERN = /(ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|system\s*[:\s]prompt|\bsystem\s*:|developer\s+message|\bdeveloper\s*:|tool\s+result|reveal\s+(?:the\s+)?(?:secret|prompt)|exfiltrate|<\s*system\b|<\s*\/?\s*context\b)/i;
 const VALIDATION_ID_PATTERN = /^[a-z0-9._:-]{1,160}$/i;
