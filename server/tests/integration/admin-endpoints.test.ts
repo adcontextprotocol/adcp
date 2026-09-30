@@ -595,6 +595,51 @@ describe('Admin Endpoints Integration Tests', () => {
     });
   });
 
+  describe('account list views with multiple action items', () => {
+    const ORG_ID = 'org_test_multiple_action_items';
+    const SEARCH = 'Multiple Action Items Fixture';
+
+    beforeEach(async () => {
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, $2, NOW(), NOW())`,
+        [ORG_ID, SEARCH],
+      );
+      await pool.query(
+        `INSERT INTO org_activities (organization_id, activity_type, is_next_step, next_step_due_date)
+         VALUES ($1, 'note', TRUE, CURRENT_DATE - INTERVAL '1 day'),
+                ($1, 'note', TRUE, CURRENT_DATE + INTERVAL '1 day')`,
+        [ORG_ID],
+      );
+      await pool.query(
+        `INSERT INTO org_invoices (stripe_invoice_id, stripe_customer_id, workos_organization_id, status)
+         VALUES ('in_test_multiple_actions_1', 'cus_test_multiple_actions', $1, 'open'),
+                ('in_test_multiple_actions_2', 'cus_test_multiple_actions', $1, 'open'),
+                ('in_test_multiple_actions_3', 'cus_test_multiple_actions', $1, 'open')`,
+        [ORG_ID],
+      );
+    });
+
+    afterEach(async () => {
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [ORG_ID]);
+    });
+
+    it.each(['needs_attention', 'needs_followup', 'open_invoices'])(
+      'shows one account in the %s view', async (view) => {
+        const response = await request(app)
+          .get('/api/admin/accounts')
+          .query({ view, search: SEARCH })
+          .expect(200);
+
+        expect(response.body).toHaveLength(1);
+        expect(response.body[0].id).toBe(ORG_ID);
+        if (view === 'needs_attention') {
+          expect(response.body[0].attention_reason).toBe('overdue');
+        }
+      },
+    );
+  });
+
   describe('Admin page routes (redirect regression)', () => {
     it('GET /admin/accounts should serve HTML, not redirect', async () => {
       const response = await request(app)
