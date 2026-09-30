@@ -497,6 +497,12 @@ export const TRAINING_SALES_CAPABILITIES = {
     supported_event_types: ['purchase' as const, 'add_to_cart' as const, 'lead' as const, 'page_view' as const],
     supported_hashed_identifiers: ['hashed_email' as const],
     supported_action_sources: ['website' as const, 'app' as const],
+    // Mirrors TRAINING_ATTRIBUTION_WINDOWS: the one window the outcome_target
+    // planner states on event goals it binds to registered sources.
+    attribution_windows: [{
+      post_click: [{ interval: 7, unit: 'days' as const }],
+      post_view: [{ interval: 1, unit: 'days' as const }],
+    }],
   },
   // Seller-level rollup of metric-optimization capabilities. The SDK can
   // derive this from an adopter-supplied static productCatalog (#1818); this

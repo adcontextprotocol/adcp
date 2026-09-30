@@ -192,17 +192,20 @@ function childSchemas(schema, schemas) {
 function collectObjectContract(schema, schemas, seen = new Set()) {
   const resolved = deref(schema, schemas);
   if (!resolved || typeof resolved !== 'object') {
-    return { properties: new Map(), patterns: [] };
+    return { properties: new Map(), patterns: [], additional: [] };
   }
 
   const marker = resolved.$id || JSON.stringify(Object.keys(resolved).sort());
   if (seen.has(marker)) {
-    return { properties: new Map(), patterns: [] };
+    return { properties: new Map(), patterns: [], additional: [] };
   }
   seen.add(marker);
 
   const properties = new Map();
   const patterns = [];
+  // An object whose additionalProperties is a schema (not a boolean) is an
+  // open map: any key is allowed and its value is audited against that schema.
+  const additional = [];
 
   if (resolved.properties && typeof resolved.properties === 'object') {
     for (const [key, value] of Object.entries(resolved.properties)) {
@@ -217,6 +220,10 @@ function collectObjectContract(schema, schemas, seen = new Set()) {
     }
   }
 
+  if (resolved.additionalProperties && typeof resolved.additionalProperties === 'object') {
+    additional.push(resolved.additionalProperties);
+  }
+
   for (const child of childSchemas(resolved, schemas)) {
     const childContract = collectObjectContract(child, schemas, new Set(seen));
     for (const [key, values] of childContract.properties.entries()) {
@@ -224,9 +231,10 @@ function collectObjectContract(schema, schemas, seen = new Set()) {
       properties.get(key).push(...values);
     }
     patterns.push(...childContract.patterns);
+    additional.push(...childContract.additional);
   }
 
-  return { properties, patterns };
+  return { properties, patterns, additional };
 }
 
 function matchesPattern(key, patterns) {
@@ -241,7 +249,7 @@ function matchesPattern(key, patterns) {
 
 function schemaForProperty(schema, propertyName, schemas) {
   const contract = collectObjectContract(schema, schemas);
-  const candidates = contract.properties.get(propertyName) || [];
+  const candidates = contract.properties.get(propertyName) || contract.additional;
   if (candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0];
   return { anyOf: candidates };
@@ -294,6 +302,7 @@ function auditValue({ value, schema, schemas, jsonPath, findings }) {
       if (FLEXIBLE_FIELD_NAMES.has(key)) continue;
       if (contract.properties.has(key)) continue;
       if (matchesPattern(key, contract.patterns)) continue;
+      if (contract.additional.length > 0) continue;
 
       findings.push({
         path: jsonPath,
@@ -543,16 +552,20 @@ function renderMarkdown(report) {
   return lines.join('\n');
 }
 
-const report = runAudit();
+if (require.main === module) {
+  const report = runAudit();
 
-if (format === 'json') {
-  console.log(JSON.stringify(report, null, 2));
-} else if (format === 'markdown') {
-  console.log(renderMarkdown(report));
-} else {
-  console.log(renderText(report));
+  if (format === 'json') {
+    console.log(JSON.stringify(report, null, 2));
+  } else if (format === 'markdown') {
+    console.log(renderMarkdown(report));
+  } else {
+    console.log(renderText(report));
+  }
+
+  if (check && report.baseline.new_findings > 0) {
+    process.exit(1);
+  }
 }
 
-if (check && report.baseline.new_findings > 0) {
-  process.exit(1);
-}
+module.exports = { auditValue, collectObjectContract };

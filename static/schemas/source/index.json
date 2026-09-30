@@ -510,6 +510,10 @@
           "$ref": "/schemas/core/bidding-policy.json",
           "description": "Buyer-authored bidding, average-cost, or return policy at media-buy or package scope"
         },
+        "outcome-target-cost-per": {
+          "$ref": "/schemas/core/outcome-target-cost-per.json",
+          "description": "Cost target on an outcome_target: BiddingPolicy.cost_per plus a currency, answered in commercial_terms.bidding.cost_per"
+        },
         "insertion-order": {
           "$ref": "/schemas/core/insertion-order.json",
           "description": "A formal insertion order attached to a committed proposal for agreement signing"
@@ -1237,6 +1241,10 @@
           "$ref": "/schemas/enums/pacing.json",
           "description": "Budget pacing strategy"
         },
+        "outcome-target-cost-strength": {
+          "$ref": "/schemas/enums/outcome-target-cost-strength.json",
+          "description": "Strength of an outcome_target cost_per (cap or target), identical to BiddingPolicy.cost_per strength"
+        },
         "frequency-cap-scope": {
           "$ref": "/schemas/enums/frequency-cap-scope.json",
           "description": "Scope for frequency cap application"
@@ -1779,7 +1787,7 @@
         },
         "outcome-target": {
           "$ref": "/schemas/media-buy/outcome-target.json",
-          "description": "Reverse-forecast planning input: a compact metric or event goal plus desired volume the seller solves budget for"
+          "description": "Reverse-forecast planning input: a compact metric or event goal plus a desired volume, a cost target, or both"
         },
         "proposal-refinement": {
           "$ref": "/schemas/media-buy/proposal-refinement.json",

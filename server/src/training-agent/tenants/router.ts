@@ -33,7 +33,7 @@ import {
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
-import { supportsAccountChangeFeed, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { runWithReleaseLineEcho } from './release-line-echo.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
@@ -1077,6 +1077,11 @@ function projectTenantCapabilities(
               : {}
           ),
           ...salesProjection.features,
+          // Fixed media-buy cost_per, the policy outcome_target cost answers
+          // use (3.2 bundles only; earlier features allow booleans only).
+          ...(storyboardCompat?.version !== '3.0' && supportsBiddingPolicyCapability(servedVersion) && {
+            bidding_policy: structuredClone(TRAINING_BIDDING_POLICY_CAPABILITY),
+          }),
         },
         ...(supportsGetProductsRejected(servedVersion) && {
           audience_targeting: {
