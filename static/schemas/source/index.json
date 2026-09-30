@@ -666,6 +666,10 @@
           "$ref": "/schemas/core/downstream-connection-requirement.json",
           "description": "Seller/platform-side connection or grant required by a product, format, or request, distinct from the AdCP caller credential."
         },
+        "product-execution-requirement": {
+          "$ref": "/schemas/core/product-execution-requirement.json",
+          "description": "Experimental account resource (event source, catalog, or downstream connection) a product needs before a package on it can be created."
+        },
         "canonical-projection-slot-override": {
           "$ref": "/schemas/core/canonical-projection-slot-override.json",
           "description": "Slot override used when projecting a legacy named format to a canonical format declaration"

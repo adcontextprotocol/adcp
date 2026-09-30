@@ -58,6 +58,14 @@
       "x-added-in": "3.2.0",
       "description": "Experimental product-scoped identity and reach-measurement facts. See Product.identity for the cross-object delivery and frequency-cap rules."
     },
+    "execution_requirements": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/product-execution-requirement.json" },
+      "minItems": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.2.0",
+      "description": "Experimental account resources a package on this product needs before it can be created. See Product.execution_requirements for completeness, binding, and rejection rules."
+    },
     "audience_evidence": {
       "type": "array",
       "items": { "$ref": "/schemas/core/canonical-audience-evidence.json" },
@@ -101,6 +109,23 @@
   },
   "required": ["product_id", "name"],
   "allOf": [
+    {
+      "description": "A compact product that requires a catalog must declare the catalog types it accepts.",
+      "if": {
+        "properties": {
+          "execution_requirements": {
+            "contains": {
+              "properties": { "kind": { "const": "catalog" } },
+              "required": ["kind"]
+            }
+          }
+        },
+        "required": ["execution_requirements"]
+      },
+      "then": {
+        "required": ["catalog_types"]
+      }
+    },
     {
       "description": "A compact product that declares identity absence cannot promise identifier-backed frequency-cap execution.",
       "if": {
