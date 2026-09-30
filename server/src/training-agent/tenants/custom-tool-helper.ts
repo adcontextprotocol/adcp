@@ -192,9 +192,7 @@ export function customToolFor(
         mode: 'open',
         principal: authInfo?.clientId ?? 'anonymous',
         ...(authenticatedAgentUrl && { authenticatedAgentUrl }),
-        ...(governanceAgentCredential
-          && governanceAgentCredential.agentUrl === authenticatedAgentUrl
-          && { governanceAgentCredential }),
+        ...(governanceAgentCredential && { governanceAgentCredential }),
         ...options.trainingContext,
       };
       const { context: callerContext, ...handlerArgs } = params;

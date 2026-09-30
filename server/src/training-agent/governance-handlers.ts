@@ -1230,6 +1230,15 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   }
 
   const planId = req.plan_id ?? priorCheck?.planId ?? priorConsultationCheck?.planId;
+  if (ctx.governanceAgentCredential) {
+    // A seller credential runs execution checks on its own run's plans only.
+    // Checked before any plan lookup so it cannot probe other plans.
+    const intentShaped = req.tool !== undefined || req.payload !== undefined || !governanceContext;
+    const credentialError = intentShaped
+      ? sellerCredentialBuyerSideError(ctx, 'check_governance intent checks')
+      : sellerCredentialPlanScopeError(ctx, planId);
+    if (credentialError) return credentialError;
+  }
   if (!planId) {
     return { errors: [{ code: 'PLAN_NOT_FOUND', message: 'No plan could be resolved from plan_id or governance_context.' }] };
   }
@@ -1449,13 +1458,6 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       ? (req.governance_phase as GovernancePhase)
       : 'purchase';
   const phase: GovernancePhase = binding === 'proposed' ? 'intent' : requestedExecutionPhase;
-  if (ctx.governanceAgentCredential) {
-    // A seller credential runs execution checks, on its own run's plans only.
-    const credentialError = binding !== 'committed'
-      ? sellerCredentialBuyerSideError(ctx, 'check_governance intent checks')
-      : sellerCredentialPlanScopeError(ctx, planId);
-    if (credentialError) return credentialError;
-  }
   const targetAudience = binding === 'committed'
     ? priorCheck?.targetAudience ?? ''
     : req.target_agent ?? '';

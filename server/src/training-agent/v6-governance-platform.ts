@@ -80,10 +80,9 @@ function buildGovernanceTrainingCtx(ctx: {
     ...buildTrainingCtx(ctx?.account),
     // Resolved by BuyerAgentRegistry from the authenticated credential.
     ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
-    // Seller-scoped sandbox credential; the handlers restrict what it may do.
-    ...(governanceAgentCredential
-      && governanceAgentCredential.agentUrl === ctx?.agent?.agent_url
-      && { governanceAgentCredential }),
+    // Seller-scoped sandbox credential; the handlers restrict what it may
+    // do. Always carried when present so the restrictions cannot lapse.
+    ...(governanceAgentCredential && { governanceAgentCredential }),
   };
 }
 

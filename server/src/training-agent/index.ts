@@ -292,8 +292,9 @@ function buildRequireToken(authenticator: Authenticator | null) {
 
 const requireTokenDefault = buildRequireToken(defaultAuthenticator);
 // Governance tenant routes additionally accept minted sandbox
-// governance-agent credentials, checked first so such a credential never
-// reaches the WorkOS verifier. They authenticate on no other route.
+// governance-agent credentials, checked first so a valid one never reaches
+// the WorkOS verifier (an invalid one falls through and fails that chain's
+// key-format checks). They authenticate on no other route.
 const requireTokenGovernance = buildRequireToken(
   defaultAuthenticator
     ? anyOf(buildGovernanceAgentCredentialAuthenticator(), defaultAuthenticator)
