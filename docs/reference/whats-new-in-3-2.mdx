@@ -1,7 +1,7 @@
 ---
 title: What's new in AdCP 3.2
 sidebarTitle: What's new in 3.2
-description: "AdCP 3.2 is GA: seller-authored proposals, typed negotiation, real holds, one accepted snapshot, and reporting that cannot silently disappear."
+description: "AdCP 3.2 is GA: agents run media with the full power of the platform (shared budgets, cost controls, outcome planning), Reliable Reporting, clean-room data collaboration, and a compact lifecycle with 72–94% smaller tool schemas."
 "og:title": "AdCP — What's New in 3.2"
 ---
 
@@ -33,10 +33,17 @@ This page is the adopter overview. The complete record is [Release Notes § Vers
 
 ## Why 3.2 matters
 
+3.1 made agents safe to operate. **3.2 lets them run real media with the full power of the platforms they buy on, and prove what ran.**
+
+1. **Platform power.** Social and other self-optimizing platforms can take one shared budget, apply their own cost controls, and plan to an outcome before the buy.
+2. **Reliable Reporting.** The reporting pipeline is part of the protocol, so a missing report shows up as missing (experimental).
+3. **Data collaboration.** Products declare how your audience data can reach them, including clean rooms and dataset shares (experimental).
+4. **Compact lifecycle.** One small tool per step of a buy, with MCP schemas 72–94% smaller: fewer tokens and less to implement.
+
 | If you are… | What changes for you |
 |---|---|
-| **A buyer or agency** | A brief becomes a set of seller-authored proposals. You negotiate over typed terms, get a real inventory hold, and accept one exact snapshot. The campaign runs under that snapshot, so you always know which terms you agreed to, what changed, and which reports you are owed. |
-| **A seller or publisher** | You declare what you actually sell and when: exchange, retail media, streaming TV, and DOOH specialisms; product-scoped targeting, frequency, identity, and availability; honest flags for which shared-budget controls you support; and delivery dates on your own reporting clock. |
+| **A buyer or agency** | Hand a platform one budget with the cost caps, cost targets, or ROAS targets you care about, and ask what an outcome will cost before you buy. See which reports you are owed and when one is late or missing. Proposals, holds, and one accepted snapshot keep the agreed terms on record. |
+| **A seller or platform** | Sell the way your platform works: optimize a shared budget with your own cost controls, state what a product needs before it can run (event source, app catalog, page or profile), and declare how audience data reaches you, including clean rooms. Declare exchange, retail media, streaming TV, and DOOH specialisms, and report on your own reporting clock. |
 | **An agent or SDK builder** | Seven task-specific tools replace overloaded modes, with MCP schemas 72–94% smaller than the 3.1 facades. You also get exact version negotiation, required error recovery, body-bound signing with published test vectors, and conformance that extends to buyer and orchestrator agents through preview specialisms. |
 
 Adopting 3.2 has a short list of requirements, and the stable-surface exceptions to 3.x compatibility are recorded in one place: [3.2 exceptions to 3.x compatibility](/docs/reference/versioning#3-2-exceptions-to-3-x-compatibility). The two with the widest impact are `media_buy_status` on create and update success, and RFC 8941 encoding for request signatures.

@@ -17,7 +17,14 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ### Why 3.2 matters
 
-3.1 made agents safe to operate. 3.2 makes the deal between them explicit, so both sides can audit a media buy from brief to report. A buyer agent can take a brief to seller-authored proposals, negotiate typed terms, hold inventory, and accept one exact snapshot that the campaign then runs under. Sellers declare what they actually sell, down to the specialism, the product, and the shared-budget controls they honor, and conformance is scoped to exactly those claims. Agent builders get task-specific tools whose MCP schemas are 72–94% smaller than the 3.1 facades they replace, and there is no flag day: 3.1 integrations keep working while you opt into `"3.2"` per peer and adopt new tools one capability at a time.
+3.1 made agents safe to operate. 3.2 lets them run real media with the full power of the platforms they buy on, and prove what ran.
+
+- **Platform power.** Social and other self-optimizing platforms can take one shared budget, apply their own cost controls (cost caps, cost targets, and ROAS targets), and plan to an outcome such as clicks at a stated cost. Products state what a buy needs before it runs: a conversion event source, an app catalog, or a page or profile connection. An agent buys what the platform actually sells, not a lowest common denominator.
+- **Reliable Reporting.** The reporting pipeline is part of the protocol. Every report a seller owes is tracked, a missing one shows up as missing, corrections become new revisions, and deliveries can land in a warehouse or data share (experimental, `media_buy.reporting_delivery`).
+- **Data collaboration.** Products declare how buyer audience data can reach them: direct sync, identity match, file transfer, dataset query, clean room, or platform distribution (experimental, `media_buy.audience_activation`).
+- **Compact lifecycle.** Each step of a buy, from discovery through proposals, purchase, and in-flight control, has its own task-specific tool. Their MCP schemas are 72–94% smaller than the 3.1 facades they replace, so agents spend fewer tokens and builders implement less.
+
+There is no flag day: 3.1 integrations keep working while you opt into `"3.2"` per peer and adopt new tools one capability at a time.
 
 3.2 is additive over 3.1 for stable surfaces, apart from a short, recorded list of exceptions: see [Breaking changes and 3.2 exceptions](#breaking-changes-and-3-2-exceptions). Experimental surfaces carry changes announced under the [experimental-status contract](/docs/reference/experimental-status).
 
