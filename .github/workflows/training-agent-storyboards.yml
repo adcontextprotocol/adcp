@@ -397,6 +397,7 @@ jobs:
             signals) requirement="signal_marketplace/governance_approved:7:0" ;;
             brand) requirement="brand_rights/governance_approved:7:0" ;;
             creative-builder) requirement="creative_transformers/governance_approved:6:0" ;;
+            *) echo "::error::No routed governance storyboard is pinned for /${TENANT}; update this step with its if: condition."; exit 1 ;;
           esac
           storyboard_id="${requirement%%:*}"
           counts="${requirement#*:}"

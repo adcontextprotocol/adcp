@@ -166,6 +166,8 @@ describe('storyboard runner option helpers', () => {
 
 describe('multiAgentRoutingForStoryboard', () => {
   const base = 'http://127.0.0.1:4321/api/training-agent';
+  // Distinct from the routing base so a swap between the two fails.
+  const identityBase = 'https://training-agent.example/api/training-agent';
   const auth = { type: 'bearer' as const, token: 'storyboard-token' };
   const governed = {
     id: 'signal_marketplace/governance_approved',
@@ -184,7 +186,7 @@ describe('multiAgentRoutingForStoryboard', () => {
     tenantPath: 'signals',
     tenantAgentUrl: `${base}/signals/mcp`,
     trainingAgentBaseUrl: base,
-    serviceIdentityBase: base,
+    serviceIdentityBase: identityBase,
     auth,
   };
 
@@ -205,8 +207,55 @@ describe('multiAgentRoutingForStoryboard', () => {
       },
       // Only the governed-agent key is overridden; the registered governance
       // service locator keeps its authored value.
-      context: { signal_agent_url: `${base}/signals` },
+      context: { signal_agent_url: `${identityBase}/signals` },
     });
+  });
+
+  it('overrides seller_agent_url with the sales service identity', () => {
+    const routing = multiAgentRoutingForStoryboard({
+      ...input,
+      tenantPath: 'sales',
+      tenantAgentUrl: `${base}/sales/mcp`,
+      storyboard: {
+        id: 'media_buy_seller/governance_conditions',
+        requires: ['multi_agent'],
+        default_agent: 'sales',
+        context: { seller_agent_url: 'https://test-agent.adcontextprotocol.org/sales' },
+        phases: [{ steps: [{ agent: 'governance' }, {}] }],
+      },
+    });
+    expect(routing).toMatchObject({
+      kind: 'routed',
+      default_agent: 'sales',
+      context: { seller_agent_url: `${identityBase}/sales` },
+    });
+  });
+
+  it('returns an empty context override when no governed-agent key is authored', () => {
+    const routing = multiAgentRoutingForStoryboard({
+      ...input,
+      storyboard: { ...governed, context: { governance_agent_url: 'https://test-agent.adcontextprotocol.org' } },
+    });
+    expect(routing).toMatchObject({ kind: 'routed', context: {} });
+  });
+
+  it('strips trailing slashes from the routing and identity bases', () => {
+    const routing = multiAgentRoutingForStoryboard({
+      ...input,
+      trainingAgentBaseUrl: `${base}//`,
+      serviceIdentityBase: `${identityBase}/`,
+    });
+    expect(routing).toMatchObject({
+      kind: 'routed',
+      agents: { governance: { url: `${base}/governance/mcp` } },
+      context: { signal_agent_url: `${identityBase}/signals` },
+    });
+  });
+
+  it('omits auth from every routed agent when the job has none', () => {
+    const routing = multiAgentRoutingForStoryboard({ ...input, auth: undefined });
+    if (routing.kind !== 'routed') throw new Error('expected a routed storyboard');
+    for (const entry of Object.values(routing.agents)) expect(entry).not.toHaveProperty('auth');
   });
 
   it('refuses to grade a storyboard from a tenant other than its default_agent', () => {
