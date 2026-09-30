@@ -1238,6 +1238,18 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
 
 export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
   const req = args as CheckGovernanceInput;
+  if (ctx.hostedGraderCredential) {
+    // The grader runs intent checks (including an adjusted re-check with
+    // consultation_context) on its own run's plans only; execution checks
+    // belong to the seller named as the token audience. Checked from the
+    // request alone, before any cross-session lookup, so an explicit in-scope
+    // plan_id is required.
+    const intentOnly = req.tool !== undefined && req.payload !== undefined && !req.governance_context;
+    const graderError = intentOnly
+      ? hostedGraderPlanScopeError(ctx, [req.plan_id])
+      : hostedGraderDeniedError(ctx, 'check_governance execution checks');
+    if (graderError) return graderError;
+  }
   let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const governanceContext = req.governance_context;
   const consultationContext = req.consultation_context;
@@ -1276,15 +1288,6 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       ? sellerCredentialBuyerSideError(ctx, 'check_governance intent checks')
       : sellerCredentialPlanScopeError(ctx, planId);
     if (credentialError) return credentialError;
-  }
-  if (ctx.hostedGraderCredential) {
-    // The grader runs intent checks on its own run's plans only; execution
-    // checks belong to the seller named as the token audience.
-    const intentOnly = req.tool !== undefined && req.payload !== undefined && !governanceContext;
-    const graderError = intentOnly
-      ? hostedGraderPlanScopeError(ctx, [req.plan_id])
-      : hostedGraderDeniedError(ctx, 'check_governance execution checks');
-    if (graderError) return graderError;
   }
   if (!planId) {
     return { errors: [{ code: 'PLAN_NOT_FOUND', message: 'No plan could be resolved from plan_id or governance_context.' }] };

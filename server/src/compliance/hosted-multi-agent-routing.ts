@@ -156,6 +156,9 @@ export function hostedGovernanceAgentForRun(
   };
 }
 
+/** Tags of the credentials this module mints (governance-agent-credentials.ts). */
+const MINTED_CREDENTIAL_PATTERN = /adcp-sandbox-gov(?:-grader)?\.v1\.[A-Za-z0-9_.-]*/g;
+
 /** Secrets a routed run carries; scrub them from stored or logged output. */
 export function hostedGovernanceSecrets(governance: HostedGovernanceAgent): string[] {
   return [governance.auth.token, governance.sellerCredential];
@@ -169,7 +172,11 @@ export function hostedGovernanceSecrets(governance: HostedGovernanceAgent): stri
 export function redactHostedGovernanceSecrets<T>(value: T, secrets: Iterable<string>): T {
   const list = [...secrets].filter(secret => secret.length > 0);
   if (list.length === 0) return value;
-  const scrub = (text: string): string => list.reduce((acc, secret) => acc.split(secret).join('[redacted]'), text);
+  // Exact secrets first, then anything shaped like a minted credential, so a
+  // truncated echo (e.g. an error cut at a length limit) is scrubbed too.
+  const scrub = (text: string): string => list
+    .reduce((acc, secret) => acc.split(secret).join('[redacted]'), text)
+    .replace(MINTED_CREDENTIAL_PATTERN, '[redacted]');
   const walk = (node: unknown, seen: WeakMap<object, unknown>): unknown => {
     if (typeof node === 'string') return scrub(node);
     if (!node || typeof node !== 'object') return node;
@@ -342,15 +349,32 @@ export function hostedMultiAgentRoutingForStoryboard<S extends HostedRoutableSto
 
   const context: Record<string, string> = {};
   const authoredGovernanceUrl = storyboard.context?.governance_agent_url;
-  if (authoredGovernanceUrl !== undefined) {
-    if (typeof authoredGovernanceUrl !== 'string' || originOf(authoredGovernanceUrl) !== governanceOrigin) {
-      return unroutable(
-        `its governance_agent_url names a governance agent other than the hosted one (${governanceOrigin}); the seller would be told to trust an agent the runner is not using.`,
-      );
+  if (authoredGovernanceUrl !== undefined
+    && (typeof authoredGovernanceUrl !== 'string' || originOf(authoredGovernanceUrl) !== governanceOrigin)) {
+    return unroutable(
+      `its governance_agent_url names a governance agent other than the hosted one (${governanceOrigin}); the seller would be told to trust an agent the runner is not using.`,
+    );
+  }
+  // Always pin it, so a caller-supplied initial context cannot point the
+  // seller (and the seller credential) at a different governance agent.
+  const pinnedGovernanceUrl = typeof authoredGovernanceUrl === 'string' ? authoredGovernanceUrl : governanceOrigin;
+  context.governance_agent_url = pinnedGovernanceUrl;
+  // The seller credential may only be registered for the hosted governance
+  // agent. Any other registration target makes the storyboard unroutable.
+  for (const phase of storyboard.phases) {
+    for (const step of phase.steps) {
+      if (step.task !== 'sync_governance') continue;
+      for (const account of syncGovernanceAccounts(step.sample_request)) {
+        for (const agent of account.governance_agents ?? []) {
+          const url = agent && typeof agent === 'object' ? agent.url : undefined;
+          if (url !== '$context.governance_agent_url' && url !== pinnedGovernanceUrl) {
+            return unroutable(
+              `step "${step.id ?? step.task}" registers a governance agent other than the hosted one; hosted grading only issues a seller credential for ${pinnedGovernanceUrl}.`,
+            );
+          }
+        }
+      }
     }
-    // Pin the authored value so a caller-supplied initial context cannot
-    // point the seller at a different governance agent.
-    context.governance_agent_url = authoredGovernanceUrl;
   }
   for (const key of HOSTED_GOVERNED_AGENT_CONTEXT_KEYS) {
     // The seller credential binds exactly this string, and the governance

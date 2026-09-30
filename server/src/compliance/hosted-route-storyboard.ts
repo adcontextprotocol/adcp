@@ -84,6 +84,10 @@ export function liveModeTestKitRoute(
   const steps = (storyboard.phases ?? []).flatMap(phase => (phase.steps ?? []) as StepWithAuth[]);
   if (steps.length === 0 || !steps.every(step => isFromTestKitApiKey(step.auth))) return undefined;
 
+  // The SDK grades a replacement storyboard on its grading shape (phases,
+  // steps, tasks, agent pins, validations, expectations, gates); a step's
+  // `auth` directive is not part of it. hosted-route-storyboard.test.ts runs
+  // this through the real comply() so an SDK that starts refusing it fails CI.
   const patched = structuredClone(storyboard);
   for (const phase of patched.phases ?? []) {
     for (const step of (phase.steps ?? []) as StepWithAuth[]) {
@@ -107,7 +111,8 @@ export function createHostedRouteStoryboard(input: HostedRouteStoryboardInput): 
   return (storyboard, context) => {
     const agentUrl = context.agent_url;
 
-    if (storyboard.prerequisites?.test_kit) {
+    // Multi-agent storyboards always take the governance routing rules below.
+    if (storyboard.prerequisites?.test_kit && !storyboard.requires?.includes('multi_agent')) {
       const liveRoute = liveModeTestKitRoute(storyboard, agentUrl, resolveTestKit(storyboard.id));
       if (liveRoute) return liveRoute;
     }

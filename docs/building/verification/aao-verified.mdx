@@ -98,9 +98,10 @@ The storyboards behind `governance-aware-seller` (and the `governance_approved`
 storyboards for brand rights, signal marketplaces, and creative transformers)
 need a second agent: the buyer's governance agent. Hosted grading supplies the
 public sandbox governance agent, `https://test-agent.adcontextprotocol.org`, and
-routes those storyboards across your agent and it. You grade your own agent's
-behavior only. A failure on a step the governance agent serves is recorded as a
-coverage gap, not a failure of your agent.
+routes those storyboards across your agent and it. Only your agent's behavior
+is graded: in hosted suite grading (the heartbeat and registry refresh), a
+failure on a step the governance agent serves is recorded as a coverage gap,
+not a failure of your agent.
 
 To pass these storyboards, a seller configures three things in a sandbox
 account.
@@ -118,18 +119,29 @@ your grading credential to that same buyer, as a pre-provisioned buyer identity
 | Buyer brand domain | `hosted-grader.adcontextprotocol.org` |
 | Account operator | `pinnacle-agency.example` |
 
-Values are compared byte for byte, so don't add a trailing slash. The storyboards
-use this brand and operator, and create the account inline through
-[`sync_accounts`](/docs/accounts/tasks/sync_accounts). The [`hosted-grader` test kit](/compliance/latest/test-kits/hosted-grader.yaml)
+Values are compared byte for byte, so don't add a trailing slash. Pre-provision
+this brand and operator pair in your sandbox account. Don't check the operator
+against the brand's `authorized_operators`: the hosted-grader `brand.json` is a
+Brand Canonical Document, which carries no operator list, and
+`pinnacle-agency.example` is a reserved test domain. The storyboards create the
+account inline through [`sync_accounts`](/docs/accounts/tasks/sync_accounts),
+and the [`hosted-grader` test kit](/compliance/latest/test-kits/hosted-grader.yaml)
 declares the same account.
 
 **2. Accept the governance registration.** Each run registers
-`https://test-agent.adcontextprotocol.org` through [`sync_governance`](/docs/accounts/tasks/sync_governance), with a
-fresh credential that starts with `adcp-sandbox-gov.v1.`. That credential is
-valid for 30 minutes, for that run's plans only, and authenticates exactly the
-agent URL being graded. On an execution-time [`check_governance`](/docs/governance/campaign/tasks/check_governance), call the
-registered URL with that credential and send your registered agent URL as
-`caller`. The token audience is that same URL.
+`https://test-agent.adcontextprotocol.org` through
+[`sync_governance`](/docs/accounts/tasks/sync_governance), with a fresh
+credential that starts with `adcp-sandbox-gov.v1.`. That credential is valid
+for 30 minutes, for that run's plans only, and authenticates exactly the agent
+URL you registered for grading. On an execution-time
+[`check_governance`](/docs/governance/campaign/tasks/check_governance), call the
+registered governance agent URL with that credential, and send your registered
+agent URL as `caller`.
+
+The token audience (`aud`) is also your registered agent URL. Checklist step 8
+compares `aud` byte for byte with your own canonical URL, so register for
+grading the exact URL your verifier treats as canonical. A path or trailing
+slash difference fails with `governance_token_not_applicable`.
 
 **3. Verify against the buyer's `brand.json`.** Resolve the buyer brand from
 the authenticated credential, never from the request:
@@ -140,7 +152,13 @@ the authenticated credential, never from the request:
 - That entry's `jwks_uri`, `https://hosted-grader.adcontextprotocol.org/.well-known/jwks.json`,
   serves governance-signing keys only, on an origin that publishes no request-signing keys.
 - The revocation list is at
-  `https://test-agent.adcontextprotocol.org/.well-known/governance-revocations.json`.
+  `https://test-agent.adcontextprotocol.org/.well-known/governance-revocations.json`,
+  signed with a key published at that `jwks_uri`.
+
+Origin separation is met on the hosted-grader side only. The sandbox
+governance agent's own origin still publishes this key in a shared JWKS next to
+request-signing keys, which is acceptable for a sandbox but not for production
+governance agents.
 
 <Warning>
 The sandbox governance agent's signing key is public test material. Anyone can
@@ -151,8 +169,8 @@ account you provision for hosted grading, and never for live spend.
 
 If hosted governance grading is not available for a run, or a compliance bundle
 predates the hosted-grader brand, those storyboards are reported as not
-runnable, with a reason. They cap the bundle at partial; they don't count as
-failures.
+runnable, with a reason. They don't count as failures, but they cap the bundle
+at partial, so no `governance-aware-seller` badge is issued from that run.
 
 ## Selecting a grading profile
 

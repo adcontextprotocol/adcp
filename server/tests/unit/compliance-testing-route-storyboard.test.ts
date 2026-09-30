@@ -87,7 +87,20 @@ describe('hosted comply() routing hook', () => {
     expect(serialized).not.toMatch(/adcp-sandbox-gov\.v1\./);
     expect(serialized).not.toMatch(/adcp-sandbox-gov-grader\.v1\./);
     expect(serialized).toContain('[redacted]');
-    expect(mocks.getTestKitForStoryboard).toHaveBeenCalledWith(storyboard.id, expect.objectContaining({ complianceDir: mocks.target.complianceDir }));
+  });
+
+  it('resolves declared test kits from the bundle the run grades against', async () => {
+    mocks.discovery.mockResolvedValue({ profile: { tools: [] }, steps: [] });
+    const modeGate = loadStoryboardFile(resolve(SOURCE, 'universal/comply-controller-mode-gate.yaml'));
+    mocks.sdkComply.mockImplementation(async (agentUrl: string, options: { routeStoryboard?: (...args: unknown[]) => unknown }) => {
+      await options.routeStoryboard!(modeGate, { agent_url: agentUrl, profile: {} });
+      return { agent_profile: {} };
+    });
+    await comply(SELLER_URL, {}, mocks.target as never);
+    expect(mocks.getTestKitForStoryboard).toHaveBeenCalledWith(
+      modeGate.id,
+      expect.objectContaining({ complianceDir: mocks.target.complianceDir }),
+    );
   });
 
   it('keeps a caller-supplied routeStoryboard', async () => {

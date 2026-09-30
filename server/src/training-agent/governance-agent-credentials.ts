@@ -42,7 +42,9 @@ const MIN_SECRET_LENGTH = 32;
 export const GOVERNANCE_AGENT_CREDENTIAL_MAX_TTL_SECONDS = 30 * 60;
 const MAX_CREDENTIAL_LENGTH = 1024;
 const MAX_AGENT_URL_LENGTH = 512;
-const NONCE_PATTERN = /^[A-Za-z0-9-]{8,64}$/;
+// Run nonces are UUIDs, so no nonce is a suffix of another and the plan-id
+// suffix check below is exact.
+const NONCE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SEGMENT_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /**
@@ -146,7 +148,7 @@ export function mintGovernanceAgentCredential(
   if (!key) throw new Error(`${SECRET_ENV} is not configured; governance agent credentials are disabled.`);
   const boundUrl = mintableAgentUrl(agentUrl, options.allowLoopbackHttp === true);
   if (!NONCE_PATTERN.test(options.nonce)) {
-    throw new Error('Governance agent credential nonce must be 8-64 characters of [A-Za-z0-9-].');
+    throw new Error('Governance agent credential nonce must be a lowercase UUID.');
   }
   const ttl = Math.min(
     Math.max(1, Math.floor(options.ttlSeconds ?? GOVERNANCE_AGENT_CREDENTIAL_MAX_TTL_SECONDS)),
@@ -347,7 +349,7 @@ export function mintHostedGraderCredential(options: MintHostedGraderCredentialOp
   const key = graderCredentialKey();
   if (!key) throw new Error(`${SECRET_ENV} is not configured; hosted-grader governance credentials are disabled.`);
   if (!NONCE_PATTERN.test(options.nonce)) {
-    throw new Error('Hosted-grader credential nonce must be 8-64 characters of [A-Za-z0-9-].');
+    throw new Error('Hosted-grader credential nonce must be a lowercase UUID.');
   }
   const ttl = Math.min(
     Math.max(1, Math.floor(options.ttlSeconds ?? GOVERNANCE_AGENT_CREDENTIAL_MAX_TTL_SECONDS)),

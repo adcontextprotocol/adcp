@@ -147,6 +147,33 @@ describe('hostedMultiAgentRoutingForStoryboard', () => {
     expect(JSON.stringify(storyboard)).not.toContain(GOVERNANCE.sellerCredential);
   });
 
+  it('only issues the seller credential for the hosted governance agent, and always pins governance_agent_url', () => {
+    const offList = route(synthetic({
+      phases: [{
+        steps: [
+          { id: 'sync_plans', task: 'sync_plans', agent: 'governance' },
+          {
+            ...SYNC_GOVERNANCE,
+            sample_request: {
+              accounts: [{
+                account: { brand: { domain: HOSTED_GRADER_BRAND_DOMAIN } },
+                governance_agents: [
+                  { url: '$context.governance_agent_url', authentication: { credentials: 'x' } },
+                  { url: 'https://untrusted-governance.example/mcp', authentication: { credentials: 'y' } },
+                ],
+              }],
+            },
+          },
+        ],
+      }],
+    }));
+    expect(offList.kind).toBe('unroutable');
+    if (offList.kind === 'unroutable') expect(offList.reason).toContain('other than the hosted one');
+
+    const withoutAuthoredUrl = routed(synthetic({ context: { seller_agent_url: 'https://seller.example.com' } }));
+    expect(withoutAuthoredUrl.context.governance_agent_url).toBe('https://test-agent.adcontextprotocol.org');
+  });
+
   it('is unroutable when the buyer brand is not the hosted-grader brand (older bundles)', () => {
     const older = synthetic({
       phases: [{
@@ -447,5 +474,8 @@ describe('redactHostedGovernanceSecrets', () => {
     expect(out.when).toBe(3);
     expect(input).toEqual(before);
     expect(redactHostedGovernanceSecrets(input, [])).toBe(input);
+    // A truncated echo of a minted credential is scrubbed by its tag.
+    const truncated = redactHostedGovernanceSecrets({ error: `got ${secrets[1].slice(0, 40)}` }, secrets);
+    expect(truncated.error).toBe('got [redacted]');
   });
 });

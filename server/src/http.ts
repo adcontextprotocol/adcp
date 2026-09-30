@@ -1328,7 +1328,13 @@ export class HTTPServer {
     // in particular Addie's request-signing JWKS, is served on that origin.
     const hostedGraderHostRouter = createHostedGraderHostRouter();
     this.app.use((req, res, next) => {
-      if (req.hostname === HOSTED_GRADER_HOSTNAME) return hostedGraderHostRouter(req, res, next);
+      // Fail closed: match the raw Host header as well as req.hostname, which
+      // `trust proxy` derives from X-Forwarded-Host, so a forwarded-host
+      // header cannot get app-wide routes (or Addie's JWKS) served here.
+      const rawHost = (req.headers.host ?? '').toLowerCase().replace(/:\d+$/, '');
+      if (rawHost === HOSTED_GRADER_HOSTNAME || req.hostname === HOSTED_GRADER_HOSTNAME) {
+        return hostedGraderHostRouter(req, res, next);
+      }
       next();
     });
 
