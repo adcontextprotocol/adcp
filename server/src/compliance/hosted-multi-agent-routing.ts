@@ -32,16 +32,22 @@
  *   the run-level `auth` for an entry without its own, so the owner's
  *   credential cannot reach the governance route and the public credential
  *   is never on the agent-under-test entry or in context.
- * - Steps routed to governance may not use step-level `auth` directives or
- *   `$test_kit.auth` references. Hosted runs copy the owner credential into
- *   the shared test kit, so those would forward it to the governance agent.
+ * - Steps not pinned to the agent under test may not use step-level `auth`
+ *   directives or `$test_kit.auth` references, and neither may storyboard
+ *   context. Hosted runs copy the owner credential into the shared test kit,
+ *   and an unpinned step can be routed to governance by protocol, so those
+ *   could forward it to the governance agent.
+ * - The public governance agent is one shared sandbox tenant, and the
+ *   authored plan ids are fixed. Each routed run suffixes them with a random
+ *   nonce so concurrent runs, or anyone else holding the public token,
+ *   cannot overwrite the plan a run is grading against.
  * - Run-level `headers` are shared across every routed agent by the SDK, so
  *   `withHostedMultiAgentRouting()` refuses to route a run that sets them.
  * - SSRF: routed agents inherit the run-level `transport`, so the hosted
  *   safe fetch applied by `withSdkSafeTransport()` guards both routes.
  */
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import type { StoryboardRunOptions } from '@adcp/sdk/testing';
 
@@ -124,13 +130,16 @@ export interface HostedAgentUnderTest {
   url: string;
   /** Owner-supplied credential for `url`, if any. */
   auth?: RunAuth;
-  transport?: RoutedAgentEntry['transport'];
+  /** Wire protocol for `url` (`AgentEntry.transport`). Defaults to the run's protocol. */
+  protocol?: RoutedAgentEntry['transport'];
 }
 
 export interface HostedMultiAgentRoutingInput<S extends HostedRoutableStoryboard> {
   storyboard: S;
   agentUnderTest: HostedAgentUnderTest;
   governance: HostedGovernanceAgent;
+  /** Suffix for this run's governance plan ids. Defaults to a random value. */
+  runNonce?: string;
 }
 
 export type HostedMultiAgentRouting<S extends HostedRoutableStoryboard = HostedRoutableStoryboard> =
@@ -143,6 +152,8 @@ export type HostedMultiAgentRouting<S extends HostedRoutableStoryboard = HostedR
     default_agent: string;
     /** Initial-context overrides. Applied over any caller-supplied context. */
     context: Record<string, string>;
+    /** Ids of the steps the governance agent serves, for attributing results. */
+    governance_step_ids: string[];
   }
   | { kind: 'unroutable'; reason: string };
 
@@ -192,15 +203,19 @@ export function hostedMultiAgentRoutingForStoryboard<S extends HostedRoutableSto
     return unroutable('the configured governance agent URL is not a valid HTTPS URL.');
   }
 
+  if (referencesTestKitAuth(storyboard.context)) {
+    return unroutable('its context references test-kit credentials; hosted grading will not forward them across agents.');
+  }
   const keys = new Set<string>();
   for (const phase of storyboard.phases) {
     for (const step of phase.steps) {
-      if (step.agent === undefined) continue;
-      keys.add(step.agent);
-      if (step.agent !== HOSTED_GOVERNANCE_AGENT_KEY) continue;
+      if (step.agent !== undefined) keys.add(step.agent);
+      // Unpinned steps route by protocol and may land on governance, so only
+      // steps pinned to the agent under test may carry their own credentials.
+      if (step.agent === defaultAgent) continue;
       if (step.auth !== undefined || referencesTestKitAuth(step.sample_request)) {
         return unroutable(
-          `step "${step.id ?? step.task ?? '?'}" is routed to the governance agent but declares its own credentials; hosted grading will not forward test-kit credentials across agents.`,
+          `step "${step.id ?? step.task ?? '?'}" may be served by the governance agent but declares its own credentials; hosted grading will not forward test-kit credentials across agents.`,
         );
       }
     }
@@ -235,7 +250,7 @@ export function hostedMultiAgentRoutingForStoryboard<S extends HostedRoutableSto
     [defaultAgent]: {
       url: agentUnderTest.url,
       ...(agentUnderTest.auth && { auth: agentUnderTest.auth }),
-      ...(agentUnderTest.transport && { transport: agentUnderTest.transport }),
+      ...(agentUnderTest.protocol && { transport: agentUnderTest.protocol }),
     },
     [HOSTED_GOVERNANCE_AGENT_KEY]: {
       url: governance.url,
@@ -246,21 +261,39 @@ export function hostedMultiAgentRoutingForStoryboard<S extends HostedRoutableSto
     },
   };
 
-  // The governance agent binds `caller` to the authenticated identity of the
-  // credential it sees, which is ours. Patch a copy so the cached storyboard
-  // is untouched.
+  // Patch a copy so the cached storyboard is untouched (loaded storyboards are
+  // plain YAML data, so structuredClone is lossless).
+  const nonce = input.runNonce ?? randomUUID();
   const patched = structuredClone(storyboard) as S;
+  const governanceStepIds: string[] = [];
   for (const phase of patched.phases) {
     for (const step of phase.steps) {
-      if (step.agent !== HOSTED_GOVERNANCE_AGENT_KEY || step.task !== 'check_governance') continue;
+      if (step.agent !== HOSTED_GOVERNANCE_AGENT_KEY) continue;
+      if (step.id) governanceStepIds.push(step.id);
       const request = step.sample_request as Record<string, unknown> | undefined;
-      if (request && typeof request === 'object' && request.caller !== undefined) {
+      if (!request || typeof request !== 'object') continue;
+      // The governance agent binds `caller` to the authenticated identity of
+      // the credential it sees, which is ours.
+      if (step.task === 'check_governance' && request.caller !== undefined) {
         request.caller = governance.callerIdentity;
+      }
+      // Later steps read the plan id back through `$context.plan_id`.
+      if (step.task === 'sync_plans' && Array.isArray(request.plans)) {
+        for (const plan of request.plans as Array<Record<string, unknown>>) {
+          if (plan && typeof plan.plan_id === 'string') plan.plan_id = `${plan.plan_id}-${nonce}`;
+        }
       }
     }
   }
 
-  return { kind: 'routed', storyboard: patched, agents, default_agent: defaultAgent, context };
+  return {
+    kind: 'routed',
+    storyboard: patched,
+    agents,
+    default_agent: defaultAgent,
+    context,
+    governance_step_ids: governanceStepIds,
+  };
 }
 
 /**

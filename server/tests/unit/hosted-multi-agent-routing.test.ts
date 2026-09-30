@@ -91,12 +91,35 @@ describe('hostedMultiAgentRoutingForStoryboard', () => {
     // sync_plans (the step that failed in #7758) is authored to governance.
     const syncPlans = result.storyboard.phases.flatMap(p => p.steps).find(s => s.task === 'sync_plans');
     expect(syncPlans?.agent).toBe(HOSTED_GOVERNANCE_AGENT_KEY);
+    expect(result.governance_step_ids).toContain('sync_plans');
+    expect(result.governance_step_ids).not.toContain('create_media_buy');
+  });
+
+  it('gives each run its own plan id on the shared governance tenant', () => {
+    const storyboard = load(GOVERNANCE_CONDITIONS);
+    const first = hostedMultiAgentRoutingForStoryboard({
+      storyboard,
+      agentUnderTest: { url: SELLER_URL },
+      governance: GOVERNANCE,
+      runNonce: 'run-a',
+    });
+    const second = hostedMultiAgentRoutingForStoryboard({ storyboard, agentUnderTest: { url: SELLER_URL }, governance: GOVERNANCE });
+    const third = hostedMultiAgentRoutingForStoryboard({ storyboard, agentUnderTest: { url: SELLER_URL }, governance: GOVERNANCE });
+    const planId = (r: typeof first) => {
+      if (r.kind !== 'routed') throw new Error('expected routed');
+      const step = r.storyboard.phases.flatMap(p => p.steps).find(s => s.task === 'sync_plans');
+      return ((step?.sample_request as { plans: Array<{ plan_id: string }> }).plans[0]).plan_id;
+    };
+    expect(planId(first)).toBe('comply-gov-conditions-plan-run-a');
+    expect(planId(second)).toMatch(/^comply-gov-conditions-plan-[0-9a-f-]{36}$/);
+    expect(planId(second)).not.toBe(planId(third));
   });
 
   it('binds governance check_governance caller to our identity on a copy, leaving the cached storyboard untouched', () => {
     const storyboard = load(GOVERNANCE_CONDITIONS);
     const before = structuredClone(storyboard);
     const result = routed(storyboard);
+    routed(storyboard);
 
     const checks = result.storyboard.phases
       .flatMap(p => p.steps)
@@ -190,6 +213,33 @@ describe('hostedMultiAgentRoutingForStoryboard', () => {
         }],
       }));
       expect(withAuthDirective.kind).toBe('unroutable');
+
+      const unpinnedWithAuth = route(synthetic({
+        phases: [{
+          steps: [
+            { id: 'sync_plans', task: 'sync_plans', agent: 'governance' },
+            { id: 'check_governance', task: 'check_governance', auth: { from_test_kit: true } },
+            { id: 'get_products', task: 'get_products', agent: 'sales', auth: { from_test_kit: true } },
+          ],
+        }],
+      }));
+      expect(unpinnedWithAuth.kind).toBe('unroutable');
+      if (unpinnedWithAuth.kind === 'unroutable') expect(unpinnedWithAuth.reason).toContain('check_governance');
+
+      const sellerPinnedWithAuth = route(synthetic({
+        phases: [{
+          steps: [
+            { id: 'sync_plans', task: 'sync_plans', agent: 'governance' },
+            { id: 'get_products', task: 'get_products', agent: 'sales', auth: { from_test_kit: true } },
+          ],
+        }],
+      }));
+      expect(sellerPinnedWithAuth.kind).toBe('routed');
+
+      const contextKitReference = route(synthetic({
+        context: { governance_agent_url: 'https://test-agent.adcontextprotocol.org', token: '$test_kit.auth.api_key' },
+      }));
+      expect(contextKitReference.kind).toBe('unroutable');
 
       const withKitReference = route(synthetic({
         phases: [{
