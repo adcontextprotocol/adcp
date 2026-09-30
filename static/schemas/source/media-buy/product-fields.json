@@ -41,6 +41,7 @@
       "brief_relevance",
       "acceptance_policy_profile_ids",
       "identity",
+      "execution_requirements",
       "expires_at",
       "allowed_actions"
     ]

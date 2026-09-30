@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/execution-requirement-unmet.json",
+  "title": "Execution Requirement Unmet Details",
+  "description": "Experimental (`media_buy.execution_requirements`). Details shape a seller that declares `execution_requirements` MUST use for a `VALIDATION_ERROR` returned because a package does not satisfy an `event_source` or `catalog` entry in its product's `execution_requirements`. Unmet `downstream_connection` requirements use `AUTHORIZATION_REQUIRED` with `error-details/authorization-required.json` instead. `error.field` names the first unmet binding; `unmet_requirements[]` lists every unmet requirement found.",
+  "type": "object",
+  "properties": {
+    "unmet_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Product whose requirement is unmet.",
+            "x-entity": "product"
+          },
+          "field": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Request path where the resource binds, in the same JSONPath-lite form as `error.field`: `packages[i].optimization_goals` or `packages[i].catalogs` on `create_media_buy`; `new_packages[i].…` or `packages[i].…` on `update_media_buy`."
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["not_bound", "not_found", "ineligible"],
+            "description": "`not_bound`: the package does not reference a resource of this kind. `not_found`: the referenced resource is not available to the account (for example an `event_source_id` that was never registered through `sync_event_sources`); register or sync it, then retry. `ineligible`: the referenced resource exists but does not satisfy the requirement (for example an event type or catalog type the requirement does not list)."
+          },
+          "requirement": {
+            "$ref": "/schemas/core/product-execution-requirement.json",
+            "description": "The product's declared requirement, echoed so the buyer can fix the request without another `get_products` call."
+          }
+        },
+        "required": ["product_id", "field", "reason", "requirement"],
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": ["unmet_requirements"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "unmet_requirements": [
+        {
+          "product_id": "social_conversions_feed",
+          "field": "packages[0].optimization_goals",
+          "reason": "not_bound",
+          "requirement": { "kind": "event_source", "event_types": ["purchase"] }
+        }
+      ]
+    }
+  ]
+}

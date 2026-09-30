@@ -255,6 +255,21 @@ credential to the same stable principal. The surface remains experimental so
 implementers can validate rotation, multi-account destination reuse,
 revocation timing, and delegated-operator boundaries before it freezes.
 
+### Products that say what they need before you buy
+
+Products may now experimentally declare `execution_requirements`: the account
+resources a package needs before `create_media_buy` succeeds. A conversion
+product declares an `event_source` (bound through the package's event
+optimization goal), an app-promotion product declares an `app` `catalog`
+(bound through `packages[].catalogs`), and a product that runs as a page or
+profile declares a `downstream_connection`. The declaration is the same for
+every account, so wholesale catalogs stay publicly cacheable. When a
+requirement is unmet, the seller rejects with `VALIDATION_ERROR` pointing at
+the binding and naming the requirement kind. Sellers opt in with
+`media_buy.execution_requirements` in `experimental_features`. Per-account
+readiness (which of these resources the account already has) is planned for
+3.3.
+
 ### Truthful identity-absence declarations for mixed inventory
 
 Products may now experimentally declare `identity.persistent_identifier` and,

@@ -268,6 +268,85 @@ uncapped. Proposal refinement uses `remove_media_buy_frequency_cap: true` to
 clear a cap because omission inherits it. Successful creates, updates, and reads
 echo root and package caps at their separate locations.
 
+### Product execution requirements (experimental)
+
+Many products need account resources that live outside the media buy: a
+conversion product needs a pixel or dataset, an app-promotion product needs a
+registered app, a catalog-sales product needs a product catalog, and a product
+that runs as a page or profile needs that identity connected.
+`Product.execution_requirements` lists these needs so a buyer knows, before
+`create_media_buy`, what it must supply and where it goes on the request. A
+seller using this experimental surface lists `media_buy.execution_requirements`
+in `experimental_features` on `get_adcp_capabilities`.
+
+Each entry's `kind` determines where the resource is bound:
+
+| `kind` | Satisfied by | Established through |
+|---|---|---|
+| `event_source` | At least one package `optimization_goals[]` entry of `kind: "event"` with an `event_sources[]` entry whose `event_source_id` names an event source available to the account and whose `event_type` is in `event_types` when that list is present | [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources), or a seller-managed source when `conversion_tracking.platform_managed` is `true` |
+| `catalog` | A `packages[].catalogs[]` entry whose `type` is in `catalog_types`. App promotion uses `"app"`; the app item carries `app_id`, `bundle_id`, `apple_id`, and `store_url` | [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) or an inline catalog |
+| `downstream_connection` | A completed seller-side connection or grant of the declared `connection.connection_type` — not a request field | The seller's connection flow, as described for `AUTHORIZATION_REQUIRED` |
+
+```json
+{
+  "product_id": "social_app_installs",
+  "catalog_types": ["app"],
+  "conversion_tracking": { "action_sources": ["app"] },
+  "execution_requirements": [
+    { "kind": "event_source", "event_types": ["app_install"] },
+    { "kind": "catalog", "catalog_types": ["app"] },
+    {
+      "kind": "downstream_connection",
+      "connection": { "connection_type": "publisher_identity", "scope": "identity", "required_for": ["create_media_buy"] }
+    }
+  ]
+}
+```
+
+The excerpt shows only the fields relevant here.
+
+Rules:
+
+- **All entries are required.** Alternatives inside one entry (`event_types`,
+  `catalog_types`) are any-of.
+- **Account-independent.** The declaration says what the product needs, not
+  whether the caller's account has it. It does not change `cache_scope`, so a
+  public wholesale catalog stays cacheable, and it MUST NOT carry
+  account-specific resource IDs or names.
+- **Complete when present.** A seller MUST NOT reject a package that satisfies
+  every declared entry for lacking a resource of an undeclared kind from this
+  vocabulary. Absence of the field means undeclared, not "needs nothing".
+- **Coherent with product capabilities.** On the full `Product`, an
+  `event_source` requirement requires `conversion_tracking`. On both the full
+  and the canonical product, a `catalog` requirement requires `catalog_types`,
+  and every type it lists MUST appear there.
+- **Connections count too.** Because the list is complete, a seller that would
+  reject with `AUTHORIZATION_REQUIRED` for a missing connection, including the
+  advertiser account itself, declares that connection. Connection entries carry
+  no `resource_ref` and no `status` other than `unknown`.
+- **Rejection.** When an `event_source` or `catalog` entry is unmet, a seller
+  that declares the requirement MUST return `VALIDATION_ERROR` with
+  `error.field` naming the first unmet binding (for example
+  `packages[0].optimization_goals` on create, or `new_packages[0].catalogs` on
+  update) and `error.details` conforming to
+  [`execution-requirement-unmet.json`](https://adcontextprotocol.org/schemas/latest/error-details/execution-requirement-unmet.json).
+  `reason` distinguishes `not_bound` (nothing referenced), `not_found` (the
+  referenced resource is not available to the account), and `ineligible` (the
+  resource exists but has the wrong event or catalog type). This applies to
+  `create_media_buy` packages, to `update_media_buy` `new_packages[]`, and to
+  an update that removes or replaces a package's satisfying binding; unrelated
+  updates to an existing package are not re-checked. An unmet
+  `downstream_connection` returns `AUTHORIZATION_REQUIRED` with
+  `error.details.missing_connections[]`.
+
+This surface does not report the caller's account state. When an account has
+several eligible event sources or catalogs, the buyer chooses one by binding it
+on the request. When it has several eligible connections, such as several
+connected pages, the seller applies its documented default. Per-account readiness — which resources
+the account already has, which one to pick, and the binding for lead forms and
+messaging destinations — is tracked for AdCP 3.3 in
+[adcp#7763](https://github.com/adcontextprotocol/adcp/issues/7763).
+
 ### Product identity absence and reach reporting (experimental)
 
 `Product.identity` is an optional, product-scoped declaration for inventory

@@ -244,6 +244,16 @@
       "x-status": "experimental",
       "x-added-in": "3.2.0"
     },
+    "execution_requirements": {
+      "type": "array",
+      "description": "Experimental (`media_buy.execution_requirements`). Account resources the buyer must bind on the request, or establish on the account, before `create_media_buy` can succeed for a package on this product: a conversion event source, a catalog (including an app catalog for app promotion), or a downstream platform connection such as the publisher identity the ads run as. Every entry is required; alternatives inside one entry are any-of. The declaration is account-independent — it states what the product needs, not whether the caller's account has it — so it does not change the response's `cache_scope` and MUST NOT carry account-specific resource IDs or names. When present, the list is complete for the requirement kinds in `product-execution-requirement.json`: a seller MUST NOT reject a package that satisfies every declared entry for lacking a resource of an undeclared kind. Absence means undeclared, not that the product needs nothing. A seller that declares it MUST reject a `create_media_buy` package, an `update_media_buy` `new_packages[]` entry, or an `update_media_buy` change that removes or replaces a package's satisfying binding, when an `event_source` or `catalog` entry is not met: `VALIDATION_ERROR`, `error.field` set to the unmet binding, and `error.details` conforming to `error-details/execution-requirement-unmet.json`. Per-account readiness (which resources the account has and which one to use) is not part of this field.",
+      "items": {
+        "$ref": "/schemas/core/product-execution-requirement.json"
+      },
+      "minItems": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.2.0"
+    },
     "targeting_resolution": {
       "$ref": "/schemas/core/product-targeting-resolution.json",
       "description": "Discovery-time targeting resolution bound to this configured product. modifications sparsely disclose product-specific differences from get_products.targeting_overlay. Request-level brief interpretation is returned once on GetProductsResponse.targeting_resolution. Exact structured overlay values are not repeated. Selecting product_id accepts the disclosed modifications; product forecast and pricing MUST reflect them."
@@ -706,6 +716,40 @@
           }
         },
         "required": ["signal_targeting_allowed"]
+      }
+    },
+    {
+      "description": "A product that requires a conversion event source must declare conversion tracking, because event optimization goals are only accepted on products with conversion_tracking.",
+      "if": {
+        "properties": {
+          "execution_requirements": {
+            "contains": {
+              "properties": { "kind": { "const": "event_source" } },
+              "required": ["kind"]
+            }
+          }
+        },
+        "required": ["execution_requirements"]
+      },
+      "then": {
+        "required": ["conversion_tracking"]
+      }
+    },
+    {
+      "description": "A product that requires a catalog must declare the catalog types it accepts.",
+      "if": {
+        "properties": {
+          "execution_requirements": {
+            "contains": {
+              "properties": { "kind": { "const": "catalog" } },
+              "required": ["kind"]
+            }
+          }
+        },
+        "required": ["execution_requirements"]
+      },
+      "then": {
+        "required": ["catalog_types"]
       }
     },
     {
