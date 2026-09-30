@@ -275,13 +275,13 @@ export async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
   if (initial?.kind !== 'specialism_parent_protocol_missing') return initial;
 
   try {
-    const caps = await testCapabilityDiscovery(
+    const caps = await discoverCapabilitiesWithDeadline(
       agentUrl,
-      withSdkSafeTransport(withHostedTestOptions({ ...(auth && { auth }) }, target)),
+      withHostedTestOptions({ ...(auth && { auth }) }, target),
     );
     return classifyCapabilityResolutionError(error, caps.profile?.supported_protocols ?? []) ?? initial;
   } catch (probeError) {
-    logger.warn({ probeError, agentUrl }, 'evaluate_agent_quality: could not reprobe capabilities after resolver error');
+    logger.warn({ probeError, agentUrl }, 'Could not reprobe capabilities after capability-resolution error');
     return initial;
   }
 }
