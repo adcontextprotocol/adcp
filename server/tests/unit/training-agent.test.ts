@@ -11912,6 +11912,140 @@ describe('report_usage handler', () => {
     expect(result.message).toContain('nonexistent_segment');
   });
 
+  describe('signal usage against activate_signal activations', () => {
+    const segment = 'shopgrid_category_buyer';
+    const agentDestination = { type: 'agent', agent_url: 'https://dsp.example/mcp' };
+    const seatA = { type: 'platform', platform: 'pinnacle-dsp', account: 'acme-seat' };
+    const seatB = { type: 'platform', platform: 'pinnacle-dsp', account: 'nova-seat' };
+
+    async function activate(
+      destinations: Array<Record<string, unknown>>,
+      action: 'activate' | 'deactivate' = 'activate',
+      activationAccount: Record<string, unknown> = account,
+    ) {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const { result } = await simulateCallTool(server, 'activate_signal', {
+        account: activationAccount,
+        action,
+        signal_agent_segment_id: segment,
+        pricing_option_id: 'po_shopgrid_cat_cpm',
+        destinations,
+      });
+      expect(result.errors).toBeUndefined();
+      expect(result.code).toBeUndefined();
+    }
+
+    function signalUsage(usageAccount: Record<string, unknown> = account) {
+      return {
+        account: usageAccount,
+        signal_agent_segment_id: segment,
+        pricing_option_id: 'po_shopgrid_cat_cpm',
+        impressions: 100000,
+        vendor_cost: 50,
+        currency: 'USD',
+      };
+    }
+
+    async function reportSignalUsage(usage: Array<Record<string, unknown>> = [signalUsage()]) {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      return simulateCallTool(server, 'report_usage', { reporting_period: period, usage });
+    }
+
+    it('accepts usage for a signal activated to an agent destination', async () => {
+      await activate([agentDestination]);
+
+      const { result, isError } = await reportSignalUsage();
+
+      expect(isError).toBeFalsy();
+      expect(result.accepted).toBe(1);
+      expect(result.rejected).toBeUndefined();
+    });
+
+    it('accepts usage for a signal activated to a platform seat', async () => {
+      await activate([seatA]);
+
+      const { result, isError } = await reportSignalUsage();
+
+      expect(isError).toBeFalsy();
+      expect(result.accepted).toBe(1);
+      expect(result.rejected).toBeUndefined();
+    });
+
+    it('accepts usage for an activation persisted under the legacy account-less key', async () => {
+      await runWithSessionContext(async () => {
+        const session = await getSession(sessionKeyFromArgs({ account }, 'open'));
+        session.signalActivations.set(`${segment}:pinnacle-dsp`, {
+          signalAgentSegmentId: segment,
+          destinationType: 'platform',
+          destinationId: 'pinnacle-dsp',
+          account: 'acme-seat',
+          isLive: true,
+          activatedAt: '2026-01-01T00:00:00.000Z',
+        });
+        await flushDirtySessions();
+      });
+
+      const { result } = await reportSignalUsage();
+
+      expect(result.accepted).toBe(1);
+      expect(result.rejected).toBeUndefined();
+    });
+
+    it('matches the signal while any destination is live and rejects it once every destination is deactivated', async () => {
+      // The usage record identifies the signal by account + segment only; it
+      // has no destination field, so any live deployment of the segment in
+      // the account satisfies it.
+      await activate([agentDestination, seatA, seatB]);
+      expect((await reportSignalUsage()).result.accepted).toBe(1);
+
+      await activate([seatA, agentDestination], 'deactivate');
+      expect((await reportSignalUsage()).result.accepted).toBe(1);
+
+      await activate([seatB], 'deactivate');
+      const { result, isError } = await reportSignalUsage();
+      expect(isError).toBe(true);
+      expect(result.code).toBe('SIGNAL_NOT_FOUND');
+      expect(result.field).toBe('usage[0].signal_agent_segment_id');
+    });
+
+    it('rejects a deactivated signal the same way as one that was never activated', async () => {
+      const neverActivated = await reportSignalUsage();
+
+      await activate([seatA]);
+      expect((await reportSignalUsage()).result.accepted).toBe(1);
+      await activate([seatA], 'deactivate');
+      const deactivated = await reportSignalUsage();
+
+      expect(neverActivated.isError).toBe(true);
+      expect(deactivated.isError).toBe(true);
+      expect(deactivated.result.code).toBe('SIGNAL_NOT_FOUND');
+      expect(deactivated.result).toEqual(neverActivated.result);
+    });
+
+    it('never matches another account\'s activation of the same signal', async () => {
+      const otherAccount = { brand: { domain: 'usage-other.example' }, operator: 'usage-other.example' };
+      await activate([seatA]);
+
+      const { result, isError } = await reportSignalUsage([signalUsage(), signalUsage(otherAccount)]);
+
+      expect(isError).toBeFalsy();
+      expect(result.accepted).toBe(1);
+      const rejected = result.rejected as Array<Record<string, unknown>>;
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]).toMatchObject({
+        code: 'SIGNAL_NOT_FOUND',
+        field: 'usage[1].signal_agent_segment_id',
+      });
+
+      await activate([seatA], 'activate', otherAccount);
+      await activate([seatA], 'deactivate');
+      const afterSwap = await reportSignalUsage([signalUsage(), signalUsage(otherAccount)]);
+      expect(afterSwap.result.accepted).toBe(1);
+      expect((afterSwap.result.rejected as Array<Record<string, unknown>>)[0].field)
+        .toBe('usage[0].signal_agent_segment_id');
+    });
+  });
+
   it('rejects negative vendor_cost', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'report_usage', {
