@@ -306,6 +306,12 @@ REQUIRED_EXACT_CURRENT_SALES=(
   "media_buy_seller/governance_agent_binding_acceptance:5:0"
   "media_buy_seller/external_audience_source_binding:9:0"
   "media_buy_seller/get_products_async:11:0"
+  # requires: [multi_agent] storyboards routed to the governance tenant
+  # (multiAgentRoutingForStoryboard). Exact counts prove the governed calls
+  # executed; a routing regression collapses them to a skipped row.
+  "media_buy_seller/governance_approved:13:0"
+  "media_buy_seller/governance_conditions:12:0"
+  "media_buy_seller/governance_denied:5:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"
@@ -321,6 +327,17 @@ REQUIRED_CLEAN_CURRENT_CREATIVE=(
 )
 REQUIRED_CLEAN_CURRENT_CREATIVE_BUILDER=(
   "canonical_format_validate_input"
+)
+# Routed requires: [multi_agent] governance storyboards, one per governed
+# tenant other than sales (see REQUIRED_EXACT_CURRENT_SALES).
+REQUIRED_EXACT_CURRENT_SIGNALS=(
+  "signal_marketplace/governance_approved:7:0"
+)
+REQUIRED_EXACT_CURRENT_BRAND=(
+  "brand_rights/governance_approved:7:0"
+)
+REQUIRED_EXACT_CURRENT_CREATIVE_BUILDER=(
+  "creative_transformers/governance_approved:6:0"
 )
 REQUIRED_CLEAN_CURRENT_SI=(
   "si_baseline"
@@ -466,8 +483,17 @@ for entry in "${TENANTS[@]}"; do
     done
   fi
 
-  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "governance" ]; then
-    for requirement in "${REQUIRED_EXACT_CURRENT_GOVERNANCE[@]}"; do
+  required_exact=()
+  if [ "${FLOOR_SET}" = "current" ]; then
+    case "${tenant}" in
+      governance) required_exact=("${REQUIRED_EXACT_CURRENT_GOVERNANCE[@]}") ;;
+      signals) required_exact=("${REQUIRED_EXACT_CURRENT_SIGNALS[@]}") ;;
+      brand) required_exact=("${REQUIRED_EXACT_CURRENT_BRAND[@]}") ;;
+      creative-builder) required_exact=("${REQUIRED_EXACT_CURRENT_CREATIVE_BUILDER[@]}") ;;
+    esac
+  fi
+  if [ "${#required_exact[@]}" -gt 0 ]; then
+    for requirement in "${required_exact[@]}"; do
       storyboard_id="${requirement%%:*}"
       counts="${requirement#*:}"
       expected_passed="${counts%%:*}"
