@@ -63,6 +63,7 @@ online_execution_proofs:
     storyboards:
       - protocols/media-buy/scenarios/governance_conditions.yaml
       - protocols/media-buy/scenarios/governance_denied.yaml
+      - protocols/media-buy/scenarios/governance_denied_recovery.yaml
 
 references:
   capability_schema: /schemas/protocol/get-adcp-capabilities-response.json

@@ -2155,18 +2155,28 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     // A delivery check reports evidence about an already-authorized
     // commitment. Treating planned_delivery.total_budget as a fresh
     // commitment here would charge the same media buy against the plan twice.
+    // planned_delivery.total_budget is optional. When a purchase check omits
+    // it, the ledger authority is the governance agent's own intent record
+    // (specification.mdx "Plan binding and audit"): evaluate the intent's
+    // authorized commitment against the current plan instead of skipping
+    // budget authority, so an amended plan still binds the execution check.
+    const intentCeilingFallback = phase === 'purchase' && pdBudget === undefined
+      ? originalIntentCheck?.authorizedBudget
+      : undefined;
     executionCommitment = phase === 'delivery'
       ? undefined
       : INCREMENTAL_COMMITMENT_TOOLS.has(originalIntentCheck?.tool ?? '')
         ? req.execution_commitment?.amount
-        : pdBudget;
+        : pdBudget ?? intentCeilingFallback;
     if (executionCommitment !== undefined) {
       categoriesEvaluated.push('budget_authority');
       const intentCurrency = originalIntentCheck?.authorizedCurrency;
+      const executionCurrency = plannedDelivery.currency
+        ?? (intentCeilingFallback !== undefined ? intentCurrency : undefined);
       if (
         intentCurrency === undefined
-        || plannedDelivery.currency !== intentCurrency
-        || plannedDelivery.currency !== plan.budget.currency
+        || executionCurrency !== intentCurrency
+        || executionCurrency !== plan.budget.currency
       ) {
         findings.push({
           categoryId: 'budget_authority',
