@@ -46,12 +46,13 @@ narrative: |
   `report_plan_outcome`; it does not require the seller to echo governance
   conditions or authorization context in its response.
 
-# Buyer brand and intent caller (adcp#7758). test-agent.adcontextprotocol.org
-# publishes a real /.well-known/brand.json that lists the sandbox governance
-# agent, so a seller can complete the brand.json issuer cross-check for a
-# governance_context. Hosted grading authenticates to that governance agent as
-# the fixed hosted-grader buyer agent below; sellers map the credential they
-# give hosted grading to that buyer agent so it matches the token caller.
+# Buyer brand and intent caller (adcp#7758). The buyer brand
+# hosted-grader.adcontextprotocol.org publishes a real brand.json listing the
+# sandbox governance agent, so a seller can complete the brand.json issuer
+# cross-check and key discovery for governance_context. Hosted grading
+# authenticates to the governance agent as the fixed buyer agent
+# https://hosted-grader.adcontextprotocol.org/buyer, the intent caller below.
+# See test-kits/hosted-grader.yaml for how a seller maps its grading credential.
 context:
   governance_agent_url: "https://test-agent.adcontextprotocol.org"
   seller_agent_url: "https://seller.example.com"
@@ -75,7 +76,7 @@ prerequisites:
     and outcome reporting. The sales agent supports governance registration,
     media-buy creation, and media-buy readback. Override `seller_agent_url` in
     the initial context with the exact sales-agent endpoint used by the runner.
-  test_kit: "test-kits/acme-outdoor.yaml"
+  test_kit: "test-kits/hosted-grader.yaml"
   controller_seeding: true
 
 fixtures:
@@ -117,7 +118,7 @@ phases:
           plans:
             - plan_id: "comply-gov-conditions-plan"
               brand:
-                domain: "test-agent.adcontextprotocol.org"
+                domain: "hosted-grader.adcontextprotocol.org"
               objectives: "Q2 CTV campaign with weekly reporting"
               budget:
                 total: 100000
@@ -158,7 +159,7 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "test-agent.adcontextprotocol.org"
+                domain: "hosted-grader.adcontextprotocol.org"
               operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
@@ -184,7 +185,7 @@ phases:
           accounts:
             - account:
                 brand:
-                  domain: "test-agent.adcontextprotocol.org"
+                  domain: "hosted-grader.adcontextprotocol.org"
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
@@ -216,7 +217,7 @@ phases:
           brief: "CTV inventory on outdoor lifestyle content. $25K budget, adults 25-54, US."
           account:
             brand:
-              domain: "test-agent.adcontextprotocol.org"
+              domain: "hosted-grader.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
         context_outputs:
           - name: product_id
@@ -258,7 +259,7 @@ phases:
           mutation is authorized.
         sample_request:
           plan_id: "$context.plan_id"
-          caller: "https://test-agent.adcontextprotocol.org/hosted-grader"
+          caller: "https://hosted-grader.adcontextprotocol.org/buyer"
           target_agent: "$context.seller_agent_url"
           tool: "create_media_buy"
           purchase_type: "media_buy"
@@ -267,10 +268,10 @@ phases:
             currency: "USD"
           payload:
             brand:
-              domain: "test-agent.adcontextprotocol.org"
+              domain: "hosted-grader.adcontextprotocol.org"
             account:
               brand:
-                domain: "test-agent.adcontextprotocol.org"
+                domain: "hosted-grader.adcontextprotocol.org"
               operator: "pinnacle-agency.example"
             total_budget:
               amount: 25000
@@ -329,7 +330,7 @@ phases:
           conditions response, returns the authorization context and expiry.
         sample_request:
           plan_id: "$context.plan_id"
-          caller: "https://test-agent.adcontextprotocol.org/hosted-grader"
+          caller: "https://hosted-grader.adcontextprotocol.org/buyer"
           target_agent: "$context.seller_agent_url"
           tool: "create_media_buy"
           purchase_type: "media_buy"
@@ -339,10 +340,10 @@ phases:
             currency: "USD"
           payload:
             brand:
-              domain: "test-agent.adcontextprotocol.org"
+              domain: "hosted-grader.adcontextprotocol.org"
             account:
               brand:
-                domain: "test-agent.adcontextprotocol.org"
+                domain: "hosted-grader.adcontextprotocol.org"
               operator: "pinnacle-agency.example"
             total_budget:
               amount: 25000
@@ -410,10 +411,10 @@ phases:
           governance conditions or governance_context.
         sample_request:
           brand:
-            domain: "test-agent.adcontextprotocol.org"
+            domain: "hosted-grader.adcontextprotocol.org"
           account:
             brand:
-              domain: "test-agent.adcontextprotocol.org"
+              domain: "hosted-grader.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
           total_budget:
             amount: 25000
@@ -460,7 +461,7 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "test-agent.adcontextprotocol.org"
+              domain: "hosted-grader.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
           media_buy_ids:
             - "$context.media_buy_id"
