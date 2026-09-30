@@ -1,5 +1,5 @@
 id: media_buy_seller/delivery_reporting
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller returns valid delivery reporting"
 category: media_buy_seller
 summary: "Verifies that get_media_buy_delivery returns schema-compliant delivery data after simulated delivery via the test controller."
@@ -39,10 +39,12 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+# Fixtures use non_guaranteed so sales-non-guaranteed-only sellers can run this
+# scenario (#7765). Fixed-price, so the creates need no bid.
 fixtures:
   products:
     - product_id: "outdoor_display_q2"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["display"]
       format_options:
         - format_option_id: "display_300x250"
@@ -51,7 +53,7 @@ fixtures:
             width: 300
             height: 250
     - product_id: "outdoor_video_q2"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["olv"]
       format_options:
         - format_option_id: "video_15s"
@@ -59,7 +61,7 @@ fixtures:
           params:
             duration_ms_exact: 15000
     - product_id: "video_viewability_q2"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["olv"]
       format_options:
         - format_option_id: "video_15s"
