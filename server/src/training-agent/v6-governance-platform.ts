@@ -51,6 +51,7 @@ import {
 } from './content-standards-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
+import { governanceAgentCredentialFromExtra } from './governance-agent-credentials.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingGovernanceMeta {
@@ -72,11 +73,17 @@ function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undef
 function buildGovernanceTrainingCtx(ctx: {
   account?: { authInfo?: { principal?: string } };
   agent?: { agent_url: string };
+  authInfo?: { extra?: Record<string, unknown> };
 } | undefined): TrainingContext {
+  const governanceAgentCredential = governanceAgentCredentialFromExtra(ctx?.authInfo?.extra);
   return {
     ...buildTrainingCtx(ctx?.account),
     // Resolved by BuyerAgentRegistry from the authenticated credential.
     ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
+    // Seller-scoped sandbox credential; the handlers restrict what it may do.
+    ...(governanceAgentCredential
+      && governanceAgentCredential.agentUrl === ctx?.agent?.agent_url
+      && { governanceAgentCredential }),
   };
 }
 

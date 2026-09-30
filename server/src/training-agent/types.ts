@@ -192,6 +192,13 @@ export interface TrainingContext {
    * mapping. Never populate this from request arguments or principal text.
    */
   authenticatedAgentUrl?: string;
+  /**
+   * Set when the caller authenticated to the governance tenant with a minted
+   * sandbox governance-agent credential (governance-agent-credentials.ts).
+   * `agentUrl` equals `authenticatedAgentUrl`; `nonce` scopes the credential
+   * to the plans of one hosted run. Server-derived only.
+   */
+  governanceAgentCredential?: Readonly<{ agentUrl: string; nonce: string }>;
   /** Exact trusted partition used by the SDK task registry. */
   taskRegistryScope?: Readonly<{ registryNamespace: string; accountId: string; ownerScope: string }>;
   /** Validated wire input before SDK account extraction; used only to verify

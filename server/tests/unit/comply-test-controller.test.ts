@@ -397,11 +397,12 @@ describe('comply_test_controller', () => {
     async function mintValidToken(): Promise<string> {
       const { getGovernanceSigningKey } = await import('../../src/training-agent/governance-signing.js');
       const { CANONICAL_SELLER_AUD } = await import('../../src/training-agent/governance-verify.js');
+      const { getTrainingGovernanceIssuer } = await import('../../src/training-agent/canonical-base.js');
       const { FlattenedSign } = await import('jose');
       const { kid, privateKey } = getGovernanceSigningKey();
       const now = Math.floor(Date.now() / 1000);
       const payload = new TextEncoder().encode(JSON.stringify({
-        iss: 'https://agenticadvertising.org/governance', sub: 'plan-1',
+        iss: getTrainingGovernanceIssuer(), sub: 'plan-1',
         aud: CANONICAL_SELLER_AUD, iat: now, exp: now + 900, jti: 'jti-1', phase: 'intent',
       }));
       const jws = await new FlattenedSign(payload).setProtectedHeader({ alg: 'EdDSA', typ: 'adcp-gov+jws', kid }).sign(privateKey);

@@ -15,6 +15,7 @@ import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
+import { governanceAgentCredentialFromExtra } from '../governance-agent-credentials.js';
 import { AccountRefValidationError, accountScopeFromRef } from '../account-scope.js';
 import {
   getIdempotencyStore,
@@ -186,10 +187,14 @@ export function customToolFor(
       const authenticatedAgentUrl = options.resolveAuthenticatedAgentUrl
         ? await options.resolveAuthenticatedAgentUrl(authInfo, params)
         : undefined;
+      const governanceAgentCredential = governanceAgentCredentialFromExtra(authInfo?.extra);
       const trainingCtx: TrainingContext = {
         mode: 'open',
         principal: authInfo?.clientId ?? 'anonymous',
         ...(authenticatedAgentUrl && { authenticatedAgentUrl }),
+        ...(governanceAgentCredential
+          && governanceAgentCredential.agentUrl === authenticatedAgentUrl
+          && { governanceAgentCredential }),
         ...options.trainingContext,
       };
       const { context: callerContext, ...handlerArgs } = params;

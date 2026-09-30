@@ -28,6 +28,7 @@ import {
 } from './state.js';
 import { signGovernanceContext, type GovernancePhase, type PolicyDecision } from './governance-context.js';
 import { getTrainingGovernanceIssuer } from './canonical-base.js';
+import { isGovernanceAgentCredentialPlanInScope } from './governance-agent-credentials.js';
 import {
   computeDeliveryStatementDigest,
   computeGovernanceAdjustmentHash,
@@ -951,7 +952,35 @@ const GOVERNANCE_CATEGORIES = [
 
 // ── Handler implementations ─────────────────────────────────────
 
+/**
+ * A minted sandbox governance-agent credential stands for the seller's side
+ * of the governance loop only (governance-agent-credentials.ts). Buyer-side
+ * operations reject it even though the tenant router already filters them.
+ */
+function sellerCredentialBuyerSideError(ctx: TrainingContext, task: string) {
+  if (!ctx.governanceAgentCredential) return undefined;
+  return {
+    errors: [{
+      code: 'PERMISSION_DENIED',
+      message: `A seller governance credential cannot call ${task}; use a buyer credential.`,
+    }],
+  };
+}
+
+function sellerCredentialPlanScopeError(ctx: TrainingContext, planId: string | undefined) {
+  if (!ctx.governanceAgentCredential) return undefined;
+  if (isGovernanceAgentCredentialPlanInScope(ctx.governanceAgentCredential, planId)) return undefined;
+  return {
+    errors: [{
+      code: 'PERMISSION_DENIED',
+      message: 'This seller governance credential is scoped to the plans of the hosted run that issued it.',
+    }],
+  };
+}
+
 export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
+  const sellerCredentialError = sellerCredentialBuyerSideError(ctx, 'sync_plans');
+  if (sellerCredentialError) return sellerCredentialError;
   if (!ctx.authenticatedAgentUrl) {
     return { errors: [{ code: 'PERMISSION_DENIED', message: 'sync_plans requires an authenticated buyer agent.' }] };
   }
@@ -1420,6 +1449,13 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       ? (req.governance_phase as GovernancePhase)
       : 'purchase';
   const phase: GovernancePhase = binding === 'proposed' ? 'intent' : requestedExecutionPhase;
+  if (ctx.governanceAgentCredential) {
+    // A seller credential runs execution checks, on its own run's plans only.
+    const credentialError = binding !== 'committed'
+      ? sellerCredentialBuyerSideError(ctx, 'check_governance intent checks')
+      : sellerCredentialPlanScopeError(ctx, planId);
+    if (credentialError) return credentialError;
+  }
   const targetAudience = binding === 'committed'
     ? priorCheck?.targetAudience ?? ''
     : req.target_agent ?? '';
@@ -2402,6 +2438,8 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
 }
 
 export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
+  const sellerCredentialError = sellerCredentialBuyerSideError(ctx, 'report_plan_outcome');
+  if (sellerCredentialError) return sellerCredentialError;
   const req = args as ReportPlanOutcomeInput;
   let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = req.plan_id;
@@ -3112,6 +3150,14 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
   if (!ctx.authenticatedAgentUrl) {
     return { errors: [{ code: 'PERMISSION_DENIED', message: 'report_plan_adjustment requires an authenticated agent.' }] };
   }
+  if (ctx.governanceAgentCredential) {
+    // Seller-side only: report, never review (review is the plan owner's).
+    const reviewError = req.action === 'review'
+      ? sellerCredentialBuyerSideError(ctx, 'report_plan_adjustment review')
+      : undefined;
+    const scopeError = reviewError ?? sellerCredentialPlanScopeError(ctx, req.plan_id);
+    if (scopeError) return scopeError;
+  }
 
   if (req.action === 'review') {
     if (typeof req.adjustment_id !== 'string' || req.adjustment_id.length === 0) {
@@ -3454,6 +3500,8 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
 }
 
 export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
+  const sellerCredentialError = sellerCredentialBuyerSideError(ctx, 'get_plan_audit_logs');
+  if (sellerCredentialError) return sellerCredentialError;
   const req = args as GetPlanAuditLogsInput;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planIds = [...(req.plan_ids || []), ...(req.plan_id ? [req.plan_id] : [])];
