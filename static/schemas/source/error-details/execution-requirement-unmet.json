@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/error-details/execution-requirement-unmet.json",
   "title": "Execution Requirement Unmet Details",
-  "description": "Experimental (`media_buy.execution_requirements`). Details shape a seller that declares `execution_requirements` MUST use for a `VALIDATION_ERROR` returned because a package does not satisfy an `event_source` or `catalog` entry in its product's `execution_requirements`. Unmet `downstream_connection` requirements use `AUTHORIZATION_REQUIRED` with `error-details/authorization-required.json` instead. `error.field` names the first unmet binding; `unmet_requirements[]` lists every unmet requirement found.",
+  "description": "Experimental (`media_buy.execution_requirements`). Details shape a seller that declares `execution_requirements` MUST use for a `VALIDATION_ERROR` returned because a buyer-supplied package does not satisfy an `event_source` or `catalog` entry in its product's `execution_requirements`. Unmet `downstream_connection` requirements use `AUTHORIZATION_REQUIRED` with `error-details/authorization-required.json` instead. `error.field` names the first unmet binding; `unmet_requirements[]` lists every unmet requirement found. A seller that also emits `issues[]` SHOULD emit one entry per unmet requirement, in the same order.",
   "type": "object",
   "properties": {
     "unmet_requirements": {
@@ -20,7 +20,7 @@
           "field": {
             "type": "string",
             "minLength": 1,
-            "description": "Request path where the resource binds, in the same JSONPath-lite form as `error.field`: `packages[i].optimization_goals` or `packages[i].catalogs` on `create_media_buy`; `new_packages[i].…` or `packages[i].…` on `update_media_buy`."
+            "description": "Request path where the resource binds, in the same JSONPath-lite form as `error.field`: `packages[i].optimization_goals` or `packages[i].catalogs` on `create_media_buy`; `new_packages[i].…` or `packages[i].…` on `update_media_buy`. For `not_found` and `ineligible`, sellers SHOULD point at the offending entry (for example `packages[0].optimization_goals[1].event_sources[0]` or `packages[0].catalogs[0]`)."
           },
           "reason": {
             "type": "string",
@@ -46,7 +46,10 @@
           "product_id": "social_conversions_feed",
           "field": "packages[0].optimization_goals",
           "reason": "not_bound",
-          "requirement": { "kind": "event_source", "event_types": ["purchase"] }
+          "requirement": {
+            "kind": "event_source",
+            "event_types": ["purchase"]
+          }
         }
       ]
     }

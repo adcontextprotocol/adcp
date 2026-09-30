@@ -9,8 +9,8 @@
   "oneOf": [
     {
       "type": "object",
-      "title": "Event source requirement",
-      "description": "Each package needs a conversion event source. Satisfied when at least one `optimization_goals[]` entry of `kind: \"event\"` on the package has an `event_sources[]` entry referencing an event source available to the account (registered via `sync_event_sources`, or seller-managed under `conversion_tracking.platform_managed: true`) with an `event_type` accepted here.",
+      "title": "Event Source Execution Requirement",
+      "description": "Each package needs event optimization fed by a conversion event source; declare it only when the product requires event optimization. Satisfied when an `optimization_goals[]` entry of `kind: \"event\"` that the seller will use has a used `event_sources[]` entry referencing an event source available to the account (registered via `sync_event_sources`, or the seller-managed source it returns under `conversion_tracking.platform_managed: true`) with an `event_type` accepted here.",
       "properties": {
         "kind": {
           "type": "string",
@@ -34,7 +34,7 @@
     },
     {
       "type": "object",
-      "title": "Catalog requirement",
+      "title": "Catalog Execution Requirement",
       "description": "Each package needs a catalog. Satisfied by a `packages[].catalogs[]` entry whose `type` is in `catalog_types`. App promotion uses `[\"app\"]`; app items carry `app_id`, `bundle_id`, `apple_id`, and `store_url`. Every listed type MUST also appear in the product's `catalog_types`.",
       "properties": {
         "kind": {
@@ -59,15 +59,15 @@
     },
     {
       "type": "object",
-      "title": "Downstream connection requirement",
-      "description": "The product needs a seller-side platform connection or grant, such as the advertiser account or the publisher identity the ads run as. Satisfied by completing the connection, not by a request field; a missing, pending, expired, or revoked connection fails with `AUTHORIZATION_REQUIRED` per `error-details/authorization-required.json`. Because a declared list is complete, a seller that would reject for a missing connection, including the advertiser account, MUST declare it. With several eligible connected identities, the seller applies its documented default.",
+      "title": "Downstream Connection Execution Requirement",
+      "description": "The product needs a seller-side platform connection or grant, such as the advertiser account or the publisher identity the ads run as. Satisfied by completing the connection, not by a request field; a missing, pending, expired, or revoked connection fails with `AUTHORIZATION_REQUIRED` per `error-details/authorization-required.json`. A connection needed by every package MUST be declared here; one needed only by some formats stays in that format declaration's `required_connections`. With several eligible connected identities, the seller applies its documented default.",
       "properties": {
         "kind": {
           "type": "string",
           "const": "downstream_connection"
         },
         "connection": {
-          "description": "The required connection. Because the declaration is account-independent, `status` is omitted or `unknown` and `resource_ref` MUST be omitted.",
+          "description": "The required connection. Account-independent: `status` is omitted or `unknown`; `resource_ref`, `connection_id`, and `expires_at` MUST be omitted; `required_for`, when present, includes `create_media_buy`.",
           "allOf": [
             {
               "$ref": "/schemas/core/downstream-connection-requirement.json"
@@ -76,10 +76,25 @@
               "properties": {
                 "status": {
                   "const": "unknown"
+                },
+                "required_for": {
+                  "contains": {
+                    "const": "create_media_buy"
+                  }
                 }
               },
               "not": {
-                "required": ["resource_ref"]
+                "anyOf": [
+                  {
+                    "required": ["resource_ref"]
+                  },
+                  {
+                    "required": ["connection_id"]
+                  },
+                  {
+                    "required": ["expires_at"]
+                  }
+                ]
               }
             }
           ]

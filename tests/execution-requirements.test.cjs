@@ -73,6 +73,17 @@ function validationMessage(validate) {
   return JSON.stringify(validate.errors, null, 2);
 }
 
+function assertMissingProperty(validate, property) {
+  assert.ok(
+    (validate.errors || []).some(
+      (error) =>
+        error.keyword === "required" &&
+        error.params.missingProperty === property,
+    ),
+    `expected a missing ${property} error, got ${validationMessage(validate)}`,
+  );
+}
+
 test("base product fixture is valid without execution requirements", async () => {
   const validate = await compileSchema("/schemas/core/product.json");
   assert.equal(validate(BASE_PRODUCT), true, validationMessage(validate));
@@ -99,6 +110,7 @@ test("an event_source requirement requires conversion_tracking on the product", 
     false,
     "event_source requirement without conversion_tracking must be rejected",
   );
+  assertMissingProperty(validate, "conversion_tracking");
 });
 
 test("a catalog requirement requires catalog_types on the product", async () => {
@@ -111,6 +123,7 @@ test("a catalog requirement requires catalog_types on the product", async () => 
     false,
     "catalog requirement without catalog_types must be rejected",
   );
+  assertMissingProperty(validate, "catalog_types");
 });
 
 test("requirement variants reject malformed entries", async () => {
@@ -209,6 +222,7 @@ test("canonical products and field projection carry execution_requirements", asy
     false,
     "compact catalog requirement without catalog_types must be rejected",
   );
+  assertMissingProperty(validate, "catalog_types");
 });
 
 test("connection requirements stay account-independent", async () => {
@@ -246,5 +260,34 @@ test("connection requirements stay account-independent", async () => {
     }),
     false,
     "resource_ref discloses an account resource and must be omitted",
+  );
+  for (const [key, value] of [
+    ["connection_id", "conn_123"],
+    ["expires_at", "2026-12-31T00:00:00Z"],
+  ]) {
+    assert.equal(
+      validate({ ...base, connection: { ...base.connection, [key]: value } }),
+      false,
+      `${key} describes one account's grant and must be omitted`,
+    );
+  }
+  assert.equal(
+    validate({
+      ...base,
+      connection: { ...base.connection, required_for: ["list_creatives"] },
+    }),
+    false,
+    "an execution requirement connection must be required for create_media_buy",
+  );
+  assert.equal(
+    validate({
+      ...base,
+      connection: {
+        ...base.connection,
+        required_for: ["create_media_buy", "sync_creatives"],
+      },
+    }),
+    true,
+    validationMessage(validate),
   );
 });
