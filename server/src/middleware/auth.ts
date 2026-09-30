@@ -475,7 +475,7 @@ export async function validateWorkOSBearerJWT(
     emailVerified: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  }, selectedOrganizationForAuthentication(req, verified.orgId), loadSnapshot);
+  }, selectedOrganizationForUserAuthentication(req, verified.orgId), loadSnapshot);
 
   const tokenExpMs = verified.expiresAt ? verified.expiresAt * 1000 : Infinity;
   const cacheUntil = Math.min(now + BEARER_JWT_CACHE_TTL_MS, tokenExpMs);
@@ -835,6 +835,18 @@ export function invalidateSessionsForUsers(workosUserIds: string[]): void {
 class InvalidAuthorizationCredentialError extends Error {}
 export { ConflictingOrganizationSelectionError, selectedOrganizationForAuthentication } from '../auth/organization-selection.js';
 
+/** Admin route organization IDs identify the account being managed, not the
+ * organization selected by the caller's credential. Keep explicit headers
+ * checked against the provider selection on these routes. */
+function selectedOrganizationForUserAuthentication(req: Request, providerOrg?: string): string | null {
+  const path = req.originalUrl.split('?', 1)[0];
+  const isAdminRoute = path.startsWith('/admin/') || path.startsWith('/api/admin/');
+  return selectedOrganizationForAuthentication(
+    isAdminRoute ? { headers: req.headers } : req,
+    providerOrg,
+  );
+}
+
 /** Hydrate a new request object; never mutate the provider object in a cache. */
 async function hydrateAuthenticatedUser(
   user: WorkOSUser, organizationId: string | null,
@@ -1093,7 +1105,7 @@ async function requireAuthWithSnapshot(
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session');
       req.user = await hydrateAuthenticatedUser(
-        cached.user, selectedOrganizationForAuthentication(req, cached.orgId), loadSnapshot,
+        cached.user, selectedOrganizationForUserAuthentication(req, cached.orgId), loadSnapshot,
       );
       req.accessToken = cached.accessToken;
 
@@ -1298,7 +1310,7 @@ async function requireAuthWithSnapshot(
     }
 
     const hydrated = await hydrateAuthenticatedUser(
-      user, selectedOrganizationForAuthentication(req, result.organizationId), loadSnapshot,
+      user, selectedOrganizationForUserAuthentication(req, result.organizationId), loadSnapshot,
     );
 
     // Retain authentication only; derived request authority is never cached.
@@ -2070,7 +2082,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session (optional auth)');
       req.user = await hydrateAuthenticatedUser(
-        cached.user, selectedOrganizationForAuthentication(req, cached.orgId),
+        cached.user, selectedOrganizationForUserAuthentication(req, cached.orgId),
       );
       req.accessToken = cached.accessToken;
 
@@ -2214,7 +2226,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       }
 
       const hydrated = await hydrateAuthenticatedUser(
-        user, selectedOrganizationForAuthentication(req, result.organizationId),
+        user, selectedOrganizationForUserAuthentication(req, result.organizationId),
       );
 
       // Retain authentication only; derived request authority is never cached.
