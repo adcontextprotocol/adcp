@@ -1197,11 +1197,7 @@ async function requireAuthWithSnapshot(
       // hasn't written its refreshed session to the DB yet.
       if (refreshFailed) {
         try {
-          let sharedSession = await getRefreshedSession(cacheKey);
-          if (!sharedSession) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-            sharedSession = await getRefreshedSession(cacheKey);
-          }
+          const sharedSession = await findSharedRefreshedSession(cacheKey);
           if (sharedSession) {
             logger.info({ path: req.path }, 'Found shared refreshed session from another machine');
 
@@ -1267,13 +1263,7 @@ async function requireAuthWithSnapshot(
 
       // Remove any stale positive cache entry and mark session as dead
       // so subsequent requests skip the expensive WorkOS refresh + DB fallback
-      sessionCache.delete(cacheKey);
-      // LRU eviction: delete oldest entry when at capacity
-      if (deadSessionCache.size >= DEAD_SESSION_MAX_SIZE) {
-        const oldest = deadSessionCache.keys().next().value;
-        if (oldest) deadSessionCache.delete(oldest);
-      }
-      deadSessionCache.set(cacheKey, Date.now());
+      markSessionDead(cacheKey);
       if (isHtmlRequest) {
         return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
       }
@@ -1982,6 +1972,139 @@ function extractSealedSession(req: Request): string | undefined {
   return typeof sessionCookie === 'string' && sessionCookie ? sessionCookie : undefined;
 }
 
+const SHARED_REFRESH_RETRY_MS = 200;
+
+/**
+ * Look up a session another request already rotated. That request may not
+ * have stored its result yet, so wait once before giving up.
+ */
+async function findSharedRefreshedSession(cacheKey: string): Promise<string | undefined> {
+  const shared = await getRefreshedSession(cacheKey);
+  if (shared) return shared;
+  await new Promise(resolve => setTimeout(resolve, SHARED_REFRESH_RETRY_MS));
+  return getRefreshedSession(cacheKey);
+}
+
+function markSessionDead(cacheKey: string): void {
+  sessionCache.delete(cacheKey);
+  // LRU eviction: delete oldest entry when at capacity
+  if (deadSessionCache.size >= DEAD_SESSION_MAX_SIZE) {
+    const oldest = deadSessionCache.keys().next().value;
+    if (oldest) deadSessionCache.delete(oldest);
+  }
+  deadSessionCache.set(cacheKey, Date.now());
+}
+
+function clearSessionCookie(res: Response): void {
+  res.clearCookie('wos-session', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
+    sameSite: 'lax',
+    path: '/',
+  });
+}
+
+class PageSessionUnavailableError extends Error {
+  constructor() {
+    super('Session refresh temporarily unavailable');
+    this.name = 'PageSessionUnavailableError';
+  }
+}
+
+export interface PageSessionUser {
+  id: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
+export interface PageSession {
+  user: PageSessionUser | null;
+  /** WorkOS definitively rejected the cookie, and the response now clears it. */
+  cleared: boolean;
+}
+
+async function pageSessionUser(sealedSession: string): Promise<PageSessionUser | null> {
+  const result = await workos.userManagement.loadSealedSession({
+    sessionData: sealedSession,
+    cookiePassword: WORKOS_COOKIE_PASSWORD,
+  }).authenticate();
+  return result.authenticated && result.user ? result.user : null;
+}
+
+/** Null only for a terminal WorkOS refresh failure; anything else throws. */
+async function refreshPageSession(sealedSession: string): Promise<string | null> {
+  const result = await workos.userManagement.loadSealedSession({
+    sessionData: sealedSession,
+    cookiePassword: WORKOS_COOKIE_PASSWORD,
+  }).refresh({ cookiePassword: WORKOS_COOKIE_PASSWORD });
+  if (result.authenticated && result.sealedSession) return result.sealedSession;
+  if (!result.authenticated && 'retryable' in result && result.retryable === false) return null;
+  throw new PageSessionUnavailableError();
+}
+
+async function authenticatePageSession(
+  sessionCookie: string, cacheKey: string, res: Response,
+): Promise<PageSessionUser | null> {
+  const user = await pageSessionUser(sessionCookie);
+  if (user) return user;
+
+  let refreshed = await refreshPageSession(sessionCookie);
+  if (!refreshed) {
+    // The refresh token is single-use; another request (or the other domain's
+    // copy of this cookie) may already have rotated it.
+    const shared = await findSharedRefreshedSession(cacheKey);
+    if (!shared) return null;
+    const sharedUser = await pageSessionUser(shared);
+    if (sharedUser) {
+      setSessionCookie(res, shared);
+      return sharedUser;
+    }
+    refreshed = await refreshPageSession(shared);
+    if (!refreshed) return null;
+  }
+
+  setSessionCookie(res, refreshed);
+  // Await so concurrent requests holding the old cookie can find the rotation.
+  await storeRefreshedSession(cacheKey, refreshed);
+  return pageSessionUser(refreshed);
+}
+
+/**
+ * Resolve the browser session for a server-rendered page. Pages never reject:
+ * an unusable session renders logged out. Refreshes are shared like the API
+ * middleware's so other copies of the cookie can recover. A cookie WorkOS
+ * definitively rejects is cleared; otherwise optional-auth API calls from the
+ * page would answer 401 for as long as the browser keeps it. Provider outages
+ * and unknown failures keep the cookie.
+ */
+export async function resolvePageSession(req: Request, res: Response): Promise<PageSession> {
+  const sessionCookie = req.cookies?.['wos-session'];
+  // codeql[js/user-controlled-bypass] - session cookie is verified cryptographically by WorkOS sealed session
+  if (typeof sessionCookie !== 'string' || !sessionCookie) return { user: null, cleared: false };
+
+  const cacheKey = hashSessionCookie(sessionCookie);
+  const cached = sessionCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    if (cached.newSealedSession) setSessionCookie(res, cached.newSealedSession);
+    // Callers enrich the page user in place; the cached user is frozen.
+    return { user: { ...cached.user }, cleared: false };
+  }
+
+  try {
+    const user = await authenticatePageSession(sessionCookie, cacheKey, res);
+    if (user) return { user, cleared: false };
+  } catch (error) {
+    logger.debug({ err: error }, 'Page session unavailable');
+    return { user: null, cleared: false };
+  }
+
+  logger.debug('Clearing session cookie rejected by WorkOS');
+  markSessionDead(cacheKey);
+  clearSessionCookie(res);
+  return { user: null, cleared: true };
+}
+
 /**
  * Optional auth permits anonymous requests only when no credential is supplied.
  * Invalid presented credentials return 401; verification or authorization
@@ -2142,7 +2265,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       // If refresh failed, check DB for a shared refresh from another machine
       if (refreshFailed) {
         try {
-          const sharedSession = await getRefreshedSession(cacheKey);
+          const sharedSession = await findSharedRefreshedSession(cacheKey);
           if (sharedSession) {
             logger.debug('Found shared refreshed session (optional auth)');
             const sharedSessionObj = workos.userManagement.loadSealedSession({
@@ -2190,13 +2313,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     if (!result.authenticated || !('user' in result) || !result.user) {
       // All refresh attempts failed — mark session as dead to avoid
       // expensive retries on every subsequent request
-      // LRU eviction: delete oldest entry when at capacity
-      if (deadSessionCache.size >= DEAD_SESSION_MAX_SIZE) {
-        const oldest = deadSessionCache.keys().next().value;
-        if (oldest) deadSessionCache.delete(oldest);
-      }
-      deadSessionCache.set(cacheKey, Date.now());
-      sessionCache.delete(cacheKey);
+      markSessionDead(cacheKey);
       return res.status(401).json({ error: 'Invalid session', login_url: '/auth/login' });
     }
 

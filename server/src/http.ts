@@ -78,7 +78,7 @@ import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
 import { decodeHtmlEntities } from "./utils/html-entities.js";
-import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, switchSessionOrganization, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, resolvePageSession, type PageSession, type PageSessionUser, switchSessionOrganization, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter, agentCardValidationRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
 import { sendNewsletterConfirmation } from "./notifications/email.js";
@@ -1151,75 +1151,29 @@ function getCsrfScriptVersion(): string {
 }
 
 /**
- * Get user info from request for HTML config injection.
- * Checks dev mode first, then WorkOS session.
- * If session is refreshed, updates the cookie in the response.
+ * Resolve the page session for HTML config injection.
+ * Checks dev mode first, then WorkOS session. Refreshed sessions update the
+ * cookie; a cookie WorkOS definitively rejects is cleared.
  */
-async function getUserFromRequest(
-  req: express.Request,
-  res?: express.Response
-): Promise<{ id?: string; email: string; firstName?: string | null; lastName?: string | null } | null> {
+async function getPageSession(req: express.Request, res: express.Response): Promise<PageSession> {
   // Check dev mode first
   if (isDevModeEnabled()) {
     const devUser = getDevUser(req);
     if (devUser) {
-      return devUser;
+      return { user: devUser, cleared: false };
     }
   }
 
-  // Then check WorkOS session
-  const sessionCookie = req.cookies?.['wos-session'];
-  // codeql[js/user-controlled-bypass] - session cookie is verified cryptographically by WorkOS sealed session
-  if (sessionCookie && AUTH_ENABLED && workos) {
-    try {
-      const session = workos.userManagement.loadSealedSession({
-        sessionData: sessionCookie,
-        cookiePassword: WORKOS_COOKIE_PASSWORD,
-      });
+  if (!AUTH_ENABLED) return { user: null, cleared: false };
+  return resolvePageSession(req, res);
+}
 
-      // Try to authenticate with the current session
-      let authResult = await session.authenticate();
-
-      // If authentication failed (e.g., expired token), try to refresh
-      if (!authResult.authenticated || !authResult.user) {
-        try {
-          const refreshResult = await session.refresh({
-            cookiePassword: WORKOS_COOKIE_PASSWORD,
-          });
-
-          if (refreshResult.authenticated && refreshResult.sealedSession) {
-            // Update the cookie with the refreshed session
-            if (res) {
-              res.cookie('wos-session', refreshResult.sealedSession, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
-                path: '/',
-                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-              });
-            }
-
-            // Re-authenticate with the new session
-            const newSession = workos.userManagement.loadSealedSession({
-              sessionData: refreshResult.sealedSession,
-              cookiePassword: WORKOS_COOKIE_PASSWORD,
-            });
-            authResult = await newSession.authenticate();
-          }
-        } catch {
-          // Refresh failed - continue without user
-        }
-      }
-
-      if (authResult.authenticated && authResult.user) {
-        return authResult.user;
-      }
-    } catch {
-      // Session invalid or expired - continue without user
-    }
-  }
-
-  return null;
+/** Get user info from request for HTML config injection. */
+async function getUserFromRequest(
+  req: express.Request,
+  res: express.Response
+): Promise<PageSessionUser | null> {
+  return (await getPageSession(req, res)).user;
 }
 
 function stripLegacyBrandContext(manifest: Record<string, unknown>): Record<string, unknown> {
@@ -1544,7 +1498,9 @@ export class HTTPServer {
         html = await this.injectHomepageMemberCount(html);
 
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
-        const user = await getUserFromRequest(req, res);
+        const session = await getPageSession(req, res);
+        if (this.rebridgeIfSessionCleared(req, res, session)) return;
+        const user = session.user;
         await enrichUserWithMembership(user);
         await enrichUserWithAdmin(user);
 
@@ -1696,11 +1652,26 @@ export class HTTPServer {
     if (!req.headers.cookie && !isTopLevelDocumentNavigation) return false;
 
     if (this.isAdcpDomain(req) && !req.cookies?.['wos-session'] && !req.cookies?.['bridge-checked']) {
-      const currentUrl = `https://${req.hostname}${req.originalUrl}`;
-      res.redirect(`https://agenticadvertising.org/auth/bridge?return_to=${encodeURIComponent(currentUrl)}`);
+      this.redirectThroughBridge(req, res);
       return true;
     }
     return false;
+  }
+
+  // The AdCP cookie is a copy of the AAO session, and either copy can rotate
+  // the shared refresh token. When WorkOS rejects the AdCP copy, bridge once
+  // more to pick up the current AAO session. The return marker stops a loop
+  // when the AAO session is dead too.
+  private rebridgeIfSessionCleared(req: express.Request, res: express.Response, session: PageSession): boolean {
+    if (!session.cleared || !this.isAdcpDomain(req)) return false;
+    if (req.query?.[HTTPServer.BRIDGE_CHECK_PARAM] === '1') return false;
+    this.redirectThroughBridge(req, res);
+    return true;
+  }
+
+  private redirectThroughBridge(req: express.Request, res: express.Response): void {
+    const currentUrl = `https://${req.hostname}${req.originalUrl}`;
+    res.redirect(`https://agenticadvertising.org/auth/bridge?return_to=${encodeURIComponent(currentUrl)}`);
   }
 
   private async injectHomepageMemberCount(html: string, memberDb = new MemberDatabase()): Promise<string> {
@@ -1733,7 +1704,9 @@ export class HTTPServer {
       if (this.bridgeIfNeeded(req, res)) return;
 
       // Get user from session (if authenticated), passing res to update cookie if session is refreshed
-      const user = await getUserFromRequest(req, res);
+      const session = await getPageSession(req, res);
+      if (this.rebridgeIfSessionCleared(req, res, session)) return;
+      const user = session.user;
       await enrichUserWithMembership(user);
       await enrichUserWithAdmin(user);
 
