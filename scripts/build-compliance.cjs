@@ -715,6 +715,20 @@ function main() {
     process.exit(1);
   }
 
+  // Buyer-fixture lifecycle-tools lint: a buyer storyboard's fixture publisher
+  // may only advertise compact lifecycle tools the fixture-publisher contract
+  // serves (universal/buyer-fixture-publisher.yaml > authoring_rules).
+  // Advertising a tool with no handler sends a correctly-gating buyer to a
+  // tool the publisher cannot answer. adcontextprotocol/adcp#7749.
+  try {
+    execSync('node scripts/lint-storyboard-buyer-fixture-lifecycle-tools.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Packaged-reference lint: authored storyboards may only point at files that
   // ship in the versioned compliance tree. This catches source-tree-only
   // references before they produce protocol tarballs that SDKs cannot load.

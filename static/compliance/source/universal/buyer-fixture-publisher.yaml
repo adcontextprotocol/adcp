@@ -15,7 +15,7 @@
 # declare data in `fixtures:`; runner authors implement this contract.
 
 id: buyer_fixture_publisher
-version: "0.1.0"
+version: "0.2.0"
 title: "Buyer fixture publisher contract"
 summary: "Contract for the runner-side reference sell-side agent used by buyer storyboards."
 
@@ -134,6 +134,29 @@ tool_handlers:
     response_source: "runner-internal state from prior create_media_buy"
     idempotent: false
     requires_idempotency_key: true
+
+# Authoring rules. Constraints on what a storyboard may declare in its
+# fixtures.fixture_publisher block. Enforced at build time by
+# scripts/lint-storyboard-buyer-fixture-lifecycle-tools.cjs.
+
+authoring_rules:
+  lifecycle_tools_constraint:
+    description: |
+      A storyboard's fixtures.fixture_publisher.capabilities.media_buy.lifecycle_tools
+      MUST be a subset of permitted_values.
+
+      The fixture publisher serves the declared capabilities verbatim, and a
+      buyer agent that gates correctly on lifecycle_tools calls every compact
+      tool it sees advertised. A fixture that advertises a tool with no entry
+      in tool_handlers therefore sends a conformant buyer to a tool the
+      publisher cannot answer, while a buyer that ignores the advertisement
+      passes.
+
+      permitted_values lists the compact lifecycle tools that have a handler
+      in tool_handlers. To use another compact tool in a storyboard, define
+      its handler in this contract first, then add it here.
+    permitted_values:
+      - list_products
 
 # Idempotency enforcement. The fixture publisher MUST enforce idempotency
 # on mutating tools (create_media_buy, sync_creatives) per the same rules

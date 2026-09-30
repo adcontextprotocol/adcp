@@ -1,5 +1,5 @@
 id: buyer_discovery
-version: "0.1.0"
+version: "0.1.1"
 title: "Buyer agent product discovery and candidate selection"
 protocol: media-buy
 category: buyer_discovery
@@ -64,8 +64,9 @@ fixtures:
       specialisms: ["sales-guaranteed", "sales-non-guaranteed"]
       media_buy:
         reporting_delivery_methods: ["webhook"]
-        supports_proposals: true
-        lifecycle_tools: ["list_products", "request_proposals", "buy_products", "accept_proposal", "control_media_buy"]
+        # Only the compact lifecycle tools the fixture-publisher contract serves —
+        # universal/buyer-fixture-publisher.yaml > authoring_rules (#7749).
+        lifecycle_tools: ["list_products"]
       adcp:
         supported_versions: ["3.2-beta.11", "3.1"]
     products:
