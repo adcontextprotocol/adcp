@@ -1,15 +1,15 @@
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/adcp-trust.json",
+  "$schema": "https://adcontextprotocol.org/schemas/trust/v1/trust.json",
   "last_updated": "2026-09-30T00:00:00Z",
   "agents": [
     {
-      "type": "governance",
       "url": "https://gov.sentinel-governance.example/t/7f3a9c",
+      "roles": ["adcp:governance"],
       "jwks_uri": "https://keys.sentinel-governance.example/t/7f3a9c/jwks.json"
     },
     {
-      "type": "governance",
       "url": "https://gov.sentinel-governance.example/t/b21e04",
+      "roles": ["adcp:governance"],
       "jwks_uri": "https://keys.sentinel-governance.example/t/b21e04/jwks.json"
     }
   ]

@@ -1,17 +1,17 @@
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/adcp-trust.json",
+  "$schema": "https://adcontextprotocol.org/schemas/trust/v1/trust.json",
   "last_updated": "2026-09-30T00:00:00Z",
   "agents": [
     {
-      "type": "sales",
       "url": "https://northwind.example/mcp/streamhaus",
+      "roles": ["adcp:sales"],
       "jwks_uri": "https://keys.northwind.example/jwks/streamhaus.json"
     },
     {
-      "type": "sales",
       "url": "https://northwind.example/mcp/pinnacle-news",
+      "roles": ["adcp:sales"],
       "jwks_uri": "https://keys.northwind.example/jwks/pinnacle-news.json"
     }
   ],
-  "sells_for_url": "https://northwind.example/.well-known/adcp-trust-sells-for.json"
+  "acknowledgements_url": "https://northwind.example/.well-known/trust-acknowledgements.json"
 }

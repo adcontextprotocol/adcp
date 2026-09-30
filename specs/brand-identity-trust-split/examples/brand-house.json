@@ -1,18 +1,18 @@
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/adcp-trust.json",
+  "$schema": "https://adcontextprotocol.org/schemas/trust/v1/trust.json",
   "last_updated": "2026-09-30T00:00:00Z",
   "exclusive_grants": true,
-  "authorized_operators": [
+  "grants": [
     {
-      "domain": "pinnacle-agency.example",
-      "brands": ["nova_cola", "nova_snacks"],
+      "grantee": "pinnacle-agency.example",
+      "scopes": ["adcp:media_buying", "adcp:creative_generation"],
       "countries": ["US", "CA"],
-      "scopes": ["media_buying", "creative_generation"],
-      "valid_until": "2027-06-30T00:00:00Z"
+      "valid_until": "2027-06-30T00:00:00Z",
+      "profiles": { "adcp": { "brands": ["nova_cola", "nova_snacks"] } }
     },
     {
-      "domain": "sentinel-governance.example",
-      "scopes": ["governance"],
+      "grantee": "sentinel-governance.example",
+      "scopes": ["adcp:governance"],
       "agents": [{ "url": "https://gov.sentinel-governance.example/t/7f3a9c" }]
     }
   ]

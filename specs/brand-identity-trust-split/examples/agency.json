@@ -1,17 +1,17 @@
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/adcp-trust.json",
+  "$schema": "https://adcontextprotocol.org/schemas/trust/v1/trust.json",
   "last_updated": "2026-09-30T00:00:00Z",
   "agents": [
     {
-      "type": "buying",
       "url": "https://agent.pinnacle-agency.example/adcp",
+      "roles": ["adcp:buying"],
       "jwks_uri": "https://agent.pinnacle-agency.example/.well-known/jwks.json"
     }
   ],
-  "authorized_operators": [
+  "grants": [
     {
-      "domain": "buyhub.example",
-      "scopes": ["media_buying"],
+      "grantee": "buyhub.example",
+      "scopes": ["adcp:media_buying"],
       "agents": [{ "url": "https://api.buyhub.example/adcp" }],
       "valid_until": "2027-01-01T00:00:00Z"
     }
