@@ -519,7 +519,7 @@ export function createCommitteeRouters(): {
       if (existingGroup?.slug === 'aao-admin') {
         return res.status(405).json({
           error: 'aao_admin_dedicated_endpoint_required',
-          message: 'AAO site-admin group metadata is not managed through this endpoint',
+          message: 'The AgenticAdvertising.org site-admin group settings and leaders cannot be edited. Grant or revoke site-admin access with POST /api/admin/aao-admin/grant or /api/admin/aao-admin/revoke.',
         });
       }
 
