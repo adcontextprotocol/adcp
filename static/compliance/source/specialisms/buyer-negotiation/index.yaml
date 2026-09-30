@@ -1,5 +1,5 @@
 id: buyer_negotiation
-version: "0.1.0"
+version: "0.1.1"
 title: "Buyer agent proposal negotiation and terms handling"
 protocol: media-buy
 category: buyer_negotiation
@@ -62,13 +62,32 @@ fixtures:
         supported_versions: ["3.1"]
     products:
       - product_id: "ctv_premium_guaranteed"
+        name: "Premium CTV — Guaranteed"
+        description: "Guaranteed 30-second spots across premium connected-TV apps."
+        publisher_properties:
+          - publisher_domain: "streamhaus.example"
+            selection_type: "all"
+        format_options:
+          - format_option_id: "video_30s_ctv"
+            format_kind: "video_hosted"
+            params:
+              duration_ms_exact: 30000
+              width: 1920
+              height: 1080
+        reporting_capabilities:
+          available_reporting_frequencies: ["daily"]
+          expected_delay_minutes: 240
+          timezone: "UTC"
+          supports_webhooks: true
+          available_metrics: ["impressions", "spend", "completed_views"]
+          date_range_support: "date_range"
         delivery_type: "guaranteed"
         channels: ["ctv"]
         pricing_options:
           - pricing_option_id: "cpm_guaranteed"
             pricing_model: "cpm"
             currency: "USD"
-            rate: 35.00
+            fixed_price: 35.00
     scenarios:
       proposal_returned:
         proposal_id: "prop_001"
