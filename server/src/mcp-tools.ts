@@ -17,6 +17,7 @@ import { fileURLToPath } from "url";
 import type { AgentType, MemberOffering } from "./types.js";
 import { BrandManager } from "./brand-manager.js";
 import { brandDb, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
+import { isDomainControlVerified } from "./services/brand-trust-fields.js";
 import { propertyDb } from "./db/property-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "./services/brandfetch.js";
@@ -1723,6 +1724,12 @@ export class MCPToolHandler {
           if (existing && existing.source_type === 'brand_json') {
             return {
               content: [{ type: "text", text: JSON.stringify({ error: "Cannot edit authoritative brand (managed via brand.json)" }) }],
+              isError: true,
+            };
+          }
+          if (existing && isDomainControlVerified(existing)) {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ error: "This brand is managed by a verified member organization" }) }],
               isError: true,
             };
           }

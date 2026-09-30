@@ -12,6 +12,7 @@ import type {
   RelationshipTrust,
 } from '../types.js';
 import { isValidRelationshipTrust } from '../types.js';
+import { preserveBrandTrustFields, stripBrandTrustFields } from '../services/brand-trust-fields.js';
 
 /**
  * Brand-manifest keys that must not be accepted from caller-supplied
@@ -470,10 +471,18 @@ export function canSurfaceBrandForMember(
 
 // Column list for queries returning HostedBrand (aliases brands columns to match the interface)
 const HOSTED_BRAND_COLUMNS = `id, workos_organization_id, created_by_user_id, created_by_email,
-  domain AS brand_domain, brand_manifest AS brand_json,
+  domain AS brand_domain, brand_manifest AS brand_json, source_type,
   domain_verified, verification_token, is_public,
   manifest_orphaned, prior_owner_org_id,
   created_at, updated_at`;
+
+/** A hosted-brand create collided with a row the caller may not replace. */
+export class HostedBrandConflictError extends Error {
+  constructor(public readonly domain: string) {
+    super(`Brand ${domain} is already registered and cannot be replaced by this request`);
+    this.name = 'HostedBrandConflictError';
+  }
+}
 
 /**
  * Database operations for brands
@@ -495,14 +504,19 @@ export class BrandDatabase {
       ) VALUES ($1, $2, $3, $4, $5, $6, 'community', 'approved', $7)
       ON CONFLICT (domain) DO UPDATE SET
         brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
-        workos_organization_id = COALESCE(EXCLUDED.workos_organization_id, brands.workos_organization_id),
-        created_by_user_id = COALESCE(EXCLUDED.created_by_user_id, brands.created_by_user_id),
-        created_by_email = COALESCE(EXCLUDED.created_by_email, brands.created_by_email),
+        workos_organization_id = COALESCE(brands.workos_organization_id, EXCLUDED.workos_organization_id),
+        created_by_user_id = COALESCE(brands.created_by_user_id, EXCLUDED.created_by_user_id),
+        created_by_email = COALESCE(brands.created_by_email, EXCLUDED.created_by_email),
         brand_name = COALESCE(EXCLUDED.brand_name, brands.brand_name),
         is_public = COALESCE(EXCLUDED.is_public, brands.is_public),
         updated_at = NOW()
+      -- Never let a create replace a domain-attested row or take over
+      -- another creator's or organization's claim.
+      WHERE NOT ${DOMAIN_CONTROL_VERIFIED_SQL}
+        AND (brands.created_by_user_id IS NULL OR brands.created_by_user_id = EXCLUDED.created_by_user_id)
+        AND (brands.workos_organization_id IS NULL OR brands.workos_organization_id = EXCLUDED.workos_organization_id)
       RETURNING id, workos_organization_id, created_by_user_id, created_by_email,
-        domain AS brand_domain, brand_manifest AS brand_json,
+        domain AS brand_domain, brand_manifest AS brand_json, source_type,
         domain_verified, verification_token, is_public, created_at, updated_at`,
       [
         input.brand_domain.toLowerCase(),
@@ -514,6 +528,9 @@ export class BrandDatabase {
         input.is_public ?? true,
       ]
     );
+    if (!result.rows[0]) {
+      throw new HostedBrandConflictError(input.brand_domain.toLowerCase());
+    }
     return this.deserializeHostedBrand(result.rows[0]);
   }
 
@@ -859,9 +876,6 @@ export class BrandDatabase {
     assertValidBrandDomain(canonicalDomain);
     const canonicalHouseDomain = validateHouseDomainArg(input.house_domain, canonicalDomain);
     const sanitized = sanitizeBrandManifest(input.brand_manifest);
-    const persistedManifest = input.classification
-      ? { ...(sanitized ?? {}), classification: { ...input.classification } }
-      : sanitized;
 
     const client = await getClient();
     try {
@@ -874,6 +888,22 @@ export class BrandDatabase {
         [canonicalDomain],
       );
       const priorHouseDomain = priorResult.rows[0]?.house_domain ?? null;
+
+      // Only a brand.json crawled from the domain itself may set trust
+      // fields. Community and enriched writes keep whatever the row had.
+      let contentManifest = sanitized;
+      if (sanitized && input.source_type !== 'brand_json') {
+        const priorManifestResult = await client.query<{ brand_manifest: unknown }>(
+          'SELECT brand_manifest FROM brands WHERE domain = $1',
+          [canonicalDomain],
+        );
+        const rawPrior = priorManifestResult.rows[0]?.brand_manifest;
+        const priorManifest = (typeof rawPrior === 'string' ? JSON.parse(rawPrior) : rawPrior) as Record<string, unknown> | null | undefined;
+        contentManifest = preserveBrandTrustFields(sanitized, priorManifest);
+      }
+      const persistedManifest = input.classification
+        ? { ...(contentManifest ?? {}), classification: { ...input.classification } }
+        : contentManifest;
 
       const result = await client.query<DiscoveredBrand>(
         `INSERT INTO brands (
@@ -1480,7 +1510,10 @@ export class BrandDatabase {
     const canonicalDomain = canonicalizeBrandDomain(input.domain);
     assertValidBrandDomain(canonicalDomain);
     const canonicalHouseDomain = validateHouseDomainArg(input.house_domain, canonicalDomain);
-    const sanitizedManifest = sanitizeBrandManifest(input.brand_manifest);
+    // Community-created records are never domain-attested, so they carry no
+    // trust fields.
+    const sanitizedInput = sanitizeBrandManifest(input.brand_manifest);
+    const sanitizedManifest = sanitizedInput ? stripBrandTrustFields(sanitizedInput) : sanitizedInput;
 
     const client = await getClient();
     try {
@@ -1760,9 +1793,15 @@ export class BrandDatabase {
         const priorClassification = priorManifest && 'classification' in priorManifest
           ? priorManifest.classification
           : undefined;
-        const finalManifest = priorClassification !== undefined
-          ? { ...(sanitizedManifest ?? {}), classification: priorClassification }
+        // Content edits never add, change, or drop trust fields (agents,
+        // keys, authorized_operators, brand_refs). Those have dedicated
+        // writers; see services/brand-trust-fields.ts.
+        const contentManifest = sanitizedManifest
+          ? preserveBrandTrustFields(sanitizedManifest, priorManifest)
           : sanitizedManifest;
+        const finalManifest = priorClassification !== undefined
+          ? { ...(contentManifest ?? {}), classification: priorClassification }
+          : contentManifest;
         updates.push(`brand_manifest = $${paramIndex++}`);
         values.push(finalManifest ? JSON.stringify(finalManifest) : null);
       }
