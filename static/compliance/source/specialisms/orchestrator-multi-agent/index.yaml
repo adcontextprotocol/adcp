@@ -1,5 +1,5 @@
 id: orchestrator_multi_agent
-version: "0.1.0"
+version: "0.1.1"
 title: "Orchestrator multi-seller fan-out and reconciliation"
 protocol: media-buy
 category: orchestrator_multi_agent
@@ -57,7 +57,9 @@ fixtures:
     capabilities:
       supported_protocols: ["media_buy"]
       media_buy:
-        lifecycle_tools: ["list_products", "buy_products", "control_media_buy"]
+        # Only the compact lifecycle tools the fixture-publisher contract serves —
+        # universal/buyer-fixture-publisher.yaml > authoring_rules (#7749).
+        lifecycle_tools: ["list_products"]
       adcp:
         supported_versions: ["3.1"]
     seller_personas:
