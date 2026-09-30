@@ -1,0 +1,19 @@
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adcp-trust.json",
+  "last_updated": "2026-09-30T00:00:00Z",
+  "exclusive_grants": true,
+  "authorized_operators": [
+    {
+      "domain": "pinnacle-agency.example",
+      "brands": ["nova_cola", "nova_snacks"],
+      "countries": ["US", "CA"],
+      "scopes": ["media_buying", "creative_generation"],
+      "valid_until": "2027-06-30T00:00:00Z"
+    },
+    {
+      "domain": "sentinel-governance.example",
+      "scopes": ["governance"],
+      "agents": [{ "url": "https://gov.sentinel-governance.example/t/7f3a9c" }]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adcp-trust-sells-for.json",
+  "last_updated": "2026-09-30T00:00:00Z",
+  "sells_for": [
+    {
+      "publisher_domain": "streamhaus.example",
+      "agent_url": "https://northwind.example/mcp/streamhaus",
+      "delegation_type": "delegated"
+    },
+    {
+      "publisher_domain": "pinnacle-news.example",
+      "agent_url": "https://northwind.example/mcp/pinnacle-news"
+    }
+  ]
+}
