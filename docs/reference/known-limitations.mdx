@@ -44,6 +44,15 @@ Several gaps in the original AdCP 3.0 version of this page have since shipped: t
 - **No cross-currency media buy.** Each media buy uses a single ISO 4217 currency (see `core/price.json`). If the buyer's budget currency differs from the seller's pricing currency, the buy either uses a matching currency or is rejected. FX rate pinning, risk attribution, and cross-currency reporting are deferred to a future version.
 - **No protocol-level delivery-dispute flow.** When buyer and seller delivery numbers disagree, reconciliation happens out-of-band through the commercial relationship (backed by the audit trail on both sides). A structured dispute task is a candidate for future work. Reliable Reporting's `content_mismatch` consumer status is deliberately not that channel: it reports contract facts the accepted reporting configuration generation already fixed (a frozen media buy with no rows, a promised metric absent, the wrong currency), not a disagreement about counts. The shared lifecycle fields a dispute would need — `issue_state`, `opened_at`, `external_ref` — now exist on `reporting-status-issue.json`; unifying them with [billing authority](/docs/media-buy/advanced-topics/billing-authority) is tracked in [#7440](https://github.com/adcontextprotocol/adcp/issues/7440).
 
+## Compact product lifecycle
+
+The canonical Product returned by `list_products` and the proposal lifecycle is a closed, compact shape. Two legacy `get_products` Product members are deliberately absent from it in 3.2 and are deferred to 3.3:
+
+- **No per-product `audience_activation`, and no `audience_activation_methods` offer filter.** A compact-lifecycle buyer cannot see which activation methods a specific product accepts or filter offers by them. The seller-wide union remains on `get_adcp_capabilities.media_buy.audience_targeting.supported_activation_methods`, and `get_products` keeps the experimental per-product declaration and filter. 3.3 is expected to add both to the compact lifecycle together, so a filter never ranges over a field the product cannot carry.
+- **No `installments`.** A compact product can list its `collections` but not the specific installments it includes. `core/installment.json` still carries the deprecated `collection_id` shorthand alongside `collection_ref`; it will be reshaped to `collection_ref` only before it is added to the canonical Product, so the closed shape does not inherit a deprecated form.
+
+Request-specific configured offers are not a gap: canonical products carry no `is_custom` flag, and `expires_at` identifies them.
+
 ## Measurement and attribution
 
 - **Not an attribution protocol.** AdCP carries exposure records, identifiers where permitted, and the outcome signals that feed attribution, but it does not specify an attribution model. Media-mix modeling, multi-touch attribution, and incrementality testing live in the buyer's measurement stack — fed by AdCP data ([`report_usage`](/docs/accounts/tasks/report_usage) and task-level outputs) rather than computed by the protocol.

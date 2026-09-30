@@ -7467,14 +7467,11 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
 
 // Default list_products projection onto the closed core/canonical-product.json.
 // Legacy-only Product keys stay on get_products: audience_activation (the
-// experimental per-product declaration has no canonical counterpart; the
-// seller-wide union remains on get_adcp_capabilities) and collections /
-// installments / collection_targeting_allowed (the canonical product carries
-// no collection composition; collection-list effects surface as
-// list_applications). is_custom and targeting_resolution stay: they appear
-// only on configured products from targeting-aware discovery, where the
-// discovery guides document them even though canonical-product.json does not
-// define them yet. Resolving that conflict is a spec change, not a projection.
+// experimental per-product declaration has no canonical counterpart yet; the
+// seller-wide union remains on get_adcp_capabilities), installments (deferred
+// until installment.json drops the deprecated collection_id shorthand), and
+// is_custom (canonical products mark request-specific configured offers with
+// expires_at alone).
 const COMPACT_PRODUCT_FIELDS = new Set([
   'product_id', 'name', 'description', 'publisher_properties', 'channels',
   'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
@@ -7485,14 +7482,15 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'acceptance_policy_profile_ids',
   'demographic_targeting', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
-  'sponsored_placement_types', 'is_custom', 'overlay_support', 'media_buy_support', 'identity',
-  'targeting_resolution', 'ext',
+  'sponsored_placement_types', 'overlay_support', 'media_buy_support', 'identity',
+  'targeting_resolution', 'collections', 'collection_targeting_allowed', 'ext',
 ]);
 
 let canonicalReportingCapabilityFields: ReadonlySet<string> | undefined;
 
-/** The closed canonical reporting-capabilities shape omits legacy
- * product-scoped keys such as reporting_delivery_offering_ids. */
+/** Project reporting_capabilities onto the closed canonical
+ * reporting-capabilities properties (including
+ * reporting_delivery_offering_ids), dropping any legacy-only keys. */
 function compactReportingCapabilityFields(): ReadonlySet<string> {
   canonicalReportingCapabilityFields ??= new Set(Object.keys(
     (loadSourceSchema('core/canonical-reporting-capabilities.json').properties ?? {}) as Record<string, unknown>,
@@ -7524,6 +7522,15 @@ function compactLifecycleProduct(
     ? new Set(['product_id', 'name', ...requestedFields, ...requiredFields])
     : COMPACT_PRODUCT_FIELDS;
   const projected = pickCompactFields(product, selectedFields);
+  // A returned overlay_support.collection_list is only schema-valid alongside
+  // collection_targeting_allowed: true, so it overrides a narrower projection.
+  if (
+    isRecord(projected.overlay_support)
+    && projected.overlay_support.collection_list !== undefined
+    && product.collection_targeting_allowed !== undefined
+  ) {
+    projected.collection_targeting_allowed = product.collection_targeting_allowed;
+  }
   if (selectedFields.has('format_options') && Array.isArray(product.format_options)) {
     projected.format_options = product.format_options
       .filter(isRecord)
@@ -9234,7 +9241,6 @@ export function projectProductDiscoveryResult(
       requiredProductFields.add('media_buy_support');
     }
     if (isRecord(criteria?.targeting_overlay)) {
-      requiredProductFields.add('is_custom');
       requiredProductFields.add('expires_at');
       if (products.some(product => isRecord(product.targeting_resolution))) {
         requiredProductFields.add('targeting_resolution');
