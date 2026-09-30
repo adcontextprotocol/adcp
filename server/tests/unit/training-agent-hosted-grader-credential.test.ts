@@ -51,7 +51,6 @@ import {
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 
-const PUBLIC_TOKEN = 'test-token-hosted-grader-credential';
 const SELLER = 'https://seller.hosted-grader-7758.example/mcp';
 
 let base = '';
