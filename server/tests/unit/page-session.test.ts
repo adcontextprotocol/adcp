@@ -110,7 +110,7 @@ describe('resolvePageSession', () => {
 
     expect(response.body).toEqual({ user: 'user_01', cleared: false });
     expect(mocks.getRefreshedSession).toHaveBeenCalledTimes(2);
-    expect(mocks.getRefreshedSession).toHaveBeenCalledWith(hash('bridged-copy'));
+    expect(mocks.getRefreshedSession).toHaveBeenCalledWith(hash('bridged-copy'), { throwOnError: true });
     expect(sessionCookieHeader(response.headers)[0]).toMatch(/^wos-session=rotated-elsewhere;/);
   });
 
@@ -127,6 +127,18 @@ describe('resolvePageSession', () => {
     expect(cleared).toMatch(/^wos-session=;/);
     expect(cleared).toMatch(/Expires=Thu, 01 Jan 1970/);
     expect(cleared).toMatch(/HttpOnly/);
+    // A lost refresh race also answers invalid_grant, so every retry runs first.
+    expect(mocks.getRefreshedSession).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps the cookie when the shared refresh lookup fails', async () => {
+    session('expired-session');
+    mocks.getRefreshedSession.mockRejectedValue(new Error('connection terminated'));
+
+    const response = await page('expired-session');
+
+    expect(response.body).toEqual({ user: null, cleared: false });
+    expect(sessionCookieHeader(response.headers)).toEqual([]);
   });
 
   it('keeps the cookie through a retryable WorkOS failure', async () => {

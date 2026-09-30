@@ -1972,17 +1972,22 @@ function extractSealedSession(req: Request): string | undefined {
   return typeof sessionCookie === 'string' && sessionCookie ? sessionCookie : undefined;
 }
 
-const SHARED_REFRESH_RETRY_MS = 200;
-
 /**
  * Look up a session another request already rotated. That request may not
- * have stored its result yet, so wait once before giving up.
+ * have stored its result yet, so retry after each delay before giving up.
  */
-async function findSharedRefreshedSession(cacheKey: string): Promise<string | undefined> {
-  const shared = await getRefreshedSession(cacheKey);
-  if (shared) return shared;
-  await new Promise(resolve => setTimeout(resolve, SHARED_REFRESH_RETRY_MS));
-  return getRefreshedSession(cacheKey);
+async function findSharedRefreshedSession(
+  cacheKey: string,
+  { retryDelaysMs = [200], throwOnError = false }: { retryDelaysMs?: number[]; throwOnError?: boolean } = {},
+): Promise<string | undefined> {
+  const lookup = () => throwOnError ? getRefreshedSession(cacheKey, { throwOnError }) : getRefreshedSession(cacheKey);
+  let shared = await lookup();
+  for (const delay of retryDelaysMs) {
+    if (shared) break;
+    await new Promise(resolve => setTimeout(resolve, delay));
+    shared = await lookup();
+  }
+  return shared;
 }
 
 function markSessionDead(cacheKey: string): void {
@@ -2052,8 +2057,14 @@ async function authenticatePageSession(
   let refreshed = await refreshPageSession(sessionCookie);
   if (!refreshed) {
     // The refresh token is single-use; another request (or the other domain's
-    // copy of this cookie) may already have rotated it.
-    const shared = await findSharedRefreshedSession(cacheKey);
+    // copy of this cookie) may already have rotated it. WorkOS answers a lost
+    // race with the same invalid_grant as a dead session, and a null here
+    // clears the cookie, so wait longer than the API middleware and treat a
+    // failed lookup as unavailable rather than as "nothing stored".
+    const shared = await findSharedRefreshedSession(cacheKey, {
+      retryDelaysMs: [200, 800],
+      throwOnError: true,
+    });
     if (!shared) return null;
     const sharedUser = await pageSessionUser(shared);
     if (sharedUser) {
