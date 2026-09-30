@@ -61,6 +61,7 @@ requires_scenarios:
   - media_buy_seller/budget_cap_timezone_override_rejected
   - media_buy_seller/owner_sold_channel_carriage
   - media_buy_seller/collection_selection
+  - media_buy_seller/outcome_target_list_products_inert
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
