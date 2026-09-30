@@ -18941,6 +18941,25 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   return response;
 }
 
+/**
+ * Whether a stored activation is of `segmentId` and, when `dest` is given,
+ * deployed to that destination and destination seat. Callers match on these
+ * recorded fields rather than rebuilding the map key: the key shape has
+ * changed (`${segment}:${destination}`, then `${segment}:${destination}#${seat}`)
+ * and persisted sessions can hold either.
+ */
+function signalActivationMatches(
+  state: SignalActivationState,
+  segmentId: string,
+  dest?: Destination,
+): boolean {
+  if (state.signalAgentSegmentId !== segmentId) return false;
+  if (!dest) return true;
+  return state.destinationType === dest.type
+    && state.destinationId === (dest.type === 'agent' ? dest.agent_url : dest.platform)
+    && (state.account || undefined) === (dest.account || undefined);
+}
+
 export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ActivateSignalRequest & ToolArgs;
   const segmentId = req.signal_agent_segment_id || '';
@@ -19056,14 +19075,8 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   // key, so sessions persisted under the older account-less key shape are
   // still replaced on re-activation and removed on deactivation.
   const removeActivationsFor = (dest: Destination): void => {
-    const id = destId(dest);
     for (const [key, state] of session.signalActivations) {
-      if (
-        state.signalAgentSegmentId === segmentId
-        && state.destinationType === dest.type
-        && state.destinationId === id
-        && (state.account || undefined) === (dest.account || undefined)
-      ) {
+      if (signalActivationMatches(state, segmentId, dest)) {
         session.signalActivations.delete(key);
       }
     }
@@ -20528,10 +20541,22 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
       }
     }
 
-    // Validate signal_agent_segment_id exists if provided
+    // Validate signal_agent_segment_id against the account's activations.
+    // A usage record identifies a signal by its account and
+    // signal_agent_segment_id only; the report-usage schema has no
+    // destination or seat field. The record's account selects the session
+    // (activations are account-scoped, so another account's activations are
+    // never visible here), and any live deployment of the segment in that
+    // session satisfies the record, whatever its destination or seat. When a
+    // segment is live on several destinations, the usage counts against the
+    // signal and is not attributed to one deployment. Unknown, deactivated
+    // and other-account segments all get the same SIGNAL_NOT_FOUND, per the
+    // uniform not-found rule for that code.
     if (record.signal_agent_segment_id) {
-      const activation = session.signalActivations.get(record.signal_agent_segment_id);
-      if (!activation) {
+      const segmentId = record.signal_agent_segment_id;
+      const activated = [...session.signalActivations.values()]
+        .some(state => state.isLive && signalActivationMatches(state, segmentId));
+      if (!activated) {
         errors.push({ code: 'SIGNAL_NOT_FOUND', message: `Signal "${record.signal_agent_segment_id}" not found in session. Use activate_signal first.`, field: `usage[${i}].signal_agent_segment_id` });
         continue;
       }
