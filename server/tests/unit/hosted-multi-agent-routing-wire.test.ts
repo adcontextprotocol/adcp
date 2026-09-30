@@ -26,6 +26,11 @@ function capabilities(protocols: string[]) {
   };
 }
 
+const RESPONSES: Record<string, unknown> = {
+  sync_plans: { plans: [] },
+  get_products: { products: [], cache_scope: 'public' },
+};
+
 async function startAgent(name: string, protocols: string[], tools: string[]): Promise<{ url: string; seen: Seen[]; server: Server }> {
   const seen: Seen[] = [];
   const server = createServer(async (req: IncomingMessage, res) => {
@@ -37,24 +42,27 @@ async function startAgent(name: string, protocols: string[], tools: string[]): P
       res.writeHead(405).end();
       return;
     }
-    const msg = JSON.parse(body) as { id?: number | string; method: string; params?: { name?: string; arguments?: unknown } };
+    const msg = JSON.parse(body) as { id?: number | string; method: string; params?: { name?: string; protocolVersion?: string } };
     seen.push({ authorization: req.headers.authorization, method: msg.method, tool: msg.params?.name, body });
     if (msg.id === undefined) {
       res.writeHead(202).end();
       return;
     }
+    if (!['initialize', 'tools/list', 'tools/call'].includes(msg.method)) {
+      res.writeHead(200, { 'content-type': 'application/json' })
+        .end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'Method not found' } }));
+      return;
+    }
     let result: unknown;
     if (msg.method === 'initialize') {
-      result = { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name, version: '1.0.0' } };
+      result = { protocolVersion: msg.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name, version: '1.0.0' } };
     } else if (msg.method === 'tools/list') {
       result = {
         tools: ['get_adcp_capabilities', ...tools].map(t => ({ name: t, inputSchema: { type: 'object', properties: {} } })),
       };
     } else if (msg.method === 'tools/call') {
-      const structured = msg.params?.name === 'get_adcp_capabilities' ? capabilities(protocols) : { ok: true };
+      const structured = RESPONSES[msg.params?.name ?? ''] ?? (msg.params?.name === 'get_adcp_capabilities' ? capabilities(protocols) : {});
       result = { content: [{ type: 'text', text: JSON.stringify(structured) }], structuredContent: structured };
-    } else {
-      result = {};
     }
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }));
   });
@@ -133,6 +141,10 @@ describe('hosted multi-agent routing on the wire', () => {
     expect(governance.seen.some(r => r.tool === 'sync_plans')).toBe(true);
     expect(seller.seen.some(r => r.tool === 'sync_plans')).toBe(false);
     expect(seller.seen.some(r => r.tool === 'get_products')).toBe(true);
-    expect(result.storyboard_id).toBe('hosted_multi_agent_wire');
+    // Both routed steps actually executed, so the isolation checks above are
+    // not vacuous.
+    const steps = result.phases.flatMap(p => p.steps);
+    expect(steps.map(s => [s.step_id, s.skipped ?? false])).toEqual([['sync_plans', false], ['get_products', false]]);
+    expect(steps.every(s => s.passed)).toBe(true);
   }, 60_000);
 });

@@ -5781,12 +5781,16 @@ export function createMemberToolHandlers(
       const result = routing.kind === 'routed'
         ? await runStoryboard('', routing.storyboard, withHostedMultiAgentRouting(storyboardRunOptions, routing))
         : await runStoryboard(resolved.resolvedUrl, sb, storyboardRunOptions);
+      const governanceStepIds = new Set(routing.kind === 'routed' ? routing.governance_step_ids : []);
 
       // runStoryboard catches its own throws and surfaces them as step
       // errors. Detect OAuth on the first failing step before rendering a
       // long failure report the user can't act on.
       const oauthStepError = result.phases
         .flatMap(p => p.steps)
+        // Governance-routed steps hit the public governance agent, not the
+        // member's agent; its auth errors must not prompt an OAuth flow here.
+        .filter(s => !governanceStepIds.has(s.step_id))
         .find(s => isOAuthRequiredErrorMessage(s.error))?.error;
       if (oauthStepError) {
         logger.warn(
@@ -5853,7 +5857,8 @@ export function createMemberToolHandlers(
 
         for (const step of phase.steps) {
           const icon = step.skipped ? 'SKIP' : step.passed ? 'PASS' : 'FAIL';
-          output += `- **${step.title}** [${icon}] — \`${step.task}\` (${(step.duration_ms / 1000).toFixed(1)}s)\n`;
+          const servedBy = governanceStepIds.has(step.step_id) ? ' — served by the public governance agent' : '';
+          output += `- **${step.title}** [${icon}] — \`${step.task}\`${servedBy} (${(step.duration_ms / 1000).toFixed(1)}s)\n`;
 
           if (!step.passed && !step.skipped) {
             if (step.error) {
@@ -5894,6 +5899,9 @@ export function createMemberToolHandlers(
         output += `Interpret these results conversationally. For failed steps, explain what the agent should return and suggest specific fixes.`;
       }
       if (dryRun) output += ` This was a dry run — no production state was modified.`;
+      if (governanceStepIds.size > 0) {
+        output += ` Steps served by the public governance agent (${PUBLIC_TEST_AGENT_URLS.governance}) wrote sandbox plan state there; a failure on one of those steps may come from the governance agent rather than the tested agent.`;
+      }
 
       const workosUserIdForStoryboard = memberContext?.workos_user?.workos_user_id;
       if (workosUserIdForStoryboard) {
