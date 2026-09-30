@@ -9,28 +9,39 @@
  * `requirement_unmet`, and a seller that claims the capability can never
  * complete its bundle.
  *
- * When AAO grades a third-party agent, the only governance agent it can
- * vouch for is the public test agent's governance tenant. This module builds
- * the routed run for that topology:
+ * When AgenticAdvertising.org grades a third-party agent, the only governance
+ * agent it can vouch for is the public test agent's governance tenant. This
+ * module builds the routed run for that topology:
  *
  * - the storyboard's `default_agent` key is the agent under test, with the
  *   owner's credentials;
- * - the `governance` key is the public governance tenant, with the public
- *   test-agent credential from server config;
+ * - the `governance` key is the public governance tenant, authenticated with
+ *   a per-run hosted-grader credential. The governance agent binds that
+ *   credential to the fixed hosted-grader buyer agent
+ *   (`HOSTED_GRADER_BUYER_AGENT_URL`), which becomes the intent token
+ *   `caller`. Sellers map the credential they give hosted grading to that
+ *   same buyer agent, so the seller's caller check can pass;
+ * - the seller receives, in `sync_governance`, a per-run seller credential
+ *   bound to exactly the agent under test's URL, so its execution-time
+ *   `check_governance` authenticates as itself;
  * - any other agent key makes the storyboard unroutable. It is never sent to
  *   the agent under test.
  *
  * Trust boundaries:
  *
- * - The governance endpoint and credential come only from server config
- *   (`hostedGovernanceAgent()`). Nothing the agent under test returns,
- *   nothing a member supplies, and nothing in run context can change them.
- *   The storyboard's authored `governance_agent_url` must name the same
- *   origin, or the storyboard is unroutable. It is also pinned in the initial
- *   context so a caller-supplied context cannot swap it.
+ * - The governance endpoint comes only from server config. Nothing the agent
+ *   under test returns, nothing a member supplies, and nothing in run context
+ *   can change it. The storyboard's authored `governance_agent_url` must name
+ *   the same origin, or the storyboard is unroutable. It is also pinned in the
+ *   initial context so a caller-supplied context cannot swap it.
+ * - Both minted credentials are short-lived (30 minutes), bound to one run
+ *   nonce, and usable only on the governance tenant for their side of that
+ *   run's plans (training-agent/governance-agent-credentials.ts). Callers
+ *   must scrub them from anything they store or log
+ *   (`redactHostedGovernanceSecrets`).
  * - Every routed entry carries explicit `auth`. The SDK only falls back to
  *   the run-level `auth` for an entry without its own, so the owner's
- *   credential cannot reach the governance route and the public credential
+ *   credential cannot reach the governance route and the grader credential
  *   is never on the agent-under-test entry or in context.
  * - Steps not pinned to the agent under test may not use step-level `auth`
  *   directives or `$test_kit.auth` references, and neither may storyboard
@@ -38,29 +49,33 @@
  *   and an unpinned step can be routed to governance by protocol, so those
  *   could forward it to the governance agent.
  * - The public governance agent is one shared sandbox tenant, and the
- *   authored plan ids are fixed. Each routed run suffixes them with a random
- *   nonce so concurrent runs, or anyone else holding the public token,
- *   cannot overwrite the plan a run is grading against.
+ *   authored plan ids are fixed. Each routed run suffixes them with its nonce
+ *   so concurrent runs cannot touch the plan a run is grading against, and the
+ *   minted credentials only reach plans with that suffix.
  * - Run-level `headers` are shared across every routed agent by the SDK, so
- *   `withHostedMultiAgentRouting()` refuses to route a run that sets them.
+ *   `withHostedMultiAgentRouting()` refuses to route a run that sets them
+ *   (`comply()` enforces the same).
  * - SSRF: routed agents inherit the run-level `transport`, so the hosted
  *   safe fetch applied by `withSdkSafeTransport()` guards both routes.
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import type { StoryboardRunOptions } from '@adcp/sdk/testing';
 
-import { PUBLIC_TEST_AGENT, PUBLIC_TEST_AGENT_URLS } from '../config/test-agent.js';
+import { PUBLIC_TEST_AGENT_URLS } from '../config/test-agent.js';
+import {
+  governanceAgentCredentialsEnabled,
+  mintGovernanceAgentCredential,
+  mintHostedGraderCredential,
+} from '../training-agent/governance-agent-credentials.js';
+import {
+  HOSTED_GRADER_BRAND_DOMAIN,
+  HOSTED_GRADER_BUYER_AGENT_URL,
+} from '../training-agent/hosted-grader.js';
 
 /** Authored agent key the governance storyboards route plan steps to. */
 export const HOSTED_GOVERNANCE_AGENT_KEY = 'governance';
-
-/**
- * Base URL the training agent uses for the buyer-agent identity it binds to
- * an API-key credential (`server/src/training-agent/buyer-agent-registry.ts`).
- */
-const TRAINING_BUYER_AGENT_BASE_URL = 'https://training-agent.adcontextprotocol.org';
 
 /**
  * Authored context keys that name the governed agent under test. The
@@ -78,34 +93,100 @@ type RoutedAgents = NonNullable<StoryboardRunOptions['agents']>;
 type RoutedAgentEntry = RoutedAgents[string];
 type RunAuth = NonNullable<StoryboardRunOptions['auth']>;
 
+/** The governance side of one hosted run. Built per run; holds live secrets. */
 export interface HostedGovernanceAgent {
   /** MCP endpoint the runner dispatches `agent: governance` steps to. */
   url: string;
-  /** Credential presented only to `url`. */
+  /** Per-run hosted-grader credential, presented only to `url`. */
   auth: { type: 'bearer'; token: string };
   /**
    * Buyer identity the governance agent binds to `auth`. Its
    * `check_governance` requires `caller` to equal the authenticated identity.
    */
   callerIdentity: string;
+  /** Per-run credential for the seller to present on its execution checks. */
+  sellerCredential: string;
+  /** Suffix for this run's governance plan ids; both credentials are bound to it. */
+  runNonce: string;
 }
 
-/** Buyer-agent identity the training agent binds to a bearer API key. */
-export function trainingAgentCallerIdentityForToken(token: string): string {
-  // Mirrors @adcp/sdk verifyApiKey's key_id (sha256 hex, 32 chars) and the
-  // training agent's neutral authenticated buyer-agent URL.
-  const keyId = createHash('sha256').update(token).digest('hex').slice(0, 32);
-  return `${TRAINING_BUYER_AGENT_BASE_URL}/authenticated/${keyId}`;
+export type HostedGovernanceAgentResult =
+  | { kind: 'ready'; governance: HostedGovernanceAgent }
+  | { kind: 'unavailable'; reason: string };
+
+export interface HostedGovernanceAgentOptions {
+  /** Governance MCP endpoint. Tests and local e2e only; production uses server config. */
+  url?: string;
+  /** Tests only: allow an `http://127.0.0.1` agent under test. */
+  allowLoopbackHttp?: boolean;
 }
 
-/** The public governance agent hosted grading routes governance steps to. */
-export function hostedGovernanceAgent(): HostedGovernanceAgent {
-  const token = PUBLIC_TEST_AGENT.token;
+/**
+ * Mint the governance side of one hosted run against `agentUnderTestUrl`.
+ * Unavailable when this deployment has no governance credential secret, or
+ * when the agent under test's URL cannot hold a seller credential (not HTTPS,
+ * or an AgenticAdvertising.org / AdCP host).
+ */
+export function hostedGovernanceAgentForRun(
+  agentUnderTestUrl: string,
+  options: HostedGovernanceAgentOptions = {},
+): HostedGovernanceAgentResult {
+  if (!governanceAgentCredentialsEnabled()) {
+    return { kind: 'unavailable', reason: 'hosted governance grading is not enabled on this deployment.' };
+  }
+  const runNonce = randomUUID();
+  let sellerCredential: string;
+  try {
+    sellerCredential = mintGovernanceAgentCredential(agentUnderTestUrl, {
+      nonce: runNonce,
+      ...(options.allowLoopbackHttp && { allowLoopbackHttp: true }),
+    });
+  } catch (err) {
+    return { kind: 'unavailable', reason: `the agent under test cannot be registered with the sandbox governance agent: ${(err as Error).message}` };
+  }
   return {
-    url: PUBLIC_TEST_AGENT_URLS.governance,
-    auth: { type: 'bearer', token },
-    callerIdentity: trainingAgentCallerIdentityForToken(token),
+    kind: 'ready',
+    governance: {
+      url: options.url ?? PUBLIC_TEST_AGENT_URLS.governance,
+      auth: { type: 'bearer', token: mintHostedGraderCredential({ nonce: runNonce }) },
+      callerIdentity: HOSTED_GRADER_BUYER_AGENT_URL,
+      sellerCredential,
+      runNonce,
+    },
   };
+}
+
+/** Secrets a routed run carries; scrub them from stored or logged output. */
+export function hostedGovernanceSecrets(governance: HostedGovernanceAgent): string[] {
+  return [governance.auth.token, governance.sellerCredential];
+}
+
+/**
+ * Replace every occurrence of `secrets` in string values (and keys) of a
+ * JSON-like value with `[redacted]`. Returns a new value; the input is not
+ * mutated. Used on run results before they are stored, rendered, or logged.
+ */
+export function redactHostedGovernanceSecrets<T>(value: T, secrets: Iterable<string>): T {
+  const list = [...secrets].filter(secret => secret.length > 0);
+  if (list.length === 0) return value;
+  const scrub = (text: string): string => list.reduce((acc, secret) => acc.split(secret).join('[redacted]'), text);
+  const walk = (node: unknown, seen: WeakMap<object, unknown>): unknown => {
+    if (typeof node === 'string') return scrub(node);
+    if (!node || typeof node !== 'object') return node;
+    if (seen.has(node)) return seen.get(node);
+    if (Array.isArray(node)) {
+      const out: unknown[] = [];
+      seen.set(node, out);
+      for (const item of node) out.push(walk(item, seen));
+      return out;
+    }
+    if (node instanceof Date) return node;
+    const out: Record<string, unknown> = {};
+    seen.set(node, out);
+    for (const [key, child] of Object.entries(node)) out[scrub(key)] = walk(child, seen);
+    return out;
+  };
+  return walk(value, new WeakMap()) as T;
 }
 
 /** Structural subset of a storyboard the router reads and patches. */
@@ -138,15 +219,13 @@ export interface HostedMultiAgentRoutingInput<S extends HostedRoutableStoryboard
   storyboard: S;
   agentUnderTest: HostedAgentUnderTest;
   governance: HostedGovernanceAgent;
-  /** Suffix for this run's governance plan ids. Defaults to a random value. */
-  runNonce?: string;
 }
 
 export type HostedMultiAgentRouting<S extends HostedRoutableStoryboard = HostedRoutableStoryboard> =
   | { kind: 'single_agent' }
   | {
     kind: 'routed';
-    /** Storyboard to run: a copy with governance `caller` bound to our identity. */
+    /** Storyboard to run: a patched copy (plan ids, caller, seller credential). */
     storyboard: S;
     agents: RoutedAgents;
     default_agent: string;
@@ -172,14 +251,25 @@ function referencesTestKitAuth(value: unknown): boolean {
   return false;
 }
 
+type SyncGovernanceAccount = {
+  account?: { brand?: { domain?: unknown } };
+  governance_agents?: Array<{ url?: unknown; authentication?: { credentials?: unknown } }>;
+};
+
+function syncGovernanceAccounts(request: unknown): SyncGovernanceAccount[] {
+  const accounts = (request as { accounts?: unknown } | undefined)?.accounts;
+  return Array.isArray(accounts) ? accounts.filter(a => a && typeof a === 'object') as SyncGovernanceAccount[] : [];
+}
+
 /**
  * Decide how hosted grading runs one storyboard against a third-party agent.
  *
  * Storyboards without `requires: [multi_agent]` are `single_agent` and keep
  * the existing single-URL run. `requires: [multi_agent]` storyboards are
  * `routed` only when every authored route resolves to the agent under test
- * or the configured governance agent; otherwise they are `unroutable`, with
- * a reason the caller reports instead of running the storyboard.
+ * or the configured governance agent, and the buyer is the hosted-grader
+ * brand; otherwise they are `unroutable`, with a reason the caller reports
+ * instead of running the storyboard.
  */
 export function hostedMultiAgentRoutingForStoryboard<S extends HostedRoutableStoryboard>(
   input: HostedMultiAgentRoutingInput<S>,
@@ -207,9 +297,26 @@ export function hostedMultiAgentRoutingForStoryboard<S extends HostedRoutableSto
     return unroutable('its context references test-kit credentials; hosted grading will not forward them across agents.');
   }
   const keys = new Set<string>();
+  let syncGovernanceSteps = 0;
   for (const phase of storyboard.phases) {
     for (const step of phase.steps) {
       if (step.agent !== undefined) keys.add(step.agent);
+      if (step.task === 'sync_governance') {
+        syncGovernanceSteps += 1;
+        if (step.agent !== defaultAgent) {
+          return unroutable(`step "${step.id ?? step.task}" registers governance on an agent other than the agent under test.`);
+        }
+        // The buyer must be the hosted-grader brand: its brand.json is the
+        // one that lists the sandbox governance agent, and the one sellers
+        // map the hosted-grading credential to. Older bundles name a
+        // `.example` brand a seller cannot verify against.
+        const accounts = syncGovernanceAccounts(step.sample_request);
+        if (accounts.length === 0 || accounts.some(a => a.account?.brand?.domain !== HOSTED_GRADER_BRAND_DOMAIN)) {
+          return unroutable(
+            `its buyer brand is not ${HOSTED_GRADER_BRAND_DOMAIN}, so a seller cannot resolve the brand.json that authorizes the sandbox governance agent. Grade against a compliance bundle that uses the hosted-grader brand.`,
+          );
+        }
+      }
       // Unpinned steps route by protocol and may land on governance, so only
       // steps pinned to the agent under test may carry their own credentials.
       if (step.agent === defaultAgent) continue;
@@ -229,6 +336,9 @@ export function hostedMultiAgentRoutingForStoryboard<S extends HostedRoutableSto
   if (!keys.has(HOSTED_GOVERNANCE_AGENT_KEY)) {
     return unroutable(`it routes no steps to "${HOSTED_GOVERNANCE_AGENT_KEY}", so there is no second agent for hosted grading to supply.`);
   }
+  if (syncGovernanceSteps === 0) {
+    return unroutable('it never registers the governance agent with the agent under test, so there is no seller credential to issue.');
+  }
 
   const context: Record<string, string> = {};
   const authoredGovernanceUrl = storyboard.context?.governance_agent_url;
@@ -243,6 +353,8 @@ export function hostedMultiAgentRoutingForStoryboard<S extends HostedRoutableSto
     context.governance_agent_url = authoredGovernanceUrl;
   }
   for (const key of HOSTED_GOVERNED_AGENT_CONTEXT_KEYS) {
+    // The seller credential binds exactly this string, and the governance
+    // agent uses it as the token audience.
     if (storyboard.context?.[key] !== undefined) context[key] = agentUnderTest.url;
   }
 
@@ -262,18 +374,29 @@ export function hostedMultiAgentRoutingForStoryboard<S extends HostedRoutableSto
   };
 
   // Patch a copy so the cached storyboard is untouched (loaded storyboards are
-  // plain YAML data, so structuredClone is lossless).
-  const nonce = input.runNonce ?? randomUUID();
+  // plain YAML data, so structuredClone is lossless). Only request payloads
+  // change, as ComplyOptions.routeStoryboard requires.
+  const nonce = governance.runNonce;
   const patched = structuredClone(storyboard) as S;
   const governanceStepIds: string[] = [];
   for (const phase of patched.phases) {
     for (const step of phase.steps) {
+      const request = step.sample_request as Record<string, unknown> | undefined;
+      if (step.task === 'sync_governance' && request && typeof request === 'object') {
+        // The seller presents this credential on its execution checks; it
+        // authenticates as exactly the agent under test, for this run only.
+        for (const account of syncGovernanceAccounts(request)) {
+          for (const agent of account.governance_agents ?? []) {
+            if (!agent || typeof agent !== 'object') continue;
+            agent.authentication = { ...(agent.authentication ?? {}), credentials: governance.sellerCredential };
+          }
+        }
+      }
       if (step.agent !== HOSTED_GOVERNANCE_AGENT_KEY) continue;
       if (step.id) governanceStepIds.push(step.id);
-      const request = step.sample_request as Record<string, unknown> | undefined;
       if (!request || typeof request !== 'object') continue;
       // The governance agent binds `caller` to the authenticated identity of
-      // the credential it sees, which is ours.
+      // the credential it sees: the hosted-grader buyer agent.
       if (step.task === 'check_governance' && request.caller !== undefined) {
         request.caller = governance.callerIdentity;
       }
@@ -299,7 +422,9 @@ export function hostedMultiAgentRoutingForStoryboard<S extends HostedRoutableSto
 /**
  * Apply a routed decision to hosted run options. Pass the result to
  * `runStoryboard('', routing.storyboard, options)`: the SDK requires an empty
- * positional URL when `agents` is set.
+ * positional URL when `agents` is set. Run-level `auth` is dropped so the
+ * runner's `entry.auth ?? options.auth` fallback can never hand the owner's
+ * credential to another agent.
  */
 export function withHostedMultiAgentRouting<T extends StoryboardRunOptions>(
   options: T,
@@ -308,10 +433,11 @@ export function withHostedMultiAgentRouting<T extends StoryboardRunOptions>(
   if (options.headers && Object.keys(options.headers).length > 0) {
     throw new Error('Hosted multi-agent routing refuses run-level headers: the SDK sends them to every routed agent.');
   }
+  const { auth: _runAuth, ...rest } = options;
   return {
-    ...options,
+    ...rest,
     agents: routing.agents,
     default_agent: routing.default_agent,
     context: { ...options.context, ...routing.context },
-  };
+  } as T;
 }

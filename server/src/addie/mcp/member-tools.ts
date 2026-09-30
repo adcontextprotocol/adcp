@@ -85,7 +85,10 @@ import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { getTestKitForStoryboard } from '../../services/storyboards.js';
 import {
-  hostedGovernanceAgent,
+  hostedGovernanceAgentForRun,
+  hostedGovernanceSecrets,
+  redactHostedGovernanceSecrets,
+  type HostedMultiAgentRouting,
   hostedMultiAgentRoutingForStoryboard,
   withHostedMultiAgentRouting,
 } from '../../compliance/hosted-multi-agent-routing.js';
@@ -5768,19 +5771,32 @@ export function createMemberToolHandlers(
         ...(authOption && { auth: authOption }),
       }, runTarget, authProbeTask));
       // adcp#7758 — `requires: [multi_agent]` storyboards route governance
-      // steps to the public governance agent and everything else to the agent
-      // under test. Unroutable ones are reported, never sent to the agent.
-      const routing = hostedMultiAgentRoutingForStoryboard({
-        storyboard: sb,
-        agentUnderTest: { url: resolved.resolvedUrl, ...(authOption && { auth: authOption }) },
-        governance: hostedGovernanceAgent(),
-      });
-      if (routing.kind === 'unroutable') {
-        return `**Not runnable here:** ${routing.reason}`;
+      // steps to the public governance agent, as the fixed hosted-grader buyer
+      // agent, and everything else to the agent under test, which receives a
+      // per-run seller credential in sync_governance. Unroutable ones are
+      // reported, never sent to the agent. Minted credentials are scrubbed
+      // from the result before it is rendered or logged.
+      let routing: HostedMultiAgentRouting<typeof sb> = { kind: 'single_agent' };
+      let mintedSecrets: string[] = [];
+      if (sb.requires?.includes('multi_agent')) {
+        const governance = hostedGovernanceAgentForRun(resolved.resolvedUrl);
+        if (governance.kind === 'unavailable') {
+          return `**Not runnable here:** ${storyboardId} requires multi_agent: ${governance.reason}`;
+        }
+        routing = hostedMultiAgentRoutingForStoryboard({
+          storyboard: sb,
+          agentUnderTest: { url: resolved.resolvedUrl, ...(authOption && { auth: authOption }) },
+          governance: governance.governance,
+        });
+        if (routing.kind === 'unroutable') {
+          return `**Not runnable here:** ${routing.reason}`;
+        }
+        mintedSecrets = hostedGovernanceSecrets(governance.governance);
       }
-      const result = routing.kind === 'routed'
+      const rawResult = routing.kind === 'routed'
         ? await runStoryboard('', routing.storyboard, withHostedMultiAgentRouting(storyboardRunOptions, routing))
         : await runStoryboard(resolved.resolvedUrl, sb, storyboardRunOptions);
+      const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
       const governanceStepIds = new Set(routing.kind === 'routed' ? routing.governance_step_ids : []);
 
       // runStoryboard catches its own throws and surfaces them as step

@@ -51,7 +51,7 @@ import {
 } from './content-standards-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
-import { governanceAgentCredentialFromExtra } from './governance-agent-credentials.js';
+import { governanceAgentCredentialFromExtra, hostedGraderCredentialFromExtra } from './governance-agent-credentials.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingGovernanceMeta {
@@ -76,6 +76,7 @@ function buildGovernanceTrainingCtx(ctx: {
   authInfo?: { extra?: Record<string, unknown> };
 } | undefined): TrainingContext {
   const governanceAgentCredential = governanceAgentCredentialFromExtra(ctx?.authInfo?.extra);
+  const hostedGraderCredential = hostedGraderCredentialFromExtra(ctx?.authInfo?.extra);
   return {
     ...buildTrainingCtx(ctx?.account),
     // Resolved by BuyerAgentRegistry from the authenticated credential.
@@ -83,6 +84,8 @@ function buildGovernanceTrainingCtx(ctx: {
     // Seller-scoped sandbox credential; the handlers restrict what it may
     // do. Always carried when present so the restrictions cannot lapse.
     ...(governanceAgentCredential && { governanceAgentCredential }),
+    // Hosted-grader buyer credential; same always-carried rule.
+    ...(hostedGraderCredential && { hostedGraderCredential }),
   };
 }
 

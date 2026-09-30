@@ -15,7 +15,8 @@ import {
 } from '../../src/compliance/hosted-multi-agent-routing.js';
 
 const SELLER_TOKEN = 'owner-secret-seller-token-0123456789';
-const GOVERNANCE_TOKEN = 'public-governance-token-abcdef0123';
+const GOVERNANCE_TOKEN = 'grader-governance-token-abcdef0123';
+const SELLER_GOVERNANCE_CREDENTIAL = 'seller-governance-credential-0123456';
 
 interface Seen { authorization: string | undefined; method: string; tool?: string; body: string }
 
@@ -28,6 +29,7 @@ function capabilities(protocols: string[]) {
 
 const RESPONSES: Record<string, unknown> = {
   sync_plans: { plans: [] },
+  sync_governance: { accounts: [] },
   get_products: { products: [], cache_scope: 'public' },
 };
 
@@ -88,6 +90,18 @@ const storyboard = {
     title: 'governance then seller',
     steps: [
       { id: 'sync_plans', title: 'plan', task: 'sync_plans', agent: 'governance', sample_request: { plans: [] } },
+      {
+        id: 'sync_governance',
+        title: 'register governance',
+        task: 'sync_governance',
+        agent: 'sales',
+        sample_request: {
+          accounts: [{
+            account: { brand: { domain: 'hosted-grader.adcontextprotocol.org' }, operator: 'pinnacle-agency.example' },
+            governance_agents: [{ url: '$context.governance_agent_url', authentication: { schemes: ['Bearer'], credentials: 'gov-token-placeholder-000000000000000' } }],
+          }],
+        },
+      },
       { id: 'get_products', title: 'products', task: 'get_products', agent: 'sales', sample_request: { brief: 'x' } },
     ],
   }],
@@ -99,8 +113,8 @@ afterEach(async () => {
 });
 
 describe('hosted multi-agent routing on the wire', () => {
-  it('sends only the owner credential to the seller and only the governance credential to the governance agent', async () => {
-    const seller = await startAgent('seller', ['media_buy'], ['get_products']);
+  it('sends only the owner credential to the seller and only the grader credential to the governance agent', async () => {
+    const seller = await startAgent('seller', ['media_buy'], ['get_products', 'sync_governance']);
     const governance = await startAgent('governance', ['governance'], ['sync_plans']);
     servers.push(seller.server, governance.server);
 
@@ -110,7 +124,9 @@ describe('hosted multi-agent routing on the wire', () => {
       governance: {
         url: 'https://test-agent.adcontextprotocol.org/governance/mcp',
         auth: { type: 'bearer', token: GOVERNANCE_TOKEN },
-        callerIdentity: 'https://training-agent.adcontextprotocol.org/authenticated/x',
+        callerIdentity: 'https://hosted-grader.adcontextprotocol.org/buyer',
+        sellerCredential: SELLER_GOVERNANCE_CREDENTIAL,
+        runNonce: 'wire-run-nonce',
       },
     });
     if (routing.kind !== 'routed') throw new Error(`expected routed: ${JSON.stringify(routing)}`);
@@ -132,6 +148,7 @@ describe('hosted multi-agent routing on the wire', () => {
     for (const req of governance.seen) {
       expect(req.authorization).toBe(`Bearer ${GOVERNANCE_TOKEN}`);
       expect(req.body).not.toContain(SELLER_TOKEN);
+      expect(req.body).not.toContain(SELLER_GOVERNANCE_CREDENTIAL);
     }
     for (const req of seller.seen) {
       expect(req.authorization).toBe(`Bearer ${SELLER_TOKEN}`);
@@ -141,10 +158,13 @@ describe('hosted multi-agent routing on the wire', () => {
     expect(governance.seen.some(r => r.tool === 'sync_plans')).toBe(true);
     expect(seller.seen.some(r => r.tool === 'sync_plans')).toBe(false);
     expect(seller.seen.some(r => r.tool === 'get_products')).toBe(true);
+    // The seller receives its per-run governance credential in sync_governance.
+    const syncGovernance = seller.seen.find(r => r.tool === 'sync_governance');
+    expect(syncGovernance?.body).toContain(SELLER_GOVERNANCE_CREDENTIAL);
     // Both routed steps actually executed, so the isolation checks above are
     // not vacuous.
     const steps = result.phases.flatMap(p => p.steps);
-    expect(steps.map(s => [s.step_id, s.skipped ?? false])).toEqual([['sync_plans', false], ['get_products', false]]);
+    expect(steps.map(s => [s.step_id, s.skipped ?? false])).toEqual([['sync_plans', false], ['sync_governance', false], ['get_products', false]]);
     expect(steps.every(s => s.passed)).toBe(true);
   }, 60_000);
 });

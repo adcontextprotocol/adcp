@@ -39,6 +39,9 @@ import {
 import { classifyComplianceStep } from '../../compliance/step-disposition.js';
 import { createLogger } from '../../logger.js';
 import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
+import { createHostedRouteStoryboard } from '../../compliance/hosted-route-storyboard.js';
+import { getTestKitForStoryboard } from '../../services/storyboards.js';
+import { redactHostedGovernanceSecrets } from '../../compliance/hosted-multi-agent-routing.js';
 
 import type {
   TrackSummaryEntry,
@@ -252,12 +255,25 @@ export async function comply(
 ): Promise<ComplianceResult> {
   const safeOptions = withSdkSafeTransport(options);
   const authDefaults = await hostedAuthDefaultsForRun(agentUrl, safeOptions, target);
-  const result = await sdkComply(
+  // Per-storyboard routing (@adcp/sdk ComplyOptions.routeStoryboard): the
+  // multi-agent governance storyboards (#7758) and live-mode test-kit
+  // storyboards (#7772). A caller-supplied hook wins so tests can inject one.
+  // Credentials minted for routed runs are collected and scrubbed from the
+  // result before anyone stores, renders, or logs it.
+  const mintedSecrets = new Set<string>();
+  const routeStoryboard = options.routeStoryboard ?? createHostedRouteStoryboard({
+    ...(options.auth && { auth: options.auth }),
+    ...(options.protocol && { protocol: options.protocol }),
+    resolveTestKit: storyboardId => getTestKitForStoryboard(storyboardId, hostedComplianceOptions(target)),
+    secrets: mintedSecrets,
+  });
+  const rawResult = await sdkComply(
     agentUrl,
     withSdkSafeTransport(
-      withHostedComplianceRunOptions(safeOptions, target, authDefaults.probeTask, authDefaults.apiKey),
+      withHostedComplianceRunOptions({ ...safeOptions, routeStoryboard }, target, authDefaults.probeTask, authDefaults.apiKey),
     ),
   );
+  const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { hosted_provenance: ComplianceRunProvenance }).hosted_provenance =
     complianceRunProvenance(result, options);
