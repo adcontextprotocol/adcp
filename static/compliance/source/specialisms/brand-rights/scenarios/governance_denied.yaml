@@ -24,6 +24,9 @@ narrative: |
   By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
   Override with --governance-agent-url to use a custom governance agent.
 
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+
 agent:
   interaction_model: brand_rights_holder
   capabilities:
