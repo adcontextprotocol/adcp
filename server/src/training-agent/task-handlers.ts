@@ -73,7 +73,7 @@ import {
   reportingDayStart,
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
-import { validateSourceSchema } from './source-schema.js';
+import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -7465,6 +7465,16 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
   };
 }
 
+// Default list_products projection onto the closed core/canonical-product.json.
+// Legacy-only Product keys stay on get_products: audience_activation (the
+// experimental per-product declaration has no canonical counterpart; the
+// seller-wide union remains on get_adcp_capabilities) and collections /
+// installments / collection_targeting_allowed (the canonical product carries
+// no collection composition; collection-list effects surface as
+// list_applications). is_custom and targeting_resolution stay: they appear
+// only on configured products from targeting-aware discovery, where the
+// discovery guides document them even though canonical-product.json does not
+// define them yet. Resolving that conflict is a spec change, not a projection.
 const COMPACT_PRODUCT_FIELDS = new Set([
   'product_id', 'name', 'description', 'publisher_properties', 'channels',
   'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
@@ -7473,12 +7483,22 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'signal_targeting_rules', 'max_optimization_goals', 'measurement_terms',
   'performance_standards', 'audience_evidence', 'audience_evidence_selections',
   'acceptance_policy_profile_ids',
-  'demographic_targeting', 'audience_activation', 'exclusivity', 'audio_distribution_types',
+  'demographic_targeting', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
   'sponsored_placement_types', 'is_custom', 'overlay_support', 'media_buy_support', 'identity',
-  'targeting_resolution', 'collections', 'collection_targeting_allowed',
-  'installments', 'ext',
+  'targeting_resolution', 'ext',
 ]);
+
+let canonicalReportingCapabilityFields: ReadonlySet<string> | undefined;
+
+/** The closed canonical reporting-capabilities shape omits legacy
+ * product-scoped keys such as reporting_delivery_offering_ids. */
+function compactReportingCapabilityFields(): ReadonlySet<string> {
+  canonicalReportingCapabilityFields ??= new Set(Object.keys(
+    (loadSourceSchema('core/canonical-reporting-capabilities.json').properties ?? {}) as Record<string, unknown>,
+  ));
+  return canonicalReportingCapabilityFields;
+}
 
 const COMPACT_FORMAT_OPTION_FIELDS = new Set([
   'format_option_id', 'format_kind', 'display_name', 'publisher_domain',
@@ -7513,6 +7533,12 @@ function compactLifecycleProduct(
     projected.pricing_options = product.pricing_options
       .filter(isRecord)
       .map(option => canonicalPricingSnapshot(option, String(option.pricing_option_id ?? '')));
+  }
+  if (selectedFields.has('reporting_capabilities') && isRecord(product.reporting_capabilities)) {
+    projected.reporting_capabilities = pickCompactFields(
+      product.reporting_capabilities,
+      compactReportingCapabilityFields(),
+    );
   }
   return projected;
 }

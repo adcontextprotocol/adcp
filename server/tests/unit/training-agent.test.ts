@@ -99,6 +99,7 @@ import { SELLER_MANAGED_PURCHASE_SOURCE_ID } from '../../src/training-agent/cata
 import {
   validateProductDiscoverySourceInput,
   validateProductDiscoverySourceResponse,
+  validateSourceSchema,
 } from '../../src/training-agent/source-schema.js';
 import {
   projectCreativeForDelivery,
@@ -20346,7 +20347,7 @@ describe('proposal lifecycle', () => {
     }]);
   });
 
-  it('preserves collection composition in the default compact product projection', async () => {
+  it('keeps legacy collection composition out of the default compact product projection', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const productId = `collection-projection-${randomUUID()}`;
     const seeded = await simulateCallTool(server, 'comply_test_controller', {
@@ -20374,16 +20375,24 @@ describe('proposal lifecycle', () => {
     });
 
     expect(listed.isError, JSON.stringify(listed.result)).toBeFalsy();
-    expect(listed.result).toMatchObject({
-      outcome: 'listed',
-      products: [{
-        product_id: productId,
-        collections: [{
-          publisher_domain: 'channel-owner.example',
-          collection_ids: ['retro_news'],
-        }],
-        collection_targeting_allowed: true,
+    expect(listed.result).toMatchObject({ outcome: 'listed', products: [{ product_id: productId }] });
+    // core/canonical-product.json is closed and has no collection composition
+    // fields; they remain on the legacy get_products Product.
+    const [compact] = listed.result.products as Array<Record<string, unknown>>;
+    expect(compact).not.toHaveProperty('collections');
+    expect(compact).not.toHaveProperty('collection_targeting_allowed');
+    const validation = validateSourceSchema('core/canonical-product.json', compact);
+    expect(validation.valid, JSON.stringify(validation.errors)).toBe(true);
+
+    const legacy = await simulateCallTool(server, 'get_products', { account, buying_mode: 'wholesale' });
+    expect(legacy.isError, JSON.stringify(legacy.result)).toBeFalsy();
+    expect((legacy.result.products as Array<Record<string, unknown>>)
+      .find(product => product.product_id === productId)).toMatchObject({
+      collections: [{
+        publisher_domain: 'channel-owner.example',
+        collection_ids: ['retro_news'],
       }],
+      collection_targeting_allowed: true,
     });
   });
 
