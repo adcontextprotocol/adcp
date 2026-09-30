@@ -4514,6 +4514,11 @@ components:
                 type: array
                 items: {}
                 description: Validation evidence for the first failure. Populated only for owners and empty for other callers.
+              skipped_steps:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StoryboardSkippedStep"
+                description: Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step. Populated only for owners and empty for other callers.
               last_tested_at:
                 type:
                   - string
@@ -4537,6 +4542,7 @@ components:
               - first_failed_step_task
               - first_failure_message
               - first_failure_validations
+              - skipped_steps
               - last_tested_at
               - last_passed_at
           description: Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers.
@@ -4670,6 +4676,55 @@ components:
             - storyboards_untested
       required:
         - code
+    StoryboardSkippedStep:
+      type: object
+      properties:
+        step_id:
+          type:
+            - string
+            - "null"
+          description: Skipped step id (derived from the title when the runner omits it).
+        title:
+          type:
+            - string
+            - "null"
+        task:
+          type:
+            - string
+            - "null"
+        reason:
+          type:
+            - string
+            - "null"
+          description: Runner skip reason, e.g. prerequisite_failed or controller_seeding_failed.
+        detail:
+          type:
+            - string
+            - "null"
+          description: Redacted runner skip detail. May echo agent-supplied text.
+        blocked_by_step_id:
+          type:
+            - string
+            - "null"
+          description: Nearest earlier step in the same storyboard that did not pass, when one exists.
+        blocked_by_step_title:
+          type:
+            - string
+            - "null"
+        blocked_by_reason:
+          type:
+            - string
+            - "null"
+          description: "'failed', or the skip reason of the earlier step."
+      required:
+        - step_id
+        - title
+        - task
+        - reason
+        - detail
+        - blocked_by_step_id
+        - blocked_by_step_title
+        - blocked_by_reason
     PublicComplianceNotice:
       type: object
       properties:
@@ -5456,6 +5511,11 @@ components:
             - string
             - "null"
           description: Runner error/detail text for the first root failing or actionable skipped step, when captured.
+        skipped_steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryboardSkippedStep"
+          description: Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step, when captured. Owner-scoped; empty for other callers.
         last_tested_at:
           type:
             - string
@@ -5478,6 +5538,7 @@ components:
         - first_failed_step_title
         - first_failed_step_task
         - first_failure_message
+        - skipped_steps
         - last_tested_at
         - last_passed_at
     ComplianceRun:
@@ -14984,6 +15045,10 @@ paths:
                       first_failure_validations:
                         type: array
                         items: {}
+                      skipped_steps:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/StoryboardSkippedStep"
                     required:
                       - storyboard_id
                       - status
@@ -14996,6 +15061,7 @@ paths:
                       - first_failed_step_task
                       - first_failure_message
                       - first_failure_validations
+                      - skipped_steps
                     description: Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status.
                   phases: {}
                   summary: {}

@@ -1773,7 +1773,7 @@
       const skipped = finiteCount(statusInfo.skipped_count);
       const parts = [];
       if (failures > 0) parts.push(pluralizeCount(failures, 'failure'));
-      if (skipped > 0) parts.push(pluralizeCount(skipped, 'skipped'));
+      if (skipped > 0) parts.push(pluralizeCount(skipped, 'skipped', 'skipped'));
       return parts.join(', ');
     }
 
@@ -1828,7 +1828,8 @@
       if (!hasFailureDetail && skipped === 0) return '';
 
       const issueSummary = storyboardIssueSummary(statusInfo);
-      const summary = issueSummary ? `Show failure details (${issueSummary})` : 'Show failure details';
+      const summaryLabel = failures > 0 ? 'Show failure details' : 'Show skip details';
+      const summary = issueSummary ? `${summaryLabel} (${issueSummary})` : summaryLabel;
       let html = '<details class="storyboard-map-drilldown">';
       html += '<summary>' + escapeHtml(summary) + '</summary>';
       if (hasFailureDetail) {
@@ -1859,12 +1860,74 @@
         html += '</div>';
       }
       if (skipped > 0) {
-        html += '<div class="storyboard-map-detail-row">';
-        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--skip">Blocked after earlier failure</span>';
-        html += '<span class="storyboard-map-detail-title">' + escapeHtml(pluralizeCount(skipped, 'step')) + ' skipped after an earlier step failed</span>';
-        html += '</div>';
+        html += storyboardSkippedStepsHtml(statusInfo, skipped);
       }
       html += '</details>';
+      return html;
+    }
+
+    const STORYBOARD_SKIP_REASON_LABELS = {
+      prerequisite_failed: 'Prerequisite step did not pass',
+      controller_seeding_failed: 'Test controller seeding failed',
+      missing_tool: 'Required tool not advertised',
+      not_applicable: 'Not applicable',
+      unresolved_substitution: 'Context variable unresolved',
+    };
+
+    function storyboardSkipReasonLabel(reason) {
+      if (!reason) return '';
+      const label = STORYBOARD_SKIP_REASON_LABELS[reason];
+      return label ? `${label} (${reason})` : reason;
+    }
+
+    // Skip evidence comes from runner output and may echo third-party agent
+    // text: every field goes through escapeHtml.
+    function storyboardSkippedStepsHtml(statusInfo, skipped) {
+      const steps = Array.isArray(statusInfo.skipped_steps)
+        ? statusInfo.skipped_steps.filter(step => step && typeof step === 'object')
+        : [];
+      if (steps.length === 0) {
+        // Rows recorded before skip evidence was persisted, or a viewer
+        // without owner diagnostics.
+        let html = '<div class="storyboard-map-detail-row">';
+        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--skip">Skipped</span>';
+        html += '<span class="storyboard-map-detail-title">' + escapeHtml(pluralizeCount(skipped, 'step')) + ' skipped because a prerequisite step did not pass</span>';
+        html += '<div class="storyboard-map-detail-message">Step-level skip details were not recorded for this run. Re-test to capture which step was skipped and why.</div>';
+        html += '</div>';
+        return html;
+      }
+      const shown = steps.slice(0, 3);
+      let html = '';
+      for (const step of shown) {
+        const title = step.title || step.step_id || 'Skipped step';
+        const meta = [step.title ? step.step_id : null, step.task].filter(Boolean).join(' · ');
+        html += '<div class="storyboard-map-detail-row">';
+        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--skip">Skipped</span>';
+        html += '<span class="storyboard-map-detail-title">' + escapeHtml(title) + '</span>';
+        if (meta) html += '<div>' + escapeHtml(meta) + '</div>';
+        if (step.reason) {
+          html += '<div class="storyboard-map-detail-message">Reason: ' + escapeHtml(storyboardSkipReasonLabel(step.reason)) + '</div>';
+        }
+        if (step.blocked_by_step_id || step.blocked_by_step_title) {
+          const blocker = step.blocked_by_step_title && step.blocked_by_step_id && step.blocked_by_step_title !== step.blocked_by_step_id
+            ? `${step.blocked_by_step_title} (${step.blocked_by_step_id})`
+            : step.blocked_by_step_title || step.blocked_by_step_id;
+          const outcome = step.blocked_by_reason === 'failed'
+            ? 'failed'
+            : step.blocked_by_reason ? 'skipped: ' + storyboardSkipReasonLabel(step.blocked_by_reason) : 'did not pass';
+          html += '<div class="storyboard-map-detail-message">Earlier step that did not pass: ' + escapeHtml(blocker) + ' — ' + escapeHtml(outcome) + '</div>';
+        } else {
+          html += '<div class="storyboard-map-detail-message">No earlier failing step was recorded in this storyboard; see the runner detail.</div>';
+        }
+        if (step.detail) {
+          html += '<div class="storyboard-map-detail-message">' + escapeHtml(step.detail) + '</div>';
+        }
+        html += '</div>';
+      }
+      const remaining = Math.max(0, skipped - shown.length);
+      if (remaining > 0) {
+        html += '<div class="storyboard-map-detail-message">Showing ' + escapeHtml(pluralizeCount(shown.length, 'skipped step')) + '; ' + escapeHtml(pluralizeCount(remaining, 'more skipped step')) + ' remain.</div>';
+      }
       return html;
     }
 

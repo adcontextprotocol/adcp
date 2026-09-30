@@ -1,5 +1,6 @@
 import { complianceRunProvenance } from '../../compliance/run-provenance.js';
 import { isAuthoritativeComplianceRun } from '../../compliance/run-publication.js';
+import { withStoryboardSkipDetails } from '../../compliance/storyboard-skip-details.js';
 /**
  * Compliance Heartbeat Job
  *
@@ -245,12 +246,12 @@ export async function runComplianceHeartbeatJob(
         success: true,
       });
 
-      const dbInput = complianceResultToDbInput(
+      const dbInput = withStoryboardSkipDetails(complianceResultToDbInput(
         complianceResult,
         agent.agent_url,
         agent.lifecycle_stage as LifecycleStage,
         'heartbeat',
-      );
+      ), complianceResult);
       dbInput.dry_run = false;
       if (isAuthoritativeComplianceRun(dbInput)) {
         dbInput.grading_profile_assessments = deriveVerificationProfileRoleAssessments({

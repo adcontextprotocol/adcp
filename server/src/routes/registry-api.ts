@@ -2,6 +2,7 @@ import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js'
 import type { SupplyPathInput } from '../services/supply-path-contract.js';
 import { domain as supplyPathDomain, agentIdentity as supplyPathAgentIdentity } from '../services/supply-path-input.js';
 import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
+import { withStoryboardSkipDetails } from '../compliance/storyboard-skip-details.js';
 /**
  * Public Registry API routes.
  *
@@ -134,6 +135,7 @@ import {
   AgentComplianceDetailSchema,
   AgentVerificationSchema,
   StoryboardStatusSchema,
+  StoryboardSkippedStepSchema,
   RegistryMetadataSchema,
   MonitoringSettingsSchema,
   ComplianceRunSchema,
@@ -726,6 +728,7 @@ type StoryboardStatusLike = {
   first_failed_step_task?: string | null;
   first_failure_message?: string | null;
   first_failure_validations_jsonb?: unknown;
+  skipped_steps?: unknown;
   last_tested_at?: Date | string | null;
   last_passed_at?: Date | string | null;
 };
@@ -738,6 +741,21 @@ function serializeDate(value: Date | string | null | undefined): string | null {
 function normalizeValidationList(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
   return value === null || value === undefined ? [] : [value];
+}
+
+const SKIPPED_STEP_FIELDS = [
+  "step_id", "title", "task", "reason", "detail",
+  "blocked_by_step_id", "blocked_by_step_title", "blocked_by_reason",
+] as const;
+
+function normalizeSkippedSteps(value: unknown): Array<Record<(typeof SKIPPED_STEP_FIELDS)[number], string | null>> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => Object.fromEntries(SKIPPED_STEP_FIELDS.map((field) => [
+      field,
+      typeof item[field] === "string" ? item[field] as string : null,
+    ])) as Record<(typeof SKIPPED_STEP_FIELDS)[number], string | null>);
 }
 
 function serializeStoryboardRunStatus(
@@ -759,6 +777,7 @@ function serializeStoryboardRunStatus(
     first_failure_validations: includeDiagnostics
       ? normalizeValidationList(s.first_failure_validations_jsonb)
       : [],
+    skipped_steps: includeDiagnostics ? normalizeSkippedSteps(s.skipped_steps) : [],
   };
 }
 
@@ -5054,6 +5073,7 @@ const StoryboardRunStatusResponseSchema = z.object({
   first_failed_step_task: z.string().nullable(),
   first_failure_message: z.string().nullable(),
   first_failure_validations: z.array(z.any()),
+  skipped_steps: z.array(StoryboardSkippedStepSchema),
 });
 
 const StoryboardRunDiagnosticResponseSchema = z.object({
@@ -8734,12 +8754,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           };
         } else {
           const metadata = await complianceDb.getRegistryMetadata(agentUrl);
-          const dbInput = complianceResultToDbInput(
+          const dbInput = withStoryboardSkipDetails(complianceResultToDbInput(
             complyResult,
             agentUrl,
             metadata?.lifecycle_stage || 'production',
             request.triggered_by,
-          );
+          ), complyResult);
           dbInput.dry_run = false;
           dbInput.requested_compliance_target = runTarget.requested;
           dbInput.adcp_version = complyResult.adcp_version ?? runTarget.version;
@@ -9932,13 +9952,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         // matches evaluate_agent_quality semantics: owner_test, not the legacy
         // 'manual' label.
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
-        const dbInput = complianceResultToDbInput(
+        const dbInput = withStoryboardSkipDetails(complianceResultToDbInput(
           complyResult,
           agentUrl,
           metadata?.lifecycle_stage || "development",
           "owner_test",
           [req.params.storyboardId],
-        );
+        ), complyResult);
         const { run } = await complianceDb.recordComplianceRun({
           ...dbInput,
           triggered_org_id: orgId,

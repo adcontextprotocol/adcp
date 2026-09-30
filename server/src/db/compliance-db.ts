@@ -242,6 +242,24 @@ export interface StoryboardStatusEntry {
   first_failed_step_task?: string | null;
   first_failure_message?: string | null;
   first_failure_validations_jsonb?: unknown;
+  /** First few cascaded prerequisite skips with runner reason/detail (adcp#7798). */
+  skipped_steps?: StoryboardSkippedStep[] | null;
+}
+
+/**
+ * One cascaded prerequisite skip inside a storyboard. `detail` is redacted,
+ * length-capped runner/agent text; `blocked_by_*` names the nearest earlier
+ * step in the same storyboard that did not pass (the likely prerequisite).
+ */
+export interface StoryboardSkippedStep {
+  step_id: string | null;
+  title: string | null;
+  task: string | null;
+  reason: string | null;
+  detail: string | null;
+  blocked_by_step_id: string | null;
+  blocked_by_step_title: string | null;
+  blocked_by_reason: string | null;
 }
 
 /**
@@ -747,7 +765,8 @@ export class ComplianceDatabase {
           `SELECT storyboard_id, requested_compliance_target, adcp_version, status,
                   steps_passed, steps_total, failure_count, skipped_count,
                   first_failed_step_id, first_failed_step_title,
-                  first_failed_step_task, first_failure_message
+                  first_failed_step_task, first_failure_message,
+                  skipped_steps_jsonb AS skipped_steps
              FROM agent_storyboard_status
             WHERE agent_url = $1 AND run_id = $2
             ORDER BY storyboard_id`,
@@ -1045,6 +1064,8 @@ export class ComplianceDatabase {
             const sbFirstFailedStepTitles = input.storyboard_statuses.map(s => s.first_failed_step_title ?? null);
             const sbFirstFailedStepTasks = input.storyboard_statuses.map(s => s.first_failed_step_task ?? null);
             const sbFirstFailureMessages = input.storyboard_statuses.map(s => s.first_failure_message ?? null);
+            const sbSkippedSteps = input.storyboard_statuses.map(s =>
+              s.skipped_steps?.length ? JSON.stringify(s.skipped_steps) : null);
 
             await client.query(
               `INSERT INTO agent_storyboard_status (
@@ -1052,6 +1073,7 @@ export class ComplianceDatabase {
                 last_passed_at, last_failed_at, run_id,
                 steps_passed, steps_total, failure_count, skipped_count,
                 first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
+                skipped_steps_jsonb,
                 triggered_by, requested_compliance_target, adcp_version, updated_at
               )
               SELECT
@@ -1060,9 +1082,10 @@ export class ComplianceDatabase {
                 CASE WHEN sb_status IN ('failing', 'partial') THEN NOW() ELSE NULL END,
                 $4, sb_passed, sb_total, sb_failures, sb_skips,
                 sb_first_failed_step_id, sb_first_failed_step_title, sb_first_failed_step_task, sb_first_failure_message,
+                sb_skipped_steps::jsonb,
                 $13, $14, $15, NOW()
-              FROM unnest($2::text[], $3::text[], $5::int[], $6::int[], $7::int[], $8::int[], $9::text[], $10::text[], $11::text[], $12::text[])
-                AS t(sb_id, sb_status, sb_passed, sb_total, sb_failures, sb_skips, sb_first_failed_step_id, sb_first_failed_step_title, sb_first_failed_step_task, sb_first_failure_message)
+              FROM unnest($2::text[], $3::text[], $5::int[], $6::int[], $7::int[], $8::int[], $9::text[], $10::text[], $11::text[], $12::text[], $16::text[])
+                AS t(sb_id, sb_status, sb_passed, sb_total, sb_failures, sb_skips, sb_first_failed_step_id, sb_first_failed_step_title, sb_first_failed_step_task, sb_first_failure_message, sb_skipped_steps)
               ON CONFLICT (agent_url, storyboard_id) DO UPDATE SET
                 status = EXCLUDED.status,
                 last_tested_at = NOW(),
@@ -1083,6 +1106,7 @@ export class ComplianceDatabase {
                 first_failed_step_title = EXCLUDED.first_failed_step_title,
                 first_failed_step_task = EXCLUDED.first_failed_step_task,
                 first_failure_message = EXCLUDED.first_failure_message,
+                skipped_steps_jsonb = EXCLUDED.skipped_steps_jsonb,
                 triggered_by = EXCLUDED.triggered_by,
                 requested_compliance_target = EXCLUDED.requested_compliance_target,
                 adcp_version = EXCLUDED.adcp_version,
@@ -1103,6 +1127,7 @@ export class ComplianceDatabase {
                 input.triggered_by ?? 'heartbeat',
                 input.requested_compliance_target ?? null,
                 input.adcp_version ?? null,
+                sbSkippedSteps,
               ],
             );
           }
@@ -1144,7 +1169,8 @@ export class ComplianceDatabase {
       `SELECT storyboard_id, requested_compliance_target, adcp_version, status,
               steps_passed, steps_total, failure_count, skipped_count,
               first_failed_step_id, first_failed_step_title,
-              first_failed_step_task, first_failure_message
+              first_failed_step_task, first_failure_message,
+              skipped_steps_jsonb AS skipped_steps
          FROM agent_storyboard_status
         WHERE agent_url = $1 AND run_id = $2
         ORDER BY storyboard_id`,
@@ -1639,6 +1665,7 @@ export class ComplianceDatabase {
     first_failed_step_task: string | null;
     first_failure_message: string | null;
     first_failure_validations_jsonb: unknown;
+    skipped_steps: StoryboardSkippedStep[] | null;
     triggered_by: string | null;
   }>> {
     const diagnosticsSelect = options.includeDiagnostics === false
@@ -1673,6 +1700,8 @@ export class ComplianceDatabase {
               steps_passed, steps_total, failure_count, skipped_count,
               first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
               ${diagnosticsSelect},
+              -- Cheap denormalized column; owner gating happens in the serializer.
+              s.skipped_steps_jsonb AS skipped_steps,
               triggered_by
        FROM agent_storyboard_status s
        ${diagnosticsJoin}
@@ -1758,6 +1787,7 @@ export class ComplianceDatabase {
     first_failed_step_task: string | null;
     first_failure_message: string | null;
     first_failure_validations_jsonb: unknown;
+    skipped_steps: StoryboardSkippedStep[] | null;
   }>>> {
     if (agentUrls.length === 0) return new Map();
 
@@ -1782,7 +1812,8 @@ export class ComplianceDatabase {
        SELECT s.agent_url, s.storyboard_id, s.requested_compliance_target, s.adcp_version, s.status, s.last_tested_at, s.last_passed_at,
               s.steps_passed, s.steps_total, s.failure_count, s.skipped_count,
               s.first_failed_step_id, s.first_failed_step_title, s.first_failed_step_task, s.first_failure_message,
-              first_failure_diag.failed_validations_jsonb AS first_failure_validations_jsonb
+              first_failure_diag.failed_validations_jsonb AS first_failure_validations_jsonb,
+              s.skipped_steps_jsonb AS skipped_steps
        FROM agent_storyboard_status s
        LEFT JOIN latest_run_flags lf ON lf.agent_url = s.agent_url
        LEFT JOIN LATERAL (
@@ -1813,6 +1844,7 @@ export class ComplianceDatabase {
       first_failed_step_id: string | null; first_failed_step_title: string | null;
       first_failed_step_task: string | null; first_failure_message: string | null;
       first_failure_validations_jsonb: unknown;
+      skipped_steps: StoryboardSkippedStep[] | null;
     }>>();
     for (const row of result.rows) {
       if (!map.has(row.agent_url)) map.set(row.agent_url, []);
