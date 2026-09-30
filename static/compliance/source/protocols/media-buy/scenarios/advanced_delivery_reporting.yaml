@@ -1,5 +1,5 @@
 id: media_buy_seller/advanced_delivery_reporting
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.2"
 title: "Seller narrows metrics and reports delivery by canonical format"
 category: media_buy_seller
@@ -46,10 +46,12 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+# Fixtures use non_guaranteed so sales-non-guaranteed-only sellers can run this
+# scenario (#7765). Fixed-price, so the create needs no bid.
 fixtures:
   products:
     - product_id: "advanced_reporting_video"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["olv"]
       format_options:
         - format_option_id: "advanced_reporting_image"
