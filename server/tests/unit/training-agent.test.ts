@@ -95,6 +95,7 @@ import { TrainingSalesPlatform, restoreRawPackageSelectors } from '../../src/tra
 import { TrainingCreativePlatform } from '../../src/training-agent/v6-creative-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../../src/training-agent/v6-creative-builder-platform.js';
 import { clearAudienceStore } from '../../src/training-agent/audience-handlers.js';
+import { SELLER_MANAGED_PURCHASE_SOURCE_ID } from '../../src/training-agent/catalog-event-handlers.js';
 import {
   validateProductDiscoverySourceInput,
   validateProductDiscoverySourceResponse,
@@ -7979,6 +7980,36 @@ describe('create_media_buy handler', () => {
           kind: 'event',
           event_sources: [{
             event_source_id: 'bound_website',
+            event_type: 'purchase',
+          }],
+          target: { kind: 'cost_per', value: 35 },
+        }],
+      }],
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(typeof result.media_buy_id).toBe('string');
+  });
+
+  it('accepts event-kind optimization_goal bound to the account\'s seller-managed event source', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'seller-source.example' }, operator: 'seller-source.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    // No sync_event_sources upsert: the seller-managed source is always on.
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'seller-source.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        optimization_goals: [{
+          kind: 'event',
+          event_sources: [{
+            event_source_id: SELLER_MANAGED_PURCHASE_SOURCE_ID,
             event_type: 'purchase',
           }],
           target: { kind: 'cost_per', value: 35 },

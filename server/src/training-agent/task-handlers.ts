@@ -3057,7 +3057,7 @@ import {
   handleLogEvent,
   handleProvidePerformanceFeedback,
   findEventSourceInSession,
-  registeredEventSourcesInSession,
+  availableEventSourcesInSession,
 } from './catalog-event-handlers.js';
 import {
   AUDIENCE_TOOLS,
@@ -8639,8 +8639,9 @@ function computeOutcomeTargetPlan(
 // purchase carries the matching primary optimization goal so the fixed
 // media-buy policy binds to it. Purchases never carry their own bidding.
 // Metric goals bind when they have a canonical optimization-goal form; event
-// goals bind through event sources registered on the buyer's account
-// (sync_event_sources), with the attribution window the seller will use.
+// goals bind through an event source available on the buyer's account
+// (buyer-synced or seller-managed, as sync_event_sources lists them), with
+// the attribution window the seller will use.
 
 export type OutcomeTargetCostPer = { amount: number; currency: string; strength: 'cap' | 'target' };
 export type OutcomeTargetBudgetRange = { min?: number; max?: number };
@@ -8656,7 +8657,7 @@ const OUTCOME_TARGET_COST_BINDABLE_METRICS: ReadonlySet<string> = new Set([
 const OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS = 10_000_000;
 
 /** Attribution the reference seller states on an event goal it fills from
- * the buyer's registered event sources; advertised as its only
+ * the event sources on the buyer's account; advertised as its only
  * conversion_tracking.attribution_windows entry. */
 const OUTCOME_TARGET_EVENT_ATTRIBUTION_WINDOW = {
   post_click: { interval: 7, unit: 'days' },
@@ -8687,14 +8688,16 @@ function trainingMediaBuyCostPerStrengthSupported(strength: string): boolean {
 
 /** The canonical optimization goal a cost target binds to, or undefined when
  * the goal has no canonical form the seller can fill. An event goal takes the
- * event sources available on the buyer's account for that event (the
- * reference agent's sources are all buyer-synced; it does not model
- * seller-managed sources) plus the seller's stated attribution window. The
- * agent does not advertise conversion_tracking.multi_source_event_dedup, so
- * it binds exactly one source. */
+ * event sources available on the buyer's account for that event,
+ * buyer-synced or seller-managed, in the order given (see
+ * availableEventSourcesInSession: seller-managed first, then buyer-synced in
+ * registration order), plus the seller's stated attribution window, the one
+ * it advertises in conversion_tracking.attribution_windows. The agent does
+ * not advertise conversion_tracking.multi_source_event_dedup, so it binds
+ * exactly one source: the first that tracks the event. */
 export function outcomeTargetOptimizationGoal(
   goal: Record<string, unknown>,
-  registeredEventSources: ReadonlyArray<{ event_source_id: string; event_types: readonly string[] }> = [],
+  availableEventSources: ReadonlyArray<{ event_source_id: string; event_types: readonly string[] }> = [],
 ): Record<string, unknown> | undefined {
   if (goal.kind === 'metric') {
     if (typeof goal.metric !== 'string' || !OUTCOME_TARGET_COST_BINDABLE_METRICS.has(goal.metric)) return undefined;
@@ -8702,7 +8705,7 @@ export function outcomeTargetOptimizationGoal(
   }
   if (goal.kind === 'event' && typeof goal.event_type === 'string') {
     const eventType = goal.event_type;
-    const sources = registeredEventSources.filter(source => source.event_types.includes(eventType)).slice(0, 1);
+    const sources = availableEventSources.filter(source => source.event_types.includes(eventType)).slice(0, 1);
     if (sources.length === 0) return undefined;
     return {
       kind: 'event',
@@ -8759,7 +8762,7 @@ function outcomeTargetCostPerRejection(
   }
   if (!optimizationGoal) {
     return goal.kind === 'event'
-      ? `No event source registered on this account tracks '${String(goal.event_type)}', so the seller cannot bind a cost target to the event goal. Register one with sync_event_sources, or plan the goal by volume.`
+      ? `No event source available on this account, buyer-synced or seller-managed, tracks '${String(goal.event_type)}', so the seller cannot bind a cost target to the event goal. Register one with sync_event_sources, or plan the goal by volume.`
       : `A cost target requires a goal expressible as a canonical optimization goal; metric '${String(goal.metric)}' has none. Plan it by volume instead.`;
   }
   const filters = isRecord(request.filters) ? request.filters : undefined;
@@ -11292,7 +11295,7 @@ async function handleGetProductsUnlocked(
     ? outcomeTargetOptimizationGoal(
         outcomeTargetGoal,
         outcomeTargetGoal.kind === 'event'
-          ? registeredEventSourcesInSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId))
+          ? availableEventSourcesInSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId))
           : [],
       )
     : undefined;
