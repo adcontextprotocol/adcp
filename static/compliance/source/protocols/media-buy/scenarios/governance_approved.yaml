@@ -35,6 +35,12 @@ narrative: |
   reports the completed outcome. It never treats a seller-to-buyer
   `governance_context` echo as evidence of authorization.
 
+# Buyer brand and intent caller (adcp#7758). test-agent.adcontextprotocol.org
+# publishes a real /.well-known/brand.json that lists the sandbox governance
+# agent, so a seller can complete the brand.json issuer cross-check for a
+# governance_context. Hosted grading authenticates to that governance agent as
+# the fixed hosted-grader buyer agent below; sellers map the credential they
+# give hosted grading to that buyer agent so it matches the token caller.
 context:
   governance_agent_url: "https://test-agent.adcontextprotocol.org"
   seller_agent_url: "https://seller.example.com"
@@ -114,7 +120,7 @@ phases:
           plans:
             - plan_id: "comply-gov-approved-plan"
               brand:
-                domain: "acmeoutdoor.example"
+                domain: "test-agent.adcontextprotocol.org"
               objectives: "Q2 outdoor lifestyle campaign — display and video"
               budget:
                 total: 100000
@@ -147,7 +153,7 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.example"
+                domain: "test-agent.adcontextprotocol.org"
               operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
@@ -173,7 +179,7 @@ phases:
           accounts:
             - account:
                 brand:
-                  domain: "acmeoutdoor.example"
+                  domain: "test-agent.adcontextprotocol.org"
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
@@ -205,7 +211,7 @@ phases:
           brief: "Display and video inventory on outdoor lifestyle content. Q2 flight, $25K budget. Adults 25-54, US."
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "test-agent.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
         context_outputs:
           - name: product_1_id
@@ -236,7 +242,7 @@ phases:
           the bounded authorization context used by the seller.
         sample_request:
           plan_id: "$context.plan_id"
-          caller: "https://pinnacle-agency.example"
+          caller: "https://test-agent.adcontextprotocol.org/hosted-grader"
           target_agent: "$context.seller_agent_url"
           tool: "create_media_buy"
           purchase_type: "media_buy"
@@ -245,10 +251,10 @@ phases:
             currency: "USD"
           payload:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "test-agent.adcontextprotocol.org"
             account:
               brand:
-                domain: "acmeoutdoor.example"
+                domain: "test-agent.adcontextprotocol.org"
               operator: "pinnacle-agency.example"
             total_budget:
               amount: 25000
@@ -299,10 +305,10 @@ phases:
         expected: "Reject the schema-valid request because its budget no longer matches the signed payload binding."
         sample_request:
           brand:
-            domain: "acmeoutdoor.example"
+            domain: "test-agent.adcontextprotocol.org"
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "test-agent.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
           total_budget:
             amount: 25001
@@ -337,10 +343,10 @@ phases:
           response need not echo the authorization context.
         sample_request:
           brand:
-            domain: "acmeoutdoor.example"
+            domain: "test-agent.adcontextprotocol.org"
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "test-agent.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
           total_budget:
             amount: 25000
@@ -383,7 +389,7 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "test-agent.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
           media_buy_ids:
             - "$context.media_buy_id"

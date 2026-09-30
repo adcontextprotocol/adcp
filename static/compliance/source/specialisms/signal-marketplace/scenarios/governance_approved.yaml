@@ -28,6 +28,12 @@ narrative: |
   positive path prevents an always-rejecting service from satisfying the
   governance-enforcement claim.
 
+# Buyer brand and intent caller (adcp#7758). test-agent.adcontextprotocol.org
+# publishes a real /.well-known/brand.json that lists the sandbox governance
+# agent, so a seller can complete the brand.json issuer cross-check for a
+# governance_context. Hosted grading authenticates to that governance agent as
+# the fixed hosted-grader buyer agent below; sellers map the credential they
+# give hosted grading to that buyer agent so it matches the token caller.
 context:
   governance_agent_url: "https://test-agent.adcontextprotocol.org"
   signal_agent_url: "https://test-agent.adcontextprotocol.org/signals"
@@ -56,7 +62,7 @@ phases:
         stateful: true
         sample_request:
           accounts:
-            - brand: { domain: "acmeoutdoor.example" }
+            - brand: { domain: "test-agent.adcontextprotocol.org" }
               operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
@@ -75,7 +81,7 @@ phases:
         sample_request:
           accounts:
             - account:
-                brand: { domain: "acmeoutdoor.example" }
+                brand: { domain: "test-agent.adcontextprotocol.org" }
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
@@ -96,7 +102,7 @@ phases:
         comply_scenario: signal_discovery
         sample_request:
           account:
-            brand: { domain: "acmeoutdoor.example" }
+            brand: { domain: "test-agent.adcontextprotocol.org" }
             operator: "pinnacle-agency.example"
           signal_spec: "a paid marketplace signal for outdoor enthusiasts with immediate activation"
           fields: [pricing_options, deployments]
@@ -127,7 +133,7 @@ phases:
           idempotency_key: "$generate:uuid_v4#signal_governance_approved_sync_plans"
           plans:
             - plan_id: "comply-signal-approved-plan"
-              brand: { domain: "acmeoutdoor.example" }
+              brand: { domain: "test-agent.adcontextprotocol.org" }
               objectives: "Activate governed audience data"
               budget:
                 total: 1000000000
@@ -156,7 +162,7 @@ phases:
         stateful: true
         sample_request:
           plan_id: "$context.plan_id"
-          caller: "https://pinnacle-agency.example"
+          caller: "https://test-agent.adcontextprotocol.org/hosted-grader"
           target_agent: "$context.signal_agent_url"
           tool: "activate_signal"
           purchase_type: "signal_activation"
@@ -164,7 +170,7 @@ phases:
           payload:
             action: "activate"
             account:
-              brand: { domain: "acmeoutdoor.example" }
+              brand: { domain: "test-agent.adcontextprotocol.org" }
               operator: "pinnacle-agency.example"
             signal_agent_segment_id: "$context.signal_agent_segment_id"
             pricing_option_id: "$context.pricing_option_id"
@@ -198,7 +204,7 @@ phases:
         sample_request:
           action: "activate"
           account:
-            brand: { domain: "acmeoutdoor.example" }
+            brand: { domain: "test-agent.adcontextprotocol.org" }
             operator: "pinnacle-agency.example"
           signal_agent_segment_id: "$context.signal_agent_segment_id"
           pricing_option_id: "$context.pricing_option_id"
@@ -232,7 +238,7 @@ phases:
         stateful: false
         sample_request:
           account:
-            brand: { domain: "acmeoutdoor.example" }
+            brand: { domain: "test-agent.adcontextprotocol.org" }
             operator: "pinnacle-agency.example"
           signal_ids: ["$context.signal_id"]
           fields: [deployments]

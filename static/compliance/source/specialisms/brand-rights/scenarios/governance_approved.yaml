@@ -28,6 +28,12 @@ narrative: |
   grant, and retain it for a later lifecycle update. This positive path prevents
   an always-rejecting service from satisfying the enforcement claim.
 
+# Buyer brand and intent caller (adcp#7758). test-agent.adcontextprotocol.org
+# publishes a real /.well-known/brand.json that lists the sandbox governance
+# agent, so a seller can complete the brand.json issuer cross-check for a
+# governance_context. Hosted grading authenticates to that governance agent as
+# the fixed hosted-grader buyer agent below; sellers map the credential they
+# give hosted grading to that buyer agent so it matches the token caller.
 context:
   governance_agent_url: "https://test-agent.adcontextprotocol.org"
   brand_agent_url: "https://test-agent.adcontextprotocol.org/brand"
@@ -56,7 +62,7 @@ phases:
         stateful: true
         sample_request:
           accounts:
-            - brand: { domain: "acmeoutdoor.example" }
+            - brand: { domain: "test-agent.adcontextprotocol.org" }
               operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
@@ -75,7 +81,7 @@ phases:
         sample_request:
           accounts:
             - account:
-                brand: { domain: "acmeoutdoor.example" }
+                brand: { domain: "test-agent.adcontextprotocol.org" }
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
@@ -123,7 +129,7 @@ phases:
           idempotency_key: "$generate:uuid_v4#rights_governance_approved_sync_plans"
           plans:
             - plan_id: "comply-rights-approved-plan"
-              brand: { domain: "acmeoutdoor.example" }
+              brand: { domain: "test-agent.adcontextprotocol.org" }
               objectives: "Acquire commercial likeness rights"
               budget:
                 total: 1000000000
@@ -152,14 +158,14 @@ phases:
         stateful: true
         sample_request:
           plan_id: "$context.plan_id"
-          caller: "https://pinnacle-agency.example"
+          caller: "https://test-agent.adcontextprotocol.org/hosted-grader"
           target_agent: "$context.brand_agent_url"
           tool: "acquire_rights"
           purchase_type: "rights_license"
           proposed_commitment: { amount: 1000000000, currency: "$context.pricing_currency" }
           payload:
             account:
-              brand: { domain: "acmeoutdoor.example" }
+              brand: { domain: "test-agent.adcontextprotocol.org" }
               operator: "pinnacle-agency.example"
             rights_id: "$context.rights_id"
             pricing_option_id: "$context.pricing_option_id"
@@ -200,7 +206,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            brand: { domain: "acmeoutdoor.example" }
+            brand: { domain: "test-agent.adcontextprotocol.org" }
             operator: "pinnacle-agency.example"
           rights_id: "$context.rights_id"
           pricing_option_id: "$context.pricing_option_id"
@@ -237,7 +243,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            brand: { domain: "acmeoutdoor.example" }
+            brand: { domain: "test-agent.adcontextprotocol.org" }
             operator: "pinnacle-agency.example"
           rights_id: "$context.rights_id"
           paused: true

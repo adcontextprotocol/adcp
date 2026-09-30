@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": patch
+---
+
+compliance: the multi-agent governance storyboards (`media_buy_seller/governance_approved`, `governance_conditions`, `governance_denied`, `governance_denied_recovery`, and the brand-rights, signal-marketplace, and creative-transformers `governance_approved` storyboards) now use `test-agent.adcontextprotocol.org` as the buyer brand instead of `acmeoutdoor.example`, and author the intent-check `caller` as `https://test-agent.adcontextprotocol.org/hosted-grader` instead of `https://pinnacle-agency.example`. A `.example` brand has no resolvable `brand.json`, so a seller that follows the signed governance context checklist could not confirm the token issuer against the buyer's `brand.json` (step 13). The new domain publishes a real `brand.json` listing the sandbox governance agent. The fixed caller is the buyer agent that hosted grading authenticates as, so a seller can map the credential it gives hosted grading to the same identity the governance agent binds into the token. Steps, validations, and grading are unchanged. No normative change. Refs #7758.
