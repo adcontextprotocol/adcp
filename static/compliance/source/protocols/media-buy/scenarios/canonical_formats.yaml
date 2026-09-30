@@ -888,6 +888,7 @@ phases:
               params:
                 width: 300
                 height: 250
+                max_file_size_kb: 200
               context:
                 buyer_ref: "canonical_formats_direct_selector_positive"
           context:
@@ -902,7 +903,7 @@ phases:
             description: "Accepted direct-canonical create allocates a media_buy_id"
           - check: canonical_format_satisfaction
             value: true
-            description: "Complete direct image dimensions satisfy the fixed canonical declaration"
+            description: "Complete direct image selector satisfies the fixed canonical declaration"
 
       - id: create_media_buy_with_legacy_mrec_format
         title: "Accept legacy fixed MREC selector after canonical normalization"
