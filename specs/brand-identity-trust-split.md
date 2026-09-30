@@ -1,16 +1,18 @@
 # Split identity and trust: brand.json + adcp-trust.json
 
-**Status**: Proposal (RFC [#7809](https://github.com/adcontextprotocol/adcp/issues/7809))
+**Status**: Direction accepted: split trust out of brand.json (2026-09-30). Remaining decisions below. (RFC [#7809](https://github.com/adcontextprotocol/adcp/issues/7809))
 
 **Related**: [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) (demand-side acts-for grants), [`capabilities-brand-url.md`](./capabilities-brand-url.md) (the `brand_json_url` bootstrap this supersedes)
 
 **Draft schemas**: [`brand-identity-trust-split/adcp-trust.json`](./brand-identity-trust-split/adcp-trust.json), [`adcp-trust-sells-for.json`](./brand-identity-trust-split/adcp-trust-sells-for.json), [examples](./brand-identity-trust-split/examples/). These live under `specs/` on purpose, so nothing here is published protocol surface until the implementation PRs below land.
 
-**Decisions needed**:
-1. Do we introduce a separate well-known trust record at all?
-2. Its name (working name `adcp-trust.json`).
-3. Acknowledge-by-reference for the supply path.
-4. Whether #6033 lands in the new file instead of brand.json.
+**Decided**:
+- Introduce a separate well-known trust record; brand.json becomes identity-only (removal in 4.0).
+- #6033 demand-side grants land in the new file, not in brand.json.
+
+**Decisions still needed**:
+1. The file's name (working name `adcp-trust.json`).
+2. Acknowledge-by-reference for the supply path.
 
 ## TL;DR
 
