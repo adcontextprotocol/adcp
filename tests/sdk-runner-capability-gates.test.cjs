@@ -968,3 +968,56 @@ test('measurement acceptance is split from the universal rejection scenario', as
   assert.equal(workflow.overall_passed, true);
   assert.deepEqual(submittedTerms, expectedTerms);
 });
+
+test('storyboard capability gates use the schema shape the runner evaluates', () => {
+  // requires_capability is a single predicate; compound AND gates belong in
+  // requires_all_capabilities. A malformed gate (e.g. `requires_capability:
+  // { all: [...] }`) crashes the runner before any step executes.
+  const sourceRoot = path.join(__dirname, '..', 'static', 'compliance', 'source');
+  const matchers = ['equals', 'contains', 'not_contains', 'present'];
+  const problems = [];
+  const checkPredicate = (predicate, where) => {
+    if (!predicate || typeof predicate !== 'object' || Array.isArray(predicate)) {
+      problems.push(`${where}: predicate must be an object`);
+      return;
+    }
+    if (typeof predicate.path !== 'string' || predicate.path.length === 0) {
+      problems.push(`${where}: predicate is missing a string \`path\``);
+    }
+    const declared = matchers.filter(key => key in predicate);
+    if (declared.length !== 1) {
+      problems.push(`${where}: predicate must declare exactly one of ${matchers.join(', ')}`);
+    }
+  };
+  const walk = dir => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!entry.name.endsWith('.yaml')) continue;
+      const doc = YAML.parse(fs.readFileSync(full, 'utf8'));
+      if (!doc || typeof doc !== 'object' || !Array.isArray(doc.phases)) continue;
+      const rel = path.relative(sourceRoot, full);
+      if (doc.requires_capability !== undefined) {
+        checkPredicate(doc.requires_capability, `${rel} requires_capability`);
+      }
+      if (doc.requires_all_capabilities !== undefined) {
+        if (!Array.isArray(doc.requires_all_capabilities) || doc.requires_all_capabilities.length < 2) {
+          problems.push(`${rel} requires_all_capabilities: must be an array of at least two predicates`);
+        } else {
+          doc.requires_all_capabilities.forEach((predicate, index) =>
+            checkPredicate(predicate, `${rel} requires_all_capabilities[${index}]`));
+        }
+      }
+      for (const phase of doc.phases) {
+        if (phase && phase.requires_capability !== undefined) {
+          checkPredicate(phase.requires_capability, `${rel} phase ${phase.id} requires_capability`);
+        }
+      }
+    }
+  };
+  walk(sourceRoot);
+  assert.deepEqual(problems, []);
+});

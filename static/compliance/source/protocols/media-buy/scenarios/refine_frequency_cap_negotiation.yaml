@@ -9,12 +9,13 @@ required_tools:
   - request_proposals
   - refine_proposals
 
-requires_capability:
-  all:
-    - path: media_buy.aggregate_frequency_capping
-      present: true
-    - path: media_buy.proposal_refinement.supported_dimensions
-      present: true
+requires_all_capabilities:
+  - path: media_buy.aggregate_frequency_capping
+    present: true
+  - path: media_buy.proposal_refinement.supported_dimensions
+    contains: "criteria"
+  - path: media_buy.proposal_refinement.supported_dimensions
+    contains: "product_changes"
 
 narrative: |
   AdCP 3.2 introduces shared MediaBuy-level frequency caps alongside typed
@@ -64,8 +65,10 @@ caller:
 
 prerequisites:
   description: |
-    The seller declares both aggregate_frequency_capping and
-    proposal_refinement.supported_dimensions. Fixtures include
+    The seller declares aggregate_frequency_capping and
+    proposal_refinement.supported_dimensions containing criteria and
+    product_changes. Ask-only sellers (empty supported_dimensions) are not
+    applicable. Fixtures include
     frequency-cap-participating products and one non-participating product.
   test_kit: "test-kits/acme-outdoor.yaml"
 
@@ -136,8 +139,9 @@ phases:
     title: "Discover frequency-cap and typed-negotiation capabilities"
     narrative: |
       Confirm the seller declares both aggregate_frequency_capping and
-      proposal_refinement.supported_dimensions. Both are required for
-      frequency-cap-aware proposal negotiation.
+      proposal_refinement.supported_dimensions containing criteria and
+      product_changes. Both are required for frequency-cap-aware proposal
+      negotiation.
 
     steps:
       - id: get_capabilities
