@@ -11,7 +11,7 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ## Version 3.2.0
 
-**Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.7 is the current signed protocol checkpoint. It adds the `viewable_rate` metric optimization goal with a required viewability `standard` and optional measurement `vendor`. TypeScript `@adcp/sdk@14.0.0-rc.50` and Python `adcp==8.0.0b18` embed RC.7 exactly, and Go `adcp/v3@v3.2.1` embeds RC.1, with role-dependent higher-level coverage. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup, the request-signature encoding migration, and the tightened request validation listed in [3.2 exceptions to 3.x compatibility](/docs/reference/versioning#3-2-exceptions-to-3-x-compatibility); explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
+**Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.7 is the current signed protocol checkpoint. It adds the `viewable_rate` metric optimization goal with a required viewability `standard` and optional measurement `vendor`. TypeScript `@adcp/sdk@14.0.0-rc.51` and Python `adcp==8.0.0b18` embed RC.7 exactly, and Go `adcp/v3@v3.2.1` embeds RC.1, with role-dependent higher-level coverage. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup, the request-signature encoding migration, and the tightened request validation listed in [3.2 exceptions to 3.x compatibility](/docs/reference/versioning#3-2-exceptions-to-3-x-compatibility); explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
 <Warning>
 **Reliable Reporting breaking-change notice — published September 12, 2026.**
@@ -57,7 +57,7 @@ See the [migration guide](/docs/reference/migration/reliable-reporting-status-lo
 | `3.2.0-rc.4` | Add anonymous catalog discovery declarations, require `recovery` on 3.2 producer errors, echo `account` on `sync_accounts` settings-update rows, and publish supply-path verification vectors | Previous checkpoint with exact TypeScript support in TypeScript SDK RC.44 |
 | `3.2.0-rc.5` | Not published; the release process withheld this bundle | Superseded by RC.6 |
 | `3.2.0-rc.6` | Add the shared MediaBuy `name`, seller-policy decline reasons, the request-signing error vocabulary, and the streaming-TV, retail-media, and exchange sales specialisms, and reconcile Reliable Reporting waivers | Previous checkpoint with exact TypeScript support in TypeScript SDK RC.48 |
-| `3.2.0-rc.7` | Add the `viewable_rate` metric optimization goal with viewability `standard` and `vendor`, allow both on `viewed_seconds` goals, and declare the deprecated `account` field on the media-buy `list_creative_formats` request | Current signed protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-rc.50` and exact Python support in `adcp==8.0.0b18`; served by the public training agent |
+| `3.2.0-rc.7` | Add the `viewable_rate` metric optimization goal with viewability `standard` and `vendor`, allow both on `viewed_seconds` goals, and declare the deprecated `account` field on the media-buy `list_creative_formats` request | Current signed protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-rc.51` and exact Python support in `adcp==8.0.0b18`; served by the public training agent |
 
 Each prerelease is immutable. The `3.2-rc` documentation selector advances to the latest release candidate; the `3.2-beta` selector remains frozen at beta.11. Pinned protocol, schema, compliance, and documentation artifacts remain available. See the [3.2 prerelease program](/docs/reference/3-2-beta).
 
@@ -84,7 +84,7 @@ Each prerelease is immutable. The `3.2-rc` documentation selector advances to th
 | A signing implementation | Require `content-digest` coverage for every signed request body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; isolate named-format conversion at compatibility boundaries. |
 | An SDK maintainer | Generate from the current signed RC.7 tarball, publish an exact support statement, and route accepted protocol corrections into a later prerelease. |
-| A compliance operator | Pair `@adcp/sdk@14.0.0-rc.50` or `adcp==8.0.0b18` with RC.7, and Go `adcp/v3@v3.2.1` with RC.1. Retain exact package and wire versions and do not issue a 3.2 badge from a prerelease checkpoint. |
+| A compliance operator | Pair `@adcp/sdk@14.0.0-rc.51` or `adcp==8.0.0b18` with RC.7, and Go `adcp/v3@v3.2.1` with RC.1. Retain exact package and wire versions and do not issue a 3.2 badge from a prerelease checkpoint. |
 
 ### Required 3.2 migrations
 
