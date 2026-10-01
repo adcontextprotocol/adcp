@@ -9,7 +9,7 @@ import {
   type GradingProfile,
   type GradingStatus,
 } from '../services/verification-profile-assessment.js';
-import { advertisesStableBadgeLine } from '../services/adcp-taxonomy.js';
+import { advertisesStableBadgeLine, SUPPORTED_BADGE_VERSIONS } from '../services/adcp-taxonomy.js';
 
 export type SelectableGradingProfile = Exclude<GradingProfile, 'sandbox'>;
 export type PublicProfileEffect = 'unchanged' | 'issue' | 'restore' | 'regrade' | 'degrade' | 'revoke';
@@ -60,7 +60,7 @@ export function planGradingProfilePublicEffect(input: {
 }
 
 const CURRENT_ASSESSMENT_MAX_AGE_HOURS = 24;
-const SUPPORTED_SELECTABLE_BADGE_VERSIONS = new Set(['3.0', '3.1']);
+const SUPPORTED_SELECTABLE_BADGE_VERSIONS: ReadonlySet<string> = new Set(SUPPORTED_BADGE_VERSIONS);
 
 export interface GradingProfileRolloutSetting {
   selection_enabled: boolean;

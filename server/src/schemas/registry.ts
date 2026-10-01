@@ -807,7 +807,7 @@ export const AgentComplianceSchema = z
     verified_roles: z.array(BadgeRoleSchema).optional()
       .openapi({ description: "Canonical badge roles the agent is AgenticAdvertising.org Verified for (e.g. media-buy, creative)." }),
     verified_role_versions: z.record(z.string(), z.array(z.string())).optional()
-      .openapi({ description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.1', '3.0'] }). Use this when choosing a version-pinned badge URL." }),
+      .openapi({ description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.2', '3.1'] }). Use this when choosing a version-pinned badge URL." }),
   })
   .openapi("AgentCompliance");
 
@@ -816,7 +816,7 @@ export const VerificationBadgeSchema = z
     role: BadgeRoleSchema
       .openapi({ description: "Canonical role this verification badge covers." }),
     adcp_version: z.string()
-      .openapi({ description: "AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK." }),
+      .openapi({ description: "AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.1', '3.2'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK." }),
     verified_at: z.string(),
     verified_specialisms: z.array(z.enum(ADCP_SPECIALISMS as [string, ...string[]]))
       .openapi({ description: "Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges." }),

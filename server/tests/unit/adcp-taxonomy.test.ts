@@ -54,8 +54,8 @@ describe('specialism status', () => {
 });
 
 describe('SUPPORTED_BADGE_VERSIONS', () => {
-  it('enables public badge issuance on 3.1 before 3.0', () => {
-    expect(SUPPORTED_BADGE_VERSIONS).toEqual(['3.1', '3.0']);
+  it('enables public badge issuance on 3.2, then 3.1, then 3.0', () => {
+    expect(SUPPORTED_BADGE_VERSIONS).toEqual(['3.2', '3.1', '3.0']);
   });
 
   it('is a non-empty array of MAJOR.MINOR strings', () => {
