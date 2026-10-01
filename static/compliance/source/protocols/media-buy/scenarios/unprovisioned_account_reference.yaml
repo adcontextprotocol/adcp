@@ -1,6 +1,6 @@
 id: media_buy_seller/unprovisioned_account_reference
 version: "1.0.0"
-introduced_in: "3.2"
+introduced_in: "3.3"
 title: "Seller rejects a natural key it never provisioned instead of serving public products"
 category: media_buy_seller
 summary: "Sends get_products with a buyer-declared natural key that was never synced and verifies the seller answers ACCOUNT_NOT_FOUND rather than dropping the account, and that the read did not create the account."
@@ -152,7 +152,7 @@ phases:
           - check: error_code
             value: "ACCOUNT_NOT_FOUND"
             severity: advisory
-            expires_after_version: "15.0.0"
+            expires_after_version: "14.1.0"
             description: "An account reference that does not resolve returns ACCOUNT_NOT_FOUND, not public products (accounts overview: Account references before provisioning)"
 
   - id: unprovisioned_key_assertion
@@ -203,5 +203,5 @@ phases:
             path: "accounts"
             value: 0
             severity: advisory
-            expires_after_version: "15.0.0"
+            expires_after_version: "14.1.0"
             description: "get_products did not create an account for the unprovisioned natural key"

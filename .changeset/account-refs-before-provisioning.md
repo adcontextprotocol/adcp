@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 spec(accounts): clarify and tighten how buyer-declared account references behave before provisioning. A new "Account references before provisioning" section in the accounts overview says:
@@ -11,4 +11,4 @@ spec(accounts): clarify and tighten how buyer-declared account references behave
 - account errors describe buyer setup, not seller health;
 - an `account_id` echoed by `sync_accounts` for a buyer-declared account is a seller handle that buyers must not assume is accepted as an `AccountRef`.
 
-The provisioning rule narrows earlier "first account-scoped request" wording. The wire result is unchanged, because a lazy-provisioning seller may still answer discovery for the account it would create. `ACCOUNT_NOT_FOUND` now gives the same recovery everywhere: provision a natural key, or verify an `account_id`. The capabilities, `get_products`, `get_signals`, `account-ref`, `sync_accounts`, and sandbox texts point to the new section.
+The provisioning rule narrows earlier "first account-scoped request" wording. It is classified `minor` because a seller that lazily provisioned on `get_products` was conformant before. The wire result is unchanged, because a lazy-provisioning seller may still answer discovery for the account it would create. `ACCOUNT_NOT_FOUND` now gives the same recovery everywhere: provision a natural key, or verify an `account_id`. The capabilities, `get_products`, `get_signals`, `account-ref`, `sync_accounts`, and sandbox texts point to the new section.
