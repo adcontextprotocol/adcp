@@ -122,7 +122,7 @@ Success responses include `sandbox: true` to confirm the request was processed i
 
 ## Full lifecycle example (buyer-declared account)
 
-This example shows the buyer-declared account path. For account-id namespaces, resolve the sandbox account through `list_accounts` (or out-of-band onboarding for seller-defined IDs), then replace the natural key account reference with `{ "account_id": "acct_sandbox_acme_001" }` in each step.
+This example shows the buyer-declared account path. It assumes the sandbox account was declared through `sync_accounts` as in Setup above; a natural key the seller hasn't provisioned returns `ACCOUNT_NOT_FOUND` ([Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning)). For account-id namespaces, resolve the sandbox account through `list_accounts` (or out-of-band onboarding for seller-defined IDs), then replace the natural key account reference with `{ "account_id": "acct_sandbox_acme_001" }` in each step.
 
 ### 1. Discover products
 
