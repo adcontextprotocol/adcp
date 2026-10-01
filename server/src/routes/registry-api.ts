@@ -1,4 +1,5 @@
 import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js';
+import { AgentService } from "../agent-service.js";
 import type { SupplyPathInput } from '../services/supply-path-contract.js';
 import { domain as supplyPathDomain, agentIdentity as supplyPathAgentIdentity } from '../services/supply-path-input.js';
 import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
@@ -5251,6 +5252,8 @@ registry.registerPath({
 
 // ── Router factory ──────────────────────────────────────────────
 
+const registryAgentService = new AgentService();
+
 export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   return createRegistryApiRouters(config).router;
 }
@@ -7776,10 +7779,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
 
       const encodedUrl = encodeURIComponent(agentUrl);
+      // Display name for public agents only; members_only/private stay unnamed here.
+      const publicAgent = await registryAgentService.getAgentByUrl(agentUrl).catch(() => undefined);
 
       res.setHeader("Cache-Control", "no-store");
       res.json({
         agent_url: agentUrl,
+        agent_name: publicAgent?.name ?? null,
         verified: badges.length > 0,
         badges: badges.map(b => ({
           role: b.role,

@@ -493,7 +493,9 @@ export function isValidAgentVisibility(value: unknown): value is AgentVisibility
 export interface AgentConfig {
   url: string;
   visibility: AgentVisibility;
-  // Cached info from discovery (optional, refreshed periodically)
+  // Label set when the agent is registered (not refreshed from discovery).
+  // Defaults to the company name; renames cascade into labels that still
+  // match the old name (services/identity-rename.ts).
   name?: string;
   type?: AgentType;
   /**
