@@ -11,6 +11,7 @@ const AjvDraft07 = require('ajv');
 const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
 const yaml = require('js-yaml');
+const semver = require('semver');
 const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 const {
   normalizeSubstitutions,
@@ -48,6 +49,15 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
+// The generated profiles describe the active surface of the package's release
+// line. Before the line's GA (x.y.0-rc.N) that is the x.y.0 surface the tool
+// manifest declares via added_in; once the line has a stable release it is the
+// released package version itself (3.2 GA ships as 3.2.1 because 3.2.0 is
+// permanently withdrawn; see RELEASING.md).
+const PACKAGE_VERSION = require('../package.json').version;
+const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
+  ? `${semver.major(PACKAGE_VERSION)}.${semver.minor(PACKAGE_VERSION)}.0`
+  : PACKAGE_VERSION;
 // Macro occurrence contracts and representation-set resolution add shared,
 // structurally enforced graphs to media-buy tasks. The 3.2 tracker contract
 // adds one seller-bound destination contract to build_creative; keep that
@@ -1194,7 +1204,7 @@ test('generated production profile exposes the active 3.2 surface without compli
   const profile = readJson(path.join(PRODUCTION_PROFILE_DIR, 'manifest.json'));
 
   assert.equal(profile.profile, 'production');
-  assert.equal(profile.surface_version, '3.2.0');
+  assert.equal(profile.surface_version, ACTIVE_SURFACE_VERSION);
   assert.equal(profile.annotation_mode, 'structural');
   assert.equal(profile.complete_discovery_projection, '../../manifest.json');
   assert.equal(profile.canonical_wire_manifest, '../../../../manifest.json');
@@ -1348,7 +1358,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
 
     assert.equal(profile.profile, profileName);
     assert.equal(profile.profile_kind, 'active-role-catalog');
-    assert.equal(profile.surface_version, '3.2.0');
+    assert.equal(profile.surface_version, ACTIVE_SURFACE_VERSION);
     assert.equal(profile.compatibility_scope, 'active-3.2-only');
     assert.equal(profile.annotation_mode, 'structural');
     assert.deepEqual(profile.schema_fields, ['inputSchema', 'outputSchema']);
@@ -1425,7 +1435,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
   const mediaBuyTools = new Set(MCP_ROLE_PROFILE_TOOLS['media-buy']);
   const activeMediaBuyTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'media-buy')
-    .filter(([, tool]) => !tool.deprecated_in || tool.deprecated_in > '3.2.0')
+    .filter(([, tool]) => !tool.deprecated_in || semver.gt(tool.deprecated_in, ACTIVE_SURFACE_VERSION))
     .map(([toolName]) => toolName)
     .filter(toolName => toolName !== 'build_creative');
   for (const toolName of activeMediaBuyTools) assert.ok(mediaBuyTools.has(toolName), toolName);
@@ -1443,7 +1453,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
   const creativeTools = new Set(MCP_ROLE_PROFILE_TOOLS.creative);
   const activeCreativeTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'creative')
-    .filter(([, tool]) => !tool.deprecated_in || tool.deprecated_in > '3.2.0')
+    .filter(([, tool]) => !tool.deprecated_in || semver.gt(tool.deprecated_in, ACTIVE_SURFACE_VERSION))
     .map(([toolName]) => toolName);
   for (const toolName of activeCreativeTools) assert.ok(creativeTools.has(toolName), toolName);
   assert.ok(creativeTools.has('build_creative'));
