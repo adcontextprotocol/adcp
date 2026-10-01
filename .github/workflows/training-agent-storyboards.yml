@@ -2,7 +2,7 @@ name: Training Agent Storyboards
 
 on:
   pull_request:
-    branches: [main, '3.2.x', '3.1.x', '3.0.x']
+    branches: [main, '3.1.x', '3.0.x']
     paths:
       - 'server/src/training-agent/**'
       - 'server/src/services/hosted-compliance-version.ts'
@@ -22,7 +22,7 @@ on:
       - 'dist/schemas/**'
       - '.github/workflows/training-agent-storyboards.yml'
   push:
-    branches: [main, '3.2.x', '3.1.x', '3.0.x']
+    branches: [main, '3.1.x', '3.0.x']
     paths:
       - 'server/src/training-agent/**'
       - 'server/src/services/hosted-compliance-version.ts'
