@@ -296,9 +296,23 @@ jobs:
           case "$1" in -*) echo 'Unsupported Git global options in release action' >&2; exit 1;; esac
           if [ "$1" = push ]; then
             exec node "$RUNNER_TEMP/release-hooks/fence.cjs" push "$@"
-          else
-            exec "$real_git" "$@"
           fi
+          # Changesets resolves changelog commits with one `git log` per
+          # changeset, all spawned at once. A stable exit cut consumes every
+          # archived prerelease changeset (~335 for 3.2.1) and that burst kills
+          # the runner, so bound concurrent `git log` calls to four flock slots.
+          # The lock fd is inherited by git and released when it exits.
+          if [ "$1" = log ]; then
+            n=0
+            while :; do
+              exec 9>"$RUNNER_TEMP/release-hooks/git-log-slot-$((n % 4))"
+              if flock -n 9; then exec "$real_git" "$@"; fi
+              exec 9>&-
+              n=$((n + 1))
+              if [ $((n % 4)) -eq 0 ]; then sleep 0.05; fi
+            done
+          fi
+          exec "$real_git" "$@"
           SH
           chmod +x "$RUNNER_TEMP/release-hooks/git"
           echo "$RUNNER_TEMP/release-hooks" >> "$GITHUB_PATH"
