@@ -1,0 +1,61 @@
+{
+  "_WARNING": "PUBLIC TEST KEYS — DO NOT TRUST IN PRODUCTION. The _private_d_for_test_only field exposes the full private key on every entry so SDK signer/verifier roundtrips can be exercised against the same material. Any production verifier that adds one of these kids to its trust store can be forged against by anyone who downloads this file. These keys are valid ONLY for grading against the AdCP webhook-signing conformance vectors.",
+  "$comment": "Test keypairs for AdCP webhook-signing conformance. These keys are public and MUST NOT be used in production. See README.md.",
+  "keys": [
+    {
+      "kid": "test-ed25519-webhook-2026",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "alg": "EdDSA",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "webhook-signing",
+      "x": "y7tTfeqazsFeTn3ccCzQlcJ4qFWuYsu-JkJAcfc9VoA",
+      "_private_d_for_test_only": "V0Z2ktvVfcWISjh4xmUlt-bSOJML9QBlzWzDkMFvgJw"
+    },
+    {
+      "kid": "test-es256-webhook-2026",
+      "kty": "EC",
+      "crv": "P-256",
+      "alg": "ES256",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "webhook-signing",
+      "x": "0X7G_jryFpiX9XO3CKxIqUQs3DC8OhUkw6Rb5QOZd5M",
+      "y": "MwZN7qQJzLpTD5dyDJAoqOLZJ9r8-GCh4BnOYu6NE0c",
+      "_private_d_for_test_only": "xgSwq4Iq3RS8MFP2oXsDP--8uZLoq6Idip2PNM6pCZ4"
+    },
+    {
+      "$comment": "Request-signing key (adcp_use='request-signing'). Included so negative vector 008 can demonstrate cross-purpose rejection: the vector presents this key when verifying a webhook signature, and the verifier MUST reject at step 8 because adcp_use is not 'webhook-signing'.",
+      "kid": "test-wrong-purpose-2026",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "alg": "EdDSA",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "request-signing",
+      "x": "VgpQd9JRrBf433BcMw6IUNW7tHnAAHAHegsQ5U9I53c",
+      "_private_d_for_test_only": "MdgOQLf-gC6G-vq2GGlDwbNE1Q40FY6SQ20yd3s33Cg"
+    },
+    {
+      "$comment": "Revoked webhook-signing key. Dedicated keypair for negative vector 017-key-revoked. adcp_use is 'webhook-signing' so that the verifier's purpose check (step 8) passes and the revocation check (step 9) fires. Runners pre-configure their revocation list to include this keyid before the negative phase runs; see test-kits/webhook-receiver-runner.yaml.",
+      "kid": "test-revoked-webhook-2026",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "alg": "EdDSA",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "webhook-signing",
+      "x": "PbQhjfhr2rhLz5vLfN6jKQcjkia0Q9BJ77XpZ5hlspM",
+      "_private_d_for_test_only": "OrLTojJ_widzMiREZdxeVdtHW5aCh-CsEJlTztEvRiw"
+    }
+  ]
+}
