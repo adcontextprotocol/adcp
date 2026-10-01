@@ -52,7 +52,8 @@ import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
 import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
-import { BrandDatabase, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
+import { BrandDatabase, HostedBrandConflictError, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
+import { isDomainControlVerified, publicBrandJsonManifest } from "./services/brand-trust-fields.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -1939,7 +1940,8 @@ export class HTTPServer {
         }
 
         const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
-        const publicManifest = stripLegacyBrandContext(manifest);
+        // Trust fields are published only for domain-attested rows.
+        const publicManifest = publicBrandJsonManifest(brand, stripLegacyBrandContext(manifest));
         const brandJson: Record<string, unknown> =
           typeof publicManifest.$schema === 'string' && publicManifest.$schema.startsWith('https://')
             ? { ...publicManifest }
@@ -3762,6 +3764,9 @@ export class HTTPServer {
 
         return res.json(brand);
       } catch (error: any) {
+        if (error instanceof HostedBrandConflictError) {
+          return res.status(409).json({ error: 'This brand is already registered. Use PUT /api/brands/hosted/:domain if you manage it.' });
+        }
         logger.error({ error }, 'Failed to create hosted brand');
         return res.status(500).json({ error: 'Failed to create brand' });
       }
@@ -3878,6 +3883,11 @@ export class HTTPServer {
         const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_brand', req.user!.id, domain);
         if (banCheck.banned) {
           return res.status(403).json({ error: 'You are banned from editing this brand', reason: banCheck.ban?.reason });
+        }
+
+        const currentBrand = await this.brandDb.getDiscoveredBrandByDomain(domain);
+        if (currentBrand && isDomainControlVerified(currentBrand)) {
+          return res.status(409).json({ error: 'This brand is managed by its verified owner' });
         }
 
         const { brand, revision_number } = await this.brandDb.editDiscoveredBrand(domain, {
@@ -4209,7 +4219,7 @@ export class HTTPServer {
 
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Access-Control-Allow-Origin', '*');
-        return res.json(brand.brand_json);
+        return res.json(publicBrandJsonManifest(brand, brand.brand_json));
       } catch (error) {
         logger.error({ error }, 'Failed to serve hosted brand.json');
         return res.status(500).json({ error: 'Failed to serve brand' });

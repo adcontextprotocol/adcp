@@ -588,6 +588,8 @@ export interface HostedBrand {
   created_by_email?: string;
   brand_domain: string;
   brand_json: Record<string, unknown>;
+  /** Registry provenance of the underlying brands row; 'brand_json' once the domain points at this hosted document. */
+  source_type?: DiscoveredBrand['source_type'];
   domain_verified: boolean;
   verification_token?: string;
   is_public: boolean;
