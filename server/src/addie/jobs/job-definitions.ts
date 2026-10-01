@@ -44,7 +44,7 @@ import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
 import { runWgSlackContextJob } from './wg-slack-context.js';
 import { runSecretariatExecutorJob } from './secretariat-executor.js';
 import { runSecretariatPrShepherdJob } from './secretariat-pr-shepherd.js';
-import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
+import { assertComplianceHeartbeatOperationalProgress, runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runVerificationProfileProjectionJob } from './verification-profile-projection.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runAddieCorrectedCaptureJob } from './shadow-corrected-capture.js';
@@ -590,15 +590,7 @@ export function registerAllJobs(): void {
       skipped: r.skipped,
       ...r.diagnostics,
     }),
-    validateResult: (r) => {
-      if (r.diagnostics && r.diagnostics.selectedAgents.length > 0 && r.checked === 0) {
-        throw new Error(
-          `Compliance heartbeat made no authoritative progress across ${r.diagnostics.selectedAgents.length} selected agents`
-          + ` (backlog=${r.diagnostics.eligibleBacklog}, runs_recorded=${r.diagnostics.runsRecorded},`
-          + ` skips=${JSON.stringify(r.diagnostics.skipReasons)})`,
-        );
-      }
-    },
+    validateResult: assertComplianceHeartbeatOperationalProgress,
   });
 
   jobScheduler.register({

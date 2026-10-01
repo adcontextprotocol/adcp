@@ -74,6 +74,28 @@ export interface HeartbeatResult {
   };
 }
 
+/**
+ * An inconclusive target or audit-only run is a completed per-agent attempt,
+ * not a worker failure. Escalate only when every selected agent was blocked by
+ * setup, execution-fence, or persistence errors before any run could be recorded.
+ */
+export function assertComplianceHeartbeatOperationalProgress(result: HeartbeatResult): void {
+  const diagnostics = result.diagnostics;
+  if (!diagnostics || diagnostics.selectedAgents.length === 0 || result.checked > 0 || diagnostics.runsRecorded > 0) {
+    return;
+  }
+
+  const { skipReasons } = diagnostics;
+  const blockedByWorker = skipReasons.pre_target_error + skipReasons.execution_fence_lost + skipReasons.agent_error;
+  if (blockedByWorker !== diagnostics.selectedAgents.length) return;
+
+  throw new Error(
+    `Compliance heartbeat could not process any of ${diagnostics.selectedAgents.length} selected agents`
+    + ` (backlog=${diagnostics.eligibleBacklog}, runs_recorded=${diagnostics.runsRecorded},`
+    + ` skips=${JSON.stringify(skipReasons)})`,
+  );
+}
+
 interface HeartbeatSkipReasons {
   execution_fence_busy: number;
   execution_fence_lost: number;
@@ -214,7 +236,7 @@ export async function runComplianceHeartbeatJob(
           { agentUrl: agent.agent_url, seededSupportedVersions },
           'Compliance heartbeat skipped because no trustworthy target could be selected',
         );
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
         result.skipped++;
         skipReasons.target_unconfirmed++;
         continue;
@@ -232,7 +254,7 @@ export async function runComplianceHeartbeatJob(
           },
           'Compliance heartbeat skipped because the completed run superseded its selected target',
         );
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
         result.skipped++;
         skipReasons.target_superseded++;
         continue;
@@ -267,7 +289,7 @@ export async function runComplianceHeartbeatJob(
       assertExecutionFence();
 
       if (!isAuthoritativeComplianceRun(dbInput)) {
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
         result.skipped++;
         skipReasons.audit_only++;
         logger.info({ agentUrl: agent.agent_url, runId: run.id, completeness: dbInput.completeness },
@@ -505,7 +527,7 @@ export async function runComplianceHeartbeatJob(
         });
         runsRecorded++;
 
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
       } catch (recordError) {
         // Fence loss during failure recording must be handled here directly:
         // we are already inside catch (error), so re-throwing would escape the
