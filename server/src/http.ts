@@ -54,6 +54,7 @@ import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services
 import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
 import { BrandDatabase, HostedBrandConflictError, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
 import { isDomainControlVerified, publicBrandJsonManifest } from "./services/brand-trust-fields.js";
+import { getStandaloneSite, resolveStandaloneRequest, type StandaloneSite } from "./standalone-sites.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -1223,6 +1224,12 @@ async function getUserFromRequest(
   return null;
 }
 
+/** Marks pages served on a standalone standard site so nav.js renders neutral chrome. */
+function standaloneSiteScript(res: express.Response): string {
+  const site = res.locals.standaloneSite as StandaloneSite | undefined;
+  return site ? `\n<script>window.__ADCP_SITE__=${JSON.stringify(site)};</script>` : '';
+}
+
 function stripLegacyBrandContext(manifest: Record<string, unknown>): Record<string, unknown> {
   const { brand_context: _brandContext, ...publicManifest } = manifest;
   return publicManifest;
@@ -1331,6 +1338,32 @@ export class HTTPServer {
     mountSchemasRoutes(this.app, path.join(distPath, 'schemas'));
     mountComplianceRoutes(this.app, path.join(distPath, 'compliance'));
     mountProtocolRoutes(this.app, path.join(distPath, 'protocol'));
+
+    // Standalone standard sites (brandjson.org, trustjson.org) expose only
+    // their own pages, schemas, and public read APIs. See standalone-sites.ts.
+    this.app.use(async (req, res, next) => {
+      const site = getStandaloneSite(req.hostname);
+      if (!site) return next();
+      res.locals.standaloneSite = site;
+      const decision = resolveStandaloneRequest(site, req.hostname, req.method, req.path, req.originalUrl);
+      switch (decision.kind) {
+        case 'pass':
+          return next();
+        case 'rewrite':
+          req.url = decision.url;
+          return next();
+        case 'page':
+          return this.serveHtmlWithConfig(req, res, decision.file);
+        case 'redirect':
+          return res.redirect(decision.status, decision.location);
+        case 'text':
+          res.setHeader('Content-Type', decision.contentType);
+          res.setHeader('Cache-Control', 'public, max-age=300');
+          return res.send(decision.body);
+        case 'not_found':
+          return res.status(404).type('text/plain').send('Not found');
+      }
+    });
 
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);
@@ -1550,7 +1583,7 @@ export class HTTPServer {
         await enrichUserWithAdmin(user);
 
         // Inject config
-        const configScript = getAppConfigScript(user);
+        const configScript = getAppConfigScript(user) + standaloneSiteScript(res);
 
         // Inject before </head>
         if (html.includes('</head>')) {
@@ -1741,7 +1774,7 @@ export class HTTPServer {
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
       html = await this.injectHomepageMemberCount(html);
-      const configScript = getAppConfigScript(user);
+      const configScript = getAppConfigScript(user) + standaloneSiteScript(res);
 
       // Inject before </head>
       if (html.includes('</head>')) {
