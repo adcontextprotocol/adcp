@@ -23,12 +23,21 @@ export const HOSTED_COMPLIANCE_TARGET_PREFERENCE = [
 // per-request network ceilings are configured separately on the transport.
 export const HOSTED_FULL_COMPLIANCE_TIMEOUT_MS = 600_000;
 
+// Capacity-bound extended lane for suites that have exhausted the ordinary
+// heartbeat budget and for owner-requested full refreshes. The heartbeat
+// admits at most three agents per batch, so its worst-case serial execution
+// remains within the two-hour scheduler deadline even with discovery overhead.
+export const HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS = 1_800_000;
+// The SDK soft budget is checked between storyboards. Bound a storyboard that
+// is already in flight, leaving the hourly three-agent batch below two hours.
+export const HOSTED_COMPLIANCE_OVERRUN_MS = 300_000;
+
 // Interactive full-suite runs (evaluate_agent_quality via Addie) need a higher
 // ceiling: 67 storyboards × 17s worst-case step pacing = ~1139s, plus headroom
 // for target discovery and network jitter.  The background callers (heartbeat,
 // registry refresh) keep the shared 600s constant so heartbeat lock TTLs and
 // hung-call risk stay bounded.
-export const HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS = 1_200_000;
+export const HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS = HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS;
 
 export interface HostedComplianceTarget {
   requested: string;

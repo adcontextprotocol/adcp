@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import DOMPurify from "isomorphic-dompurify";
 import { Marked } from "marked";
 import { csrfProtection } from "./middleware/csrf.js";
+import { createHostedWebhookReceiverRouter } from "./routes/hosted-webhook-receiver.js";
 import { chatRequestCorrelation } from "./middleware/chat-request-correlation.js";
 import { slowResponseTracker } from "./middleware/slow-response.js";
 import { requestMetrics } from "./middleware/request-metrics.js";
@@ -1334,6 +1335,11 @@ export class HTTPServer {
           return res.status(404).type('text/plain').send('Not found');
       }
     });
+
+    // Run-scoped callback URLs carry a bearer token in the path. Handle them
+    // before generic request telemetry (which records raw paths), JSON parsing,
+    // cookies, and CSRF. The relay emits no token-bearing request logs.
+    this.app.use('/api/compliance-receiver', createHostedWebhookReceiverRouter());
 
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);

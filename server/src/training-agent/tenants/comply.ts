@@ -40,6 +40,21 @@ const TRAINING_PRINCIPAL_FIELD = '__training_principal';
 const TRAINING_TASK_OWNER_SCOPE_FIELD = '__training_task_owner_scope';
 const TRAINING_OPERATOR_UNIT_BRIDGE_FIELD = '__training_operator_unit';
 export const CONTROLLER_TASK_SETTLEMENT_TIMEOUT_MS = 10_000;
+const completionLocks = new Map<string, Promise<void>>();
+
+async function withControllerTaskCompletionLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+  const previous = completionLocks.get(key);
+  let release!: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  completionLocks.set(key, current);
+  if (previous) await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (completionLocks.get(key) === current) completionLocks.delete(key);
+  }
+}
 
 function restoreControllerOperatorUnit(input: Record<string, unknown>): Record<string, unknown> {
   const ext = input.ext && typeof input.ext === 'object' && !Array.isArray(input.ext)
@@ -296,44 +311,81 @@ function taskCompletionAdapter(
     const params = rawParams as Record<string, unknown>;
     const taskId = params.task_id;
     const result = params.result;
-    let scope: TaskRegistryScope | undefined;
-    if (
-      taskRegistry
-      && typeof taskId === 'string'
-      && result
-      && typeof result === 'object'
-      && !Array.isArray(result)
-    ) {
-      // Authorize before dispatchV5 signals the pending worker. Checking only
-      // after dispatch would still let a cross-scope caller resolve it.
-      scope = await requireControllerTaskScope(
-        taskRegistry,
-        taskId,
-        controllerTaskScope(ctx.input),
+    const runCompletion = async () => {
+      let scope: TaskRegistryScope | undefined;
+      let taskTool: string | undefined;
+      let taskIsSubmitted = false;
+      if (
+        taskRegistry
+        && typeof taskId === 'string'
+        && result
+        && typeof result === 'object'
+        && !Array.isArray(result)
+      ) {
+        // Authorize before dispatchV5 signals the pending worker. Checking only
+        // after dispatch would still let a cross-scope caller resolve it.
+        // The SDK resolves this scope from the authenticated caller and account.
+        // The SDK may canonicalize the request's account reference before task
+        // creation, so recomputing scope from raw input can address a different
+        // partition.
+        scope = await requireControllerTaskScope(
+          taskRegistry,
+          taskId,
+          ctx.taskScope ?? controllerTaskScope(ctx.input),
+        );
+        const task = await taskRegistry.getTask(taskId, scope);
+        taskTool = task?.tool;
+        taskIsSubmitted = task?.status === 'submitted';
+      }
+      const completionScope = scope
+        ? {
+            ...scope,
+            registryNamespace: taskRegistryNamespaceForTenant(tenantId),
+          }
+        : undefined;
+      if (
+        taskTool === 'create_media_buy'
+        && taskIsSubmitted
+        && result && typeof result === 'object' && !Array.isArray(result)
+        && typeof (result as Record<string, unknown>).media_buy_id === 'string'
+      ) {
+        // Materialize before the pending task can become terminal or emit a
+        // completion webhook. A buyer reading immediately on that signal must
+        // already be able to retrieve the approved media buy.
+        const mediaBuyResult = result as Record<string, unknown>;
+        const seeded = await dispatchV5('seed_media_buy', {
+          media_buy_id: mediaBuyResult.media_buy_id as string,
+          fixture: {
+            ...mediaBuyResult,
+            status: mediaBuyResult.media_buy_status,
+            account: normalizeControllerAccountRef(restoreControllerOperatorUnit(ctx.input).account),
+          },
+        }, ctx.input, storyboardCompat);
+        throwOnFailure(seeded);
+      }
+      const controllerResult = await dispatchV5(
+        'force_task_completion',
+        params,
+        ctx.input,
+        storyboardCompat,
+        completionScope,
       );
-    }
-    const completionScope = scope
-      ? {
-          ...scope,
-          registryNamespace: taskRegistryNamespaceForTenant(tenantId),
-        }
-      : undefined;
-    const controllerResult = await dispatchV5(
-      'force_task_completion',
-      params,
-      ctx.input,
-      storyboardCompat,
-      completionScope,
-    );
-    throwOnFailure(controllerResult);
-    if (taskRegistry && scope && typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
-      // The forced-completion signal resolves the framework-owned handoff.
-      // Wait for that background settlement instead of writing the registry
-      // directly: winning the write race here makes the framework observe an
-      // already-terminal task and skip its completion webhook.
-      await awaitControllerTaskSettlement(taskRegistry, taskId, scope);
-    }
-    return controllerResult;
+      throwOnFailure(controllerResult);
+      if (taskRegistry && scope && typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
+        // The forced-completion signal resolves the framework-owned handoff.
+        // Wait for that background settlement instead of writing the registry
+        // directly: winning the write race here makes the framework observe an
+        // already-terminal task and skip its completion webhook.
+        await awaitControllerTaskSettlement(taskRegistry, taskId, scope);
+      }
+      return controllerResult;
+    };
+    // A task can receive two controller calls at once. Serialize the scoped
+    // read, buy materialization, and terminal publication so a losing replay
+    // cannot leave an orphan buy. The task registry itself is process-local.
+    return typeof taskId === 'string'
+      ? withControllerTaskCompletionLock(`${tenantId}:${taskId}`, runCompletion)
+      : runCompletion();
   };
 }
 

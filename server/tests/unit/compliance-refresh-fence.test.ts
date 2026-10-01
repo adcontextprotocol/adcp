@@ -42,4 +42,51 @@ describe('compliance refresh execution fence', () => {
     await fence?.release();
     expect(client.end).toHaveBeenCalledOnce();
   });
+
+  it('uses one of two database-wide heartbeat slots before fencing the agent', async () => {
+    const first = Object.assign(new EventEmitter(), {
+      connection: { stream: { destroyed: false, destroy: vi.fn() } },
+      query: vi.fn().mockResolvedValueOnce({ rows: [{ acquired: false }] }),
+      end: vi.fn().mockResolvedValue(undefined),
+    });
+    const second = Object.assign(new EventEmitter(), {
+      connection: { stream: { destroyed: false, destroy: vi.fn() } },
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ acquired: true }] })
+        .mockResolvedValueOnce({ rows: [{ acquired: true }] })
+        .mockResolvedValue({ rows: [{ acquired: true }] }),
+      end: vi.fn().mockResolvedValue(undefined),
+    });
+    mocks.getDedicatedClient.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+
+    const fence = await new ComplianceRefreshRequestsDatabase().acquireHeartbeatExecutionFence('https://agent.example/mcp');
+
+    expect(fence?.isValid()).toBe(true);
+    expect(first.query.mock.calls[0][1]).toEqual(['compliance-suite-slot:0']);
+    expect(second.query.mock.calls[0][1]).toEqual(['compliance-suite-slot:1']);
+    expect(second.query.mock.calls[1][1]).toEqual(['compliance-agent-execution:https://agent.example/mcp']);
+    await fence?.release();
+    expect(second.end).toHaveBeenCalledOnce();
+  });
+
+  it('reserves the third suite slot for an owner refresh', async () => {
+    const client = Object.assign(new EventEmitter(), {
+      connection: { stream: { destroyed: false, destroy: vi.fn() } },
+      query: vi.fn().mockResolvedValue({ rows: [{ acquired: true }] }),
+      end: vi.fn().mockResolvedValue(undefined),
+    });
+    mocks.getDedicatedClient.mockResolvedValueOnce(client);
+
+    const fence = await new ComplianceRefreshRequestsDatabase().acquireExecutionFence(
+      'operation-id', 'https://agent.example/mcp',
+    );
+
+    expect(fence?.isValid()).toBe(true);
+    expect(client.query.mock.calls.slice(0, 3).map((call: unknown[]) => call[1])).toEqual([
+      ['compliance-suite-slot:2'],
+      ['compliance-refresh-fence:operation-id'],
+      ['compliance-agent-execution:https://agent.example/mcp'],
+    ]);
+    await fence?.release();
+  });
 });
