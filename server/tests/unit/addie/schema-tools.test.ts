@@ -137,7 +137,12 @@ describe('schema version selection', () => {
     }
 
     const getSchema = SCHEMA_TOOLS.find((tool) => tool.name === 'get_schema');
-    expect(getSchema?.input_schema.properties.version.description).toContain('stable 3.1');
+    // The hand-written default in the tool description must name the docs
+    // default that DEFAULT_SCHEMA_VERSION actually resolves to.
+    for (const toolName of ['validate_json', 'get_schema', 'list_schemas']) {
+      const tool = SCHEMA_TOOLS.find((candidate) => candidate.name === toolName);
+      expect(tool?.input_schema.properties.version.description).toContain(`stable ${DEFAULT_SCHEMA_VERSION}`);
+    }
   });
 });
 
