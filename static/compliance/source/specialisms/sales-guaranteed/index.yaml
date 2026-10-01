@@ -110,6 +110,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_2512b4c133fb"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-sales_guaranteed-e941b849"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     # This storyboard needs only guaranteed inventory. The protocol baseline
     # owns its separate non-guaranteed fixtures and applicability policy.
@@ -227,6 +238,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
             sandbox: true
 
           context:
@@ -289,6 +302,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
             sandbox: true
           scenario: "force_create_media_buy_arm"
           params:
@@ -346,6 +361,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
             sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
@@ -394,6 +411,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
             sandbox: true
           context:
             correlation_id: "sales_guaranteed--get_submitted_task"
@@ -430,6 +449,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
             sandbox: true
           scenario: "force_task_completion"
           params:
@@ -475,6 +496,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
             sandbox: true
           context:
             correlation_id: "sales_guaranteed--get_completed_task"
@@ -535,6 +558,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
@@ -596,6 +621,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
             sandbox: true
           creatives:
             - creative_id: "video_30s_trail_pro"
@@ -659,6 +686,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"

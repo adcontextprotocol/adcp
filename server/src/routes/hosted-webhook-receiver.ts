@@ -63,7 +63,8 @@ export function createHostedWebhookReceiverRouter(
     // signed target. Validate the path, then relay the original URL intact.
     const match = CALLBACK_PATH.exec(req.originalUrl.split('?', 1)[0]);
     if (!match || match[1] !== req.params.token) return res.status(404).end();
-    if (!Buffer.isBuffer(req.body)) return res.status(400).end();
+    const body: unknown = req.body;
+    if (!Buffer.isBuffer(body)) return res.status(400).end();
 
     let target: HostedWebhookReceiverTarget | null;
     try {
@@ -96,7 +97,7 @@ export function createHostedWebhookReceiverRouter(
     // Preserve the public authority for RFC 9421 signatures while connecting
     // to the runner's private address. The body bytes are forwarded unchanged.
     headers.host = publicHost;
-    headers['content-length'] = String(req.body.length);
+    headers['content-length'] = String(body.byteLength);
 
     await new Promise<void>(resolve => {
       let finished = false;
@@ -137,7 +138,7 @@ export function createHostedWebhookReceiverRouter(
       });
       upstream.on('timeout', () => upstream.destroy());
       upstream.on('error', () => finish(503));
-      upstream.end(req.body);
+      upstream.end(body);
     });
   });
 

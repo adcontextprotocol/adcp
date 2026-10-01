@@ -2487,7 +2487,12 @@ describe('tenant routing smoke', () => {
       const accountA = {
         brand: { domain: 'task-owner-a.example' },
         operator: 'pinnacle-agency.example',
+        operator_unit: { id: 'unit-a' },
         sandbox: true,
+      };
+      const accountAOtherUnit = {
+        ...accountA,
+        operator_unit: { id: 'unit-b' },
       };
       const accountB = {
         brand: { domain: 'task-owner-b.example' },
@@ -2560,6 +2565,11 @@ describe('tenant routing smoke', () => {
         error: 'NOT_FOUND',
       });
       expect(await complete(ownerA, accountB, 'mb_cross_account_attack')).toMatchObject({
+        status: 'failed',
+        success: false,
+        error: 'NOT_FOUND',
+      });
+      expect(await complete(ownerA, accountAOtherUnit, 'mb_cross_unit_attack')).toMatchObject({
         status: 'failed',
         success: false,
         error: 'NOT_FOUND',

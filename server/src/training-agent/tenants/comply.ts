@@ -261,6 +261,7 @@ async function awaitControllerTaskSettlement(
 
 function controllerTaskScope(
   input: Record<string, unknown>,
+  restoreBridge = true,
 ): TaskRegistryScope | null {
   // The router overwrites this field after bearer authentication. It is not
   // accepted as caller authority on routes that bypass that trusted bridge.
@@ -268,7 +269,9 @@ function controllerTaskScope(
   if (typeof ownerScope !== 'string' || ownerScope.length === 0) return null;
 
   try {
-    const accountRef = normalizeControllerAccountRef(restoreControllerOperatorUnit(input).account);
+    const accountRef = normalizeControllerAccountRef(
+      (restoreBridge ? restoreControllerOperatorUnit(input) : input).account,
+    );
     const account = canonicalizeAccountRef(accountRef);
     if (account.kind === 'account_id') {
       return { accountId: account.account_id, ownerScope };
@@ -280,6 +283,26 @@ function controllerTaskScope(
   } catch {
     return null;
   }
+}
+
+function completionTaskScope(ctx: ComplyControllerContext): TaskRegistryScope | null {
+  const trusted = ctx.taskScope ?? controllerTaskScope(ctx.input);
+  if (!trusted || !ctx.taskScope) return trusted;
+
+  // The current SDK controller wrapper strips operator_unit before resolving
+  // its trusted account. Our ingress moved that schema-valid field from the
+  // original AccountRef into ext after discarding any caller-supplied bridge.
+  // Restore only the account partition, and only when the stripped reference
+  // resolves to the exact trusted account and authenticated owner scope.
+  const ext = ctx.input.ext;
+  if (!ext || typeof ext !== 'object' || Array.isArray(ext)
+      || !Object.hasOwn(ext, TRAINING_OPERATOR_UNIT_BRIDGE_FIELD)) return trusted;
+  const base = controllerTaskScope(ctx.input, false);
+  if (!base || base.accountId !== trusted.accountId || base.ownerScope !== trusted.ownerScope
+      || ctx.account?.id !== trusted.accountId) return trusted;
+  const restored = controllerTaskScope(restoreControllerOperatorUnit(ctx.input));
+  if (!restored || restored.ownerScope !== trusted.ownerScope) return trusted;
+  return { ...trusted, accountId: restored.accountId };
 }
 
 function seedAdapter(scenario: string, storyboardCompat?: TrainingContext['storyboardCompat']): AdapterShim {
@@ -324,14 +347,13 @@ function taskCompletionAdapter(
       ) {
         // Authorize before dispatchV5 signals the pending worker. Checking only
         // after dispatch would still let a cross-scope caller resolve it.
-        // The SDK resolves this scope from the authenticated caller and account.
-        // The SDK may canonicalize the request's account reference before task
-        // creation, so recomputing scope from raw input can address a different
-        // partition.
+        // The SDK resolves the authenticated owner scope. Its current
+        // controller wrapper drops operator_unit, so completionTaskScope may
+        // restore the validated account partition from our trusted bridge.
         scope = await requireControllerTaskScope(
           taskRegistry,
           taskId,
-          ctx.taskScope ?? controllerTaskScope(ctx.input),
+          completionTaskScope(ctx),
         );
         const task = await taskRegistry.getTask(taskId, scope);
         taskTool = task?.tool;
