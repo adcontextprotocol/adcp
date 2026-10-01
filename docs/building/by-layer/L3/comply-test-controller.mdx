@@ -477,7 +477,7 @@ and status call below.
 
 ```json
 {
-  "adcp_version": "3.2-rc.1",
+  "adcp_version": "3.2",
   "idempotency_key": "reporting-core-lab-0001",
   "accounts": [{
     "brand": { "domain": "reporting-lab.example" },
@@ -508,7 +508,7 @@ and status call below.
 
 ```json
 {
-  "adcp_version": "3.2-rc.1",
+  "adcp_version": "3.2",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": { "operation": "prepare" }
@@ -519,7 +519,7 @@ Read the waiting obligation through [`get_reporting_status`](/docs/media-buy/tas
 
 ```json
 {
-  "adcp_version": "3.2-rc.1",
+  "adcp_version": "3.2",
   "account": { "account_id": "acc_copy_from_sync_accounts" },
   "view": "periods"
 }
@@ -529,7 +529,7 @@ Then advance past its SLA to make the missing revision operationally visible:
 
 ```json
 {
-  "adcp_version": "3.2-rc.1",
+  "adcp_version": "3.2",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": {
@@ -543,7 +543,7 @@ The corresponding escalation, publication, and deliberate omission calls are:
 
 ```json
 {
-  "adcp_version": "3.2-rc.1",
+  "adcp_version": "3.2",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": { "operation": "advance_time", "target_health": "action_required" }
@@ -552,7 +552,7 @@ The corresponding escalation, publication, and deliberate omission calls are:
 
 ```json
 {
-  "adcp_version": "3.2-rc.1",
+  "adcp_version": "3.2",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": { "operation": "publish_zero_row" }
@@ -564,7 +564,7 @@ To grade the stale-received grace window, first publish a revision and record a
 
 ```json
 {
-  "adcp_version": "3.2-rc.1",
+  "adcp_version": "3.2",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": {
@@ -585,7 +585,7 @@ crossed:
 
 ```json
 {
-  "adcp_version": "3.2-rc.1",
+  "adcp_version": "3.2",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": { "operation": "advance_past_status_deadline" }
@@ -594,7 +594,7 @@ crossed:
 
 ```json
 {
-  "adcp_version": "3.2-rc.1",
+  "adcp_version": "3.2",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": { "operation": "advance_past_escalation" }
@@ -614,7 +614,7 @@ Reset with `prepare` before the negative fixture, then call:
 
 ```json
 {
-  "adcp_version": "3.2-rc.1",
+  "adcp_version": "3.2",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": { "operation": "omit_obligation" }
@@ -671,8 +671,8 @@ Shape the next curated discovery call from the caller's authenticated sandbox
 account (account + principal pair) into a status-specific response arm.
 `force_get_products_arm` applies only to [`get_products`](/docs/media-buy/task-reference/get_products) with
 `buying_mode: "brief"` or `"refine"`.
-The `rejected` arm is introduced in AdCP 3.2. During the beta, callers using release-
-precision negotiation can pin `adcp_version: "3.2-beta.0"`, while callers using the
+The `rejected` arm is introduced in AdCP 3.2. Callers using release-precision
+negotiation pin `adcp_version: "3.2"`, while callers using the
 legacy major-only envelope can send `adcp_major_version: 3` when the seller
 resolves that request to 3.2. The controller call and matching `get_products`
 call MUST negotiate the same served release.
@@ -728,7 +728,7 @@ products, proposals, errors, or envelope-level adcp_error.
 
 ```json
 {
-  "adcp_version": "3.2-beta.0",
+  "adcp_version": "3.2",
   "adcp_major_version": 3,
   "scenario": "force_get_products_arm",
   "account": {

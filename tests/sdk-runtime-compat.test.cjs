@@ -4,17 +4,23 @@ const path = require('node:path');
 const semver = require('semver');
 const test = require('node:test');
 
+// Runtime surfaces must name the SDK the repository actually installs: learners
+// run these commands against the hosted training agent today.
 const CURRENT_SDK_CHECKPOINT_FILES = [
+  'server/src/addie/mcp/certification-tools.ts',
+];
+
+// GA release docs are snapshotted at the release tag and describe the stable
+// SDK that ships alongside that release. They name the stable version of the
+// installed SDK line (for example 14.0.0 while package.json is 14.0.0-rc.N)
+// and no prerelease of it. Historical records (the prerelease history and the
+// versions table) intentionally list prerelease pins and are not checked.
+const GA_RELEASE_DOC_FILES = [
   'docs/building/by-layer/L4/choose-your-sdk.mdx',
-  'docs/learning/supplements/buyer-briefs-and-get-products.mdx',
   'docs/learning/tracks/buyer.mdx',
-  'docs/media-buy/product-discovery/proposal-negotiation.mdx',
-  'docs/reference/3-2-beta.mdx',
   'docs/reference/migration/3-1-to-3-2.mdx',
   'docs/reference/release-notes.mdx',
-  'docs/reference/versions.mdx',
   'docs/reference/whats-new-in-3-2.mdx',
-  'server/src/addie/mcp/certification-tools.ts',
 ];
 
 async function loadInstalledSingleAgentClients() {
@@ -81,6 +87,30 @@ test('current exact SDK checkpoint references match package.json', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8');
     const versions = sdkCheckpointVersions(source, expectedVersion);
     assert.deepEqual(versions, [expectedVersion], `${relativePath} must use the package.json SDK checkpoint`);
+  }
+});
+
+test('GA release docs name the stable version of the installed SDK line', () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf8'));
+  const installed = semver.parse(packageJson.dependencies['@adcp/sdk']);
+  const stableTarget = `${installed.major}.${installed.minor}.${installed.patch}`;
+  const prereleaseOfTarget = new RegExp(
+    String.raw`(?<![0-9A-Za-z.+-])${stableTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-[0-9A-Za-z.-]+`,
+    'g',
+  );
+
+  for (const relativePath of GA_RELEASE_DOC_FILES) {
+    const source = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8');
+    assert.deepEqual(
+      sdkCheckpointVersions(source, stableTarget),
+      [stableTarget],
+      `${relativePath} must name the stable SDK ${stableTarget}`,
+    );
+    assert.deepEqual(
+      source.match(prereleaseOfTarget) ?? [],
+      [],
+      `${relativePath} must not pin a ${stableTarget} prerelease`,
+    );
   }
 });
 

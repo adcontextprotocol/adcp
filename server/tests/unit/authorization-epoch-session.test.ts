@@ -78,6 +78,30 @@ it.each([
     expect(mocks.loadAuthorizationSnapshot).toHaveBeenCalledWith(AUTHENTICATED_ID, 'org_pinnacle');
   }
 });
+
+it('keeps the signed-in organization while opening another admin account', async () => {
+  mocks.authenticate.mockResolvedValue({
+    authenticated: true, user: { ...PROVIDER_USER }, accessToken: 'access-token', organizationId: 'org_signed_in',
+  });
+  const app = express();
+  app.use(express.json());
+  const sessionCookie = `admin-account-${++sequence}`;
+  app.use((req, _res, next) => { req.cookies = { 'wos-session': sessionCookie }; next(); });
+  app.get('/admin/accounts/:orgId', requireAuth, (_req, res) => res.json({ ok: true }));
+  app.get('/api/admin/accounts/:orgId', requireAuth, (_req, res) => res.json({ ok: true }));
+  app.get('/api/organizations/:orgId', requireAuth, (_req, res) => res.json({ ok: true }));
+
+  expect((await supertest(app).get('/admin/accounts/org_target')).status).toBe(200);
+  expect((await supertest(app).get('/api/admin/accounts/org_target?organization_id=org_target')).status).toBe(200);
+  expect(mocks.loadAuthorizationSnapshot).toHaveBeenCalledWith(AUTHENTICATED_ID, 'org_signed_in');
+  expect(mocks.loadAuthorizationSnapshot).not.toHaveBeenCalledWith(AUTHENTICATED_ID, 'org_target');
+
+  const conflictingHeader = await supertest(app).get('/api/admin/accounts/org_target')
+    .set('x-organization-id', 'org_target');
+  expect(conflictingHeader.status).toBe(403);
+  expect(conflictingHeader.body.error).toBe('An unambiguous organization selection is required');
+  expect((await supertest(app).get('/api/organizations/org_target')).status).toBe(403);
+});
 function snapshot(overrides: Partial<AuthorizationSnapshot> = {}): AuthorizationSnapshot {
   return {
     authenticatedUserId: AUTHENTICATED_ID, canonicalUserId: AUTHENTICATED_ID,

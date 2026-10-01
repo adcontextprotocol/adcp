@@ -11,7 +11,7 @@ testable: true
 
 {/* Using latest because this schema is not yet released in any version.
     Update to the correct version alias after the next release. */}
-**Request schema:** [`/schemas/3.2.0-rc.2/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/media-buy/request-proposals-request.json)
+**Request schema:** [`/schemas/3.2.1/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/request-proposals-request.json)
 
 ```json
 {
@@ -192,7 +192,7 @@ The seller can't plan clicks at €3 on this inventory. The best it can plan is 
 
 The purchase's only optimization goal is `clicks`, so the media-buy `cost_per` binds to clicks. €5,000 does not divide into whole clicks at €4.50, so each point carries the planned `spend`. If the buyer had sent `"currency": "USD"` against this EUR-only product, the seller would reject with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per` rather than convert.
 
-Explicit hard requirements in the brief remain binding. When the seller's structured interpretation materially affects product eligibility, pricing, or forecasting, the response includes `targeting_resolution.brief_targeting`. Exact structured overlays are not echoed; any product-specific alternative appears as sparse `Product.targeting_resolution.modifications` for buyer approval.
+Explicit hard requirements in the brief remain binding. When the seller's structured interpretation materially affects product eligibility, pricing, or forecasting, the response includes `targeting_resolution.brief_targeting`. Exact structured overlays are not echoed; any product-specific alternative appears as sparse `Product.targeting_resolution.modifications` for buyer approval. A product carrying `targeting_resolution` also carries `expires_at`, which is how compact products mark request-specific configured offers; they have no `is_custom` flag.
 
 When the effective criteria include property or collection lists, every product returned alongside the proposals carries its own `list_applications` receipts. Proposal objects do not duplicate them. The receipts show how each list snapshot intersected that product at evaluation time, and the proposal uses the resulting price and forecast.
 

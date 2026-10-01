@@ -1064,7 +1064,7 @@ const getAdcpCapabilitiesTool: AddieTool = {
       debug: { type: 'boolean' },
       adcp_version: {
         type: 'string',
-        description: 'Optional exact release pin, for example "3.2-rc.7" during prerelease testing',
+        description: 'Optional release pin, for example "3.2"',
       },
       adcp_major_version: {
         type: 'integer',

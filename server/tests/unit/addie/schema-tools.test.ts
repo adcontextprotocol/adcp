@@ -18,6 +18,11 @@ import {
   type SchemaRegistry,
 } from '../../../src/addie/mcp/schema-tools.js';
 
+const PRERELEASE_SELECTOR = /^\d+\.\d+-[0-9a-z]+$/i;
+const LINE_32_CANONICAL = '3.2' in DOCS_SCHEMA_RELEASES
+  ? '3.2'
+  : Object.keys(DOCS_SCHEMA_RELEASES).find((selector) => selector.startsWith('3.2-'))!;
+
 describe('schema version selection', () => {
   it('promotes the newest prerelease channel while preserving explicit beta routing', () => {
     const routing = buildPreviewSchemaRouting({
@@ -100,32 +105,20 @@ describe('schema version selection', () => {
   });
 
   it('accepts every public docs release and defaults its guidance to stable', () => {
-    expect(Object.keys(DOCS_SCHEMA_RELEASES)).toEqual([
-      '3.1',
-      '3.2-rc',
-      '3.2-beta',
-      '3.0',
-      '2.5',
-    ]);
+    // The release set is pinned to docs.json by the test above; here every
+    // entry, whatever the current snapshot, must be selectable.
     expect(SCHEMA_VERSION_OPTIONS).toEqual(expect.arrayContaining([
-      '3.1',
       'stable',
       'current',
       'latest',
       'v3',
-      DOCS_SCHEMA_RELEASES['3.1'],
-      '3.2-rc',
-      '3.2 rc',
       '3.2',
-      DOCS_SCHEMA_RELEASES['3.2-rc'],
-      '3.2-beta',
-      '3.2 beta',
-      DOCS_SCHEMA_RELEASES['3.2-beta'],
-      '3.0',
-      DOCS_SCHEMA_RELEASES['3.0'],
-      '2.5',
+      ...Object.entries(DOCS_SCHEMA_RELEASES).flatMap(([selector, artifact]) => [
+        selector,
+        artifact,
+        ...(PRERELEASE_SELECTOR.test(selector) ? [selector.replace('-', ' ')] : []),
+      ]),
       '2.5 (archived)',
-      DOCS_SCHEMA_RELEASES['2.5'],
       'v2',
       '2.6',
       '2.6.0',
@@ -187,30 +180,30 @@ describe('schema handler version resolution', () => {
     },
   );
 
+  // Derived from the current docs release set so the matrix survives
+  // release-docs snapshots (3.2-beta/3.2-rc retire when 3.2 goes GA).
+  const selectorFor = (canonical: string) => ({ canonical, artifact: DOCS_SCHEMA_RELEASES[canonical] });
   const publicSelectors: Array<{
     selector?: string;
     canonical: string;
     artifact: string;
   }> = [
-    { canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: '3.1', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: 'stable', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: 'current', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: 'latest', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: 'v3', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: DOCS_SCHEMA_RELEASES['3.1'], canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: '3.2-rc', canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
-    { selector: '3.2 rc', canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
-    { selector: '3.2', canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
-    { selector: DOCS_SCHEMA_RELEASES['3.2-rc'], canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
-    { selector: '3.2-beta', canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
-    { selector: '3.2 beta', canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
-    { selector: DOCS_SCHEMA_RELEASES['3.2-beta'], canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
-    { selector: '3.0', canonical: '3.0', artifact: DOCS_SCHEMA_RELEASES['3.0'] },
-    { selector: DOCS_SCHEMA_RELEASES['3.0'], canonical: '3.0', artifact: DOCS_SCHEMA_RELEASES['3.0'] },
-    { selector: '2.5', canonical: '2.5', artifact: DOCS_SCHEMA_RELEASES['2.5'] },
-    { selector: '2.5 (archived)', canonical: '2.5', artifact: DOCS_SCHEMA_RELEASES['2.5'] },
-    { selector: DOCS_SCHEMA_RELEASES['2.5'], canonical: '2.5', artifact: DOCS_SCHEMA_RELEASES['2.5'] },
+    selectorFor(DEFAULT_SCHEMA_VERSION),
+    ...['stable', 'current', 'latest', 'v3'].map((selector) => ({
+      selector,
+      ...selectorFor(DEFAULT_SCHEMA_VERSION),
+    })),
+    ...Object.entries(DOCS_SCHEMA_RELEASES).flatMap(([canonical, artifact]) => [
+      { selector: canonical, ...selectorFor(canonical) },
+      { selector: artifact, ...selectorFor(canonical) },
+      ...(PRERELEASE_SELECTOR.test(canonical)
+        ? [{ selector: canonical.replace('-', ' '), ...selectorFor(canonical) }]
+        : []),
+    ]),
+    // The bare 3.2 line is the stable 3.2 entry once it exists, otherwise its
+    // newest (first-listed) prerelease channel.
+    { selector: '3.2', ...selectorFor(LINE_32_CANONICAL) },
+    { selector: '2.5 (archived)', ...selectorFor('2.5') },
   ];
 
   it('fetches the exact frozen snapshot for the default and every public docs selector', async () => {
@@ -283,10 +276,10 @@ describe('schema handler version resolution', () => {
     const result = await validateJson!({
       json: { $schema: `https://adcontextprotocol.org/schemas/latest/${schemaPath}` },
     });
-    const expectedUrl = `https://adcontextprotocol.org/schemas/${DOCS_SCHEMA_RELEASES['3.1']}/${schemaPath}`;
+    const expectedUrl = `https://adcontextprotocol.org/schemas/${DOCS_SCHEMA_RELEASES[DEFAULT_SCHEMA_VERSION]}/${schemaPath}`;
 
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(expectedUrl);
-    expect(result).toContain(`AdCP 3.1 ${schemaPath} schema`);
+    expect(result).toContain(`AdCP ${DEFAULT_SCHEMA_VERSION} ${schemaPath} schema`);
   });
 
   it('maps older pinned $schema snapshots to their frozen release line', async () => {
@@ -304,7 +297,10 @@ describe('schema handler version resolution', () => {
     const cases = [
       ['3.1.4', DOCS_SCHEMA_RELEASES['3.1']],
       ['3.1.0-rc.15', DOCS_SCHEMA_RELEASES['3.1']],
-      ['3.2.0-beta.1', DOCS_SCHEMA_RELEASES['3.2-beta']],
+      // While the 3.2 channel selectors are live they own these documents;
+      // after GA they fold into the stable 3.2 snapshot.
+      ['3.2.0-beta.1', DOCS_SCHEMA_RELEASES['3.2-beta'] ?? DOCS_SCHEMA_RELEASES['3.2']],
+      ['3.2.0-rc.7', DOCS_SCHEMA_RELEASES['3.2-rc'] ?? DOCS_SCHEMA_RELEASES['3.2']],
       ['3.0.18', DOCS_SCHEMA_RELEASES['3.0']],
       ['3.0.0-rc.2', DOCS_SCHEMA_RELEASES['3.0']],
       ['2.5.1', DOCS_SCHEMA_RELEASES['2.5']],

@@ -1,0 +1,167 @@
+id: creative_transformers/governance_denied
+version: "1.0.0"
+title: "Creative agent rejects paid execution without governance approval"
+category: creative_transformers
+summary: "Verifies that a creative agent claiming build_creative governance enforcement rejects an unauthorized paid render before vendor execution."
+track: creative
+required_tools:
+  - sync_accounts
+  - sync_governance
+  - list_transformers
+  - build_creative
+
+requires_capability:
+  path: adcp.governance_enforcement.tasks
+  contains:
+    task: build_creative
+    modes:
+      - signed_context
+
+narrative: |
+  A paid creative render is a governed commitment. An agent advertising
+  signed-context enforcement for build_creative must reject an execute request
+  that incurs vendor cost when governance_context is absent. Non-claiming agents
+  grade this scenario not_applicable.
+
+  The runner registers governance, explicitly discovers a transformer with a
+  positive rate, and requests execution without authorization. PERMISSION_DENIED
+  plus the absence of platform-primary outbound traffic proves fail-closed
+  behavior. A response echo is never governance evidence.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+
+agent:
+  interaction_model: stateless_transform
+  capabilities:
+    - supports_transformers
+    - governance_aware
+  examples:
+    - "Any paid creative transformer that honors governance before rendering"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    A governance agent URL and a creative transformer agent supporting account
+    setup, governance registration, priced transformer discovery, and builds.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: creative_agent_setup
+    title: "Register account and governance with the creative agent"
+    steps:
+      - id: sync_accounts
+        title: "Establish account with creative agent"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: "Creative agent returns an active account."
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#creative_governance_denied_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+
+      - id: sync_governance
+        title: "Register governance agent with creative agent"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: "Creative agent acknowledges governance registration."
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#creative_governance_denied_sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+
+  - id: paid_build_denied
+    title: "Discover paid execution and omit governance context"
+    steps:
+      - id: discover_paid_transformer
+        title: "Discover a transformer with positive pricing"
+        task: list_transformers
+        schema_ref: "creative/list-transformers-request.json"
+        response_schema_ref: "creative/list-transformers-response.json"
+        doc_ref: "/creative/task-reference/list_transformers"
+        stateful: false
+        expected: "Return a transformer with an output capability and positive price."
+        sample_request:
+          include_pricing: true
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "transformers[0].transformer_id"
+            key: "transformer_id"
+          - path: "transformers[0].output_capability_ids[0]"
+            key: "target_capability_id"
+          - path: "transformers[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches list-transformers-response.json schema"
+          - check: field_present
+            path: "transformers[0].pricing_options[0].pricing_option_id"
+            description: "The selected transformer has a paid execution option"
+          - check: field_present
+            path: "transformers[0].pricing_options[0].unit_price"
+            description: "The selected option exposes a numeric unit rate"
+          - check: field_greater_than
+            path: "transformers[0].pricing_options[0].unit_price"
+            value: 0
+            description: "The selected option incurs positive vendor cost"
+
+      - id: build_creative_denied
+        title: "build_creative — missing governance approval"
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: "Reject with PERMISSION_DENIED before any paid render executes."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          mode: "execute"
+          transformer_id: "$context.transformer_id"
+          target_capability_id: "$context.target_capability_id"
+          message: "Produce a 30-second trail campaign voiceover."
+          idempotency_key: "$generate:uuid_v4#creative_governance_denied_build"
+        validations:
+          - check: error_code
+            value: "PERMISSION_DENIED"
+            description: "Paid execution without signed authorization fails closed"
+          - check: upstream_traffic
+            description: "Rejected build causes no platform-primary outbound render call"
+            min_count: 0
+            endpoint_pattern: "POST *"
+            purpose_filter:
+              - platform_primary
