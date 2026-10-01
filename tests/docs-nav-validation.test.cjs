@@ -368,10 +368,9 @@ test('default navigation matches the stable release branch surface', () => {
     const releaseSha = execFileSync('git', ['rev-parse', stableRef], {
       cwd: rootDir, encoding: 'utf8'
     }).trim();
-    const gaTagSha = execFileSync('git', ['rev-parse', 'v3.2.1^{}'], {
-      cwd: rootDir, encoding: 'utf8'
-    }).trim();
-    if (releaseSha === gaTagSha) return;
+    // This is the v3.2.1 tag target, pinned here because broken-links CI
+    // checks out shallowly and does not fetch release tags.
+    if (releaseSha === 'c32bd78c5389753e3b8f3ffd8a1c04b777854d83') return;
   }
   const normalize = page => page
     .replace(/^dist\/docs\/[^/]+\//, '')
