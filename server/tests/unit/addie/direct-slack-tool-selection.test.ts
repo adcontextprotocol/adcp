@@ -5,6 +5,7 @@ import { AAOAdminLookupUnavailableError } from '../../../src/addie/admin-status-
 import {
   PUBLIC_MENTION_READ_ONLY_TOOL_NAMES,
 } from '../../../src/addie/slack-tool-selection.js';
+import { ModelConfig } from '../../../src/config/models.js';
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -13,7 +14,7 @@ describe('Slack response provider integration', () => {
     ['gemini', false], ['gemini', true], ['sonnet', false], ['sonnet', true],
   ] as const)('uses %s for mentions (thread=%s) while preserving routing authority and delivery', async (provider, inThread) => {
     vi.stubEnv('ADDIE_RESPONSE_PROVIDER', provider); vi.stubEnv('GEMINI_API_KEY', 'unused');
-    const model = provider === 'gemini' ? 'gemini-3.7-flash' : 'claude-sonnet-5';
+    const model = provider === 'gemini' ? 'gemini-3.7-flash' : ModelConfig.primary;
     const model_execution = { source: 'provider', requested_provider: provider === 'gemini' ? 'google' : 'anthropic',
       requested_model: model, provider: provider === 'gemini' ? 'google' : 'anthropic', model, model_resolution: 'exact', fallback_reason: null };
     const answer = { text: 'Slack answer.', tools_used: [], tool_executions: [], model_execution };
