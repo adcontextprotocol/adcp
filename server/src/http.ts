@@ -60,6 +60,7 @@ import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
 import { brandJsonCacheControl } from "./services/brand-resolution-cache-policy.js";
+import { createStaticAssetVersioner } from "./utils/static-asset-versions.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
@@ -1194,6 +1195,12 @@ function stripLegacyBrandContext(manifest: Record<string, unknown>): Record<stri
 
 export class HTTPServer {
   private app: express.Application;
+  /** Adds ?v=<content hash> to shared JS/CSS references so deploys bypass day-long caches. */
+  private versionStaticAssets = createStaticAssetVersioner(
+    process.env.NODE_ENV === 'production'
+      ? path.join(__dirname, "../server/public")
+      : path.join(__dirname, "../public"),
+  );
   private server: Server | null = null;
   private isWorker: boolean = false;
   private complianceRefreshQueue: ComplianceRefreshQueue | null = null;
@@ -1553,6 +1560,7 @@ export class HTTPServer {
         if (this.bridgeIfNeeded(req, res)) return;
 
         html = await this.injectHomepageMemberCount(html);
+        html = this.versionStaticAssets(html);
 
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
         const session = await getPageSession(req, res);
@@ -1770,6 +1778,7 @@ export class HTTPServer {
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
       html = await this.injectHomepageMemberCount(html);
+      html = this.versionStaticAssets(html);
       const configScript = getAppConfigScript(user) + standaloneSiteScript(res);
 
       // Inject before </head>
