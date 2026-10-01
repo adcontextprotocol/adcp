@@ -155,6 +155,27 @@ const DISCOVERY_AND_NEGOTIATION_TOOLS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * TODO(adcontextprotocol/adcp-client#3095): remove once the storyboard runner
+ * stops synthesizing an account on discovery tasks. The runner adds
+ * `{ brand: { domain: <test-kit house domain> }, operator: <same domain> }` to
+ * account-less requests, including the `security_baseline` auth probe on
+ * `get_signals`. Nothing provisions that key, so a conformant seller rejects
+ * it. Only this exact self-operated acme-outdoor key is exempt; it is not
+ * added to `list_accounts`.
+ */
+const RUNNER_SYNTHESIZED_PROBE_DOMAIN = 'acmeoutdoor.example';
+
+function isRunnerSynthesizedProbeKey(canonical: Extract<CanonicalAccountRef, { kind: 'natural' }>): boolean {
+  return canonical.brand.domain === RUNNER_SYNTHESIZED_PROBE_DOMAIN
+    && canonical.operator === RUNNER_SYNTHESIZED_PROBE_DOMAIN
+    && canonical.brand.brand_id === undefined
+    && (canonical.brand.countries === undefined || canonical.brand.countries.length === 0)
+    && canonical.operator_unit === undefined
+    && canonical.currency === undefined
+    && canonical.timezone === undefined;
+}
+
+/**
  * Reject a buyer-declared natural key that this principal never provisioned
  * when it arrives on a discovery or negotiation task. Returning public results
  * instead would claim rate-card pricing for an account that does not exist.
@@ -167,6 +188,7 @@ export async function assertDiscoveryAccountProvisioned(
 ): Promise<void> {
   if (canonical.kind !== 'natural') return;
   if (toolName === undefined || !DISCOVERY_AND_NEGOTIATION_TOOLS.has(toolName)) return;
+  if (isRunnerSynthesizedProbeKey(canonical)) return;
   const ref = {
     brand: canonical.brand,
     operator: canonical.operator,
