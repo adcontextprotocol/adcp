@@ -86,6 +86,14 @@ import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { getTestKitForStoryboard } from '../../services/storyboards.js';
 import {
+  hostedGovernanceAgentForRun,
+  hostedGovernanceSecrets,
+  redactHostedGovernanceSecrets,
+  type HostedMultiAgentRouting,
+  hostedMultiAgentRoutingForStoryboard,
+  withHostedMultiAgentRouting,
+} from '../../compliance/hosted-multi-agent-routing.js';
+import {
   hostedComplianceTarget,
   hostedComplianceOptions,
   HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS,
@@ -5741,20 +5749,47 @@ export function createMemberToolHandlers(
       // authored against; the run-auth bearer substitution no-ops when the
       // kit already carries auth.
       const declaredTestKit = getTestKitForStoryboard(storyboardId, runOptions);
-      const result = await runStoryboard(
-        resolved.resolvedUrl,
-        sb,
-        withSdkSafeTransport(withHostedStoryboardRunOptions({
-          ...(declaredTestKit && { test_kit: declaredTestKit }),
-          ...(authOption && { auth: authOption }),
-        }, runTarget, authProbeTask)),
-      );
+      const storyboardRunOptions = withSdkSafeTransport(withHostedStoryboardRunOptions({
+        ...(declaredTestKit && { test_kit: declaredTestKit }),
+        ...(authOption && { auth: authOption }),
+      }, runTarget, authProbeTask));
+      // adcp#7758 — `requires: [multi_agent]` storyboards route governance
+      // steps to the public governance agent, as the fixed hosted-grader buyer
+      // agent, and everything else to the agent under test, which receives a
+      // per-run seller credential in sync_governance. Unroutable ones are
+      // reported, never sent to the agent. Minted credentials are scrubbed
+      // from the result before it is rendered or logged.
+      let routing: HostedMultiAgentRouting<typeof sb> = { kind: 'single_agent' };
+      let mintedSecrets: string[] = [];
+      if (sb.requires?.includes('multi_agent')) {
+        const governance = hostedGovernanceAgentForRun(resolved.resolvedUrl);
+        if (governance.kind === 'unavailable') {
+          return `**Not runnable here:** ${storyboardId} requires multi_agent: ${governance.reason}`;
+        }
+        routing = hostedMultiAgentRoutingForStoryboard({
+          storyboard: sb,
+          agentUnderTest: { url: resolved.resolvedUrl, ...(authOption && { auth: authOption }) },
+          governance: governance.governance,
+        });
+        if (routing.kind === 'unroutable') {
+          return `**Not runnable here:** ${routing.reason}`;
+        }
+        mintedSecrets = hostedGovernanceSecrets(governance.governance);
+      }
+      const rawResult = routing.kind === 'routed'
+        ? await runStoryboard('', routing.storyboard, withHostedMultiAgentRouting(storyboardRunOptions, routing))
+        : await runStoryboard(resolved.resolvedUrl, sb, storyboardRunOptions);
+      const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
+      const governanceStepIds = new Set(routing.kind === 'routed' ? routing.governance_step_ids : []);
 
       // runStoryboard catches its own throws and surfaces them as step
       // errors. Detect OAuth on the first failing step before rendering a
       // long failure report the user can't act on.
       const oauthStepError = result.phases
         .flatMap(p => p.steps)
+        // Governance-routed steps hit the public governance agent, not the
+        // member's agent; its auth errors must not prompt an OAuth flow here.
+        .filter(s => !governanceStepIds.has(s.step_id))
         .find(s => isOAuthRequiredErrorMessage(s.error))?.error;
       if (oauthStepError) {
         logger.warn(
@@ -5821,7 +5856,8 @@ export function createMemberToolHandlers(
 
         for (const step of phase.steps) {
           const icon = step.skipped ? 'SKIP' : step.passed ? 'PASS' : 'FAIL';
-          output += `- **${step.title}** [${icon}] — \`${step.task}\` (${(step.duration_ms / 1000).toFixed(1)}s)\n`;
+          const servedBy = governanceStepIds.has(step.step_id) ? ' — served by the public governance agent' : '';
+          output += `- **${step.title}** [${icon}] — \`${step.task}\`${servedBy} (${(step.duration_ms / 1000).toFixed(1)}s)\n`;
 
           if (!step.passed && !step.skipped) {
             if (step.error) {
@@ -5862,6 +5898,9 @@ export function createMemberToolHandlers(
         output += `Interpret these results conversationally. For failed steps, explain what the agent should return and suggest specific fixes.`;
       }
       if (dryRun) output += ` This was a dry run — no production state was modified.`;
+      if (governanceStepIds.size > 0) {
+        output += ` Steps served by the public governance agent (${PUBLIC_TEST_AGENT_URLS.governance}) wrote sandbox plan state there; a failure on one of those steps may come from the governance agent rather than the tested agent.`;
+      }
 
       const workosUserIdForStoryboard = memberContext?.workos_user?.workos_user_id;
       if (workosUserIdForStoryboard) {

@@ -174,6 +174,7 @@ import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
+import { createHostedGraderHostRouter, HOSTED_GRADER_HOSTNAME } from "./training-agent/hosted-grader.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -1276,6 +1277,21 @@ export class HTTPServer {
     // Trust the first proxy (Fly.io) for accurate client IP detection
     // Required for express-rate-limit and other middleware that use req.ip
     this.app.set('trust proxy', 1);
+
+    // The hosted-grader buyer brand host serves only its brand.json and a
+    // governance-only JWKS (adcp#7758). Mounted first so no app-wide route,
+    // in particular Addie's request-signing JWKS, is served on that origin.
+    const hostedGraderHostRouter = createHostedGraderHostRouter();
+    this.app.use((req, res, next) => {
+      // Fail closed: match the raw Host header as well as req.hostname, which
+      // `trust proxy` derives from X-Forwarded-Host, so a forwarded-host
+      // header cannot get app-wide routes (or Addie's JWKS) served here.
+      const rawHost = (req.headers.host ?? '').toLowerCase().replace(/:\d+$/, '');
+      if (rawHost === HOSTED_GRADER_HOSTNAME || req.hostname === HOSTED_GRADER_HOSTNAME) {
+        return hostedGraderHostRouter(req, res, next);
+      }
+      next();
+    });
 
     // Serve JSON schemas (aliases + static files + discovery) before body-parsing,
     // cookie, and CSRF middleware so these high-traffic reads stay cheap.

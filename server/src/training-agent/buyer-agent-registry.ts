@@ -54,7 +54,7 @@
 
 import { BuyerAgentRegistry, type BuyerAgent } from '@adcp/sdk/server';
 import { getCommercialRelationship } from './commercial-relationships.js';
-import { governanceAgentCredentialFromExtra } from './governance-agent-credentials.js';
+import { governanceAgentCredentialFromExtra, hostedGraderCredentialFromExtra } from './governance-agent-credentials.js';
 
 const TRAINING_AGENT_BASE_URL = 'https://training-agent.adcontextprotocol.org';
 
@@ -107,6 +107,17 @@ export const trainingBuyerAgentRegistry = BuyerAgentRegistry.bearerOnly({
       return {
         agent_url: governanceCredential.agentUrl,
         display_name: 'Sandbox governance seller credential',
+        status: 'active',
+        billing_capabilities: NO_BILLING_CAPABILITIES,
+      };
+    }
+    // Set only by the tenant router after verifying a minted hosted-grader
+    // credential: the caller is the fixed hosted-grader buyer agent (#7758).
+    const hostedGraderCredential = hostedGraderCredentialFromExtra(extra);
+    if (hostedGraderCredential) {
+      return {
+        agent_url: hostedGraderCredential.agentUrl,
+        display_name: 'Hosted grader buyer agent',
         status: 'active',
         billing_capabilities: NO_BILLING_CAPABILITIES,
       };
