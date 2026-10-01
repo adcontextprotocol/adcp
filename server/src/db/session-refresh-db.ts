@@ -40,9 +40,12 @@ export async function storeRefreshedSession(
 /**
  * Look up a refreshed session by the hash of the old cookie.
  * Returns the new sealed session if found and not expired, undefined otherwise.
+ * Lookup failures also return undefined unless `throwOnError` is set, for
+ * callers that must not mistake an outage for "nothing stored".
  */
 export async function getRefreshedSession(
   oldCookieHash: string,
+  { throwOnError = false }: { throwOnError?: boolean } = {},
 ): Promise<string | undefined> {
   if (!isDatabaseInitialized()) return undefined;
   try {
@@ -56,6 +59,7 @@ export async function getRefreshedSession(
     }
   } catch (err) {
     logger.warn({ err }, 'Failed to look up refreshed session');
+    if (throwOnError) throw err;
   }
   return undefined;
 }

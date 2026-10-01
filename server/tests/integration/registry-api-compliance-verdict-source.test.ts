@@ -174,11 +174,11 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
       `INSERT INTO agent_compliance_runs (
          agent_url, lifecycle_stage, overall_status, headline,
          tracks_json, tracks_passed, tracks_failed, tracks_skipped, tracks_partial,
-         triggered_by, dry_run, tested_at, adcp_version, requested_compliance_target
+         triggered_by, triggered_org_id, dry_run, tested_at, adcp_version, requested_compliance_target
        ) VALUES ($1, 'production', 'passing', 'all clear',
-                 '[]'::jsonb, 0, 0, 0, 0, 'owner_test', false, NOW(), '3.1.20', '3.1')
+                 '[]'::jsonb, 0, 0, 0, 0, 'owner_test', $2, false, NOW(), '3.1.20', '3.1')
        RETURNING id`,
-      [AGENT_URL],
+      [AGENT_URL, OWNER_ORG_ID],
     );
     complianceRunId = runResult.rows[0].id;
     await pool.query(
@@ -357,6 +357,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
 
   const OWNER_ONLY_KEYS = [
     'verdict_source',
+    'latest_attempt',
     'membership_tier',
     'membership_tier_label',
     'subscription_status',
@@ -398,6 +399,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
       expect(res.body).toHaveProperty(key);
     }
     expect(res.body.verdict_source).toBeNull();
+    expect(res.body.latest_attempt).toBeNull();
     expect(res.body.membership_tier).toBeNull();
     expect(res.body.membership_tier_label).toBeNull();
     expect(res.body.subscription_status).toBeNull();
@@ -414,6 +416,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
       expect(res.body).toHaveProperty(key);
     }
     expect(res.body.verdict_source).toBeNull();
+    expect(res.body.latest_attempt).toBeNull();
     expect(res.body.membership_tier).toBeNull();
     expect(res.body.membership_tier_label).toBeNull();
     expect(res.body.subscription_status).toBeNull();
@@ -422,22 +425,128 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     expectPublicStoryboardStatus(res.body);
   });
 
+  it('shows a newer timed-out attempt only to the owner without changing the public verdict', async () => {
+    const timeoutMessage = 'Compliance timeout budget of 1200000ms was reached. Stopped starting new storyboards after 68/74 selected storyboard(s).';
+    const inserted = await pool.query<{ id: string }>(
+      `INSERT INTO agent_compliance_runs (
+         agent_url, lifecycle_stage, overall_status, headline,
+         tracks_json, tracks_passed, tracks_failed, tracks_skipped, tracks_partial,
+         triggered_by, triggered_org_id, dry_run, tested_at, adcp_version, requested_compliance_target,
+         completeness, is_authoritative, observations_json
+       ) VALUES ($1, 'production', 'partial', 'Assessment stopped at the time budget',
+                 '[]'::jsonb, 0, 0, 0, 0, 'owner_test', $2, false, NOW() + INTERVAL '1 second',
+                 '3.1.20', '3.1', 'timed_out', false, $3::jsonb)
+       RETURNING id`,
+      [AGENT_URL, OWNER_ORG_ID, JSON.stringify([{ category: 'performance', severity: 'warning', message: timeoutMessage }])],
+    );
+    try {
+      currentUserId = OWNER_USER_ID;
+      const owner = await request(app).get(endpoint);
+      expect(owner.status).toBe(200);
+      expect(owner.body.status).toBe('passing');
+      expect(owner.body.latest_attempt).toMatchObject({
+        id: inserted.rows[0].id,
+        completeness: 'timed_out',
+        is_authoritative: false,
+        storyboards_completed: 68,
+        storyboards_total: 74,
+        first_blocker: timeoutMessage,
+      });
+
+      currentUserId = CROSS_ORG_USER_ID;
+      const other = await request(app).get(endpoint);
+      expect(other.status).toBe(200);
+      expect(other.body.status).toBe('passing');
+      expect(other.body.latest_attempt).toBeNull();
+    } finally {
+      await pool.query('DELETE FROM agent_compliance_runs WHERE id = $1', [inserted.rows[0].id]);
+    }
+  });
+
+  it('keeps same-URL run details inside the selected organization', async () => {
+    const crossDetail = 'cross org private validation detail';
+    await pool.query(
+      `INSERT INTO member_profiles (workos_organization_id, display_name, slug, agents, created_at, updated_at)
+       VALUES ($1, 'Cross Org', $2, $3::jsonb, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET agents = EXCLUDED.agents, updated_at = NOW()`,
+      [CROSS_ORG_ID, `cross-org-${RUN_SUFFIX}`, JSON.stringify([{ url: AGENT_URL, name: 'Shared URL' }])],
+    );
+    currentUserId = CROSS_ORG_USER_ID;
+    const otherOwner = await request(app).get(endpoint).query({ org: CROSS_ORG_ID });
+    expect(otherOwner.status).toBe(200);
+    expect(otherOwner.body.grading_profile_comparisons).toEqual([]);
+    expect(otherOwner.body.latest_attempt).toBeNull();
+    const inserted = await pool.query<{ id: string }>(
+      `INSERT INTO agent_compliance_runs (
+         agent_url, lifecycle_stage, overall_status, headline, tracks_json,
+         triggered_by, triggered_org_id, dry_run, tested_at, adcp_version,
+         completeness, is_authoritative, observations_json
+       ) VALUES ($1, 'production', 'failing', $2, '[]'::jsonb,
+                 'owner_test', $3, FALSE, NOW() + INTERVAL '2 seconds', '3.1.20',
+                 'complete', TRUE, $4::jsonb) RETURNING id`,
+      [AGENT_URL, crossDetail, CROSS_ORG_ID,
+        JSON.stringify([{ category: 'setup', severity: 'error', message: crossDetail }])],
+    );
+    const crossRunId = inserted.rows[0].id;
+    await pool.query('UPDATE agent_compliance_status SET headline = $2 WHERE agent_url = $1', [AGENT_URL, crossDetail]);
+    await pool.query(
+      `UPDATE agent_storyboard_status
+       SET run_id = $2, first_failure_message = $3
+       WHERE agent_url = $1 AND storyboard_id = 'debug_storyboard'`,
+      [AGENT_URL, crossRunId, crossDetail],
+    );
+    try {
+      currentUserId = OWNER_USER_ID;
+      const owner = await request(app).get(endpoint).query({ org: OWNER_ORG_ID });
+      expect(owner.status).toBe(200);
+      expect(owner.body.latest_attempt?.id).toBe(complianceRunId);
+      expect(owner.body.storyboard_statuses[0].first_failure_message).toBeNull();
+      expect(JSON.stringify(owner.body)).not.toContain(crossDetail);
+      const wrongRun = await request(app)
+        .get(`${endpoint}/diagnostics`)
+        .query({ org: OWNER_ORG_ID, run_id: crossRunId });
+      expect(wrongRun.status).toBe(404);
+
+      currentUserId = CROSS_ORG_USER_ID;
+      const cross = await request(app).get(endpoint).query({ org: CROSS_ORG_ID });
+      expect(cross.status).toBe(200);
+      expect(cross.body.latest_attempt).toMatchObject({ id: crossRunId, first_blocker: crossDetail });
+      expect(cross.body.storyboard_statuses[0].first_failure_message).toBe(crossDetail);
+      expect(cross.body.headline).toBe(crossDetail);
+      expect(cross.body.observations[0].message).toBe(crossDetail);
+      const ownRun = await request(app)
+        .get(`${endpoint}/diagnostics`)
+        .query({ org: CROSS_ORG_ID, run_id: crossRunId });
+      expect(ownRun.status).toBe(200);
+      expect(ownRun.body.run_id).toBe(crossRunId);
+    } finally {
+      await pool.query(
+        `UPDATE agent_storyboard_status
+         SET run_id = $2, first_failure_message = 'debug failure'
+         WHERE agent_url = $1 AND storyboard_id = 'debug_storyboard'`,
+        [AGENT_URL, complianceRunId],
+      );
+      await pool.query('DELETE FROM agent_compliance_runs WHERE id = $1', [crossRunId]);
+      await pool.query("UPDATE agent_compliance_status SET headline = 'all clear' WHERE agent_url = $1", [AGENT_URL]);
+      await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [CROSS_ORG_ID]);
+    }
+  });
+
   it('owner caller: verdict_source + membership tier populated', async () => {
     currentUserId = OWNER_USER_ID;
     const res = await request(app).get(endpoint);
     expect(res.status).toBe(200);
     expect(res.body.verdict_source).toBe('owner_test');
+    expect(res.body.latest_attempt).toMatchObject({
+      id: complianceRunId,
+      completeness: 'complete',
+      is_authoritative: true,
+      requested_compliance_target: '3.1',
+    });
     expect(res.body.membership_tier).toBe('company_standard');
     expect(res.body.subscription_status).toBe('active');
     expect(res.body.is_api_access_tier).toBe(true);
-    expect(res.body.refresh_availability).toMatchObject({
-      available: false,
-      retryable: false,
-      scope: 'platform',
-      applies_to: 'human_session',
-      code: 'refresh_authorization_provenance_required',
-      alternative_action: 'monitoring_requeue',
-    });
+    expect(res.body.refresh_availability).toMatchObject({ available: true });
     expect(res.body.grading_profile_comparisons).toEqual([
       expect.objectContaining({
         scope: 'agent',
@@ -477,7 +586,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     ]);
   });
 
-  it('fails closed when the latest public heartbeat has no matching comparison', async () => {
+  it('hides comparison evidence when a newer unscoped heartbeat is the public source', async () => {
     const newerRun = await pool.query<{ id: string }>(
       `INSERT INTO agent_compliance_runs (
          agent_url, lifecycle_stage, overall_status, headline, tracks_json,
@@ -492,19 +601,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
       currentUserId = OWNER_USER_ID;
       const res = await request(app).get(endpoint);
       expect(res.status).toBe(200);
-      expect(res.body.grading_profile_comparisons).toEqual([
-        expect.objectContaining({
-          availability: 'stale',
-          source_run_id: complianceRunId,
-          stale: true,
-          unavailable_reason: expect.stringContaining('newer authoritative compliance run'),
-          profiles: {
-            legacy: expect.objectContaining({ available: false, status: null, observed_status: 'passing' }),
-            spec: expect.objectContaining({ available: false, status: null, observed_status: 'partial' }),
-            sandbox: expect.objectContaining({ available: false, status: null, observed_status: 'passing' }),
-          },
-        }),
-      ]);
+      expect(res.body.grading_profile_comparisons).toEqual([]);
     } finally {
       await pool.query('DELETE FROM agent_compliance_runs WHERE id = $1', [newerRun.rows[0].id]);
     }
@@ -651,14 +748,14 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         }],
       }] }], observations: [], total_duration_ms: 1,
     } as unknown as ComplianceResult, AGENT_URL, 'production', 'owner_test');
-    const { run } = await db.recordComplianceRun({ ...partial, dry_run: false });
+    const { run } = await db.recordComplianceRun({ ...partial, dry_run: false, triggered_org_id: OWNER_ORG_ID });
     try {
       for (const user of [OWNER_USER_ID, STATIC_ADMIN_USER_ID]) {
         currentUserId = user;
         const response = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics?run_id=${run.id}`);
         expect(response.status).toBe(200);
         expect(response.body).toMatchObject({ run_id: run.id, completeness: 'timed_out', is_authoritative: false,
-          provenance: { compliance_bundle_version: '3.1.20', sdk_version: '14.0.0-rc.53', agent_build_version: 'build-immutable-42', agent_library_version: 'seller-sdk-2' },
+          provenance: { compliance_bundle_version: '3.1.20', sdk_version: '14.0.0', agent_build_version: 'build-immutable-42', agent_library_version: 'seller-sdk-2' },
           diagnostics_visibility: 'owner_or_operator' });
         expect(response.body.diagnostics[0].error_text).toBe('Expected products array');
         expect(JSON.stringify(response.body)).not.toContain('fixture-secret-value');
@@ -688,7 +785,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     const { run } = await db.recordComplianceRun({ agent_url: AGENT_URL, lifecycle_stage: 'production',
       overall_status: 'failing', tracks_json: [], completeness: 'not_completed', is_authoritative: false,
       tracks_passed: 0, tracks_failed: 0, tracks_partial: 0, tracks_skipped: 0,
-      observations_json: observations, dry_run: false });
+      observations_json: observations, dry_run: false, triggered_org_id: OWNER_ORG_ID });
     try {
       for (const user of [OWNER_USER_ID, STATIC_ADMIN_USER_ID]) {
         currentUserId = user;

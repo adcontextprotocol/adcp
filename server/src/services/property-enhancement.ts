@@ -8,7 +8,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logger.js';
-import { ModelConfig } from '../config/models.js';
+import { ModelConfig, forcedToolChoice } from '../config/models.js';
 import { AdAgentsManager } from '../adagents-manager.js';
 import { PropertyDatabase } from '../db/property-db.js';
 import { reviewNewRecord } from '../addie/mcp/registry-review.js';
@@ -129,7 +129,7 @@ export async function analyzeProperty(domain: string): Promise<PropertyAiAnalysi
           },
         },
       ],
-      tool_choice: { type: 'tool', name: 'analyze_property' },
+      ...forcedToolChoice(ModelConfig.fast, 'analyze_property'),
       messages: [{ role: 'user', content: `${ANALYZE_PROMPT}\n\nDomain: ${domain}` }],
     });
 

@@ -51,6 +51,14 @@ function canonicalAdcpVersion(version) {
   return `${match[1]}.${match[2]}.${match[3] ?? '0'}${match[4]}`;
 }
 
+// A stable wire pin ("3.2") tracks every patch release of its line (3.2.1);
+// a prerelease pin tracks its exact candidate (3.2.0-rc.7).
+function adcpReleaseLine(version) {
+  const canonical = canonicalAdcpVersion(version);
+  const [, major, minor, , pre] = canonical.match(/^(\d+)\.(\d+)\.(\d+)(.*)$/);
+  return pre ? canonical : `${major}.${minor}`;
+}
+
 function sdkCheckpointVersions(source, expectedVersion) {
   const exactVersion = semver.parse(expectedVersion);
   assert.equal(exactVersion?.version, expectedVersion, 'current SDK checkpoint must remain an exact package version');
@@ -120,8 +128,8 @@ test('training-agent current AdCP version exactly matches the installed SDK sche
   for (const sdk of [require('@adcp/sdk'), await import('@adcp/sdk')]) {
     const resolvedVersion = sdk.resolveAdcpVersion(currentVersion);
     assert.equal(
-      canonicalAdcpVersion(resolvedVersion),
-      canonicalAdcpVersion(sdkVersion),
+      adcpReleaseLine(resolvedVersion),
+      adcpReleaseLine(sdkVersion),
       `training-agent current ${currentVersion} must track the installed SDK schema ${sdkVersion}`,
     );
     assert.ok(

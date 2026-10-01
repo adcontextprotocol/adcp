@@ -67,6 +67,16 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
     expect(auth).toEqual({ type: 'bearer', token: 'bearer-token-plaintext' });
   });
 
+  it('reports the organization whose saved credential was selected', async () => {
+    mockRow({ organization_id: 'org_selected', auth_token_encrypted: 'enc_bearer', auth_token_iv: 'iv_bearer' });
+    mockedDecrypt.mockReturnValueOnce('token');
+    const onResolvedOrg = vi.fn();
+
+    await db.resolveOwnerAuth('https://agent.example.com', undefined, onResolvedOrg);
+
+    expect(onResolvedOrg).toHaveBeenCalledExactlyOnceWith('org_selected');
+  });
+
   it('decodes static basic auth into username/password', async () => {
     const username = 'test-user';
     const password = 'test-pass';

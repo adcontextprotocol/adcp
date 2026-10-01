@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import DOMPurify from "isomorphic-dompurify";
 import { Marked } from "marked";
 import { csrfProtection } from "./middleware/csrf.js";
+import { createHostedWebhookReceiverRouter } from "./routes/hosted-webhook-receiver.js";
 import { chatRequestCorrelation } from "./middleware/chat-request-correlation.js";
 import { slowResponseTracker } from "./middleware/slow-response.js";
 import { requestMetrics } from "./middleware/request-metrics.js";
@@ -54,6 +55,7 @@ import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services
 import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
 import { BrandDatabase, HostedBrandConflictError, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
 import { isDomainControlVerified, publicBrandJsonManifest } from "./services/brand-trust-fields.js";
+import { getStandaloneSite, resolveStandaloneRequest, type StandaloneSite } from "./standalone-sites.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -79,7 +81,7 @@ import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
 import { decodeHtmlEntities } from "./utils/html-entities.js";
-import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, switchSessionOrganization, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, resolvePageSession, type PageSession, type PageSessionUser, switchSessionOrganization, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter, agentCardValidationRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
 import { sendNewsletterConfirmation } from "./notifications/email.js";
@@ -174,6 +176,7 @@ import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
+import { createHostedGraderHostRouter, HOSTED_GRADER_HOSTNAME } from "./training-agent/hosted-grader.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -1152,75 +1155,35 @@ function getCsrfScriptVersion(): string {
 }
 
 /**
- * Get user info from request for HTML config injection.
- * Checks dev mode first, then WorkOS session.
- * If session is refreshed, updates the cookie in the response.
+ * Resolve the page session for HTML config injection.
+ * Checks dev mode first, then WorkOS session. Refreshed sessions update the
+ * cookie; a cookie WorkOS definitively rejects is cleared.
  */
-async function getUserFromRequest(
-  req: express.Request,
-  res?: express.Response
-): Promise<{ id?: string; email: string; firstName?: string | null; lastName?: string | null } | null> {
+async function getPageSession(req: express.Request, res: express.Response): Promise<PageSession> {
   // Check dev mode first
   if (isDevModeEnabled()) {
     const devUser = getDevUser(req);
     if (devUser) {
-      return devUser;
+      return { user: devUser, cleared: false };
     }
   }
 
-  // Then check WorkOS session
-  const sessionCookie = req.cookies?.['wos-session'];
-  // codeql[js/user-controlled-bypass] - session cookie is verified cryptographically by WorkOS sealed session
-  if (sessionCookie && AUTH_ENABLED && workos) {
-    try {
-      const session = workos.userManagement.loadSealedSession({
-        sessionData: sessionCookie,
-        cookiePassword: WORKOS_COOKIE_PASSWORD,
-      });
+  if (!AUTH_ENABLED) return { user: null, cleared: false };
+  return resolvePageSession(req, res);
+}
 
-      // Try to authenticate with the current session
-      let authResult = await session.authenticate();
+/** Get user info from request for HTML config injection. */
+async function getUserFromRequest(
+  req: express.Request,
+  res: express.Response
+): Promise<PageSessionUser | null> {
+  return (await getPageSession(req, res)).user;
+}
 
-      // If authentication failed (e.g., expired token), try to refresh
-      if (!authResult.authenticated || !authResult.user) {
-        try {
-          const refreshResult = await session.refresh({
-            cookiePassword: WORKOS_COOKIE_PASSWORD,
-          });
-
-          if (refreshResult.authenticated && refreshResult.sealedSession) {
-            // Update the cookie with the refreshed session
-            if (res) {
-              res.cookie('wos-session', refreshResult.sealedSession, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
-                path: '/',
-                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-              });
-            }
-
-            // Re-authenticate with the new session
-            const newSession = workos.userManagement.loadSealedSession({
-              sessionData: refreshResult.sealedSession,
-              cookiePassword: WORKOS_COOKIE_PASSWORD,
-            });
-            authResult = await newSession.authenticate();
-          }
-        } catch {
-          // Refresh failed - continue without user
-        }
-      }
-
-      if (authResult.authenticated && authResult.user) {
-        return authResult.user;
-      }
-    } catch {
-      // Session invalid or expired - continue without user
-    }
-  }
-
-  return null;
+/** Marks pages served on a standalone standard site so nav.js renders neutral chrome. */
+function standaloneSiteScript(res: express.Response): string {
+  const site = res.locals.standaloneSite as StandaloneSite | undefined;
+  return site ? `\n<script>window.__ADCP_SITE__=${JSON.stringify(site)};</script>` : '';
 }
 
 function stripLegacyBrandContext(manifest: Record<string, unknown>): Record<string, unknown> {
@@ -1323,6 +1286,21 @@ export class HTTPServer {
     // Required for express-rate-limit and other middleware that use req.ip
     this.app.set('trust proxy', 1);
 
+    // The hosted-grader buyer brand host serves only its brand.json and a
+    // governance-only JWKS (adcp#7758). Mounted first so no app-wide route,
+    // in particular Addie's request-signing JWKS, is served on that origin.
+    const hostedGraderHostRouter = createHostedGraderHostRouter();
+    this.app.use((req, res, next) => {
+      // Fail closed: match the raw Host header as well as req.hostname, which
+      // `trust proxy` derives from X-Forwarded-Host, so a forwarded-host
+      // header cannot get app-wide routes (or Addie's JWKS) served here.
+      const rawHost = (req.headers.host ?? '').toLowerCase().replace(/:\d+$/, '');
+      if (rawHost === HOSTED_GRADER_HOSTNAME || req.hostname === HOSTED_GRADER_HOSTNAME) {
+        return hostedGraderHostRouter(req, res, next);
+      }
+      next();
+    });
+
     // Serve JSON schemas (aliases + static files + discovery) before body-parsing,
     // cookie, and CSRF middleware so these high-traffic reads stay cheap.
     const distPath = process.env.NODE_ENV === 'production'
@@ -1331,6 +1309,37 @@ export class HTTPServer {
     mountSchemasRoutes(this.app, path.join(distPath, 'schemas'));
     mountComplianceRoutes(this.app, path.join(distPath, 'compliance'));
     mountProtocolRoutes(this.app, path.join(distPath, 'protocol'));
+
+    // Standalone standard sites (brandjson.org, trustjson.org) expose only
+    // their own pages, schemas, and public read APIs. See standalone-sites.ts.
+    this.app.use(async (req, res, next) => {
+      const site = getStandaloneSite(req.hostname);
+      if (!site) return next();
+      res.locals.standaloneSite = site;
+      const decision = resolveStandaloneRequest(site, req.hostname, req.method, req.path, req.originalUrl);
+      switch (decision.kind) {
+        case 'pass':
+          return next();
+        case 'rewrite':
+          req.url = decision.url;
+          return next();
+        case 'page':
+          return this.serveHtmlWithConfig(req, res, decision.file);
+        case 'redirect':
+          return res.redirect(decision.status, decision.location);
+        case 'text':
+          res.setHeader('Content-Type', decision.contentType);
+          res.setHeader('Cache-Control', 'public, max-age=300');
+          return res.send(decision.body);
+        case 'not_found':
+          return res.status(404).type('text/plain').send('Not found');
+      }
+    });
+
+    // Run-scoped callback URLs carry a bearer token in the path. Handle them
+    // before generic request telemetry (which records raw paths), JSON parsing,
+    // cookies, and CSRF. The relay emits no token-bearing request logs.
+    this.app.use('/api/compliance-receiver', createHostedWebhookReceiverRouter());
 
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);
@@ -1545,12 +1554,14 @@ export class HTTPServer {
         html = await this.injectHomepageMemberCount(html);
 
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
-        const user = await getUserFromRequest(req, res);
+        const session = await getPageSession(req, res);
+        if (this.rebridgeIfSessionCleared(req, res, session)) return;
+        const user = session.user;
         await enrichUserWithMembership(user);
         await enrichUserWithAdmin(user);
 
         // Inject config
-        const configScript = getAppConfigScript(user);
+        const configScript = getAppConfigScript(user) + standaloneSiteScript(res);
 
         // Inject before </head>
         if (html.includes('</head>')) {
@@ -1697,11 +1708,26 @@ export class HTTPServer {
     if (!req.headers.cookie && !isTopLevelDocumentNavigation) return false;
 
     if (this.isAdcpDomain(req) && !req.cookies?.['wos-session'] && !req.cookies?.['bridge-checked']) {
-      const currentUrl = `https://${req.hostname}${req.originalUrl}`;
-      res.redirect(`https://agenticadvertising.org/auth/bridge?return_to=${encodeURIComponent(currentUrl)}`);
+      this.redirectThroughBridge(req, res);
       return true;
     }
     return false;
+  }
+
+  // The AdCP cookie is a copy of the AAO session, and either copy can rotate
+  // the shared refresh token. When WorkOS rejects the AdCP copy, bridge once
+  // more to pick up the current AAO session. The return marker stops a loop
+  // when the AAO session is dead too.
+  private rebridgeIfSessionCleared(req: express.Request, res: express.Response, session: PageSession): boolean {
+    if (!session.cleared || !this.isAdcpDomain(req)) return false;
+    if (req.query?.[HTTPServer.BRIDGE_CHECK_PARAM] === '1') return false;
+    this.redirectThroughBridge(req, res);
+    return true;
+  }
+
+  private redirectThroughBridge(req: express.Request, res: express.Response): void {
+    const currentUrl = `https://${req.hostname}${req.originalUrl}`;
+    res.redirect(`https://agenticadvertising.org/auth/bridge?return_to=${encodeURIComponent(currentUrl)}`);
   }
 
   private async injectHomepageMemberCount(html: string, memberDb = new MemberDatabase()): Promise<string> {
@@ -1734,14 +1760,16 @@ export class HTTPServer {
       if (this.bridgeIfNeeded(req, res)) return;
 
       // Get user from session (if authenticated), passing res to update cookie if session is refreshed
-      const user = await getUserFromRequest(req, res);
+      const session = await getPageSession(req, res);
+      if (this.rebridgeIfSessionCleared(req, res, session)) return;
+      const user = session.user;
       await enrichUserWithMembership(user);
       await enrichUserWithAdmin(user);
 
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
       html = await this.injectHomepageMemberCount(html);
-      const configScript = getAppConfigScript(user);
+      const configScript = getAppConfigScript(user) + standaloneSiteScript(res);
 
       // Inject before </head>
       if (html.includes('</head>')) {

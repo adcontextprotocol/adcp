@@ -18,10 +18,15 @@ import { createRegistryHolder, resolveTenantHost, type RegistryHolder } from './
 import { getTrainingGovernanceIssuer } from '../canonical-base.js';
 import {
   GOVERNANCE_AGENT_CREDENTIAL_EXTRA_KEY,
+  HOSTED_GRADER_CREDENTIAL_EXTRA_KEY,
   governanceAgentCredentialFromRequest,
+  hostedGraderCredentialFromRequest,
   isGovernanceAgentCredentialPrincipal,
   isGovernanceAgentCredentialRequestAllowed,
+  isHostedGraderCredentialPrincipal,
+  isHostedGraderCredentialRequestAllowed,
   type GovernanceAgentCredentialExtra,
+  type HostedGraderCredentialExtra,
 } from '../governance-agent-credentials.js';
 import { buildSignedRevocationList } from '../governance-revocations.js';
 import {
@@ -386,6 +391,36 @@ function tenantMcpHandler(
       }
       governanceAgentCredential = { agent_url: claims.agentUrl, nonce: claims.nonce };
     }
+    // A minted hosted-grader credential authenticates as the one fixed
+    // hosted-grader buyer agent, only on the governance tenant, and only for
+    // the buyer side of its own run (#7758). Same re-verification and trusted
+    // stamping as the seller credential above.
+    let hostedGraderCredential: HostedGraderCredentialExtra | undefined;
+    if (isHostedGraderCredentialPrincipal(principal)) {
+      const claims = tenantId === 'governance' ? hostedGraderCredentialFromRequest(req) : null;
+      if (!claims) {
+        setCORSHeaders(res);
+        res.status(401).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32001, message: 'This credential is not valid for this endpoint.' },
+        });
+        return;
+      }
+      if (!isHostedGraderCredentialRequestAllowed(req.body)) {
+        setCORSHeaders(res);
+        res.status(403).json({
+          jsonrpc: '2.0',
+          id: (req.body as { id?: unknown } | undefined)?.id ?? null,
+          error: {
+            code: -32001,
+            message: 'A hosted-grader credential may only call sync_plans, check_governance (intent checks), get_plan_audit_logs, and report_plan_outcome.',
+          },
+        });
+        return;
+      }
+      hostedGraderCredential = { agent_url: claims.agentUrl, nonce: claims.nonce };
+    }
     if (principal && !(req as { auth?: unknown }).auth) {
       // Shape mirrors @adcp/sdk@6.7.0 server/serve.js attachAuthInfo —
       // `token: ''` matches the framework's no-token path verbatim, so any
@@ -409,6 +444,9 @@ function tenantMcpHandler(
           ...(demoToken !== undefined && { demo_token: demoToken }),
           ...(governanceAgentCredential && {
             [GOVERNANCE_AGENT_CREDENTIAL_EXTRA_KEY]: governanceAgentCredential,
+          }),
+          ...(hostedGraderCredential && {
+            [HOSTED_GRADER_CREDENTIAL_EXTRA_KEY]: hostedGraderCredential,
           }),
           credential: apiKeyCredential(req, principal),
         },

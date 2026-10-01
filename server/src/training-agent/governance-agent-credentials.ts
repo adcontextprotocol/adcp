@@ -29,6 +29,7 @@
 import { createHash, createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import type { AuthPrincipal, Authenticator } from '@adcp/sdk/server';
+import { HOSTED_GRADER_BUYER_AGENT_URL } from './hosted-grader.js';
 
 export const SANDBOX_GOVERNANCE_GRANT_TAG = 'adcp-sandbox-gov.v1.';
 /** Principal prefix stamped on requests authenticated with a minted credential. */
@@ -41,7 +42,9 @@ const MIN_SECRET_LENGTH = 32;
 export const GOVERNANCE_AGENT_CREDENTIAL_MAX_TTL_SECONDS = 30 * 60;
 const MAX_CREDENTIAL_LENGTH = 1024;
 const MAX_AGENT_URL_LENGTH = 512;
-const NONCE_PATTERN = /^[A-Za-z0-9-]{8,64}$/;
+// Run nonces are UUIDs, so no nonce is a suffix of another and the plan-id
+// suffix check below is exact.
+const NONCE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SEGMENT_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /**
@@ -145,7 +148,7 @@ export function mintGovernanceAgentCredential(
   if (!key) throw new Error(`${SECRET_ENV} is not configured; governance agent credentials are disabled.`);
   const boundUrl = mintableAgentUrl(agentUrl, options.allowLoopbackHttp === true);
   if (!NONCE_PATTERN.test(options.nonce)) {
-    throw new Error('Governance agent credential nonce must be 8-64 characters of [A-Za-z0-9-].');
+    throw new Error('Governance agent credential nonce must be a lowercase UUID.');
   }
   const ttl = Math.min(
     Math.max(1, Math.floor(options.ttlSeconds ?? GOVERNANCE_AGENT_CREDENTIAL_MAX_TTL_SECONDS)),
@@ -218,10 +221,15 @@ function bearerToken(req: Request): string | undefined {
 export function buildGovernanceAgentCredentialAuthenticator(): Authenticator {
   return async (req): Promise<AuthPrincipal | null> => {
     const token = bearerToken(req as unknown as Request);
-    if (!token?.startsWith(SANDBOX_GOVERNANCE_GRANT_TAG)) return null;
-    const claims = verifyGovernanceAgentCredential(token);
-    if (!claims) return null;
-    return { principal: governanceAgentCredentialPrincipal(claims) };
+    if (token?.startsWith(SANDBOX_GOVERNANCE_GRANT_TAG)) {
+      const claims = verifyGovernanceAgentCredential(token);
+      return claims ? { principal: governanceAgentCredentialPrincipal(claims) } : null;
+    }
+    if (token?.startsWith(HOSTED_GRADER_GRANT_TAG)) {
+      const claims = verifyHostedGraderCredential(token);
+      return claims ? { principal: hostedGraderCredentialPrincipal(claims) } : null;
+    }
+    return null;
   };
 }
 
@@ -286,4 +294,171 @@ export function isGovernanceAgentCredentialRequestAllowed(body: unknown): boolea
   return message.method === 'tools/call'
     && typeof message.params?.name === 'string'
     && ALLOWED_TOOLS.has(message.params.name);
+}
+
+// ── Hosted-grader buyer credential ──────────────────────────────────────
+//
+// Hosted grading authenticates to this governance tenant as one fixed buyer
+// agent, HOSTED_GRADER_BUYER_AGENT_URL, so the intent token `caller` is an
+// identity a third-party seller can map its grading credential to (#7758).
+// The credential is minted only by in-process hosted-grading code, one per
+// run, and is limited to the buyer side of that run: plan setup, intent
+// checks, audit reads, and outcome reports on plans whose id carries the run
+// nonce. It has its own tag, HKDF info, and audience, so a seller credential
+// never verifies as a grader credential or the reverse.
+
+export const HOSTED_GRADER_GRANT_TAG = 'adcp-sandbox-gov-grader.v1.';
+/** Principal prefix stamped on requests authenticated with a grader credential. */
+export const HOSTED_GRADER_GRANT_PRINCIPAL_TAG = 'static:governance-grader-credential:';
+const GRADER_CREDENTIAL_AUDIENCE = 'adcp-training-agent/governance-grader';
+const GRADER_HKDF_INFO = 'adcp-sandbox-gov-grader.v1';
+
+export interface HostedGraderCredentialClaims {
+  /** Always HOSTED_GRADER_BUYER_AGENT_URL. */
+  agentUrl: string;
+  /** Hosted-run nonce; only plans whose id ends with `-${nonce}` are in scope. */
+  nonce: string;
+  iat: number;
+  exp: number;
+}
+
+function graderCredentialKey(): Buffer | undefined {
+  const secret = process.env[SECRET_ENV];
+  if (!secret || secret.length < MIN_SECRET_LENGTH) return undefined;
+  return Buffer.from(hkdfSync('sha256', secret, Buffer.alloc(0), GRADER_HKDF_INFO, 32));
+}
+
+function signGrader(key: Buffer, payloadSegment: string): Buffer {
+  return createHmac('sha256', key).update(`${HOSTED_GRADER_GRANT_TAG}${payloadSegment}`).digest();
+}
+
+export interface MintHostedGraderCredentialOptions {
+  /** Hosted-run nonce, the suffix appended to the run's governance plan ids. */
+  nonce: string;
+  ttlSeconds?: number;
+  /** Epoch seconds. */
+  now?: number;
+}
+
+/**
+ * Mint a credential that authenticates as HOSTED_GRADER_BUYER_AGENT_URL on
+ * this deployment's `/governance` tenant for one hosted run. Throws when the
+ * feature is not configured.
+ */
+export function mintHostedGraderCredential(options: MintHostedGraderCredentialOptions): string {
+  const key = graderCredentialKey();
+  if (!key) throw new Error(`${SECRET_ENV} is not configured; hosted-grader governance credentials are disabled.`);
+  if (!NONCE_PATTERN.test(options.nonce)) {
+    throw new Error('Hosted-grader credential nonce must be a lowercase UUID.');
+  }
+  const ttl = Math.min(
+    Math.max(1, Math.floor(options.ttlSeconds ?? GOVERNANCE_AGENT_CREDENTIAL_MAX_TTL_SECONDS)),
+    GOVERNANCE_AGENT_CREDENTIAL_MAX_TTL_SECONDS,
+  );
+  const iat = Math.floor(options.now ?? Date.now() / 1000);
+  const claims: WireClaims = {
+    v: 1,
+    aud: GRADER_CREDENTIAL_AUDIENCE,
+    agent_url: HOSTED_GRADER_BUYER_AGENT_URL,
+    nonce: options.nonce,
+    iat,
+    exp: iat + ttl,
+  };
+  const payloadSegment = Buffer.from(JSON.stringify(claims)).toString('base64url');
+  return `${HOSTED_GRADER_GRANT_TAG}${payloadSegment}.${signGrader(key, payloadSegment).toString('base64url')}`;
+}
+
+/** Verify a presented hosted-grader credential. Returns its claims, or null. */
+export function verifyHostedGraderCredential(
+  token: unknown,
+  now: number = Math.floor(Date.now() / 1000),
+): HostedGraderCredentialClaims | null {
+  if (typeof token !== 'string' || token.length > MAX_CREDENTIAL_LENGTH) return null;
+  if (!token.startsWith(HOSTED_GRADER_GRANT_TAG)) return null;
+  const key = graderCredentialKey();
+  if (!key) return null;
+  const parts = token.slice(HOSTED_GRADER_GRANT_TAG.length).split('.');
+  if (parts.length !== 2) return null;
+  const [payloadSegment, macSegment] = parts;
+  if (!SEGMENT_PATTERN.test(payloadSegment) || !SEGMENT_PATTERN.test(macSegment)) return null;
+  const expected = signGrader(key, payloadSegment);
+  const presented = Buffer.from(macSegment, 'base64url');
+  if (presented.length !== expected.length || !timingSafeEqual(presented, expected)) return null;
+  let claims: Partial<WireClaims>;
+  try {
+    claims = JSON.parse(Buffer.from(payloadSegment, 'base64url').toString('utf8')) as Partial<WireClaims>;
+  } catch {
+    return null;
+  }
+  if (
+    claims.v !== 1
+    || claims.aud !== GRADER_CREDENTIAL_AUDIENCE
+    || claims.agent_url !== HOSTED_GRADER_BUYER_AGENT_URL
+    || typeof claims.nonce !== 'string'
+    || !NONCE_PATTERN.test(claims.nonce)
+    || typeof claims.iat !== 'number'
+    || typeof claims.exp !== 'number'
+    || claims.exp - claims.iat > GOVERNANCE_AGENT_CREDENTIAL_MAX_TTL_SECONDS
+    || claims.iat > now + 60
+    || claims.exp <= now
+  ) {
+    return null;
+  }
+  return { agentUrl: claims.agent_url, nonce: claims.nonce, iat: claims.iat, exp: claims.exp };
+}
+
+function hostedGraderCredentialPrincipal(claims: HostedGraderCredentialClaims): string {
+  // Per-run and non-reversible, like the seller credential's principal.
+  const digest = createHash('sha256').update(`${claims.agentUrl}\n${claims.nonce}`).digest('hex').slice(0, 32);
+  return `${HOSTED_GRADER_GRANT_PRINCIPAL_TAG}${digest}`;
+}
+
+export function isHostedGraderCredentialPrincipal(principal: string | undefined): boolean {
+  return typeof principal === 'string' && principal.startsWith(HOSTED_GRADER_GRANT_PRINCIPAL_TAG);
+}
+
+/** Resolve the credential on a request already authenticated as a hosted-grader principal. */
+export function hostedGraderCredentialFromRequest(req: Request): HostedGraderCredentialClaims | null {
+  return verifyHostedGraderCredential(bearerToken(req));
+}
+
+export const HOSTED_GRADER_CREDENTIAL_EXTRA_KEY = 'hosted_grader_credential';
+
+/** Shape the router stamps on `req.auth.extra` for a verified grader credential. */
+export interface HostedGraderCredentialExtra {
+  agent_url: string;
+  nonce: string;
+}
+
+/** Read the router-stamped grader scope from trusted auth `extra`. */
+export function hostedGraderCredentialFromExtra(
+  extra: Record<string, unknown> | undefined,
+): Readonly<{ agentUrl: string; nonce: string }> | undefined {
+  const value = extra?.[HOSTED_GRADER_CREDENTIAL_EXTRA_KEY] as Partial<HostedGraderCredentialExtra> | undefined;
+  if (!value || typeof value !== 'object') return undefined;
+  if (value.agent_url !== HOSTED_GRADER_BUYER_AGENT_URL || typeof value.nonce !== 'string') return undefined;
+  return { agentUrl: value.agent_url, nonce: value.nonce };
+}
+
+/**
+ * Tools a hosted-grader credential may call: the buyer side of one governed
+ * run. Plan scope and intent-only checks are enforced in the handlers.
+ */
+const GRADER_ALLOWED_TOOLS = new Set([
+  'get_adcp_capabilities',
+  'sync_plans',
+  'check_governance',
+  'get_plan_audit_logs',
+  'report_plan_outcome',
+]);
+
+/** Whether a JSON-RPC body is within the grader credential's allowed surface. */
+export function isHostedGraderCredentialRequestAllowed(body: unknown): boolean {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const message = body as { method?: unknown; params?: { name?: unknown } };
+  if (typeof message.method !== 'string') return false;
+  if (ALLOWED_MCP_METHODS.has(message.method)) return true;
+  return message.method === 'tools/call'
+    && typeof message.params?.name === 'string'
+    && GRADER_ALLOWED_TOOLS.has(message.params.name);
 }

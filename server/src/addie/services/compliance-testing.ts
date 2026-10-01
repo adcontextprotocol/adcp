@@ -1,4 +1,5 @@
 import { complianceRunProvenance, type ComplianceRunProvenance } from '../../compliance/run-provenance.js';
+import { createHostedWebhookReceiverLease } from '../../services/hosted-webhook-receiver.js';
 /**
  * Compliance testing — thin adapter over @adcp/sdk's compliance module.
  *
@@ -39,6 +40,9 @@ import {
 import { classifyComplianceStep } from '../../compliance/step-disposition.js';
 import { createLogger } from '../../logger.js';
 import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
+import { createHostedRouteStoryboard } from '../../compliance/hosted-route-storyboard.js';
+import { getTestKitForStoryboard } from '../../services/storyboards.js';
+import { redactHostedGovernanceSecrets } from '../../compliance/hosted-multi-agent-routing.js';
 
 import type {
   TrackSummaryEntry,
@@ -252,12 +256,46 @@ export async function comply(
 ): Promise<ComplianceResult> {
   const safeOptions = withSdkSafeTransport(options);
   const authDefaults = await hostedAuthDefaultsForRun(agentUrl, safeOptions, target);
-  const result = await sdkComply(
-    agentUrl,
-    withSdkSafeTransport(
-      withHostedComplianceRunOptions(safeOptions, target, authDefaults.probeTask, authDefaults.apiKey),
-    ),
-  );
+  // Per-storyboard routing (@adcp/sdk ComplyOptions.routeStoryboard): the
+  // multi-agent governance storyboards (#7758) and live-mode test-kit
+  // storyboards (#7772). A caller-supplied hook wins so tests can inject one.
+  // Credentials minted for routed runs are collected and scrubbed from the
+  // result before anyone stores, renders, or logs it.
+  const mintedSecrets = new Set<string>();
+  const routeStoryboard = options.routeStoryboard ?? createHostedRouteStoryboard({
+    ...(options.auth && { auth: options.auth }),
+    ...(options.protocol && { protocol: options.protocol }),
+    resolveTestKit: storyboardId => getTestKitForStoryboard(storyboardId, hostedComplianceOptions(target)),
+    secrets: mintedSecrets,
+  });
+  // Current 3.1 grading treats outbound webhook coverage as conditional. The
+  // public receiver is opt-in while the versioned mandatory profile is being
+  // prepared; if ingress is unavailable, retain the current grading contract
+  // and log the platform gap rather than attributing it to the seller.
+  let receiverLease;
+  if (process.env.HOSTED_COMPLIANCE_WEBHOOK_RECEIVER_ENABLED === 'true' && !safeOptions.webhook_receiver) {
+    try {
+      receiverLease = await createHostedWebhookReceiverLease();
+    } catch (error) {
+      logger.warn({ err: error, agentUrl }, 'Hosted webhook receiver unavailable; webhook storyboards may be not applicable');
+    }
+  }
+  let rawResult: ComplianceResult;
+  try {
+    rawResult = await sdkComply(
+      agentUrl,
+      withSdkSafeTransport(
+        withHostedComplianceRunOptions({
+          ...safeOptions,
+          routeStoryboard,
+          ...(receiverLease ? { webhook_receiver: receiverLease.options } : {}),
+        }, target, authDefaults.probeTask, authDefaults.apiKey),
+      ),
+    );
+  } finally {
+    await receiverLease?.release();
+  }
+  const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { hosted_provenance: ComplianceRunProvenance }).hosted_provenance =
     complianceRunProvenance(result, options);

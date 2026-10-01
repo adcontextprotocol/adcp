@@ -1200,10 +1200,11 @@
               <a id="view-brand-link" class="btn btn-view-brand" href="#" target="_blank" style="display:none;">View Brand</a>
               <button class="btn btn-secondary" onclick="copyJson()">Copy JSON</button>
               <button class="btn btn-secondary" onclick="downloadJson()">Download</button>
-              <div style="display: flex; flex-direction: column; align-items: flex-end;">
+              <div id="save-registry-group" style="display: flex; flex-direction: column; align-items: flex-end;">
                 <button class="btn" id="save-registry-btn" onclick="saveToRegistry()" disabled title="Log in to save">Save setup</button>
                 <span id="save-registry-hint" class="btn-disabled-hint">Log in as a member to save setup</span>
               </div>
+              <button class="btn hidden" id="host-with-aao-btn" onclick="hostWithAao()" title="Continue on AgenticAdvertising.org, which can host this brand.json for you">Host with AgenticAdvertising.org</button>
             </div>
           </div>
 
@@ -1658,6 +1659,17 @@
                   <p id="next-step-2-copy">Place the file at this exact location on your server:</p>
                   <code id="deploy-path">https://example.com/.well-known/brand.json</code>
                   <p style="margin-top: var(--space-2);">Create the <code>.well-known</code> folder if it doesn't exist.</p>
+                  <details id="delegate-hosting" style="margin-top: var(--space-3);">
+                    <summary style="cursor: pointer; font-weight: var(--font-medium);">Your agency or platform hosts it instead?</summary>
+                    <p style="margin-top: var(--space-2);">Send them the brand.json above. Then publish this small pointer at the same location on your domain, so agents follow it to their copy.</p>
+                    <div class="form-group" style="margin-bottom: var(--space-2);">
+                      <label for="delegate-url">URL where they host your brand.json</label>
+                      <input type="url" id="delegate-url" placeholder="https://agency.example/brands/example.com/brand.json" oninput="updateDelegatePointer()" />
+                      <p class="hint" id="delegate-url-hint">Must be an HTTPS URL that serves the file directly, without redirects.</p>
+                    </div>
+                    <pre class="pointer-snippet" id="delegate-pointer">{}</pre>
+                    <button class="btn btn-secondary" id="delegate-download-btn" onclick="downloadDelegatePointer()" disabled style="padding: var(--space-2) var(--space-4);">Download pointer file</button>
+                  </details>
                 </div>
               </li>
               <li>
@@ -3933,6 +3945,117 @@
           .catch(() => alert('Failed to copy instructions.'));
       }
 
+      // ============================================================================
+      // Delegated hosting (agency or platform hosts the file)
+      // ============================================================================
+
+      function getDelegatePointer() {
+        const raw = (document.getElementById('delegate-url')?.value || '').trim();
+        let url;
+        try { url = new URL(raw); } catch { return null; }
+        if (url.protocol !== 'https:') return null;
+        return {
+          "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
+          "authoritative_location": url.href
+        };
+      }
+
+      function updateDelegatePointer() {
+        const pointer = getDelegatePointer();
+        document.getElementById('delegate-pointer').textContent = pointer ? JSON.stringify(pointer, null, 2) : '{}';
+        document.getElementById('delegate-download-btn').disabled = !pointer;
+      }
+
+      function downloadDelegatePointer() {
+        const pointer = getDelegatePointer();
+        if (!pointer) return;
+        const blob = new Blob([JSON.stringify(pointer, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'brand.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      // ============================================================================
+      // Handoff from brandjson.org to AgenticAdvertising.org hosting
+      // ============================================================================
+      // brandjson.org has no AgenticAdvertising.org session, so hosting there
+      // continues on agenticadvertising.org. The draft travels in the URL
+      // fragment (never sent to a server) and is only loaded into the form; the
+      // user still reviews and saves it explicitly.
+
+      const HANDOFF_MAX_JSON_CHARS = 100000;
+
+      function toBase64Url(bytes) {
+        let bin = '';
+        for (const b of bytes) bin += String.fromCharCode(b);
+        return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      }
+
+      function fromBase64Url(text) {
+        let b64 = text.replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';
+        const bin = atob(b64);
+        return Uint8Array.from(bin, c => c.charCodeAt(0));
+      }
+
+      async function encodeDraft(json) {
+        const bytes = new TextEncoder().encode(JSON.stringify(json));
+        if (typeof CompressionStream === 'function') {
+          const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+          return 'v1.gz.' + toBase64Url(new Uint8Array(await new Response(stream).arrayBuffer()));
+        }
+        return 'v1.raw.' + toBase64Url(bytes);
+      }
+
+      async function decodeDraft(token) {
+        const match = /^v1\.(gz|raw)\.([A-Za-z0-9_-]+)$/.exec(token);
+        if (!match) return null;
+        let bytes = fromBase64Url(match[2]);
+        if (match[1] === 'gz') {
+          if (typeof DecompressionStream !== 'function') return null;
+          const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+          bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+        }
+        const text = new TextDecoder().decode(bytes);
+        if (text.length > HANDOFF_MAX_JSON_CHARS) return null;
+        const data = JSON.parse(text);
+        return data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+      }
+
+      function aaoOrigin() {
+        const host = window.location.hostname;
+        return host === 'localhost' || host === '127.0.0.1' ? window.location.origin : 'https://agenticadvertising.org';
+      }
+
+      async function hostWithAao() {
+        if (!currentDomain) return;
+        try {
+          const token = await encodeDraft(finalizeJson());
+          window.location.href = `${aaoOrigin()}/brand/builder?domain=${encodeURIComponent(currentDomain)}#draft=${token}`;
+        } catch {
+          alert('Could not prepare your draft. Download it instead and upload it on AgenticAdvertising.org.');
+        }
+      }
+
+      async function applyHandoffDraft(token, domain) {
+        let data = null;
+        try { data = await decodeDraft(token); } catch { data = null; }
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+        if (!data) {
+          alert('The draft from brandjson.org could not be loaded. Please rebuild it here.');
+          return;
+        }
+        document.getElementById('builder-form').classList.remove('hidden');
+        populateFromBrandJson(data, domain, domain);
+        document.getElementById('file-status').textContent = 'Imported from brandjson.org. Review, then save your setup.';
+        updateRegistryButton();
+      }
+
       async function loadFromRegistry(domain) {
         try {
           const response = await fetch(`/api/brands/hosted/${encodeURIComponent(domain)}`);
@@ -3965,13 +4088,21 @@
       // Initialize
       // ============================================================================
 
-      document.addEventListener('DOMContentLoaded', () => {
-        // Check for domain in URL params
+      document.addEventListener('DOMContentLoaded', async () => {
+        // On brandjson.org, hosting continues on AgenticAdvertising.org.
+        if (window.__ADCP_SITE__ === 'brandjson') {
+          document.getElementById('save-registry-group').style.display = 'none';
+          document.getElementById('host-with-aao-btn').classList.remove('hidden');
+        }
+
+        // Check for domain in URL params, and a draft handed off from brandjson.org
         const params = new URLSearchParams(window.location.search);
         const domain = params.get('domain');
+        const draftToken = window.location.hash.startsWith('#draft=') ? window.location.hash.slice('#draft='.length) : null;
         if (domain) {
           document.getElementById('domain-input').value = domain;
-          startBuilding();
+          await startBuilding();
+          if (draftToken) await applyHandoffDraft(draftToken, domain);
         }
       });
     </script>

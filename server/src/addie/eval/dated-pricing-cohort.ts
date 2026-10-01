@@ -510,7 +510,7 @@ export function currentEvaluationPricingCandidates(): readonly Readonly<{
 }>[] {
   return deepFreeze([
     { candidateId: 'anthropic-router', provider: 'anthropic', model: ModelConfig.fast },
-    { candidateId: 'anthropic-generation', provider: 'anthropic', model: ModelConfig.primary },
+    { candidateId: 'anthropic-generation', provider: 'anthropic', model: ModelConfig.evaluationGeneration },
     { candidateId: 'openai-router-generator', provider: 'openai', model: OPENAI_ROUTER_MODEL },
     { candidateId: 'google-router-generator', provider: 'google', model: GOOGLE_ROUTER_MODEL },
   ]);

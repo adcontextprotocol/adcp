@@ -6,6 +6,8 @@ description: "AdCP push notifications: how sellers deliver async task status upd
 
 Push notifications let sellers deliver task status updates to you directly, instead of requiring you to poll. You provide a webhook URL in the task request; the seller POSTs status changes to that URL as the task progresses.
 
+The current 3.x request field is optional. The [proposed AdCP 4.0 async webhook baseline](/docs/building/verification/conformance#proposed-adcp-40-async-webhook-baseline) would require agents seeking that version's verification to accept callbacks for asynchronous operations and defined durable lifecycle events. It does not change existing 3.x grades.
+
 ## How it works
 
 1. A unique operation ID is generated per task invocation for webhook correlation

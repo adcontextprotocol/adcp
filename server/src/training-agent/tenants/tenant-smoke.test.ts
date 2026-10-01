@@ -2199,7 +2199,7 @@ describe('tenant routing smoke', () => {
         ?.filter(format => format.operations?.includes('preview'))
         .map(format => format.capability_id) ?? [];
       const previewRouteIds = creative?.preview?.routes?.map(route => route.capability_id) ?? [];
-      expect(body.result?.structuredContent?.adcp_version).toBe('3.2-rc.7');
+      expect(body.result?.structuredContent?.adcp_version).toBe('3.2');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
       expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
@@ -2298,6 +2298,12 @@ describe('tenant routing smoke', () => {
         expect.objectContaining({ task_id: taskId, task_type: 'create_media_buy', status: 'submitted' }),
       ]);
 
+      const beforeApproval = payload(await callTenantTool(url, 51, 'get_media_buys', {
+        account,
+        media_buy_ids: [completion.media_buy_id],
+      }));
+      expect(beforeApproval?.media_buys).toEqual([]);
+
       const signalsUrl = `${baseUrl}/signals/mcp`;
       await initializeTenant(signalsUrl);
       const salesAccountId = `synthetic_${createHash('sha256')
@@ -2311,12 +2317,17 @@ describe('tenant routing smoke', () => {
       }));
       expect(crossTenantRead).toMatchObject({ tasks: [] });
 
-      const completed = payload(await callTenantTool(url, 7, 'comply_test_controller', {
-        account,
-        scenario: 'force_task_completion',
-        params: { task_id: taskId, result: completion },
-      }));
-      expect(completed, JSON.stringify(completed)).toMatchObject({ success: true, current_state: 'completed' });
+      const rivalCompletion = { ...completion, media_buy_id: 'mb_training_async_lifecycle_rival' };
+      const completionAttempts = await Promise.all([completion, rivalCompletion].map((result, index) =>
+        callTenantTool(url, 7 + index, 'comply_test_controller', {
+          account,
+          scenario: 'force_task_completion',
+          params: { task_id: taskId, result },
+        }).then(payload)));
+      expect(completionAttempts.filter(attempt => attempt?.success)).toHaveLength(1);
+      const actualCompletion = completionAttempts[0]?.success ? completion : rivalCompletion;
+      const rejectedCompletion = completionAttempts[0]?.success ? rivalCompletion : completion;
+      expect(completionAttempts.find(attempt => attempt?.success)).toMatchObject({ current_state: 'completed' });
 
       const terminalRead = payload(await callTenantTool(url, 8, 'get_task_status', {
         account,
@@ -2327,8 +2338,22 @@ describe('tenant routing smoke', () => {
         task_id: taskId,
         task_type: 'create_media_buy',
         status: 'completed',
-        result: completion,
+        result: actualCompletion,
       });
+
+      const approvedBuy = payload(await callTenantTool(url, 52, 'get_media_buys', {
+        account,
+        media_buy_ids: [actualCompletion.media_buy_id, rejectedCompletion.media_buy_id],
+      }));
+      expect(approvedBuy?.media_buys).toEqual([
+        expect.objectContaining({
+          media_buy_id: actualCompletion.media_buy_id,
+          status: actualCompletion.media_buy_status,
+          packages: expect.arrayContaining([
+            expect.objectContaining({ package_id: actualCompletion.packages[0].package_id }),
+          ]),
+        }),
+      ]);
 
       const terminalList = payload(await callTenantTool(url, 9, 'list_tasks', {
         account,
@@ -2495,7 +2520,12 @@ describe('tenant routing smoke', () => {
       const accountA = {
         brand: { domain: 'task-owner-a.example' },
         operator: 'pinnacle-agency.example',
+        operator_unit: { id: 'unit-a' },
         sandbox: true,
+      };
+      const accountAOtherUnit = {
+        ...accountA,
+        operator_unit: { id: 'unit-b' },
       };
       const accountB = {
         brand: { domain: 'task-owner-b.example' },
@@ -2572,6 +2602,11 @@ describe('tenant routing smoke', () => {
         success: false,
         error: 'NOT_FOUND',
       });
+      expect(await complete(ownerA, accountAOtherUnit, 'mb_cross_unit_attack')).toMatchObject({
+        status: 'failed',
+        success: false,
+        error: 'NOT_FOUND',
+      });
       expect(await read(ownerA, accountA)).toMatchObject({ status: 'submitted' });
 
       const ownerACompletion = await complete(ownerA, accountA, 'mb_owner_a_account_a');
@@ -2621,7 +2656,9 @@ describe('tenant routing smoke', () => {
       // Simulate a credential that authenticates but has no registered buyer
       // agent. The router must remove the forged internal owner before the
       // comply adapter sees the request.
-      resolveSpy.mockResolvedValueOnce(null);
+      // Both the router and the SDK may resolve this credential during one
+      // request. Keep every lookup unresolved for the forged request.
+      resolveSpy.mockResolvedValue(null);
       const keyId = createHash('sha256').update(token).digest('hex').slice(0, 32);
       const attack = payload(await callTenantTool(url, 32, 'comply_test_controller', {
         account,
@@ -2635,6 +2672,7 @@ describe('tenant routing smoke', () => {
       }, token));
 
       expect(attack).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      resolveSpy.mockRestore();
       expect(payload(await callTenantTool(url, 33, 'get_task_status', {
         account,
         task_id: taskId,

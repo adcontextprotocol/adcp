@@ -86,6 +86,14 @@ import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { getTestKitForStoryboard } from '../../services/storyboards.js';
 import {
+  hostedGovernanceAgentForRun,
+  hostedGovernanceSecrets,
+  redactHostedGovernanceSecrets,
+  type HostedMultiAgentRouting,
+  hostedMultiAgentRoutingForStoryboard,
+  withHostedMultiAgentRouting,
+} from '../../compliance/hosted-multi-agent-routing.js';
+import {
   hostedComplianceTarget,
   hostedComplianceOptions,
   HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS,
@@ -187,7 +195,7 @@ function targetFromInput(input: Record<string, unknown>): ReturnType<typeof host
       ? hostedComplianceTarget(requested.trim())
       : complianceTarget;
   } catch {
-    throw new ToolError('Invalid compliance_target. Use 3.1, 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.');
+    throw new ToolError('Invalid compliance_target. Use 3.2, 3.1, 3.0, 3.2-rc, 3.2-beta, or an exact bundled version.');
   }
 }
 
@@ -2054,7 +2062,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
         tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1" or "3.0" for badge-eligible stable lines, or "3.1-rc"/"3.1-beta" for explicit prerelease diagnostics. Defaults to the canonical badge-eligible target when advertised.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.2", "3.1", or "3.0" for badge-eligible stable lines, or "3.2-rc"/"3.2-beta" for explicit prerelease diagnostics. Defaults to the canonical badge-eligible target when advertised.' },
       },
       required: ['agent_url'],
       additionalProperties: false,
@@ -2168,7 +2176,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit targets only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.2", "3.1", "3.0", "3.2-rc", or "3.2-beta". Defaults to the canonical badge-eligible target when advertised. Explicit targets only run when the agent advertises support.' },
       },
       required: ['agent_url'],
     },
@@ -2182,7 +2190,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         storyboard_id: { type: 'string', description: 'Storyboard ID (from recommend_storyboards)' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.2", "3.1", "3.0", "3.2-rc", or "3.2-beta". Defaults to 3.0.' },
       },
       required: ['storyboard_id'],
     },
@@ -2198,7 +2206,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
         dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.2", "3.1", "3.0", "3.2-rc", or "3.2-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
       },
       required: ['agent_url', 'storyboard_id'],
     },
@@ -2224,7 +2232,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           additionalProperties: false,
         },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.2", "3.1", "3.0", "3.2-rc", or "3.2-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
       },
       required: ['agent_url', 'storyboard_id', 'step_id'],
     },
@@ -5741,20 +5749,47 @@ export function createMemberToolHandlers(
       // authored against; the run-auth bearer substitution no-ops when the
       // kit already carries auth.
       const declaredTestKit = getTestKitForStoryboard(storyboardId, runOptions);
-      const result = await runStoryboard(
-        resolved.resolvedUrl,
-        sb,
-        withSdkSafeTransport(withHostedStoryboardRunOptions({
-          ...(declaredTestKit && { test_kit: declaredTestKit }),
-          ...(authOption && { auth: authOption }),
-        }, runTarget, authProbeTask)),
-      );
+      const storyboardRunOptions = withSdkSafeTransport(withHostedStoryboardRunOptions({
+        ...(declaredTestKit && { test_kit: declaredTestKit }),
+        ...(authOption && { auth: authOption }),
+      }, runTarget, authProbeTask));
+      // adcp#7758 — `requires: [multi_agent]` storyboards route governance
+      // steps to the public governance agent, as the fixed hosted-grader buyer
+      // agent, and everything else to the agent under test, which receives a
+      // per-run seller credential in sync_governance. Unroutable ones are
+      // reported, never sent to the agent. Minted credentials are scrubbed
+      // from the result before it is rendered or logged.
+      let routing: HostedMultiAgentRouting<typeof sb> = { kind: 'single_agent' };
+      let mintedSecrets: string[] = [];
+      if (sb.requires?.includes('multi_agent')) {
+        const governance = hostedGovernanceAgentForRun(resolved.resolvedUrl);
+        if (governance.kind === 'unavailable') {
+          return `**Not runnable here:** ${storyboardId} requires multi_agent: ${governance.reason}`;
+        }
+        routing = hostedMultiAgentRoutingForStoryboard({
+          storyboard: sb,
+          agentUnderTest: { url: resolved.resolvedUrl, ...(authOption && { auth: authOption }) },
+          governance: governance.governance,
+        });
+        if (routing.kind === 'unroutable') {
+          return `**Not runnable here:** ${routing.reason}`;
+        }
+        mintedSecrets = hostedGovernanceSecrets(governance.governance);
+      }
+      const rawResult = routing.kind === 'routed'
+        ? await runStoryboard('', routing.storyboard, withHostedMultiAgentRouting(storyboardRunOptions, routing))
+        : await runStoryboard(resolved.resolvedUrl, sb, storyboardRunOptions);
+      const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
+      const governanceStepIds = new Set(routing.kind === 'routed' ? routing.governance_step_ids : []);
 
       // runStoryboard catches its own throws and surfaces them as step
       // errors. Detect OAuth on the first failing step before rendering a
       // long failure report the user can't act on.
       const oauthStepError = result.phases
         .flatMap(p => p.steps)
+        // Governance-routed steps hit the public governance agent, not the
+        // member's agent; its auth errors must not prompt an OAuth flow here.
+        .filter(s => !governanceStepIds.has(s.step_id))
         .find(s => isOAuthRequiredErrorMessage(s.error))?.error;
       if (oauthStepError) {
         logger.warn(
@@ -5821,7 +5856,8 @@ export function createMemberToolHandlers(
 
         for (const step of phase.steps) {
           const icon = step.skipped ? 'SKIP' : step.passed ? 'PASS' : 'FAIL';
-          output += `- **${step.title}** [${icon}] — \`${step.task}\` (${(step.duration_ms / 1000).toFixed(1)}s)\n`;
+          const servedBy = governanceStepIds.has(step.step_id) ? ' — served by the public governance agent' : '';
+          output += `- **${step.title}** [${icon}] — \`${step.task}\`${servedBy} (${(step.duration_ms / 1000).toFixed(1)}s)\n`;
 
           if (!step.passed && !step.skipped) {
             if (step.error) {
@@ -5862,6 +5898,9 @@ export function createMemberToolHandlers(
         output += `Interpret these results conversationally. For failed steps, explain what the agent should return and suggest specific fixes.`;
       }
       if (dryRun) output += ` This was a dry run — no production state was modified.`;
+      if (governanceStepIds.size > 0) {
+        output += ` Steps served by the public governance agent (${PUBLIC_TEST_AGENT_URLS.governance}) wrote sandbox plan state there; a failure on one of those steps may come from the governance agent rather than the tested agent.`;
+      }
 
       const workosUserIdForStoryboard = memberContext?.workos_user?.workos_user_id;
       if (workosUserIdForStoryboard) {

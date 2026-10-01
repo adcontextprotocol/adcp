@@ -967,6 +967,36 @@ function sellerCredentialBuyerSideError(ctx: TrainingContext, task: string) {
   };
 }
 
+/**
+ * A minted hosted-grader credential stands for the buyer side of one hosted
+ * run only (governance-agent-credentials.ts). Every plan it names must carry
+ * the run nonce, so it cannot read or change another run's plans or anyone
+ * else's, even though every grader run authenticates as the same buyer agent.
+ */
+function hostedGraderPlanScopeError(ctx: TrainingContext, planIds: ReadonlyArray<string | undefined>) {
+  if (!ctx.hostedGraderCredential) return undefined;
+  const credential = ctx.hostedGraderCredential;
+  if (planIds.length > 0 && planIds.every(planId => isGovernanceAgentCredentialPlanInScope(credential, planId))) {
+    return undefined;
+  }
+  return {
+    errors: [{
+      code: 'PERMISSION_DENIED',
+      message: 'This hosted-grader credential is scoped to the plans of the hosted run that issued it.',
+    }],
+  };
+}
+
+function hostedGraderDeniedError(ctx: TrainingContext, task: string) {
+  if (!ctx.hostedGraderCredential) return undefined;
+  return {
+    errors: [{
+      code: 'PERMISSION_DENIED',
+      message: `A hosted-grader credential cannot call ${task}.`,
+    }],
+  };
+}
+
 function sellerCredentialPlanScopeError(ctx: TrainingContext, planId: string | undefined) {
   if (!ctx.governanceAgentCredential) return undefined;
   if (isGovernanceAgentCredentialPlanInScope(ctx.governanceAgentCredential, planId)) return undefined;
@@ -981,6 +1011,14 @@ function sellerCredentialPlanScopeError(ctx: TrainingContext, planId: string | u
 export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
   const sellerCredentialError = sellerCredentialBuyerSideError(ctx, 'sync_plans');
   if (sellerCredentialError) return sellerCredentialError;
+  if (ctx.hostedGraderCredential) {
+    const plans = (args as SyncPlansInput).plans;
+    const graderError = hostedGraderPlanScopeError(
+      ctx,
+      Array.isArray(plans) ? plans.map(plan => (plan && typeof plan === 'object' ? plan.plan_id : undefined)) : [],
+    );
+    if (graderError) return graderError;
+  }
   if (!ctx.authenticatedAgentUrl) {
     return { errors: [{ code: 'PERMISSION_DENIED', message: 'sync_plans requires an authenticated buyer agent.' }] };
   }
@@ -1200,6 +1238,18 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
 
 export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
   const req = args as CheckGovernanceInput;
+  if (ctx.hostedGraderCredential) {
+    // The grader runs intent checks (including an adjusted re-check with
+    // consultation_context) on its own run's plans only; execution checks
+    // belong to the seller named as the token audience. Checked from the
+    // request alone, before any cross-session lookup, so an explicit in-scope
+    // plan_id is required.
+    const intentOnly = req.tool !== undefined && req.payload !== undefined && !req.governance_context;
+    const graderError = intentOnly
+      ? hostedGraderPlanScopeError(ctx, [req.plan_id])
+      : hostedGraderDeniedError(ctx, 'check_governance execution checks');
+    if (graderError) return graderError;
+  }
   let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const governanceContext = req.governance_context;
   const consultationContext = req.consultation_context;
@@ -2453,6 +2503,8 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
   const sellerCredentialError = sellerCredentialBuyerSideError(ctx, 'report_plan_outcome');
   if (sellerCredentialError) return sellerCredentialError;
   const req = args as ReportPlanOutcomeInput;
+  const graderError = hostedGraderPlanScopeError(ctx, [req.plan_id]);
+  if (graderError) return graderError;
   let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = req.plan_id;
   const checkId = req.check_id;
@@ -3138,6 +3190,8 @@ function buildAdjustmentPlanSummary(
 }
 
 export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingContext) {
+  const graderAdjustmentError = hostedGraderDeniedError(ctx, 'report_plan_adjustment');
+  if (graderAdjustmentError) return graderAdjustmentError;
   const req = args as ReportPlanAdjustmentInput | ReviewPlanAdjustmentInput;
   let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const validationError = (message: string) => ({
@@ -3515,6 +3569,13 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
   const sellerCredentialError = sellerCredentialBuyerSideError(ctx, 'get_plan_audit_logs');
   if (sellerCredentialError) return sellerCredentialError;
   const req = args as GetPlanAuditLogsInput;
+  if (ctx.hostedGraderCredential) {
+    // Explicit plan ids only: no portfolio or governance_context lookups.
+    const graderError = (req.portfolio_plan_ids?.length || req.governance_contexts?.length)
+      ? hostedGraderDeniedError(ctx, 'get_plan_audit_logs by portfolio or governance_context')
+      : hostedGraderPlanScopeError(ctx, [...(req.plan_ids || []), ...(req.plan_id ? [req.plan_id] : [])]);
+    if (graderError) return graderError;
+  }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planIds = [...(req.plan_ids || []), ...(req.plan_id ? [req.plan_id] : [])];
   const portfolioPlanIds = req.portfolio_plan_ids || [];

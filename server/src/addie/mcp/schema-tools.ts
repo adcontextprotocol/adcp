@@ -560,7 +560,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         version: {
           type: 'string',
           description:
-            'Schema version to use. Omission means stable 3.1; use 3.2 for the current preview. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
+            'Schema version to use. Omission means stable 3.2; pass 3.1 or 3.0 for an earlier stable release. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
         },
       },
       required: ['json'],
@@ -582,7 +582,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Schema version. Match search_docs; omission means stable 3.1 and 3.2 selects the current preview. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
+          description: 'Schema version. Match search_docs; omission means stable 3.2. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
         },
         property: {
           type: 'string',
@@ -603,7 +603,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
       properties: {
         version: {
           type: 'string',
-          description: 'Optional schema version. Defaults to stable 3.1.',
+          description: 'Optional schema version. Defaults to stable 3.2.',
         },
       },
     },
@@ -627,7 +627,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         },
         to_version: {
           type: 'string',
-          description: 'Target version to compare to (default: stable 3.1)',
+          description: 'Target version to compare to (default: stable 3.2)',
         },
       },
       required: ['schema_path'],
