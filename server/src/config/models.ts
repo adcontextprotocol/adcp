@@ -88,7 +88,7 @@ export const GeminiModelConfig = {
 export function disableAdaptiveThinking(model: string): { thinking?: Anthropic.ThinkingConfigParam } {
   // Sonnet 5.5 rejects `disabled`; `between_tools` is its no-extended-thinking
   // setting. The pinned SDK's types predate it, hence the cast.
-  if (/^claude-sonnet-5-5$/.test(model)) {
+  if (/^claude-sonnet-5-5(?:-\d{8})?$/.test(model)) {
     return { thinking: { type: 'between_tools' } as unknown as Anthropic.ThinkingConfigParam };
   }
   // Fable 5 and Mythos 5/Preview always think and reject `disabled`, and

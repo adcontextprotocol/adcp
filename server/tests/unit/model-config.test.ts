@@ -17,9 +17,12 @@ describe('disableAdaptiveThinking', () => {
     expect(disableAdaptiveThinking(model)).toEqual({ thinking: { type: 'disabled' } });
   });
 
-  it('uses between_tools on Sonnet 5.5, which rejects disabled thinking', () => {
-    expect(disableAdaptiveThinking('claude-sonnet-5-5')).toEqual({ thinking: { type: 'between_tools' } });
-  });
+  it.each(['claude-sonnet-5-5', 'claude-sonnet-5-5-20261001'])(
+    'uses between_tools on %s, which rejects disabled thinking',
+    (model) => {
+      expect(disableAdaptiveThinking(model)).toEqual({ thinking: { type: 'between_tools' } });
+    },
+  );
 
   it.each([
     'claude-opus-5-5',
