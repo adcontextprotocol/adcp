@@ -47,6 +47,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_b43dc9b68aff"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_acceptance_policy_d-bc7c1297"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_adf1cc2c070d"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_acceptance_policy_d-bc7c1297"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   products:
     - product_id: "acceptance_policy_video"
       name: "Acceptance policy video"
@@ -106,6 +127,12 @@ phases:
           brief: "Find sandbox video inventory for a US public-policy campaign."
           brand:
             domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_acceptance_policy_d-bc7c1297"
           context:
             correlation_id: "acceptance_policy_discovery--products"
         validations:
