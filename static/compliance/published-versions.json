@@ -5,8 +5,7 @@
   "npm_tags": [
     "adcp-3.0",
     "latest",
-    "rc",
-    "beta"
+    "rc"
   ],
   "package_only_versions": [
     "3.0.24",
