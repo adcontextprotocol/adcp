@@ -192,6 +192,12 @@ describe('getConversationTokenLimit', () => {
     );
   });
 
+  it('gives Sonnet 5.5 and Opus 5.5 their 1M context window', () => {
+    expect(MODEL_CONTEXT_LIMITS['claude-sonnet-5-5']).toBe(1_000_000);
+    expect(MODEL_CONTEXT_LIMITS['claude-opus-5-5']).toBe(1_000_000);
+    expect(getResponseTokenReserve('claude-sonnet-5-5')).toBe(getResponseTokenReserve('claude-sonnet-5'));
+  });
+
   it('should use default for unknown models', () => {
     const limit = getConversationTokenLimit('unknown-model');
     expect(limit).toBe(MODEL_CONTEXT_LIMITS.default - RESERVED_TOKENS);

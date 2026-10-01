@@ -77,6 +77,20 @@ describe('AnthropicModelProvider request translation', () => {
     expect(prepared.providerRequest).toMatchObject({ tool_choice: expected });
   });
 
+  it.each([
+    { type: 'required' as const },
+    { type: 'tool' as const, name: 'search_docs' },
+  ])('sends auto for %o on Sonnet 5.5, which rejects forced tool use', (toolChoice) => {
+    const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
+    const prepared = provider.prepare(request({
+      model: 'claude-sonnet-5-5',
+      tools: [{ name: 'search_docs', description: 'Search.', inputSchema: { type: 'object' } }],
+      toolChoice,
+    }));
+
+    expect(prepared.providerRequest).toMatchObject({ tool_choice: { type: 'auto' } });
+  });
+
   it('builds the exact Anthropic envelope from canonical messages and tools', () => {
     const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
     const serverContinuation = normalizeAnthropicResponse(response({
