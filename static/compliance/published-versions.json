@@ -4,6 +4,7 @@
   "hosted_advancement_policy": "Register a version only after its immutable dist/compliance and dist/schemas artifacts exist, release provenance is available, and the pinned hosted @adcp/sdk can load the bundle. Alias advancement is independent of scheduler health; exact version targets remain pinned.",
   "npm_tags": [
     "adcp-3.0",
+    "adcp-3.2",
     "latest",
     "rc",
     "beta"
