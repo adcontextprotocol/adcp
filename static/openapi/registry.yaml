@@ -4347,39 +4347,9 @@ components:
           properties:
             available:
               type: boolean
-            retryable:
-              type: boolean
-              description: Whether retrying the same human refresh request later is expected to succeed without a platform change.
-            scope:
-              type: string
-              enum:
-                - platform
-            applies_to:
-              type: string
-              enum:
-                - human_session
-            code:
-              type: string
-              enum:
-                - refresh_authorization_provenance_required
-            notice:
-              type: string
-            alternative_action:
-              type: string
-              enum:
-                - monitoring_requeue
-            alternative_description:
-              type: string
           required:
             - available
-            - retryable
-            - scope
-            - applies_to
-            - code
-            - notice
-            - alternative_action
-            - alternative_description
-          description: Current human refresh admission state. Monitoring requeue is a separate scheduler operation and is not a retry or ETA for this endpoint.
+          description: Whether authenticated owners and administrators can queue an agent refresh.
         tracks:
           type: object
           additionalProperties:
@@ -4434,6 +4404,58 @@ components:
           type: integer
         storyboards_total:
           type: integer
+        latest_attempt:
+          type:
+            - object
+            - "null"
+          properties:
+            id:
+              type: string
+              format: uuid
+            tested_at:
+              type: string
+            triggered_by:
+              type: string
+              enum:
+                - heartbeat
+                - owner_test
+                - manual
+                - webhook
+            completeness:
+              type: string
+              enum:
+                - complete
+                - timed_out
+                - not_completed
+            is_authoritative:
+              type: boolean
+            requested_compliance_target:
+              type:
+                - string
+                - "null"
+            storyboards_completed:
+              type:
+                - integer
+                - "null"
+            storyboards_total:
+              type:
+                - integer
+                - "null"
+            first_blocker:
+              type:
+                - string
+                - "null"
+          required:
+            - id
+            - tested_at
+            - triggered_by
+            - completeness
+            - is_authoritative
+            - requested_compliance_target
+            - storyboards_completed
+            - storyboards_total
+            - first_blocker
+          description: Owner/operator-only newest persisted full assessment, including audit-only timeouts. Null for other viewers. This does not change the public verdict.
         check_interval_hours:
           type: integer
           description: How often the heartbeat re-tests this agent, in hours
@@ -13308,11 +13330,11 @@ paths:
       operationId: refreshAgent
       summary: Refresh agent snapshot
       description: |-
-        Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).
+        Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat.
 
-        **Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.
+        **Compliance re-run:** when the caller owns the agent or is an AgenticAdvertising.org admin and the capability probe succeeds, the full storyboard suite runs with a fresh test session. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Only a complete authoritative run can update public grades or badges.
 
-        **Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`. Human submissions are temporarily fenced with HTTP 503 until durable authorization provenance is supported; static admin API key submissions remain available.
+        **Auth:** an authenticated owner or administrator credential is checked at admission and throughout execution. Static admin API keys cannot queue a refresh.
 
         **Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.
       tags:
@@ -13563,61 +13585,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "503":
-          description: Refresh queue or authorization unavailable. Human submissions are fenced with refresh_authorization_provenance_required until durable authorization provenance is supported; this response is non-retryable and carries no ETA. Static admin API key submissions remain supported.
+          description: Refresh queue or authorization temporarily unavailable.
           content:
             application/json:
               schema:
-                anyOf:
-                  - type: object
-                    properties:
-                      error:
-                        type: string
-                        enum:
-                          - admin_authorization_unavailable
-                      message:
-                        type: string
-                    required:
-                      - error
-                      - message
-                  - type: object
-                    properties:
-                      error:
-                        type: string
-                      code:
-                        type: string
-                        enum:
-                          - refresh_authorization_provenance_required
-                      retryable:
-                        type: boolean
-                        enum:
-                          - false
-                      scope:
-                        type: string
-                        enum:
-                          - platform
-                      applies_to:
-                        type: string
-                        enum:
-                          - human_session
-                      alternative_action:
-                        type: string
-                        enum:
-                          - monitoring_requeue
-                      alternative_description:
-                        type: string
-                      tracking_issue:
-                        type: string
-                        format: uri
-                        description: Issue tracking the restoration of human-initiated refresh
-                    required:
-                      - error
-                      - code
-                      - retryable
-                      - scope
-                      - applies_to
-                      - alternative_action
-                      - alternative_description
-                      - tracking_issue
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/refreshes/{operationId}:
     get:
       operationId: getAgentRefreshOperation

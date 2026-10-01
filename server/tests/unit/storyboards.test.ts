@@ -196,7 +196,7 @@ describe('wrapper contract', () => {
     expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.25');
     expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
     expect(HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).toBe(600_000);
-    expect(HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS).toBe(1_200_000);
+    expect(HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS).toBe(1_800_000);
     expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
     expect(target.version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
     expect(target.version).toMatch(/^3\.0\.\d+$/);
