@@ -284,7 +284,8 @@ describe('runComplianceHeartbeatJob', () => {
     expect(mocks.revokeUnsupportedPublicBadges).not.toHaveBeenCalled();
     expect(notifyComplianceChange).not.toHaveBeenCalled();
     expect(notifyVerificationChange).not.toHaveBeenCalled();
-    expect(mocks.deferComplianceCheckAfterInconclusiveTarget).toHaveBeenCalled();
+    expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
     expect(mocks.query.mock.calls.every(([sql]) => !String(sql).includes('last_checked_at'))).toBe(true);
     expect(mocks.query.mock.calls[0][0]).toContain('next_compliance_check_at');
   });
@@ -614,9 +615,11 @@ describe('runComplianceHeartbeatJob', () => {
         }],
       }),
     );
+    expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
   });
 
-  it('defers on the normal cadence and skips when no trustworthy target exists', async () => {
+  it('backs off target selection when no trustworthy target exists', async () => {
     mocks.getAgentsDueForCheck.mockResolvedValueOnce([
       { agent_url: 'https://agent.example.com/mcp', lifecycle_stage: 'testing', last_checked_at: null },
     ]);
@@ -632,7 +635,7 @@ describe('runComplianceHeartbeatJob', () => {
 
     expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
     expect(mocks.comply).not.toHaveBeenCalled();
     expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
   });
@@ -663,7 +666,58 @@ describe('runComplianceHeartbeatJob', () => {
 
     expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
     expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
+  });
+});
+
+describe('assertComplianceHeartbeatOperationalProgress', () => {
+  const diagnostics = {
+    eligibleBacklog: 56,
+    selectedAgents: Array.from({ length: 10 }, (_, index) => `https://agent-${index}.example/mcp`),
+    runsRecorded: 0,
+    requestedComplianceTarget: '3.0',
+    complianceBundleVersion: '3.0.18',
+    sdkVersion: LIBRARY_VERSION,
+    skipReasons: {
+      execution_fence_busy: 0,
+      execution_fence_lost: 0,
+      target_unconfirmed: 9,
+      target_superseded: 1,
+      audit_only: 0,
+      pre_target_error: 0,
+      agent_error: 0,
+    },
+  };
+
+  it.each([
+    ['mixed target skips', { target_unconfirmed: 9, target_superseded: 1 }, 0],
+    ['all unconfirmed targets', { target_unconfirmed: 10, target_superseded: 0 }, 0],
+    ['one setup error among agent target skips', { target_unconfirmed: 9, target_superseded: 0, pre_target_error: 1 }, 0],
+    ['audit-only runs', { target_unconfirmed: 0, target_superseded: 0, audit_only: 10 }, 10],
+  ])('treats %s as completed batch work', async (_label, reasons, runsRecorded) => {
+    const { assertComplianceHeartbeatOperationalProgress } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    expect(() => assertComplianceHeartbeatOperationalProgress({
+      checked: 0, passed: 0, failed: 0, skipped: 10,
+      diagnostics: {
+        ...diagnostics,
+        runsRecorded,
+        skipReasons: { ...diagnostics.skipReasons, ...reasons },
+      },
+    })).not.toThrow();
+  });
+
+  it.each([
+    ['setup failures', { pre_target_error: 10, agent_error: 0 }],
+    ['failed audit persistence', { pre_target_error: 0, agent_error: 10 }],
+  ])('reports a batch blocked entirely by %s', async (_label, workerReasons) => {
+    const { assertComplianceHeartbeatOperationalProgress } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    expect(() => assertComplianceHeartbeatOperationalProgress({
+      checked: 0, passed: 0, failed: 0, skipped: 10,
+      diagnostics: {
+        ...diagnostics,
+        skipReasons: { ...diagnostics.skipReasons, target_unconfirmed: 0, target_superseded: 0, ...workerReasons },
+      },
+    })).toThrow('Compliance heartbeat could not process any of 10 selected agents');
   });
 });

@@ -86,6 +86,7 @@ export interface AgentRegistryMetadata {
   badge_requalification_generation: string;
   monitoring_paused: boolean;
   check_interval_hours: number;
+  compliance_inconclusive_streak: number;
   monitoring_paused_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -958,6 +959,7 @@ export class ComplianceDatabase {
           VALUES ($1, NOW() + INTERVAL '12 hours')
           ON CONFLICT (agent_url) DO UPDATE SET
             next_compliance_check_at = NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours),
+            compliance_inconclusive_streak = 0,
             requeued_at = NULL
         )
         INSERT INTO agent_compliance_status (
@@ -1463,16 +1465,26 @@ export class ComplianceDatabase {
   /**
    * Release an in-progress heartbeat lock without publishing a verdict.
    *
-   * Schedule another attempt on the normal cadence without changing the last
-   * authoritative timestamp. A manual requeue (NULL) must win over deferral.
+   * Schedule another attempt without changing the last authoritative timestamp.
+   * Repeated inconclusive checks back off from the configured interval to at
+   * most 48 hours. A manual requeue (NULL) must win over deferral.
    */
-  async deferComplianceCheckAfterInconclusiveTarget(agentUrl: string): Promise<boolean> {
+  async deferComplianceCheckAfterInconclusiveTarget(
+    agentUrl: string,
+    options: { exponentialBackoff?: boolean } = {},
+  ): Promise<boolean> {
     const result = await query(
       `UPDATE agent_registry_metadata
-       SET next_compliance_check_at = NOW() + make_interval(hours => check_interval_hours)
+       SET next_compliance_check_at = NOW() + make_interval(hours =>
+             CASE WHEN $2::boolean THEN
+               GREATEST(check_interval_hours, LEAST(48, check_interval_hours * (1 << LEAST(compliance_inconclusive_streak, 3))))
+             ELSE check_interval_hours END),
+           compliance_inconclusive_streak = CASE WHEN $2::boolean
+             THEN LEAST(compliance_inconclusive_streak + 1, 4)
+             ELSE compliance_inconclusive_streak END
        WHERE agent_url = $1
          AND next_compliance_check_at > NOW()`,
-      [agentUrl],
+      [agentUrl, options.exponentialBackoff ?? false],
     );
     return (result.rowCount ?? 0) > 0;
   }
@@ -1522,7 +1534,7 @@ export class ComplianceDatabase {
 
   /**
    * Find agents that are due for a compliance check based on their lifecycle stage.
-   * Joins federated agents (from discovered_agents + member profiles) with metadata and status.
+   * Joins current discovered and owner-registered agents with metadata and status.
    * Respects owner-configured check_interval_hours and monitoring_paused.
    */
   async getAgentsDueForCheck(limit: number = 10): Promise<Array<{
@@ -1532,19 +1544,16 @@ export class ComplianceDatabase {
     /** Total due before LIMIT; repeated on each selected row for one-query telemetry. */
     eligible_backlog: number;
   }>> {
-    // `known_agents` unions every source the heartbeat is allowed to test:
-    //
-    // - `discovered_agents` — crawler-discovered via adagents.json on a
-    //   publisher domain.
-    // - `agent_registry_metadata` — explicit registration / lifecycle-stage
-    //   write. Most member-registered agents land a row here via the
-    //   write-side seed in member-agents.ts and the save_agent MCP handler.
-    // - `member_profiles.agents` (JSONB) — defense-in-depth: any agent the
-    //   owner registered through Addie or the REST surface, even if the
-    //   metadata-row seed failed (the seed is best-effort with a warn-log
-    //   on failure). Without this third leg of the union, an agent that
-    //   slipped past the seed would stay `unknown` forever — the same
-    //   class of bug as the operator-endpoint visibility miss.
+    // Metadata is scheduling/configuration state, not proof that an agent is
+    // still registered. Backfills and old discovery probes left metadata-only
+    // rows behind after owners removed agents or discovery records expired.
+    // Keep owner-registered and actively badged agents on their configured
+    // cadence, including a badge holder whose registry source disappeared;
+    // public badges must not lose their only scheduled reassessment path.
+    // Discovery-only agents require a publisher authorization refreshed within
+    // 30 days. They get at least 48 hours between completed grades; a requeue
+    // bypasses the cadence floor. Inconclusive runs have bounded backoff in
+    // deferComplianceCheckAfterInconclusiveTarget().
     //
     // Explicit owner requeues are served first (oldest requeue wins), then
     // the regular cadence by last authoritative check. Without that, an agent
@@ -1554,17 +1563,34 @@ export class ComplianceDatabase {
     // never-checked agents land in a stable order across heartbeat runs.
     const result = await query(
       `WITH known_agents AS (
-        SELECT agent_url FROM discovered_agents
-        UNION
-        SELECT agent_url FROM agent_registry_metadata
-        UNION
-        SELECT (a->>'url') AS agent_url
-        FROM member_profiles, jsonb_array_elements(agents) a
-        WHERE a->>'url' IS NOT NULL
+        SELECT agent_url, BOOL_OR(is_member_registered) AS is_member_registered,
+          BOOL_OR(has_active_badge) AS has_active_badge
+        FROM (
+          SELECT agent_url, FALSE AS is_member_registered, FALSE AS has_active_badge
+          FROM discovered_agents d
+          WHERE (d.expires_at IS NULL OR d.expires_at > NOW())
+            AND EXISTS (
+              SELECT 1 FROM agent_publisher_authorizations auth
+              WHERE auth.agent_url = d.agent_url
+                AND auth.source IN ('adagents_json', 'aao_hosted')
+                AND GREATEST(auth.discovered_at, auth.last_validated) >= NOW() - INTERVAL '30 days'
+            )
+          UNION ALL
+          SELECT (a->>'url') AS agent_url, TRUE AS is_member_registered, FALSE AS has_active_badge
+          FROM member_profiles, jsonb_array_elements(agents) a
+          WHERE a->>'url' IS NOT NULL
+          UNION ALL
+          SELECT agent_url, FALSE AS is_member_registered, TRUE AS has_active_badge
+          FROM agent_verification_badges
+          WHERE status IN ('active', 'degraded')
+        ) sources
+        GROUP BY agent_url
       ),
       due_agents AS (
         SELECT
           ka.agent_url,
+          ka.is_member_registered,
+          ka.has_active_badge,
           COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
           s.last_checked_at,
           m.requeued_at
@@ -1576,7 +1602,8 @@ export class ComplianceDatabase {
           AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
           AND COALESCE(m.monitoring_paused, FALSE) = FALSE
           AND (m.next_compliance_check_at IS NULL OR m.next_compliance_check_at < NOW())
-
+          AND (ka.is_member_registered OR ka.has_active_badge OR m.requeued_at IS NOT NULL
+            OR s.last_checked_at IS NULL OR s.last_checked_at < NOW() - INTERVAL '48 hours')
       )
       SELECT
         agent_url,
@@ -1584,7 +1611,8 @@ export class ComplianceDatabase {
         last_checked_at,
         COUNT(*) OVER()::int AS eligible_backlog
       FROM due_agents
-      ORDER BY requeued_at ASC NULLS LAST, last_checked_at ASC NULLS FIRST, agent_url ASC
+      ORDER BY requeued_at ASC NULLS LAST, is_member_registered DESC, has_active_badge DESC,
+        last_checked_at ASC NULLS FIRST, agent_url ASC
       LIMIT $1`,
       [limit],
     );
@@ -1626,7 +1654,13 @@ export class ComplianceDatabase {
       `INSERT INTO agent_registry_metadata (agent_url, check_interval_hours)
        VALUES ($1, $2)
        ON CONFLICT (agent_url) DO UPDATE SET
-         check_interval_hours = $2, next_compliance_check_at = NULL,
+          check_interval_hours = $2,
+         next_compliance_check_at = CASE
+           WHEN agent_registry_metadata.check_interval_hours IS DISTINCT FROM $2 THEN NULL
+           ELSE agent_registry_metadata.next_compliance_check_at END,
+         compliance_inconclusive_streak = CASE
+           WHEN agent_registry_metadata.check_interval_hours IS DISTINCT FROM $2 THEN 0
+           ELSE agent_registry_metadata.compliance_inconclusive_streak END,
          updated_at = NOW()`,
       [agentUrl, intervalHours],
     );
@@ -1636,7 +1670,8 @@ export class ComplianceDatabase {
     await query(
       `INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at, requeued_at)
        VALUES ($1, NULL, NOW())
-       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NULL, requeued_at = NOW()`,
+       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NULL,
+         compliance_inconclusive_streak = 0, requeued_at = NOW()`,
       [agentUrl],
     );
   }
