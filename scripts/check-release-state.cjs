@@ -18,7 +18,7 @@ function current() {
   const branch = process.env.PUBLICATION_BRANCH || process.env.GITHUB_REF_NAME;
   if (
     !shaPattern.test(expected || "") ||
-    !["main", "3.1.x", "3.0.x"].includes(branch)
+    !["main", "3.2.x", "3.1.x", "3.0.x"].includes(branch)
   ) {
     throw new Error(
       "Publication requires an exact tested SHA and a supported release branch.",
