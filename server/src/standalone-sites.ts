@@ -130,6 +130,8 @@ export function resolveStandaloneRequest(
   // session-bound stay on agenticadvertising.org.
   if ((method === 'GET' || method === 'HEAD') && path.startsWith('/api/brands/')) return { kind: 'pass' };
   if ((method === 'GET' || method === 'HEAD') && path === '/api/config') return { kind: 'pass' };
+  // Stateless brand-book import; bounded by its own rate and cost limits.
+  if (method === 'POST' && path === '/api/brands/import') return { kind: 'pass' };
   if (path.startsWith('/api/')) return { kind: 'not_found' };
 
   return { kind: 'redirect', status: 301, location: `${AAO_ORIGIN}${url}` };

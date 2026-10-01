@@ -36,6 +36,11 @@ describe('resolveStandaloneRequest: brandjson.org', () => {
     expect(brand('GET', '/api/brands/resolve?domain=acme.example').kind).toBe('pass');
   });
 
+  it('passes the stateless brand-book import endpoint', () => {
+    expect(brand('POST', '/api/brands/import').kind).toBe('pass');
+    expect(brand('POST', '/api/brands/save').kind).toBe('not_found');
+  });
+
   it('keeps writes and other APIs off the site', () => {
     expect(brand('POST', '/api/brands/setup-my-brand').kind).toBe('not_found');
     expect(brand('GET', '/api/me/portrait').kind).toBe('not_found');
