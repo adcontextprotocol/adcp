@@ -37,7 +37,7 @@ const activeWorkflowPaths = [
   'check-testable-snippets.yml',
   'release.yml',
 ];
-const forwardMergeWorkflows = ['3.0', '3.1'].map((line) => ({
+const forwardMergeWorkflows = ['3.0', '3.1', '3.2'].map((line) => ({
   line,
   source: fs.readFileSync(
     path.join(repoRoot, `.github/workflows/forward-merge-${line}.yml`),
@@ -229,7 +229,7 @@ assert.strictEqual(
 assert(
   releaseTarget.includes('^[0-9a-f]{40}$') &&
     releaseTarget.includes('git merge-base --is-ancestor "${target_commit}" "refs/remotes/origin/${GITHUB_REF_NAME}"') &&
-    releaseTarget.includes('main|3.1.x|3.0.x'),
+    releaseTarget.includes('main|3.2.x|3.1.x|3.0.x'),
   'Manual recovery must require a full SHA already reachable from a supported release branch.'
 );
 
