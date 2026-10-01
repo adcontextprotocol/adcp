@@ -224,7 +224,7 @@ function prepare() {
   const branch = process.env.PUBLICATION_BRANCH;
   const repository = process.env.GITHUB_REPOSITORY;
   if (
-    !["main", "3.1.x", "3.0.x"].includes(branch) ||
+    !["main", "3.2.x", "3.1.x", "3.0.x"].includes(branch) ||
     !sha(process.env.TESTED_SHA) ||
     !/^[\w.-]+\/[\w.-]+$/.test(repository || "")
   )
