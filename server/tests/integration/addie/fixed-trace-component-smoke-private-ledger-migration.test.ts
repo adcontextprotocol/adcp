@@ -11,12 +11,12 @@ let authorizationDigest = '';
 const plan = fixedTraceComponentSmokePrivateLedgerPlan()!;
 const admission = fixedTraceComponentSmokeAdmission();
 const LEGACY_ADMISSION_FINGERPRINT = '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d';
-// Admitted by migration 583; superseded by the 3.2 GA tool-description reissue (615).
+// Admitted by migration 583; superseded by the 3.2 GA tool-description reissue (616).
 const REISSUED_583_ADMISSION_FINGERPRINT = '817ab57d30cc89dab4a81016f5c826857b8dc2a83e2f73aa0b7eb9c82f0b5d71';
 const CURRENT_PLAN_MANIFEST_DIGEST = 'bda91890329f1da236a0cddbafa65afe25ff986fb1aa0b04594d2c79d521f70a';
 const BASE_LEDGER_MIGRATION = readFileSync(new URL('../../../src/db/migrations/582_addie_fixed_trace_component_smoke_private_ledger.sql', import.meta.url), 'utf8');
 const REISSUED_GUARD_MIGRATION = readFileSync(new URL('../../../src/db/migrations/583_reissue_addie_fixed_trace_component_smoke_plan_guard.sql', import.meta.url), 'utf8');
-const GA_REISSUE_MIGRATION = readFileSync(new URL('../../../src/db/migrations/615_reissue_addie_fixed_trace_component_smoke_3_2_ga.sql', import.meta.url), 'utf8');
+const GA_REISSUE_MIGRATION = readFileSync(new URL('../../../src/db/migrations/616_reissue_addie_fixed_trace_component_smoke_3_2_ga.sql', import.meta.url), 'utf8');
 
 async function rejects(statement: string, values: unknown[] = [], subject = client!) {
   await subject.query('SAVEPOINT private_ledger_expected_failure');
