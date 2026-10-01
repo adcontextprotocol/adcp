@@ -1,5 +1,0 @@
----
-"adcontextprotocol": patch
----
-
-Compliance: `media_buy_seller/governance_denied` and `media_buy_seller/governance_denied_recovery` now exercise the seller's own execution check instead of sending `create_media_buy` without `governance_context`. A request without a token must be rejected with `PERMISSION_DENIED`, so the old scenarios failed a correct seller. Both now obtain an approved intent for a $25K buy under a $100K plan, amend the plan to $10K, and expect the seller's purchase execution check to be denied, with the seller returning `GOVERNANCE_DENIED`. The recovery scenario then gets a fresh intent for a corrected $8K buy and expects the seller to accept it. `governance_denied` no longer buys on the `sandbox: true` account while governance is registered on the non-sandbox account. It now seeds fixed-price fixtures and names `seller_agent_url` in its context. `governance_denied_recovery` is gated on `adcp.governance_enforcement` (`signed_context` + `online_execution_check` for `create_media_buy`) instead of the legacy `media_buy.governance_aware` boolean, and is listed with the online-execution proofs. No schema or normative change.
