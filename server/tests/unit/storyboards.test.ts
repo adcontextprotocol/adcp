@@ -196,7 +196,7 @@ describe('wrapper contract', () => {
     expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.25');
     expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
     expect(HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).toBe(600_000);
-    expect(HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS).toBe(1_200_000);
+    expect(HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS).toBe(1_800_000);
     expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
     expect(target.version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
     expect(target.version).toMatch(/^3\.0\.\d+$/);
@@ -247,11 +247,22 @@ describe('wrapper contract', () => {
 
   it('selects the highest hosted target advertised by the agent', () => {
     expect(hostedComplianceTargetPreference().map(t => t.requested)).toEqual([
+      '3.2',
+      '3.2-rc',
+      '3.2-beta',
       '3.1',
       '3.1-rc',
       '3.1-beta',
       '3.0',
     ]);
+
+    // 3.2 GA: stable 3.2 wins over 3.1, and a 3.2 prerelease pin stays on
+    // that prerelease instead of being upgraded to the GA bundle.
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).requested).toBe('3.2');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe('3.2.1');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.2-rc.7']).version).toBe('3.2.0-rc.7');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe('3.2.1');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe('3.1.24');
 
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.7']).requested).toBe('3.1-beta');
@@ -277,6 +288,9 @@ describe('wrapper contract', () => {
     expect(hostedComplianceTarget('3.1').version).toBe('3.1.24');
     expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
     expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
+    expect(hostedComplianceTarget('3.2').version).toBe('3.2.1');
+    expect(hostedComplianceTarget('3.2-rc').version).toBe('3.2.0-rc.7');
+    expect(() => hostedComplianceTarget('3.2.0')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1.12')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1-rc.15')).toThrow(/not available from a published/);
   });
@@ -290,6 +304,17 @@ describe('wrapper contract', () => {
     expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.24$/);
     expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.24$/);
     expect(loadComplianceIndex(options).adcp_version).toBe('3.1.24');
+  });
+
+  it('loads the released 3.2.1 bundle with the pinned hosted SDK', () => {
+    const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']);
+    const options = hostedComplianceOptions(target);
+
+    expect(target.requested).toBe('3.2');
+    expect(target.version).toBe('3.2.1');
+    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.2\.1$/);
+    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.2\.1$/);
+    expect(loadComplianceIndex(options).adcp_version).toBe('3.2.1');
   });
 
   it('uses canonical hosted targets without silently upgrading 3.0-only agents', () => {

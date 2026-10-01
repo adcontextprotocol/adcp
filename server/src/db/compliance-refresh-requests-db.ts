@@ -1,9 +1,13 @@
+import type { PoolClient } from 'pg';
 import { getClient, getDedicatedClient, query, withDatabaseDeadline } from './client.js';
 
 const DB_DEADLINE_MS = 5_000;
 const EXECUTION_FENCE_KEEPALIVE_MS = 15_000;
 const EXECUTION_FENCE_OPERATION_TIMEOUT_MS = 5_000;
 const OPERATIONAL_DIAGNOSTIC_DEADLINE_MS = 2_000;
+export const COMPLIANCE_REFRESH_GLOBAL_RUNNING_LIMIT = 2;
+export const COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT = 2;
+export const COMPLIANCE_TOTAL_SUITE_RUNNING_LIMIT = 3;
 
 export type ComplianceRefreshRequestStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -13,6 +17,8 @@ export interface ComplianceRefreshRequest {
   owner_org_id: string | null;
   requester_type: 'user' | 'static_admin';
   requested_by_user_id: string | null;
+  requested_by_auth_workos_user_id: string;
+  authorization_fingerprint: string;
   triggered_by: 'owner_test' | 'manual';
   test_session_id: string;
   status: ComplianceRefreshRequestStatus;
@@ -49,6 +55,8 @@ export interface CreateComplianceRefreshRequestInput {
   ownerOrgId: string | null;
   requesterType: 'user' | 'static_admin';
   requestedByUserId: string | null;
+  requestedByAuthWorkosUserId: string | null;
+  authorizationFingerprint: string;
   triggeredBy: 'owner_test' | 'manual';
   agentWindowMs?: number;
   requesterWindowMs?: number;
@@ -83,6 +91,90 @@ export class ComplianceRefreshInProgressError extends Error {
   }
 }
 
+export class ComplianceRefreshProvenanceError extends Error {
+  readonly code = 'authorization_provenance_missing';
+
+  constructor() {
+    super('Authenticated credential provenance is missing; submit a new refresh');
+    this.name = 'ComplianceRefreshProvenanceError';
+  }
+}
+
+/** Legacy requester IDs may be canonical identities; they are never provenance. */
+export function hasComplianceRefreshProvenance(request: Pick<ComplianceRefreshRequest,
+  'requester_type' | 'requested_by_user_id' | 'requested_by_auth_workos_user_id'
+  | 'authorization_fingerprint' | 'triggered_by' | 'owner_org_id'
+>): boolean {
+  const credential = request.requested_by_auth_workos_user_id;
+  return request.requester_type === 'user'
+    && typeof credential === 'string'
+    && credential.length > 0
+    && credential !== '__unproven__'
+    && credential === credential.trim()
+    && request.requested_by_user_id === credential
+    && isComplianceRefreshAuthorizationFingerprint(credential, request.authorization_fingerprint)
+    && ((request.triggered_by === 'manual' && request.owner_org_id === null)
+      || (request.triggered_by === 'owner_test'
+        && typeof request.owner_org_id === 'string' && request.owner_org_id.trim().length > 0));
+}
+
+export function isComplianceRefreshAuthorizationFingerprint(credentialId: string, value: unknown): value is string {
+  if (value === '') return true;
+  if (typeof value !== 'string' || !value.startsWith(`${credentialId}:epoch:`)) return false;
+  const epoch = value.slice(credentialId.length + ':epoch:'.length);
+  return /^[1-9][0-9]{0,18}$/.test(epoch) && BigInt(epoch) <= 9223372036854775807n;
+}
+
+function authorizationStateError(code: 'authorization_revoked' | 'authorization_unavailable'): Error & { code: typeof code } {
+  return Object.assign(new Error(code === 'authorization_revoked'
+    ? 'Authorization changed before the refresh started'
+    : 'Refresh authorization is temporarily unavailable'), { code });
+}
+
+/** Fence both existing epoch changes and the first epoch INSERT until commit. */
+export async function assertComplianceRefreshAuthorizationFingerprint(
+  client: PoolClient,
+  credentialId: string,
+  expected: string,
+): Promise<void> {
+  let current: string;
+  try {
+    const user = await client.query(
+      'SELECT workos_user_id FROM users WHERE workos_user_id = $1 FOR UPDATE', [credentialId],
+    );
+    if (!user.rows.length) throw authorizationStateError('authorization_revoked');
+    const binding = await client.query<{ identity_id: string }>(
+      'SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1 FOR SHARE', [credentialId],
+    );
+    if (binding.rows.length !== 1) throw authorizationStateError('authorization_revoked');
+    const primary = await client.query<{ workos_user_id: string }>(
+      `SELECT workos_user_id FROM identity_workos_users
+       WHERE identity_id = $1 AND is_primary = TRUE FOR SHARE`, [binding.rows[0].identity_id],
+    );
+    if (primary.rows.length !== 1) throw authorizationStateError('authorization_revoked');
+    const tombstone = await client.query(
+      `SELECT 1 FROM registry_audit_log
+       WHERE workos_user_id = $1
+         AND action IN ('identity_credential_deleted', 'identity_primary_deletion_quarantined')
+       LIMIT 1`, [credentialId],
+    );
+    if (tombstone.rows.length > 0) throw authorizationStateError('authorization_revoked');
+    const epoch = await client.query<{ epoch: string }>(
+      'SELECT epoch::text AS epoch FROM authorization_epochs WHERE workos_user_id = $1 FOR SHARE', [credentialId],
+    );
+    current = epoch.rows.length ? `${credentialId}:epoch:${epoch.rows[0].epoch}` : '';
+    if (!isComplianceRefreshAuthorizationFingerprint(credentialId, current)) {
+      throw authorizationStateError('authorization_unavailable');
+    }
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'authorization_revoked') {
+      throw error;
+    }
+    throw authorizationStateError('authorization_unavailable');
+  }
+  if (current !== expected) throw authorizationStateError('authorization_revoked');
+}
+
 export class ComplianceRefreshLeaseLostError extends Error {
   readonly code = 'lease_lost';
 
@@ -107,6 +199,24 @@ export class ComplianceRefreshRequestsDatabase {
     request: ComplianceRefreshRequest;
     coalesced: boolean;
   }> {
+    // Validate before coalescing: an existing row must never make malformed
+    // caller provenance acceptable, even when no INSERT would be performed.
+    if (!hasComplianceRefreshProvenance({
+      requester_type: input.requesterType,
+      requested_by_user_id: input.requestedByUserId,
+      requested_by_auth_workos_user_id: input.requestedByAuthWorkosUserId!,
+      authorization_fingerprint: input.authorizationFingerprint,
+      triggered_by: input.triggeredBy,
+      owner_org_id: input.ownerOrgId,
+    })) throw new ComplianceRefreshProvenanceError();
+
+    const sameCredentialContext = (request: ComplianceRefreshRequest): boolean =>
+      hasComplianceRefreshProvenance(request)
+      && request.triggered_by === input.triggeredBy
+      && request.owner_org_id === input.ownerOrgId
+      && request.requester_type === input.requesterType
+      && request.requested_by_auth_workos_user_id === input.requestedByAuthWorkosUserId
+      && request.authorization_fingerprint === input.authorizationFingerprint;
     const agentWindowMs = input.agentWindowMs ?? 60_000;
     const requesterWindowMs = input.requesterWindowMs ?? 60 * 60_000;
     const requesterLimit = input.requesterLimit ?? 30;
@@ -119,6 +229,9 @@ export class ComplianceRefreshRequestsDatabase {
       transactionStarted = true;
       await client.query("SELECT set_config('statement_timeout', '5000ms', true)");
       await client.query("SELECT set_config('lock_timeout', '2000ms', true)");
+      await assertComplianceRefreshAuthorizationFingerprint(
+        client, input.requestedByAuthWorkosUserId!, input.authorizationFingerprint,
+      );
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `agent-compliance-refresh:${input.agentUrl}`,
       ]);
@@ -128,17 +241,35 @@ export class ComplianceRefreshRequestsDatabase {
            FROM agent_compliance_refresh_requests
           WHERE agent_url = $1 AND status IN ('queued', 'running')
           ORDER BY created_at ASC
-          LIMIT 1`,
+          LIMIT 1 FOR UPDATE`,
         [input.agentUrl],
       );
       if (active.rows[0]) {
-        const sameCredentialContext = active.rows[0].triggered_by === input.triggeredBy
-          && active.rows[0].owner_org_id === input.ownerOrgId;
-        if (!sameCredentialContext) {
+        const provenanceMissing = !hasComplianceRefreshProvenance(active.rows[0]);
+        const epochRevoked = active.rows[0].requested_by_auth_workos_user_id === input.requestedByAuthWorkosUserId
+          && active.rows[0].authorization_fingerprint !== input.authorizationFingerprint;
+        if (provenanceMissing || epochRevoked) {
+          // Do not replace an operation while a worker still owns its fence.
+          const rejected = await client.query(
+            `UPDATE agent_compliance_refresh_requests
+                SET status = 'failed', completed_at = NOW(), updated_at = NOW(),
+                    lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL, heartbeat_at = NULL,
+                    last_error_code = $2, last_error = $3
+              WHERE id = $1 AND pg_try_advisory_xact_lock(
+                hashtextextended('compliance-refresh-fence:' || id::text, 0)
+              )`,
+            [active.rows[0].id,
+              provenanceMissing ? 'authorization_provenance_missing' : 'authorization_revoked',
+              provenanceMissing ? 'Authenticated credential provenance is missing; submit a new refresh'
+                : 'Authorization changed before the refresh started'],
+          );
+          if (!rejected.rowCount) throw new ComplianceRefreshInProgressError();
+        } else if (!sameCredentialContext(active.rows[0])) {
           throw new ComplianceRefreshInProgressError();
+        } else {
+          await client.query('COMMIT');
+          return { request: active.rows[0], coalesced: true };
         }
-        await client.query('COMMIT');
-        return { request: active.rows[0], coalesced: true };
       }
 
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
@@ -157,15 +288,18 @@ export class ComplianceRefreshRequestsDatabase {
         `SELECT *, created_at + ($2::double precision * INTERVAL '1 millisecond') AS retry_at
            FROM agent_compliance_refresh_requests
           WHERE agent_url = $1
+            AND status IN ('succeeded', 'failed')
+            AND requested_by_auth_workos_user_id <> '__unproven__'
+            AND last_error_code IS DISTINCT FROM 'authorization_provenance_missing'
+            AND last_error_code IS DISTINCT FROM 'authorization_revoked'
+            AND NOT (requested_by_auth_workos_user_id = $3 AND authorization_fingerprint <> $4)
             AND created_at > NOW() - ($2::double precision * INTERVAL '1 millisecond')
           ORDER BY created_at DESC
           LIMIT 1`,
-        [input.agentUrl, agentWindowMs],
+        [input.agentUrl, agentWindowMs, input.requestedByAuthWorkosUserId, input.authorizationFingerprint],
       );
-      if (recent.rows[0]) {
-        const sameCredentialContext = recent.rows[0].triggered_by === input.triggeredBy
-          && recent.rows[0].owner_org_id === input.ownerOrgId;
-        if (sameCredentialContext) {
+      if (recent.rows[0] && hasComplianceRefreshProvenance(recent.rows[0])) {
+        if (sameCredentialContext(recent.rows[0])) {
           await client.query('COMMIT');
           return { request: recent.rows[0], coalesced: true };
         }
@@ -189,8 +323,12 @@ export class ComplianceRefreshRequestsDatabase {
            FROM agent_compliance_refresh_requests
           WHERE requester_type = $1
             AND requested_by_user_id IS NOT DISTINCT FROM $2
+            AND requested_by_auth_workos_user_id = $2
+            AND authorization_fingerprint = $4
+            AND last_error_code IS DISTINCT FROM 'authorization_provenance_missing'
+            AND last_error_code IS DISTINCT FROM 'authorization_revoked'
             AND created_at > NOW() - ($3::double precision * INTERVAL '1 millisecond')`,
-        [input.requesterType, input.requestedByUserId, requesterWindowMs],
+        [input.requesterType, input.requestedByUserId, requesterWindowMs, input.authorizationFingerprint],
       );
       const requester = requesterState.rows[0];
       if (Number(requester?.active_count ?? 0) >= requesterActiveLimit) {
@@ -207,8 +345,9 @@ export class ComplianceRefreshRequestsDatabase {
 
       const inserted = await client.query<ComplianceRefreshRequest>(
         `INSERT INTO agent_compliance_refresh_requests
-           (id, agent_url, owner_org_id, requester_type, requested_by_user_id, triggered_by, test_session_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+           (id, agent_url, owner_org_id, requester_type, requested_by_user_id, triggered_by, test_session_id,
+            requested_by_auth_workos_user_id, authorization_fingerprint)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING *`,
         [
           input.id,
@@ -218,6 +357,8 @@ export class ComplianceRefreshRequestsDatabase {
           input.requestedByUserId,
           input.triggeredBy,
           `owner-refresh-${input.id}`,
+          input.requestedByAuthWorkosUserId,
+          input.authorizationFingerprint,
         ],
       );
       await client.query('COMMIT');
@@ -290,6 +431,7 @@ export class ComplianceRefreshRequestsDatabase {
       transactionStarted = true;
       await client.query("SELECT set_config('statement_timeout', '5000ms', true)");
       await client.query("SELECT set_config('lock_timeout', '2000ms', true)");
+      await client.query("SELECT set_config('adcp.compliance_refresh_writer_contract', 'authenticated-credential-v1', true)");
 
       const expiredFinal = await client.query(
         `UPDATE agent_compliance_refresh_requests
@@ -309,6 +451,24 @@ export class ComplianceRefreshRequestsDatabase {
               hashtextextended('compliance-refresh-fence:' || id::text, 0)
             )`,
       );
+
+      // Each Fly machine runs its own queue poller. Serialize admission across
+      // machines so longer owner assessments cannot multiply the intended two
+      // worker slots by the number of deployed processes.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        'agent-compliance-refresh-global-running-capacity',
+      ]);
+      const active = await client.query<{ running_count: string }>(
+        `SELECT COUNT(*)::text AS running_count
+           FROM agent_compliance_refresh_requests
+          WHERE status = 'running' AND lease_expires_at > NOW()`,
+      );
+      const availableSlots = Math.max(0,
+        COMPLIANCE_REFRESH_GLOBAL_RUNNING_LIMIT - Number(active.rows[0]?.running_count ?? 0));
+      if (availableSlots === 0) {
+        await client.query('COMMIT');
+        return { requests: [], terminalizedExpired: expiredFinal.rowCount ?? 0 };
+      }
 
       const result = await client.query<ClaimedComplianceRefreshRequest>(
         `WITH candidates AS MATERIALIZED (
@@ -344,7 +504,7 @@ export class ComplianceRefreshRequestsDatabase {
            FROM due
           WHERE requests.id = due.id
          RETURNING requests.*, due.was_reclaimed`,
-        [workerId, limit, leaseMs],
+        [workerId, Math.min(limit, availableSlots), leaseMs],
       );
       await client.query('COMMIT');
       return {
@@ -364,15 +524,38 @@ export class ComplianceRefreshRequestsDatabase {
     id: string,
     agentUrl: string,
   ): Promise<ComplianceRefreshExecutionFence | null> {
-    return this.acquireSessionFences([
-      `compliance-refresh-fence:${id}`,
-      `compliance-agent-execution:${agentUrl}`,
-    ]);
+    // Slot 2 is reserved for an owner run while scheduled heartbeats keep
+    // slots 0 and 1 busy. Owners may use either heartbeat slot when free.
+    const ownerSlots = [
+      COMPLIANCE_TOTAL_SUITE_RUNNING_LIMIT - 1,
+      ...Array.from({ length: COMPLIANCE_TOTAL_SUITE_RUNNING_LIMIT - 1 }, (_, slot) => slot),
+    ];
+    for (const slot of ownerSlots) {
+      const fence = await this.acquireSessionFences([
+        `compliance-suite-slot:${slot}`,
+        `compliance-refresh-fence:${id}`,
+        `compliance-agent-execution:${agentUrl}`,
+      ]);
+      if (fence) return fence;
+    }
+    return null;
   }
 
   /** Share the canonical-agent suite fence with scheduled heartbeat runs. */
   async acquireAgentExecutionFence(agentUrl: string): Promise<ComplianceRefreshExecutionFence | null> {
     return this.acquireSessionFences([`compliance-agent-execution:${agentUrl}`]);
+  }
+
+  /** Bound full heartbeat suites across worker machines, including rolling deploy overlap. */
+  async acquireHeartbeatExecutionFence(agentUrl: string): Promise<ComplianceRefreshExecutionFence | null> {
+    for (let slot = 0; slot < COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT; slot++) {
+      const fence = await this.acquireSessionFences([
+        `compliance-suite-slot:${slot}`,
+        `compliance-agent-execution:${agentUrl}`,
+      ]);
+      if (fence) return fence;
+    }
+    return null;
   }
 
   private async acquireSessionFences(keys: string[]): Promise<ComplianceRefreshExecutionFence | null> {
@@ -546,9 +729,18 @@ export class ComplianceRefreshRequestsDatabase {
     id: string,
     leaseToken: string,
     resultJson: Record<string, unknown>,
+    beforeWrite: (client: PoolClient) => Promise<void>,
   ): Promise<boolean> {
-    return withDatabaseDeadline(Date.now() + DB_DEADLINE_MS, async () => {
-      const result = await query(
+    if (typeof beforeWrite !== 'function') throw authorizationStateError('authorization_unavailable');
+    const client = await getClient();
+    let transactionStarted = false;
+    try {
+      await client.query('BEGIN');
+      transactionStarted = true;
+      await client.query("SELECT set_config('statement_timeout', '5000ms', true)");
+      await client.query("SELECT set_config('lock_timeout', '2000ms', true)");
+      await beforeWrite(client);
+      const result = await client.query(
         `UPDATE agent_compliance_refresh_requests
             SET status = 'succeeded',
                 result_json = $3::jsonb,
@@ -564,8 +756,14 @@ export class ComplianceRefreshRequestsDatabase {
             AND lease_expires_at > NOW()`,
         [id, leaseToken, JSON.stringify(resultJson)],
       );
+      await client.query('COMMIT');
       return (result.rowCount ?? 0) === 1;
-    }, { readOnly: false });
+    } catch (error) {
+      if (transactionStarted) await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async markFailed(

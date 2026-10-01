@@ -1,6 +1,6 @@
 /**
  * Per-storyboard routing for hosted suite runs (`comply()`), through the
- * SDK's `ComplyOptions.routeStoryboard` hook (@adcp/sdk rc.53+).
+ * SDK's `ComplyOptions.routeStoryboard` hook (@adcp/sdk 14.0.0+).
  *
  * Two storyboard families cannot be graded correctly by one shared run
  * configuration:

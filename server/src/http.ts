@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import DOMPurify from "isomorphic-dompurify";
 import { Marked } from "marked";
 import { csrfProtection } from "./middleware/csrf.js";
+import { createHostedWebhookReceiverRouter } from "./routes/hosted-webhook-receiver.js";
 import { chatRequestCorrelation } from "./middleware/chat-request-correlation.js";
 import { slowResponseTracker } from "./middleware/slow-response.js";
 import { requestMetrics } from "./middleware/request-metrics.js";
@@ -171,6 +172,7 @@ import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createNetworkHealthApiRouter } from "./routes/network-health.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
+import { createBrandImportRouter } from "./routes/brand-import.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
@@ -1335,6 +1337,11 @@ export class HTTPServer {
       }
     });
 
+    // Run-scoped callback URLs carry a bearer token in the path. Handle them
+    // before generic request telemetry (which records raw paths), JSON parsing,
+    // cookies, and CSRF. The relay emits no token-bearing request logs.
+    this.app.use('/api/compliance-receiver', createHostedWebhookReceiverRouter());
+
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);
 
@@ -2099,6 +2106,9 @@ export class HTTPServer {
 
       return serveApprovedLogoAsset(domain, id, res);
     });
+
+    // Brand-book import for the brand.json builder (stateless, anonymous-capable)
+    this.app.use('/api', createBrandImportRouter());
 
     // Mount brand logo routes (upload, list, review)
     this.app.use('/api', createBrandLogoRouter({ brandDb: this.brandDb, bansDb: this.bansDb }));

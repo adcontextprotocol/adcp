@@ -391,6 +391,28 @@
         cursor: not-allowed;
       }
 
+      .import-panel {
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-bg-subtle);
+        padding: var(--space-5);
+        margin-bottom: var(--space-6);
+      }
+      .import-panel h4 { margin: 0 0 var(--space-2) 0; }
+      .import-row { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+      .import-row input[type="url"] { flex: 1; min-width: 220px; }
+      .import-or { color: var(--color-text-muted); font-size: var(--text-sm); }
+      .import-status { margin-top: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary); }
+      .import-review { margin-top: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+      .import-item { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3); background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+      .import-item strong { display: block; margin-bottom: var(--space-1); }
+      .import-item .import-value { font-size: var(--text-sm); color: var(--color-text-secondary); word-break: break-word; }
+      .import-swatch { display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--color-border); vertical-align: middle; margin-right: var(--space-1); }
+      .import-logos { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+      .import-logo { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); font-size: var(--text-xs); color: var(--color-text-secondary); }
+      .import-logo img { max-width: 140px; max-height: 80px; object-fit: contain; background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-1); }
+      .import-warnings { font-size: var(--text-sm); color: var(--color-text-secondary); }
+      .import-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; }
       .hidden {
         display: none !important;
       }
@@ -1206,6 +1228,20 @@
               </div>
               <button class="btn hidden" id="host-with-aao-btn" onclick="hostWithAao()" title="Continue on AgenticAdvertising.org, which can host this brand.json for you">Host with AgenticAdvertising.org</button>
             </div>
+          </div>
+
+          <!-- Brand-book import -->
+          <div id="import-panel" class="import-panel">
+            <h4>Import from your brand guide</h4>
+            <p class="step-hint">Upload a PDF or PowerPoint brand guide, or paste a link to your brand guidelines. We read it once to suggest fields for you to review. Nothing is stored.</p>
+            <div class="import-row">
+              <input type="file" id="import-file" accept=".pdf,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation" aria-label="Brand guide file" />
+              <span class="import-or">or</span>
+              <input type="url" id="import-url" placeholder="https://acme.example/brand-guidelines" aria-label="Brand guidelines URL" />
+              <button class="btn" id="import-btn" onclick="runBrandBookImport()">Import</button>
+            </div>
+            <div id="import-status" class="import-status" role="status" aria-live="polite"></div>
+            <div id="import-review" class="hidden"></div>
           </div>
 
           <!-- Decision Tree -->
@@ -3560,6 +3596,7 @@
                 if (l.tags && l.tags.length > 0) logo.tags = l.tags;
                 if (l.width) logo.width = l.width;
                 if (l.height) logo.height = l.height;
+                if (l.meta) Object.assign(logo, l.meta);
                 return logo;
               });
             }
@@ -3595,6 +3632,7 @@
                 });
             }
 
+            applyImportExtras(singleBrandObj, singleBrandIdentity.extras);
             json.brands = [singleBrandObj];
             break;
 
@@ -3651,6 +3689,7 @@
                     if (l.tags && l.tags.length > 0) logo.tags = l.tags;
                     if (l.width) logo.width = l.width;
                     if (l.height) logo.height = l.height;
+                    if (l.meta) Object.assign(logo, l.meta);
                     return logo;
                   });
                 }
@@ -3666,6 +3705,8 @@
                 if (brandFonts.length > 0) {
                   brandObj.fonts = Object.fromEntries(brandFonts);
                 }
+
+                applyImportExtras(brandObj, brand.extras);
 
                 // Build properties array starting with domain
                 const props = [];
@@ -4054,6 +4095,323 @@
         populateFromBrandJson(data, domain, domain);
         document.getElementById('file-status').textContent = 'Imported from brandjson.org. Review, then save your setup.';
         updateRegistryButton();
+      }
+
+      // ============================================================================
+      // Brand-book import (stateless: the server reads the guide once, stores nothing)
+      // ============================================================================
+
+      let lastImport = null;
+      // Accepted logo files, as { path, dataUrl }, for the self-hosting bundle.
+      let importedAssets = [];
+
+      function applyImportExtras(target, extras) {
+        if (!extras) return;
+        if (Array.isArray(extras.industries) && extras.industries.length) target.industries = extras.industries;
+        if (extras.visual_guidelines && Object.keys(extras.visual_guidelines).length) target.visual_guidelines = extras.visual_guidelines;
+      }
+
+      function setImportStatus(text) {
+        document.getElementById('import-status').textContent = text || '';
+      }
+
+      async function runBrandBookImport() {
+        if (!currentDomain) {
+          setImportStatus('Enter your domain above first.');
+          return;
+        }
+        const fileInput = document.getElementById('import-file');
+        const url = document.getElementById('import-url').value.trim();
+        const file = fileInput.files && fileInput.files[0];
+        if (!file && !url) {
+          setImportStatus('Choose a PDF or PowerPoint file, or paste a link.');
+          return;
+        }
+        if (file && file.size > 20 * 1024 * 1024) {
+          setImportStatus('That file is larger than 20 MB.');
+          return;
+        }
+
+        const btn = document.getElementById('import-btn');
+        btn.disabled = true;
+        document.getElementById('import-review').classList.add('hidden');
+        setImportStatus('Reading your brand guide. This can take up to a minute.');
+        const controller = new AbortController();
+        const abortTimer = setTimeout(() => controller.abort(), 150000);
+        try {
+          let response;
+          if (file) {
+            const form = new FormData();
+            form.append('domain', currentDomain);
+            form.append('file', file);
+            response = await fetch('/api/brands/import', { method: 'POST', body: form, signal: controller.signal });
+          } else {
+            response = await fetch('/api/brands/import', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ domain: currentDomain, url }),
+              signal: controller.signal,
+            });
+          }
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            setImportStatus(data.error || data.message || 'Import failed. Please try again.');
+            return;
+          }
+          lastImport = data;
+          renderImportReview(data);
+        } catch (error) {
+          setImportStatus(error && error.name === 'AbortError'
+            ? 'That took too long. Try a smaller file, or build your brand.json by hand.'
+            : 'Import failed. Check your connection and try again.');
+        } finally {
+          clearTimeout(abortTimer);
+          btn.disabled = false;
+        }
+      }
+
+      function importSections(data) {
+        const f = data.fragment || {};
+        const sections = [];
+        if (f.names) sections.push({ key: 'names', label: 'Brand name', html: escapeHtml(f.names[0].en) });
+        if (f.description) sections.push({ key: 'description', label: 'Description', html: escapeHtml(f.description) });
+        if (f.tagline) sections.push({ key: 'tagline', label: 'Tagline', html: escapeHtml(f.tagline) });
+        if (f.industries) sections.push({ key: 'industries', label: 'Industries', html: escapeHtml(f.industries.join(', ')) });
+        if (f.tone) {
+          const t = f.tone;
+          const parts = [];
+          if (t.voice) parts.push('Voice: ' + escapeHtml(t.voice));
+          if (t.attributes) parts.push('Attributes: ' + escapeHtml(t.attributes.join(', ')));
+          if (t.dos) parts.push('Do: ' + escapeHtml(t.dos.join('; ')));
+          if (t.donts) parts.push("Don't: " + escapeHtml(t.donts.join('; ')));
+          sections.push({ key: 'tone', label: 'Tone of voice', html: parts.join('<br>') });
+        }
+        if (f.colors) {
+          const html = Object.entries(f.colors)
+            .filter(([, hex]) => /^#[0-9A-F]{6}$/i.test(hex))
+            .map(([role, hex]) => `<span class="import-swatch" style="background:${hex}"></span>${escapeHtml(role)} ${escapeHtml(hex)}`)
+            .join('<br>');
+          sections.push({ key: 'colors', label: 'Colors', html });
+        }
+        if (f.fonts) {
+          const html = Object.entries(f.fonts).map(([role, family]) => `${escapeHtml(role)}: ${escapeHtml(family)}`).join('<br>');
+          sections.push({ key: 'fonts', label: 'Fonts', html });
+        }
+        if (f.visual_guidelines) {
+          const v = f.visual_guidelines;
+          const parts = [];
+          if (v.restrictions) parts.push(v.restrictions.map(r => escapeHtml(r)).join('<br>'));
+          if (v.logo_placement) {
+            const lp = v.logo_placement;
+            parts.push('Logo clear space: ' + escapeHtml(lp.min_clear_space || 'not specified') + ', minimum height: ' + escapeHtml(lp.min_height || 'not specified'));
+          }
+          sections.push({ key: 'visual_guidelines', label: 'Visual rules', html: parts.join('<br>') });
+        }
+        return sections;
+      }
+
+      function renderImportReview(data) {
+        const review = document.getElementById('import-review');
+        const sections = importSections(data);
+        const logos = data.logos || [];
+        const candidates = new Map((data.candidates || []).map(c => [c.id, c]));
+
+        let html = '<div class="import-review">';
+        if (!sections.length && !logos.length) {
+          setImportStatus('We could not find brand details in that document.');
+          review.classList.add('hidden');
+          return;
+        }
+        setImportStatus('Review what we found. Uncheck anything that is wrong, then apply.');
+        for (const section of sections) {
+          html += `<label class="import-item"><input type="checkbox" checked data-import-key="${section.key}"><span><strong>${escapeHtml(section.label)}</strong><span class="import-value">${section.html}</span></span></label>`;
+        }
+        if (logos.length) {
+          html += '<div class="import-item"><span><strong>Logos</strong><div class="import-logos">';
+          for (const logo of logos) {
+            const candidate = candidates.get(logo.candidate_id);
+            if (!candidate || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(candidate.data_url)) continue;
+            html += `<label class="import-logo"><img src="${candidate.data_url}" alt="${escapeHtml(logo.variant)} logo"><span><input type="checkbox" checked data-import-logo="${escapeHtml(logo.id)}"> ${escapeHtml(logo.variant)}, ${escapeHtml(logo.background)}</span></label>`;
+          }
+          html += '</div><span class="import-value">Logo files are included in the download bundle. Upload the <code>brand-assets</code> folder to your site root, or change the URLs later.</span></span></div>';
+        }
+        if (data.warnings && data.warnings.length) {
+          html += '<div class="import-warnings"><strong>Check these</strong><br>' + data.warnings.map(w => escapeHtml(w)).join('<br>') + '</div>';
+        }
+        html += '<div class="import-actions"><button class="btn" onclick="applyImportReview()">Apply selected</button><button class="btn btn-secondary" onclick="discardImportReview()">Discard</button></div></div>';
+        review.innerHTML = html;
+        review.classList.remove('hidden');
+      }
+
+      function discardImportReview() {
+        lastImport = null;
+        document.getElementById('import-review').classList.add('hidden');
+        setImportStatus('');
+      }
+
+      function slugForBrandId(text) {
+        return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'brand';
+      }
+
+      function applyImportReview() {
+        if (!lastImport) return;
+        if (currentVariant === 'agent' || currentVariant === 'redirect') {
+          alert('Import applies to brand details. Switch to "On my website" or the parent company setup first.');
+          return;
+        }
+        const review = document.getElementById('import-review');
+        const accepted = new Set([...review.querySelectorAll('input[data-import-key]:checked')].map(i => i.dataset.importKey));
+        const acceptedLogos = new Set([...review.querySelectorAll('input[data-import-logo]:checked')].map(i => i.dataset.importLogo));
+        const f = lastImport.fragment || {};
+
+        const json = finalizeJson();
+        if (typeof json.house !== 'object' || json.house === null) {
+          json.house = { domain: currentDomain, name: (f.names && f.names[0].en) || currentDomain };
+        }
+        if (!Array.isArray(json.brands) || !json.brands.length) {
+          const name = (f.names && f.names[0].en) || currentDomain;
+          json.brands = [{ id: slugForBrandId(name), names: [{ en: name }] }];
+        }
+        const selected = brands.find(b => b.id === selectedBrandId);
+        let target = json.brands[0];
+        if (currentVariant === 'portfolio' && selected) {
+          target = json.brands.find(b => b.id === (selected.brand_id || 'unnamed')) || target;
+        }
+
+        const extras = {};
+        if (accepted.has('names')) target.names = f.names;
+        for (const key of ['description', 'tagline']) {
+          if (accepted.has(key)) target[key] = f[key];
+        }
+        if (accepted.has('tone')) target.tone = f.tone;
+        if (accepted.has('colors')) target.colors = Object.assign({}, target.colors || {}, f.colors);
+        if (accepted.has('fonts')) target.fonts = Object.assign({}, target.fonts || {}, f.fonts);
+        if (accepted.has('industries')) extras.industries = f.industries;
+        if (accepted.has('visual_guidelines')) extras.visual_guidelines = f.visual_guidelines;
+
+        const candidates = new Map((lastImport.candidates || []).map(c => [c.id, c]));
+        const logoMeta = new Map();
+        importedAssets = [];
+        const newLogos = [];
+        for (const logo of lastImport.logos || []) {
+          if (!acceptedLogos.has(logo.id)) continue;
+          const candidate = candidates.get(logo.candidate_id);
+          if (!candidate) continue;
+          newLogos.push({ url: logo.url, width: candidate.width, height: candidate.height });
+          const meta = { id: logo.id, variant: logo.variant, background: logo.background, orientation: logo.orientation };
+          if (logo.usage) meta.usage = logo.usage;
+          logoMeta.set(logo.url, meta);
+          importedAssets.push({ path: logo.url.replace(/^https:\/\/[^/]+\//, ''), dataUrl: candidate.data_url });
+        }
+        if (newLogos.length) {
+          const existing = (target.logos || []).filter(l => !logoMeta.has(l.url));
+          target.logos = existing.concat(newLogos);
+        }
+
+        const targetId = target.id;
+        populateFromBrandJson(json, json.house.domain || currentDomain, currentDomain);
+
+        // The builder doesn't model these fields; carry them on the brand state.
+        const brandState = brands.find(b => (b.brand_id || 'unnamed') === targetId) || brands.find(b => b.id === selectedBrandId);
+        if (brandState) {
+          brandState.extras = Object.assign({}, brandState.extras || {}, extras);
+          for (const logo of brandState.logos || []) {
+            if (logoMeta.has(logo.url)) logo.meta = logoMeta.get(logo.url);
+          }
+        }
+        updatePreview();
+
+        review.classList.add('hidden');
+        setImportStatus(importedAssets.length
+          ? 'Applied. Download the bundle to get brand.json and your logo files together.'
+          : 'Applied. Review the fields below, then download your brand.json.');
+        lastImport = null;
+        renderBundleButton();
+      }
+
+      function renderBundleButton() {
+        const status = document.getElementById('import-status');
+        if (!importedAssets.length) return;
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-secondary';
+        btn.style.marginLeft = 'var(--space-3)';
+        btn.textContent = 'Download bundle (.zip)';
+        btn.onclick = downloadBrandBundle;
+        status.appendChild(btn);
+      }
+
+      // Minimal ZIP writer (stored, no compression) for brand.json + logo files.
+      const CRC_TABLE = (() => {
+        const table = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+          table[n] = c >>> 0;
+        }
+        return table;
+      })();
+
+      function crc32(bytes) {
+        let crc = 0xFFFFFFFF;
+        for (let i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+        return (crc ^ 0xFFFFFFFF) >>> 0;
+      }
+
+      function buildZip(files) {
+        const encoder = new TextEncoder();
+        const chunks = [];
+        const central = [];
+        let offset = 0;
+        for (const file of files) {
+          const name = encoder.encode(file.name);
+          const data = file.bytes;
+          const crc = crc32(data);
+          const local = new DataView(new ArrayBuffer(30));
+          local.setUint32(0, 0x04034b50, true);
+          local.setUint16(4, 20, true);
+          local.setUint32(14, crc, true);
+          local.setUint32(18, data.length, true);
+          local.setUint32(22, data.length, true);
+          local.setUint16(26, name.length, true);
+          chunks.push(new Uint8Array(local.buffer), name, data);
+          const entry = new DataView(new ArrayBuffer(46));
+          entry.setUint32(0, 0x02014b50, true);
+          entry.setUint16(4, 20, true);
+          entry.setUint16(6, 20, true);
+          entry.setUint32(16, crc, true);
+          entry.setUint32(20, data.length, true);
+          entry.setUint32(24, data.length, true);
+          entry.setUint16(28, name.length, true);
+          entry.setUint32(42, offset, true);
+          central.push(new Uint8Array(entry.buffer), name);
+          offset += 30 + name.length + data.length;
+        }
+        const centralSize = central.reduce((n, c) => n + c.length, 0);
+        const end = new DataView(new ArrayBuffer(22));
+        end.setUint32(0, 0x06054b50, true);
+        end.setUint16(8, files.length, true);
+        end.setUint16(10, files.length, true);
+        end.setUint32(12, centralSize, true);
+        end.setUint32(16, offset, true);
+        return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' });
+      }
+
+      function dataUrlBytes(dataUrl) {
+        const bin = atob(dataUrl.split(',')[1] || '');
+        return Uint8Array.from(bin, c => c.charCodeAt(0));
+      }
+
+      function downloadBrandBundle() {
+        const files = [{ name: '.well-known/brand.json', bytes: new TextEncoder().encode(JSON.stringify(finalizeJson(), null, 2)) }];
+        for (const asset of importedAssets) files.push({ name: asset.path, bytes: dataUrlBytes(asset.dataUrl) });
+        const url = URL.createObjectURL(buildZip(files));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentDomain || 'brand'}-brand-json.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       }
 
       async function loadFromRegistry(domain) {

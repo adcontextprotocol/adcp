@@ -20,6 +20,8 @@ describe('costUsdMicros', () => {
   it('prices Sonnet 5 at $2/M input and $10/M output', () => {
     // 10k input, 5k output: 10_000*2 + 5_000*10 = 70_000 micros ($0.070)
     expect(costUsdMicros('claude-sonnet-5', { input_tokens: 10_000, output_tokens: 5_000 })).toBe(70_000);
+    expect(costUsdMicros('claude-sonnet-5-5', { input_tokens: 10_000, output_tokens: 5_000 })).toBe(70_000);
+    expect(costUsdMicros('claude-opus-5-5', { input_tokens: 10_000, output_tokens: 5_000 })).toBe(140_000);
   });
 
   it('prices Opus at $5/M input, $25/M output', () => {

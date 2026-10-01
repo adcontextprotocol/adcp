@@ -16,7 +16,7 @@ import { isLushaConfigured } from './lusha.js';
 import { createProspect } from './prospect.js';
 import { notifyNewProspect, notifyAliasMatch } from '../notifications/prospect.js';
 import { createActionItem } from '../db/account-management-db.js';
-import { ModelConfig } from '../config/models.js';
+import { ModelConfig, forcedToolChoice } from '../config/models.js';
 import { COMPANY_TYPE_VALUES, getCompanyTypesDocumentation } from '../config/company-types.js';
 import { getSetting, SETTING_KEYS } from '../db/system-settings-db.js';
 
@@ -322,7 +322,7 @@ export async function assessWithClaude(
         },
       },
     ],
-    tool_choice: { type: 'tool', name: 'assess_prospect' },
+    ...forcedToolChoice(ModelConfig.fast, 'assess_prospect'),
     messages: [{
       role: 'user',
       content: `Assess this email domain as a potential prospect:\n\nDomain: ${domain}\n\n${enrichmentContext}`,

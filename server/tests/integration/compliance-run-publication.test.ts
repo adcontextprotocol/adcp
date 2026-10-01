@@ -177,6 +177,30 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
     expect((await db.getComplianceStatus(agentUrl))?.last_checked_at).toEqual(lastComplete?.last_checked_at);
   });
 
+  it('only defers a busy suite when its selected lock still owns the schedule', async () => {
+    const selectedLockUntil = new Date(Date.now() + 60 * 60 * 1000);
+    await pool.query(
+      'UPDATE agent_registry_metadata SET next_compliance_check_at = $2 WHERE agent_url = $1',
+      [agentUrl, selectedLockUntil],
+    );
+    expect(await db.deferComplianceCheckAfterContention(agentUrl, selectedLockUntil)).toBe(true);
+    const deferred = await pool.query(
+      'SELECT next_compliance_check_at FROM agent_registry_metadata WHERE agent_url = $1', [agentUrl],
+    );
+    expect(deferred.rows[0].next_compliance_check_at.getTime()).toBeLessThan(selectedLockUntil.getTime());
+
+    const authoritativeSchedule = new Date(Date.now() + 6 * 60 * 60 * 1000);
+    await pool.query(
+      'UPDATE agent_registry_metadata SET next_compliance_check_at = $2 WHERE agent_url = $1',
+      [agentUrl, authoritativeSchedule],
+    );
+    expect(await db.deferComplianceCheckAfterContention(agentUrl, selectedLockUntil)).toBe(false);
+    const current = await pool.query(
+      'SELECT next_compliance_check_at FROM agent_registry_metadata WHERE agent_url = $1', [agentUrl],
+    );
+    expect(current.rows[0].next_compliance_check_at).toEqual(authoritativeSchedule);
+  });
+
   it('backs off repeated target failures and resets the streak on requeue and an authoritative run', async () => {
     await db.updateCheckInterval(agentUrl, 6);
     await pool.query(

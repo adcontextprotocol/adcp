@@ -784,7 +784,7 @@ test('direct creative-library phases are gated without blocking later lifecycle 
   }
 
   const expectedDownstreamDependencies = new Map([
-    ['sales_guaranteed/delivery_monitoring', ['confirm_active']],
+    ['sales_guaranteed/delivery_monitoring', ['confirm_approved']],
     ['sales_broadcast_tv/delivery_monitoring', ['create_buy']],
     ['sales_broadcast_tv/reconciliation', ['delivery_monitoring']],
     ['sales_proposal_mode/delivery', ['accept_proposal']],

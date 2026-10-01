@@ -39,6 +39,7 @@ import { buildCatalog } from '../../src/training-agent/product-factory.js';
 import {
   TRAINING_AGENT_CURRENT_ADCP_RELEASE,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
   type MediaBuyState,
 } from '../../src/training-agent/types.js';
 
@@ -107,12 +108,16 @@ describe('sales training-agent reporting Core exercise', () => {
     stopSessionCleanup();
   });
 
-  // The GA release pin ("3.2") must reach the same Reliable Reporting lab as
-  // the exact current bundle pin rather than downshifting to 3.1.
-  it.each([
+  // The GA release pin ("3.2") and the retained exact RC pin must both reach
+  // the Reliable Reporting lab rather than downshifting to 3.1. At GA the
+  // current version *is* the release line, so dedupe: a repeated pin would
+  // reuse the same idempotency keys and replay cached sync_accounts responses
+  // against the freshly cleared account store.
+  it.each([...new Set<string>([
     TRAINING_AGENT_CURRENT_ADCP_VERSION,
     TRAINING_AGENT_CURRENT_ADCP_RELEASE,
-  ])('advertises Core honestly and runs the immediate missing-first then zero-row lab (adcp_version %s)', async (ADCP_VERSION: string) => {
+    TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
+  ])])('advertises Core honestly and runs the immediate missing-first then zero-row lab (adcp_version %s)', async (ADCP_VERSION: string) => {
     const { url, close } = await boot();
     const account = {
       brand: { domain: 'reporting-lab.example' },

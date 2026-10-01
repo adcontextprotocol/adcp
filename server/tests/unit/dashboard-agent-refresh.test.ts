@@ -101,7 +101,7 @@ function loadRefreshClickHandler(options: {
   const context = vm.createContext({
     document,
     fetch,
-    pageState: { orgId: "org_test" },
+    pageState: { orgId: "org_test", activeRefreshPolls: new Set() },
     reloadAgentCardAfterRefresh,
     buildAgentRefreshSummary: vi.fn(() => "refresh summary"),
     isSuccessfulAgentRetest: (data: {
@@ -124,6 +124,38 @@ function loadRefreshClickHandler(options: {
 }
 
 describe("dashboard agent refresh", () => {
+  it('keeps polling after a transient status service failure', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({
+        status: 503, ok: false, headers: { get: () => null }, json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        status: 200, ok: true, headers: { get: () => null },
+        json: async () => ({ status: 'succeeded', result: { online: true } }),
+      });
+    const context = loadRefreshHelpers({ fetch, setTimeout: (resolve: () => void) => resolve() });
+    const result = await (context.pollAgentRefresh as (url: string) => Promise<{ status: string }>)('/refresh/status');
+    expect(result.status).toBe('succeeded');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retains a durable refresh status URL across a dashboard reload', () => {
+    const storage = new Map<string, string>();
+    const context = loadRefreshHelpers({
+      sessionStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
+    });
+    const agentUrl = 'https://seller.example/mcp';
+    const statusUrl = `/api/registry/agents/${encodeURIComponent(agentUrl)}/refreshes/123e4567-e89b-42d3-a456-426614174000`;
+    (context.rememberRefresh as (agentUrl: string, statusUrl: string) => void)(agentUrl, statusUrl);
+    expect((context.pendingRefreshUrl as (agentUrl: string) => string | null)(agentUrl)).toBe(statusUrl);
+    (context.forgetRefresh as (agentUrl: string) => void)(agentUrl);
+    expect((context.pendingRefreshUrl as (agentUrl: string) => string | null)(agentUrl)).toBeNull();
+  });
+
   it("reports the newly negotiated target and concrete cache after a 3.0 to 3.1 migration", () => {
     const context = loadRefreshHelpers();
     const buildAgentRefreshSummary = context.buildAgentRefreshSummary as (
@@ -291,7 +323,7 @@ describe("dashboard agent refresh", () => {
       json: vi.fn().mockResolvedValue(data),
     });
     const fetch = vi.fn((url: string) => {
-      if (url.endsWith('/compliance')) {
+      if (url.includes('/compliance?org=')) {
         return new Promise(resolve => { resolveCompliance = resolve; });
       }
       if (url.includes('/compliance/history')) {

@@ -807,7 +807,7 @@ export const AgentComplianceSchema = z
     verified_roles: z.array(BadgeRoleSchema).optional()
       .openapi({ description: "Canonical badge roles the agent is AgenticAdvertising.org Verified for (e.g. media-buy, creative)." }),
     verified_role_versions: z.record(z.string(), z.array(z.string())).optional()
-      .openapi({ description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.1', '3.0'] }). Use this when choosing a version-pinned badge URL." }),
+      .openapi({ description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.2', '3.1'] }). Use this when choosing a version-pinned badge URL." }),
   })
   .openapi("AgentCompliance");
 
@@ -816,7 +816,7 @@ export const VerificationBadgeSchema = z
     role: BadgeRoleSchema
       .openapi({ description: "Canonical role this verification badge covers." }),
     adcp_version: z.string()
-      .openapi({ description: "AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK." }),
+      .openapi({ description: "AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.1', '3.2'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK." }),
     verified_at: z.string(),
     verified_specialisms: z.array(z.enum(ADCP_SPECIALISMS as [string, ...string[]]))
       .openapi({ description: "Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges." }),
@@ -986,15 +986,8 @@ export const AgentComplianceDetailSchema = z
     }),
     refresh_availability: z.object({
       available: z.boolean(),
-      retryable: z.boolean().openapi({ description: "Whether retrying the same human refresh request later is expected to succeed without a platform change." }),
-      scope: z.literal('platform'),
-      applies_to: z.literal('human_session'),
-      code: z.literal('refresh_authorization_provenance_required'),
-      notice: z.string(),
-      alternative_action: z.literal('monitoring_requeue'),
-      alternative_description: z.string(),
     }).optional().openapi({
-      description: "Current human refresh admission state. Monitoring requeue is a separate scheduler operation and is not a retry or ETA for this endpoint.",
+      description: "Whether authenticated owners and administrators can queue an agent refresh.",
     }),
     tracks: z.record(z.string(), z.string()).optional(),
     track_details: z.array(z.object({
@@ -1013,6 +1006,19 @@ export const AgentComplianceDetailSchema = z
     status_changed_at: z.string().nullable().optional(),
     storyboards_passing: z.number().int().optional(),
     storyboards_total: z.number().int().optional(),
+    latest_attempt: z.object({
+      id: z.string().uuid(),
+      tested_at: z.string(),
+      triggered_by: z.enum(['heartbeat', 'owner_test', 'manual', 'webhook']),
+      completeness: z.enum(['complete', 'timed_out', 'not_completed']),
+      is_authoritative: z.boolean(),
+      requested_compliance_target: z.string().nullable(),
+      storyboards_completed: z.number().int().nullable(),
+      storyboards_total: z.number().int().nullable(),
+      first_blocker: z.string().nullable(),
+    }).nullable().optional().openapi({
+      description: 'Owner/operator-only newest persisted full assessment, including audit-only timeouts. Null for other viewers. This does not change the public verdict.',
+    }),
     check_interval_hours: z.number().int().optional().openapi({ description: "How often the heartbeat re-tests this agent, in hours" }),
     declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared in get_adcp_capabilities, from the latest run" }),
     specialism_status: z.record(z.string(), z.enum(['passing', 'failing', 'untested', 'unknown'])).optional().openapi({ description: "Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status" }),

@@ -1,4 +1,5 @@
 import { complianceRunProvenance, type ComplianceRunProvenance } from '../../compliance/run-provenance.js';
+import { createHostedWebhookReceiverLease } from '../../services/hosted-webhook-receiver.js';
 /**
  * Compliance testing — thin adapter over @adcp/sdk's compliance module.
  *
@@ -267,12 +268,33 @@ export async function comply(
     resolveTestKit: storyboardId => getTestKitForStoryboard(storyboardId, hostedComplianceOptions(target)),
     secrets: mintedSecrets,
   });
-  const rawResult = await sdkComply(
-    agentUrl,
-    withSdkSafeTransport(
-      withHostedComplianceRunOptions({ ...safeOptions, routeStoryboard }, target, authDefaults.probeTask, authDefaults.apiKey),
-    ),
-  );
+  // Current 3.1 grading treats outbound webhook coverage as conditional. The
+  // public receiver is opt-in while the versioned mandatory profile is being
+  // prepared; if ingress is unavailable, retain the current grading contract
+  // and log the platform gap rather than attributing it to the seller.
+  let receiverLease;
+  if (process.env.HOSTED_COMPLIANCE_WEBHOOK_RECEIVER_ENABLED === 'true' && !safeOptions.webhook_receiver) {
+    try {
+      receiverLease = await createHostedWebhookReceiverLease();
+    } catch (error) {
+      logger.warn({ err: error, agentUrl }, 'Hosted webhook receiver unavailable; webhook storyboards may be not applicable');
+    }
+  }
+  let rawResult: ComplianceResult;
+  try {
+    rawResult = await sdkComply(
+      agentUrl,
+      withSdkSafeTransport(
+        withHostedComplianceRunOptions({
+          ...safeOptions,
+          routeStoryboard,
+          ...(receiverLease ? { webhook_receiver: receiverLease.options } : {}),
+        }, target, authDefaults.probeTask, authDefaults.apiKey),
+      ),
+    );
+  } finally {
+    await receiverLease?.release();
+  }
   const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { hosted_provenance: ComplianceRunProvenance }).hosted_provenance =

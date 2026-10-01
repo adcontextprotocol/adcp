@@ -1,3 +1,5 @@
+import type Anthropic from '@anthropic-ai/sdk';
+
 /**
  * Centralized AI model configuration
  *
@@ -11,10 +13,10 @@
 export const ModelConfig = {
   /**
    * Primary model for complex tasks (Addie chat, rule analysis)
-   * Default: claude-sonnet-5
+   * Default: claude-sonnet-5-5
    * Override: CLAUDE_MODEL_PRIMARY
    */
-  primary: process.env.CLAUDE_MODEL_PRIMARY || 'claude-sonnet-5',
+  primary: process.env.CLAUDE_MODEL_PRIMARY || 'claude-sonnet-5-5',
 
   /**
    * Fast model for simple tasks (insight extraction, classification)
@@ -46,6 +48,16 @@ export const ModelConfig = {
    * "don't hallucinate this number."
    */
   depth: process.env.CLAUDE_MODEL_DEPTH || 'claude-opus-5',
+
+  /**
+   * Generation model the fixed-trace evaluation protocol and its dated
+   * pricing evidence are baselined on. Pinned separately from `primary` so a
+   * production model change does not silently re-point recorded evaluations;
+   * re-baseline the evaluation suites before moving it.
+   * Default: claude-sonnet-5
+   * Override: CLAUDE_MODEL_EVAL_GENERATION
+   */
+  evaluationGeneration: process.env.CLAUDE_MODEL_EVAL_GENERATION || 'claude-sonnet-5',
 } as const;
 
 /**
@@ -73,12 +85,39 @@ export const GeminiModelConfig = {
  * budget on adaptive thinking. Older/overridden models receive no unknown
  * request field, preserving the model override contract.
  */
-export function disableAdaptiveThinking(model: string):
-  | { thinking: { type: 'disabled' } }
-  | Record<string, never> {
-  // Fable 5 and Mythos 5/Preview always think and reject `disabled`.
+export function disableAdaptiveThinking(model: string): { thinking?: Anthropic.ThinkingConfigParam } {
+  // Sonnet 5.5 rejects `disabled`; `between_tools` is its no-extended-thinking
+  // setting. The pinned SDK's types predate it, hence the cast.
+  if (/^claude-sonnet-5-5(?:-\d{8})?$/.test(model)) {
+    return { thinking: { type: 'between_tools' } as unknown as Anthropic.ThinkingConfigParam };
+  }
+  // Fable 5 and Mythos 5/Preview always think and reject `disabled`, and
+  // Opus 5.5 can't disable thinking at any effort level.
   const supportsDisablingThinking = /^claude-(?:sonnet-5|opus-(?:4-[78]|5))$/.test(model);
   return supportsDisablingThinking ? { thinking: { type: 'disabled' } } : {};
+}
+
+/**
+ * Models that reject forced tool use (`tool_choice` `any` / `tool`) with a 400.
+ * Callers steer toward the tool from the prompt and handle a missing tool call.
+ */
+const REJECTS_FORCED_TOOL_CHOICE = /^claude-(?:sonnet-5-5|opus-5-5|fable-5-1|mythos-5-1)(?:-\d{8})?$/;
+
+export function supportsForcedToolChoice(model: string): boolean {
+  return !REJECTS_FORCED_TOOL_CHOICE.test(model);
+}
+
+/**
+ * Request fragment that forces `toolName` where the model allows it and falls
+ * back to `auto` where it doesn't. Every caller already treats a response
+ * without the expected tool call as a failed extraction.
+ */
+export function forcedToolChoice(model: string, toolName: string): {
+  tool_choice: { type: 'tool'; name: string } | { type: 'auto' };
+} {
+  return supportsForcedToolChoice(model)
+    ? { tool_choice: { type: 'tool', name: toolName } }
+    : { tool_choice: { type: 'auto' } };
 }
 
 /**
