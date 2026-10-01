@@ -337,16 +337,16 @@ jobs:
           # Changesets resolves changelog commits with one `git log` per
           # changeset, all spawned at once. A stable exit cut consumes every
           # archived prerelease changeset (~335 for 3.2.1) and that burst kills
-          # the runner, so bound concurrent `git log` calls to four flock slots.
+          # the runner, so bound concurrent `git log` calls to eight flock slots.
           # The lock fd is inherited by git and released when it exits.
           if [ "$1" = log ]; then
             n=0
             while :; do
-              exec 9>"$RUNNER_TEMP/release-hooks/git-log-slot-$((n % 4))"
+              exec 9>"$RUNNER_TEMP/release-hooks/git-log-slot-$((n % 8))"
               if flock -n 9; then exec "$real_git" "$@"; fi
               exec 9>&-
               n=$((n + 1))
-              if [ $((n % 4)) -eq 0 ]; then sleep 0.05; fi
+              if [ $((n % 8)) -eq 0 ]; then sleep 0.05; fi
             done
           fi
           exec "$real_git" "$@"
