@@ -2786,6 +2786,7 @@ export class HTTPServer {
           ? path.join(__dirname, '../server/public/dashboard.html')
           : path.join(__dirname, '../public/dashboard.html');
         let html = await fs.readFile(dashboardPath, 'utf-8');
+        html = this.versionStaticAssets(html);
 
         // Replace template variables with environment values
         html = html
@@ -2826,6 +2827,7 @@ export class HTTPServer {
           ? path.join(__dirname, `../server/public/${filename}`)
           : path.join(__dirname, `../public/${filename}`);
         let html = await fs.readFile(pagePath, 'utf-8');
+        html = this.versionStaticAssets(html);
 
         // Replace template variables (for billing page with Stripe)
         html = html
@@ -3499,6 +3501,7 @@ export class HTTPServer {
         ? path.join(__dirname, '../server/public/perspectives/article.html')
         : path.join(__dirname, '../public/perspectives/article.html');
       let html = await fs.readFile(articlePath, 'utf-8');
+      html = this.versionStaticAssets(html);
       html = injectMetaTagsIntoHtml(html, {
         title: article.title,
         description: article.excerpt || article.subtitle || article.title,
