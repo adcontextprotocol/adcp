@@ -54,10 +54,16 @@ function loadSandboxBrands(dir: string): Map<string, BrandCanonicalDocument> {
   return brands;
 }
 
-/** The sandbox brand for a test-kit domain, as a Brand Canonical Document. */
+/**
+ * The sandbox brand for a test-kit domain, as a Brand Canonical Document.
+ * Only `.example` lookups read the kits, so resolution of real domains never
+ * depends on test-kit fixtures.
+ */
 export function getSandboxBrand(domain: string): BrandCanonicalDocument | undefined {
+  const normalized = domain.toLowerCase();
+  if (!normalized.endsWith(RESERVED_TLD)) return undefined;
   sandboxBrands ??= loadSandboxBrands(TEST_KITS_DIR);
-  return sandboxBrands.get(domain.toLowerCase());
+  return sandboxBrands.get(normalized);
 }
 
 /** Domains of every sandbox test brand. */
