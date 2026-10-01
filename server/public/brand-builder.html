@@ -4136,18 +4136,21 @@
         btn.disabled = true;
         document.getElementById('import-review').classList.add('hidden');
         setImportStatus('Reading your brand guide. This can take up to a minute.');
+        const controller = new AbortController();
+        const abortTimer = setTimeout(() => controller.abort(), 150000);
         try {
           let response;
           if (file) {
             const form = new FormData();
             form.append('domain', currentDomain);
             form.append('file', file);
-            response = await fetch('/api/brands/import', { method: 'POST', body: form });
+            response = await fetch('/api/brands/import', { method: 'POST', body: form, signal: controller.signal });
           } else {
             response = await fetch('/api/brands/import', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ domain: currentDomain, url }),
+              signal: controller.signal,
             });
           }
           const data = await response.json().catch(() => ({}));
@@ -4157,9 +4160,12 @@
           }
           lastImport = data;
           renderImportReview(data);
-        } catch {
-          setImportStatus('Import failed. Check your connection and try again.');
+        } catch (error) {
+          setImportStatus(error && error.name === 'AbortError'
+            ? 'That took too long. Try a smaller file, or build your brand.json by hand.'
+            : 'Import failed. Check your connection and try again.');
         } finally {
+          clearTimeout(abortTimer);
           btn.disabled = false;
         }
       }

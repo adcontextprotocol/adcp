@@ -138,6 +138,15 @@ describe('PPTX extraction', () => {
 });
 
 describe('prepareCandidates', () => {
+  it('decodes a bounded number of raw images however many a file carries', async () => {
+    const image = await png(60, 60);
+    const raw = Array.from({ length: 200 }, (_, i) => ({ data: image, page: i + 1 }));
+    const started = Date.now();
+    const candidates = await prepareCandidates(raw);
+    expect(candidates.length).toBeLessThanOrEqual(16);
+    expect(Date.now() - started).toBeLessThan(10_000);
+  });
+
   it('drops tiny images, de-duplicates, and assigns stable ids', async () => {
     const logo = await png(400, 120);
     const candidates = await prepareCandidates([
@@ -205,6 +214,7 @@ describe('proposeBrandFields', () => {
     });
 
     const request = mocks.parse.mock.calls[0][0];
+    expect(mocks.parse.mock.calls[0][1]).toEqual({ timeout: 90_000, maxRetries: 1 });
     expect(request.model).toBe('claude-sonnet-5-5');
     expect(request.output_config.effort).toBe('low');
     expect(request.output_config.format).toBeDefined();

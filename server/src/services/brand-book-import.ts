@@ -30,6 +30,9 @@ const logger = createLogger('brand-book-import');
 export const MAX_BRAND_BOOK_BYTES = 20 * 1024 * 1024;
 const MAX_DECOMPRESSED_BYTES = 100 * 1024 * 1024;
 const MAX_CANDIDATES = 16;
+/** Raw images decoded per request; bounds CPU work regardless of how many a file carries. */
+const MAX_RAW_IMAGES = MAX_CANDIDATES * 4;
+const MODEL_TIMEOUT_MS = 90_000;
 const MAX_PAGE_TEXT_CHARS = 120_000;
 const CANDIDATE_THUMB_PX = 512;
 const CANDIDATE_MIN_PX = 48;
@@ -135,6 +138,7 @@ async function extractPdfImages(buffer: Buffer): Promise<RawImage[]> {
     for (const page of result.pages) {
       for (const img of page.images) {
         if (img.data && img.data.length >= 100) images.push({ data: Buffer.from(img.data), page: page.pageNumber });
+        if (images.length >= MAX_RAW_IMAGES) return images;
       }
     }
     return images;
@@ -237,6 +241,8 @@ export async function extractPptx(buffer: Buffer): Promise<PptxExtraction> {
   const theme = themeName ? parsePptxTheme(entries.get(themeName)!.toString('utf8')) : { colors: {} };
   const images = [...entries.entries()]
     .filter(([name, data]) => name.startsWith('ppt/media/') && data.length >= 100)
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+    .slice(0, MAX_RAW_IMAGES)
     .map(([, data]) => ({ data }));
   return { slideText, theme, images };
 }
@@ -254,7 +260,7 @@ export interface CandidateImage {
 export async function prepareCandidates(raw: RawImage[]): Promise<CandidateImage[]> {
   const seen = new Set<string>();
   const prepared: Array<Omit<CandidateImage, 'id'>> = [];
-  for (const image of raw) {
+  for (const image of raw.slice(0, MAX_RAW_IMAGES)) {
     try {
       const meta = await sharp(image.data, { limitInputPixels: 24_000_000 }).metadata();
       if (!meta.width || !meta.height || meta.width < CANDIDATE_MIN_PX || meta.height < CANDIDATE_MIN_PX) continue;
@@ -394,7 +400,7 @@ export async function proposeBrandFields(input: {
     system: SYSTEM_PROMPT,
     output_config: { effort: 'low', format: zodOutputFormat(ProposalSchema) },
     messages: [{ role: 'user', content }],
-  });
+  }, { timeout: MODEL_TIMEOUT_MS, maxRetries: 1 });
 
   if (response.stop_reason === 'refusal') {
     throw new BrandBookImportError('This document could not be processed.', 422);
