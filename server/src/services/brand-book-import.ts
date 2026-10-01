@@ -37,9 +37,10 @@ const MAX_PAGE_TEXT_CHARS = 120_000;
 const CANDIDATE_THUMB_PX = 512;
 const CANDIDATE_MIN_PX = 48;
 
+/** A failure whose `publicMessage` is written for end users and safe to return to the client. */
 export class BrandBookImportError extends Error {
-  constructor(message: string, readonly status: number = 400) {
-    super(message);
+  constructor(readonly publicMessage: string, readonly status: number = 400) {
+    super(publicMessage);
     this.name = 'BrandBookImportError';
   }
 }

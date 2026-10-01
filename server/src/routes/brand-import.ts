@@ -110,7 +110,7 @@ export function createBrandImportRouter(deps: BrandImportRouterDeps = {}): Route
         return res.json(body);
       } catch (error) {
         if (error instanceof BrandBookImportError) {
-          return res.status(error.status).json({ error: error.message });
+          return res.status(error.status).json({ error: error.publicMessage });
         }
         logger.error({ err: error }, 'Brand-book import failed');
         return res.status(502).json({ error: 'Brand-book import failed. Please try again.' });
