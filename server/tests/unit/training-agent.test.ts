@@ -79,6 +79,7 @@ import {
   supportsSellerGovernanceDiscovery,
   TRAINING_AGENT_CURRENT_ADCP_RELEASE,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
   TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS,
   type TrainingContext,
 } from '../../src/training-agent/types.js';
@@ -130,6 +131,9 @@ const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
 const CURRENT_ADCP_VERSION = TRAINING_AGENT_CURRENT_ADCP_VERSION;
 // Highest advertised 3.x release: the release line of the current bundle.
 const CURRENT_ADCP_RELEASE = TRAINING_AGENT_CURRENT_ADCP_RELEASE;
+// Exact 3.2 prerelease pin still served after GA. Unlike the "3.2" release
+// pin, it never downshifts onto an older release.
+const EXACT_3_2_PRERELEASE_PIN = TRAINING_AGENT_RETAINED_RC_ADCP_VERSION;
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
 
@@ -3190,11 +3194,16 @@ describe('validate_input handler', () => {
       servedVersion: '3.1-rc.15',
     });
     expect(resolveServedAdcpVersionForTool(toolName, {
-      adcp_version: CURRENT_ADCP_VERSION,
+      adcp_version: EXACT_3_2_PRERELEASE_PIN,
     }, ['3.0', '3.1-rc.15'])).toMatchObject({
       ok: false,
       field: 'adcp_version',
     });
+    // The GA release pin downshifts to the highest stable release offered,
+    // never onto a prerelease.
+    expect(resolveServedAdcpVersionForTool(toolName, {
+      adcp_version: CURRENT_ADCP_RELEASE,
+    }, ['3.0', '3.1-rc.15'])).toEqual({ ok: true, servedVersion: '3.0' });
   });
 
   it('serves in-process validate_input calls on the same version contract', async () => {
@@ -18119,9 +18128,10 @@ describe('get_adcp_capabilities handler', () => {
     const legacyServer = createTrainingAgentServer({
       mode: 'open', strict: true, digestMode: 'required', legacySigningProfile: true,
     });
-    const [{ result: caps }, pinned, major] = await Promise.all([
+    const [{ result: caps }, pinned, release, major] = await Promise.all([
       simulateCallTool(legacyServer, 'get_adcp_capabilities', {}),
-      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_version: EXACT_3_2_PRERELEASE_PIN }),
+      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_RELEASE }),
       simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_major_version: 3 }),
     ]);
 
@@ -18131,6 +18141,9 @@ describe('get_adcp_capabilities handler', () => {
     expect(versions.some(version => version.startsWith('3.2'))).toBe(false);
     expect(pinned.isError).toBe(true);
     expect(pinned.result).toMatchObject({ code: 'VERSION_UNSUPPORTED' });
+    // A "3.2" release pin is never served at 3.2 here; it downshifts to 3.1.
+    expect(release.isError).not.toBe(true);
+    expect(release.result.adcp_version).toBe('3.1');
     expect(major.result.adcp_version).toBe('3.1');
   });
 
@@ -18138,9 +18151,17 @@ describe('get_adcp_capabilities handler', () => {
     const eitherServer = createTrainingAgentServer({ mode: 'open', strict: true });
     const forbiddenServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'forbidden' });
     const requiredServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
-    const [{ result: either, isError: eitherError }, { result: forbidden, isError: forbiddenError }, required] = await Promise.all([
-      simulateCallTool(eitherServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
-      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+    const [
+      { result: either, isError: eitherError },
+      { result: forbidden, isError: forbiddenError },
+      eitherRelease,
+      forbiddenRelease,
+      required,
+    ] = await Promise.all([
+      simulateCallTool(eitherServer, 'get_adcp_capabilities', { adcp_version: EXACT_3_2_PRERELEASE_PIN }),
+      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', { adcp_version: EXACT_3_2_PRERELEASE_PIN }),
+      simulateCallTool(eitherServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_RELEASE }),
+      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_RELEASE }),
       simulateCallTool(requiredServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
     ]);
 
@@ -18150,6 +18171,11 @@ describe('get_adcp_capabilities handler', () => {
     expect(forbiddenError).toBe(true);
     expect(forbidden).toMatchObject({ code: 'VERSION_UNSUPPORTED' });
     expect((forbidden.details as Record<string, unknown>).supported_versions as string[]).not.toContain(CURRENT_ADCP_VERSION);
+    // The "3.2" release pin downshifts to 3.1 on legacy signing profiles.
+    expect(eitherRelease.isError).not.toBe(true);
+    expect(eitherRelease.result.adcp_version).toBe('3.1');
+    expect(forbiddenRelease.isError).not.toBe(true);
+    expect(forbiddenRelease.result.adcp_version).toBe('3.1');
     expect(required.isError).not.toBe(true);
     expect(required.result.adcp_version).toBe(CURRENT_ADCP_VERSION);
   });
@@ -18911,13 +18937,21 @@ describe('MCP Tasks protocol', () => {
 
     for (const server of [eitherServer, forbiddenServer]) {
       await expect(
-        simulateGetTask(server, 'nonexistent-task-id', { adcp_version: CURRENT_ADCP_VERSION }),
+        simulateGetTask(server, 'nonexistent-task-id', { adcp_version: EXACT_3_2_PRERELEASE_PIN }),
       ).rejects.toMatchObject({
         code: -32602,
         data: {
           adcp_error: { code: 'VERSION_UNSUPPORTED', field: 'adcp_version' },
         },
       });
+      // The "3.2" release pin downshifts to 3.1 instead of failing negotiation.
+      const releaseError = await simulateGetTask(
+        server,
+        'nonexistent-task-id',
+        { adcp_version: CURRENT_ADCP_RELEASE },
+      ).catch((error: unknown) => error as { code?: number; data?: Record<string, unknown> });
+      expect(releaseError).toMatchObject({ code: -32602, data: { adcp_version: '3.1' } });
+      expect(releaseError.data?.adcp_error).toBeUndefined();
     }
 
     const requiredError = await simulateGetTask(

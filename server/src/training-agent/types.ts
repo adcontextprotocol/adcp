@@ -30,10 +30,11 @@ export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
 
 /**
  * Newest 3.2 schema bundle the server ships (release-precision wire value).
- * This is the one constant to bump when @adcp/sdk ships the 3.2 GA bundle
- * (3.2.1, wire value `'3.2'`); the release-line pin below derives from it.
+ * @adcp/sdk 14.0.0 ships the 3.2 GA bundle (3.2.1, wire value `'3.2'`), so
+ * the current version is the release line itself; the release-line pin below
+ * derives from it.
  */
-export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-rc.7' as const;
+export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2' as const;
 
 type AdcpReleaseLine<V extends string> = V extends `${infer Major}.${infer Minor}-${string}`
   ? `${Major}.${Minor}`
@@ -57,6 +58,14 @@ export const REPORTING_STATUS_ADCP_VERSION = '3.2-beta.10' as const;
 export const RELIABLE_REPORTING_ADCP_VERSION = '3.2-rc.1' as const;
 
 /**
+ * Last 3.2 release candidate. @adcp/sdk 14.0.0 packages only the 3.2 GA
+ * schema bundle, so the training agent registers the committed
+ * dist/schemas/3.2.0-rc.7 bundle itself (schema-compat.ts) to keep exact
+ * `"3.2-rc.7"` pins served on SDK-dispatched tools.
+ */
+export const TRAINING_AGENT_RETAINED_RC_ADCP_VERSION = '3.2-rc.7' as const;
+
+/**
  * Release checkpoints the reference training agent can serve, oldest first.
  * `'3.2-rc.7'` stays listed as an exact prerelease pin after the GA bump so
  * pinned docs, snapshots and learner scripts keep resolving during the
@@ -68,7 +77,7 @@ export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS: readonly string[] = Obje
   '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14',
   '3.1-rc.15', '3.1', SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION,
   // Explicit, not redundant: keeps the exact rc.7 pin listed after the GA bump.
-  '3.2-rc.0', '3.2-rc.7',
+  '3.2-rc.0', TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_RELEASE,
 ])]);
