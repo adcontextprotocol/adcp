@@ -19260,6 +19260,90 @@ describe('proposal lifecycle', () => {
     expect(productIds.every(id => id === 'fcap_video_q4')).toBe(true);
   });
 
+  it('rejects request_proposals when an explicit product_ids list mixes a seeded ID with an unknown one', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'mixed-product-ids-reject.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'seeded_known_product',
+        fixture: {
+          delivery_type: 'guaranteed',
+          channels: ['display'],
+          format_options: [{ format_option_id: 'display_300x250', format_kind: 'image', params: { width: 300, height: 250 } }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'seeded_known_product',
+        pricing_option_id: 'cpm_display',
+        fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 10.0 },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'mixed-product-ids-reject-0001',
+      account,
+      brief: 'Plan a campaign using the selected published offers.',
+      criteria: { product_ids: ['seeded_known_product', 'totally_unknown_product_id'] },
+    });
+
+    expect(result.outcome).toBe('rejected');
+  });
+
+  it('does not mix non-seeded catalog products into a seeded-fixture proposal when request_proposals has no criteria', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'no-catalog-mixing.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'seeded_podcast_product',
+        fixture: {
+          delivery_type: 'guaranteed',
+          channels: ['audio'],
+          format_options: [{ format_option_id: 'audio_30s', format_kind: 'audio', params: { duration_ms_exact: 30000 } }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'seeded_podcast_product',
+        pricing_option_id: 'cpm_podcast',
+        fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 15.0 },
+      },
+    });
+
+    const { result, isError } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'no-catalog-mixing-0001',
+      account,
+      brief: 'podcast audio advertising',
+    });
+
+    expect(isError, JSON.stringify(result)).toBeFalsy();
+    const proposals = (result.proposals ?? []) as Array<Record<string, unknown>>;
+    for (const proposal of proposals) {
+      const allocations = proposal.commercial_terms
+        ? (proposal.commercial_terms as Record<string, unknown>).purchases as Array<Record<string, unknown>>
+        : (proposal.allocations as Array<Record<string, unknown>>);
+      for (const allocation of allocations ?? []) {
+        expect(allocation.product_id).toBe('seeded_podcast_product');
+      }
+    }
+  });
+
   it('finalizes drafts into new held snapshots atomically without mutating their sources', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const requested = await Promise.all([
