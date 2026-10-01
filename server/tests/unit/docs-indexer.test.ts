@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 
 vi.mock('../../src/db/working-group-db.js', () => ({
@@ -37,7 +40,24 @@ import { DOCS_SCHEMA_RELEASES } from '../../src/addie/mcp/schema-tools.js';
 import { AddieDatabase } from '../../src/db/addie-db.js';
 
 const STABLE_SNAPSHOT = DOCS_SCHEMA_RELEASES['3.1'];
-const BETA_SNAPSHOT = DOCS_SCHEMA_RELEASES['3.2-beta'];
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+
+// Version selectors resolve from docs.json at run time so these assertions
+// hold across release-docs snapshots (e.g. 3.2-beta/3.2-rc retiring at 3.2 GA).
+// The docs default (omitted version) and the newest 3.2 selector.
+const defaultVersion = () => resolveDocsVersion()!.version;
+const line32 = () => resolveDocsVersion('3.2')!.version;
+const line32Snapshot = () => resolveDocsVersion('3.2')!.artifactVersion;
+
+function docsJsonDefaultArtifact(): string {
+  const docsConfig = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'docs.json'), 'utf8')) as {
+    navigation: { versions: Array<{ default?: boolean }> };
+  };
+  const entry = docsConfig.navigation.versions.find((version) => version.default);
+  const match = JSON.stringify(entry).match(/"dist\/docs\/([^/"]+)\//);
+  if (!match) throw new Error('docs.json default version references no dist/docs snapshot');
+  return match[1];
+}
 
 /**
  * Docs Indexer Tests
@@ -165,14 +185,14 @@ describe('docs-indexer', () => {
     });
 
     it('uses an explicit version for legacy unversioned IDs', () => {
-      const doc = getDocById('media-buy/task-reference/get_products', { version: '3.2-beta' });
-      expect(doc?.id).toBe('doc:3.2-beta:media-buy/task-reference/get_products');
-      expect(doc?.sourceUrl).toContain(`/dist/docs/${BETA_SNAPSHOT}/`);
+      const doc = getDocById('media-buy/task-reference/get_products', { version: line32() });
+      expect(doc?.id).toBe(`doc:${line32()}:media-buy/task-reference/get_products`);
+      expect(doc?.sourceUrl).toContain(`/dist/docs/${line32Snapshot()}/`);
     });
 
     it('rejects a canonical versioned ID when the explicit version does not match', () => {
       expect(getDocById(
-        'doc:3.2-beta:media-buy/task-reference/get_products',
+        `doc:${line32()}:media-buy/task-reference/get_products`,
         { version: '3.1' },
       )).toBeNull();
     });
@@ -186,18 +206,16 @@ describe('docs-indexer', () => {
   });
 
   describe('protocol version isolation', () => {
-    it('loads every public docs version and keeps 3.1 as stable default', () => {
+    it('loads every public docs version and keeps the docs.json default as the stable default', () => {
       const versions = getSupportedDocsVersions();
-      expect(versions.map(({ version }) => version)).toEqual([
-        '3.1',
-        '3.2-rc',
-        '3.2-beta',
-        '3.0',
-        '2.5',
-      ]);
-      expect(resolveDocsVersion()?.version).toBe('3.1');
-      expect(resolveDocsVersion('latest')?.version).toBe('3.1');
-      expect(resolveDocsVersion('3.2')?.version).toBe('3.2-rc');
+      // DOCS_SCHEMA_RELEASES is regenerated from docs.json in navigation order.
+      expect(versions.map(({ version }) => version)).toEqual(Object.keys(DOCS_SCHEMA_RELEASES));
+
+      const defaultArtifact = docsJsonDefaultArtifact();
+      expect(defaultArtifact).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(resolveDocsVersion()?.artifactVersion).toBe(defaultArtifact);
+      expect(resolveDocsVersion('latest')?.version).toBe(defaultVersion());
+      expect(resolveDocsVersion('3.2')?.artifactVersion).toMatch(/^3\.2\./);
       expect(Object.fromEntries(
         versions.map(({ version, artifactVersion }) => [version, artifactVersion]),
       )).toEqual(DOCS_SCHEMA_RELEASES);
@@ -247,20 +265,20 @@ describe('docs-indexer', () => {
         expect(results.some((doc) => doc.content.includes('ACCOUNT_REQUIRED'))).toBe(false);
       }
 
-      const betaResults = searchDocs('ACCOUNT_REQUIRED', { version: '3.2-beta', limit: 20 });
-      expect(betaResults.map((doc) => doc.id)).toContain('schema:3.2-beta:enums/error-code');
-      expect(betaResults.some((doc) => doc.content.includes('ACCOUNT_REQUIRED'))).toBe(true);
+      const line32Results = searchDocs('ACCOUNT_REQUIRED', { version: line32(), limit: 20 });
+      expect(line32Results.map((doc) => doc.id)).toContain(`schema:${line32()}:enums/error-code`);
+      expect(line32Results.some((doc) => doc.content.includes('ACCOUNT_REQUIRED'))).toBe(true);
     });
 
     it('does not index 3.2-only pages from the polluted stable artifact', () => {
-      const betaOnlyPaths = [
+      const line32OnlyPaths = [
         'media-buy/task-reference/request_proposals',
         'reference/migration/cross-role-governance-enforcement',
         'reference/whats-new-in-3-2',
       ];
-      for (const pagePath of betaOnlyPaths) {
+      for (const pagePath of line32OnlyPaths) {
         expect(getDocById(`doc:3.1:${pagePath}`, { version: '3.1' })).toBeNull();
-        expect(getDocById(`doc:3.2-beta:${pagePath}`, { version: '3.2-beta' })).not.toBeNull();
+        expect(getDocById(`doc:${line32()}:${pagePath}`, { version: line32() })).not.toBeNull();
       }
     });
 
@@ -291,13 +309,14 @@ describe('docs-indexer', () => {
       const stableResults = await search!({ query: 'ACCOUNT_REQUIRED', version: '3.1' });
       expect(stableResults).toContain(`No documentation found in AdCP 3.1 (snapshot ${STABLE_SNAPSHOT})`);
 
-      const results = await search!({ query: 'ACCOUNT_REQUIRED', version: '3.2-beta' });
-      expect(results).toContain(`Searching AdCP 3.2-beta (snapshot ${BETA_SNAPSHOT})`);
-      expect(results).toContain(`**Version:** 3.2-beta (snapshot ${BETA_SNAPSHOT})`);
+      const line32Label = `${resolveDocsVersion('3.2')!.displayName} (snapshot ${line32Snapshot()})`;
+      const results = await search!({ query: 'ACCOUNT_REQUIRED', version: line32() });
+      expect(results).toContain(`Searching AdCP ${line32Label}`);
+      expect(results).toContain(`**Version:** ${line32Label}`);
       expect(results).toContain('ACCOUNT_REQUIRED');
 
-      const detail = await getDoc!({ doc_id: 'schema:3.2-beta:enums/error-code' });
-      expect(detail).toContain(`**Version:** 3.2-beta (snapshot ${BETA_SNAPSHOT})`);
+      const detail = await getDoc!({ doc_id: `schema:${line32()}:enums/error-code` });
+      expect(detail).toContain(`**Version:** ${line32Label}`);
       expect(detail).toContain('ACCOUNT_REQUIRED');
     });
 
@@ -395,11 +414,11 @@ describe('docs-indexer', () => {
     it('finds the distinction between refinement and price-negotiation capability', () => {
       const results = searchDocs('price negotiation refinement capability', {
         limit: 20,
-        version: '3.2-beta',
+        version: line32(),
       });
-      expect(results.map((doc) => doc.id)).toContain('doc:3.2-beta:media-buy/product-discovery/refinement');
+      expect(results.map((doc) => doc.id)).toContain(`doc:${line32()}:media-buy/product-discovery/refinement`);
 
-      const refinement = getDocById('media-buy/product-discovery/refinement', { version: '3.2-beta' });
+      const refinement = getDocById('media-buy/product-discovery/refinement', { version: line32() });
       expect(refinement?.content).toContain('There is no finer-grained price-negotiation capability flag.');
       expect(refinement?.content).toContain('omission communicates no per-ask outcome');
       expect(refinement?.content).toContain("Inspect the returned proposal's pricing and allocations");
@@ -448,12 +467,12 @@ The request includes a structured \`filters\` object.
     it('indexes get_products and product filter schema facts', () => {
       const results = searchDocs('get_products filters geo', { limit: 5 });
       expect(results.some((doc) => [
-        'schema:3.1:media-buy/get-products-request',
-        'schema:3.1:core/product-filters',
+        `schema:${defaultVersion()}:media-buy/get-products-request`,
+        `schema:${defaultVersion()}:core/product-filters`,
       ].includes(doc.id))).toBe(true);
 
       const filters = getDocById('core/product-filters.json');
-      expect(filters?.id).toBe('schema:3.1:core/product-filters');
+      expect(filters?.id).toBe(`schema:${defaultVersion()}:core/product-filters`);
       expect(filters?.content).toContain('Field: countries');
       expect(filters?.content).toContain('Field: channels');
     });
@@ -466,18 +485,22 @@ The request includes a structured \`filters\` object.
 
     it('ranks the Trusted Match CTV surface guide for a channel query', () => {
       const results = searchDocs('trusted match ctv', { limit: 3 });
-      expect(results.map((doc) => doc.id)).toContain('doc:3.1:trusted-match/surfaces/ctv');
+      expect(results.map((doc) => doc.id)).toContain(`doc:${defaultVersion()}:trusted-match/surfaces/ctv`);
     });
 
     it('retrieves CTV enum and standard format registry sources', () => {
       const enumResults = searchDocs('ctv_app property type', { limit: 5 });
-      expect(enumResults.map((doc) => doc.id)).toContain('schema:3.1:enums/property-type');
+      expect(enumResults.map((doc) => doc.id)).toContain(`schema:${defaultVersion()}:enums/property-type`);
 
       const formatResults = searchDocs(
         'canonical creative format contracts publisher acceptance product deliverability',
         { limit: 5 },
       );
-      expect(formatResults.map((doc) => doc.id)).toContain('doc:3.1:creative/formats');
+      // 3.2 splits the registry guide into creative/formats and
+      // creative/canonical-formats; either is the right answer here.
+      const formatGuides = ['creative/formats', 'creative/canonical-formats']
+        .map((pagePath) => `doc:${defaultVersion()}:${pagePath}`);
+      expect(formatResults.some((doc) => formatGuides.includes(doc.id))).toBe(true);
     });
   });
 
@@ -485,7 +508,6 @@ The request includes a structured \`filters\` object.
   // "what is new in 3.2" ranked the 3.1 page first. These assertions resolve
   // the 3.2 selector at run time, so they hold before and after 3.2 GA.
   describe('release-line queries', () => {
-    const line32 = () => resolveDocsVersion('3.2')!.version;
 
     it('ranks the what\'s-new page for the named release first', () => {
       const [first] = searchDocs('what is new in 3.2', { version: '3.2' });

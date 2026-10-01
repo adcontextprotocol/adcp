@@ -1,0 +1,85 @@
+---
+title: "Governance protocol by role"
+sidebarTitle: "Governance by role"
+description: "Buyer and seller responsibilities in the campaign governance loop, including sync_plans, check_governance, signed governance context, and report_plan_outcome."
+"og:title": "AdCP - Governance protocol by role"
+---
+
+# Governance protocol by role
+
+Governance in AdCP is a shared control loop. The buyer-side governance agent decides whether a planned or executed action is allowed. The buyer agent obtains and carries the governance context. The seller verifies that context before executing work and reports outcomes back into the audit trail.
+
+## Roles
+
+| Role | Responsibility |
+|---|---|
+| Buyer agent | Builds the plan, calls governance, and attaches governance context to seller requests |
+| Governance agent | Evaluates intent and execution against plan, policy, budget, and authority |
+| Seller agent | Verifies signed governance context before execution and reports confirmed outcomes |
+| Human reviewer | Handles exceptions, overrides, and ambiguous policy decisions when required |
+
+## Buyer-side flow
+
+1. Create or update the campaign plan with `sync_plans`.
+2. Call `check_governance` for the intent phase before asking a seller to execute.
+3. Attach the returned governance context to the seller request.
+4. When execution details come back, call `check_governance` again for the execution phase if the workflow requires it.
+5. Poll or subscribe to outcomes and preserve the governance audit trail.
+
+The buyer owns the planning truth. If the buyer changes budget, audience, seller, flight dates, product selection, or objective, it must update the plan or request a new governance decision.
+
+## Seller-side flow
+
+1. Receive a request with governance context.
+2. Verify the signed governance context before execution.
+3. Bind the token to the expected plan, caller, seller, phase, and operation.
+4. Reject missing, expired, revoked, replayed, or mismatched signed context with `PERMISSION_DENIED`.
+5. Report confirmed delivery or spend through `report_plan_outcome` when the seller is responsible for outcome reporting.
+
+The seller does not reinterpret buyer policy from scratch. It verifies that the buyer's governance agent authorized this exact execution and reports what actually happened.
+
+Use `GOVERNANCE_DENIED` only when the buyer-side governance agent returned an actual denial for the planned or executed action.
+
+## check_governance payload discipline
+
+The most common implementation bug is sending a partial check that omits the fields needed for the phase.
+
+Intent checks normally need:
+
+- `plan_id`
+- `caller`
+- proposed seller or operator identity
+- budget and pacing intent
+- targeting and policy-relevant constraints
+- products or package references when already selected
+
+Execution checks normally need:
+
+- `plan_id`
+- `caller`
+- seller identity
+- concrete package, creative, targeting, dates, and budget being executed
+- delivery or execution metrics when checking a delivery phase
+- prior governance context or correlation identifier when the task requires continuity
+
+## What to test
+
+- A valid plan passes intent check.
+- A seller swap fails unless the plan authorizes that seller.
+- A budget increase fails until `sync_plans` updates the plan.
+- A replayed governance token fails.
+- An expired or revoked token fails.
+- A delivery report outside the authorized plan fails or produces an audit finding.
+
+## Practice prompt
+
+Design a governance test for this case:
+
+> Pinnacle Media wants to buy a family-safe CTV package for Nova Snacks. The buyer plan caps spend at USD 75,000 and allows only two approved sellers. A seller returns a higher-budget package with a different seller identity.
+
+Expected answer:
+
+- Buyer updates or rejects the plan before execution.
+- Governance intent check should deny the unapproved seller or over-budget package.
+- Seller must not execute on a context bound to the original seller or budget.
+- Audit logs should show the denial reason and the attempted execution facts.
