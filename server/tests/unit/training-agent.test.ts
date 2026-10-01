@@ -19198,6 +19198,68 @@ describe('proposal lifecycle', () => {
     });
   });
 
+  it('builds a proposal from seeded fixture products when request_proposals has no explicit product_ids', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'fcap-fixture-proposal.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'fcap_video_q4',
+        fixture: {
+          delivery_type: 'guaranteed',
+          channels: ['olv'],
+          media_buy_support: {
+            frequency_cap: true,
+            frequency_cap_constraints: {
+              supported_per_units: ['individuals'],
+              max_impressions_constraints: { minimum: 1, maximum: 10 },
+              window_constraints: [{ unit: 'campaign', allowed_intervals: [1] }],
+            },
+          },
+          format_options: [{ format_option_id: 'video_30s', format_kind: 'video_hosted', params: { duration_ms_exact: 30000 } }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'fcap_video_q4',
+        pricing_option_id: 'cpm_video',
+        fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 28.0 },
+      },
+    });
+
+    const { result, isError } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'fcap-fixture-proposal-0001',
+      account,
+      brief: 'Premium video for a frequency-capped Q4 campaign.',
+      criteria: {
+        media_buy_frequency_cap: {
+          max_impressions: 3,
+          per: 'individuals',
+          window: { interval: 1, unit: 'campaign' },
+        },
+        required_media_buy_support: { frequency_cap: true },
+      },
+    });
+
+    expect(isError, JSON.stringify(result)).toBeFalsy();
+    expect(result.outcome).toBe('proposed');
+    const proposals = result.proposals as Array<Record<string, unknown>>;
+    expect(proposals.length).toBeGreaterThan(0);
+    const allocations = proposals[0].commercial_terms
+      ? (proposals[0].commercial_terms as Record<string, unknown>).purchases as Array<Record<string, unknown>>
+      : (proposals[0].allocations as Array<Record<string, unknown>>);
+    const productIds = allocations.map(entry => entry.product_id);
+    expect(productIds).toContain('fcap_video_q4');
+    expect(productIds.every(id => id === 'fcap_video_q4')).toBe(true);
+  });
+
   it('finalizes drafts into new held snapshots atomically without mutating their sources', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const requested = await Promise.all([

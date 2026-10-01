@@ -11519,6 +11519,41 @@ async function handleGetProductsUnlocked(
           })) as Proposal['allocations'],
         } as Proposal];
       }
+    } else if (
+      proposals.length === 0
+      && seededProductIds(session).size > 0
+      && products.length > 0
+    ) {
+      // Brief/criteria-only request_proposals (no explicit product_ids) in a
+      // controller-seeded session. `products` is already scoped to seeded
+      // fixtures matching required_media_buy_support/media_buy_frequency_cap
+      // by applyDiscoveryTargeting earlier in this function. Build one
+      // proposal from all of them — mirrors the exactProductIds branch above,
+      // but for the criteria-driven path the typed-negotiation storyboards
+      // exercise (adcp#7796).
+      const allocationPercentage = 100 / products.length;
+      const sortedProductIds = products.map(product => product.product_id).sort();
+      proposals = [{
+        proposal_id: `fixture_match_${createHash('sha256').update(sortedProductIds.join('\0')).digest('hex').slice(0, 16)}`,
+        name: 'Fixture-matched product proposal',
+        description: 'Deterministic proposal generated from controller-seeded fixtures matching the requested criteria.',
+        brief_alignment: typeof brief === 'string'
+          ? brief
+          : 'Matches seeded fixtures satisfying the requested campaign criteria.',
+        total_budget_guidance: {
+          min: 1_000,
+          recommended: 1_000,
+          currency: products[0].pricing_options[0]?.currency ?? 'USD',
+        },
+        allocations: products.map(product => ({
+          product_id: product.product_id,
+          allocation_percentage: allocationPercentage,
+          rationale: 'Seeded fixture product matching the requested campaign criteria.',
+          ...(product.pricing_options[0] && {
+            pricing_option_id: product.pricing_options[0].pricing_option_id,
+          }),
+        })) as Proposal['allocations'],
+      } as Proposal];
     }
     if (exactProductIds) {
       proposals = proposals.filter(proposal => proposal.allocations.every(allocation => (
