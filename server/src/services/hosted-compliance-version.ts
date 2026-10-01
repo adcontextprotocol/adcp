@@ -10,12 +10,18 @@ import { isComplianceVersionSupported } from '@adcp/sdk/testing';
 import { advertisesStableBadgeLine, SUPPORTED_BADGE_VERSIONS } from './adcp-taxonomy.js';
 
 export const DEFAULT_HOSTED_COMPLIANCE_LINE = '3.0';
-export const HOSTED_COMPLIANCE_TARGET_PREFERENCE = [
-  '3.1',
-  '3.1-rc',
-  '3.1-beta',
+// Lines graded by hosted compliance, newest first. Each line is tried as its
+// stable alias, then its RC and beta aliases (each followed by every bundled
+// checkpoint of that channel), so an agent that advertises a stable line is
+// graded on that line's GA bundle before any of its prereleases. Aliases that
+// do not resolve yet (for example "3.2" before 3.2.1 is registered in
+// published-versions.json) are skipped. The default line is the unpinned
+// fallback.
+export const HOSTED_COMPLIANCE_PREFERRED_LINES = ['3.2', '3.1'] as const;
+export const HOSTED_COMPLIANCE_TARGET_PREFERENCE: readonly string[] = Object.freeze([
+  ...HOSTED_COMPLIANCE_PREFERRED_LINES.flatMap(line => [line, `${line}-rc`, `${line}-beta`]),
   DEFAULT_HOSTED_COMPLIANCE_LINE,
-] as const;
+]);
 // Soft scheduling budget for a full-suite comply() assessment. SDK 14 beta.15
 // stops starting new storyboards when this expires and preserves completed
 // results as a timed-out partial run (adcontextprotocol/adcp-client#2221).
@@ -392,14 +398,16 @@ function hostedComplianceTargetCandidates(): HostedComplianceTarget[] {
     .filter(isPublishedComplianceVersion)
     .sort(compareVersions)
     .reverse();
-  addRequested('3.1');
-  addRequested('3.1-rc');
-  for (const version of bundledVersions.filter(v => /^3\.1\.0-rc\.\d+$/.test(v))) {
-    add(hostedComplianceTargetForBundledVersion(version));
-  }
-  addRequested('3.1-beta');
-  for (const version of bundledVersions.filter(v => /^3\.1\.0-beta\.\d+$/.test(v))) {
-    add(hostedComplianceTargetForBundledVersion(version));
+  for (const line of HOSTED_COMPLIANCE_PREFERRED_LINES) {
+    const escapedLine = escapeRegex(line);
+    addRequested(line);
+    for (const label of ['rc', 'beta'] as const) {
+      addRequested(`${line}-${label}`);
+      const prereleaseRe = new RegExp(`^${escapedLine}\\.0-${label}\\.\\d+$`);
+      for (const version of bundledVersions.filter(v => prereleaseRe.test(v))) {
+        add(hostedComplianceTargetForBundledVersion(version));
+      }
+    }
   }
   addRequested(DEFAULT_HOSTED_COMPLIANCE_LINE);
 
