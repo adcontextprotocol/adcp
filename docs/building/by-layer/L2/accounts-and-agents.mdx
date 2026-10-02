@@ -546,7 +546,7 @@ Once `sync_accounts` returns `status: "active"`, the agent sends the same natura
 }
 ```
 
-When `account.required_for_products` is `true`, `get_products` needs this account. Otherwise the account is optional and selects account-specific pricing. A seller can instead provision lazily on the first account-scoped request, but only when billing and other required settings are clear from its capabilities or onboarding defaults. Such a seller still has to accept the natural key and expose `list_accounts`. If it needs buyer input before the account is usable, it has to expose `sync_accounts` (see [`require_operator_auth`](/docs/protocol/get_adcp_capabilities#account)).
+When `account.required_for_products` is `true`, `get_products` needs this account. Otherwise the account is optional and selects account-specific pricing. Before `sync_accounts` succeeds, leave `account` off and send top-level `brand`: a natural key the seller hasn't provisioned returns `ACCOUNT_NOT_FOUND` unless the seller provisions lazily, even on `get_products` ([Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning)). A seller can instead provision lazily on the first account-scoped request, but only when billing and other required settings are clear from its capabilities or onboarding defaults. Such a seller still has to accept the natural key and expose `list_accounts`. If it needs buyer input before the account is usable, it has to expose `sync_accounts` (see [`require_operator_auth`](/docs/protocol/get_adcp_capabilities#account)).
 
 ### 5. Which error applies when
 
@@ -563,7 +563,7 @@ Authentication resolves first. Signature failures are transport errors, returned
 | Unsigned, the operation doesn't require a signature, and the credential was presented but rejected | `AUTH_INVALID` |
 | Authenticated agent is suspended or blocked | `AGENT_SUSPENDED` or `AGENT_BLOCKED` |
 | Requested `billing` not available | `BILLING_NOT_SUPPORTED`, or `BILLING_NOT_PERMITTED_FOR_AGENT` for a passthrough-only agent |
-| Natural key doesn't resolve (and the seller doesn't provision lazily), or resolves to an account outside the agent's authorized set | `ACCOUNT_NOT_FOUND`. The response is the same in both cases, so it doesn't reveal whether the account exists. |
+| Natural key doesn't resolve (not yet provisioned, and the seller doesn't provision lazily), or resolves to an account outside the agent's authorized set | `ACCOUNT_NOT_FOUND`, including when `account` is optional on the task. The response is the same in both cases, so it doesn't reveal whether the account exists. |
 | Former natural key retired by an account rekey, and the caller is authorized for the current account | `ACCOUNT_MOVED`, with `details.current_account` |
 | Natural key matches more than one account in the agent's authorized set | `ACCOUNT_AMBIGUOUS` |
 | An account in the authorized set is found, but its state blocks the call | `ACCOUNT_SETUP_REQUIRED`, `ACCOUNT_SUSPENDED`, or `ACCOUNT_PAYMENT_REQUIRED` ([Error codes](#error-codes)) |
@@ -575,7 +575,7 @@ Resolve and disambiguate only within the agent's authorized set. To the caller, 
 | Code | When returned | Resolution |
 |------|-------------|------------|
 | `ACCOUNT_REQUIRED` | Multiple accounts; seller can't determine which | Pass `account_id` in the account reference |
-| `ACCOUNT_NOT_FOUND` | `account_id` doesn't exist or agent lacks access | Check account reference, re-run `sync_accounts` |
+| `ACCOUNT_NOT_FOUND` | Account reference doesn't resolve: an `account_id` that doesn't exist, a natural key not yet provisioned, or an account the agent can't access | Natural key: provision through `sync_accounts`, or omit `account` for public discovery. `account_id`: verify through `list_accounts` |
 | `ACCOUNT_SETUP_REQUIRED` | Natural key resolved but account needs setup | Check `details.setup` for URL/message |
 | `ACCOUNT_AMBIGUOUS` | Natural key resolves to multiple accounts | Pass `account_id` or more specific natural key |
 | `ACCOUNT_PAYMENT_REQUIRED` | Credit limit reached or funds depleted | Add funds, route to another account |
