@@ -300,19 +300,18 @@ test('creative-builder uses bounded isolated children in local and CI matrices',
 test('current training-agent floors are ratcheted and mirrored by local and CI runners', () => {
   const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
   const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
-  // governance and brand dropped one passing step each when
-  // canonical_format_validate_input stopped listing comply_test_controller in
-  // required_tools: both tenants expose the controller but not validate_input,
-  // so the storyboard is no longer selected for them and the single step it
-  // contributed is gone. Deliberate de-ratchet, not a regression — the
-  // clean-storyboard floors are untouched.
+  // The CTV and premium-display validate_input gates previously admitted
+  // controller-only /brand and /governance: 14 + 18 product seeds passed while
+  // every validator check skipped. The live tool-catalog drift test replays
+  // both gates and proves that exact loss. Subtract only those 32 setup passes;
+  // pin all clean floors, other tenants, and the frozen 3.0 floors below.
   const baselines = [
     ['signals', 45, 80],
     ['sales', 133, 632],
-    ['governance', 47, 160],
+    ['governance', 47, 160 - (14 + 18)],
     ['creative', 49, 209],
     ['creative-builder', 50, 184],
-    ['brand', 45, 115],
+    ['brand', 45, 115 - (14 + 18)],
     ['si', 42, 50],
   ];
 

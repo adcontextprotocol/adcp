@@ -267,12 +267,16 @@ else
     # Ratcheted from the first capability-resolved replay. The runner reports
     # declared-scope applicability and quarantines separately from these
     # clean-result-row and passing-step regression floors.
+    # /brand and /governance do not implement validate_input. The corrected
+    # CTV + premium-display gates remove 14 + 18 controller seed passes; all
+    # validator checks previously skipped. Only subtract those 32 false-coverage
+    # steps (115 -> 83, 160 -> 128); retain every clean/other/3.0-compat floor.
     "signals:45:80"
     "sales:133:632"
-    "governance:47:160"
+    "governance:47:128"
     "creative:49:209"
     "creative-builder:50:184"
-    "brand:45:115"
+    "brand:45:83"
     "si:42:50"
   )
 fi
