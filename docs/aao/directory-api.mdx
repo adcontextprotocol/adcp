@@ -162,7 +162,7 @@ With `?include=properties`, each `PublisherEntry` additionally carries `property
 | `properties_authorized` | yes | Count of properties under **this publisher_domain only** that the agent's selectors resolve to. Never a network-wide count. |
 | `properties_total` | yes | Count of properties under **this publisher_domain only** in the publisher's file (or parent file's inline subset for that domain). Never a network-wide count. |
 | `property_ids` | conditional | Present iff request included `?include=properties`. Canonical list of `property_id`s under this publisher that the agent's selectors resolve to — the same population `properties_authorized` counts, surfaced as IDs so consumers can run full set-diff (not just count comparison) against a federated fetch. Per-publisher scope; never network-wide. Treat as a set; order is unspecified. |
-| `signing_keys_pinned` | optional | Whether the publisher pins `signing_keys[]` on this agent. When `true`, agent's signed responses MUST verify against the pinned set regardless of the agent's own JWKS. |
+| `signing_keys_pinned` | optional | Whether the publisher pins `signing_keys[]` on this agent. When `true`, the agent's sell-side signatures about that publisher's inventory (such as webhooks) are accepted only with a key that is in both the pin and the agent's own JWKS. |
 | `status` | yes | `authorized` or `revoked`. See below. |
 | `last_verified_at` | yes | When the directory last fetched and validated this publisher's `adagents.json`. |
 

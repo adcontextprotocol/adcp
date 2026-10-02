@@ -2993,7 +2993,7 @@
               "any_item_matches_pattern": "^4\\."
             },
             "verifier_constraints": {
-              "agent_url_match": "byte_equal",
+              "agent_url_match": "canonical",
               "origin_binding": "etld1_or_authorized_operators",
               "key_origins_consistency": "mandatory_when_signing"
             },
