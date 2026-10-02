@@ -48,7 +48,7 @@
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Account for this request. When provided, the signals agent returns per-account pricing options if configured. In 'wholesale' mode, this is the rate-card scope: when omitted in wholesale mode, agents return their default rate-card pricing or omit pricing_options entirely. A reference that does not resolve returns ACCOUNT_NOT_FOUND rather than default pricing, unless the seller provisions lazily. See /docs/accounts/overview#account-references-before-provisioning."
+      "description": "Account for this request. When provided, the signals agent returns per-account pricing options if configured. In 'wholesale' mode, this is the rate-card scope: when omitted in wholesale mode, agents return their default rate-card pricing or omit pricing_options entirely. A reference that does not resolve returns ACCOUNT_NOT_FOUND rather than default pricing, and get_signals never provisions an account (a lazy-provisioning seller MAY instead answer for the account it would create). See /docs/accounts/overview#account-references-before-provisioning."
     },
     "signal_spec": {
       "type": "string",

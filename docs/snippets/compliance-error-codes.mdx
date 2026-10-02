@@ -169,7 +169,7 @@ An authorized caller used a former natural key that was tombstoned after the sam
 
 **Suggested action:** for a natural key, provision through sync_accounts or omit account for public discovery; for an account_id, verify via list_accounts or contact seller
 
-The account reference could not be resolved: an account_id that does not exist, a buyer-declared natural key the seller has not provisioned, or an account outside the caller's authorized set. Sellers return it on tasks where account is optional too, rather than ignoring the reference, unless the seller lazily provisions it. Recovery: terminal (for a natural key, provision through sync_accounts or omit account for public discovery; for an account_id, verify via list_accounts or contact seller).
+The account reference could not be resolved: an account_id that does not exist, a buyer-declared natural key the seller has not provisioned, or an account outside the caller's authorized set. Sellers return it on tasks where account is optional too, rather than ignoring the reference, unless a lazy-provisioning seller answers a discovery task for the account it would create. Recovery: terminal (for a natural key, provision through sync_accounts or omit account for public discovery; for an account_id, verify via list_accounts or contact seller).
 
 </Accordion>
 <a id="error-code-account-payment-required"></a>
