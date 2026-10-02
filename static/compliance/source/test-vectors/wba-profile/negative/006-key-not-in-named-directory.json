@@ -1,0 +1,51 @@
+{
+  "name": "Signature-Agent names https://agent.brand-7k3q.com, but the signing key is published only by https://buyer-7k3q.com",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#identity",
+  "signing_profile": "web-bot-auth",
+  "reference_now": 1790841610,
+  "request": {
+    "method": "POST",
+    "url": "https://seller-7k3q.com/mcp/",
+    "headers": {
+      "Content-Type": "application/json",
+      "Content-Digest": "sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:",
+      "Signature-Agent": "sig1=\"https://agent.brand-7k3q.com\"",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\");created=1790841600;expires=1790841900;nonce=\"15d5LKMrMWxIft5nP6rJsDWVqgTBbw9DzLKwwhuUxo1z3-g6-8bDFzVoRclAeUlMmVf26Fnu7wdcUTrNkgV3Ww\";keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"web-bot-auth\"",
+      "Signature": "sig1=:FjpxFqszIgxRRNWrZZ2l6ZIAvkagW7DZulhHwd40YoKdPch9oFl+6/Nm87uuDaDOKk2Ult8AUn3eQgLUxXQ1AA==:"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"create_media_buy\",\"arguments\":{\"idempotency_key\":\"4f6c1a0e-8d2b-4b7e-9c3a-2e5d7f1b0a96\",\"account\":{\"account_id\":\"acc_42\"},\"proposal_id\":\"prop_7\",\"total_budget\":{\"amount\":25000,\"currency\":\"USD\"}}}}"
+  },
+  "directories": {
+    "https://agent.brand-7k3q.com": {
+      "keys_ref": [
+        "hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI"
+      ]
+    },
+    "https://buyer-7k3q.com": {
+      "keys_ref": [
+        "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+      ]
+    }
+  },
+  "expected_signature_base": {
+    "sig1": "\"@method\": POST\n\"@target-uri\": https://seller-7k3q.com/mcp/\n\"@authority\": seller-7k3q.com\n\"content-type\": application/json\n\"content-digest\": sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:\n\"signature-agent\";key=\"sig1\": \"https://agent.brand-7k3q.com\"\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\");created=1790841600;expires=1790841900;nonce=\"15d5LKMrMWxIft5nP6rJsDWVqgTBbw9DzLKwwhuUxo1z3-g6-8bDFzVoRclAeUlMmVf26Fnu7wdcUTrNkgV3Ww\";keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"web-bot-auth\""
+  },
+  "expected_outcome": {
+    "success": false,
+    "status": 403,
+    "accept_signature": {
+      "label": "sig1",
+      "components": "(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\")",
+      "parameters": [
+        "created",
+        "expires",
+        "nonce",
+        "keyid",
+        "tag"
+      ],
+      "tag": "web-bot-auth"
+    },
+    "reason": "Key lookup is keyed on the (origin, keyid) pair, never on keyid alone (Web Bot Auth section 5.4). The directory at the named origin holds no key with this thumbprint, so the request is unverified and MUST NOT be attributed to that origin (section 6.10)."
+  },
+  "$comment": "The signature is valid under the buyer agent's key, and the directories object lists that key under its own origin so the harness can show the trap: a verifier that indexes keys by thumbprint alone finds the key, verifies, and attributes the request to the brand agent, an origin that never published the key. A conformant verifier resolves only https://agent.brand-7k3q.com/.well-known/http-message-signatures-directory and rejects. The profile reports signature failures with HTTP status codes (Web Bot Auth sections 5.3 and 5.4). A 403 carries Accept-Signature naming the components and parameters the profile requires, so the signer can sign again. Conformance grades the status code; the accept_signature object describes the header the verifier sends, and the exact serialization is RFC 9421 section 5.1."
+}

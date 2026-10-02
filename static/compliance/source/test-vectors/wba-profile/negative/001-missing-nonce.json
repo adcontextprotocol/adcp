@@ -1,0 +1,46 @@
+{
+  "name": "Signature-Input omits the nonce parameter",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#replay-protection",
+  "signing_profile": "web-bot-auth",
+  "reference_now": 1790841610,
+  "request": {
+    "method": "POST",
+    "url": "https://seller-7k3q.com/mcp/",
+    "headers": {
+      "Content-Type": "application/json",
+      "Content-Digest": "sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:",
+      "Signature-Agent": "sig1=\"https://buyer-7k3q.com\"",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\");created=1790841600;expires=1790841900;keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"web-bot-auth\"",
+      "Signature": "sig1=:UVUnZDwMf7zowtYHn4j4JKNdousAspU+lluY4Y8msRL1AB8QN+xrB+aJaOfFSxrVCnwWnMDNezEuyXiJvoU+AA==:"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"create_media_buy\",\"arguments\":{\"idempotency_key\":\"4f6c1a0e-8d2b-4b7e-9c3a-2e5d7f1b0a96\",\"account\":{\"account_id\":\"acc_42\"},\"proposal_id\":\"prop_7\",\"total_budget\":{\"amount\":25000,\"currency\":\"USD\"}}}}"
+  },
+  "directories": {
+    "https://buyer-7k3q.com": {
+      "keys_ref": [
+        "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+      ]
+    }
+  },
+  "expected_signature_base": {
+    "sig1": "\"@method\": POST\n\"@target-uri\": https://seller-7k3q.com/mcp/\n\"@authority\": seller-7k3q.com\n\"content-type\": application/json\n\"content-digest\": sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:\n\"signature-agent\";key=\"sig1\": \"https://buyer-7k3q.com\"\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\");created=1790841600;expires=1790841900;keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"web-bot-auth\""
+  },
+  "expected_outcome": {
+    "success": false,
+    "status": 403,
+    "accept_signature": {
+      "label": "sig1",
+      "components": "(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\")",
+      "parameters": [
+        "created",
+        "expires",
+        "nonce",
+        "keyid",
+        "tag"
+      ],
+      "tag": "web-bot-auth"
+    },
+    "reason": "The profile requires an RFC 9421 nonce on every signed request. Without one the verifier cannot detect replay."
+  },
+  "$comment": "The signature is cryptographically valid over its covered components, so a verifier that does not enforce the nonce requirement accepts it. The verifier answers 403 with Accept-Signature listing nonce among the required parameters. The profile reports signature failures with HTTP status codes (Web Bot Auth sections 5.3 and 5.4). A 403 carries Accept-Signature naming the components and parameters the profile requires, so the signer can sign again. Conformance grades the status code; the accept_signature object describes the header the verifier sends, and the exact serialization is RFC 9421 section 5.1."
+}
