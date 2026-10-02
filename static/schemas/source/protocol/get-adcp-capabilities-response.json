@@ -1007,7 +1007,7 @@
         },
         "required_for_products": {
           "type": "boolean",
-          "description": "Whether an account reference is required for get_products. When true, the buyer must establish an account before browsing products. When false (default), the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller.",
+          "description": "Whether an account reference is required for get_products. When true, the buyer must establish an account before browsing products. When false (default), the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. Before an account is provisioned, the buyer omits account rather than sending a natural key that does not resolve yet. See /docs/accounts/overview#account-references-before-provisioning.",
           "default": false
         },
         "account_financials": {
