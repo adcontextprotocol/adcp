@@ -1,0 +1,31 @@
+{
+  "name": "Signature-Agent is not a parseable Structured Field Dictionary (unterminated string)",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#error-responses",
+  "signing_profile": "web-bot-auth",
+  "reference_now": 1790841610,
+  "request": {
+    "method": "POST",
+    "url": "https://seller-7k3q.com/mcp/",
+    "headers": {
+      "Content-Type": "application/json",
+      "Content-Digest": "sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:",
+      "Signature-Agent": "sig1=\"https://buyer-7k3q.com",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\");created=1790841600;expires=1790841900;nonce=\"Mn-ZM8SnGESx0-rmyYMuTkJFerfbwEii2C0qNkDP8ugpcuv0pcrt6Da2ifr-6MTmfVeZhnFymLeAofeXJbFaxA\";keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"web-bot-auth\"",
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==:"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"create_media_buy\",\"arguments\":{\"idempotency_key\":\"4f6c1a0e-8d2b-4b7e-9c3a-2e5d7f1b0a96\",\"account\":{\"account_id\":\"acc_42\"},\"proposal_id\":\"prop_7\",\"total_budget\":{\"amount\":25000,\"currency\":\"USD\"}}}}"
+  },
+  "directories": {
+    "https://buyer-7k3q.com": {
+      "keys_ref": [
+        "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+      ]
+    }
+  },
+  "expected_outcome": {
+    "success": false,
+    "status": 400,
+    "reason": "Web Bot Auth section 5.4: a verifier that fails to parse Signature, Signature-Input, or Signature-Agent answers 400 Bad Request."
+  },
+  "$comment": "Signature is a 64-zero-byte placeholder: parsing fails before any key is resolved or any signature is checked, so a verifier that reaches cryptographic verification has skipped the parse step. No Accept-Signature is sent, because the signer's headers, not its signature, need fixing."
+}
