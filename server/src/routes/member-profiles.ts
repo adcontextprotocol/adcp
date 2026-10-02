@@ -46,6 +46,7 @@ import { issueDomainChallenge, verifyDomainChallenge } from "../services/brand-c
 import { resolveUserRole } from "../utils/resolve-user-role.js";
 import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
+import { renameDefaultedAgentLabels, sameName } from "../services/identity-rename.js";
 import { createEscalation } from "../db/escalation-db.js";
 import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
@@ -953,6 +954,15 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             message: 'Making the profile publicly visible requires an active paid membership; left as private.',
           });
         }
+      }
+
+      // Agent labels default to the company name; carry a display_name change
+      // into labels that still match the old name (#7851).
+      if (typeof updates.display_name === 'string' && updates.display_name.trim()
+        && existingProfile.display_name && !sameName(updates.display_name, existingProfile.display_name)) {
+        const agentsToRename = Array.isArray(updates.agents) ? updates.agents : (existingProfile.agents ?? []);
+        const renamed = renameDefaultedAgentLabels(agentsToRename, existingProfile.display_name, updates.display_name);
+        if (renamed.changed > 0) updates.agents = renamed.agents;
       }
 
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
@@ -1914,6 +1924,17 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
               message: err.message,
               brand_domain: meta.brandDomain,
               prior_owner_org_id: meta.priorOwnerOrgId,
+            });
+          }
+          if (err.code === 'domain_publishes_brand_json') {
+            const meta = err.meta as { brandDomain: string; brandJsonUrl: string; builderUrl: string };
+            return res.status(409).json({
+              error: 'Domain publishes brand.json',
+              code: 'domain_publishes_brand_json',
+              message: err.message,
+              brand_domain: meta.brandDomain,
+              brand_json_url: meta.brandJsonUrl,
+              builder_url: meta.builderUrl,
             });
           }
           if (err.isCrossOrgOwnership()) {

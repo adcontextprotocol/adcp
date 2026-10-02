@@ -17,6 +17,7 @@ import { checkLogoUrlIsImage, rehostExternalLogo } from './brand-logo-service.js
 import { getBrandPrimaryDomain } from './brand-domain-resolver.js';
 import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { createLogger } from '../logger.js';
+import { BrandManager } from '../brand-manager.js';
 
 const logger = createLogger('brand-identity');
 
@@ -56,6 +57,12 @@ export interface UpdateBrandIdentityInput {
    * still happens without it, just with null user attribution.
    */
   uploadedBy?: { userId?: string; email?: string };
+  /**
+   * Whether the domain serves its own brand.json (rather than pointing at the
+   * AgenticAdvertising.org-hosted copy). Injectable for tests; defaults to a
+   * live check of https://{domain}/.well-known/brand.json.
+   */
+  domainSelfPublishesBrandJson?: (domain: string) => Promise<boolean>;
 }
 
 export interface UpdateBrandIdentityResult {
@@ -72,7 +79,8 @@ export type BrandIdentityErrorCode =
   | 'invalid_domain'                      // 400-class: domain canonicalizes to garbage
   | 'no_brand_domain'                     // 400-class: caller has no domain to write to
   | 'cross_org_ownership'                 // 403-class: domain owned by a different org
-  | 'orphan_manifest_decision_required';  // 409-class: caller must opt-in to adopt or clear
+  | 'orphan_manifest_decision_required'   // 409-class: caller must opt-in to adopt or clear
+  | 'domain_publishes_brand_json';        // 409-class: the domain's own brand.json is authoritative
 
 /** Per-code meta payload shapes. Add a new code by extending this map. */
 export interface BrandIdentityErrorMetaByCode {
@@ -81,6 +89,7 @@ export interface BrandIdentityErrorMetaByCode {
   no_brand_domain: undefined;
   cross_org_ownership: { brandDomain: string; currentOwnerOrgId: string };
   orphan_manifest_decision_required: { brandDomain: string; priorOwnerOrgId: string | null };
+  domain_publishes_brand_json: { brandDomain: string; brandJsonUrl: string; builderUrl: string };
 }
 
 export class BrandIdentityError extends Error {
@@ -158,6 +167,26 @@ export async function updateBrandIdentity(
   }
 
   const pool = getPool();
+
+  // A brands row sourced from the domain's own /.well-known/brand.json is
+  // re-crawled from that file, so an inline edit here would apply and then be
+  // silently reverted (#7851). Send the user to the file that is authoritative.
+  const sourceRow = await pool.query<{ source_type: string | null }>(
+    `SELECT source_type FROM brands WHERE domain = $1`,
+    [brandDomain],
+  );
+  if (sourceRow.rows[0]?.source_type === 'brand_json') {
+    const selfPublishes = input.domainSelfPublishesBrandJson ?? domainServesOwnBrandJson;
+    if (await selfPublishes(brandDomain)) {
+      const brandJsonUrl = `https://${brandDomain}/.well-known/brand.json`;
+      throw new BrandIdentityError(
+        409,
+        `${brandDomain} publishes its own brand.json at ${brandJsonUrl}, which is the authoritative source for your logo and colors. Update that file (you can generate it at https://brandjson.org/builder), or replace it with a pointer to an AgenticAdvertising.org-hosted copy. Changes made here would be overwritten on the next crawl.`,
+        'domain_publishes_brand_json',
+        { brandDomain, brandJsonUrl, builderUrl: `https://brandjson.org/builder?domain=${encodeURIComponent(brandDomain)}` },
+      );
+    }
+  }
 
   // Rehost external logo URLs as same-origin assets. Cross-origin sites often
   // ship `Cross-Origin-Resource-Policy: same-origin` (e.g., Cloudflare default),
@@ -329,4 +358,27 @@ function applyToBrandJson(
 
   bj.brands = [primaryBrand, ...brands.slice(1)];
   return bj;
+}
+
+
+const AAO_HOSTS = new Set(['agenticadvertising.org', 'www.agenticadvertising.org']);
+
+/**
+ * True when https://{domain}/.well-known/brand.json is a real document the
+ * domain hosts. False when it is an authoritative_location pointer to the
+ * AgenticAdvertising.org-hosted copy (editing that copy is the durable fix),
+ * or when the file can't be fetched (the crawler won't overwrite either).
+ */
+export async function domainServesOwnBrandJson(domain: string): Promise<boolean> {
+  const result = await new BrandManager().validateDomain(domain, { skipCache: true }).catch(() => null);
+  if (!result || result.status_code !== 200 || !result.raw_data || typeof result.raw_data !== 'object') return false;
+  const location = (result.raw_data as Record<string, unknown>).authoritative_location;
+  if (typeof location === 'string') {
+    try {
+      return !AAO_HOSTS.has(new URL(location).hostname.toLowerCase());
+    } catch {
+      return true;
+    }
+  }
+  return true;
 }
