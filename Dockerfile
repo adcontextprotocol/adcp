@@ -15,6 +15,16 @@ COPY . .
 # Build the TypeScript server (increase heap for large tsc compilation)
 RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 
+# Historical releases remain immutable in git and in the public R2 artifact
+# CDN. Fly still carries every compliance, docs, and protocol artifact, but its
+# local schema tree only needs hosted-compliance pairs, current docs, aliases,
+# and the training-agent checkpoint. Prune the builder copy so repository
+# release records are never deleted or rewritten.
+FROM builder AS runtime-artifacts
+RUN node scripts/prune-runtime-artifacts.cjs \
+ && DOCS_SMOKE_APP_ROOT=/app node scripts/smoke-docs-index-runtime.mjs \
+ && HOSTED_COMPLIANCE_SMOKE_APP_ROOT=/app node scripts/smoke-hosted-compliance-runtime.mjs
+
 # Pre-clone external repos in parallel, then strip .git metadata.
 # Only markdown files are indexed at runtime so .git dirs are dead weight.
 # IMPORTANT: Keep in sync with EXTERNAL_REPOS in server/src/addie/mcp/external-repos.ts
@@ -165,7 +175,7 @@ RUN npm ci --omit=dev --ignore-scripts \
 # into dist/ by scripts/copy-server-assets.cjs during `npm run build`, so
 # `COPY ... /dist` is sufficient — no per-directory asset lines needed here.
 # Adding an asset to server/src/** is a one-place change.
-COPY --from=builder /app/dist ./dist
+COPY --from=runtime-artifacts /app/dist ./dist
 COPY --from=builder /app/server/public ./server/public
 COPY --from=builder /app/static ./static
 COPY --from=builder /app/docs ./docs
@@ -190,12 +200,12 @@ RUN npm run verify:training-agent-runtime
 # Copy pre-cloned repos (warm cache for Addie)
 COPY --from=repos /repos ./.addie-repos
 
-# Fly unpacks images onto an 8 GiB root filesystem. Reserve space for the
-# base image and runtime writes; fail the build before the release migration
-# if growing artifacts or dependencies consume that headroom again.
+# Fly unpacks images onto an 8 GiB root filesystem. Keep at least 1280 MiB
+# below Fly's 7424 MiB application ceiling so normal release growth cannot
+# strand production again.
 RUN app_mib=$(du -sm /app | cut -f1) \
- && echo "Runtime application size: ${app_mib} MiB (limit: 7424 MiB)" \
- && test "$app_mib" -le 7424
+ && echo "Runtime application size: ${app_mib} MiB (budget: 6144 MiB; Fly limit: 7424 MiB)" \
+ && test "$app_mib" -le 6144
 
 # Set environment variables
 ENV NODE_ENV=production

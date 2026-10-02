@@ -66,6 +66,9 @@ jobs:
       - name: Assert dist/ contains every server/src runtime asset
         run: node scripts/copy-server-assets.cjs --check
 
+      - name: Check Fly runtime artifact closure
+        run: npm run test:runtime-artifacts
+
       - name: Routed tenant smoke tests
         run: npm run test:tenant-routing
 
