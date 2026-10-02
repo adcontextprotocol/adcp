@@ -238,6 +238,7 @@ import {
   resolveRefreshOwnerOrg,
   runWithComplianceRefreshAuthorizationWatchdog,
 } from "../services/compliance-refresh-authorization.js";
+import { getSandboxBrand } from "../services/sandbox-brands.js";
 
 const RegistryAdminAuthorizationUnavailableSchema = z.object({
   error: z.literal('admin_authorization_unavailable'),
@@ -5850,6 +5851,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
       if (!domainPattern.test(domain)) {
         return res.status(400).json({ error: "Invalid domain format" });
+      }
+
+      if (getSandboxBrand(domain)) {
+        return res.status(409).json({
+          error: "This is an AgenticAdvertising.org sandbox test brand from the compliance test kits and cannot be edited",
+          domain,
+        });
       }
 
       // Block edits when a verified member org owns this domain

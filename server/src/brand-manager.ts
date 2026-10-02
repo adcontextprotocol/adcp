@@ -14,6 +14,7 @@ import type {
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { withSdkSafeTransport } from './utils/sdk-safe-fetch.js';
 import { assertValidBrandDomain } from './services/identifier-normalization.js';
+import { getSandboxBrand } from './services/sandbox-brands.js';
 import {
   observeBrandRelationshipDeclaration,
   type BrandRelationshipDeclaration,
@@ -1127,6 +1128,8 @@ export class BrandManager {
     const { maxRedirects = 3, skipCache = false } = options;
     const normalizedDomain = this.normalizeLookupDomain(domain);
     if (!normalizedDomain) return null;
+    const sandboxBrand = getSandboxBrand(normalizedDomain);
+    if (sandboxBrand) return this.resolveSandboxBrand(sandboxBrand, normalizedDomain);
     const cacheKey = `resolve:${normalizedDomain}`;
     const cachedBeforeRefresh = skipCache
       ? this.resolutionCache.get(cacheKey)
@@ -1604,6 +1607,23 @@ export class BrandManager {
         source: 'brand_json',
       },
       retainCachedMutual,
+    };
+  }
+
+  /**
+   * A compliance test-kit brand. AgenticAdvertising.org authors these and is
+   * their only possible owner, so they resolve as `hosted`.
+   */
+  private resolveSandboxBrand(data: BrandCanonicalDocument, domain: string): ResolvedBrand {
+    return {
+      canonical_id: data.id,
+      canonical_domain: domain,
+      brand_name: this.getPrimaryName(data.names) || data.id,
+      names: data.names,
+      keller_type: data.keller_type,
+      relationship_trust: 'standalone',
+      brand_manifest: this.buildBrandManifest(data),
+      source: 'hosted',
     };
   }
 
