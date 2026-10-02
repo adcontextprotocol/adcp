@@ -243,7 +243,7 @@ When the operation completes, the agent POSTs a signed request to your URL. The 
 }
 ```
 
-Verify the signature before trusting the payload — resolve the `keyid` via the seller operator's `brand.json` `agents[].jwks_uri`, apply any publisher `adagents.json` `signing_keys[]` pin when present, run the AdCP webhook verifier checklist, and reject unknown keys, expired dates, or mismatched digests with a typed `webhook_signature_*` reason code:
+Verify the signature before trusting the payload — resolve the `keyid` with [Agent resolution](/docs/building/by-layer/L1/security#agent-resolution) (the seller's `identity.brand_json_url` leads to its `brand.json` `agents[].jwks_uri`), keep only keys that match any publisher `adagents.json` `signing_keys[]` pin that applies, run the AdCP webhook verifier checklist, and reject unknown keys, expired dates, or mismatched digests with a typed `webhook_signature_*` reason code:
 
 ```typescript
 app.post('/webhooks/adcp/*', async (req, res) => {

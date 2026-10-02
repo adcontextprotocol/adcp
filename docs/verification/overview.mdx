@@ -65,7 +65,7 @@ For webhooks, `maxAge` and `requireCreated` are not optional: without a freshnes
 
 <img src="/images/walkthrough/verification-03-brand-json.png" alt="Sam opens a leather-bound folder on Northwind's reception desk — inside is a single embossed page declaring the agency's portfolio, signing keys, and authorized operators, with a glowing seal at the top" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-Sam's agent fetches `https://northwind.example/.well-known/brand.json`. This is Northwind's self-declaration: who it is, which agents it runs, which publishers it says it sells for, and where its signing keys live.
+Sam's agent reads `identity.brand_json_url` from Northwind's `get_adcp_capabilities` and fetches that file, `https://northwind.example/.well-known/brand.json` ([Agent resolution](/docs/building/by-layer/L1/security#agent-resolution)). This is Northwind's self-declaration: who it is, which agents it runs, which publishers it says it sells for, and where its signing keys live.
 
 ```json
 {
@@ -149,7 +149,7 @@ This is the bilateral lock:
 
 - **`url` matches** the agent URL from step 1 and the endpoint Northwind's `brand.json` named in `agents[].url`. Same agent on both sides.
 - **`delegation_type: "delegated"`** declares the commercial relationship — Northwind is authorized to sell on StreamHaus's behalf — and matches the `relationship` Northwind claimed for the property in its `brand.json`. The enum is `direct | delegated | ad_network`; the publisher chooses which fits.
-- **`signing_keys[]`** pins the keys Northwind may use for signed webhook deliveries about StreamHaus inventory. When Sam verifies a delivery webhook from step 1, its `keyid` must be in this pinned set. StreamHaus, the publisher, attests in its own file which keys may sign for this path.
+- **`signing_keys[]`** pins the keys Northwind may use for signed webhook deliveries about StreamHaus inventory. When Sam verifies a delivery webhook from step 1, the key must be published in Northwind's JWKS and match an entry in this pin by key thumbprint. The pin narrows Northwind's keys; it never adds one. StreamHaus, the publisher, attests in its own file which keys may sign for this path.
 
 Now Sam has the answer to "who is authorized to sell": **the agent he is talking to is named in the publisher's own authorization file, with a matching commercial relationship, and its delivery webhooks must be signed with a key the publisher pinned**. The chain is closed.
 

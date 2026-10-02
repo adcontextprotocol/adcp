@@ -18,7 +18,7 @@
     },
     "signing_keys": {
       "type": "array",
-      "description": "Optional publisher-attested public signing keys for this agent. Use these as the trust anchor for verifying signed agent responses instead of relying on key discovery from the agent domain alone.",
+      "description": "Optional publisher-attested public signing keys for this agent. They narrow the keys a verifier accepts for signatures the agent makes in its sell-side role about this publisher's inventory, such as webhooks about a media buy: a key MUST appear both here and in the JWKS of the agent's brand.json `agents[]` entry. A pin never adds a key and does not apply to the agent's other traffic. See docs/building/by-layer/L1/security.mdx#agent-resolution.",
       "items": {
         "$ref": "/schemas/core/agent-signing-key.json"
       },

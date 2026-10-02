@@ -366,7 +366,7 @@ Property-list change payloads retain a required body-level `signature: "rfc9421"
 
 - Error codes use the `webhook_signature_*` prefix (see [Webhook error taxonomy](/docs/building/by-layer/L1/security#webhook-error-taxonomy)).
 - `tag` MUST be `adcp/webhook-signing/v1`.
-- Resolve `keyid` via the seller operator's `brand.json` `agents[].jwks_uri`, applying any publisher `adagents.json` `signing_keys[]` pin when present (you already have the seller's agent URL from your integration).
+- Resolve `keyid` with [Agent resolution](/docs/building/by-layer/L1/security#agent-resolution): the seller agent's `identity.brand_json_url` leads to its operator `brand.json` `agents[].jwks_uri`. When the webhook concerns a publisher whose `adagents.json` pins `signing_keys[]` for this seller, accept only JWKS keys whose thumbprint matches a pinned entry, taking the publishers from your own record of the media buy (you already have the seller's agent URL from your integration).
 
 **Receiver implementation sketch:**
 ```typescript
