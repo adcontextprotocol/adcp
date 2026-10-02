@@ -48,6 +48,12 @@
         "credentials"
       ],
       "additionalProperties": false
+    },
+    "signing_profile": {
+      "type": "string",
+      "enum": ["adcp/webhook-signing/v1", "web-bot-auth"],
+      "default": "adcp/webhook-signing/v1",
+      "description": "Webhook-signing profile the receiver verifies for deliveries to this `url`, named by the RFC 9421 `tag` value. `adcp/webhook-signing/v1`, the default, is the AdCP webhook profile in docs/building/by-layer/L1/security.mdx#webhook-callbacks. `web-bot-auth` selects the Web Bot Auth profile proposed for 3.3 in docs/building/by-layer/L1/wba-profile.mdx#webhooks: the seller signs each delivery as an ordinary Web Bot Auth request from its own identity, and the receiver resolves the seller's keys from the covered `Signature-Agent` header. The seller signs every delivery to this registration with this one profile and never both ways. A seller whose `webhook_signing.profiles` does not list the selected value rejects the registration with `INVALID_REQUEST`. MUST NOT be combined with `authentication`, which selects the legacy Bearer or HMAC-SHA256 scheme; a seller rejects a configuration that carries both."
     }
   },
   "required": [
