@@ -2804,7 +2804,7 @@
           "default": [],
           "x-adcp-validation": {
             "subset_of": "request_signing.supported_for",
-            "spec": "docs/building/implementation/security.mdx#signed-requests-transport-layer"
+            "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
           }
         },
         "warn_for": {
@@ -2818,7 +2818,7 @@
           "x-adcp-validation": {
             "disjoint_with": "request_signing.required_for",
             "subset_of": "request_signing.supported_for",
-            "spec": "docs/building/implementation/security.mdx#signed-requests-transport-layer"
+            "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
           }
         },
         "supported_for": {
@@ -2998,7 +2998,7 @@
               "key_origins_consistency": "mandatory_when_signing"
             },
             "distinct_from": "sponsored_intelligence.brand_url",
-            "spec": "docs/building/implementation/security.mdx#discovering-an-agents-signing-keys-via-brand_json_url"
+            "spec": "docs/building/by-layer/L1/security.mdx#discovering-an-agents-signing-keys-via-brand_json_url"
           }
         },
         "per_principal_key_isolation": {
@@ -3008,7 +3008,7 @@
         },
         "key_origins": {
           "type": "object",
-          "description": "Map of signing-key surface/purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. Every entry listed MUST have a corresponding signing posture declared elsewhere — `request_signing` requires non-empty `request_signing.supported_for`/`required_for`/`protocol_methods_supported_for`/`protocol_methods_required_for`; `webhook_signing` requires `webhook_signing.supported === true` and names the webhook delivery surface, not a required live `adcp_use: \"webhook-signing\"` key purpose — otherwise the consistency check at signature-verification time has nothing to anchor against. See `x-adcp-validation` and docs/building/implementation/security.mdx §Origin separation.",
+          "description": "Map of signing-key surface/purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. Every entry listed MUST have a corresponding signing posture declared elsewhere — `request_signing` requires non-empty `request_signing.supported_for`/`required_for`/`protocol_methods_supported_for`/`protocol_methods_required_for`; `webhook_signing` requires `webhook_signing.supported === true` and names the webhook delivery surface, not a required live `adcp_use: \"webhook-signing\"` key purpose — otherwise the consistency check at signature-verification time has nothing to anchor against. See `x-adcp-validation` and docs/building/by-layer/L1/security.mdx §Origin separation.",
           "properties": {
             "governance_signing": {
               "type": "string",
@@ -3041,7 +3041,7 @@
                 "tmp_signing": "trusted_match.surfaces non-empty (TMP participation)"
               }
             },
-            "spec": "docs/building/implementation/security.mdx#origin-separation"
+            "spec": "docs/building/by-layer/L1/security.mdx#agent-key-publication"
           }
         },
         "compromise_notification": {

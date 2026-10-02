@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": patch
+---
+
+Fix contradictions between the trust and verification docs and the spec. The verification overview no longer says agents sign synchronous responses: it anchors on the agent URL and points to the request-signing and webhook-signing profiles. The docs now use the `relationship_trust` values from the schema and `house_domain` instead of `parent_house`. They also say that `direct`, `delegated`, and `ad_network` all pair with an adagents.json `delegation_type`, and that only `owned` has no counterpart. The accounts page now says a missing `authorized_operators` listing leads to a rejection or a manual review, never automatic approval. Examples use `agents[]` with `type: "brand"` or `type: "rights"` instead of the deprecated `brand_agent` and `rights_agent` fields. Schema `spec` links now point to `docs/building/by-layer/L1/security.mdx`.

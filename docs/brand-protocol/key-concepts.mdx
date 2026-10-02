@@ -41,7 +41,7 @@ sequenceDiagram
         Agent->>House: GET /.well-known/brand.json
         House-->>Agent: Full portfolio (house + brands)
     else Brand Agent
-        Domain-->>Agent: { "brand_agent": { "url": "..." } }
+        Domain-->>Agent: { "agents": [{ "type": "brand", "url": "..." }] }
         Agent->>BrandAgent: MCP: get brand identity
         BrandAgent-->>Agent: Brand identity data
     else House Portfolio
@@ -109,10 +109,13 @@ A brand with an MCP agent that provides brand information:
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
   "version": "1.0",
-  "brand_agent": {
-    "url": "https://agent.acme.com/mcp",
-    "id": "acme_brand_agent"
-  }
+  "agents": [
+    {
+      "type": "brand",
+      "url": "https://agent.acme.com/mcp",
+      "id": "acme_brand_agent"
+    }
+  ]
 }
 ```
 
@@ -233,24 +236,27 @@ Returns brand identity data that's richer, more dynamic, or more access-controll
 
 ### Rights discovery via brand.json
 
-Brands with licensable rights declare a `rights_agent` in their brand.json. This makes rights crawlable and indexable without MCP calls:
+Brands with licensable rights declare an `agents[]` entry with `type: "rights"` in their brand.json. This makes rights crawlable and indexable without MCP calls:
 
 ```json
 {
   "id": "daan_janssen",
   "names": [{"en": "Daan Janssen"}],
   "description": "Dutch Olympic speed skater, 2x gold medalist",
-  "rights_agent": {
-    "url": "https://rights.lotientertainment.com/mcp",
-    "id": "loti_entertainment",
-    "available_uses": ["likeness", "voice", "endorsement"],
-    "right_types": ["talent"],
-    "countries": ["NL", "BE", "DE"]
-  }
+  "agents": [
+    {
+      "type": "rights",
+      "url": "https://rights.lotientertainment.com/mcp",
+      "id": "loti_entertainment",
+      "available_uses": ["likeness", "voice", "endorsement"],
+      "right_types": ["talent"],
+      "countries": ["NL", "BE", "DE"]
+    }
+  ]
 }
 ```
 
-The `brand_agent` provides identity data (logos, tone, assets). The `rights_agent` provides licensing (discovery, pricing, acquisition). They can be the same agent or different ones.
+A `type: "brand"` agent provides identity data (logos, tone, assets). A `type: "rights"` agent provides licensing (discovery, pricing, acquisition). They can be the same endpoint or different ones. The older single-object `brand_agent` and `rights_agent` fields are deprecated.
 
 ### get_rights
 

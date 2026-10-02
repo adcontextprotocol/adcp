@@ -2,7 +2,7 @@
 title: Seller verification
 sidebarTitle: Seller verification
 "og:image": /images/walkthrough/verification-01-unfamiliar-counter.png
-description: "How a buyer verifies an unfamiliar seller end-to-end — brand.json, adagents.json, and request signing as one chain, with bounded honesty about what the chain does not prove."
+description: "How a buyer verifies an unfamiliar seller end-to-end — the agent URL, brand.json, adagents.json, and signed webhooks as one chain, with bounded honesty about what the chain does not prove."
 "og:title": "AdCP — Seller verification"
 ---
 
@@ -10,9 +10,9 @@ description: "How a buyer verifies an unfamiliar seller end-to-end — brand.jso
 
 A `get_products` response just hit Sam's orchestrator. The seller — Northwind Media — quoted CTV inventory across StreamHaus, a sports network Acme Outdoor wants to be on. The CPMs look fair, the avails fit the flight, and the response arrived in under a second.
 
-Sam has never transacted with Northwind. He has no idea whether the agent that signed this response is actually authorized to sell StreamHaus inventory, whether StreamHaus is a real publisher under a parent house he recognizes, or whether a clever attacker registered `northw1nd.example` last week and is about to walk away with \$25,000.
+Sam has never transacted with Northwind. He has no idea whether the agent that sent this response is actually authorized to sell StreamHaus inventory, whether StreamHaus is a real publisher under a parent house he recognizes, or whether a clever attacker registered `northw1nd.example` last week and is about to walk away with \$25,000.
 
-He doesn't need Northwind to convince him with a sales deck. He needs the protocol to make the chain verifiable in code — every link from the signing key on the response, through Northwind's brand identity, to StreamHaus's authorization, back to a parent house he can recognize. His buyer agent walks the chain automatically; Sam reads the verdict.
+He doesn't need Northwind to convince him with a sales deck. He needs the protocol to make the chain verifiable in code — every link from the agent URL his orchestrator called, through Northwind's brand identity, to StreamHaus's authorization, back to a parent house he can recognize. His buyer agent walks the chain automatically; Sam reads the verdict.
 
 This walkthrough follows that chain through Sam's eyes.
 
@@ -22,47 +22,42 @@ This walkthrough follows that chain through Sam's eyes.
 
 ## The chain at a glance
 
-Three discoverable surfaces and one cryptographic check. Sam's agent runs them in whatever order is convenient:
+The connection itself plus three discoverable surfaces. Sam's agent runs them in whatever order is convenient:
 
 | Surface | Source | Question it answers |
 |---|---|---|
-| RFC 9421 signature | Response headers | "Did this response come from the key it claims?" |
+| Agent URL | The HTTPS connection Sam's orchestrator opened | "Which agent is answering?" |
 | `brand.json` | `northwind.example/.well-known/brand.json` | "Who is Northwind, and what is it claiming to represent?" |
 | `adagents.json` | `streamhaus.example/.well-known/adagents.json` | "Does the publisher authorize Northwind to sell its inventory?" |
 | Mutual assertion | Both `brand.json` files cross-referencing | "Do the two sides of the relationship agree?" |
 
-The chain is bilateral by design: each fact is asserted by exactly the party with authority over it. The publisher decides who can sell its inventory. The brand owner decides what it owns. The seller decides which key signs its responses. No third-party registry adjudicates between them — a misbehaving authorized seller is remediated by the publisher revoking the `adagents.json` entry, not by an in-protocol claim check.
+The chain is bilateral by design: each fact is asserted by exactly the party with authority over it. The publisher decides who can sell its inventory. The brand owner decides what it owns. The seller decides which keys sign the requests and webhooks it sends. No third-party registry adjudicates between them — a misbehaving authorized seller is remediated by the publisher revoking the `adagents.json` entry, not by an in-protocol claim check.
 
-Only one of the four steps below is cryptographically grounded (the signature). The other three are integrity-checked discoveries — string-equality matches against authoritative files at well-known locations. The chain is only as strong as the publisher's and seller's control of their own DNS, hosting, and well-known endpoints. See [Step 5](#step-5-know-what-the-chain-does-not-prove) for what that implies.
+AdCP does not sign synchronous responses: TLS to the agent URL carries their integrity, and signatures apply to the requests and webhooks an agent sends (see [Signed requests](/docs/building/by-layer/L1/security#request-signing)). So the steps below are integrity-checked discoveries — canonical URL matches against authoritative files at well-known locations — plus the keys Sam will use to verify Northwind's signed webhooks. The chain is only as strong as the publisher's and seller's control of their own DNS, hosting, and well-known endpoints. See [Step 5](#step-5-know-what-the-chain-does-not-prove) for what that implies.
 
-## Step 1: Verify the response signature
+## Step 1: Anchor on the agent URL
 
-<img src="/images/walkthrough/verification-02-signature.png" alt="Sam holds a paper response up to a lamp — a wax seal in the corner glows under the light, revealing a cryptographic pattern that matches a key card he pulls from a folder labeled adagents.json" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+Sam's orchestrator called `https://northwind.example/mcp` over HTTPS. That URL is the agent's identity: the TLS session authenticates the host, and AdCP does not sign synchronous responses. Sellers MUST NOT apply RFC 9421 response signing to them, and buyers MUST NOT rely on it ([Signed requests](/docs/building/by-layer/L1/security#request-signing)). So every later step asks one precise question: *is the agent at this exact URL authorized to sell StreamHaus inventory?*
 
-The `get_products` response carries an RFC 9421 `Signature` and `Signature-Input` header. The `keyid` parameter points at a JWK in Northwind's published JWKS. Sam's client verifies the signature before parsing the body:
+Signatures still matter once the buy is live. When Northwind sends Sam signed webhooks (delivery reports, status changes), Sam verifies each one before acting on it, using keys discovered from the files in steps 2 and 3:
 
 ```javascript
-const response = await fetch("https://northwind.example/mcp", { /* get_products call */ });
-
-const verified = await verifyMessageSignature(response, {
-  fetchJwks: (keyid) => fetchJwksForAgent("northwind.example", keyid),
+// Northwind → Sam: a signed delivery webhook
+const verified = await verifyMessageSignature(webhookRequest, {
+  fetchJwks: (keyid) => resolveSellerWebhookKey("https://northwind.example/mcp", keyid),
   requiredFields: ["@method", "@target-uri", "content-digest", "@authority"],
   requireCreated: true,   // RFC 9421 `created` parameter MUST be present
   maxAge: 300,            // seconds — receiver MUST enforce a window
 });
 
-if (!verified) throw new Error("signature failed — discard response");
+if (!verified) throw new Error("signature failed — discard webhook");
 ```
 
-A pass tells Sam one narrow thing: the entity holding the private key paired with `keyid` produced this response, and the response has not been tampered with in transit. It does not yet tell him that `keyid` belongs to the legitimate Northwind. That binding comes from `adagents.json` in step 3.
+<Accordion title="Why the URL comes first">
 
-<Accordion title="Why signature verification comes first">
+If Sam can't say which agent he is talking to, nothing downstream can be checked. Every later match (Northwind's `agents[]` entry, StreamHaus's `authorized_agents[]` entry) is against this URL. Compare URLs with the [AdCP URL canonicalization rules](/docs/reference/url-canonicalization), not byte equality.
 
-If the signature fails, every other check is wasted work — the response cannot be trusted to even identify itself correctly. Verifying first also gives Sam a clean abort: he discards the response before any business logic touches it.
-
-`maxAge` and `requireCreated` are not optional — without a freshness window the same signed response can be replayed indefinitely. Tune `maxAge` to your clock-skew budget; 300s is a common starting point.
-
-In AdCP 3.0, signing on `get_products` is RECOMMENDED. Mandatory signing on spend-committing operations is tracked under [#2307](https://github.com/adcontextprotocol/adcp/issues/2307) for 4.0. Deployments that require signing today enforce it at the platform layer.
+For webhooks, `maxAge` and `requireCreated` are not optional: without a freshness window the same signed webhook can be replayed indefinitely. Tune `maxAge` to your clock-skew budget; 300s is a common starting point. Webhook key discovery is specified in [Webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks).
 
 </Accordion>
 
@@ -70,7 +65,7 @@ In AdCP 3.0, signing on `get_products` is RECOMMENDED. Mandatory signing on spen
 
 <img src="/images/walkthrough/verification-03-brand-json.png" alt="Sam opens a leather-bound folder on Northwind's reception desk — inside is a single embossed page declaring the agency's portfolio, signing keys, and authorized operators, with a glowing seal at the top" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-Sam's agent fetches `https://northwind.example/.well-known/brand.json`. This is Northwind's self-declaration: who it is and where its signing keys live.
+Sam's agent fetches `https://northwind.example/.well-known/brand.json`. This is Northwind's self-declaration: who it is, which agents it runs, which publishers it says it sells for, and where its signing keys live.
 
 ```json
 {
@@ -81,6 +76,9 @@ Sam's agent fetches `https://northwind.example/.well-known/brand.json`. This is 
   "url": "https://northwind.example",
   "keller_type": "master",
   "industries": ["advertising"],
+  "properties": [
+    { "type": "ctv_app", "identifier": "12345", "store": "roku", "relationship": "delegated" }
+  ],
   "agents": [
     {
       "type": "sales",
@@ -94,7 +92,7 @@ Sam's agent fetches `https://northwind.example/.well-known/brand.json`. This is 
 
 Two things matter here:
 
-1. **The `keyid` from step 1 must resolve in `https://northwind.example/.well-known/jwks.json`** — the JWKS Northwind's own brand.json points at. Sam now has a binding from signature to a self-declared brand identity.
+1. **The agent URL from step 1 matches exactly one `agents[]` entry** (canonically). That entry's `jwks_uri` is where Northwind publishes the keys its webhooks are signed with. Sam now has a binding from the agent to a self-declared brand identity, and Northwind claims StreamHaus's app as a `delegated` property.
 2. **Northwind is a standalone agency** — no `house_domain` field. There is no parent house claim to verify on Northwind's side. The authorization claim that matters lives on the publisher's side, in step 3.
 
 <Warning>
@@ -149,25 +147,24 @@ Sam's agent fetches `https://streamhaus.example/.well-known/adagents.json` — t
 
 This is the bilateral lock:
 
-- **`url` matches** the MCP endpoint Northwind's `brand.json` named in `agents[].url`. Same agent on both sides.
-- **`delegation_type: "delegated"`** declares the commercial relationship — Northwind is authorized to sell on StreamHaus's behalf. The enum is `direct | delegated | ad_network`; the publisher chooses which fits.
-- **`signing_keys[]`** contains the JWK whose `kid` matches the one used in step 1's signature. This is the link Sam was missing: StreamHaus, the publisher, attests in its own file that this specific public key may sign on its behalf.
+- **`url` matches** the agent URL from step 1 and the endpoint Northwind's `brand.json` named in `agents[].url`. Same agent on both sides.
+- **`delegation_type: "delegated"`** declares the commercial relationship — Northwind is authorized to sell on StreamHaus's behalf — and matches the `relationship` Northwind claimed for the property in its `brand.json`. The enum is `direct | delegated | ad_network`; the publisher chooses which fits.
+- **`signing_keys[]`** pins the keys Northwind may use for signed webhook deliveries about StreamHaus inventory. When Sam verifies a delivery webhook from step 1, its `keyid` must be in this pinned set. StreamHaus, the publisher, attests in its own file which keys may sign for this path.
 
-Now Sam has the answer to "who is authorized to sell": **the entity that signed this response is named in the publisher's own authorization file, with a matching commercial relationship and an explicit signing-key authorization**. The chain is closed.
+Now Sam has the answer to "who is authorized to sell": **the agent he is talking to is named in the publisher's own authorization file, with a matching commercial relationship, and its delivery webhooks must be signed with a key the publisher pinned**. The chain is closed.
 
-<Accordion title="The five-state trust signal">
+<Accordion title="Reading partial results">
 
-The brand-protocol [mutual-assertion model](https://github.com/adcontextprotocol/adcp/issues/3533) produces a discrete signal Sam's downstream logic can act on:
+The two files are published independently, so Sam's agent can find either side without the other:
 
-| State | Meaning | Buyer action |
+| Northwind's `brand.json` claims StreamHaus | StreamHaus's `adagents.json` lists Northwind's agent | Buyer action |
 |---|---|---|
-| `inline` | The seller is the brand owner — no delegation involved | Proceed; nothing to delegate |
-| `mutual_assertion` | Both sides published matching declarations | Proceed |
-| `one_sided_brand` | The seller's brand.json claims a publisher; the publisher hasn't reciprocated | **Do not treat as authorization.** Any domain can claim any publisher unilaterally. |
-| `one_sided_house` | The publisher's adagents.json names the seller; the seller's brand.json doesn't acknowledge | Hold for human review |
-| `standalone` | Neither side publishes — bearer-token trust only | Out-of-band authorization or refuse |
+| Yes, with a matching `relationship` | Yes, with that `delegation_type` | Proceed: the relationship is confirmed by both sides |
+| Yes | No | **Do not treat as authorization.** Any domain can claim any publisher unilaterally. |
+| No | Yes | The publisher authorized the agent; hold for review until the seller's side acknowledges it |
+| No | No | No authorization. Arrange it out of band or refuse |
 
-Sam's chain resolves to `mutual_assertion` — the strongest state short of inline. Only `inline` and `mutual_assertion` close the chain.
+If Northwind and StreamHaus were the same company (first-party inventory), Northwind's `brand.json` would list the property with `relationship: "owned"` and there would be no delegation to confirm.
 
 </Accordion>
 
@@ -217,7 +214,7 @@ Two distinct concepts ride along this step, and the doc is careful not to confla
 - **The `keller_type` on the child** (`endorsed`) describes the brand-architecture relationship — how the sub-brand is positioned beside the parent. It is Keller-architecture metadata, not a commercial authorization.
 - **The commercial relationship that lets Northwind sell** is `delegation_type: "delegated"` from step 3, which lives on the publisher (StreamHaus), not on the parent house.
 
-Sportshaus Holdings is on Acme Outdoor's inclusion list. The chain Sam's agent just walked is: signed response → Northwind's `brand.json` → StreamHaus's `adagents.json` → StreamHaus's and Sportshaus Holdings' mutual `brand.json` declarations. Four discoverable surfaces, one cryptographic anchor, zero phone calls for the authorization question.
+Sportshaus Holdings is on Acme Outdoor's inclusion list. The chain Sam's agent just walked is: agent URL → Northwind's `brand.json` → StreamHaus's `adagents.json` → StreamHaus's and Sportshaus Holdings' mutual `brand.json` declarations. In registry terms this house relationship is `relationship_trust: "mutual"`. One authenticated connection, three discoverable surfaces, zero phone calls for the authorization question.
 
 ## Step 5: Know what the chain does not prove
 
@@ -228,14 +225,14 @@ The authorization chain is closed. Northwind is for the first time a counterpart
 | The chain proves | The chain does not prove |
 |---|---|
 | Northwind is authorized to sell StreamHaus inventory under a `delegated` relationship | A real human at Northwind operates this agent and answers for it |
-| The signing key is named by both the seller and the publisher | The operator behind that key has been KYC'd by anyone Sam trusts |
+| Northwind's webhook-signing keys are named by both the seller and the publisher | The operator behind those keys has been KYC'd by anyone Sam trusts |
 | StreamHaus declares Sportshaus Holdings as its parent, and the parent reciprocates | The legal counterparty matches who Sam thinks he's transacting with |
-| The response was not tampered with in transit | The avails in the response will be available on the flight start date, or the CPM quoted will hold |
+| The response came over TLS from the agent URL Sam called | The avails in the response will be available on the flight start date, or the CPM quoted will hold |
 | Northwind's domain controls the signing key today | The key cannot be rotated to an attacker tomorrow — first-encounter trust is TOFU until [key transparency](https://github.com/adcontextprotocol/adcp/issues/3925) lands in 4.0 |
 
 Three named gaps live on the right side of that table.
 
-**The human-layer gap.** AdCP does not carry an operator/human KYC primitive. The cryptographic chain says "this domain is authorized to sell, and this key signed this response" — it does not say "a verified human at a verified company is on the other side of this agent." KYC is the membership and account layer. For a new counterparty above Acme's threshold, Sam still escalates to a human check, exactly as he would for any meaningful new vendor.
+**The human-layer gap.** AdCP does not carry an operator/human KYC primitive. The chain says "this agent is authorized to sell, and these keys sign its webhooks" — it does not say "a verified human at a verified company is on the other side of this agent." KYC is the membership and account layer. For a new counterparty above Acme's threshold, Sam still escalates to a human check, exactly as he would for any meaningful new vendor.
 
 **The hosting-layer gap.** The chain trusts whoever controls `northwind.example`, its DNS, TLS, and CDN. A registrar takeover, a CDN compromise, or a mis-issued TLS certificate substitutes the entire chain — the attacker serves attacker-controlled `brand.json`, `adagents.json`, and JWKS over a valid-looking pipeline. There is no public key-transparency log in 3.x; first-encounter trust is trust-on-first-use, and revocation is detectable only by re-fetching. A buyer client that has previously transacted with Northwind pins the seen `kid`s and warns on rotation; a buyer client on first encounter does not have that signal. See [#3925](https://github.com/adcontextprotocol/adcp/issues/3925).
 
@@ -245,9 +242,9 @@ This is the C2PA "claim-not-certification" posture. The protocol carries the aut
 
 ## What Sam does next
 
-Sam's client logs the verification result with the `get_products` response — including the captured `brand.json`, `adagents.json`, and JWKS bytes at decision time, not just pointers to live files. Months from now, an auditor can re-verify the signature against those captured artifacts and reproduce Sam's decision exactly. Re-fetching the live `.well-known/` files is not sufficient — they are mutable, and a single key rotation or domain transfer would invalidate a naive replay.
+Sam's client logs the verification result with the `get_products` response — including the captured `brand.json`, `adagents.json`, and JWKS bytes at decision time, not just pointers to live files. Months from now, an auditor can re-check the authorization, and re-verify any signed webhooks, against those captured artifacts and reproduce Sam's decision exactly. Re-fetching the live `.well-known/` files is not sufficient — they are mutable, and a single key rotation or domain transfer would invalidate a naive replay.
 
-The verification result and the five-state trust signal travel with the candidate plan into Sam's [governance flow](/docs/governance/overview), where Jordan's governance agent applies Acme's policy checks before any spend is committed.
+The verification result travels with the candidate plan into Sam's [governance flow](/docs/governance/overview), where Jordan's governance agent applies Acme's policy checks before any spend is committed.
 
 ## Where to go from here
 
