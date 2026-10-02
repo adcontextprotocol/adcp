@@ -1404,13 +1404,17 @@ async function resolveAgent(agentUrl: string): Promise<AgentResolution> {
     ...(brandJson.house?.agents ?? []),
     ...(brandJson.brands ?? []).flatMap(b => b.agents ?? []),
   ];
-  const entries = candidates.filter(                                          // step 5 (canonical match)
+  const jwksSource = e => e.jwks_uri ?? `${origin(e.url)}/.well-known/jwks.json`;
+  const matches = candidates.filter(                                          // step 5 (canonical match)
     e => canonicalizeAdcpUrl(e.url) === canonicalAgentUrl,
   );
-  if (entries.length === 0) throw new Err('agent_not_in_brand_json');
-  if (entries.length > 1) throw new Err('brand_json_ambiguous');
-  const entry = entries[0];
-  const jwksUri = entry.jwks_uri ?? `${origin(entry.url)}/.well-known/jwks.json`; // step 6
+  const distinct = new Map(matches.map(                                       // a shared agent repeated across
+    e => [`${e.type}|${canonicalizeAdcpUrl(jwksSource(e))}`, e],              // collections counts once
+  ));
+  if (distinct.size === 0) throw new Err('agent_not_in_brand_json');
+  if (distinct.size > 1) throw new Err('brand_json_ambiguous');
+  const entry = [...distinct.values()][0];
+  const jwksUri = jwksSource(entry);                                          // step 6
   for (const [purpose, declared] of Object.entries(caps.identity?.key_origins ?? {})) { // step 7
     if (canonicalizeOrigin(jwksUri) !== canonicalizeOrigin(declared)) {
       throw new Err('key_origin_mismatch', { purpose });
