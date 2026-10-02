@@ -343,7 +343,7 @@ Brands declare who can represent them in `/.well-known/brand.json` via the `auth
 3. If found → proceed (account may still need credit/legal approval)
 4. If not found → reject the account (`action: "failed"`) or return `pending_approval` for manual review
 
-Verification is a trust signal, not a gate. Finding the operator in `brand.json` lets the seller fast-track provisioning. If the operator isn't listed, the seller can still approve through its own review process.
+A `brand.json` listing is sufficient, not necessary. Finding the operator lets the seller provision without further review. If the operator isn't listed, the request alone does not authorize it: the seller either rejects the account or holds it in `pending_approval` until its own review confirms the operator out of band. Either way, the brand-operator check below passes only through the listing or that review.
 
 **Self-authorization is implicit.** When the `operator` domain matches the brand's domain, the brand is operating directly — no listing in `authorized_operators` is needed.
 
@@ -360,7 +360,7 @@ Two layers run on every `sync_accounts` request:
 | **Agent identity** | Which buyer agent issued this request? | The seller's onboarding record, looked up by signed-request `agent_url` (when [request signing](/docs/building/by-layer/L1/security#signed-requests-transport-layer) is in use) or by the bearer / API-key / OAuth credential the agent presented. Signature or credential establishes identity; authorization is a separate check. |
 | **Brand-operator authorization** | Is the operator named in the request authorized to act for the brand? | `brand.json` `authorized_operators` (above). Verified whether the request is signed or not. |
 
-Both layers MUST pass. A signed request from an onboarded agent for an unauthorized operator gets rejected on the brand-operator check; a request from an unrecognized agent for an authorized operator gets rejected on the identity check. Sellers that advertise [`request_signing.required_for`](/docs/building/by-layer/L1/security#transport-scope) on `sync_accounts` reject unsigned traffic at the identity layer; sellers that don't advertise it MAY still require an established credential mapping before agent-billable values are accepted.
+Both layers MUST pass before the account becomes active. A signed request from an onboarded agent for an unlisted operator gets rejected or held for review on the brand-operator check; a request from an unrecognized agent for an authorized operator gets rejected on the identity check. Sellers that advertise [`request_signing.required_for`](/docs/building/by-layer/L1/security#transport-scope) on `sync_accounts` reject unsigned traffic at the identity layer; sellers that don't advertise it MAY still require an established credential mapping before agent-billable values are accepted.
 
 The brand-operator check runs against the seller's cached `brand.json` per [Operator revocation and caching](#operator-revocation-and-caching) — revocation is eventual. Sellers performing high-value or first-time-on-this-brand provisioning SHOULD bypass the cache to close the TOCTOU window.
 

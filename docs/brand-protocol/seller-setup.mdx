@@ -37,7 +37,7 @@ The sell-side chain is bilateral:
 1. The seller's `brand.json` declares the sales agent in `agents[]`.
 2. The seller's `brand.json` declares the properties it owns, sells directly, manages, or represents in `properties[]`.
 3. The publisher's `adagents.json` declares the same sales agent in `authorized_agents[]`.
-4. For delegated or network paths, the `relationship` value in `brand.json` matches the publisher's `delegation_type` in `adagents.json`. For first-party inventory, `relationship: "owned"` is inline ownership and has no `delegation_type` counterpart.
+4. For direct, delegated, or network paths, the `relationship` value in `brand.json` matches the publisher's `delegation_type` in `adagents.json`. For first-party inventory, `relationship: "owned"` is inline ownership and has no `delegation_type` counterpart.
 5. The signing key used by the agent is discoverable from the seller's `brand.json` `agents[].jwks_uri`; for mutating seller authorizations, the publisher also pins allowed keys in `adagents.json` `authorized_agents[].signing_keys[]`.
 
 The result is a verifiable supply path. The operator publicly says "I sell this property"; the publisher publicly says "this operator is authorized to sell it."
@@ -112,7 +112,7 @@ The same publisher publishes `adagents.json` at `https://streamhaus.example/.wel
 }
 ```
 
-The buyer verifies that `agents[].url` in `brand.json` matches `authorized_agents[].url` in `adagents.json`, that StreamHaus owns the property it claims, and that signed mutating responses use a key pinned by StreamHaus in `signing_keys[]`.
+The buyer verifies that `agents[].url` in `brand.json` matches `authorized_agents[].url` in `adagents.json`, that StreamHaus owns the property it claims, and that the agent's signed webhook deliveries use a key StreamHaus pinned in `signing_keys[]`. Synchronous responses carry no transport signature; TLS to the agent URL covers those.
 
 ## Delegated seller example
 
@@ -221,7 +221,7 @@ Signature verifiers MUST resolve keys from the agent URL being authenticated usi
 3. Publish the endpoint's JWKS through `agents[].jwks_uri`, or rely on the default `/.well-known/jwks.json` on the agent origin.
 4. Add every owned, direct, delegated, or network-represented property to `properties[]` with the right `relationship`; use `owned` for first-party inventory.
 5. Publish `adagents.json` on each publisher domain that owns the inventory.
-6. In `authorized_agents[]`, list the seller's agent URL, authorization scope, matching `delegation_type` for delegated or network paths, and `signing_keys[]` for any mutating seller authorization.
+6. In `authorized_agents[]`, list the seller's agent URL, authorization scope, matching `delegation_type` for direct, delegated, or network paths, and `signing_keys[]` for any mutating seller authorization.
 7. Keep both files aligned when a sales relationship, endpoint, or signing key starts, changes, or ends.
 
 ## Where to go next
