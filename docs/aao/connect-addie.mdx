@@ -34,6 +34,14 @@ The endpoint requires OAuth 2.1 user authentication on every request. Sign in wi
 
 For the underlying OAuth surface (authorization server metadata, dynamic client registration, scopes), see the [Reference URLs](#reference-urls) at the bottom of this page.
 
+## Validate uploaded JSON
+
+Upload your `adagents.json` and ask your client to validate the complete file. Clients that supply a file download reference can use `validate_json_file`: Addie downloads and validates the original JSON on the server, then returns its byte count, SHA-256 hash, and schema result. The download limit is 5 MiB. This checks the published schema; it does not check whether publisher or agent URLs inside the file respond.
+
+The tool declares ChatGPT's `openai/fileParams` metadata so compatible clients can pass the upload directly. Its `file` parameter accepts `download_url` and `file_id`, plus optional `file_name` and `mime_type`. The schema is selected from the file's `$schema`, an explicit `schema_path`, or the filename `adagents.json`. An optional `version` uses the same published-version selectors as `validate_json`.
+
+If your client cannot provide a download reference, use the [adagents.json builder](https://agenticadvertising.org/adagents/builder). A local filepath is not a download reference, and a shortened JSON copy only validates the content actually submitted. Ask the client which validation tool ran before relying on the result.
+
 ## Claude Desktop
 
 Claude Desktop's built-in **Connectors** UI is the smoothest path. Anthropic hosts the OAuth proxy, so you don't manage tokens yourself. Custom connectors require a paid Claude plan (Pro, Max, Team, or Enterprise).

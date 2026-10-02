@@ -21,6 +21,7 @@ import { SCHEMA_TOOLS, createSchemaToolHandlers } from '../addie/mcp/schema-tool
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from '../addie/mcp/property-tools.js';
 import type { MemberContext } from '../addie/member-context.js';
 import type { MCPAuthContext } from './auth.js';
+import { JSON_FILE_VALIDATION_TOOL, validateJsonFile } from './json-file-validation.js';
 
 const logger = createLogger('mcp-exposed-tools');
 
@@ -95,9 +96,12 @@ export const AGENT_CONTEXT_TOOL_DEFINITIONS = MEMBER_TOOLS
   .map(toMCPFormat);
 
 /** Schema validation tool definitions in MCP format. */
-export const SCHEMA_TOOL_DEFINITIONS = SCHEMA_TOOLS
-  .filter((t) => (SCHEMA_TOOL_NAMES as readonly string[]).includes(t.name))
-  .map(toMCPFormat);
+export const SCHEMA_TOOL_DEFINITIONS = [
+  ...SCHEMA_TOOLS
+    .filter((t) => (SCHEMA_TOOL_NAMES as readonly string[]).includes(t.name))
+    .map(toMCPFormat),
+  JSON_FILE_VALIDATION_TOOL,
+];
 
 /** Property validation tool definitions in MCP format. */
 export const PROPERTY_TOOL_DEFINITIONS = PROPERTY_TOOLS
@@ -201,6 +205,8 @@ export function createStatelessToolHandlers(): Map<
     string,
     (args: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text: string }> }>
   >();
+
+  result.set(JSON_FILE_VALIDATION_TOOL.name, validateJsonFile);
 
   const schemaHandlers = createSchemaToolHandlers();
   for (const name of SCHEMA_TOOL_NAMES) {
