@@ -92,7 +92,7 @@ Every request vector has this shape:
 - **`response`**: present on the directory-response vector only. The response the directory server sends to `request`, with `status`, `headers`, and the exact `body`.
 - **`directories`**: the key directory each origin serves, as a list of `kid` values from `keys.json`. The harness answers a fetch of `<origin>/.well-known/http-message-signatures-directory` with a JWK Set holding exactly those keys. An origin absent from the object serves no directory. Several vectors list more than one origin so that a harness can show the trap the vector guards against (see `006-key-not-in-named-directory`).
 - **`test_harness_state`**: optional. Preloads verifier state before verification. `replay_cache_entries` lists `{ identity, nonce, ttl_seconds }` pairs the verifier has already accepted. Reset verifier state before every vector.
-- **`expected_signature_base`**: per label, the signature base per RFC 9421 section 2.5. Lines are joined with a single `\n`, there is no trailing newline, and components appear in the order listed in `Signature-Input`, followed by `@signature-params`. Diff your computed base against this field before looking at signatures.
+- **`expected_signature_base`**: per label, the signature base per RFC 9421 section 2.5. Lines are joined with a single `\n`, there is no trailing newline, and components appear in the order listed in `Signature-Input`, followed by `@signature-params`. The base is the one a verifier computes from the request as sent, so on `005-relay-inner-signature-altered` it carries the altered brand signature that the relay's signature then fails over. Diff your computed base against this field before looking at signatures.
 - **`expected_outcome.success`**: `true` for positive vectors, `false` for negative.
 - **`expected_outcome.identities`**: positive vectors only. Per label, the origin the verifier attributes the signature to.
 - **`expected_outcome.status`**: negative vectors only. The HTTP status the verifier answers: `400` when the signature headers do not parse, `403` when a signature or the profile's checks fail. Conformance requires this status.
@@ -123,7 +123,9 @@ Run the positive vectors first. If `positive/001` fails, the signature base, key
 
 ## Generating the vectors
 
-The signatures were generated from the committed `expected_signature_base` strings with the private seeds in `keys.json`, and verified independently with a generic RFC 9421 library ([`http-message-sig`](https://www.npmjs.com/package/http-message-sig)) and with Cloudflare's [`web-bot-auth`](https://www.npmjs.com/package/web-bot-auth) library for the single-signer request. The positive values are the ones in RFC #7878's illustrations. Do not hand-edit signature bytes.
+`scripts/generate-wba-profile-vectors.mjs` writes every file in this directory except this README. It derives the keys from their seeds, builds each signature base component by component, and signs it with Ed25519. Run `node scripts/generate-wba-profile-vectors.mjs --check` to confirm the committed files match the generator. The positive values are the ones in RFC #7878's illustrations. Do not hand-edit the vector files; change the generator and run it again.
+
+`tests/wba-profile-vectors.test.cjs` verifies the vectors without sharing code with the generator. It parses the headers, rebuilds each signature base from the request, and checks signatures and digests with `node:crypto`. For each negative vector it asserts the expected status and the check that fails. For each negative vector with a valid signature, it asserts that the request verifies once that one check is skipped. `npm run test:wba-profile-vectors` runs both. The positive vectors were also verified with a generic RFC 9421 library ([`http-message-sig`](https://www.npmjs.com/package/http-message-sig)) and, for the single-signer request, with Cloudflare's [`web-bot-auth`](https://www.npmjs.com/package/web-bot-auth) library.
 
 ## Adding vectors
 
@@ -132,5 +134,6 @@ Every added vector MUST:
 1. Cite the section of `wba-profile.mdx` it grades in `spec_reference`.
 2. Use only keys from `keys.json`, and list every directory the verifier may consult in `directories`.
 3. State `expected_outcome.status` for a negative vector in the profile's status-code vocabulary, and `accept_signature` for a `403`.
-4. Include `expected_signature_base` for every label whose signature is cryptographically valid.
+4. Include `expected_signature_base` for every label when the signature headers parse, computed from the request as sent.
 5. Include `test_harness_state` when the vector needs preloaded verifier state.
+6. Come from `scripts/generate-wba-profile-vectors.mjs`. A negative vector also needs an entry in `TARGETS` in `tests/wba-profile-vectors.test.cjs`, naming the check it targets.
