@@ -49,6 +49,18 @@ The account reference may be a seller/storefront-assigned `account_id` (seller-o
 
 `billing` names the party the seller invoices for this account relationship. It is not a payment rail or settlement selector. AdCP does not currently standardize per-media-buy choice between an intermediary clearing flow and direct settlement; implementations must not encode that distinction by silently changing the meaning of `billing`.
 
+## Account references before provisioning
+
+A buyer-declared natural key names an advertiser account. It does not create one. An account is **provisioned** once `sync_accounts` has returned it without `action: "failed"`, or once a lazy-provisioning seller has created it. Until then, the key does not resolve. After that, [account status](#operations-by-account-status) decides which tasks the account can use.
+
+**An unresolved account is an error, not a fallback.** When a request carries an `account` that does not resolve, and the seller does not lazily provision it, the seller MUST return `ACCOUNT_NOT_FOUND`, including on tasks where `account` is optional. It MUST NOT drop the reference and answer with public results. `cache_scope: "public"` on an account request says that this account prices off the rate card, which would be a claim about an account that does not exist. `list_accounts` is different: its `account` field is a filter, so a key that matches nothing returns an empty list.
+
+**Buyers omit unprovisioned keys.** Until an account is provisioned and its status allows the task, buyers SHOULD omit `account` on discovery tasks and send top-level `brand` where the task accepts it. The seller answers with its public view (`cache_scope: "public"`). When the seller declares `account.required_for_products: true`, the buyer provisions the account before calling `get_products`. A buyer that intends to accept a proposal provisions the account before `request_proposals` and sends it there, so the proposal is bound to that account. Buyer SDKs SHOULD track, per seller agent, which natural keys the seller has provisioned and apply these rules by default, so each implementer doesn't have to.
+
+**Account errors describe setup, not seller health.** `ACCOUNT_NOT_FOUND`, `ACCOUNT_SETUP_REQUIRED`, and `ACCOUNT_PAYMENT_REQUIRED` describe the relationship between one buyer and one seller. Buyers SHOULD NOT count them toward a seller's availability or health. To recover from `ACCOUNT_NOT_FOUND` on a natural key, provision through `sync_accounts` (or omit `account` for public discovery). For an `account_id`, verify it through `list_accounts`.
+
+**The natural key stays the reference.** For buyer-declared accounts, buyers send the natural key on every call. An `account_id` returned by `sync_accounts` is the seller's handle for correlation and support. A seller MAY also accept it as an `AccountRef`, but it is not required to, and buyers MUST NOT assume it does.
+
 ## Account Status Lifecycle
 
 Accounts progress through a defined set of states. Terminal states (`rejected`, `closed`) allow no further transitions.
@@ -86,7 +98,7 @@ sync_accounts ──▶ pending_approval ──▶ active
 
 ### Operations by Account Status
 
-Account status acts as a gate on which tasks are permitted. Read-only operations are always available; mutation operations are restricted based on status.
+Account status acts as a gate on which tasks are permitted, as shown below. Mutation operations are the most restricted.
 
 | Task                     | `active` | `pending_approval` | `payment_required` | `suspended` | `rejected` / `closed` |
 | ------------------------ | -------- | ------------------ | ------------------ | ----------- | --------------------- |
