@@ -68,6 +68,17 @@ fixtures:
         billing: "operator"
         status: "active"
         sandbox: false
+    # The cross-scope probe sends the reserved account-overlay identity. A
+    # natural key resolves on discovery only once provisioned (accounts
+    # overview: Account references before provisioning), so seed it.
+    - account_id: "acct_account_overlay_example_live_5a5fe5cbf7bb"
+      fixture:
+        brand:
+          domain: "account-overlay.example"
+        operator: "pinnacle-agency.example"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: scope_isolation

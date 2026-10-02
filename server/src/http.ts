@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import DOMPurify from "isomorphic-dompurify";
 import { Marked } from "marked";
 import { csrfProtection } from "./middleware/csrf.js";
+import { restoreClientIp } from "./middleware/client-ip.js";
 import { createHostedWebhookReceiverRouter } from "./routes/hosted-webhook-receiver.js";
 import { chatRequestCorrelation } from "./middleware/chat-request-correlation.js";
 import { slowResponseTracker } from "./middleware/slow-response.js";
@@ -1293,6 +1294,7 @@ export class HTTPServer {
     // Trust the first proxy (Fly.io) for accurate client IP detection
     // Required for express-rate-limit and other middleware that use req.ip
     this.app.set('trust proxy', 1);
+    this.app.use(restoreClientIp);
 
     // The hosted-grader buyer brand host serves only its brand.json and a
     // governance-only JWKS (adcp#7758). Mounted first so no app-wide route,
