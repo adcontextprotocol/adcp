@@ -68,17 +68,17 @@ For the higher-level framing and a side-by-side example, see [Why adagents.json 
 
 ### Where does sellers.json fit?
 
-In programmatic, `sellers.json` is hosted by the seller/exchange and declares which publishers they represent. AdCP handles this through `brand.json` instead of a separate file. An operator declares properties in their [`brand.json`](/docs/brand-protocol/brand-json) using the `relationship` field. For first-party inventory, the operator can use `relationship: "owned"`. For delegated or network sell-side paths, `relationship` uses the same values as `delegation_type`: `direct`, `delegated`, or `ad_network`. This creates the same bilateral verification pattern:
+In programmatic, `sellers.json` is hosted by the seller/exchange and declares which publishers they represent. AdCP handles this through `brand.json` instead of a separate file. An operator declares properties in their [`brand.json`](/docs/brand-protocol/brand-json) using the `relationship` field. For first-party inventory, the operator can use `relationship: "owned"`. For direct, delegated, or network sell-side paths, `relationship` uses the same values as `delegation_type`: `direct`, `delegated`, or `ad_network`. This creates the same bilateral verification pattern:
 
 | Programmatic | AdCP equivalent | Purpose |
 |---|---|---|
 | `ads.txt` (publisher) | `adagents.json` with `delegation_type` (publisher) | "These agents are authorized, here's the relationship" |
 | `sellers.json` (seller) | `brand.json` properties with `relationship` (operator) | "I sell for these publishers, here's how" |
 
-For delegated or network paths, both sides must agree — the `delegation_type` and `relationship` values should match. For first-party inventory, `relationship: "owned"` is an inline ownership declaration and has no matching `delegation_type` value. See [ad networks](/docs/sponsored-intelligence/networks) for how this works in practice.
+For direct, delegated, or network paths, both sides must agree — the `delegation_type` and `relationship` values should match. For first-party inventory, `relationship: "owned"` is an inline ownership declaration and has no matching `delegation_type` value. See [ad networks](/docs/sponsored-intelligence/networks) for how this works in practice.
 
 <Note>
-The field is called `delegation_type` in adagents.json and `relationship` in brand.json. The names differ because they describe the same commercial arrangement from different perspectives — the publisher delegates authority (`delegation_type`), the operator declares its relationship to the property (`relationship`). Delegated/network values match (`direct`, `delegated`, `ad_network`); `owned` is only a brand.json relationship value.
+The field is called `delegation_type` in adagents.json and `relationship` in brand.json. The names differ because they describe the same commercial arrangement from different perspectives — the publisher delegates authority (`delegation_type`), the operator declares its relationship to the property (`relationship`). Direct, delegated, and network values match (`direct`, `delegated`, `ad_network`); `owned` is only a brand.json relationship value.
 </Note>
 
 ## File Location

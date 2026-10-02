@@ -51,7 +51,7 @@ Carlos's buyer agent starts where every AdCP interaction starts: `brand.json`. T
 
 <img src="/images/walkthrough/brand-panel-02-brand-discovery.png" alt="A buyer agent robot following a glowing trail from a restaurant website to a brand.json file floating in the air, revealing identity data like colors, logos, and tone" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-The `rights_agent` field tells the buyer agent everything it needs to know before making any MCP calls — what is licensable, what types of rights, and where.
+The `type: "rights"` entry in `agents[]` tells the buyer agent everything it needs to know before making any MCP calls — what is licensable, what types of rights, and where.
 
 ```json
 {
@@ -68,13 +68,16 @@ The `rights_agent` field tells the buyer agent everything it needs to know befor
       "names": [{ "en": "Daan Janssen" }],
       "description": "Dutch Olympic speed skater, 2x gold medalist",
       "industries": ["sports_fitness"],
-      "rights_agent": {
-        "url": "https://rights.lotientertainment.com/mcp",
-        "id": "loti_entertainment",
-        "available_uses": ["likeness", "voice", "endorsement"],
-        "right_types": ["talent"],
-        "countries": ["NL", "BE", "DE"]
-      }
+      "agents": [
+        {
+          "type": "rights",
+          "url": "https://rights.lotientertainment.com/mcp",
+          "id": "loti_entertainment",
+          "available_uses": ["likeness", "voice", "endorsement"],
+          "right_types": ["talent"],
+          "countries": ["NL", "BE", "DE"]
+        }
+      ]
     }
   ]
 }
@@ -87,7 +90,7 @@ sequenceDiagram
     participant Rights as Rights Agent (MCP)
 
     Buyer->>Domain: GET /.well-known/brand.json
-    Domain-->>Buyer: brand.json with rights_agent
+    Domain-->>Buyer: brand.json with a rights agent
     Note over Buyer: Discovers rights agent URL,<br/>available uses, countries
     Buyer->>Rights: get_brand_identity (brand_id: "daan_janssen")
     Rights-->>Buyer: Visual identity, photos, tone
