@@ -1,15 +1,11 @@
 # Canonical URL Reference
 
-The following URLs are the complete set of owned-domain links you may cite.
-If a URL is not listed here, do not emit it — use `search_docs` to find the correct
-path or ask the user. Do not extrapolate paths from patterns you observe (e.g.
-`/terms` redirecting to `/legal/terms` does not imply `/legal/about` exists).
+Only cite the owned-domain URLs below. For unlisted paths, use `search_docs`
+to verify the destination. Do not invent URLs or infer paths from redirects.
 
-The CI link checker (`scripts/check-owned-links.js`) validates every structured
-list entry in the three live sections below. Direct destinations must not
-redirect. Action entry points may redirect as part of their workflow. Stable
-documentation aliases may redirect only to the same logical page in a
-versioned documentation snapshot.
+`scripts/check-owned-links.js` checks entries in the three live sections.
+Direct destinations must not redirect. Action entry points may redirect.
+Documentation aliases may redirect only to the same page in a versioned snapshot.
 
 ## Direct destinations — no redirects
 
@@ -20,6 +16,7 @@ versioned documentation snapshot.
 - https://agenticadvertising.org/account — Personal account settings (form fields you type into: name, bio, expertise, social links, including the GitHub-username text field that surfaces on the user's community profile). NOT where the GitHub OAuth connection lives.
 - https://agenticadvertising.org/member-hub — "Your hub" — the personal dashboard (engagement, working group recs, profile completeness). Hosts the **Connections card** where users connect or disconnect GitHub OAuth (the one-click toggle backed by WorkOS Pipes). Use this URL when the user asks how to disconnect or manage their GitHub OAuth connection.
 - https://agenticadvertising.org/brand-builder — brand.json builder tool; accepts `?domain=example.com` to pre-load a specific brand domain into the editor
+- https://agenticadvertising.org/adagents/builder — adagents.json builder and validator; use Import to load an existing JSON file
 - https://agenticadvertising.org/member-profile — Member profile, company description, and logo upload
 - https://agenticadvertising.org/community — Community hub
 - https://agenticadvertising.org/legal/terms — Terms of Service (canonical path; /terms redirects here)
@@ -61,6 +58,7 @@ substitute listed or call `search_docs`. Do not emit the hallucinated path.
 | Hallucinated path | What to do instead |
 |---|---|
 | `agenticadvertising.org/billing` | Use `/dashboard` (billing is a tab there) |
+| `docs.adcontextprotocol.org/adagents/builder` | Use `https://agenticadvertising.org/adagents/builder` |
 | `agenticadvertising.org/membership` | Use `/dashboard/membership` |
 | `agenticadvertising.org/dashboard/settings` | Doesn't exist — for personal account settings (including the GitHub username profile field) use `/account`; for the GitHub OAuth connection use `/connect/github` |
 | `agenticadvertising.org/settings` | Doesn't exist — same redirect as `/dashboard/settings` |
