@@ -1,6 +1,6 @@
 # Split identity and trust: brand.json + trust.json
 
-**Status**: Direction accepted (2026-09-30). Remaining decisions below. RFC [#7809](https://github.com/adcontextprotocol/adcp/issues/7809).
+**Status**: Accepted (decisions 2026-09-30 and 2026-10-02). Ready for implementation, starting with PR 0 and PR 1 in the [plan](#plan). RFC [#7809](https://github.com/adcontextprotocol/adcp/issues/7809).
 
 **Related**: [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) (demand-side acts-for grants), [`capabilities-brand-url.md`](./capabilities-brand-url.md) (the `brand_json_url` bootstrap this supersedes)
 
@@ -10,10 +10,15 @@
 - A separate well-known trust record. brand.json becomes identity-only, with the trust fields removed in 4.0.
 - The record is **`/.well-known/trust.json`**. It is protocol-neutral, with a generic core and per-protocol profiles; this document defines the AdCP profile.
 - #6033 demand-side grants land in trust.json, not brand.json.
+- **Acknowledge-by-reference** is the model for accepting grants: the grantee lists `{grantor, agent_url, via}` in its own trust.json, and terms live only in the grantor's document.
+- **Stewardship and hosting.** AgenticAdvertising.org owns the trust.json core and the namespace rules; each protocol owns its profile. Schemas are published at **`https://trustjson.org/schemas/v1/`** and the spec's home is trustjson.org, served from this repository's pipeline. brand.json's schema moves to **brandjson.org** at AdCP 4.0, with `/schemas/v3/brand.json` kept as a permanent alias.
+- **Tenant privacy:** opaque tenant paths for v1; templated agent entries only if vendors need them (security review first).
+- **Grant by operator domain in adagents.json:** deferred. If adopted later, forbid it for mutating scopes and pinned keys.
+- **Operator-side relationship signal:** keep the optional per-acknowledgement `delegation_type`, failing closed on mismatch.
+- **Removal durability:** reuse adagents.json's revoked-publisher-domain retention (7-day hold); no second rule.
+- **`exclusive_grants` default in 4.0:** decide after 3.x adoption data.
 
-**Decisions still needed**:
-1. Acknowledge-by-reference for accepting grants. This replaces "both sides sign the same object".
-2. Stewardship and hosting of the standalone trust.json spec (see [Governance](#governance-and-naming)).
+**In progress**: JournalList `trust.txt` outreach before IANA registration (owner: Brian O'Kelley).
 
 ## TL;DR
 
@@ -229,7 +234,7 @@ Out of scope for this RFC: `trademarks[].license_type` / `licensor_domain`, `dat
   - Move the "MUST be present when the agent declares any signing posture" rule and the 4.0 "schema-required" commitment from `brand_json_url` to `trust_url`.
   - `brand_json_url` becomes a deprecated alias whose host MUST match.
   - Change `agent_url_match: "byte_equal"` to canonical.
-- **`static/schemas/source/trust/v1/`:** `trust.json` and `trust-acknowledgements.json`, published alongside the AdCP schemas but versioned on their own track. See [Governance](#governance-and-naming).
+- **`static/schemas/source/trust/v1/`:** `trust.json` and `trust-acknowledgements.json`, built by this repository's pipeline on their own version track and served at `https://trustjson.org/schemas/v1/`. See [Governance](#governance-and-naming).
 - **`brand.json`:**
   - Mark `agents`, `house.agents`, `brand_agent`, `rights_agent`, `authorized_operators`, `identity_relying_parties`, and non-owned `properties[].relationship` values as deprecated, pointing to trust.json.
   - No removals in 3.x.
@@ -250,10 +255,10 @@ Out of scope for this RFC: `trademarks[].license_type` / `licensor_domain`, `dat
 
 ## Governance and naming
 
-- **Standalone spec.** trust.json is published by AgenticAdvertising.org as its own small spec, versioned independently of AdCP. AdCP 3.x references a trust.json version and defines the `adcp` profile. AdCP never blocks on adoption outside advertising.
+- **Standalone spec.** trust.json is published by AgenticAdvertising.org at trustjson.org as its own small spec, versioned independently of AdCP. Schemas live at `https://trustjson.org/schemas/v1/`. AdCP 3.x references a trust.json version and defines the `adcp` profile. AdCP never blocks on adoption outside advertising.
 - **Namespaces.** Each protocol owns its namespace and the profile schema under `profiles.{namespace}`. The trust.json spec holds only the generic core and the namespace rules.
 - **IANA.** `trust.json` isn't in the well-known URI registry. Register it (RFC 8615), and register `brand.json` and `adagents.json` too, since neither is registered today.
-- **JournalList `trust.txt`.** `trust.txt` is registered (provisional) and is hosted by news publishers, who are part of AdCP's audience. It declares organization affiliations. A `trust.json` beside it will read as its JSON sibling. **Action:** contact JournalList before registering, to align or at least clearly differentiate. Their affiliation vocabulary may map onto brand-family and grant concepts.
+- **JournalList `trust.txt`.** `trust.txt` is registered (provisional) and is hosted by news publishers, who are part of AdCP's audience. It declares organization affiliations. A `trust.json` beside it will read as its JSON sibling. **Action (in progress, Brian O'Kelley):** contact JournalList before registering, to align or at least clearly differentiate. Their affiliation vocabulary may map onto brand-family and grant concepts.
 
 ## Migration and versioning
 
@@ -320,6 +325,11 @@ Out of scope for this RFC: `trademarks[].license_type` / `licensor_domain`, `dat
 - Hosting redirect added.
 - brand.json agent pointers are discovery-only.
 
+**v3 → v4 (decisions, 2026-10-02):**
+- Acknowledge-by-reference adopted.
+- AgenticAdvertising.org owns trust.json; schemas at trustjson.org, brand.json to brandjson.org at 4.0.
+- Tenant privacy, grant-by-operator-domain, per-acknowledgement `delegation_type`, removal durability, and the `exclusive_grants` default resolved as listed under **Decided**.
+
 **v2 → v3 (decisions, 2026-09-30):**
 - Split accepted.
 - Renamed to `trust.json` and made protocol-neutral: a generic core (`agents`, `grants`, `acknowledgements`) plus namespaced roles, scopes and grant sources, with per-protocol `profiles`.
@@ -328,11 +338,4 @@ Out of scope for this RFC: `trademarks[].license_type` / `licensor_domain`, `dat
 
 ## Open questions
 
-1. **Acknowledge-by-reference.** Confirm it as the model for accepting grants.
-2. **Stewardship.** Who owns trust.json core changes, and where it's hosted (schema URL, docs home) once it is more than AdCP's.
-3. **JournalList.** How to align with `trust.txt`: align vocabularies, cross-reference, or differentiate.
-4. **Tenant privacy for multi-tenant vendors.** Is an opaque tenant path enough, or do we need templated agent entries or per-tenant subdomain records?
-5. **Grant by operator domain in adagents.json** ("any agent Northwind lists"). Deferred. If adopted, forbid it for mutating scopes and pinned keys.
-6. **Operator-side relationship signal.** Is per-acknowledgement `delegation_type` right, or is a single operator-level role enough?
-7. **Removal durability.** How long a removed acknowledgement or revoked grant stays remembered.
-8. **`exclusive_grants` default** in AdCP 4.0.
+None blocking. See **Decided** and **In progress** at the top.

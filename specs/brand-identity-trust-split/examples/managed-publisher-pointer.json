@@ -1,5 +1,5 @@
 {
-  "$schema": "https://adcontextprotocol.org/schemas/trust/v1/trust.json",
+  "$schema": "https://trustjson.org/schemas/v1/trust.json",
   "authoritative_location": "https://hosting.hearthside-media.example/trust/pinecone-recipes.example/trust.json",
   "last_updated": "2026-09-30T00:00:00Z"
 }
