@@ -38,7 +38,7 @@ The sell-side chain is bilateral:
 2. The seller's `brand.json` declares the properties it owns, sells directly, manages, or represents in `properties[]`.
 3. The publisher's `adagents.json` declares the same sales agent in `authorized_agents[]`.
 4. For direct, delegated, or network paths, the `relationship` value in `brand.json` matches the publisher's `delegation_type` in `adagents.json`. For first-party inventory, `relationship: "owned"` is inline ownership and has no `delegation_type` counterpart.
-5. The signing key used by the agent is discoverable from the seller's `brand.json` `agents[].jwks_uri`; for mutating seller authorizations, the publisher also pins allowed keys in `adagents.json` `authorized_agents[].signing_keys[]`.
+5. The signing key used by the agent is discoverable from the seller's `brand.json` `agents[].jwks_uri`; for mutating seller authorizations, the publisher also pins allowed keys in `adagents.json` `authorized_agents[].signing_keys[]`. A pin only narrows: a webhook key must be in the seller's JWKS and match the pin.
 
 The result is a verifiable supply path. The operator publicly says "I sell this property"; the publisher publicly says "this operator is authorized to sell it."
 
@@ -112,7 +112,7 @@ The same publisher publishes `adagents.json` at `https://streamhaus.example/.wel
 }
 ```
 
-The buyer verifies that `agents[].url` in `brand.json` matches `authorized_agents[].url` in `adagents.json`, that StreamHaus owns the property it claims, and that the agent's signed webhook deliveries use a key StreamHaus pinned in `signing_keys[]`. Synchronous responses carry no transport signature; TLS to the agent URL covers those.
+The buyer verifies that `agents[].url` in `brand.json` matches `authorized_agents[].url` in `adagents.json`, that StreamHaus owns the property it claims, and that the agent's signed webhook deliveries use a key that is both in the agent's JWKS and pinned by StreamHaus in `signing_keys[]`. Synchronous responses carry no transport signature; TLS to the agent URL covers those.
 
 ## Delegated seller example
 
@@ -212,7 +212,7 @@ Operators that host one sales-agent deployment for many publisher tenants MAY pu
 }
 ```
 
-Signature verifiers MUST resolve keys from the agent URL being authenticated using the request-signing discovery algorithm: match exactly one `brand.json` `agents[].url` entry, use that entry's `jwks_uri` or the default `/.well-known/jwks.json` on the agent URL's origin, then resolve `keyid`. They MUST reject duplicate matching entries as ambiguous, MUST NOT choose a JWKS by agent `type` alone, and MUST NOT rely on a tenant identifier supplied inside the request payload to decide which key set to trust.
+Signature verifiers MUST resolve keys from the agent URL being authenticated using [Agent resolution](/docs/building/by-layer/L1/security#agent-resolution): match exactly one `brand.json` `agents[].url` entry by canonical URL, use that entry's `jwks_uri` or the default `/.well-known/jwks.json` on the origin of the entry's `url`, apply any publisher pin as a narrowing intersection, then resolve `keyid`. They MUST reject duplicate matching entries as ambiguous, MUST NOT choose a JWKS by agent `type` alone, and MUST NOT rely on a tenant identifier supplied inside the request payload to decide which key set to trust.
 
 ## Setup checklist
 

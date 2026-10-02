@@ -16,3 +16,5 @@ Webhook discovery now starts from `identity.brand_json_url` and runs the `key_or
 - A pin entry with only a `kid` matches nothing.
 - `key_origins` is now checked for every webhook signer that publishes `brand_json_url`, including pinned keys.
 - Two `agents[]` entries that differ only in a way canonicalization ignores, such as host case or a default port, are now an ambiguous match.
+
+Seller setup and the verification overview now describe the pin as a narrowing intersection and discover the brand.json through `identity.brand_json_url`. Three stale `docs/building/implementation/webhooks.mdx` references in the capabilities schema now point to `docs/building/by-layer/L3/webhooks.mdx`.

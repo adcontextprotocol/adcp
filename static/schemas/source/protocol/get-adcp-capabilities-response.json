@@ -2916,13 +2916,13 @@
                 ]
               }
             },
-            "spec": "docs/building/implementation/webhooks.mdx"
+            "spec": "docs/building/by-layer/L3/webhooks.mdx"
           }
         },
         "profile": {
           "type": "string",
           "enum": ["adcp/webhook-signing/v1"],
-          "description": "Identifier of the webhook-signing profile version the agent emits. Value MUST match the `tag=` parameter emitted in the RFC 9421 `Signature-Input` header (see docs/building/implementation/webhooks.mdx) so receivers can statically validate the declared profile against the on-wire tag. Closed enum; future profile revisions will extend this enum in a follow-up schema bump."
+          "description": "Identifier of the webhook-signing profile version the agent emits. Value MUST match the `tag=` parameter emitted in the RFC 9421 `Signature-Input` header (see docs/building/by-layer/L3/webhooks.mdx) so receivers can statically validate the declared profile against the on-wire tag. Closed enum; future profile revisions will extend this enum in a follow-up schema bump."
         },
         "algorithms": {
           "type": "array",
@@ -3046,7 +3046,7 @@
         },
         "compromise_notification": {
           "type": "object",
-          "description": "Whether this agent emits the `identity.compromise_notification` webhook event on key revocation due to known or suspected compromise (as opposed to scheduled rotation). Subscribers use this to bound the window between compromise detected and verifiers converging on revocation. See docs/building/implementation/webhooks.mdx §identity.compromise_notification.",
+          "description": "Whether this agent emits the `identity.compromise_notification` webhook event on key revocation due to known or suspected compromise (as opposed to scheduled rotation). Subscribers use this to bound the window between compromise detected and verifiers converging on revocation. See docs/building/by-layer/L3/webhooks.mdx §identity.compromise_notification.",
           "properties": {
             "emits": {
               "type": "boolean",
