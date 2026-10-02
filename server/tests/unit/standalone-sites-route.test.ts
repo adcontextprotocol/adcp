@@ -62,6 +62,9 @@ describe('standalone standard sites (real server)', () => {
     expect(res.status).toBe(200);
     expect(res.text).toContain('<link rel="canonical" href="https://brandjson.org/">');
     expect(res.text).toContain('window.__ADCP_SITE__="brandjson"');
+    // Shared assets carry a content hash so deploys bypass day-long edge caches.
+    expect(res.text).toMatch(/src="\/nav\.js\?v=[0-9a-f]{8}"/);
+    expect(res.text).toMatch(/href="\/design-system\.css\?v=[0-9a-f]{8}"/);
   });
 
   it('serves the builder at brandjson.org/builder', async () => {

@@ -14,6 +14,7 @@ const logger = createLogger('addie-url-tools');
 import { validateFetchUrl, validateRedirectTarget } from '../../utils/url-security.js';
 import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
+import { createSchemaToolHandlers } from './schema-tools.js';
 
 // Maximum content size to prevent memory issues (500KB for text, 20MB for images/PDFs)
 const MAX_CONTENT_SIZE = 500 * 1024;
@@ -75,8 +76,9 @@ async function readBinaryWithSizeLimit(
 
       totalSize += value.length;
       if (totalSize > maxSize) {
-        reader.cancel();
-        return { error: `${fileType} exceeded ${Math.round(maxSize / 1024 / 1024)}MB limit during download` };
+        await reader.cancel();
+        const sizeLimit = maxSize < 1024 * 1024 ? `${maxSize / 1024}KB` : `${maxSize / 1024 / 1024}MB`;
+        return { error: `${fileType} exceeded ${sizeLimit} limit during download` };
       }
       chunks.push(value);
     }
@@ -389,14 +391,14 @@ async function readSlackFile(
     if (parsed.hostname !== 'slack.com' && !parsed.hostname.endsWith('.slack.com')) {
       return { type: 'text', error: 'Not a valid Slack file URL' };
     }
+    fileName ||= decodeURIComponent(parsed.pathname.split('/').pop() || '');
   } catch {
     return { type: 'text', error: 'Not a valid Slack file URL' };
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
     const response = await fetch(fileUrl, {
       signal: controller.signal,
       headers: {
@@ -404,8 +406,6 @@ async function readSlackFile(
       },
       redirect: 'follow',
     });
-
-    clearTimeout(timeout);
 
     if (!response.ok) {
       if (response.status === 404) {
@@ -432,11 +432,32 @@ async function readSlackFile(
       if (contentLength && parseInt(contentLength) > MAX_CONTENT_SIZE) {
         return { type: 'text', error: `File too large (${Math.round(parseInt(contentLength) / 1024)}KB > ${MAX_CONTENT_SIZE / 1024}KB limit)` };
       }
-      const text = await response.text();
-      if (text.length > MAX_CONTENT_SIZE) {
+      const bufferResult = await readBinaryWithSizeLimit(response, MAX_CONTENT_SIZE, 'Text file');
+      if ('error' in bufferResult) {
+        return { type: 'text', error: bufferResult.error };
+      }
+      const text = Buffer.from(bufferResult).toString('utf8');
+
+      // Validate the complete uploaded manifest before any model-context
+      // truncation. Long JSON cannot be reliably copied back out of a preview.
+      if (fileName?.toLowerCase() === 'adagents.json') {
+        let json: unknown;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          return { type: 'text', error: 'The uploaded adagents.json is not valid JSON. The complete file was checked.' };
+        }
+        const validateJson = createSchemaToolHandlers().get('validate_json')!;
+        const validation = await validateJson({ json, schema_path: 'adagents.json' });
+        const validationSummary = validation.length > 3000
+          ? `${validation.substring(0, 3000)}\n[Additional schema errors omitted from this summary]`
+          : validation;
+        const preview = text.length > 5000
+          ? `${text.substring(0, 5000)}\n[File preview truncated; schema validation used the complete file]`
+          : text;
         return {
           type: 'text',
-          text: `File content (first ${MAX_CONTENT_SIZE / 1024}KB):\n\n${text.substring(0, MAX_CONTENT_SIZE)}...\n\n[Content truncated]`,
+          text: `Complete uploaded adagents.json schema validation (${bufferResult.byteLength} bytes checked):\n\n${validationSummary}\n\nThis checks the JSON schema only; agent endpoint reachability and live publisher authorization were not checked.\n\nFile content preview:\n\n${preview}`,
           filename: fileName,
         };
       }
@@ -562,6 +583,8 @@ async function readSlackFile(
       return { type: 'text', error: error.message };
     }
     return { type: 'text', error: 'Unknown error reading file' };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

@@ -60,6 +60,7 @@ import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
 import { brandJsonCacheControl } from "./services/brand-resolution-cache-policy.js";
+import { createStaticAssetVersioner } from "./utils/static-asset-versions.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
@@ -172,6 +173,7 @@ import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createNetworkHealthApiRouter } from "./routes/network-health.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
+import { createBrandImportRouter } from "./routes/brand-import.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
@@ -1193,6 +1195,12 @@ function stripLegacyBrandContext(manifest: Record<string, unknown>): Record<stri
 
 export class HTTPServer {
   private app: express.Application;
+  /** Adds ?v=<content hash> to shared JS/CSS references so deploys bypass day-long caches. */
+  private versionStaticAssets = createStaticAssetVersioner(
+    process.env.NODE_ENV === 'production'
+      ? path.join(__dirname, "../server/public")
+      : path.join(__dirname, "../public"),
+  );
   private server: Server | null = null;
   private isWorker: boolean = false;
   private complianceRefreshQueue: ComplianceRefreshQueue | null = null;
@@ -1552,6 +1560,7 @@ export class HTTPServer {
         if (this.bridgeIfNeeded(req, res)) return;
 
         html = await this.injectHomepageMemberCount(html);
+        html = this.versionStaticAssets(html);
 
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
         const session = await getPageSession(req, res);
@@ -1769,6 +1778,7 @@ export class HTTPServer {
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
       html = await this.injectHomepageMemberCount(html);
+      html = this.versionStaticAssets(html);
       const configScript = getAppConfigScript(user) + standaloneSiteScript(res);
 
       // Inject before </head>
@@ -2105,6 +2115,9 @@ export class HTTPServer {
 
       return serveApprovedLogoAsset(domain, id, res);
     });
+
+    // Brand-book import for the brand.json builder (stateless, anonymous-capable)
+    this.app.use('/api', createBrandImportRouter());
 
     // Mount brand logo routes (upload, list, review)
     this.app.use('/api', createBrandLogoRouter({ brandDb: this.brandDb, bansDb: this.bansDb }));
@@ -2773,6 +2786,7 @@ export class HTTPServer {
           ? path.join(__dirname, '../server/public/dashboard.html')
           : path.join(__dirname, '../public/dashboard.html');
         let html = await fs.readFile(dashboardPath, 'utf-8');
+        html = this.versionStaticAssets(html);
 
         // Replace template variables with environment values
         html = html
@@ -2813,6 +2827,7 @@ export class HTTPServer {
           ? path.join(__dirname, `../server/public/${filename}`)
           : path.join(__dirname, `../public/${filename}`);
         let html = await fs.readFile(pagePath, 'utf-8');
+        html = this.versionStaticAssets(html);
 
         // Replace template variables (for billing page with Stripe)
         html = html
@@ -3486,6 +3501,7 @@ export class HTTPServer {
         ? path.join(__dirname, '../server/public/perspectives/article.html')
         : path.join(__dirname, '../public/perspectives/article.html');
       let html = await fs.readFile(articlePath, 'utf-8');
+      html = this.versionStaticAssets(html);
       html = injectMetaTagsIntoHtml(html, {
         title: article.title,
         description: article.excerpt || article.subtitle || article.title,

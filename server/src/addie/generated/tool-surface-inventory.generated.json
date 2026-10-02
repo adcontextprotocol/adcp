@@ -70,7 +70,7 @@
     "server/src/addie/tool-wire-shape.ts": "4c5bcb95c32164b153c0f9d36648ea9f885e1df05e9796fdd71684c56162a81e",
     "server/src/addie/prompt-assembly.ts": "6c002ae5a52cdd26e13f424f6e00757dff163b3b273a1b4ab069fdb86f4f375f",
     "server/src/addie/register-baseline-tools.ts": "52893917fa19fa8904e1667857a7c4bfc2dc90bd3341e60d1ff45a40400d17aa",
-    "server/src/addie/bolt-app.ts": "1ac57ff8595f60096795afe8c5dfbbd2c0119eba88d715a5b5602e95b7989876",
+    "server/src/addie/bolt-app.ts": "76f21e4900df40d70a088d1e683eb794acaf4de27767f243097a1f23ce591b6f",
     "server/src/routes/addie-chat.ts": "c3c949c3e9ff1d8ff88f95acd0e8021bda0f1e1350fdc149c502e06807f1f7fa",
     "server/src/routes/tavus.ts": "2026b89e14588371f6efd9d756c2fb161d6fdeb1c6937ef9cdb1652022711ae6",
     "server/src/addie/email-conversation-handler.ts": "d4f5090d6f71937fff4ff8774ff516ca814be4bd7b23566b366fa037dcc642f3",
@@ -94,12 +94,12 @@
     "not_declared_to_router_scope": "Modern routed Slack Bolt profiles only"
   },
   "prompt": {
-    "rules_bytes": 155198,
+    "rules_bytes": 155165,
     "tool_reference_bytes": 40541,
     "complete_offline_tool_reference_bytes": 42589,
     "response_style_bytes": 9513,
-    "system_prompt_bytes": 205266,
-    "system_prompt_sha256": "6a59659a3a638552e8200c01c2fad84cedd90deb8c0dac51ebac79c8211798a0"
+    "system_prompt_bytes": 205233,
+    "system_prompt_sha256": "728b0237adf5eddf1fa7168acf41a8bfa57165f36f950d0671a7a20a8690e54c"
   },
   "catalog": {
     "missing_runtime_tool_count": 0,
@@ -39600,7 +39600,7 @@
       "prompt_catalog_tools_missing_runtime": -2,
       "always_available_tools": -13,
       "tool_reference_bytes": -3252,
-      "system_prompt_bytes": 3235,
+      "system_prompt_bytes": 3202,
       "maximum_slack_member_tools": -114,
       "maximum_slack_admin_tools": -181,
       "maximum_slack_public_tools": -3,

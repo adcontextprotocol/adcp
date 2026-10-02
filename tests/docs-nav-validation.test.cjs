@@ -333,7 +333,14 @@ test('OpenAPI navigation uses release-pinned public sources', () => {
 function stableDocsRef() {
   if (process.env.STABLE_DOCS_REF) return process.env.STABLE_DOCS_REF;
   const line = /^(\d+\.\d+)$/.exec(defaultVersion)?.[1];
-  return line ? `origin/${line}.x` : null;
+  if (!line) return null;
+  const branch = `${line}.x`;
+  // On the stable maintenance branch itself, or a pull request into it, the
+  // branch is its own release surface. Comparing against its pre-change tip
+  // would reject every navigation change there, including the GA flip that
+  // makes it the stable surface.
+  if ((process.env.GITHUB_BASE_REF || process.env.GITHUB_REF_NAME) === branch) return 'HEAD';
+  return `origin/${branch}`;
 }
 
 test('default navigation matches the stable release branch surface', () => {

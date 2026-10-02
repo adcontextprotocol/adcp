@@ -34,6 +34,15 @@ import { deliverAndRecordDirectMessage, prepareSlackDirectMessagePost } from './
 
 const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
+import {
+  extractFileInfo,
+  extractForwardedContent,
+  extractSlackMessageContent,
+  isSupportedSlackMessageSubtype,
+  type SlackAttachment,
+  type SlackMessageContent,
+} from './slack-message-content.js';
+import type { SlackFile } from '../slack/types.js';
 import { captureEvent } from '../utils/posthog.js';
 import {
   AddieClaudeClient,
@@ -321,33 +330,6 @@ async function getSystemChannelRole(channelId: string): Promise<SystemChannelRol
 const workingGroupDb = new WorkingGroupDatabase();
 
 /**
- * Slack attachment type for forwarded messages
- */
-interface SlackAttachment {
-  author_name?: string;
-  pretext?: string;
-  text?: string;
-  footer?: string;
-  fallback?: string;
-  title?: string;
-  title_link?: string;
-}
-
-/**
- * Slack file type for file shares
- */
-interface SlackFile {
-  id: string;
-  name?: string;
-  title?: string;
-  mimetype?: string;
-  filetype?: string;
-  size?: number;
-  url_private?: string;
-  permalink?: string;
-}
-
-/**
  * Reactions that mean "yes, proceed" or "approved"
  */
 const POSITIVE_REACTIONS = new Set([
@@ -406,74 +388,6 @@ async function recordPersonInboundMessage(
     // Not all Slack users have person_relationships records yet — that's OK
     logger.debug({ error, slackUserId }, 'Addie Bolt: Could not record person inbound message');
   }
-}
-
-/**
- * Extract text content from forwarded messages in Slack attachments.
- * When users forward a message, Slack puts the forwarded content in the attachments array.
- */
-function extractForwardedContent(attachments?: SlackAttachment[]): string {
-  if (!attachments || attachments.length === 0) {
-    return '';
-  }
-
-  const attachmentTexts: string[] = [];
-  for (const attachment of attachments) {
-    const parts: string[] = [];
-    if (attachment.author_name) {
-      parts.push(`From: ${attachment.author_name}`);
-    }
-    if (attachment.pretext) {
-      parts.push(attachment.pretext);
-    }
-    if (attachment.text) {
-      parts.push(attachment.text);
-    }
-    if (attachment.footer) {
-      parts.push(`(${attachment.footer})`);
-    }
-    if (parts.length > 0) {
-      attachmentTexts.push(parts.join('\n'));
-    }
-  }
-
-  if (attachmentTexts.length === 0) {
-    return '';
-  }
-
-  logger.debug({ attachmentCount: attachments.length, extractedLength: attachmentTexts.join('').length }, 'Addie Bolt: Extracted forwarded message content from attachments');
-  return `\n\n[Forwarded message]\n${attachmentTexts.join('\n---\n')}`;
-}
-
-/**
- * Extract file information from Slack file shares.
- * Provides context about shared files so Claude knows what was shared.
- */
-function extractFileInfo(files?: SlackFile[]): string {
-  if (!files || files.length === 0) {
-    return '';
-  }
-
-  const fileDescriptions: string[] = [];
-  for (const file of files) {
-    const parts: string[] = [];
-    const name = file.title || file.name || 'Unnamed file';
-    parts.push(`File: ${name}`);
-    if (file.filetype) {
-      parts.push(`Type: ${file.filetype.toUpperCase()}`);
-    }
-    if (file.size) {
-      const sizeKB = Math.round(file.size / 1024);
-      parts.push(`Size: ${sizeKB > 1024 ? `${(sizeKB / 1024).toFixed(1)} MB` : `${sizeKB} KB`}`);
-    }
-    if (file.permalink) {
-      parts.push(`Link: ${file.permalink}`);
-    }
-    fileDescriptions.push(parts.join(' | '));
-  }
-
-  logger.debug({ fileCount: files.length }, 'Addie Bolt: Extracted file information');
-  return `\n\n[Shared files]\n${fileDescriptions.join('\n')}`;
 }
 
 /**
@@ -928,7 +842,9 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
       // If this is a DM without thread_ts (first message in new conversation),
       // the Assistant middleware will fail with AssistantMissingPropertyError.
       // Route directly to handleDirectMessage instead.
-      if (!hasThreadTs && hasTs && hasText && !hasBotId && !hasSubtype && userId) {
+      const hasContent = extractSlackMessageContent(payload as SlackMessageContent).trim().length > 0;
+      if (!hasThreadTs && hasTs && hasContent && !hasBotId
+        && isSupportedSlackMessageSubtype('subtype' in payload ? payload.subtype : undefined) && userId) {
         logger.info({
           channelId,
           userId,
@@ -1882,7 +1798,7 @@ async function handleUserMessage({
 
   // Extract fields safely - not all message events have these fields
   const userId = 'user' in event ? event.user : undefined;
-  const messageText = 'text' in event ? event.text : undefined;
+  const messageText = extractSlackMessageContent(event as SlackMessageContent);
   const threadTs = 'thread_ts' in event ? event.thread_ts : ('ts' in event ? event.ts : undefined);
 
   // Skip if not a user message
@@ -2701,9 +2617,9 @@ export async function handleAppMention({
   // the conversation she's being mentioned in.
   const MAX_CONTEXT_MESSAGES = 25;
   let threadContext = '';
-  let mentionRawMessages: Array<{ user?: string; text?: string; ts: string }> = [];
+  let mentionRawMessages: Array<SlackMessageContent & { user?: string; ts: string }> = [];
   try {
-    let rawMessages: Array<{ user?: string; text?: string; ts: string }> = [];
+    let rawMessages: Array<SlackMessageContent & { user?: string; ts: string }> = [];
     let contextLabel = '';
 
     if (isInThread && event.thread_ts) {
@@ -2726,7 +2642,7 @@ export async function handleAppMention({
     if (rawMessages.length > 0) {
       const filteredMessages = rawMessages
         .filter(msg => msg.ts !== event.ts) // Exclude the current mention message
-        .filter(msg => (msg.text || '').trim().length > 0)
+        .filter(msg => extractSlackMessageContent(msg).trim().length > 0)
         .slice(-MAX_CONTEXT_MESSAGES);
 
       // Collect all unique user IDs (senders and @mentions)
@@ -2761,7 +2677,7 @@ export async function handleAppMention({
 
       // Format messages with speaker identification
       const contextMessages = filteredMessages.map(msg => {
-        let text = msg.text || '';
+        let text = extractSlackMessageContent(msg);
         const isAddie = msg.user === context.botUserId;
         const speaker = isAddie ? 'Addie' : (userNameMap.get(msg.user || '') || 'User');
         if (context.botUserId) {
@@ -4490,7 +4406,7 @@ async function handleActiveThreadReply({
     // but exclude the current message
     const filteredMessages = slackThreadMessages
       .filter(msg => msg.ts !== event.ts) // Exclude current message
-      .filter(msg => (msg.text || '').trim().length > 0)
+      .filter(msg => extractSlackMessageContent(msg).trim().length > 0)
       .slice(-MAX_THREAD_CONTEXT_MESSAGES);
 
     // Collect user IDs for display name lookup
@@ -4525,7 +4441,7 @@ async function handleActiveThreadReply({
 
     // Format messages with speaker identification
     const contextMessages = filteredMessages.map(msg => {
-      let text = msg.text || '';
+      let text = extractSlackMessageContent(msg);
       const isAddie = msg.user === context.botUserId;
       const speaker = isAddie ? 'Addie' : (userNameMap.get(msg.user || '') || 'User');
 
@@ -4902,7 +4818,7 @@ async function handleChannelMessage({
       logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Ignoring DM without content');
       return;
     }
-    if (hasSubtype) {
+    if (!isSupportedSlackMessageSubtype('subtype' in event ? event.subtype : undefined)) {
       logger.debug({ channelId: event.channel, userId, subtype: 'subtype' in event ? event.subtype : undefined }, 'Addie Bolt: Ignoring DM with subtype');
       return;
     }
@@ -4911,8 +4827,8 @@ async function handleChannelMessage({
     return;
   }
 
-  // For channel messages, require text and skip remaining subtypes
-  if (!hasText || hasSubtype) {
+  // File shares are user messages, including uploads without accompanying text.
+  if ((!hasText && !hasAttachments && !hasFiles) || !isSupportedSlackMessageSubtype('subtype' in event ? event.subtype : undefined)) {
     return;
   }
 
@@ -4925,8 +4841,7 @@ async function handleChannelMessage({
   }
 
   const channelId = event.channel;
-  // At this point we know hasText is true, so event.text exists
-  const messageText = event.text!;
+  const messageText = extractSlackMessageContent(event as SlackMessageContent);
   const threadTs = ('thread_ts' in event ? event.thread_ts : undefined) || event.ts;
   const isInThread = !!('thread_ts' in event && event.thread_ts);
   const startTime = Date.now();

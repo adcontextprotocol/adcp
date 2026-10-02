@@ -37,7 +37,7 @@ const activeWorkflowPaths = [
   'check-testable-snippets.yml',
   'release.yml',
 ];
-const forwardMergeWorkflows = ['3.0', '3.1'].map((line) => ({
+const forwardMergeWorkflows = ['3.0', '3.1', '3.2'].map((line) => ({
   line,
   source: fs.readFileSync(
     path.join(repoRoot, `.github/workflows/forward-merge-${line}.yml`),
@@ -114,12 +114,13 @@ assert(
   'Python candidate validation must align its disposable package-data allowlist after pinning ADCP_VERSION and before schema generation.'
 );
 assert(
-  pythonCandidateStep.includes('"sdk/pyproject.toml": [') &&
-    pythonCandidateStep.includes('f"_schemas/{sdk_version}/"') &&
+  pythonCandidateStep.includes('from adcp.validation.version import resolve_bundle_key') &&
+    pythonCandidateStep.includes('"sdk/pyproject.toml": [') &&
+    pythonCandidateStep.includes(`f'"_schemas/{new_key}/**/*.json"'`) &&
     pythonCandidateStep.includes('"sdk/MANIFEST.in": [') &&
-    pythonCandidateStep.includes('f"_schemas/{sdk_version} "') &&
-    pythonCandidateStep.includes('f"schemas/cache/{sdk_version} "'),
-  'Python candidate validation must update the wheel and both sdist schema allowlist syntaxes.'
+    pythonCandidateStep.includes('f"recursive-include src/adcp/_schemas/{new_key} *.json"') &&
+    pythonCandidateStep.includes('f"recursive-include schemas/cache/{new_key} *.json"'),
+  'Python candidate validation must key the wheel and both sdist schema allowlist syntaxes with the SDK bundle key.'
 );
 
 const storyboardCandidateMode = trainingAgentWorkflowConfig.jobs.storyboards.steps.find(
@@ -229,7 +230,7 @@ assert.strictEqual(
 assert(
   releaseTarget.includes('^[0-9a-f]{40}$') &&
     releaseTarget.includes('git merge-base --is-ancestor "${target_commit}" "refs/remotes/origin/${GITHUB_REF_NAME}"') &&
-    releaseTarget.includes('main|3.1.x|3.0.x'),
+    releaseTarget.includes('main|3.2.x|3.1.x|3.0.x'),
   'Manual recovery must require a full SHA already reachable from a supported release branch.'
 );
 

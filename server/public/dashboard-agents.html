@@ -1508,11 +1508,9 @@
         // 60-agent list over a slow connection that's the difference
         // between "instant" and "dead for 14 seconds."
         //
-        // A shared `cancelled` flag lets workers stop hammering the
-        // network if the user navigates away or the 15s ceiling
-        // fires. Workers always harvest results into the shared
-        // complianceMap, even after cancellation — a late success
-        // that arrived before cancel is still useful.
+        // Stop starting new requests after 15s, while allowing in-flight
+        // requests to update their cards when they finish. A compliance
+        // response can take longer than the page-level wait under load.
         const AGENT_FETCH_CONCURRENCY = 6;
         const FETCH_TIMEOUT_MS = 15_000;
         const agentCompliance = new Map();
@@ -1529,18 +1527,16 @@
 
         if (agents.length > 0) {
           const queue = agents.slice();
-          const cancellation = { cancelled: false };
+          let stopStartingRequests = false;
           async function worker() {
-            while (!cancellation.cancelled && queue.length > 0) {
+            while (!stopStartingRequests && queue.length > 0) {
               const agent = queue.shift();
               if (!agent) break;
               try {
                 const state = await fetchAgentState(agent, currentOrgId, partialState => {
-                  if (cancellation.cancelled) return;
                   agentCompliance.set(partialState.url, partialState);
                   swapAgentCard(partialState.url);
                 });
-                if (cancellation.cancelled) break;
                 agentCompliance.set(state.url, state);
                 swapAgentCard(state.url);
               } catch (err) {
@@ -1551,12 +1547,12 @@
           const workerCount = Math.min(AGENT_FETCH_CONCURRENCY, agents.length);
           const workers = Promise.all(Array.from({ length: workerCount }, worker));
           const timeout = new Promise(resolve => setTimeout(() => {
-            cancellation.cancelled = true;
+            stopStartingRequests = true;
             resolve(null);
           }, FETCH_TIMEOUT_MS));
           const completed = await Promise.race([workers, timeout]);
           if (completed === null) {
-            console.warn('Agent compliance fetch timed out after 15s; in-flight workers cancelled, rendering with partial data');
+            console.warn('Agent compliance fetch exceeded 15s; in-flight workers will continue updating their cards');
           }
         }
         void resumePendingAgentRefreshes(agents);
