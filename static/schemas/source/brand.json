@@ -2204,10 +2204,13 @@
             {"type": "website", "identifier": "jordan.com", "primary": true},
             {"type": "website", "identifier": "jumpman23.com"}
           ],
-          "brand_agent": {
-            "url": "https://dam.nike.com/mcp",
-            "id": "nike_dam"
-          }
+          "agents": [
+            {
+              "type": "brand",
+              "url": "https://dam.nike.com/mcp",
+              "id": "nike_dam"
+            }
+          ]
         },
         {
           "id": "converse",

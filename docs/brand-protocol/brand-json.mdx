@@ -1263,7 +1263,7 @@ To resolve a domain to a canonical brand:
 2. Check variant:
    - **authoritative_location**: fetch that exact HTTPS URL with zero HTTP redirects, then continue from step 2.
    - **house** (string): fetch from house domain, continue from step 2.
-   - **Brand Agent** (`agents[]` with a `type: "brand"` entry, or the deprecated `brand_agent`): return the agent URL — the agent is authoritative.
+   - **Brand Agent** (no top-level `id`, `names`, or `house`; carries `agents[]` with a `type: "brand"` entry, or the deprecated `brand_agent`): return the agent URL — the agent is authoritative.
    - **House Portfolio** (`house` object + `brands[]` and/or `brand_refs[]`): for an inline child, find the brand whose `properties[]` or `id` matches the query; for a pointer child, follow `brand_refs[].domain` and resolve once — the followed document MUST be a Brand Canonical Document, never another House Portfolio.
    - **Brand Canonical Document** (`id` + `names` at top level): the document is the brand. If `house_domain` is present, fetch the house's `brand.json` to verify reciprocation in its `brand_refs[]` (mutual assertion). When the house side is itself a [House Redirect](#2-house-redirect), follow the redirect chain on the house side before comparing. Read corporate-level fields (e.g., `data_subject_contestation`) from the house if not present on the brand; for compliance fields, resolve **strictest-of** house and brand (see [Mutual-assertion trust model](#mutual-assertion-trust-model)).
 3. Return canonical brand information.

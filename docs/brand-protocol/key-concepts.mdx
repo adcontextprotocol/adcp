@@ -256,7 +256,7 @@ Brands with licensable rights declare an `agents[]` entry with `type: "rights"` 
 }
 ```
 
-A `type: "brand"` agent provides identity data (logos, tone, assets). A `type: "rights"` agent provides licensing (discovery, pricing, acquisition). They can be the same endpoint or different ones. The older single-object `brand_agent` and `rights_agent` fields are deprecated.
+A `type: "brand"` agent provides identity data (logos, tone, assets). A `type: "rights"` agent provides licensing (discovery, pricing, acquisition). One server can play both roles, but each role needs its own URL, because `url` values in `agents[]` must be unique. The older single-object `brand_agent` and `rights_agent` fields are deprecated.
 
 ### get_rights
 

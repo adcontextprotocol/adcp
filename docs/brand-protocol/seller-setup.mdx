@@ -112,7 +112,7 @@ The same publisher publishes `adagents.json` at `https://streamhaus.example/.wel
 }
 ```
 
-The buyer verifies that `agents[].url` in `brand.json` matches `authorized_agents[].url` in `adagents.json`, that StreamHaus owns the property it claims, and that the agent's signed webhook deliveries use a key StreamHaus pinned in `signing_keys[]`. AdCP does not sign synchronous responses; TLS to the agent URL covers those.
+The buyer verifies that `agents[].url` in `brand.json` matches `authorized_agents[].url` in `adagents.json`, that StreamHaus owns the property it claims, and that the agent's signed webhook deliveries use a key StreamHaus pinned in `signing_keys[]`. Synchronous responses carry no transport signature; TLS to the agent URL covers those.
 
 ## Delegated seller example
 

@@ -33,11 +33,11 @@ The connection itself plus three discoverable surfaces. Sam's agent runs them in
 
 The chain is bilateral by design: each fact is asserted by exactly the party with authority over it. The publisher decides who can sell its inventory. The brand owner decides what it owns. The seller decides which keys sign the requests and webhooks it sends. No third-party registry adjudicates between them — a misbehaving authorized seller is remediated by the publisher revoking the `adagents.json` entry, not by an in-protocol claim check.
 
-AdCP does not sign synchronous responses: TLS to the agent URL carries their integrity, and signatures apply to the requests and webhooks an agent sends (see [Signed requests](/docs/building/by-layer/L1/security#request-signing)). So the steps below are integrity-checked discoveries — canonical URL matches against authoritative files at well-known locations — plus the keys Sam will use to verify Northwind's signed webhooks. The chain is only as strong as the publisher's and seller's control of their own DNS, hosting, and well-known endpoints. See [Step 5](#step-5-know-what-the-chain-does-not-prove) for what that implies.
+AdCP puts no transport signature on synchronous responses: TLS to the agent URL carries their integrity, and transport signatures apply to the requests and webhooks an agent sends (see [Signed requests](/docs/building/by-layer/L1/security#request-signing)). The only signed response payloads are on [`verify_brand_claim` and `verify_brand_claims`](/docs/building/by-layer/L1/security#designated-task-response-signing); `get_products` is not one of them. So the steps below are integrity-checked discoveries — canonical URL matches against authoritative files at well-known locations — plus the keys Sam will use to verify Northwind's signed webhooks. The chain is only as strong as the publisher's and seller's control of their own DNS, hosting, and well-known endpoints. See [Step 5](#step-5-know-what-the-chain-does-not-prove) for what that implies.
 
 ## Step 1: Anchor on the agent URL
 
-Sam's orchestrator called `https://northwind.example/mcp` over HTTPS. That URL is the agent's identity: the TLS session authenticates the host, and AdCP does not sign synchronous responses. Sellers MUST NOT apply RFC 9421 response signing to them, and buyers MUST NOT rely on it ([Signed requests](/docs/building/by-layer/L1/security#request-signing)). So every later step asks one precise question: *is the agent at this exact URL authorized to sell StreamHaus inventory?*
+Sam's orchestrator called `https://northwind.example/mcp` over HTTPS. That URL is the agent's identity: the TLS session authenticates the host, and the `get_products` response carries no signature. Sellers MUST NOT apply RFC 9421 response signing to synchronous responses, and buyers MUST NOT rely on it ([Signed requests](/docs/building/by-layer/L1/security#request-signing)). So every later step asks one precise question: *is the agent at this exact URL authorized to sell StreamHaus inventory?*
 
 Signatures still matter once the buy is live. When Northwind sends Sam signed webhooks (delivery reports, status changes), Sam verifies each one before acting on it, using keys discovered from the files in steps 2 and 3:
 
@@ -136,7 +136,9 @@ Sam's agent fetches `https://streamhaus.example/.well-known/adagents.json` — t
           "alg": "EdDSA",
           "crv": "Ed25519",
           "x": "Xe2lAKRJR_zr3FQRdSNwp3zsrv_IXnVCWJXDcWXwkLI",
-          "use": "sig"
+          "use": "sig",
+          "key_ops": ["verify"],
+          "adcp_use": "request-signing"
         }
       ]
     }
