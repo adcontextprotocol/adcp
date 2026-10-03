@@ -41,6 +41,7 @@ import {
   createStatelessToolHandlers,
 } from '../../src/mcp/exposed-tools.js';
 import { MEMBER_TOOLS, createMemberToolHandlers } from '../../src/addie/mcp/member-tools.js';
+import { SCHEMA_TOOLS } from '../../src/addie/mcp/schema-tools.js';
 import type { MemberContext } from '../../src/addie/member-context.js';
 
 afterEach(() => {
@@ -269,6 +270,18 @@ describe('SCHEMA_TOOL_DEFINITIONS', () => {
   it('validate_json requires json parameter', () => {
     const tool = SCHEMA_TOOL_DEFINITIONS.find((t) => t.name === 'validate_json');
     expect(tool!.inputSchema.required).toContain('json');
+  });
+
+  it('adds an optional upload integrity guard without mutating the internal tool contract', () => {
+    const internal = SCHEMA_TOOLS.find((t) => t.name === 'validate_json')!;
+    const external = SCHEMA_TOOL_DEFINITIONS.find((t) => t.name === 'validate_json')!;
+    const schema = external.inputSchema as { properties: Record<string, { type: string }>; required: string[] };
+    expect(schema.properties.expected_json_sha256.type).toBe('string');
+    expect(schema.required).not.toContain('expected_json_sha256');
+    expect(external.inputSchema).not.toBe(internal.input_schema);
+    expect(internal.input_schema.properties).not.toHaveProperty('expected_json_sha256');
+    expect(external.description).toContain('Do not manually reconstruct');
+    expect(internal.description).not.toContain('local attachment');
   });
 
   it('get_schema requires schema_path parameter', () => {
@@ -757,6 +770,20 @@ describe('createMemberToolHandler', () => {
 });
 
 describe('createStatelessToolHandlers', () => {
+  it('rejects altered source JSON through the external MCP handler before schema fetching', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const handler = createStatelessToolHandlers().get('validate_json')!;
+      // SHA-256 of canonical {}, supplied before the argument was altered.
+      await expect(handler({ json: { extra: true }, expected_json_sha256: '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a' }))
+        .rejects.toThrow('JSON integrity mismatch');
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('returns handlers for schema and property tools', () => {
     const handlers = createStatelessToolHandlers();
     expect(handlers.has('validate_json')).toBe(true);

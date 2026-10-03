@@ -12,6 +12,8 @@
 
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
+import canonicalize from 'canonicalize';
+import { createHash } from 'node:crypto';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('addie-schema-tools');
@@ -674,7 +676,7 @@ export function formatSchemaJson(
 /**
  * Create handlers for schema tools
  */
-export function createSchemaToolHandlers(): Map<
+export function createSchemaToolHandlers(options: { includeSourceIntegrity?: boolean } = {}): Map<
   string,
   (input: Record<string, unknown>) => Promise<string>
 > {
@@ -687,6 +689,26 @@ export function createSchemaToolHandlers(): Map<
       throw new ToolError('json must be a non-null object, not an array or primitive value.');
     }
     const jsonObj = json as Record<string, unknown>;
+    let integrity = 'Source integrity: unverified. Only the supplied JSON object was validated; do not claim the original upload was transferred unchanged. For original-file validation, use validate_json_file with a real download reference or validate the original file programmatically against the published schema and label that as local validation.';
+    if (input.expected_json_sha256 !== undefined) {
+      const expected = input.expected_json_sha256;
+      if (typeof expected !== 'string' || !/^[a-fA-F0-9]{64}$/.test(expected)) {
+        throw new ToolError('expected_json_sha256 must be a 64-character hexadecimal SHA-256 of the original parsed JSON canonicalized using RFC 8785; it is not the raw file checksum.');
+      }
+      let canonical: string;
+      try {
+        const serialized = canonicalize(jsonObj);
+        if (typeof serialized !== 'string') throw new Error('Not serializable JSON');
+        canonical = serialized;
+      } catch {
+        throw new ToolError('The JSON cannot be canonicalized using RFC 8785. No source integrity or schema validation was confirmed.');
+      }
+      const actual = createHash('sha256').update(canonical, 'utf8').digest('hex');
+      if (actual !== expected.toLowerCase()) {
+        throw new ToolError('JSON integrity mismatch: the received object does not match expected_json_sha256. Schema validation was not run. Do not retry by replacing the source checksum with a checksum of the reconstructed argument; transfer the unchanged parsed JSON programmatically or use original-file validation.');
+      }
+      integrity = `Source integrity: the received JSON matches the client-provided RFC 8785 SHA-256 (${actual}). This checks parsed JSON content against the supplied checksum, not the original file's bytes or provenance.`;
+    }
     let schemaPath = input.schema_path as string | undefined;
     let requestedVersion = input.version;
 
@@ -721,7 +743,7 @@ export function createSchemaToolHandlers(): Map<
       if (result.valid) {
         return `✅ **Valid!** The JSON validates successfully against ${schemaUrl}
 
-The provided JSON conforms to the AdCP ${version} ${schemaPath} schema.`;
+The provided JSON conforms to the AdCP ${version} ${schemaPath} schema.${options.includeSourceIntegrity === false ? '' : `\n\n${integrity}`}`;
       }
 
       const errorList = result.errors.map((e) => `- ${e}`).join('\n');
@@ -729,7 +751,7 @@ The provided JSON conforms to the AdCP ${version} ${schemaPath} schema.`;
 
 ${errorList}
 
-**Tip:** Use \`get_schema\` to see the exact schema definition and understand what fields are expected.`;
+**Tip:** Use \`get_schema\` to see the exact schema definition and understand what fields are expected.${options.includeSourceIntegrity === false ? '' : `\n\n${integrity}`}`;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new ToolError(`Failed to validate: ${message}

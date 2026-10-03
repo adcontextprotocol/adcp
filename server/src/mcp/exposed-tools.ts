@@ -99,7 +99,23 @@ export const AGENT_CONTEXT_TOOL_DEFINITIONS = MEMBER_TOOLS
 export const SCHEMA_TOOL_DEFINITIONS = [
   ...SCHEMA_TOOLS
     .filter((t) => (SCHEMA_TOOL_NAMES as readonly string[]).includes(t.name))
-    .map(toMCPFormat),
+    .map((tool) => tool.name === 'validate_json' ? {
+      name: tool.name,
+      // Upload references and local execution belong to external clients, not
+      // Addie's internal router or its pinned evaluation tool universe.
+      description: 'Validate the supplied JSON object against an AdCP schema. This validates the tool argument, not the original uploaded file. Prefer validate_json_file when an original-file download reference is available. Do not manually reconstruct or shorten uploads, especially repeated arrays. For a local attachment, compute expected_json_sha256 programmatically from the original parsed JSON using RFC 8785 canonicalization before submitting the object; a mismatch is rejected. If you cannot transfer it faithfully with that checksum, request an accessible original-file reference or validate the original file programmatically with the published schema and clearly label that as local validation, not an Addie result. Never claim unchanged-file validation or an original-file checksum from this tool.',
+      inputSchema: {
+        ...tool.input_schema,
+        properties: {
+          ...tool.input_schema.properties,
+          expected_json_sha256: {
+            type: 'string',
+            pattern: '^[a-fA-F0-9]{64}$',
+            description: 'Optional integrity guard: SHA-256 of the UTF-8 RFC 8785 canonical representation of the original parsed JSON, computed programmatically before preparing this tool call. This is NOT the raw file SHA-256. Never calculate it from a reconstructed tool argument or invent it. Rejects changed, omitted, or duplicated content while ignoring whitespace and object key order.',
+          },
+        },
+      },
+    } : toMCPFormat(tool)),
   JSON_FILE_VALIDATION_TOOL,
 ];
 
