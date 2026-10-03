@@ -156,6 +156,56 @@ The response tells you what happened to each creative:
 
 After upload, the creative enters the library's review process. Check `list_creatives` to see when it transitions from `pending_review` to `approved`.
 
+### Prepare creatives before a time-sensitive launch
+
+For a seller that advertises `creative.has_creative_library: true`, sync a finished creative before booking the campaign. This lets the seller review the library asset while the buyer finalizes the media buy. Use the same account when syncing, checking status, and assigning the creative.
+
+1. Call `sync_creatives` without an assignment. Give each request a fresh `idempotency_key`. If the seller advertises `creative.supports_revisions: true`, give the submitted content a `revision_id` so review and later readback can refer to the same input revision.
+2. If the sync returns `status: "submitted"`, wait for task completion through `get_task_status` or the configured webhook. Then call `list_creatives` and wait for this creative's library `status` to become `approved`. A successful sync only confirms ingestion; it does not mean review has finished.
+3. When the media buy and package exist, use `sync_creatives.assignment_operations` to assign the approved `creative_id` to the package. Check the package's `approval_status` through `get_media_buys` before relying on delivery. Library approval does not guarantee eligibility for a particular package or placement.
+
+For example, the initial sync can contain the full asset and no package reference:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "account": { "account_id": "acct_acme_2026" },
+  "idempotency_key": "ba8fe15a-e451-486c-9cfb-4d0fdde22efa",
+  "creatives": [{
+    "creative_id": "acme_video_001",
+    "revision_id": "acme_video_001_v1",
+    "name": "Holiday Sale 30s",
+    "format_kind": "video_hosted",
+    "assets": {
+      "video": {
+        "asset_type": "video",
+        "url": "https://cdn.acme-example.com/holiday-sale-30s.mp4",
+        "width": 1920,
+        "height": 1080,
+        "duration_ms": 30000
+      }
+    }
+  }]
+}
+```
+
+After the package is created, a separate request assigns the already reviewed library creative:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "account": { "account_id": "acct_acme_2026" },
+  "idempotency_key": "ce731bf6-ebaf-4ccc-bfe9-bf1a538848b6",
+  "assignment_operations": [{
+    "operation": "assign",
+    "creative_id": "acme_video_001",
+    "package_id": "pkg_premium_video"
+  }]
+}
+```
+
+For a recurring campaign, check the library status again and assign the same `creative_id` to each new package if it remains approved and eligible. To stage changed content, sync it under a new `revision_id` when revision support is advertised, wait for that revision's review, then assign it. If the earlier creative is still serving, use a separate `creative_id` for the candidate so the sync does not update the live library item. Do not reuse a `revision_id` for changed content. Sellers set review timing and policy; this workflow does not promise approval by the launch date or bypass package review.
+
 ### Uploading with assignments
 
 Assign creatives to packages in the same call:
