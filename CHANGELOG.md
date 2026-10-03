@@ -1,5 +1,48 @@
 # Changelog
 
+## 3.3.0-beta.0
+
+### Minor Changes
+
+- a25b8a8: spec(accounts): discovery and negotiation tasks never provision an account. Building on the "Account references before provisioning" clarification, a lazy-provisioning seller now provisions only on a provisioning task: one that commits spend or creates account-owned resources, such as `create_media_buy`, `buy_products`, `accept_proposal`, `sync_*`, or `activate_signal`. `get_products`, `list_products`, `get_signals`, `request_proposals`, `refine_proposals`, and `decline_proposals` MUST NOT create or activate an account, or accept the seller's default terms on its behalf.
+  
+  A seller that lazily provisions instead of exposing `sync_accounts` MAY answer a discovery task for the account it would create, without creating it. Every other unresolved `account` returns `ACCOUNT_NOT_FOUND`.
+  
+  This narrows the earlier "first account-scoped request" wording, under which a seller that provisioned on `get_products` was conformant, so it is classified `minor`. The wire result is unchanged, because a lazy-provisioning seller may still answer discovery.
+  
+  Adds the advisory storyboard `media_buy_seller/unprovisioned_account_reference`, whose checks become required at runner capability `14.1.0`.
+- 8f7c110: Define one agent-resolution algorithm in `security.mdx`, still backed by brand.json, and make every signing surface cite it. These surfaces are request signing, webhook signing, governance JWS `iss`, designated-task response signing, and rights attestations. TMP keeps its own publisher-key model. The algorithm has four parts:
+  
+  - **Which brand.json lists the agent.** A verifier uses the agent's operator record from `identity.brand_json_url`, or a record the verifier already trusts. Examples of the second case are the buyer's brand.json for governance and the `brand_domain` brand.json for brand claims. A House Portfolio operator record matches across `house.agents[]` and every `brands[].agents[]`, counting entries that agree on type and JWKS source once. Governance picks its agent collection the same way as the brand-claim cross-check.
+  - **Matching.** Agent URLs are matched by canonical URL on every surface. Webhook discovery and governance `iss` no longer compare byte-for-byte, and the capabilities `verifier_constraints.agent_url_match` is now `canonical`.
+  - **Publisher pin.** A publisher's adagents.json `signing_keys` pin now narrows the accepted keys for sell-side signatures about that publisher's inventory. A key must be in the agent's JWKS and match a pinned entry by RFC 7638 thumbprint. Matching by `kid` alone is not enough, and a pinned entry without key material matches nothing. Verifiers take the applicable publishers from their own record of the media buy, never from the payload.
+  - **Shortcuts.** Cached or onboarding mappings must be confirmed against the agent's `brand_json_url` and refreshed within the brand.json cache lifetime.
+  
+  Webhook discovery now starts from `identity.brand_json_url` and runs the `key_origins` check for every webhook. A 3.x fallback reads the brand.json at the agent's host or eTLD+1 for sellers that omit the field. The `authorized_operators` origin-binding fallback reads only from House Portfolio documents. Governance buyer identity for signed requests is the exact operator record that agent resolution selected.
+  
+  **Migration.** Some signatures that verified before can now fail:
+  - A pinned key that the agent's JWKS does not publish is rejected. Operators must publish every pinned key in the agent's JWKS.
+  - A pin entry with only a `kid` matches nothing.
+  - `key_origins` is now checked for every webhook signer that publishes `brand_json_url`, including pinned keys.
+  - Two `agents[]` entries that differ only in a way canonicalization ignores, such as host case or a default port, are now an ambiguous match.
+  
+  Seller setup and the verification overview now describe the pin as a narrowing intersection and discover the brand.json through `identity.brand_json_url`. Three stale `docs/building/implementation/webhooks.mdx` references in the capabilities schema now point to `docs/building/by-layer/L3/webhooks.mdx`.
+
+### Patch Changes
+
+- f792208: docs(accounts): clarify how buyer-declared account references behave before provisioning. A new "Account references before provisioning" section in the accounts overview spells out what the error table and the `cache_scope` contract already required:
+  
+  - a natural key resolves only after the account is provisioned (`sync_accounts`, or lazy provisioning where the seller offers it);
+  - an `account` that doesn't resolve, and that the seller doesn't lazily provision, returns `ACCOUNT_NOT_FOUND` even where `account` is optional, instead of being dropped in favour of public results;
+  - buyers omit `account` and send `brand` until the account is provisioned, and provision before `request_proposals` when they intend to accept;
+  - account errors describe buyer setup, not seller health;
+  - an `account_id` echoed by `sync_accounts` for a buyer-declared account is a seller handle that buyers must not assume is accepted as an `AccountRef`.
+  
+  `ACCOUNT_NOT_FOUND` now gives the same recovery everywhere: provision a natural key, or verify an `account_id`. It previously said "terminal, verify via list_accounts" in the error-code enum and "re-run sync_accounts" in the L2 guide. The capabilities, `get_products`, `get_signals`, `account-ref`, `sync_accounts`, and sandbox texts point to the new section, and the account-status intro no longer says reads are always available, which contradicted the status table.
+- cad4f33: Clarify that `authorized_agents[].url` in `adagents.json` is the agent's full protocol endpoint URL, including the path (for example `https://agent.example.com/mcp`), not the agent's origin. A new "Agent URL matching" section says which URL differences canonicalization ignores and which it keeps (trailing slash, path case, scheme, query). It also says to list one entry for each agent URL when MCP and A2A are served at different paths.
+- 88f9bd6: Make the sales-guaranteed compliance storyboard exercise its documented polling path without requiring an optional task webhook, and document the future versioned signed-webhook conformance proposal separately from current 3.x grading.
+- ddac6b8: Fix contradictions between the trust and verification docs and the spec. The verification overview no longer says `get_products` responses are signed: it anchors on the agent URL and points to the request-signing and webhook-signing profiles. Only `verify_brand_claim` and `verify_brand_claims` carry a signed response payload. The docs now use the `relationship_trust` values from the schema and `house_domain` instead of `parent_house`. They also say that `direct`, `delegated`, and `ad_network` all pair with an adagents.json `delegation_type`, and that only `owned` has no counterpart. The accounts page now says a missing `authorized_operators` listing leads to a rejection or a manual review, never automatic approval. Examples, including one in the `brand.json` schema, use `agents[]` with `type: "brand"` or `type: "rights"` instead of the deprecated `brand_agent` and `rights_agent` fields. Schema `spec` links now point to `docs/building/by-layer/L1/security.mdx`.
+
 ## 3.2.1
 
 This is the first stable 3.2 release. `3.2.0` is a permanently withdrawn version number and was never released. On 2026-06-30 an accidental Version Packages cut (5dbe4ae) committed 3.2.0 from 3.1-era main. #5769 reverted it and deleted its tag and GitHub Release, but its signed schema, compliance, and protocol artifacts remain on the artifact CDN with immutable caching and are never overwritten or retired. 3.2 GA therefore ships as 3.2.1; the wire pin stays "3.2".
