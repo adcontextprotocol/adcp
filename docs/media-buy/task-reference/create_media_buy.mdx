@@ -889,6 +889,7 @@ const result = await testAgent.createMediaBuy({
   end_time: endDate.toISOString(),
   reporting_webhook: {
     url: 'https://buyer.example.com/webhooks/reporting',
+    operation_id: 'op_reporting_001',
     authentication: {
       schemes: ['Bearer'],
       credentials: 'secret_token_xyz_minimum_32_chars'
@@ -938,6 +939,7 @@ async def create_with_reporting():
         end_time=end_date.isoformat().replace('+00:00', 'Z'),
         reporting_webhook={
             'url': 'https://buyer.example.com/webhooks/reporting',
+            'operation_id': 'op_reporting_001',
             'authentication': {
                 'schemes': ['Bearer'],
                 'credentials': 'secret_token_xyz_minimum_32_chars'
