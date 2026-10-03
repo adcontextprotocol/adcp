@@ -42,6 +42,7 @@ describe('uploaded adagents.json validation', () => {
     expect(result).toContain('/schemas/3.2.1/adagents.json');
     expect(result).toContain(`${Buffer.byteLength(uploadedText)} bytes checked`);
     expect(result).toContain('agent endpoint reachability and live publisher authorization were not checked');
+    expect(result).not.toContain('Source integrity: unverified');
     expect(result).not.toContain('[Content truncated');
     expect(result.length).toBeLessThan(10_000);
     expect(schemaRequests).toContain('/schemas/3.2.1/adagents.json');
@@ -53,6 +54,7 @@ describe('uploaded adagents.json validation', () => {
     const result = await handlers.read_slack_file({ file_url: fileUrl, file_name: 'adagents.json' });
     expect(result).toContain('❌ **Invalid.**');
     expect(result).toContain('/authoritative_location');
+    expect(result).not.toContain('Source integrity: unverified');
   });
 
   it('reports malformed JSON at the end of a large upload', async () => {

@@ -447,7 +447,9 @@ async function readSlackFile(
         } catch {
           return { type: 'text', error: 'The uploaded adagents.json is not valid JSON. The complete file was checked.' };
         }
-        const validateJson = createSchemaToolHandlers().get('validate_json')!;
+        // This path parses the complete downloaded upload before truncating
+        // its preview, so the inline-argument integrity warning does not apply.
+        const validateJson = createSchemaToolHandlers({ includeSourceIntegrity: false }).get('validate_json')!;
         const validation = await validateJson({ json, schema_path: 'adagents.json' });
         const validationSummary = validation.length > 3000
           ? `${validation.substring(0, 3000)}\n[Additional schema errors omitted from this summary]`

@@ -151,7 +151,9 @@ export async function validateJsonFile(input: Record<string, unknown>) {
     reference.file_name === 'adagents.json' && json && typeof json === 'object' && !('$schema' in json)
       ? 'adagents.json' : undefined
   );
-  const validator = createSchemaToolHandlers().get('validate_json')!;
+  // This tool reads and hashes the original bytes itself; its receipt below
+  // replaces the inline tool's warning about unverified source-file integrity.
+  const validator = createSchemaToolHandlers({ includeSourceIntegrity: false }).get('validate_json')!;
   const validation = await validator({ json, schema_path: schemaPath, version: input.version });
   if (validation.startsWith('Cannot determine schema.')) throw new ToolError(validation);
   const structuredContent = { byte_count: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex'), validation };
