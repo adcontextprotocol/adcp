@@ -15,12 +15,16 @@ for (const f of fs.readdirSync(path.join(dir, 'examples'))) {
   const id = f.includes('acknowledgements') ? '/schemas/trust/v1/trust-acknowledgements.json' : '/schemas/trust/v1/trust.json';
   const ok = ajv.validate(id, doc);
   console.log(ok ? 'PASS' : 'FAIL', f); if (!ok) { fail++; console.log(JSON.stringify(ajv.errors, null, 1)); }
+  // One agent per origin: the origin is the agent's identity and serves its key directory.
+  const origins = (doc.agents || []).map(a => new URL(a.url).origin);
+  if (new Set(origins).size !== origins.length) { fail++; console.log('FAIL', f, 'two agents share an origin'); }
 }
 // negative cases
 const neg = [
   ['both acknowledgements and acknowledgements_url', { acknowledgements: [], acknowledgements_url: 'https://a.example/x' }],
   ['unknown top-level key', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:sales'] }], properties: [] }],
   ['grant carrying keys', { grants: [{ grantee: 'a.example', scopes: ['adcp:governance'], agents: [{ url: 'https://a.example/x', jwks_uri: 'https://a.example/j' }] }] }],
+  ['agent carrying keys', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:sales'], jwks_uri: 'https://a.example/j' }] }],
   ['empty record', {}],
   ['http agent url', { agents: [{ url: 'http://a.example/mcp', roles: ['adcp:sales'] }] }],
   ['unknown adcp role', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:seller'] }] }],

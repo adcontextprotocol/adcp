@@ -10,9 +10,10 @@
 - A separate well-known trust record. brand.json becomes identity-only, with the trust fields removed in 4.0.
 - The record is **`/.well-known/trust.json`**. It is protocol-neutral, with a generic core and per-protocol profiles; this document defines the AdCP profile.
 - #6033 demand-side grants land in trust.json, not brand.json.
+- **Keys:** trust.json carries none. An agent's identity is its origin, one agent per origin, and its keys are at `/.well-known/http-message-signatures-directory` on that origin, as Web Bot Auth defines. `agents[].jwks_uri` and the `/.well-known/jwks.json` default are removed. The signing profile is RFC [#7878](https://github.com/adcontextprotocol/adcp/issues/7878).
 - **Acknowledge-by-reference** is the model for accepting grants: the grantee lists `{grantor, agent_url, via}` in its own trust.json, and terms live only in the grantor's document.
 - **Stewardship and hosting.** AgenticAdvertising.org owns the trust.json core and the namespace rules; each protocol owns its profile. Schemas are published at **`https://trustjson.org/schemas/v1/`** and the spec's home is trustjson.org, served from this repository's pipeline. brand.json's schema moves to **brandjson.org** at AdCP 4.0, with `/schemas/v3/brand.json` kept as a permanent alias.
-- **Tenant privacy:** opaque tenant paths for v1; templated agent entries only if vendors need them (security review first).
+- **Tenant privacy:** opaque tenant subdomains for v1, such as `7f3a9c.sentinel-governance.example`; templated agent entries only if vendors need them (security review first).
 - **Grant by operator domain in adagents.json:** deferred. If adopted later, forbid it for mutating scopes and pinned keys.
 - **Operator-side relationship signal:** keep the optional per-acknowledgement `delegation_type`, failing closed on mismatch.
 - **Removal durability:** reuse adagents.json's revoked-publisher-domain retention (7-day hold); no second rule.
@@ -27,17 +28,18 @@ The rule is one question per file:
 | File | Answers | Published by |
 |---|---|---|
 | `brand.json` | **Who am I?** Identity, owned properties, brand family | Every organization |
-| `trust.json` *(new, protocol-neutral)* | **Which agents do I run, with which keys? Who may act for me? Whose grants do I accept?** | Anyone who runs agents or delegates authority |
+| `trust.json` *(new, protocol-neutral)* | **Which agents do I run? Who may act for me? Whose grants do I accept?** | Anyone who runs agents or delegates authority |
+| `http-message-signatures-directory` *(Web Bot Auth)* | **Which keys does this agent sign with?** | Each agent origin |
 | `adagents.json` | **Who may sell my inventory / use my data?** | Publishers and data providers (unchanged) |
 
 Four invariants:
 
-- **brand.json never carries keys or grants.**
+- **brand.json and trust.json never carry keys.** An agent's keys live only on its own origin. brand.json never carries grants either.
 - **A grant lives with the party making it.** This is #6033's own principle.
 - **The party receiving a grant acknowledges it by reference and never restates its terms.** Consent stays two-sided, and nothing can drift.
 - **The organization a trust record speaks for is the host that serves it**, never a value inside the document.
 
-Nothing in the core is ad-specific. "Which agents does this organization run, with which keys, and who may act for it" is a question for any agent protocol. AdCP is the first profile, not the only one.
+Nothing in the core is ad-specific. "Which agents does this organization run, and who may act for it" is a question for any agent protocol. AdCP is the first profile, not the only one.
 
 ## Problem
 
@@ -99,7 +101,7 @@ Hosted at `https://{host}/.well-known/trust.json`. Two variants:
 
 | Field | Purpose |
 |---|---|
-| `agents[]` | Agents this organization runs: `url`, namespaced `roles`, optional `protocols` (`mcp`, `a2a`), `jwks_uri`, `countries`, per-protocol `profiles` |
+| `agents[]` | Agents this organization runs: `url`, namespaced `roles`, optional `protocols` (`mcp`, `a2a`), `countries`, per-protocol `profiles`. One agent per origin. Never carries keys |
 | `grants[]` | Authority this organization delegates: `grantee` domain, optional `agents[]` narrowing, namespaced `scopes`, `countries`, `valid_from` / `valid_until`, per-protocol `profiles`. Never carries keys |
 | `exclusive_grants` | Opt-in to fail-closed: when true, `grants[]` is exhaustive for the scopes it names |
 | `acknowledgements[]` / `acknowledgements_url` | Grants this organization accepts: `grantor`, `agent_url`, and `via`, which names where the grant is published. Terms stay in the grantor's document |
@@ -128,7 +130,7 @@ Examples:
 - [network with sharded acknowledgements](./brand-identity-trust-split/examples/network.json), plus its [sub-document](./brand-identity-trust-split/examples/network-acknowledgements.json)
 - [brand house](./brand-identity-trust-split/examples/brand-house.json). Grants only, no agents.
 - [agency](./brand-identity-trust-split/examples/agency.json). Its own buying agent, plus a #6033 grant to an intermediary.
-- [multi-tenant governance vendor](./brand-identity-trust-split/examples/governance-vendor.json). Opaque tenant paths.
+- [multi-tenant governance vendor](./brand-identity-trust-split/examples/governance-vendor.json). Opaque tenant subdomains, one agent origin per tenant.
 - [multi-protocol organization](./brand-identity-trust-split/examples/multi-protocol-org.json). An AdCP brand agent alongside a non-ad agent in another namespace.
 
 ## Proposed normative rules
@@ -147,9 +149,9 @@ In AdCP, request signing, webhook signing, governance JWS `iss`, rights attestat
 3. **Origin binding.** eTLD+1(`A`) MUST equal eTLD+1(`H`), using the pinned PSL snapshot.
    - There is no hosting-delegation fallback.
    - Cross-organization cases, such as a platform running an agent for a brand, go through a grant: the platform lists the agent in its own record, and the brand grants the platform.
-4. **Match the agent.** Exactly one `agents[]` entry must canonically equal `A`. No match → `request_signature_agent_not_in_trust_record`. More than one → `…_ambiguous`.
-5. **Find the keys.** Use the entry's `jwks_uri`. The verifier may default to `/.well-known/jwks.json` on `A`'s origin only when `A`'s host equals `H` and no other entry shares that origin. (AdCP: the `identity.key_origins` consistency check is unchanged.)
-6. **Apply the publisher pin (AdCP, narrowing only).** For a sell-side signature about publisher P's inventory, accepted keys = P's adagents `signing_keys` pin ∩ the JWKS from step 5. A pin never adds keys and never applies outside P's inventory.
+4. **Match the agent.** Exactly one `agents[]` entry must canonically equal `A`. No match → `request_signature_agent_not_in_trust_record`. More than one → `…_ambiguous`. No other entry may share `A`'s origin.
+5. **Find the keys.** Fetch `/.well-known/http-message-signatures-directory` on `A`'s origin (Web Bot Auth). There is no other key location. (AdCP: the `identity.key_origins` consistency check is unchanged in 3.x.)
+6. **Apply the publisher pin (AdCP, narrowing only).** For a sell-side signature about publisher P's inventory, accepted keys = P's adagents `signing_keys` pin ∩ the keys from step 5. A pin never adds keys and never applies outside P's inventory.
 7. **Result.** The verified agent identity is canonical `A`; the operator is `H`.
 
 **Every discovery path is bound both ways.** Any agent-URL → trust-record mapping MUST have confirmed that `A`'s back-pointer names that record. That includes prior onboarding, registry caches and crawler indexes. If several records list `A`, only the one `A` points to counts.
@@ -194,7 +196,7 @@ Compared with "both sides sign the same object", this needs no canonical seriali
 ### Grants (generic, with AdCP binding)
 
 - **Chain limit.** Grants are non-transitive, and the maximum chain is grantor → grantee → the grantee's own agents. A grantee's own single-hop grant covers the #6033 intermediary case. A grantee MUST NOT extend a grant it received.
-- **No keys in grants.** A grant names a grantee domain and optionally agent URLs; keys always come from the agent's own operator record.
+- **No keys in grants.** A grant names a grantee domain and optionally agent URLs; keys always come from the agent's own origin.
 - **Your own agents need no grant.** An organization's own `agents[]` act for it without one.
 - **Freshness.**
   - Cache TTL ≤ the JWKS revocation polling ceiling (30 min); negative cache ≤ 60 s.
@@ -219,7 +221,7 @@ Compared with "both sides sign the same object", this needs no canonical seriali
 
 | Stays in brand.json | Moves to trust.json (AdCP profile) |
 |---|---|
-| Identity: names, url, logos, colors, fonts, tone, tagline, industries, visual_guidelines, assets, voice, avatar, disclaimers, contact, privacy_policy_url | `agents[]` (all types), `house.agents`, `brands[].agents`, `jwks_uri` → `agents[]` with `adcp:*` roles |
+| Identity: names, url, logos, colors, fonts, tone, tagline, industries, visual_guidelines, assets, voice, avatar, disclaimers, contact, privacy_policy_url | `agents[]` (all types), `house.agents`, `brands[].agents` → `agents[]` with `adcp:*` roles. `jwks_uri` → the key directory on each agent's origin |
 | `properties[]` with `relationship: owned` (or absent). Identity resolution and attribution use these | `properties[]` with `direct` / `delegated` / `ad_network` → `acknowledgements[]` with `via: "adcp:adagents"` |
 | `house_domain` / `brand_refs[]`: already reciprocal pointers over a bare edge, which is the pattern this RFC asks for | `authorized_operators[]` → `grants[]` |
 | Redirect variants | `identity_relying_parties[]` → `profiles.adcp.identity_relying_parties` |
@@ -244,12 +246,12 @@ Out of scope for this RFC: `trademarks[].license_type` / `licensor_domain`, `dat
 
 | Persona | Today | Proposed |
 |---|---|---|
-| Direct publisher | brand.json (identity + agent + keys + owned properties) + adagents.json | brand.json (identity + owned properties) + trust.json (agent + keys) + adagents.json. **Nothing to hand-sync**: no self-acknowledgement |
+| Direct publisher | brand.json (identity + agent + keys + owned properties) + adagents.json | brand.json (identity + owned properties) + trust.json (agent) + the agent origin's key directory + adagents.json. **Nothing to hand-sync**: no self-acknowledgement |
 | Publisher on a managed network | adagents.json pointer, plus a brand.json with "leave these fields out" rules | adagents.json pointer, an optional identity-only brand.json, an optional trust.json pointer |
 | SSP / network | brand.json with one `properties[]` entry per represented property, each `relationship` matched against the publisher's `delegation_type` | trust.json `agents[]` + `acknowledgements_url` with one `{grantor, agent_url, via}` per publisher. Nothing restated |
 | Agency / trading desk | brand.json `agents[]`; no way to grant an intermediary (#6033) | trust.json: its own `agents[]` + `grants[]` for intermediaries |
 | Brand house | brand.json identity + `authorized_operators` + governance agent entries with vendor `jwks_uri` | brand.json identity + trust.json grants only (no keys) |
-| Governance vendor | Keys copied into every customer's brand.json | One trust.json listing its tenants, with opaque tenant paths |
+| Governance vendor | Keys copied into every customer's brand.json | One trust.json listing one agent per tenant subdomain; each subdomain serves its own key directory |
 | Standalone advertiser, no agents | brand.json | brand.json (unchanged) |
 | Organization running non-ad agents | — | trust.json with its own namespace's roles and scopes; no brand.json requirement |
 
@@ -307,12 +309,16 @@ Out of scope for this RFC: `trademarks[].license_type` / `licensor_domain`, `dat
 
 ## Answers to the RFC's open questions
 
-1. **Where should an agent's identity and keys live?** In the operating organization's `trust.json`. "Agents carry their own keys" is honored by the default `/.well-known/jwks.json` on the agent origin and by per-agent `jwks_uri`. The listing must come from the operator's domain, though, because an agent must not self-attest.
+1. **Where should an agent's identity and keys live?** The identity is the agent's origin, and its keys are at that origin's `/.well-known/http-message-signatures-directory`, so agents carry their own keys. The listing in the operating organization's `trust.json` is what makes the agent the operator's: an agent publishes keys for itself but cannot list itself in another organization's record.
 2. **Does brand-family structure stay in brand.json?** Yes. `house_domain` ↔ `brand_refs[]` is two reciprocal pointers over a bare edge; nothing can drift.
 3. **When the two sides disagree, who wins?** The grantor is the sole source of terms. The only possible disagreement is an optional profile assertion (AdCP `delegation_type`), and it fails closed as `mismatch`.
 4. **Transition window and dual-emit?** Dual-emit is allowed in 3.x and effectively required for signing operators. Removal is in 4.0.
 
 ## Review history
+
+**v4 → v5 (review on #7819, 2026-10-02):**
+- trust.json carries no keys. Keys resolve from the Web Bot Auth key directory on the agent's origin; `agents[].jwks_uri` and the `/.well-known/jwks.json` default removed.
+- One agent per origin. Multi-tenant vendors use opaque tenant subdomains instead of paths.
 
 **v1 → v2 (protocol, security and product expert review):**
 - eTLD+1 binding kept, and the operator is the serving host.
