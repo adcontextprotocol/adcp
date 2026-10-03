@@ -35,7 +35,7 @@
       <p class="hint">Inferred from the file’s $schema, or from the filename adagents.json.</p>
       <label for="version">Schema version (optional)</label>
       <input id="version" name="version" type="text" maxlength="255" placeholder="Use the file’s version">
-      <button id="submit" type="submit">Validate file</button>
+      <button id="submit" type="button">Validate file</button>
     </form>
     <p id="status" role="status" aria-live="polite"></p>
     <pre id="receipt" hidden></pre>
@@ -54,6 +54,8 @@
       const receipt = document.getElementById('receipt');
       const fallback = document.getElementById('fallback');
       let ready = !embedded;
+      let connected = false;
+      let canOpenLinks = false;
       let nextId = 1;
       let lastHeight = 0;
       let parentOrigin = '*'; // The initial sandbox origin is not known yet.
@@ -110,10 +112,15 @@
           appCapabilities: { availableDisplayModes: ['inline'] },
           protocolVersion: '2026-01-26',
         }, 10000).then((result) => {
-          if (result?.protocolVersion !== '2026-01-26' || !result.hostCapabilities?.serverTools) {
+          if (result?.protocolVersion !== '2026-01-26') {
             throw new Error('This chat cannot connect the file picker. Open the browser validator below.');
           }
+          canOpenLinks = Boolean(result.hostCapabilities?.openLinks);
           notify('ui/notifications/initialized', {});
+          connected = true;
+          if (!result.hostCapabilities?.serverTools) {
+            throw new Error('This chat cannot connect the file picker. Open the browser validator below.');
+          }
           ready = true;
           button.disabled = false;
           setStatus('Choose the original file to begin.');
@@ -126,6 +133,18 @@
       } else {
         configure(Object.fromEntries(new URLSearchParams(window.location.search)));
       }
+      fallback.querySelector('a').addEventListener('click', async (event) => {
+        if (!embedded) return;
+        event.preventDefault();
+        const url = fallback.querySelector('a').href;
+        try {
+          if (!connected || !canOpenLinks) throw new Error('Link opening is unavailable.');
+          const result = await request('ui/open-link', { url }, 10000);
+          if (result?.isError) throw new Error('Link opening failed.');
+        } catch {
+          setStatus(`Open this URL in your browser: ${url}`, true);
+        }
+      });
       // Clear any earlier receipt when the user changes the selected input.
       form.addEventListener('input', () => {
         receipt.hidden = true;
@@ -135,7 +154,10 @@
           structuredContent: { status: 'unvalidated' },
         }, 5000).catch(() => {});
       });
-      form.addEventListener('submit', async (event) => {
+      // MCP Apps sandboxes need not grant allow-forms. Transfer bytes through
+      // JavaScript on click instead of attempting native form submission.
+      form.addEventListener('submit', (event) => event.preventDefault());
+      button.addEventListener('click', async (event) => {
         event.preventDefault();
         if (!ready || button.disabled) return;
         const file = fileInput.files[0];
