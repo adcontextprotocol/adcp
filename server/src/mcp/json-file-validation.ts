@@ -3,7 +3,7 @@ import { createSchemaToolHandlers, SCHEMA_VERSION_OPTIONS } from '../addie/mcp/s
 import { ToolError } from '../addie/tool-error.js';
 import { isNetworkPolicyRefusal, safeFetch } from '../utils/url-security.js';
 
-const MAX_FILE_BYTES = 5 * 1024 * 1024;
+export const MAX_JSON_FILE_BYTES = 5 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 10_000;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
@@ -77,7 +77,7 @@ async function downloadFile(url: URL, signal: AbortSignal): Promise<Buffer> {
       await response.body?.cancel();
       throw new ToolError(`File download returned HTTP ${response.status}. Request a fresh file download reference and retry.`);
     }
-    if (Number(response.headers.get('content-length')) > MAX_FILE_BYTES) {
+    if (Number(response.headers.get('content-length')) > MAX_JSON_FILE_BYTES) {
       await response.body?.cancel();
       throw new ToolError('The JSON file exceeds the 5 MiB download limit.');
     }
@@ -90,7 +90,7 @@ async function downloadFile(url: URL, signal: AbortSignal): Promise<Buffer> {
         const { done, value } = await reader.read();
         if (done) return Buffer.concat(chunks, size);
         size += value.byteLength;
-        if (size > MAX_FILE_BYTES) {
+        if (size > MAX_JSON_FILE_BYTES) {
           await reader.cancel();
           throw new ToolError('The JSON file exceeds the 5 MiB download limit.');
         }
@@ -141,14 +141,25 @@ export async function validateJsonFile(input: Record<string, unknown>) {
     clearTimeout(timeout);
     controller.signal.removeEventListener('abort', onAbort!);
   }
+  return validateJsonBytes(bytes, { ...input, file_name: reference.file_name }, 'downloaded');
+}
+
+/** Shared schema validation of original bytes; callers establish their source. */
+export async function validateJsonBytes(bytes: Buffer, input: Record<string, unknown>, source: 'downloaded' | 'uploaded') {
+  if (!bytes.length || bytes.length > MAX_JSON_FILE_BYTES) throw new ToolError('Select a nonempty JSON file no larger than 5 MiB.');
+  for (const field of ['file_name', 'schema_path', 'version']) {
+    if (input[field] !== undefined && (typeof input[field] !== 'string' || (input[field] as string).length > 255)) {
+      throw new ToolError(`${field} must be a string no longer than 255 characters when provided.`);
+    }
+  }
   let json: unknown;
   try {
     json = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   } catch {
-    throw new ToolError('The downloaded file must contain valid UTF-8 JSON.');
+    throw new ToolError(`The ${source} file must contain valid UTF-8 JSON.`);
   }
   const schemaPath = input.schema_path ?? (
-    reference.file_name === 'adagents.json' && json && typeof json === 'object' && !('$schema' in json)
+    input.file_name === 'adagents.json' && json && typeof json === 'object' && !('$schema' in json)
       ? 'adagents.json' : undefined
   );
   // This tool reads and hashes the original bytes itself; its receipt below
@@ -158,7 +169,7 @@ export async function validateJsonFile(input: Record<string, unknown>) {
   if (validation.startsWith('Cannot determine schema.')) throw new ToolError(validation);
   const structuredContent = { byte_count: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex'), validation };
   return {
-    content: [{ type: 'text', text: `Validated the complete downloaded JSON file (${structuredContent.byte_count} bytes, SHA-256 ${structuredContent.sha256}). Schema validation only; no publisher or agent URLs inside the file were contacted.\n\n${validation}` }],
+    content: [{ type: 'text', text: `Validated the complete ${source} JSON file (${structuredContent.byte_count} bytes, SHA-256 ${structuredContent.sha256}). Schema validation only; no publisher or agent URLs inside the file were contacted.\n\n${validation}` }],
     structuredContent,
   };
 }

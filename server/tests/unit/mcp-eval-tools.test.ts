@@ -259,9 +259,9 @@ describe('AGENT_CONTEXT_TOOL_DEFINITIONS', () => {
 });
 
 describe('SCHEMA_TOOL_DEFINITIONS', () => {
-  const EXPECTED = ['validate_json', 'get_schema', 'validate_json_file'];
+  const EXPECTED = ['validate_json', 'get_schema', 'validate_json_file', 'open_json_validator', 'validate_json_upload'];
 
-  it('exports exactly the 3 schema tools', () => {
+  it('exports exactly the 5 schema tools', () => {
     const names = SCHEMA_TOOL_DEFINITIONS.map((t) => t.name);
     expect(names).toEqual(expect.arrayContaining(EXPECTED));
     expect(names).toHaveLength(EXPECTED.length);
@@ -302,8 +302,8 @@ describe('PROPERTY_TOOL_DEFINITIONS', () => {
 });
 
 describe('ALL_EXPOSED_TOOL_DEFINITIONS', () => {
-  it('combines all tool groups (4 eval + 3 context + 3 schema + 1 property = 11)', () => {
-    expect(ALL_EXPOSED_TOOL_DEFINITIONS).toHaveLength(11);
+  it('combines all tool groups (4 eval + 3 context + 5 schema + 1 property = 13)', () => {
+    expect(ALL_EXPOSED_TOOL_DEFINITIONS).toHaveLength(13);
   });
 
   it('has no duplicate tool names', () => {

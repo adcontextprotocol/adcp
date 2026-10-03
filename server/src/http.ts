@@ -175,6 +175,7 @@ import { createAccountLinkingRouter, handleEmailLinkVerification } from "./route
 import { createNetworkHealthApiRouter } from "./routes/network-health.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createBrandImportRouter } from "./routes/brand-import.js";
+import { createJsonValidationRouter } from "./routes/json-validation.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
@@ -2120,6 +2121,7 @@ export class HTTPServer {
 
     // Brand-book import for the brand.json builder (stateless, anonymous-capable)
     this.app.use('/api', createBrandImportRouter());
+    this.app.use('/api', createJsonValidationRouter());
 
     // Mount brand logo routes (upload, list, review)
     this.app.use('/api', createBrandLogoRouter({ brandDb: this.brandDb, bansDb: this.bansDb }));
@@ -3351,6 +3353,10 @@ export class HTTPServer {
     // adagents.json builder tool
     this.app.get("/adagents/builder", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'adagents-builder.html');
+    });
+
+    this.app.get("/adagents/validator", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'json-validator-app.html');
     });
 
     // Member Profile UI route - serve member-profile.html at /member-profile
