@@ -87,8 +87,13 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // from colliding with BiddingPolicy's CostPer and Strength. It is embedded in
 // list_products, request_proposals, and refine_proposals (~0.5 KiB each),
 // measured at 452,953 bytes (442.3 KiB) and bounded at 443 KiB.
+// The Web Bot Auth webhook profile adds signing_profile to the push-notification
+// and notification configurations, as one enum schema of its own
+// (enums/webhook-signing-profile.json) that keeps generated SDK type names from
+// colliding. It reaches 11 media-buy inputs (~0.2 KiB each), measured at
+// 455,108 bytes (444.4 KiB) and bounded at 445 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 443,
+  'media-buy': 445,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
