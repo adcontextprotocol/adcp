@@ -77,6 +77,20 @@ export const nativeAuthTokenRateLimiter = rateLimit({
   },
 });
 
+/** Bound anonymous whole-file schema validation before reading multipart input. */
+export const jsonUploadValidationRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('json-upload-validation:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (_req: Request, res: Response) => {
+    res.status(429).json({ error: 'Too many file validations. Try again in a minute.' });
+  },
+});
+
 /** Bound anonymous endpoints that fan out into outbound agent probes. */
 export const agentCardValidationRateLimiter = rateLimit({
   windowMs: 60 * 1000,

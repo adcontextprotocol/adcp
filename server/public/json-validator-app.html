@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Validate your original JSON file — Addie</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body { margin: 0; background: var(--color-bg-page); color: var(--color-text); font-family: var(--font-sans); }
+    main { max-width: 720px; margin: auto; padding: var(--space-6); }
+    h1 { font-size: var(--text-xl); margin-top: 0; }
+    p { line-height: 1.5; }
+    form, #receipt { padding: var(--space-5); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-bg-card); }
+    label { display: block; margin-bottom: var(--space-2); font-weight: var(--font-semibold); }
+    input { display: block; width: 100%; box-sizing: border-box; margin-bottom: var(--space-4); padding: var(--space-2); color: var(--color-text); background: var(--color-bg-card); border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); }
+    button { background: var(--color-brand); color: var(--color-text-on-dark); border: 0; border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); cursor: pointer; font: inherit; }
+    button:disabled { opacity: .6; cursor: wait; }
+    a { color: var(--color-brand); }
+    #status { min-height: 1.5em; }
+    #status[data-error="true"] { color: var(--color-error-fg); }
+    #receipt { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.5; }
+    .hint { color: var(--color-text-secondary); font-size: var(--text-sm); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Validate your original JSON file</h1>
+    <p>Select the original file here, even if you already attached it in chat. Addie checks its complete bytes and confirms its SHA-256 checksum.</p>
+    <p class="hint">Up to 5 MiB. Files are processed in memory and are not stored. This checks the AdCP schema; it does not check publisher or agent endpoints.</p>
+    <form id="validator">
+      <label for="file">JSON file</label>
+      <input id="file" name="file" type="file" accept=".json,application/json" required>
+      <label for="schema">Schema path (optional)</label>
+      <input id="schema" name="schema_path" type="text" maxlength="255" placeholder="adagents.json">
+      <p class="hint">Inferred from the file’s $schema, or from the filename adagents.json.</p>
+      <label for="version">Schema version (optional)</label>
+      <input id="version" name="version" type="text" maxlength="255" placeholder="Use the file’s version">
+      <button id="submit" type="submit">Validate file</button>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+    <pre id="receipt" hidden></pre>
+    <p id="fallback" hidden><a href="https://agenticadvertising.org/adagents/validator" target="_blank" rel="noopener noreferrer">Open the file validator in your browser</a></p>
+  </main>
+  <script>
+    (() => {
+      'use strict';
+      const embedded = window.parent !== window;
+      const form = document.getElementById('validator');
+      const fileInput = document.getElementById('file');
+      const schemaInput = document.getElementById('schema');
+      const versionInput = document.getElementById('version');
+      const button = document.getElementById('submit');
+      const status = document.getElementById('status');
+      const receipt = document.getElementById('receipt');
+      const fallback = document.getElementById('fallback');
+      let ready = !embedded;
+      let nextId = 1;
+      let lastHeight = 0;
+      let parentOrigin = '*'; // The initial sandbox origin is not known yet.
+      const pending = new Map();
+      function setStatus(text, error = false) {
+        status.textContent = text;
+        status.dataset.error = String(error);
+      }
+      // MCP Apps protocol. The host's sandbox proxy is the immediate parent;
+      // reject messages from any other window, including sibling frames.
+      function request(method, params, timeoutMs = 30000) {
+        const id = nextId++;
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            pending.delete(id);
+            reject(new Error('The connection timed out. Please try again.'));
+          }, timeoutMs);
+          pending.set(id, { resolve, reject, timer, method });
+          window.parent.postMessage({ jsonrpc: '2.0', id, method, params }, parentOrigin);
+        });
+      }
+      function notify(method, params) {
+        window.parent.postMessage({ jsonrpc: '2.0', method, params }, parentOrigin);
+      }
+      function configure(args) {
+        for (const [key, field] of [['schema_path', schemaInput], ['version', versionInput]]) {
+          if (typeof args?.[key] === 'string' && args[key].length <= 255) field.value = args[key];
+        }
+      }
+      window.addEventListener('message', (event) => {
+        if (!embedded || event.source !== window.parent || event.data?.jsonrpc !== '2.0') return;
+        if (parentOrigin !== '*' && event.origin !== parentOrigin) return;
+        const message = event.data;
+        const item = pending.get(message.id);
+        if (item && ('result' in message || 'error' in message)) {
+          // Pin a non-opaque proxy origin before sending any file bytes. An
+          // opaque sandbox uses "null", which requires the wildcard target.
+          if (item.method === 'ui/initialize' && event.origin !== 'null') parentOrigin = event.origin;
+          clearTimeout(item.timer);
+          pending.delete(message.id);
+          if (message.error) item.reject(new Error('The host could not complete the request. Please try again.'));
+          else item.resolve(message.result);
+        } else if (message.method === 'ui/notifications/tool-input') configure(message.params?.arguments);
+        else if (message.method === 'ping' && message.id !== undefined) {
+          window.parent.postMessage({ jsonrpc: '2.0', id: message.id, result: {} }, parentOrigin);
+        }
+      });
+      if (embedded) {
+        button.disabled = true;
+        fallback.hidden = false;
+        setStatus('Connecting to Addie…');
+        request('ui/initialize', {
+          appInfo: { name: 'addie-json-validator', version: '1.0.0' },
+          appCapabilities: { availableDisplayModes: ['inline'] },
+          protocolVersion: '2026-01-26',
+        }, 10000).then((result) => {
+          if (result?.protocolVersion !== '2026-01-26' || !result.hostCapabilities?.serverTools) {
+            throw new Error('This chat cannot connect the file picker. Open the browser validator below.');
+          }
+          notify('ui/notifications/initialized', {});
+          ready = true;
+          button.disabled = false;
+          setStatus('Choose the original file to begin.');
+          const observer = new ResizeObserver(() => {
+            const height = document.querySelector('main').getBoundingClientRect().height;
+            if (height !== lastHeight) { lastHeight = height; notify('ui/notifications/size-changed', { height }); }
+          });
+          observer.observe(document.querySelector('main'));
+        }).catch((error) => setStatus(error.message, true));
+      } else {
+        configure(Object.fromEntries(new URLSearchParams(window.location.search)));
+      }
+      // Clear any earlier receipt when the user changes the selected input.
+      form.addEventListener('input', () => {
+        receipt.hidden = true;
+        setStatus('');
+        if (embedded && ready) request('ui/update-model-context', {
+          content: [{ type: 'text', text: 'The file selection or schema options changed. No validation is confirmed for the current selection.' }],
+          structuredContent: { status: 'unvalidated' },
+        }, 5000).catch(() => {});
+      });
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!ready || button.disabled) return;
+        const file = fileInput.files[0];
+        if (!file || !file.size || file.size > 5 * 1024 * 1024) {
+          setStatus('Select a nonempty JSON file no larger than 5 MiB.', true);
+          return;
+        }
+        button.disabled = true;
+        receipt.hidden = true;
+        fileInput.disabled = schemaInput.disabled = versionInput.disabled = true;
+        setStatus('Checking the complete file…');
+        const schemaPath = schemaInput.value.trim();
+        const version = versionInput.value.trim();
+        try {
+          if (embedded) {
+            await request('ui/update-model-context', {
+              content: [{ type: 'text', text: 'A new original-file validation is in progress. No result is confirmed for this attempt.' }],
+              structuredContent: { status: 'pending' },
+            }, 5000).catch(() => {});
+          }
+          const buffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          const digest = await crypto.subtle.digest('SHA-256', buffer);
+          const sha256 = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
+          let result;
+          if (embedded) {
+            const chunks = [];
+            for (let offset = 0; offset < bytes.length; offset += 32768) {
+              chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 32768)));
+            }
+            result = await request('tools/call', { name: 'validate_json_upload', arguments: {
+              content_base64: btoa(chunks.join('')), expected_file_sha256: sha256,
+              expected_byte_count: bytes.length, file_name: file.name,
+              ...(schemaPath ? { schema_path: schemaPath } : {}), ...(version ? { version } : {}),
+            } });
+          } else {
+            const body = new FormData();
+            body.set('file', file);
+            body.set('expected_file_sha256', sha256);
+            body.set('expected_byte_count', String(bytes.length));
+            if (schemaPath) body.set('schema_path', schemaPath);
+            if (version) body.set('version', version);
+            const csrf = document.cookie.split('; ').find((item) => item.startsWith('csrf-token='))?.slice('csrf-token='.length);
+            const response = await fetch('/api/json/validate-upload', {
+              method: 'POST', body, headers: csrf ? { 'X-CSRF-Token': csrf } : {}, signal: AbortSignal.timeout(30000),
+            });
+            result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Validation could not be completed. Please try again.');
+          }
+          if (result?.isError) throw new Error(result.content?.find((item) => item.type === 'text')?.text || 'Validation could not be completed.');
+          const verified = result?.structuredContent;
+          if (verified?.sha256 !== sha256 || verified?.byte_count !== bytes.length || typeof verified.validation !== 'string') {
+            throw new Error('The validation receipt does not match the selected file. Please try again.');
+          }
+          const text = `${file.name}\n${verified.byte_count} bytes\nSHA-256: ${verified.sha256}\n\n${verified.validation}\n\nSchema validation only; no publisher or agent URLs were contacted.`;
+          // Display the schema tool's Markdown as plain text; keep its original
+          // receipt for the conversation and never render uploaded data as HTML.
+          receipt.textContent = text.replace(/\*\*/g, '').replace(/`/g, '').replace(/[✅❌] /g, '');
+          receipt.hidden = false;
+          setStatus('File received unchanged. Schema result shown below.');
+          if (embedded) {
+            try {
+              // Share only the verified receipt, not the file, with the model.
+              await request('ui/update-model-context', { content: [{ type: 'text', text }], structuredContent: verified }, 10000);
+              setStatus('File received unchanged. The receipt is available to the conversation.');
+            } catch {
+              setStatus('File received unchanged. The receipt is shown below; this chat could not receive it automatically.');
+            }
+          }
+        } catch (error) { setStatus(error.message || 'Validation could not be completed. Please try again.', true); }
+        finally { button.disabled = fileInput.disabled = schemaInput.disabled = versionInput.disabled = false; }
+      });
+    })();
+  </script>
+</body>
+</html>
