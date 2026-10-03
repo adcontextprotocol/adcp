@@ -778,8 +778,8 @@ function compareMinorVersions(a, b) {
 }
 
 /**
- * Reserved namespaces that cannot be used for typed extensions
- * These could cause confusion with core AdCP concepts
+ * Reserved namespaces that cannot be claimed by vendor extensions.
+ * The registry's canonical AdCP-owned entry is the only exception.
  */
 const RESERVED_NAMESPACES = ['adcp', 'core', 'protocol', 'schema', 'meta', 'ext', 'context'];
 
@@ -788,7 +788,12 @@ const RESERVED_NAMESPACES = ['adcp', 'core', 'protocol', 'schema', 'meta', 'ext'
  * @param {string} namespace - Extension namespace to validate
  * @throws {Error} If namespace is reserved
  */
-function validateExtensionNamespace(namespace) {
+function validateExtensionNamespace(namespace, schema) {
+  if (namespace === 'adcp' &&
+      schema?.$id === '/schemas/extensions/adcp.json' &&
+      schema['x-adcp-owned'] === true) {
+    return;
+  }
   if (RESERVED_NAMESPACES.includes(namespace.toLowerCase())) {
     throw new Error(`Namespace "${namespace}" is reserved and cannot be used for extensions`);
   }
@@ -819,7 +824,7 @@ function discoverExtensions(extensionsDir) {
       const namespace = file.replace('.json', '');
 
       // Validate namespace is not reserved
-      validateExtensionNamespace(namespace);
+      validateExtensionNamespace(namespace, content);
 
       extensions.push({
         namespace,
@@ -2734,6 +2739,10 @@ module.exports = {
   canonicalPublishedSchemaUri,
   canonicalizePublishedSchemaUris,
   generateExtensionRegistry,
+  validateExtensionNamespace,
+  discoverExtensions,
+  filterExtensionsForVersion,
+  buildExtensions,
   hoistDuplicateInlineEnums,
   hoistMarkedSchemas,
   resolveRefs,
