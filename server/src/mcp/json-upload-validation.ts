@@ -6,6 +6,13 @@ import { ToolError } from '../addie/tool-error.js';
 import { MAX_JSON_FILE_BYTES, validateJsonBytes, JSON_FILE_VALIDATION_TOOL } from './json-file-validation.js';
 
 export const JSON_VALIDATOR_URL = 'https://agenticadvertising.org/adagents/validator';
+
+/** Only fixed upload-integrity messages may be returned by the anonymous API. */
+export class JsonUploadValidationError extends ToolError {
+  constructor(public readonly publicMessage: string) {
+    super(publicMessage);
+  }
+}
 export const JSON_VALIDATOR_RESOURCE = {
   uri: 'ui://addie/json-validator.html',
   name: 'Original JSON file validator',
@@ -73,15 +80,15 @@ export async function readJsonValidatorResource() {
 }
 
 export async function validateJsonUploadBytes(bytes: Buffer, input: Record<string, unknown>) {
-  if (!bytes.length || bytes.length > MAX_JSON_FILE_BYTES) throw new ToolError('Select a nonempty JSON file no larger than 5 MiB.');
+  if (!bytes.length || bytes.length > MAX_JSON_FILE_BYTES) throw new JsonUploadValidationError('Select a nonempty JSON file no larger than 5 MiB.');
   if (typeof input.expected_file_sha256 !== 'string' || !/^[a-fA-F0-9]{64}$/.test(input.expected_file_sha256)) {
-    throw new ToolError('The original raw file SHA-256 is required. Select the original file in the picker again.');
+    throw new JsonUploadValidationError('The original raw file SHA-256 is required. Select the original file in the picker again.');
   }
   if (!Number.isSafeInteger(input.expected_byte_count) || input.expected_byte_count !== bytes.length) {
-    throw new ToolError('The uploaded byte count does not match the original file. Select the original file again.');
+    throw new JsonUploadValidationError('The uploaded byte count does not match the original file. Select the original file again.');
   }
   if (createHash('sha256').update(bytes).digest('hex') !== input.expected_file_sha256.toLowerCase()) {
-    throw new ToolError('The uploaded bytes do not match the original file SHA-256. No schema validation was performed. Select the original file again.');
+    throw new JsonUploadValidationError('The uploaded bytes do not match the original file SHA-256. No schema validation was performed. Select the original file again.');
   }
   return validateJsonBytes(bytes, input, 'uploaded');
 }

@@ -2,7 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import multer from 'multer';
 import { ToolError } from '../addie/tool-error.js';
 import { MAX_JSON_FILE_BYTES } from '../mcp/json-file-validation.js';
-import { validateJsonUploadBytes } from '../mcp/json-upload-validation.js';
+import { JsonUploadValidationError, validateJsonUploadBytes } from '../mcp/json-upload-validation.js';
 import { jsonUploadValidationRateLimiter } from '../middleware/rate-limit.js';
 
 const upload = multer({
@@ -45,7 +45,8 @@ export function createJsonValidationRouter(): Router {
       });
       return res.json(result);
     } catch (error) {
-      if (error instanceof ToolError) return res.status(400).json({ error: error.message });
+      if (error instanceof JsonUploadValidationError) return res.status(400).json({ error: error.publicMessage });
+      if (error instanceof ToolError) return res.status(400).json({ error: 'Could not validate the file. Check that it contains UTF-8 JSON and that the schema path and version identify a published AdCP schema.' });
       // Never log the file contents or raw network errors containing URLs.
       return res.status(502).json({ error: 'Could not complete schema validation. Please try again.' });
     }

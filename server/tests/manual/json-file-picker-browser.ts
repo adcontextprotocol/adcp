@@ -123,7 +123,8 @@ try {
     }
     if (mode === 'mcp-app') {
       await frame.click('#fallback a');
-      await page.waitForFunction(() => (window as any).openedLinks.includes('https://agenticadvertising.org/adagents/validator'));
+      await page.waitForFunction(() => (window as any).openedLinks.length > 0);
+      assert.deepEqual(await page.evaluate(() => (window as any).openedLinks), ['https://agenticadvertising.org/adagents/validator']);
       report.push({ mode, sandbox_link_opened_through_host: true });
       const sibling = await page.waitForFrame(frame => frame.url().endsWith('/sibling'));
       // A sibling cannot supply a forged response to a pending app request.

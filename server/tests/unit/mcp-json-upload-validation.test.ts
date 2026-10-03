@@ -139,6 +139,16 @@ describe('standalone multipart validator', () => {
     expect(res.body.error).toContain('do not match');
     expect(schemaFetch).not.toHaveBeenCalled();
   });
+  it('does not expose raw schema diagnostics through the anonymous API', async () => {
+    const bytes = fixture();
+    const res = await request(makeApp()).post('/api/json/validate-upload')
+      .field('expected_file_sha256', metadata(bytes).expected_file_sha256).field('expected_byte_count', String(bytes.length))
+      .field('version', 'synthetic-private-diagnostic').attach('file', bytes, 'adagents.json');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('published AdCP schema');
+    expect(res.body.error).not.toContain('synthetic-private-diagnostic');
+    expect(schemaFetch).not.toHaveBeenCalled();
+  });
   it('accepts both explicit schema options with the required integrity metadata', async () => {
     const bytes = fixture();
     const res = await request(makeApp()).post('/api/json/validate-upload')
