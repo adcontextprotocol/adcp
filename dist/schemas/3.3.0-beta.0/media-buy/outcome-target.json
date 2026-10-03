@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/media-buy/outcome-target.json",
+  "title": "Outcome Target",
+  "description": "Reverse-forecast planning input: a goal plus a volume, a cost_per target, or both (at least one). Goals use the forecastable-metric and event-type vocabularies, so forecast points always carry the goal's metric or event key in metrics, with forecast_range_unit 'clicks' or 'conversions' where those units apply. volume and cost_per define the request shapes and answers, which travel on proposals. list_products returns no proposals, so there the field is inert for every seller, declaring or not: it does not filter or rank products, produces no answer, and MUST NOT cause a rejection beyond schema validation. On request_proposals and proposal refinement, sellers not declaring media_buy.outcome_target MUST reject the field with UNSUPPORTED_FEATURE rather than silently ignore it; declaring sellers MAY reject a goal they cannot plan against at all (for example 'spend', which restates budget) with INVALID_REQUEST naming criteria.outcome_target.goal. A planning input, not a delivery guarantee: obligations arise only at proposal finalization.",
+  "type": "object",
+  "properties": {
+    "goal": {
+      "description": "The outcome to plan against: a seller-tracked delivery metric or an advertiser conversion event.",
+      "discriminator": {
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Plan against a seller-tracked delivery metric. The response forecast carries this metric as a key in points' metrics.",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "metric"
+            },
+            "metric": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/enums/forecastable-metric.json",
+              "description": "Delivery metric to plan for, in the same vocabulary forecast points report."
+            }
+          },
+          "required": [
+            "kind",
+            "metric"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "Plan against an advertiser conversion event. The response forecast carries this event type as a key in points' metrics.",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "event"
+            },
+            "event_type": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/enums/event-type.json",
+              "description": "Conversion event to plan for, in the same vocabulary forecast points report."
+            },
+            "custom_event_name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Required when event_type is 'custom'. Platform-specific name for the custom event."
+            }
+          },
+          "required": [
+            "kind",
+            "event_type"
+          ],
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "custom"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "custom_event_name"
+            ]
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "volume": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Desired total volume of the goal's metric or event across the planned flight. Alone, the seller solves for budget and answers with total_budget_guidance and a forecast. With cost_per, the seller plans toward the volume at the cost: under a cap it SHOULD keep the buyer's amount and forecast the lower volume it can deliver, unless no volume can be planned at that amount; under a target the ask is plannable when the seller can forecast the volume around it."
+    },
+    "cost_per": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/outcome-target-cost-per.json"
+    }
+  },
+  "required": [
+    "goal"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "volume"
+      ]
+    },
+    {
+      "required": [
+        "cost_per"
+      ]
+    }
+  ],
+  "additionalProperties": false
+}

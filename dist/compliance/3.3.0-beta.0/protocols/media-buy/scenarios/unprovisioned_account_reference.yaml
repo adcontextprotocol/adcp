@@ -1,0 +1,207 @@
+id: media_buy_seller/unprovisioned_account_reference
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Seller rejects a natural key it never provisioned instead of serving public products"
+category: media_buy_seller
+summary: "Sends get_products with a buyer-declared natural key that was never synced and verifies the seller answers ACCOUNT_NOT_FOUND rather than dropping the account, and that the read did not create the account."
+track: media_buy
+
+# Gate: buyer-declared account sellers that provision through sync_accounts.
+# `require_operator_auth` defaults to false; the runner applies the schema
+# default when the seller declares `account` without the field.
+#
+# `required_tools` is a lenient any-of, so it lists only sync_accounts to make
+# that tool a strict gate. A seller that omits sync_accounts is the
+# lazy-provisioning class (docs/protocol/required-tasks.mdx): it MAY answer a
+# read for a key it would provision, evaluated against that would-be account,
+# and nothing on the wire tells that answer apart from a seller that dropped
+# the account and served public results. Scoping to sync_accounts sellers keeps
+# the success arm meaningful. get_products and list_accounts steps still skip
+# with missing_tool when the agent does not advertise them.
+requires_capability:
+  path: account.require_operator_auth
+  equals: false
+
+required_tools:
+  - sync_accounts
+
+narrative: |
+  A buyer-declared natural key (brand + operator) names an advertiser account.
+  It does not create one. The key resolves only after the seller provisions
+  it through sync_accounts. Discovery tasks never provision an account.
+
+  When a buyer sends get_products with a key the seller has never provisioned,
+  the seller MUST return ACCOUNT_NOT_FOUND, even though account is optional on
+  get_products. It MUST NOT drop the account and answer with public products.
+  A cache_scope: "public" answer tells the buyer that this account prices off
+  the rate card. That is a claim about an account that does not exist, and the
+  buyer finds out only when a later write fails.
+
+  The probe uses a brand and operator that appear in no fixture and no test
+  kit, so no seeding or earlier storyboard can have provisioned them. A
+  follow-up list_accounts with the same key confirms the read did not create
+  the account.
+
+  This rule is new in the "Account references before provisioning" section of
+  the accounts overview. Sellers that previously served public products, or
+  provisioned on the first account-scoped read, were conformant under the
+  older wording. The checks that rule out those behaviors are advisory until
+  expires_after_version, so existing sellers see the gap without failing the
+  storyboard.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - buyer_declared_accounts
+  examples:
+    - "Sellers that provision buyer-declared accounts through sync_accounts"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller declares buyer-declared accounts (require_operator_auth: false)
+    and exposes sync_accounts. The probe key is deliberately absent from every
+    fixture and test kit; do not seed it.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: unprovisioned_key_rejected
+    title: "get_products with an unprovisioned natural key: ACCOUNT_NOT_FOUND"
+    narrative: |
+      Required behavior. The seller cannot resolve the key, so it returns
+      ACCOUNT_NOT_FOUND instead of answering the discovery request.
+    optional: true
+    branch_set:
+      id: unprovisioned_account_reference_handled
+      semantics: any_of
+    steps:
+      - id: get_products_unprovisioned_key_rejected
+        title: "Reject the unprovisioned natural key"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: unprovisioned_account_reference
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        contributes: true
+        expected: |
+          Return ACCOUNT_NOT_FOUND. Do not return products, do not fall back to
+          the public catalog, and do not create the account.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_unprovisioned_account_reference_rejected"
+          buying_mode: "brief"
+          brief: "Outdoor lifestyle video inventory. Q3 flight, $25K budget, adults 25-54, US."
+          account:
+            brand:
+              domain: "never-synced-probe.example"
+            operator: "unprovisioned-agency.example"
+          context:
+            correlation_id: "unprovisioned_account_reference--rejected"
+        validations:
+          - check: error_code
+            value: "ACCOUNT_NOT_FOUND"
+            description: "Seller reports the unprovisioned natural key as ACCOUNT_NOT_FOUND"
+
+  - id: unprovisioned_key_answered
+    title: "get_products with an unprovisioned natural key: answered (non-conformant)"
+    narrative: |
+      Compatibility arm. A seller that answers the request dropped an account
+      it cannot resolve, or provisioned it on a read. Both were tolerated
+      before the "Account references before provisioning" rule. The response
+      must still be schema-valid, and an advisory check records that the seller
+      did not return ACCOUNT_NOT_FOUND. When the advisory promotes to required,
+      this arm can no longer contribute and the storyboard requires
+      ACCOUNT_NOT_FOUND.
+    optional: true
+    branch_set:
+      id: unprovisioned_account_reference_handled
+      semantics: any_of
+    steps:
+      - id: get_products_unprovisioned_key_answered
+        title: "Observe a seller that answers the unprovisioned natural key"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: unprovisioned_account_reference
+        stateful: false
+        contributes: true
+        expected: |
+          Non-conformant under the current rule. A seller exposing
+          sync_accounts returns ACCOUNT_NOT_FOUND for a natural key it has
+          not provisioned rather than products.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_unprovisioned_account_reference_answered"
+          buying_mode: "brief"
+          brief: "Outdoor lifestyle video inventory. Q3 flight, $25K budget, adults 25-54, US."
+          account:
+            brand:
+              domain: "never-synced-probe.example"
+            operator: "unprovisioned-agency.example"
+          context:
+            correlation_id: "unprovisioned_account_reference--answered"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: error_code
+            value: "ACCOUNT_NOT_FOUND"
+            severity: advisory
+            expires_after_version: "14.1.0"
+            description: "An account reference that does not resolve returns ACCOUNT_NOT_FOUND, not public products (accounts overview: Account references before provisioning)"
+
+  - id: unprovisioned_key_assertion
+    title: "Require a handled unprovisioned key"
+    steps:
+      - id: assert_unprovisioned_account_reference_handled
+        title: "Require one get_products arm"
+        task: assert_contribution
+        comply_scenario: unprovisioned_account_reference
+        stateful: false
+        expected: |
+          At least one of unprovisioned_key_rejected or
+          unprovisioned_key_answered contributed
+          unprovisioned_account_reference_handled.
+        validations:
+          - check: any_of
+            allowed_values: ["unprovisioned_account_reference_handled"]
+            description: "Seller returned ACCOUNT_NOT_FOUND, or a schema-valid answer graded by the advisory check"
+
+  - id: read_did_not_provision
+    title: "The read did not create the account"
+    narrative: |
+      Discovery is not consent to the seller's default terms. After the probe,
+      list_accounts filtered to the same natural key returns no account.
+    steps:
+      - id: list_accounts_unprovisioned_key
+        title: "List accounts matching the unprovisioned natural key"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        comply_scenario: unprovisioned_account_reference
+        stateful: false
+        expected: |
+          Return an empty accounts array. The account filter matches nothing
+          because get_products did not provision the key.
+        sample_request:
+          account:
+            brand:
+              domain: "never-synced-probe.example"
+            operator: "unprovisioned-agency.example"
+          context:
+            correlation_id: "unprovisioned_account_reference--list_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches list-accounts-response.json schema"
+          - check: array_length
+            path: "accounts"
+            value: 0
+            severity: advisory
+            expires_after_version: "14.1.0"
+            description: "get_products did not create an account for the unprovisioned natural key"
