@@ -10,6 +10,13 @@
       "format": "uri",
       "description": "Webhook endpoint URL for reporting notifications"
     },
+    "operation_id": {
+      "type": "string",
+      "description": "Buyer-supplied correlation identifier for the reporting registration. The seller MUST echo this value verbatim into every webhook payload's `operation_id` field on each `media_buy_delivery` report sent to this registration (see `mcp-webhook-payload.json`). Sellers MUST NOT derive `operation_id` by parsing the reporting webhook URL — the URL is opaque to the seller. This is the canonical registration channel for `operation_id` on reporting deliveries; buyers MAY additionally embed routing values in the URL path or query as an aid for their own HTTP server, but the wire-level source of truth is this field. Buyers SHOULD generate a unique value per media buy (UUID recommended). The member is optional in 3.x for schema compatibility, but a seller MUST NOT emit `media_buy_delivery` webhooks to a registration that omits it (fail closed) — otherwise the required webhook envelope cannot be populated. The field is expected to become required in 4.0.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
     "token": {
       "type": "string",
       "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",

@@ -649,6 +649,8 @@ Machine-readable test vectors are available at [`/static/test-vectors/webhook-pa
 
 Reporting webhooks are separate from task status webhooks. They deliver periodic performance data for active media buys and are configured via `reporting_webhook` in `create_media_buy`, not via `push_notification_config`.
 
+Each `reporting_webhook` registration MAY carry a buyer-supplied `operation_id` (same constraints as `push_notification_config.operation_id`); the seller MUST echo it verbatim in every delivery payload's `operation_id`, and MUST NOT derive it by parsing the registration URL. Sellers MUST NOT emit delivery reports to a registration that omits it — fail closed rather than emitting a schema-invalid payload.
+
 See [Task Reference](/docs/media-buy/task-reference) for details on `reporting_webhook`.
 
 ## Agent-level webhooks
