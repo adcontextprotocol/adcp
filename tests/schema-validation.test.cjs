@@ -23,6 +23,15 @@ addFormats(ajv);
 
 // Schema loader for resolving $ref
 async function loadExternalSchema(uri) {
+  const publishedPrefix = 'https://adcontextprotocol.org/schemas/';
+  if (uri.startsWith(publishedPrefix)) {
+    const [version, ...segments] = uri.slice(publishedPrefix.length).split('#', 1)[0].split('/');
+    if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version) &&
+        segments.length > 0 && segments.every(segment => segment && segment !== '.' && segment !== '..')) {
+      // Published references must load the pinned artifact, never current source.
+      return loadSchema(path.join(__dirname, '../dist/schemas', version, ...segments));
+    }
+  }
   if (uri.startsWith('/schemas/')) {
     const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', '').split('#', 1)[0]);
     try {
