@@ -1,0 +1,36 @@
+{
+  "name": "Signed key directory response for https://buyer-7k3q.com, one signature per key",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#key-directories",
+  "signing_profile": "web-bot-auth",
+  "reference_now": 1790841610,
+  "request": {
+    "method": "GET",
+    "url": "https://buyer-7k3q.com/.well-known/http-message-signatures-directory",
+    "headers": {
+      "Host": "buyer-7k3q.com",
+      "Accept": "application/http-message-signatures-directory+json"
+    },
+    "body": ""
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/http-message-signatures-directory+json",
+      "Cache-Control": "max-age=300",
+      "Content-Digest": "sha-256=:RQDAkRyNAdoJ2+MThuVDCXhj13Or2jS6ewwSRuyaXQg=:",
+      "Signature-Input": "key1=(\"@authority\";req \"content-digest\");created=1790841000;expires=1790927400;keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"http-message-signatures-directory\"",
+      "Signature": "key1=:QJeeYQ9E5OXMbEy89f1YjQNCB5NjRxN+ck/V+4sRoVNtF5S/446uVIECNCeANo6YH/DhOBG/jMzNZLDqQrmkBg==:"
+    },
+    "body": "{\n  \"keys\": [\n    {\n      \"kty\": \"OKP\",\n      \"crv\": \"Ed25519\",\n      \"kid\": \"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\",\n      \"x\": \"yIxM3SIY89_Yhr6EA9hik-AJjWSDPraK5chDqQ3Xlf0\",\n      \"use\": \"sig\"\n    }\n  ]\n}"
+  },
+  "expected_signature_base": {
+    "key1": "\"@authority\";req: buyer-7k3q.com\n\"content-digest\": sha-256=:RQDAkRyNAdoJ2+MThuVDCXhj13Or2jS6ewwSRuyaXQg=:\n\"@signature-params\": (\"@authority\";req \"content-digest\");created=1790841000;expires=1790927400;keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"http-message-signatures-directory\""
+  },
+  "expected_outcome": {
+    "success": true,
+    "identities": {
+      "key1": "https://buyer-7k3q.com"
+    }
+  },
+  "$comment": "Web Bot Auth Appendix B.1: the directory server signs the response once per key, covering \"@authority\";req and content-digest, with created, expires, the key's thumbprint as keyid, and tag http-message-signatures-directory. The verifier validates the signature with the key the directory itself provides and validates Content-Digest against the body. Covering the request authority stops the key set from being served again from another domain. The verifier stores the signed response as its audit record of the fetch."
+}
