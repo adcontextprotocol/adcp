@@ -19298,6 +19298,48 @@ describe('proposal lifecycle', () => {
     expect(result.outcome).toBe('rejected');
   });
 
+  it('rejects a seeded-fixture proposal when the matching fixtures are priced in different currencies', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'mixed-currency-fixtures.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    for (const [productId, pricingOptionId, currency] of [
+      ['seeded_usd_podcast', 'cpm_usd', 'USD'],
+      ['seeded_eur_podcast', 'cpm_eur', 'EUR'],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            delivery_type: 'guaranteed',
+            channels: ['audio'],
+            format_options: [{ format_option_id: 'audio_30s', format_kind: 'audio', params: { duration_ms_exact: 30000 } }],
+          },
+        },
+      });
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency, floor_price: 15.0 },
+        },
+      });
+    }
+
+    const { result } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'mixed-currency-fixtures-0001',
+      account,
+      brief: 'podcast audio advertising',
+    });
+
+    expect(result.outcome).toBe('rejected');
+  });
+
   it('does not mix non-seeded catalog products into a seeded-fixture proposal when request_proposals has no criteria', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = {

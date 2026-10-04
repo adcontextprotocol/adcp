@@ -11537,7 +11537,13 @@ async function handleGetProductsUnlocked(
       const fixtureProducts = products.filter(product => (
         seededIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
       ));
-      if (fixtureProducts.length > 0) {
+      // One proposal carries one budget currency, so fixtures priced in
+      // different currencies cannot share it; leave proposals empty and let
+      // the existing rejection path answer.
+      const fixtureCurrencies = new Set(
+        fixtureProducts.map(product => product.pricing_options[0]?.currency ?? 'USD'),
+      );
+      if (fixtureProducts.length > 0 && fixtureCurrencies.size === 1) {
         const allocationPercentage = 100 / fixtureProducts.length;
         const sortedProductIds = fixtureProducts.map(product => product.product_id).sort();
         proposals = [{
