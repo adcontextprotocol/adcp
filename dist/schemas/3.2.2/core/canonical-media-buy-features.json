@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.2/core/canonical-media-buy-features.json",
+  "title": "Canonical Media Buy Features",
+  "description": "Compact seller features relevant to canonical product purchase. Legacy inline-creative capabilities are absent.",
+  "type": "object",
+  "properties": {
+    "property_filtering": {
+      "type": "boolean"
+    },
+    "catalog_management": {
+      "type": "boolean"
+    },
+    "reporting_commitment_snapshots": {
+      "type": "boolean",
+      "description": "Seller preserves the accepted per-purchase reporting contract and exposes it on proposal and MediaBuy readback."
+    },
+    "seller_optimized_budget": {
+      "type": "boolean",
+      "description": "Core seller-optimized shared-budget contract: shared total_budget, seller allocation across packages, media-buy pacing, and allocation echo."
+    },
+    "seller_optimized_package_budgets": {
+      "type": "boolean",
+      "description": "Package budget caps inside seller-optimized buys; implies seller_optimized_budget."
+    },
+    "seller_optimized_min_spend_targets": {
+      "type": "boolean",
+      "description": "Package minimum-spend targets inside seller-optimized buys; implies seller_optimized_budget."
+    },
+    "seller_optimized_package_pacing": {
+      "type": "boolean",
+      "description": "Package pacing inside seller-optimized buys; implies seller_optimized_budget."
+    },
+    "bidding_policy": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.2/core/bidding-policy-capability.json"
+    }
+  },
+  "additionalProperties": {
+    "type": "boolean"
+  }
+}
