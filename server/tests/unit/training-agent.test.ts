@@ -19198,6 +19198,152 @@ describe('proposal lifecycle', () => {
     });
   });
 
+  it('builds a proposal from seeded fixture products when request_proposals has no explicit product_ids', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'fcap-fixture-proposal.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'fcap_video_q4',
+        fixture: {
+          delivery_type: 'guaranteed',
+          channels: ['olv'],
+          media_buy_support: {
+            frequency_cap: true,
+            frequency_cap_constraints: {
+              supported_per_units: ['individuals'],
+              max_impressions_constraints: { minimum: 1, maximum: 10 },
+              window_constraints: [{ unit: 'campaign', allowed_intervals: [1] }],
+            },
+          },
+          format_options: [{ format_option_id: 'video_30s', format_kind: 'video_hosted', params: { duration_ms_exact: 30000 } }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'fcap_video_q4',
+        pricing_option_id: 'cpm_video',
+        fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 28.0 },
+      },
+    });
+
+    const { result, isError } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'fcap-fixture-proposal-0001',
+      account,
+      brief: 'Premium video for a frequency-capped Q4 campaign.',
+      criteria: {
+        media_buy_frequency_cap: {
+          max_impressions: 3,
+          per: 'individuals',
+          window: { interval: 1, unit: 'campaign' },
+        },
+        required_media_buy_support: { frequency_cap: true },
+      },
+    });
+
+    expect(isError, JSON.stringify(result)).toBeFalsy();
+    expect(result.outcome).toBe('proposed');
+    const proposals = result.proposals as Array<Record<string, unknown>>;
+    expect(proposals.length).toBeGreaterThan(0);
+    const allocations = proposals[0].commercial_terms
+      ? (proposals[0].commercial_terms as Record<string, unknown>).purchases as Array<Record<string, unknown>>
+      : (proposals[0].allocations as Array<Record<string, unknown>>);
+    const productIds = allocations.map(entry => entry.product_id);
+    expect(productIds).toContain('fcap_video_q4');
+    expect(productIds.every(id => id === 'fcap_video_q4')).toBe(true);
+  });
+
+  it('rejects request_proposals when an explicit product_ids list mixes a seeded ID with an unknown one', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'mixed-product-ids-reject.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'seeded_known_product',
+        fixture: {
+          delivery_type: 'guaranteed',
+          channels: ['display'],
+          format_options: [{ format_option_id: 'display_300x250', format_kind: 'image', params: { width: 300, height: 250 } }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'seeded_known_product',
+        pricing_option_id: 'cpm_display',
+        fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 10.0 },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'mixed-product-ids-reject-0001',
+      account,
+      brief: 'Plan a campaign using the selected published offers.',
+      criteria: { product_ids: ['seeded_known_product', 'totally_unknown_product_id'] },
+    });
+
+    expect(result.outcome).toBe('rejected');
+  });
+
+  it('does not mix non-seeded catalog products into a seeded-fixture proposal when request_proposals has no criteria', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'no-catalog-mixing.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'seeded_podcast_product',
+        fixture: {
+          delivery_type: 'guaranteed',
+          channels: ['audio'],
+          format_options: [{ format_option_id: 'audio_30s', format_kind: 'audio', params: { duration_ms_exact: 30000 } }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'seeded_podcast_product',
+        pricing_option_id: 'cpm_podcast',
+        fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 15.0 },
+      },
+    });
+
+    const { result, isError } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'no-catalog-mixing-0001',
+      account,
+      brief: 'podcast audio advertising',
+    });
+
+    expect(isError, JSON.stringify(result)).toBeFalsy();
+    const proposals = (result.proposals ?? []) as Array<Record<string, unknown>>;
+    for (const proposal of proposals) {
+      const allocations = proposal.commercial_terms
+        ? (proposal.commercial_terms as Record<string, unknown>).purchases as Array<Record<string, unknown>>
+        : (proposal.allocations as Array<Record<string, unknown>>);
+      for (const allocation of allocations ?? []) {
+        expect(allocation.product_id).toBe('seeded_podcast_product');
+      }
+    }
+  });
+
   it('finalizes drafts into new held snapshots atomically without mutating their sources', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const requested = await Promise.all([
