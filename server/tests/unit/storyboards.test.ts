@@ -259,9 +259,9 @@ describe('wrapper contract', () => {
     // 3.2 GA: stable 3.2 wins over 3.1, and a 3.2 prerelease pin stays on
     // that prerelease instead of being upgraded to the GA bundle.
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).requested).toBe('3.2');
-    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe('3.2.1');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe('3.2.2');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.2-rc.7']).version).toBe('3.2.0-rc.7');
-    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe('3.2.1');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe('3.2.2');
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe('3.1.24');
 
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
@@ -288,7 +288,7 @@ describe('wrapper contract', () => {
     expect(hostedComplianceTarget('3.1').version).toBe('3.1.24');
     expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
     expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
-    expect(hostedComplianceTarget('3.2').version).toBe('3.2.1');
+    expect(hostedComplianceTarget('3.2').version).toBe('3.2.2');
     expect(hostedComplianceTarget('3.2-rc').version).toBe('3.2.0-rc.7');
     expect(() => hostedComplianceTarget('3.2.0')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1.12')).toThrow(/not available from a published/);
@@ -306,15 +306,18 @@ describe('wrapper contract', () => {
     expect(loadComplianceIndex(options).adcp_version).toBe('3.1.24');
   });
 
-  it('loads the released 3.2.1 bundle with the pinned hosted SDK', () => {
-    const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']);
+  it.each([
+    ['3.2.1', /\/dist\/compliance\/3\.2\.1$/, /\/dist\/schemas\/3\.2\.1$/],
+    ['3.2.2', /\/dist\/compliance\/3\.2\.2$/, /\/dist\/schemas\/3\.2\.2$/],
+  ] as const)('loads the explicitly pinned %s bundle with the hosted SDK', (version, complianceDir, schemaRoot) => {
+    const target = hostedComplianceTarget(version);
     const options = hostedComplianceOptions(target);
 
-    expect(target.requested).toBe('3.2');
-    expect(target.version).toBe('3.2.1');
-    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.2\.1$/);
-    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.2\.1$/);
-    expect(loadComplianceIndex(options).adcp_version).toBe('3.2.1');
+    expect(target.requested).toBe(version);
+    expect(target.version).toBe(version);
+    expect(options.complianceDir).toMatch(complianceDir);
+    expect(options.schemaRoot).toMatch(schemaRoot);
+    expect(loadComplianceIndex(options).adcp_version).toBe(version);
   });
 
   it('uses canonical hosted targets without silently upgrading 3.0-only agents', () => {
