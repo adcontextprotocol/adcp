@@ -12,6 +12,32 @@ Discover available advertising products based on campaign requirements using nat
 </Warning>
 
 <Info>
+**Opportunity context on AdCP 3.2 (non-normative guidance).** Buyers and sellers that support the AdCP-owned [`ext.adcp.opportunity` binding](https://github.com/adcontextprotocol/adcp/blob/main/docs/building/by-layer/L2/context-sessions.mdx#adcp-opportunity-extension) can carry planning-cycle context through the existing `ext` object. Confirm support for this specific binding through `get_adcp_capabilities.extensions_supported` before relying on seller-side association.
+
+This example uses a seller-issued account ID and the unchanged [published 3.2.1 OpportunityContext](https://adcontextprotocol.org/schemas/3.2.1/core/opportunity-context.json). It validates against the published 3.2.1 request schema, so adopting the binding does not require a protocol upgrade to 3.2.2:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.1/media-buy/get-products-request.json",
+  "buying_mode": "brief",
+  "brief": "Video inventory for a spring launch.",
+  "account": {
+    "account_id": "acc_spring_launch"
+  },
+  "ext": {
+    "adcp": {
+      "opportunity": {
+        "opportunity_id": "opp_spring_launch"
+      }
+    }
+  }
+}
+```
+
+The base request's open `ext` schema admits the namespace without validating the nested opportunity object. The linked extension agreement covers inner validation, authorized account scope, and proposal association; coordinate buyer and seller adoption of that agreement. This guidance adds no baseline 3.2 conformance requirement. New integrations can already carry core `opportunity` on [`request_proposals`](/docs/media-buy/task-reference/request_proposals).
+</Info>
+
+<Info>
 **Why this shape.** Targeting, pricing, and curation are folded into one round-trip — the brief drives discovery, the publisher curates against it, and `pricing_options` carry firm prices the buyer commits against via `pricing_option_id`. We rejected a separate `get_price_quote` step between products and buy creation: it splits one expert decision into two underspecified ones and breaks the brief→curation contract. Iteration is `buying_mode: "refine"` with a typed change array — not a new task. → [Design principle: the brief drives discovery](/docs/protocol/design-principles#3-the-brief-drives-discovery-targeting-is-an-input-not-a-step).
 </Info>
 
