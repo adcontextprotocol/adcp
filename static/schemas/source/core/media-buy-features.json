@@ -18,6 +18,12 @@
       "type": "boolean",
       "description": "Supports sync_catalogs task for catalog feed management with platform review and approval"
     },
+    "catalog_ingestion": {
+      "allOf": [
+        { "$ref": "/schemas/core/catalog-ingestion-capability.json" }
+      ],
+      "description": "Optional catalog ingestion details: accepted types, sources, feed formats, item identifiers, batch limit, and status reporting. Seller declarations require catalog_management: true. Absence means these details are unknown. This object is seller metadata; buyer required_features filters use catalog_management: true and buyers inspect ingestion details separately."
+    },
     "catalog_item_availability_updates": {
       "type": "boolean",
       "description": "Supports buyer-pushed item_availability_updates and item_availability_queries on sync_catalogs for immediate suppression/restoration and current-state readback in buyer-managed catalogs. Seller declarations may be true only with catalog_management: true; buyer required_features filters may request this feature alone. Requests containing availability operations are synchronous and accept at most 1,000 combined update and query entries. A successful suppress covers selection, dynamic rendering, and cached or pre-generated creatives materialized from the item. Internal lineage MUST retain resolved_account_id, catalog_id, catalog_generation, and item_id. Static creatives supplied or promoted by the buyer without catalog lineage remain outside this automatic guarantee. Suppression persists across feed refreshes and ordinary upserts until restore, expires_at, or catalog deletion. A seller that does not declare true MUST reject availability operations with UNSUPPORTED_FEATURE before lookup or mutation and MUST NOT interpret them as discovery. This does not control seller-owned wholesale inventory or let restore bypass seller controls."
