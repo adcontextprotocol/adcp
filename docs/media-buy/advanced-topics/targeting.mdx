@@ -22,6 +22,20 @@ Publishers then return products that include the targeting capabilities to reach
 
 Use a typed `targeting_overlay` whenever a requirement has a structured representation and must survive booking and readback. This avoids transmitting the same fact as extra prose and avoids asking the seller to spend tokens inferring a value that code can read deterministically. In particular, numeric demographic predicates such as ages 25–40 and exact country constraints belong in the overlay; prose such as “millennial parents interested in sustainable products” remains in the brief.
 
+<Note>
+3.2 includes portable age audience targeting, but no core gender predicate.
+Cooperating buyers and sellers can agree to use the optional official
+`ext.adcp.demographics.gender` binding described in the
+[development targeting guide](https://github.com/adcontextprotocol/adcp/blob/main/docs/media-buy/advanced-topics/targeting.mdx#gender-audience-targeting-optional-adcp-extension).
+Its vocabulary includes `female`, `male`, and `non_binary`, with unknown
+membership kept separate. Consult that agreement for binding negotiation,
+product capability, exact execution, governance, and requested/applied
+readback before relying on it for a hard constraint. Acceptance of arbitrary
+JSON in `ext` alone does not establish support. This is adoption guidance for
+an optional agreement; it does not extend the released 3.2 baseline. Core
+gender targeting remains with [RFC #7921](https://github.com/adcontextprotocol/adcp/issues/7921).
+</Note>
+
 ## Request mutation semantics
 
 Create and update requests use a request-only targeting input so each
@@ -769,7 +783,7 @@ Inclusion targeting works the same way for cases where you want to specify exact
 ## What NOT to Use Targeting Overlays For
 
 **Express these in briefs instead:**
-- **Demographic preferences** (age, gender, income) - "Target millennials" or "high-income households" in brief text
+- **Soft demographic preferences** - "Target millennials" or "high-income households" in brief text. Exact age constraints use `demographics.age`; cooperating implementers can agree on the optional AdCP gender extension described above.
 - **Device preferences** - "Mobile users" or "CTV viewers" in brief text (use `device_platform` overlay only for technical compatibility)
 - **Content categories** - "Sports content" or "News sites" in brief text
 - **General audience preferences** - "Auto intenders" or "Luxury shoppers" in brief text. If the buyer wants specific named signals applied to this package, use `signal_targeting_groups`.
@@ -779,7 +793,9 @@ Inclusion targeting works the same way for cases where you want to specify exact
 | Use Case | Overlay | Brief |
 |----------|---------|-------|
 | Age for compliance (alcohol, gambling) | ✅ `age_restriction` | |
-| Age for audience targeting | | ✅ "Target millennials" |
+| Exact age for audience targeting | ✅ `demographics.age` | |
+| Exact gender with an opted-in seller | ✅ `ext.adcp.demographics.gender` by agreement | |
+| Soft demographic preference | | ✅ "Target millennials" |
 | Device for app compatibility | ✅ `device_platform` | |
 | Device for audience preference | | ✅ "Mobile users" |
 | Language for creative localization | ✅ `language` | |
