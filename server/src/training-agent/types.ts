@@ -239,6 +239,8 @@ export interface TrainingContext {
   legacySessionBrandDomain?: string;
   /** Release selected by protocol negotiation for this request. */
   servedAdcpVersion?: string;
+  /** Local source-schema preview only. Never set by deployed routes or buyer input. */
+  developmentCoreGender?: boolean;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
    *  `required_for: ['create_media_buy']` in capabilities and enforces
    *  presence-gated signing at the auth layer. Default `/mcp` does not

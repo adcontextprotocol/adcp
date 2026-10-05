@@ -93,8 +93,10 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // exclusion, and the time_granularity requirement to the shared daypart
 // graph carried by every targeting-bearing task (+2,087 bytes measured,
 // 443.3 → 445.4 KiB), bounded at 446 KiB.
+// Experimental core gender adds the shared predicate and named support rules;
+// the merged 3.3 inputs measure 458,224 bytes (447.48 KiB), bounded at 448 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 446,
+  'media-buy': 448,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

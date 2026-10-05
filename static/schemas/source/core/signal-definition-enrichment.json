@@ -330,14 +330,51 @@
   },
   "allOf": [
     {
-      "if": { "required": ["demographic_predicate"] },
+      "if": {
+        "properties": {
+          "demographic_predicate": {
+            "required": [
+              "age"
+            ]
+          }
+        },
+        "required": ["demographic_predicate"]
+      },
       "then": {
         "properties": {
           "restricted_attributes": {
+            "type": "array",
             "contains": { "const": "age" }
           }
         },
         "required": ["restricted_attributes"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "demographic_predicate": {
+            "required": [
+              "gender"
+            ]
+          }
+        },
+        "required": [
+          "demographic_predicate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "restricted_attributes": {
+            "type": "array",
+            "contains": {
+              "const": "sex_gender"
+            }
+          }
+        },
+        "required": [
+          "restricted_attributes"
+        ]
       }
     }
   ],

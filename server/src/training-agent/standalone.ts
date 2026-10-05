@@ -52,7 +52,12 @@ async function handleMcpRequest(req: Request, res: Response) {
   let server: ReturnType<typeof createTrainingAgentServer> | null = null;
   try {
     const principal = extractPrincipalFromBearer(req);
-    const ctx: TrainingContext = principal ? { mode: 'open', principal } : { mode: 'open' };
+    const ctx: TrainingContext = {
+      mode: 'open',
+      ...(principal && { principal }),
+      // Explicit local source-schema preview; deployed routes keep released contracts.
+      ...(process.env.ADCP_TRAINING_CORE_GENDER_PREVIEW === '1' && { developmentCoreGender: true }),
+    };
     server = createTrainingAgentServer(ctx);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

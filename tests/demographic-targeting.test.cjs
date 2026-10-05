@@ -26,9 +26,13 @@ describe('portable demographic targeting', () => {
   let validateResolution;
   let validateDefinition;
   let validateListing;
+  let validateInput;
+  let validateEnrichment;
+  let validateOverlaySupport;
+  let validateOverlayRequirements;
 
   before(async () => {
-    [validatePredicate, validateIntent, validateTargeting, validateCapability, validateResolution, validateDefinition, validateListing] = await Promise.all([
+    [validatePredicate, validateIntent, validateTargeting, validateCapability, validateResolution, validateDefinition, validateListing, validateInput, validateEnrichment, validateOverlaySupport, validateOverlayRequirements] = await Promise.all([
       compile('/schemas/core/demographic-predicate.json'),
       compile('/schemas/core/demographic-targeting-intent.json'),
       compile('/schemas/core/targeting.json'),
@@ -36,7 +40,135 @@ describe('portable demographic targeting', () => {
       compile('/schemas/core/demographic-targeting-resolution.json'),
       compile('/schemas/core/signal-definition.json'),
       compile('/schemas/core/signal-listing.json'),
+      compile('/schemas/core/targeting-input.json'),
+      compile('/schemas/core/signal-definition-enrichment.json'),
+      compile('/schemas/core/targeting-overlay-support.json'),
+      compile('/schemas/core/targeting-overlay-requirements.json'),
     ]);
+  });
+
+  const gender = { values: ['female', 'non_binary'], include_unknown: false };
+  const age = { min: 18, max: 55, include_unknown: false };
+  const nativeResolution = () => ({
+    requested: { gender: structuredClone(gender) },
+    applied: { gender: structuredClone(gender) },
+    equivalent: true,
+    execution: { type: 'gender_values' },
+  });
+
+  it('requires the experimental feature declaration only for affirmative gender support', async () => {
+    const validate = await compile('/schemas/protocol/get-adcp-capabilities-response.json');
+    const capability = {
+      status: 'completed',
+      adcp: { major_versions: [3], idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      supported_protocols: ['media_buy'],
+    };
+    assert.equal(validate(capability), true, JSON.stringify(validate.errors));
+    const withDemographics = demographics => ({ ...capability,
+      media_buy: { execution: { targeting: { demographics } } } });
+    assert.equal(validate(withDemographics({ supported: true })), true);
+    assert.equal(validate(withDemographics({ supported: true, gender: { supported: false } })), true);
+    const genderSupport = withDemographics({ supported: true, gender: { supported: true } });
+    assert.equal(validate(genderSupport), false);
+    assert.equal(validate({ ...genderSupport, experimental_features: ['media_buy.daypart_granularity'] }), false);
+    assert.equal(validate({ ...genderSupport, experimental_features: ['media_buy.gender_targeting'] }), true,
+      JSON.stringify(validate.errors));
+  });
+
+  it('accepts gender-only and mixed intent without inventing age or defaulting unknown membership', () => {
+    for (const validate of [validatePredicate, validateIntent]) {
+      assert.equal(validate({ gender }), true, JSON.stringify(validate.errors));
+      assert.equal(validate({ age, gender }), true);
+      assert.equal(validate({}), false);
+      assert.equal(validate({ other_dimension: {} }), false);
+      for (const invalid of [
+        { values: [], include_unknown: false },
+        { values: ['female', 'female'], include_unknown: false },
+        { values: ['other'], include_unknown: false },
+        { values: ['unknown'], include_unknown: false },
+        { values: ['non_binary'] },
+        { values: ['non-binary'], include_unknown: false },
+        null,
+      ]) assert.equal(validate({ gender: invalid }), false, JSON.stringify(invalid));
+    }
+    assert.equal(validateTargeting({ demographics: { gender: { ...gender, include_unknown: true } }, age_restriction: { min: 21, verification_required: true } }), true,
+      'an age eligibility floor does not constrain unknown gender');
+  });
+
+  it('advertises optional product gender subsets and explicit execution/unknown policies', () => {
+    const capability = { gender: { execution_modes: ['native', 'signals'], values: ['non_binary'], unknown_handling: 'selectable' } };
+    assert.equal(validateCapability(capability), true);
+    for (const change of [
+      { values: [] }, { values: ['female', 'female'] }, { values: ['unknown'] },
+      { execution_modes: [] }, { execution_modes: ['continuous_bounds'] },
+      { unknown_handling: 'unspecified' },
+    ]) assert.equal(validateCapability({ gender: { ...capability.gender, ...change } }), false);
+    for (const key of ['values', 'execution_modes', 'unknown_handling']) {
+      const invalid = structuredClone(capability); delete invalid.gender[key];
+      assert.equal(validateCapability(invalid), false);
+    }
+    assert.equal(validateOverlaySupport({ demographics: { gender: true } }), true);
+    assert.equal(validateOverlayRequirements({ demographics: { age: true, gender: true } }), true);
+    assert.equal(validateOverlayRequirements({ demographics: {} }), false);
+  });
+
+  it('retains whole-demographics replacement and request-only null clear', () => {
+    assert.equal(validateInput({ demographics: { age, gender } }), true);
+    assert.equal(validateInput({ demographics: { gender } }), true);
+    assert.equal(validateInput({ demographics: null }), true);
+    assert.equal(validateTargeting({ demographics: null }), false);
+    for (const demographics of [{ age, gender: null }, { age: null, gender }]) {
+      assert.equal(validateInput({ demographics }), false, 'nested dimension null is not a recursive patch');
+    }
+  });
+
+  it('reports gender-only native/signals and mixed per-dimension execution with matching dimensions', () => {
+    assert.equal(validateResolution(nativeResolution()), true, JSON.stringify(validateResolution.errors));
+    const signal = { scope: 'product', signal_id: 'gender_selection' };
+    const signalResolution = { ...nativeResolution(), execution: { type: 'signals', signal_refs: [signal] } };
+    assert.equal(validateResolution(signalResolution), true);
+    for (const ageExecution of [
+      { type: 'continuous_bounds' },
+      { type: 'enumerated_intervals', interval_ids: ['age_18_55'] },
+      { type: 'signals', signal_refs: [{ scope: 'product', signal_id: 'age_selection' }] },
+    ]) {
+      for (const genderExecution of [{ type: 'gender_values' }, signalResolution.execution]) {
+        const mixed = {
+          requested: { age, gender }, applied: { age, gender }, equivalent: true,
+          execution: { type: 'per_dimension', age: ageExecution, gender: genderExecution },
+        };
+        assert.equal(validateResolution(mixed), true, JSON.stringify(validateResolution.errors));
+        const missing = structuredClone(mixed); delete missing.execution.gender;
+        assert.equal(validateResolution(missing), false);
+      }
+    }
+    assert.equal(validateResolution({ requested: { age, gender }, applied: { age, gender }, equivalent: true, execution: signalResolution.execution }), true,
+      'joint signal compilation is validated semantically against complete predicates');
+    for (const execution of [{ type: 'continuous_bounds' }, { type: 'enumerated_intervals', interval_ids: ['age_18_55'] }]) {
+      assert.equal(validateResolution({ ...nativeResolution(), execution }), false, 'age execution cannot attest gender');
+    }
+    assert.equal(validateResolution({ ...nativeResolution(), applied: { age, gender } }), false, 'cannot introduce age');
+    assert.equal(validateResolution({ ...nativeResolution(), applied: { age } }), false, 'cannot drop gender');
+    assert.equal(validateResolution({ ...nativeResolution(), requested: { age, gender }, applied: { age, gender } }), false, 'native gender cannot attest mixed age');
+    assert.equal(validateResolution({ ...nativeResolution(), equivalent: false }), false);
+  });
+
+  it('classifies each authoritative signal dimension independently across definitions and projections', () => {
+    const fixtures = [
+      [validateDefinition, { id: 'gender_selection', name: 'Gender selection', value_type: 'binary' }],
+      [validateListing, { signal_ref: { scope: 'product', signal_id: 'gender_selection' }, name: 'Gender selection', value_type: 'binary' }],
+      [validateEnrichment, {}],
+    ];
+    for (const [validate, base] of fixtures) {
+      assert.equal(validate({ ...base, demographic_predicate: { gender }, restricted_attributes: ['sex_gender'] }), true, JSON.stringify(validate.errors));
+      assert.equal(validate({ ...base, demographic_predicate: { gender }, restricted_attributes: ['age'] }), false);
+      assert.equal(validate({ ...base, demographic_predicate: { gender } }), false);
+      assert.equal(validate({ ...base, demographic_predicate: { age, gender }, restricted_attributes: ['age', 'sex_gender'] }), true);
+      for (const restricted_attributes of [['age'], ['sex_gender']]) {
+        assert.equal(validate({ ...base, demographic_predicate: { age, gender }, restricted_attributes }), false);
+      }
+      assert.equal(validate({ ...base, demographic_predicate: { age }, restricted_attributes: ['age'] }), true);
+    }
   });
 
   it('accepts inclusive closed and open age bounds only with explicit unknown handling', () => {

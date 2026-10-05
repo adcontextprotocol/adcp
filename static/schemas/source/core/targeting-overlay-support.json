@@ -308,9 +308,15 @@
           "type": "object",
           "properties": {
             "age": { "$ref": "#/definitions/supported" },
+            "gender": {
+              "$ref": "#/definitions/supported",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
+            },
             "ext": { "$ref": "/schemas/core/ext.json" }
           },
-          "required": ["age"],
+          "anyOf": [{ "required": ["age"] }, { "required": ["gender"] }],
           "additionalProperties": true
         }
       ]

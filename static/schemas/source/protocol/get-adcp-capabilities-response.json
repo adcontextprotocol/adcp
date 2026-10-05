@@ -447,6 +447,65 @@
         "required": ["media_buy", "account"]
       },
       "then": false
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "execution": {
+                "properties": {
+                  "targeting": {
+                    "properties": {
+                      "demographics": {
+                        "properties": {
+                          "gender": {
+                            "properties": {
+                              "supported": {
+                                "const": true
+                              }
+                            },
+                            "required": [
+                              "supported"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "gender"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "demographics"
+                    ]
+                  }
+                },
+                "required": [
+                  "targeting"
+                ]
+              }
+            },
+            "required": [
+              "execution"
+            ]
+          }
+        },
+        "required": [
+          "media_buy"
+        ]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": {
+              "const": "media_buy.gender_targeting"
+            }
+          }
+        },
+        "required": [
+          "experimental_features"
+        ]
+      }
     }
   ],
   "properties": {
@@ -1664,11 +1723,29 @@
                 },
                 "demographics": {
                   "type": "object",
-                  "description": "Seller-wide discovery rollup for canonical demographic targeting. supported=true means at least one product implements the demographic targeting contract; it does not authorize demographic targeting on every product. Buyers MUST inspect Product.demographic_targeting for exact execution modes, bounds, intervals, and unknown-age behavior.",
+                  "description": "Seller-wide discovery rollup for canonical demographic targeting. supported=true means at least one product implements the demographic targeting contract; it does not authorize demographic targeting on every product. Buyers MUST inspect Product.demographic_targeting for exact execution modes, supported dimensions, bounds, intervals, gender values, and per-dimension unknown behavior.",
                   "properties": {
                     "supported": {
                       "type": "boolean",
                       "description": "Whether at least one seller product supports canonical demographic targeting."
+                    },
+                    "gender": {
+                      "type": "object",
+                      "properties": {
+                        "supported": {
+                          "type": "boolean",
+                          "description": "Whether at least one product supports core gender targeting. Omission makes no core gender support commitment; inspect Product.demographic_targeting.gender before purchase.",
+                          "x-status": "experimental",
+                          "x-added-in": "3.3.0"
+                        }
+                      },
+                      "required": [
+                        "supported"
+                      ],
+                      "additionalProperties": true,
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0",
+                      "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
                     }
                   },
                   "required": ["supported"],

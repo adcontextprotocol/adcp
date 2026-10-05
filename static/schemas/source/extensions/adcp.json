@@ -2,106 +2,16 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/extensions/adcp.json",
   "title": "AdCP-owned extensions",
-  "description": "AdCP Working Group-owned extension namespace. The opportunity binding carries the published 3.2 planning-cycle object on get_products. The optional demographics.gender.v1 binding carries exact gender targeting, product capability, and execution readback. Namespace support alone does not imply support for every binding. Core fields take precedence where the selected task defines them.",
+  "description": "AdCP Working Group-owned extension namespace. The opportunity binding carries the published 3.2 planning-cycle object on get_products. Sellers opt in through extensions_supported; support applies to documented bindings, not arbitrary future features. Core fields take precedence where the selected task defines them.",
   "x-adcp-owned": true,
   "valid_from": "3.2",
   "docs_url": "https://github.com/adcontextprotocol/adcp/blob/main/docs/building/by-layer/L2/context-sessions.mdx#adcp-opportunity-extension",
   "type": "object",
   "properties": {
-    "bindings": {
-      "type": "array",
-      "description": "Binding identifiers advertised in get_adcp_capabilities.ext.adcp. demographics.gender.v1 opts into the contract at https://github.com/adcontextprotocol/adcp/blob/main/docs/media-buy/advanced-topics/targeting.mdx#gender-audience-targeting-optional-adcp-extension. extensions_supported separately includes the namespace token adcp.",
-      "items": { "type": "string", "minLength": 1 },
-      "minItems": 1,
-      "uniqueItems": true
-    },
     "opportunity": {
       "$ref": "https://adcontextprotocol.org/schemas/3.2.1/core/opportunity-context.json",
       "description": "Planning-cycle association on get_products, using the unchanged 3.2.1 OpportunityContext shape and seller/account scope. Lifecycle fields are discovery snapshots, not independent transitions. See the documented task binding for account resolution, proposal inheritance, and migration."
-    },
-    "demographics": {
-      "type": "object",
-      "description": "Gender intent inside targeting_overlay.ext.adcp. Null is a request-only clear on create or update when product capability permits it; discovery and effective snapshots use a non-null predicate or omit gender. Other extension dimensions are preserved independently.",
-      "properties": {
-        "gender": {
-          "anyOf": [
-            { "$ref": "#/definitions/gender_predicate" },
-            { "type": "null" }
-          ]
-        }
-      },
-      "additionalProperties": true
-    },
-    "demographic_targeting": {
-      "type": "object",
-      "description": "Product-scoped extension capability, separate from the core age capability. Omission makes no gender execution commitment.",
-      "properties": {
-        "gender": { "$ref": "#/definitions/gender_capability" }
-      },
-      "additionalProperties": true
-    },
-    "demographic_targeting_resolution": {
-      "type": "object",
-      "description": "Gender execution readback in Package.ext.adcp, independent of the core age-only targeting_resolution. Required by this binding for every effective gender constraint in completed create packages, completed update affected_packages, and get_media_buys packages.",
-      "properties": {
-        "gender": { "$ref": "#/definitions/gender_resolution" }
-      },
-      "additionalProperties": true
     }
   },
-  "additionalProperties": true,
-  "definitions": {
-    "gender_values": {
-      "type": "array",
-      "description": "Protocol-native gender category names, not sex recorded at birth or sexual orientation. Non-binary is a known category, distinct from unavailable gender. External other/unknown codes do not establish an exact non_binary mapping.",
-      "items": { "type": "string", "enum": ["female", "male", "non_binary"] },
-      "minItems": 1,
-      "uniqueItems": true
-    },
-    "gender_predicate": {
-      "type": "object",
-      "description": "Match any selected gender category, plus unavailable/unclassified gender only when include_unknown is true. A known unselected category never counts as unknown. Combine with age and other targeting constraints using AND. No defaults or silent widening.",
-      "properties": {
-        "values": { "$ref": "#/definitions/gender_values" },
-        "include_unknown": { "type": "boolean" }
-      },
-      "required": ["values", "include_unknown"],
-      "additionalProperties": false
-    },
-    "gender_capability": {
-      "type": "object",
-      "description": "Native gender execution available for this product. Any nonempty subset of values is executable with compatible unknown handling, subject to existing policy and commercial checks. Sellers MUST reject unsupported predicates before mutation; absence of non_binary means it cannot be requested on this product.",
-      "properties": {
-        "values": { "$ref": "#/definitions/gender_values" },
-        "unknown_handling": {
-          "type": "string",
-          "enum": ["selectable", "always_excluded", "always_included"],
-          "description": "selectable honors either include_unknown value; always_excluded supports only false; always_included supports only true. An incompatible request is rejected rather than changed."
-        },
-        "supports_clearing": {
-          "type": "boolean",
-          "description": "Whether a request can clear gender, including inherited/default gender. True does not authorize removing inherent product scope or bypass existing policy, authorization, or requote checks. False requires rejecting null."
-        }
-      },
-      "required": ["values", "unknown_handling", "supports_clearing"],
-      "additionalProperties": false
-    },
-    "gender_resolution": {
-      "type": "object",
-      "description": "Execution attestation, not an echo of input. requested and applied MUST have identical value sets (order-independent) and include_unknown membership, and applied MUST equal the effective package gender predicate. Schema validation alone cannot prove these cross-object equalities or execution.",
-      "properties": {
-        "requested": { "$ref": "#/definitions/gender_predicate" },
-        "applied": { "$ref": "#/definitions/gender_predicate" },
-        "equivalent": { "type": "boolean", "const": true },
-        "execution": {
-          "type": "object",
-          "properties": { "type": { "type": "string", "const": "native" } },
-          "required": ["type"],
-          "additionalProperties": false
-        }
-      },
-      "required": ["requested", "applied", "equivalent", "execution"],
-      "additionalProperties": false
-    }
-  }
+  "additionalProperties": true
 }

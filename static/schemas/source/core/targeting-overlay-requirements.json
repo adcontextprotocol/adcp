@@ -190,8 +190,16 @@
         { "$ref": "#/definitions/required" },
         {
           "type": "object",
-          "properties": { "age": { "$ref": "#/definitions/required" } },
-          "required": ["age"],
+          "properties": {
+            "age": { "$ref": "#/definitions/required" },
+            "gender": {
+              "$ref": "#/definitions/required",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
+            }
+          },
+          "anyOf": [{ "required": ["age"] }, { "required": ["gender"] }],
           "additionalProperties": false
         }
       ]
