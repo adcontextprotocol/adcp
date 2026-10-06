@@ -956,6 +956,7 @@ function projectTenantCapabilities(
           creative?: Record<string, unknown>;
           media_buy?: Record<string, unknown>;
           signals?: Record<string, unknown>;
+          governance?: Record<string, unknown>;
           wholesale_feed_versioning?: Record<string, unknown>;
           wholesale_feed_webhooks?: Record<string, unknown>;
           webhook_signing?: Record<string, unknown>;
@@ -994,6 +995,11 @@ function projectTenantCapabilities(
       if (!tenantProtocols.includes('media_buy')) {
         delete structured.media_buy;
       }
+    }
+    // The governance tenant enforces plan budget periods (adcp#7956); a 3.0
+    // projection predates the field, so it keeps the released capability shape.
+    if (tenantId === 'governance' && storyboardCompat?.version !== '3.0') {
+      structured.governance = { ...structured.governance, supports_budget_periods: true };
     }
     if (tenantId === 'sales' && storyboardCompat?.version !== '3.0') {
       structured.adcp.capability_changes = {
