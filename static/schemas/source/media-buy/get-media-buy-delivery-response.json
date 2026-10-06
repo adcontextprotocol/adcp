@@ -923,6 +923,128 @@
                       "$ref": "/schemas/enums/sort-direction.json",
                       "description": "The direction actually applied to by_placement_property rows. Sellers MUST return this field whenever by_placement_property is present."
                     },
+                    "by_composition": {
+                      "type": "object",
+                      "x-status": "experimental",
+                      "description": "Experimental (media_buy.delivery_composition). Cross-tabulated delivery for the dimensions requested in breakdown_composition. Each row is one cell: the key carries the value of every composed dimension, and metrics carries the cell's delivery. Returned only when the request included breakdown_composition and the seller supports it, and independent of the marginal by_* arrays (a request may carry both, from one data snapshot). Cells with no delivery are omitted. Cells are ordered by the applied sorted_by and sort_direction, ties broken by key members ascending in dimensions order (dates ascending, other values bytewise). Paging is one walk: pass pagination.cursor back until a page returns truncated false; exhausted packages return empty rows. Internal consistency: over the union of all pages of one completed walk (or the single response when no pagination was returned), when no page set suppressed, count and currency metrics (impressions, spend, clicks, and other additive counts) summed over all rows MUST equal the package total for the same period (spend equal to the currency's minor unit), and for every composed dimension that the same response also returns as an untruncated, unsuppressed marginal by_* array at the same grain (same geo_level and system for geo), the per-value sums over rows MUST equal that marginal's values. Metrics a seller omits at cell grain or narrows away with requested_metrics are exempt. Rates, ratios, and unique counts (ctr, reach, frequency) are never summed across cells. The rule does not apply to a partial walk or to any page set with suppressed true.",
+                      "properties": {
+                        "dimensions": {
+                          "type": "array",
+                          "description": "The composed dimensions, echoed in request order.",
+                          "items": { "type": "string", "enum": ["date", "geo", "device_type", "device_platform", "placement", "creative", "property"] },
+                          "uniqueItems": true,
+                          "minItems": 2,
+                          "maxItems": 3
+                        },
+                        "rows": {
+                          "type": "array",
+                          "description": "One entry per returned cell on this page.",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "object",
+                                "description": "Value of each composed dimension for this cell, using the identity fields of the matching by_* row: date; geo_level and geo_code (plus system for metro); device_type; device_platform; placement_id; creative_id; publisher_domain with identifier for property (compared as a whole object). It contains exactly the members for the dimensions listed in dimensions and no others.",
+                                "properties": {
+                                  "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "Calendar date in the reporting timezone." },
+                                  "geo_level": {
+                                    "allOf": [
+                                      { "$ref": "/schemas/enums/geo-level.json" },
+                                      { "not": { "const": "postal_area" } }
+                                    ]
+                                  },
+                                  "geo_code": { "type": "string", "description": "Geographic code within geo_level and system, as in by_geo rows." },
+                                  "system": { "type": "string", "description": "Metro classification system, as in by_geo rows. Present exactly when geo_level is metro." },
+                                  "device_type": { "$ref": "/schemas/enums/device-type.json" },
+                                  "device_platform": { "$ref": "/schemas/enums/device-platform.json" },
+                                  "placement_id": { "type": "string", "x-entity": "placement" },
+                                  "creative_id": { "type": "string", "x-entity": "creative" },
+                                  "publisher_domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" },
+                                  "identifier": { "$ref": "/schemas/core/identifier.json" }
+                                },
+                                "allOf": [
+                                  {
+                                    "if": { "properties": { "geo_level": { "const": "metro" } }, "required": ["geo_level"] },
+                                    "then": { "required": ["system"] },
+                                    "else": { "not": { "required": ["system"] } }
+                                  }
+                                ],
+                                "additionalProperties": false
+                              },
+                              "metrics": {
+                                "$ref": "/schemas/core/delivery-metrics.json",
+                                "description": "Delivery metrics for this cell. Metrics the seller cannot report at cell grain are omitted."
+                              }
+                            },
+                            "required": ["key", "metrics"],
+                            "additionalProperties": true
+                          }
+                        },
+                        "truncated": {
+                          "type": "boolean",
+                          "description": "Whether more cells remain after this page. False on the final page of a walk, and on a response that fits in one page. Sellers MUST return this flag whenever by_composition is present, and it MUST equal pagination.has_more when pagination is returned."
+                        },
+                        "suppressed": {
+                          "type": "boolean",
+                          "description": "Whether one or more otherwise reportable cells were omitted due to privacy, policy, or measurement thresholds. Sellers MUST return this flag whenever by_composition is present. Both suppression and truncation may be true."
+                        },
+                        "sorted_by": {
+                          "$ref": "/schemas/enums/sort-metric.json",
+                          "description": "The metric actually used to order cells. Sellers MUST return this field whenever by_composition is present."
+                        },
+                        "sort_direction": {
+                          "$ref": "/schemas/enums/sort-direction.json",
+                          "description": "The direction actually applied to cell ordering. Sellers MUST return this field whenever by_composition is present."
+                        },
+                        "pagination": {
+                          "$ref": "/schemas/core/pagination-response.json",
+                          "description": "Cursor to retrieve the remaining cells. Sellers MUST return this field whenever truncated is true, with has_more true; omit when false. Pass the cursor back as breakdown_composition.cursor, repeating the other breakdown_composition fields unchanged. total_count, when present, is the total number of non-suppressed cells across all pages."
+                        }
+                      },
+                      "required": ["dimensions", "rows", "truncated", "suppressed", "sorted_by", "sort_direction"],
+                      "allOf": [
+                        {
+                          "if": { "properties": { "truncated": { "const": true } }, "required": ["truncated"] },
+                          "then": { "required": ["pagination"], "properties": { "pagination": { "properties": { "has_more": { "const": true } } } } }
+                        },
+                        {
+                          "if": { "properties": { "dimensions": { "contains": { "const": "date" } } }, "required": ["dimensions"] },
+                          "then": { "properties": { "rows": { "items": { "properties": { "key": { "required": ["date"] } } } } } },
+                          "else": { "properties": { "rows": { "items": { "properties": { "key": { "not": { "anyOf": [{ "required": ["date"] }] } } } } } } }
+                        },
+                        {
+                          "if": { "properties": { "dimensions": { "contains": { "const": "geo" } } }, "required": ["dimensions"] },
+                          "then": { "properties": { "rows": { "items": { "properties": { "key": { "required": ["geo_level", "geo_code"] } } } } } },
+                          "else": { "properties": { "rows": { "items": { "properties": { "key": { "not": { "anyOf": [{ "required": ["geo_level"] }, { "required": ["geo_code"] }] } } } } } } }
+                        },
+                        {
+                          "if": { "properties": { "dimensions": { "contains": { "const": "device_type" } } }, "required": ["dimensions"] },
+                          "then": { "properties": { "rows": { "items": { "properties": { "key": { "required": ["device_type"] } } } } } },
+                          "else": { "properties": { "rows": { "items": { "properties": { "key": { "not": { "anyOf": [{ "required": ["device_type"] }] } } } } } } }
+                        },
+                        {
+                          "if": { "properties": { "dimensions": { "contains": { "const": "device_platform" } } }, "required": ["dimensions"] },
+                          "then": { "properties": { "rows": { "items": { "properties": { "key": { "required": ["device_platform"] } } } } } },
+                          "else": { "properties": { "rows": { "items": { "properties": { "key": { "not": { "anyOf": [{ "required": ["device_platform"] }] } } } } } } }
+                        },
+                        {
+                          "if": { "properties": { "dimensions": { "contains": { "const": "placement" } } }, "required": ["dimensions"] },
+                          "then": { "properties": { "rows": { "items": { "properties": { "key": { "required": ["placement_id"] } } } } } },
+                          "else": { "properties": { "rows": { "items": { "properties": { "key": { "not": { "anyOf": [{ "required": ["placement_id"] }] } } } } } } }
+                        },
+                        {
+                          "if": { "properties": { "dimensions": { "contains": { "const": "creative" } } }, "required": ["dimensions"] },
+                          "then": { "properties": { "rows": { "items": { "properties": { "key": { "required": ["creative_id"] } } } } } },
+                          "else": { "properties": { "rows": { "items": { "properties": { "key": { "not": { "anyOf": [{ "required": ["creative_id"] }] } } } } } } }
+                        },
+                        {
+                          "if": { "properties": { "dimensions": { "contains": { "const": "property" } } }, "required": ["dimensions"] },
+                          "then": { "properties": { "rows": { "items": { "properties": { "key": { "required": ["publisher_domain", "identifier"] } } } } } },
+                          "else": { "properties": { "rows": { "items": { "properties": { "key": { "not": { "anyOf": [{ "required": ["publisher_domain"] }, { "required": ["identifier"] }] } } } } } } }
+                        }
+                      ],
+                      "additionalProperties": true
+                    },
                     "by_spot": {
                       "type": "array",
                       "description": "Spot-level as-run airing records for broadcast TV, radio, or other scheduled inventory. Available when the buyer requests spot breakdown and the product declares supports_spot_breakdown. Sellers MUST order rows by aired_at ascending. The same spot_id is reused when a later package measurement_window adds or revises metrics. Network and station are optional so station-direct radio and network-level TV records use the same channel-neutral shape. Sellers SHOULD populate creative_id whenever they can associate a specific airing with a creative, particularly when the package could serve more than one creative during any part of the reporting period, including a mid-period replacement. Sellers that cannot make that association MUST omit creative_id rather than emit a default or placeholder. Buyers MUST NOT aggregate by_spot rows by creative_id and expect the result to equal by_creative impressions for the same creative: the two dimensions are independently produced at different granularities and are subject to different metric-maturation and attribution semantics within the package measurement_window. by_creative is the authoritative creative-performance aggregate; creative_id on a by_spot row identifies which creative aired, not an independent metric roll-up source.",

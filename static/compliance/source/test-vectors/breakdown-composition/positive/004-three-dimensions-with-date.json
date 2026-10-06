@@ -1,0 +1,53 @@
+{
+  "description": "A three-dimension composition including date, with only the cells for that page and no marginals returned.",
+  "package_totals": {
+    "impressions": 21921,
+    "spend": 153.45,
+    "clicks": 114
+  },
+  "by_package": {
+    "by_composition": {
+      "dimensions": [
+        "creative",
+        "geo",
+        "date"
+      ],
+      "rows": [
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-CA",
+            "date": "2026-07-01"
+          },
+          "metrics": {
+            "impressions": 12044,
+            "spend": 84.31,
+            "clicks": 63
+          }
+        },
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-NY",
+            "date": "2026-07-01"
+          },
+          "metrics": {
+            "impressions": 9877,
+            "spend": 69.14,
+            "clicks": 51
+          }
+        }
+      ],
+      "truncated": false,
+      "suppressed": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc"
+    }
+  },
+  "expected": {
+    "schema_valid": true,
+    "marginals_reconcile": true
+  }
+}

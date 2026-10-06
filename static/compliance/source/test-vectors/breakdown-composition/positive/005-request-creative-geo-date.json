@@ -1,0 +1,39 @@
+{
+  "description": "A conforming composition request with geo grain, a page size, an applied sort, and a continuation cursor.",
+  "request": {
+    "media_buy_ids": [
+      "mb_acme_001"
+    ],
+    "start_date": "2026-07-01",
+    "end_date": "2026-07-08",
+    "breakdown_composition": {
+      "dimensions": [
+        "creative",
+        "geo",
+        "date"
+      ],
+      "geo": {
+        "geo_level": "region"
+      },
+      "limit": 5000,
+      "sort_by": "impressions",
+      "cursor": "opaque-page-2"
+    }
+  },
+  "capability": {
+    "max_dimensions": 3,
+    "composable_dimensions": [
+      "date",
+      "geo",
+      "device_type",
+      "placement",
+      "creative",
+      "property"
+    ]
+  },
+  "product_date_range_support": "date_range",
+  "expected": {
+    "schema_valid": true,
+    "accepted": true
+  }
+}

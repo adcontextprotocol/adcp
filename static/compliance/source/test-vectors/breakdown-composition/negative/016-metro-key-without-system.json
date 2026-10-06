@@ -1,0 +1,33 @@
+{
+  "description": "A metro cell key carries its system.",
+  "by_package": {
+    "by_composition": {
+      "dimensions": [
+        "geo",
+        "date"
+      ],
+      "rows": [
+        {
+          "key": {
+            "geo_level": "metro",
+            "geo_code": "501",
+            "date": "2026-07-01"
+          },
+          "metrics": {
+            "impressions": 100,
+            "spend": 1.0,
+            "clicks": 1
+          }
+        }
+      ],
+      "truncated": false,
+      "suppressed": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc"
+    }
+  },
+  "expected_outcome": {
+    "schema_valid": false,
+    "target": "response"
+  }
+}

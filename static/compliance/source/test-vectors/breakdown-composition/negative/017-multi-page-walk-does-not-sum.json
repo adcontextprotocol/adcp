@@ -1,0 +1,78 @@
+{
+  "description": "A completed two-page walk whose union does not reach the package total violates the consistency rule.",
+  "package_totals": {
+    "impressions": 25921,
+    "spend": 180.0,
+    "clicks": 128
+  },
+  "pages": [
+    {
+      "dimensions": [
+        "creative",
+        "geo"
+      ],
+      "suppressed": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc",
+      "rows": [
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-CA"
+          },
+          "metrics": {
+            "impressions": 12044,
+            "spend": 84.31,
+            "clicks": 63
+          }
+        },
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-NY"
+          },
+          "metrics": {
+            "impressions": 9877,
+            "spend": 69.14,
+            "clicks": 51
+          }
+        }
+      ],
+      "truncated": true,
+      "pagination": {
+        "has_more": true,
+        "cursor": "opaque-page-2"
+      }
+    },
+    {
+      "dimensions": [
+        "creative",
+        "geo"
+      ],
+      "suppressed": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc",
+      "rows": [
+        {
+          "key": {
+            "creative_id": "cr_alt",
+            "geo_level": "region",
+            "geo_code": "US-CA"
+          },
+          "metrics": {
+            "impressions": 3000,
+            "spend": 20.0,
+            "clicks": 10
+          }
+        }
+      ],
+      "truncated": false
+    }
+  ],
+  "expected_outcome": {
+    "schema_valid": true,
+    "marginals_reconcile": false
+  }
+}

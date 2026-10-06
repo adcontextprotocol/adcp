@@ -1,0 +1,37 @@
+{
+  "description": "The geo level must also be one the product declares in supports_geo_breakdown.",
+  "request": {
+    "media_buy_ids": [
+      "mb_acme_001"
+    ],
+    "breakdown_composition": {
+      "dimensions": [
+        "geo",
+        "date"
+      ],
+      "geo": {
+        "geo_level": "metro",
+        "system": "nielsen_dma"
+      }
+    }
+  },
+  "capability": {
+    "max_dimensions": 3,
+    "composable_dimensions": [
+      "geo",
+      "device_type",
+      "placement",
+      "creative",
+      "property"
+    ]
+  },
+  "product_date_range_support": "date_range",
+  "declared_geo_levels": [
+    "country",
+    "region"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "BREAKDOWN_DIMENSION_NOT_COMPOSABLE"
+  }
+}

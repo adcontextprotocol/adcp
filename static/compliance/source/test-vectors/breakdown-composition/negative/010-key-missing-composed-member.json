@@ -1,0 +1,31 @@
+{
+  "description": "Every row key must carry a member for each composed dimension.",
+  "by_package": {
+    "by_composition": {
+      "dimensions": [
+        "creative",
+        "geo"
+      ],
+      "rows": [
+        {
+          "key": {
+            "creative_id": "cr_hero"
+          },
+          "metrics": {
+            "impressions": 100,
+            "spend": 1.0,
+            "clicks": 1
+          }
+        }
+      ],
+      "truncated": false,
+      "suppressed": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc"
+    }
+  },
+  "expected_outcome": {
+    "schema_valid": false,
+    "target": "response"
+  }
+}
