@@ -67,4 +67,56 @@ For recurring print inventory, a collection-level `deadline_policy` expresses th
 
 For an installment scheduled at **09:00 UTC on Monday, October 12, 2026**, the booking deadline is September 28, the penalty-free cancellation deadline is October 5, and final artwork is due October 7, all at 09:00 UTC. An explicit `deadlines` object on that installment overrides this policy, which lets a special issue publish a different cancellation window without changing the collection default.
 
+## Delivery evidence and circulation
+
+Print has no impression event. What a buyer reconciles against an insertion order is proof that the insertion ran, where it ran, and the circulation it ran against. A seller reports these on the existing `by_installment` breakdown of [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery), one row per issue, using the optional `print_metrics` object that every `by_installment` row inherits from `delivery-metrics.json`. `print_metrics` is [experimental](/docs/reference/experimental-status) in AdCP 3.3.
+
+| Field | Meaning |
+|-------|---------|
+| `page_delivered` | Page number on which the insertion ran. |
+| `position_delivered` | Position in which it ran, as free-form text. AdCP does not yet publish a shared print position vocabulary, and the booked position is not recorded in a typed field today, so compare it against the position in the insertion order. |
+| `circulation_delivered` | Circulation of the issue, in copies. Seller-defined (print run, paid, or audited circulation); state which in the product's `delivery_measurement.notes`. |
+| `circulation_basis` | `audited` (third-party circulation audit; name the auditor in the row-level `measurement_source`, a lowercase slug such as `ivw`) or `seller_modeled`. |
+| `evidence` | A placement evidence artifact: the URL of the scanned tearsheet page, with `captured_at` and `notes` when available. |
+
+This fictional row reports one issue of the weekly publication above:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/installment-delivery-metrics.json",
+  "installment_ref": {
+    "collection_ref": {
+      "publisher_domain": "northstar.example.com",
+      "collection_id": "northstar_weekly"
+    },
+    "installment_id": "2026-10-12"
+  },
+  "installment_name": "Issue of October 12, 2026",
+  "measurement_source": "ivw",
+  "scheduled_at": "2026-10-12T09:00:00Z",
+  "impressions": 0,
+  "spend": 4200,
+  "print_metrics": {
+    "page_delivered": 7,
+    "position_delivered": "right_hand",
+    "circulation_delivered": 42000,
+    "circulation_basis": "audited",
+    "evidence": {
+      "url": "https://northstar.example.com/tearsheets/2026-10-12/p7.pdf",
+      "captured_at": "2026-10-13T08:30:00Z"
+    }
+  }
+}
+```
+
+`impressions` and `spend` are required on every `by_installment` row by the schema; this example reports `0` impressions because the seller does not model a print audience. Buyers MUST NOT derive CPM or reach from that placeholder.
+
+### Reporting expectations
+
+- Nothing in `print_metrics` is schema-required. Many print sellers still produce tearsheets manually, and requiring them would exclude those sellers.
+- A seller of a `guaranteed` print product SHOULD populate `print_metrics.evidence` for each delivered installment.
+- A seller that reports `print_metrics` SHOULD list it in the product's `reporting_capabilities.available_metrics` (or in `committed_metrics` when the buy commits to it). `missing_metrics` is computed against those lists.
+- When a seller cannot produce `print_metrics` for a delivered installment, it SHOULD report `{ "scope": "standard", "metric_id": "print_metrics" }` in `by_package[].missing_metrics` rather than silently omitting it. The entry is package-level and covers the whole object, so it cannot name which installment is short, or say that page and circulation are reported while only the tearsheet is outstanding; in that case report the fields you have and omit `evidence`. When the tearsheet arrives after the report, report it in a later `get_media_buy_delivery` response for the same installment.
+- Audited circulation, such as an IVW or AAM figure, is commonly published quarterly rather than per issue. Absent a per-issue figure, a seller omits `circulation_delivered` and the buyer relies on the circulation the seller declared on the product (`delivery_measurement`, typically in `notes`). That declaration is prose today, so a buyer agent cannot read it as structured data; a structured circulation declaration (and a way to say whether a figure is print run, paid, or verified distribution) is a possible additive follow-up. Position makegoods are likewise settled outside the protocol until [#5686](https://github.com/adcontextprotocol/adcp/issues/5686) defines position vocabulary. Populate it only when the seller has a figure specific to that issue (a special edition, or a print run that differs from the audited average), and set `circulation_basis` accordingly.
+
 > Magazine/newspaper/trade-publication comparisons, advertorial/native placements, and position-taxonomy examples remain deferred until [#5686](https://github.com/adcontextprotocol/adcp/issues/5686) defines the relevant placement terminology. Copyable DPS, gatefold, and fixed print-plus-display examples additionally require a fetchable print format schema and a supported typed delivery model; [#5688](https://github.com/adcontextprotocol/adcp/issues/5688) remains open for that follow-up.
