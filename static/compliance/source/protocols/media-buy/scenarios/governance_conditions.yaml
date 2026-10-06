@@ -29,6 +29,9 @@ narrative: |
   Override by supplying a different `governance_agent_url` in the run's initial context
   (e.g., via `--context` on `adcp storyboard run` once the CLI supports it).
 
+# Hosted grading uses a resolvable buyer brand whose brand.json lists the
+# sandbox governance agent. Match the account and test-kit brand throughout;
+# see test-kits/hosted-grader.yaml for sandbox trust and credential mapping.
 context:
   governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
@@ -47,7 +50,7 @@ caller:
 prerequisites:
   description: |
     A governance agent that supports sync_plans and check_governance.
-  test_kit: "test-kits/acme-outdoor.yaml"
+  test_kit: "test-kits/hosted-grader.yaml"
 
 phases:
   - id: governance_plan_setup
@@ -73,7 +76,7 @@ phases:
           plans:
             - plan_id: "comply-gov-conditions-plan"
               brand:
-                domain: "acmeoutdoor.example"
+                domain: "hosted-grader.adcontextprotocol.org"
               objectives: "Q2 CTV campaign with reporting requirements"
               budget:
                 total: 100000
@@ -113,7 +116,7 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.example"
+                domain: "hosted-grader.adcontextprotocol.org"
               operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
@@ -139,7 +142,7 @@ phases:
           accounts:
             - account:
                 brand:
-                  domain: "acmeoutdoor.example"
+                  domain: "hosted-grader.adcontextprotocol.org"
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
@@ -170,7 +173,7 @@ phases:
           brief: "CTV and connected TV inventory on outdoor lifestyle content. Q2 flight, $25K budget. Adults 25-54, US."
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "hosted-grader.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
         context_outputs:
           - name: product_id
@@ -201,10 +204,10 @@ phases:
           - conditions visible to the buyer
         sample_request:
           brand:
-            domain: "acmeoutdoor.example"
+            domain: "hosted-grader.adcontextprotocol.org"
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "hosted-grader.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
             sandbox: true
           plan_id: "$context.plan_id"
