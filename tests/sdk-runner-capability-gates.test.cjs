@@ -40,6 +40,53 @@ function loadMediaBuyStoryboard(name) {
   return YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
 }
 
+test('evaluator capability contract grades individual experimental feature declarations', async () => {
+  const storyboard = loadMediaBuyStoryboard('evaluator_auth');
+  const contract = storyboard.phases.find(phase => phase.id === 'evaluator_capability_contract');
+  const executable = {
+    ...storyboard,
+    prerequisites: undefined,
+    fixtures: undefined,
+    phases: [{
+      ...contract,
+      steps: contract.steps.map(step => ({
+        ...step,
+        validations: step.validations.filter(validation => validation.check !== 'response_schema'),
+      })),
+    }],
+  };
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+
+  for (const features of [[], ['other.feature'], ['creative.evaluator'], ['other.feature', 'creative.evaluator']]) {
+    const capabilities = {
+      creative: {
+        supports_evaluator: true,
+        supported_formats: [{ capability_id: 'display-build' }],
+      },
+      governance: { creative_features: [{ feature_id: 'visual-quality' }] },
+      experimental_features: features,
+    };
+    const requests = [];
+    const result = await runStoryboard('https://agent.example/mcp', executable, {
+      _profile: { tools, raw_capabilities: capabilities },
+      agentTools: tools,
+      context: { supports_evaluator: true },
+      skip_controller_seeding: true,
+      _client: {
+        resetContext() {},
+        async getAdcpCapabilities(request) {
+          requests.push(request);
+          return { success: true, data: { ...capabilities, context: request.context } };
+        },
+      },
+    });
+
+    assert.equal(requests.length, 1, 'the declared evaluator must execute its capability contract');
+    const step = result.phases[0].steps.find(entry => entry.step_id === 'confirm_experimental_feature');
+    assert.equal(step.passed, features.includes('creative.evaluator'), JSON.stringify(step));
+  }
+});
+
 test('phase capability gates do not dispatch dependents with unresolved context', async () => {
   const storyboard = {
     id: 'phase_capability_cascade_regression',
