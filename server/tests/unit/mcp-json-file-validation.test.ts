@@ -49,6 +49,7 @@ describe('complete-file MCP validation', () => {
     expect(result.structuredContent.byte_count).toBe(Buffer.byteLength(text));
     expect(result.structuredContent.sha256).toBe(createHash('sha256').update(text).digest('hex'));
     expect(result.structuredContent.validation).toContain(protocol === 'https' ? '✅ **Valid!' : '/authoritative_location: must match pattern');
+    expect(result.structuredContent.validation).not.toContain('Source integrity: unverified');
     expect(fileFetch).toHaveBeenCalledTimes(1);
     expect(result.content[0].text).not.toContain('x'.repeat(60));
   });

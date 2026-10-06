@@ -1450,6 +1450,15 @@
           "allOf": [
             { "$ref": "/schemas/core/media-buy-features.json" },
             {
+              "if": { "required": ["catalog_ingestion"] },
+              "then": {
+                "required": ["catalog_management"],
+                "properties": {
+                  "catalog_management": { "type": "boolean", "const": true }
+                }
+              }
+            },
+            {
               "if": {
                 "required": ["catalog_item_availability_updates"],
                 "properties": {

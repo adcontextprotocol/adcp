@@ -34,7 +34,7 @@
     },
     "catalogs": {
       "type": "array",
-      "description": "Array of catalog feeds to sync (create or update). When omitted together with item_availability_updates and item_availability_queries, the call is discovery-only and returns all existing catalogs on the account without modification.",
+      "description": "Array of catalog feeds to sync (create or update). When media_buy.features.catalog_ingestion is declared, the seller MUST reject unlisted catalog types, source modes (url means feed_url; items means inline_items), feed formats, and explicitly supplied content_id_type values outside a declared supported_content_id_types list with UNSUPPORTED_FEATURE before mutation, including dry runs. The max_inline_items_per_request limit counts items across all catalogs in this request; excess items fail with INVALID_REQUEST before mutation. Missing catalog_ingestion means details are unknown; buyers may probe with dry_run: true. Catalog references without url or items do not select an ingestion mode. Native AdCP offering feeds omit feed_format. When omitted together with item_availability_updates and item_availability_queries, the call is discovery-only and returns existing accessible catalogs on the account without modification. A seller declaring per_item reporting MUST return complete current item statuses for accessible buyer-managed catalogs on discovery, without re-ingestion or restarting review. Buyers use a fresh idempotency_key for each current read because replayed results are historical snapshots.",
       "items": {
         "$ref": "/schemas/core/catalog.json"
       },
@@ -59,7 +59,7 @@
     },
     "catalog_ids": {
       "type": "array",
-      "description": "Optional filter to limit sync scope to specific catalog IDs. When provided, only these catalogs will be created/updated. Other catalogs on the account are unaffected.",
+      "description": "Optional filter limiting catalog sync and discovery results to these catalog IDs. Only these catalogs are created/updated or returned by a discovery-only call. Other catalogs on the account are unaffected.",
       "items": {
         "type": "string",
         "x-entity": "catalog"

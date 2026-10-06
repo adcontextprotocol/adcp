@@ -817,6 +817,7 @@ Optional media-buy features. Boolean declarations are commitments when true. Str
 | `inline_creative_management` | Deprecated 3.x compatibility capability for inline creatives in `create_media_buy` and `update_media_buy`; compact lifecycle tools never accept them |
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
 | `catalog_management` | Supports [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) for catalog feed management |
+| `catalog_ingestion` | Optional structured ingestion contract for catalog types, source modes, feed formats, identifiers, batch limits, and item status reporting. Requires `catalog_management: true` |
 | `catalog_item_availability_updates` | Supports buyer-pushed [`sync_catalogs` availability updates and queries](/docs/media-buy/task-reference/sync_catalogs#immediate-item-availability) for revision-guarded suppression, restoration, and current-state readback in buyer-managed catalogs |
 | `seller_optimized_budget` | Supports the core shared-budget contract: one hard `total_budget`, seller allocation across packages against cross-package goals, media-buy-level pacing (omitted or `even` MUST be accepted; `asap`/`front_loaded` MAY be rejected with `UNSUPPORTED_FEATURE`, never coerced), and allocation echo on reads |
 | `seller_optimized_package_budgets` | Honors package `budget` as an optional hard cap inside a seller-optimized buy. Requires `seller_optimized_budget: true` |
@@ -854,6 +855,71 @@ The three package-control sub-capabilities are meaningful only with `seller_opti
   }
 }
 ```
+
+#### catalog_ingestion
+
+`media_buy.features.catalog_ingestion` lets a buyer check ingestion compatibility
+before sending catalogs to [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs).
+It is optional; a seller declaring only `catalog_management: true` remains valid.
+Missing details mean **unknown**, so buyers can probe with `dry_run: true`.
+This object is seller metadata. Buyer `required_features` filters use
+`catalog_management: true`; buyers inspect the ingestion details separately.
+
+{/* Using latest because catalog-ingestion-capability is not yet released.
+    Update to the major version alias after release. */}
+The authoritative shape is [`catalog-ingestion-capability.json`](https://adcontextprotocol.org/schemas/latest/core/catalog-ingestion-capability.json).
+
+```json
+{
+  "media_buy": {
+    "features": {
+      "catalog_management": true,
+      "catalog_ingestion": {
+        "accepted_catalog_types": ["product", "offering"],
+        "ingestion_modes": ["feed_url", "inline_items"],
+        "supported_feed_formats": ["google_merchant_center", "custom"],
+        "supported_content_id_types": ["sku", "gtin", "offering_id"],
+        "max_inline_items_per_request": 10000,
+        "item_status_reporting": "per_item"
+      }
+    }
+  }
+}
+```
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `accepted_catalog_types` | CatalogType[] | Yes | Nonempty agent-wide union of product `catalog_types`. Product-level declarations remain authoritative for serving eligibility. |
+| `ingestion_modes` | string[] | Yes | Nonempty subset of `feed_url` (catalog `url`) and `inline_items` (catalog `items`). |
+| `supported_feed_formats` | FeedFormat[] | When `feed_url` is listed | External feed formats the seller parses. An empty list accepts no external formats. Native AdCP `offering` feeds omit `feed_format`; their type and mode still need to be listed. `custom` uses existing buyer-supplied `feed_field_mappings`. |
+| `supported_content_id_types` | ContentIDType[] | No | Item identifier types accepted for conversion matching. An empty list accepts none of the named types; absence leaves identifier support unknown. Custom identifiers continue to omit `content_id_type`. |
+| `max_inline_items_per_request` | integer ≥ 1 | No | Maximum total inline items across all catalogs in one request. Requires `inline_items` support. Absence leaves the limit unknown. |
+| `item_status_reporting` | string | Yes | `per_item` reports every item's current status in the resulting catalog; `feed_level` confirms catalog/feed registration without complete item outcomes. |
+
+Lists reuse the existing `CatalogType`, `FeedFormat`, and `ContentIDType` enums.
+A seller declaring this object MUST reject an unlisted type, mode, feed format,
+or explicitly supplied identifier type outside its declared identifier list
+with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature)
+before mutation, including dry runs. Exceeding the declared inline item limit
+returns [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request)
+before mutation. Discovery-only calls, catalog references without a new source,
+and immediate availability operations keep their existing contracts.
+
+With `per_item`, terminal results for created, updated, or unchanged catalogs
+MUST include exactly one `catalogs[].item_issues` entry per item in the resulting catalog,
+including approved and pending items, with its canonical `item_id` and
+`catalog-item-status`. This includes discovery-only reads of accessible
+buyer-managed catalogs. The number of unique item IDs MUST equal `item_count`;
+buyers MUST reject incomplete reports or duplicate IDs. Aggregate counts or a
+sparse rejection list do not meet this commitment. For asynchronous ingestion,
+buyers wait for the terminal result, then poll pending items with discovery-only
+`sync_catalogs` calls and a fresh `idempotency_key` each time. These reads MUST
+return current statuses without re-ingestion or restarting review; replayed
+responses are historical snapshots. Pending statuses and dry-run previews do
+not prove live eligibility. Review approval remains subject to availability
+overlays and the seller's other serving controls.
+`feed_level` provides no complete item proof or fetched-revision guarantee;
+buyers needing that evidence cannot infer it from feed registration alone.
 
 #### content_standards
 

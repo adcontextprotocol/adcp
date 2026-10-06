@@ -86,6 +86,37 @@ describe('escalation-resolution-guard', () => {
     expect(pool.query).not.toHaveBeenCalled();
   });
 
+  it('allows a grading policy follow-up that mentions another registry agent', async () => {
+    const pool = { query: vi.fn() };
+    const esc = escalation({
+      summary: 'What triggers already-registered agents to be re-graded on new bundle versions?',
+      original_request: 'Another registry agent ran on the newer compliance bundle. What governs re-grading?',
+      addie_context: 'Fleet observation confirms that the hosted grader has updated.',
+    });
+
+    await expect(guardEscalationResolution({
+      escalation: esc,
+      status: 'resolved',
+      pool: pool as any,
+    })).resolves.toEqual({ ok: true, checked: false });
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+
+  it('still blocks registry setup work without domain evidence', async () => {
+    const pool = { query: vi.fn() };
+    const result = await guardEscalationResolution({
+      escalation: escalation({ summary: 'Agent registration is blocked in the registry' }),
+      status: 'resolved',
+      pool: pool as any,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.blockers.map(blocker => blocker.type)).toContain('member_null_unchecked');
+    }
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+
   it('blocks resolved when a referenced domain is missing locally', async () => {
     const pool = { query: vi.fn().mockResolvedValueOnce({ rows: [] }) };
 

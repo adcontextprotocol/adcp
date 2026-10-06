@@ -302,7 +302,7 @@ REQUIRED_EXACT_CURRENT_SALES=(
   "media_buy_seller/declined_proposal_execution:9:0"
   "media_buy_seller/expired_proposal_execution:9:0"
   "media_buy_seller/change_rights_state_projection:8:0"
-  "media_buy_seller/acceptance_policy_discovery:3:0"
+  "media_buy_seller/acceptance_policy_discovery:4:0"
   "media_buy_seller/governance_agent_binding_acceptance:5:0"
   "media_buy_seller/external_audience_source_binding:9:0"
   "media_buy_seller/get_products_async:11:0"

@@ -242,6 +242,8 @@ Publishers can proactively push reporting data to buyers through webhook notific
 
 #### Webhook Configuration
 
+For AdCP 3.2 scheduled delivery, coordinate support for the interim `reporting_webhook.operation_id` field with your seller and ensure your SDK preserves it. See [AdCP 3.2 interim reporting correlation](/docs/building/by-layer/L3/webhooks#adcp-3-2-interim-reporting-correlation), including the steps for updating existing registrations. The field is standardized as an optional field in 3.3; the 3.2 interim wire shape is identical, and on 3.2 it is opt-in.
+
 Configure reporting webhooks when creating a media buy using the `reporting_webhook` parameter:
 
 ```json

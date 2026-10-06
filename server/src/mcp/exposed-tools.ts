@@ -22,6 +22,7 @@ import { PROPERTY_TOOLS, createPropertyToolHandlers } from '../addie/mcp/propert
 import type { MemberContext } from '../addie/member-context.js';
 import type { MCPAuthContext } from './auth.js';
 import { JSON_FILE_VALIDATION_TOOL, validateJsonFile } from './json-file-validation.js';
+import { OPEN_JSON_VALIDATOR_TOOL, JSON_UPLOAD_VALIDATION_TOOL, openJsonValidator, validateJsonUpload } from './json-upload-validation.js';
 
 const logger = createLogger('mcp-exposed-tools');
 
@@ -99,8 +100,26 @@ export const AGENT_CONTEXT_TOOL_DEFINITIONS = MEMBER_TOOLS
 export const SCHEMA_TOOL_DEFINITIONS = [
   ...SCHEMA_TOOLS
     .filter((t) => (SCHEMA_TOOL_NAMES as readonly string[]).includes(t.name))
-    .map(toMCPFormat),
+    .map((tool) => tool.name === 'validate_json' ? {
+      name: tool.name,
+      // Upload references and local execution belong to external clients, not
+      // Addie's internal router or its pinned evaluation tool universe.
+      description: 'Validate the supplied JSON object against an AdCP schema. This validates the tool argument, not the original uploaded file. Prefer validate_json_file when an original-file download reference is available. Otherwise use open_json_validator to let the user select the original file in a picker or browser page. Do not manually reconstruct or shorten uploads, especially repeated arrays. For programmatic inline transfer, compute expected_json_sha256 from the original parsed JSON using RFC 8785 canonicalization before submitting the object; a mismatch is rejected. If faithful transfer is unavailable, use the original-file picker or validate the original file programmatically with the published schema and clearly label that as local validation, not an Addie result. Never claim unchanged-file validation or an original-file checksum from this tool.',
+      inputSchema: {
+        ...tool.input_schema,
+        properties: {
+          ...tool.input_schema.properties,
+          expected_json_sha256: {
+            type: 'string',
+            pattern: '^[a-fA-F0-9]{64}$',
+            description: 'Optional integrity guard: SHA-256 of the UTF-8 RFC 8785 canonical representation of the original parsed JSON, computed programmatically before preparing this tool call. This is NOT the raw file SHA-256. Never calculate it from a reconstructed tool argument or invent it. Rejects changed, omitted, or duplicated content while ignoring whitespace and object key order.',
+          },
+        },
+      },
+    } : toMCPFormat(tool)),
   JSON_FILE_VALIDATION_TOOL,
+  OPEN_JSON_VALIDATOR_TOOL,
+  JSON_UPLOAD_VALIDATION_TOOL,
 ];
 
 /** Property validation tool definitions in MCP format. */
@@ -207,6 +226,8 @@ export function createStatelessToolHandlers(): Map<
   >();
 
   result.set(JSON_FILE_VALIDATION_TOOL.name, validateJsonFile);
+  result.set(OPEN_JSON_VALIDATOR_TOOL.name, openJsonValidator);
+  result.set(JSON_UPLOAD_VALIDATION_TOOL.name, validateJsonUpload);
 
   const schemaHandlers = createSchemaToolHandlers();
   for (const name of SCHEMA_TOOL_NAMES) {
