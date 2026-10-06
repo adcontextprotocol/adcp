@@ -119,7 +119,6 @@ jobs:
             - Added `dist/docs/${{ steps.version.outputs.version }}/` with frozen documentation
             - Updated or added `docs.json` version navigation for the new snapshot
             - For a new stable minor line: promoted it to the default `Latest` version, demoted the previous default, and removed that line's beta/RC selectors from the picker (their snapshots and redirects stay)
-            - For the first preview of a new minor line: added that line's release story pages to its navigation and retargeted its `/X.Y` aliases (existing aliases only)
             - Synced Addie's `DOCS_SCHEMA_RELEASES` with the `docs.json` versions
             - Updated `llms-current.md` when the stable documentation build changed
 

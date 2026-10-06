@@ -360,10 +360,21 @@ function storyPageWarnings({ notInSnapshot, noInsertionPoint }, line, label) {
 // beta page, or the line's GitHub release (what the docs-nav test accepts).
 function bannerLinksLineStory(content, line) {
   const slug = lineSlug(line);
-  const escaped = line.replace('.', '\\.');
-  return new RegExp(
-    `\\(/${escaped}(?![0-9.])|/reference/(?:whats-new-in-${slug}|${slug}-beta)\\b|/releases/tag/v${escaped}\\.`
-  ).test(String(content ?? ''));
+  const text = String(content ?? '');
+  const isDigitOrDot = (char) => char !== undefined && /[0-9.]/.test(char);
+  // Plain string search: `line` comes from a command-line argument.
+  const hasAlias = (needle, boundary) => {
+    for (let from = text.indexOf(needle); from >= 0; from = text.indexOf(needle, from + 1)) {
+      if (!boundary(text[from + needle.length])) return true;
+    }
+    return false;
+  };
+  return (
+    hasAlias(`(/${line}`, isDigitOrDot) ||
+    hasAlias(`/reference/whats-new-in-${slug}`, (char) => /\w/.test(char ?? '')) ||
+    hasAlias(`/reference/${slug}-beta`, (char) => /\w/.test(char ?? '')) ||
+    text.includes(`/releases/tag/v${line}.`)
+  );
 }
 
 function snapshotPageExists(page) {

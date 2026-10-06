@@ -1135,6 +1135,15 @@ function versionEntry(version, build, extra = {}) {
     assert.deepEqual(result.warnings, []);
   });
 
+  test('a banner linking a different line that shares the 3.3 prefix still warns', () => {
+    const config = storyFixture();
+    config.banner.content = 'AdCP 3.30 is here — [see what is new →](/3.30)';
+
+    const result = updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', { snapshotHasPage: hasStory33 });
+
+    assert.match(result.warnings.join('\n'), /banner does not link to the 3\.3 release story/);
+  });
+
   test('a 3.3 beta.0 snapshot retargets seeded story aliases that point at another build', () => {
     const config = storyFixture({ seed33: '3.3.0-pending' });
 
