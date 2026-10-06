@@ -1,5 +1,5 @@
 id: media_buy_seller/proposal_finalize
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller handles proposal refinement and finalize"
 category: media_buy_seller
 summary: "Verifies the full proposal lifecycle: brief with proposals, refine a proposal, finalize to committed, and execute via create_media_buy."
@@ -267,6 +267,18 @@ phases:
             path: "proposals"
             description: "Response contains the finalized proposal"
 
+  - id: finalize_replay
+    title: "Replay the committed proposal"
+    depends_on: [finalize_proposal]
+    requires_capability:
+      path: adcp.idempotency.supported
+      equals: true
+    narrative: |
+      Only sellers advertising idempotency support are graded on replay.
+      Sellers declaring supported: false skip this phase and still execute
+      the committed proposal in the acceptance phase.
+
+    steps:
       - id: get_products_finalize_replay
         title: "Replay proposal finalization without creating another hold"
         narrative: |
@@ -308,6 +320,8 @@ phases:
 
   - id: accept_proposal
     title: "Execute the committed proposal"
+    # Acceptance consumes the original hold, not the optional replay result.
+    depends_on: [finalize_proposal]
     narrative: |
       The buyer accepts/executes the committed proposal by creating a media buy
       with the proposal_id. The seller converts the proposal's product selections
@@ -356,6 +370,7 @@ phases:
 
   - id: unknown_proposal_references
     title: "Reject unknown proposal references"
+    depends_on: [accept_proposal]
     narrative: |
       The buyer references proposal IDs that were never issued by the seller.
       These requests are schema-valid; the rejection is semantic. The seller
