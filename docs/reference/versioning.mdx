@@ -239,7 +239,7 @@ AdCP 3.3 adds no stable field, removes none, and deprecates none. Two merged cha
 | Change | What narrows | Basis |
 |---|---|---|
 | Discovery never provisions an account | A seller that lazily provisions an account on `get_products`, `list_products`, `get_signals`, `request_proposals`, `refine_proposals`, or `decline_proposals`, or on the 3.2 wording "first account-scoped request", is no longer conformant. Request and response schemas are unchanged. | #7848, [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3#discovery-tasks-never-provision-an-account) |
-| One agent-resolution algorithm | A pinned `signing_keys` key missing from the agent's JWKS is rejected, a `kid`-only pin matches nothing, `key_origins` is checked for every webhook signer that publishes `brand_json_url`, and two `agents[]` entries that differ only in canonicalization-ignored ways are an ambiguous match. | #7882, [Signature verification tightens](/docs/reference/migration/3-2-to-3-3#signature-verification-tightens) |
+| One agent-resolution algorithm | A pinned `signing_keys` key missing from the agent's JWKS is rejected, a `kid`-only pin matches nothing, `key_origins` is checked for every webhook signer that publishes `brand_json_url`, and agents are matched by canonical URL, where entries that agree on `type` and resolved JWKS source count once and entries that differ in either are an ambiguous match. | #7882, [Signature verification tightens](/docs/reference/migration/3-2-to-3-3#signature-verification-tightens) |
 
 ### Experimental surfaces
 
