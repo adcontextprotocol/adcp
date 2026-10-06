@@ -1,5 +1,5 @@
 ---
-id: DR-0023
+id: DR-XXXX
 title: One measurement-source vocabulary serves discovery-time counting and report-time provenance
 class: normative
 status: proposed
