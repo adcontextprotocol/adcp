@@ -142,8 +142,6 @@ async function seedVendorProduct(
   expect(seed.success, JSON.stringify(seed)).toBe(true);
 }
 
-const STORE_VISITS_DECLARATION = { ...STORE_VISITS_GOAL, supported_targets: ['cost_per'] };
-
 // The one window the seller advertises in conversion_tracking.attribution_windows.
 const EVENT_ATTRIBUTION_WINDOW = {
   post_click: { interval: 7, unit: 'days' },
