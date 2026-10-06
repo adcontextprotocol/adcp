@@ -11,7 +11,7 @@
   ],
   "enumDescriptions": {
     "draft": "Indicative pricing and availability. The buyer can compare and revise the proposal but must finalize it before purchasing. Use refine_proposals with action 'finalize'; the legacy get_products facade uses its proposal-scoped 'finalize' refine action.",
-    "committed": "Firm pricing with inventory reserved. The buyer can accept this proposal via accept_proposal before expires_at. After expires_at, the hold lapses and the buyer must request or finalize a fresh proposal.",
+    "committed": "Firm pricing with inventory reserved. The buyer can accept this proposal via accept_proposal before expires_at. After expires_at, the hold lapses and the buyer must request or finalize a fresh proposal. Under terms_only hold semantics (get_adcp_capabilities media_buy.proposal_refinement.hold_semantics) no inventory is reserved: committed means commercial terms are locked, and expires_at is the acceptance window.",
     "accepted": "Immutable historical commercial terms attached to a MediaBuy. The buyer may pass this proposal_id to refine_proposals to fork an amendment or cancellation proposal."
   }
 }

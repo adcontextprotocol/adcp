@@ -1292,6 +1292,12 @@
               },
               "uniqueItems": true
             },
+            "hold_semantics": {
+              "type": "string",
+              "enum": ["inventory_hold", "terms_only"],
+              "x-added-in": "3.3.0",
+              "description": "What a successful finalize commits. inventory_hold (the default when absent): the seller reserves inventory for the committed proposal and reports its hold expiry; hold_unavailable and hold-driven batch_aborted are possible outcomes. terms_only: the seller commits commercial terms without placing an inventory hold — reservation is owned by the requesting side (delegated composition, where the requester owns the sellable catalog) — and the seller MUST NOT return hold_unavailable or a hold-driven batch_aborted. Buyers integrating a terms_only seller perform their own availability control at acceptance. Because committed meant inventory reserved before this field existed, a terms_only seller MUST NOT return a committed proposal to a caller whose adcp_version is below 3.3; it fails the request at task level with UNSUPPORTED_FEATURE."
+            },
             "max_alternatives": {
               "type": "integer",
               "minimum": 2,
@@ -1352,6 +1358,12 @@
         "supports_proposals": {
           "type": "boolean",
           "description": "Conformance declaration that this seller supports proposals through either the compact request/refine/finalize lifecycle or the legacy get_products facade. accept_proposal, or the create_media_buy compatibility facade, consumes a finalized committed proposal_id before expires_at.",
+          "default": false
+        },
+        "supports_exclusive_product_ids": {
+          "type": "boolean",
+          "x-added-in": "3.3.0",
+          "description": "Declares that this seller honors criteria.product_ids_exclusive: when a request sets it, the listed product_ids are the complete composable universe, and every proposal purchase, echoed product, and seller-selected signal resolves within them — a brief unsatisfiable within the universe returns rejected (request_proposals) or constraint_unsatisfiable (refine_proposals), never off-universe results. Refinements inherit the universe and may only narrow it. Buyers MUST NOT send the flag unless this is true. Sellers that do not declare this capability MUST NOT silently ignore the flag on request_proposals or refine_proposals; they reject the request at task level with UNSUPPORTED_FEATURE. Primary use is delegated composition, where the requesting platform owns the sellable catalog and the responding agent supplies only the composition judgment.",
           "default": false
         },
         "outcome_target": {

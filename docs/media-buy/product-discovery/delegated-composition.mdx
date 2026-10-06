@@ -1,0 +1,47 @@
+---
+title: Delegated composition (bootstrap profile)
+description: "Profile for a requesting platform that owns the sellable catalog and delegates proposal composition to a seller-operated agent: bounded product universe and terms-only finalize, with the acceptance locus still open."
+"og:title": "AdCP — Delegated composition bootstrap profile"
+---
+
+In **delegated composition** a platform acts as the AdCP buyer while a seller-operated composition agent acts as the seller for the proposal lifecycle only. The platform brings the demand, owns the sellable catalog, and executes the resulting media buys. The composer supplies merchandising judgment: brief in, proposals out, negotiation through [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals).
+
+This page is the single reading path for the topology. It assembles capabilities defined elsewhere and adds no wire fields of its own. It is a **bootstrap** profile: composition and negotiation are standardized, acceptance is not yet (see [Open items](#open-items)). The two capabilities are independently useful and are not limited to composers, since any seller that holds no inventory can declare `terms_only`.
+
+## Capabilities
+
+| Concern | Mechanism | Declared by |
+|---|---|---|
+| Composer may only use the requester's catalog | [`criteria.product_ids_exclusive`](/docs/media-buy/task-reference/request_proposals#binding-the-product-universe-with-product_ids_exclusive) | `media_buy.supports_exclusive_product_ids: true` |
+| Composer holds no inventory | [`hold_semantics: "terms_only"`](/docs/protocol/get_adcp_capabilities#proposal_refinement) | `media_buy.proposal_refinement.hold_semantics` |
+| Proposal lineage is verifiable | `terms_digest`, `parent_proposal_id`, atomic `accept_proposal` verification | Core proposal lifecycle |
+
+```json
+{
+  "media_buy": {
+    "lifecycle_tools": ["request_proposals", "refine_proposals", "decline_proposals", "accept_proposal"],
+    "supports_exclusive_product_ids": true,
+    "proposal_refinement": {
+      "supported_dimensions": ["criteria", "product_changes"],
+      "hold_semantics": "terms_only"
+    }
+  }
+}
+```
+
+## Flow
+
+1. **Check capabilities.** The platform reads `supports_exclusive_product_ids` and `hold_semantics` before relying on either. A seller that predates the flag cannot be trusted to reject it, so the platform also verifies subset-ness of every result.
+2. **Bind the universe.** The platform calls `request_proposals` with `criteria.product_ids` and `criteria.product_ids_exclusive: true`. Every purchase, echoed product, and seller-selected signal in the result resolves within that set.
+3. **Negotiate.** `refine_proposals` revisions inherit the universe and may only narrow it. Widening is a new `request_proposals`.
+4. **Finalize terms.** `finalize` commits the same atomic all-or-none batch, but places no hold. `expires_at` is the acceptance window. The composer never returns `hold_unavailable`.
+5. **Reserve and execute on the requester.** The platform performs its own availability control when it executes. A bounded universe is not an inventory hold, and a `committed` proposal under `terms_only` does not promise availability.
+
+## Open items
+
+Step 5 above has no standard acceptance step yet: `accept_proposal` creates the MediaBuy on the responding seller, which a composer cannot do, so an implementation completes the flow with a vendor profile until a later minor defines an acceptance-only response variant. That variant needs two decisions before any schema:
+
+- **Governance trigger.** `accept_proposal` carries `x-governed-commitment` because acceptance creates the commitment on the responder. When the executable MediaBuy lives on the requester, the governance check belongs at the point that creates the commitment, not at a record-keeping acceptance.
+- **Correlation handle.** An acceptance-only response omits `media_buy_id` and package IDs, so it needs the minimum the requester can use to correlate accepted purchases with its own execution identities.
+
+Also open: a seller-issued, versioned catalog reference with content digest and a stale-catalog outcome at acceptance, so composition and execution bind to one catalog version; whether amendment forks of an accepted proposal inherit the universe; and presentation telemetry ("presented to buyer", "expired unactioned"), which remains a vendor extension.

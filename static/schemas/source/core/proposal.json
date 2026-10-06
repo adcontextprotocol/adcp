@@ -51,7 +51,7 @@
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When this proposal expires and can no longer be executed. For draft proposals, indicates when indicative pricing becomes stale. For committed proposals, indicates when the inventory hold lapses — the buyer must call create_media_buy before this time."
+      "description": "When this proposal expires and can no longer be executed. For draft proposals, indicates when indicative pricing becomes stale. For committed proposals, indicates when the inventory hold lapses (inventory_hold semantics) or when the acceptance window closes (terms_only semantics, where no hold exists) — the buyer must call create_media_buy before this time."
     },
     "insertion_order": {
       "$ref": "/schemas/core/insertion-order.json",

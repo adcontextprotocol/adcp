@@ -970,7 +970,7 @@ The requested product is sold out or no longer available. Recovery: correctable 
 
 **Suggested action:** call request_proposals and finalize a fresh proposal, or re-discover and finalize through legacy get_products
 
-A referenced proposal ID has passed its expires_at timestamp. For a committed proposal, the inventory hold has lapsed. Recovery: correctable (call request_proposals and finalize a fresh proposal, or re-discover and finalize through the legacy get_products facade).
+A referenced proposal ID has passed its expires_at timestamp. For a committed proposal, the inventory hold has lapsed (or, under terms_only hold semantics, the acceptance window has closed). Recovery: correctable (call request_proposals and finalize a fresh proposal, or re-discover and finalize through the legacy get_products facade).
 
 </Accordion>
 <a id="error-code-proposal-not-committed"></a>
