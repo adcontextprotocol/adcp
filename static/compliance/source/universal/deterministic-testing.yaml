@@ -967,6 +967,7 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: deterministic_session
     title: 'Deterministic SI session state machine'
+    depends_on: []
     narrative: |
       Initiates an SI session, then uses the controller to force session timeout.
       Verifies that messaging on a terminated session fails appropriately.
@@ -1086,6 +1087,7 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: deterministic_delivery
     title: 'Deterministic delivery simulation'
+    depends_on: []
     narrative: |
       Creates a media buy, simulates delivery data via the controller, then verifies
       the simulated metrics are reflected in get_media_buy_delivery.
@@ -1219,6 +1221,7 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: deterministic_budget
     title: 'Deterministic budget simulation'
+    depends_on: []
     narrative: |
       Creates a media buy, then uses the controller to simulate budget spend at 95%
       and 100%. Verifies the agent handles near-depletion and full depletion.
