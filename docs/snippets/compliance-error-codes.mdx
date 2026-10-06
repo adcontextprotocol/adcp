@@ -109,6 +109,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `PROVENANCE_VERIFIER_NOT_ACCEPTED` | correctable | replace verify_agent.agent_url with one from the seller's published accepted_verifiers, drop verify_agent if the embedding is self-verifiable, or re-embed with a verifier the seller accepts |
 | `RATE_LIMITED` | transient | wait top-level error.retry_after seconds when present, then retry |
 | `READ_ONLY_SCOPE` | correctable | use a non-mutating alternative, or surface to the operator to request a scope that permits mutation |
+| `REFERENCE_DEFINITION_CHANGED` | correctable | refine the proposal so the seller re-resolves the pinned definitions and issues fresh pins, review the changed definition, then finalize and accept the new proposal |
 | `REFERENCE_NOT_FOUND` | correctable | verify the referenced identifier exists and is accessible to the caller |
 | `REQUOTE_REQUIRED` | correctable | use error.details.decline_reason when present to inform recovery, then refine accepted_proposal_id and apply the amendment through accept_proposal, or keep control_media_buy inside the accepted envelope; some policies require a free-text ask or human negotiation, and 3.1 compatibility callers must adjust or rediscover |
 | `SCOPE_INSUFFICIENT` | correctable | the agent cannot broaden its own scope - surface to the operator rather than auto-retry |
@@ -1070,6 +1071,15 @@ Request rate exceeded. Sellers SHOULD populate top-level <code>{"error.retry_aft
 **Suggested action:** use a non-mutating alternative, or surface to the operator to request a scope that permits mutation
 
 The caller's scope is read-only; the invoked task would mutate state and was rejected. Distinct from <code>{"SCOPE_INSUFFICIENT"}</code> (task not in scope at all) — the task is in some scopes this seller supports, just not this caller's. Recovery: correctable but not agent-autonomous — use a non-mutating alternative, or surface to the operator to request a scope that permits mutation.
+
+</Accordion>
+<a id="error-code-reference-definition-changed"></a>
+
+<Accordion title="REFERENCE_DEFINITION_CHANGED — correctable">
+
+**Suggested action:** refine the proposal so the seller re-resolves the pinned definitions and issues fresh pins, review the changed definition, then finalize and accept the new proposal
+
+A third-party-published definition pinned in a proposal's commercial_terms.definition_pins[] (a publisher-catalog format option, publisher-catalog placement, adagents.json collection, or data-provider signal) no longer resolves to the pinned content_digest. Returned by accept_proposal, which re-verifies every pin before mutating any state, so no MediaBuy is created or amended. terms_digest can still verify because it covers the pin, not the definition the pin names. Error details SHOULD conform to error-details/reference-definition-changed.json: error.field names the failing pin (for example commercial_terms.definition_pins[2]) and details.current_content_digest carries the digest the definition resolves to now; one error is returned per drifted pin. Distinct from REFERENCE_NOT_FOUND (an identifier that does not exist or is inaccessible) and PROPOSAL_EXPIRED (the hold lapsed). The same drift found while finalizing is reported as an unable outcome with reason_code definition_changed and drifted_pins[] rather than as an error. A definition withdrawn from a successfully fetched document is drift and omits current_content_digest; a document that cannot be fetched or parsed is not drift and returns SERVICE_UNAVAILABLE instead. Recovery: correctable (re-run request_proposals or refine_proposals so the seller re-resolves the definitions and issues fresh pins, review the changed terms, and finalize again).
 
 </Accordion>
 <a id="error-code-reference-not-found"></a>

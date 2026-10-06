@@ -2184,6 +2184,7 @@ describe('tenant routing smoke', () => {
               features?: { inline_creative_management?: boolean };
               supported_optimization_metrics?: string[];
               vendor_metric_optimization?: { supported_targets?: string[] };
+              conversion_tracking?: { supported_targets?: string[] };
             };
             creative?: {
               supported_formats?: Array<{ capability_id?: string; operations?: string[] }>;
@@ -2205,6 +2206,7 @@ describe('tenant routing smoke', () => {
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
+      expect(mediaBuy?.conversion_tracking?.supported_targets).toEqual(['cost_per']);
       expect(previewCapabilityIds.length).toBeGreaterThan(0);
       expect(previewRouteIds).toEqual(previewCapabilityIds);
       expect(creative?.preview?.routes?.every(route => (

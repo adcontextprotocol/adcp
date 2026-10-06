@@ -245,6 +245,10 @@
           "$ref": "/schemas/core/audience-evidence-requirements.json",
           "description": "Buyer-authored audience-evidence admissibility and ranking policy"
         },
+        "definition-pin": {
+          "$ref": "/schemas/core/definition-pin.json",
+          "description": "Seller-authored integrity pin over one third-party-published definition referenced by commercial terms"
+        },
         "audience-evidence-pin": {
           "$ref": "/schemas/core/audience-evidence-pin.json",
           "description": "Buyer commitment pin for an exact immutable audience-evidence snapshot"
@@ -1200,6 +1204,10 @@
         "seller-policy-decline-reason": {
           "$ref": "/schemas/enums/seller-policy-decline-reason.json",
           "description": "Machine-readable seller-policy reason for declining a MediaBuy control shape"
+        },
+        "definition-pin-ref-kind": {
+          "$ref": "/schemas/enums/definition-pin-ref-kind.json",
+          "description": "Kinds of third-party-published definition a definition pin can cover"
         },
         "proposal-refinement-reason": {
           "$ref": "/schemas/enums/proposal-refinement-reason.json",
