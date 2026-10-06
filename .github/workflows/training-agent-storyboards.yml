@@ -73,6 +73,11 @@ jobs:
           # Selection comes from each tenant's live get_adcp_capabilities
           # declaration; out-of-scope and quarantined storyboards are reported
           # separately from the result rows graded by these floors.
+          # /brand and /governance do not implement validate_input. Correcting
+          # the CTV and premium-display gates removes 14 + 18 controller seed
+          # passes, not validator coverage (those checks all skipped). Subtract
+          # only those 32 false-coverage steps: 115 -> 83 and 160 -> 128.
+          # Clean-storyboard, other-tenant, and 3.0-compat floors stay unchanged.
           - surface: current
             tenant: signals
             min_clean_storyboards: 45
@@ -80,7 +85,7 @@ jobs:
           - surface: current
             tenant: governance
             min_clean_storyboards: 47
-            min_passing_steps: 160
+            min_passing_steps: 128
           - surface: current
             tenant: creative
             min_clean_storyboards: 49
@@ -92,7 +97,7 @@ jobs:
           - surface: current
             tenant: brand
             min_clean_storyboards: 45
-            min_passing_steps: 115
+            min_passing_steps: 83
           - surface: current
             tenant: si
             min_clean_storyboards: 42
