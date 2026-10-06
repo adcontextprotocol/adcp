@@ -589,6 +589,9 @@ export interface SessionState {
   /** Caller-scoped agent-level capability-change subscribers. Values retain
    * write-only credentials; read responses redact them. */
   agentNotificationConfigs: Map<string, Record<string, unknown>>;
+  /** Caller-scoped principal documents (reporting destinations, declarations)
+   * keyed by the stable caller key. See principal.ts. */
+  principalConfigurations: Map<string, Record<string, unknown>>;
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
   signalActivations: Map<string, SignalActivationState>;
@@ -1021,6 +1024,20 @@ export interface GovernanceDelegation {
   expiresAt?: string;
 }
 
+/** One `budget.periods[]` entry: a half-open `[start, end)` window with its own amount. */
+export interface GovernanceBudgetPeriod {
+  budgetPeriodId: string;
+  start: string;
+  end: string;
+  amount: number;
+}
+
+/** Resolved flight of a dated governed action, as half-open `[start, end)`. */
+export interface GovernanceActionFlight {
+  start: string;
+  end: string;
+}
+
 export interface GovernancePlanState {
   planId: string;
   /** Authenticated buyer agent that synchronized and owns this plan. */
@@ -1037,6 +1054,8 @@ export interface GovernancePlanState {
     accountingMode: 'gross_commitment' | 'verified_net_cost';
     perSellerMaxPct?: number;
     allocations?: Record<string, { amount?: number; maxPct?: number }>;
+    /** Time partition of the budget, sorted by start. Absent when the plan has no periods. */
+    periods?: GovernanceBudgetPeriod[];
   };
   humanReviewRequired: boolean;
   humanReviewAutoFlippedBy: string[];
@@ -1124,6 +1143,12 @@ export interface GovernanceCheckState {
   /** Budget approved from the governance agent's own evaluated input. */
   authorizedBudget?: number;
   authorizedCurrency?: string;
+  /** Flight the approved action was evaluated against; recorded on the ledger at settlement. */
+  authorizedFlight?: GovernanceActionFlight;
+  /** Budget period derived for this check; echoed as `budget_period_id`. */
+  budgetPeriodId?: string;
+  /** media_buy_id this check was bound to (modification payload or planned_delivery). */
+  mediaBuyId?: string;
   phase?: string;
   findings: GovernanceFinding[];
   conditions?: GovernanceCondition[];
@@ -1183,6 +1208,10 @@ export interface GovernanceOutcomeState {
   sellerReference?: string;
   outcomeType: 'completed' | 'failed' | 'delivery';
   committedBudget: number;
+  /** Flight of the settled action; places its commitment in a budget period. */
+  flight?: GovernanceActionFlight;
+  /** media_buy_id the settled action was bound to, when a check carried one. */
+  mediaBuyId?: string;
   /** Caller-reported amount retained for reconciliation, never ledger authority. */
   reportedCommittedBudget?: number;
   idempotencyKey?: string;

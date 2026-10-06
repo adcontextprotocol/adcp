@@ -204,7 +204,7 @@ npx @adcp/sdk@latest \
 | `name` | string | No | Human-readable shared label for trafficking UI display and buyer-seller communication (maximum 255 characters). Sellers persist and echo it unchanged; it is not a purchase-order, reconciliation, or identity key. |
 | `idempotency_key` | string | No | Unique key for safe retries. If a request with the same key and account has already been processed, the seller returns the existing media buy. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `context` | object | No | Opaque correlation data echoed unchanged in the response. Use for internal tracking, trace IDs, or other caller-specific identifiers. |
-| `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration |
+| `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration. Include a buyer-supplied `operation_id` ([Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks)); sellers MUST NOT send reports to a registration that omits it. |
 | `artifact_webhook` | object | No | Content-artifact delivery configuration established with the buy. This compatibility field has no compact purchase or later control equivalent; adapters MUST NOT silently discard it. |
 
 \* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
@@ -889,6 +889,7 @@ const result = await testAgent.createMediaBuy({
   end_time: endDate.toISOString(),
   reporting_webhook: {
     url: 'https://buyer.example.com/webhooks/reporting',
+    operation_id: 'op_reporting_001',
     authentication: {
       schemes: ['Bearer'],
       credentials: 'secret_token_xyz_minimum_32_chars'
@@ -938,6 +939,7 @@ async def create_with_reporting():
         end_time=end_date.isoformat().replace('+00:00', 'Z'),
         reporting_webhook={
             'url': 'https://buyer.example.com/webhooks/reporting',
+            'operation_id': 'op_reporting_001',
             'authentication': {
                 'schemes': ['Bearer'],
                 'credentials': 'secret_token_xyz_minimum_32_chars'

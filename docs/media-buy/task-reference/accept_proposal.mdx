@@ -45,6 +45,8 @@ MediaBuy constraints: non-whitespace and no longer than 255 characters. The
 seller must not silently truncate or rewrite a proposal name to make it fit. A
 seeded name is then persisted and reported like any other name.
 
+To receive scheduled reports, a `reporting_webhook` registered on this task needs a buyer-supplied `operation_id` (see [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks)); sellers MUST NOT send `media_buy_delivery` reports to a registration that omits it.
+
 A completed acceptance MAY include `warnings[]` for non-blocking observations at the commitment boundary. Each warning identifies its package through the returned `media_buy_id` and `purchase_bindings[].package_id`; a continuing condition is also readable as an indicator through [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). The seller may instead return `input-required` before consuming the proposal. Warnings never appear on failed or submitted arms.
 
 An unexpired committed proposal cannot be rejected merely because its reserved inventory was sold elsewhere. Once `expires_at` passes, the hold lapses and the seller returns [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired); the buyer must request and finalize a fresh proposal.

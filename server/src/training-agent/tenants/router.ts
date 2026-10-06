@@ -55,6 +55,7 @@ import { runWithTrainingTaskScope, trainingTaskScope } from '../mcp-task-store.j
 import { PUBLISHERS } from '../publishers.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from '../product-factory.js';
+import { PRINCIPAL_CAPABILITY, SELLER_WEBHOOK_SIGNING_ALGORITHMS } from '../principal.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -956,6 +957,7 @@ function projectTenantCapabilities(
           creative?: Record<string, unknown>;
           media_buy?: Record<string, unknown>;
           signals?: Record<string, unknown>;
+          governance?: Record<string, unknown>;
           wholesale_feed_versioning?: Record<string, unknown>;
           wholesale_feed_webhooks?: Record<string, unknown>;
           webhook_signing?: Record<string, unknown>;
@@ -995,6 +997,11 @@ function projectTenantCapabilities(
         delete structured.media_buy;
       }
     }
+    // The governance tenant enforces plan budget periods (adcp#7956); a 3.0
+    // projection predates the field, so it keeps the released capability shape.
+    if (tenantId === 'governance' && storyboardCompat?.version !== '3.0') {
+      structured.governance = { ...structured.governance, supports_budget_periods: true };
+    }
     if (tenantId === 'sales' && storyboardCompat?.version !== '3.0') {
       structured.adcp.capability_changes = {
         capabilities_version: `training-agent-${TRAINING_AGENT_CURRENT_ADCP_VERSION}`,
@@ -1007,6 +1014,12 @@ function projectTenantCapabilities(
           coalescence_window_seconds: 300,
         },
       };
+      structured.adcp.principal = structuredClone(PRINCIPAL_CAPABILITY);
+      const principalFeatures = Array.isArray(structured.experimental_features)
+        ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
+        : [];
+      if (!principalFeatures.includes('protocol.principal')) principalFeatures.push('protocol.principal');
+      structured.experimental_features = principalFeatures;
     }
     if (storyboardCompat?.version !== '3.0') {
       const account = structured.account && typeof structured.account === 'object'
@@ -1277,7 +1290,7 @@ function projectWholesaleCapabilities(
     structured.webhook_signing = {
       supported: true,
       profile: 'adcp/webhook-signing/v1',
-      algorithms: ['ed25519'],
+      algorithms: [...SELLER_WEBHOOK_SIGNING_ALGORITHMS],
       legacy_hmac_fallback: true,
       delivery_retry_horizon_seconds: 86400,
     };

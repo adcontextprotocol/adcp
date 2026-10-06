@@ -566,6 +566,69 @@ function testTypedDiscriminatedUnion(
   }
 }
 
+const VERSION_ENVELOPE_REF = '/schemas/core/version-envelope.json';
+
+// Request schemas that predate or sit outside the version-envelope convention.
+// This list is a ratchet: do not add to it. New request schemas MUST compose
+// core/version-envelope.json via a root allOf (issue #7892).
+const VERSION_ENVELOPE_EXEMPT_REQUESTS = new Map([
+  ['trusted-match/context-match-request.json', '3.1 holdover: inlines adcp_version (strict privacy boundary)'],
+  ['trusted-match/identity-match-request.json', '3.1 holdover: inlines adcp_version (strict privacy boundary)'],
+  ['brand/search-brands-request.json', 'pre-3.2 request with no version fields'],
+  ['creative/validate-input-request.json', 'pre-3.2 request with no version fields'],
+  ['core/get-geo-place-resolution-request.json', 'shared request component with no version fields'],
+  ['core/pagination-request.json', 'shared pagination component, not a task request']
+]);
+
+function listRequestSchemaFiles(dir = SCHEMA_BASE_DIR) {
+  const files = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    // Generated mcp/2026-07-28/** tool schemas are self-contained by
+    // construction (MCP tool input schemas cannot carry external $refs), so
+    // inlining there is correct. Skip it if it ever appears under source/.
+    if (entry.isDirectory()) {
+      if (entry.name !== 'mcp') files.push(...listRequestSchemaFiles(full));
+    } else if (entry.name.endsWith('-request.json')) {
+      files.push(full);
+    }
+  }
+  return files;
+}
+
+function versionEnvelopeCompositionErrors() {
+  const errors = [];
+  const seenExempt = new Set();
+  for (const file of listRequestSchemaFiles()) {
+    const rel = path.relative(SCHEMA_BASE_DIR, file).split(path.sep).join('/');
+    const schema = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const composesEnvelope = Array.isArray(schema.allOf) &&
+      schema.allOf.some((arm) => arm && arm.$ref === VERSION_ENVELOPE_REF);
+    if (VERSION_ENVELOPE_EXEMPT_REQUESTS.has(rel)) {
+      seenExempt.add(rel);
+      if (composesEnvelope) errors.push(`${rel}: now composes the envelope, remove it from the exemption list`);
+      continue;
+    }
+    if (!composesEnvelope) {
+      errors.push(`${rel}: root allOf must $ref ${VERSION_ENVELOPE_REF}`);
+      continue;
+    }
+    // draft-07 does not evaluate properties across allOf, so a strict root
+    // must keep the envelope fields declared locally.
+    if (schema.additionalProperties === false) {
+      for (const field of ['adcp_version', 'adcp_major_version']) {
+        if (schema.properties?.[field]?.$ref !== `${VERSION_ENVELOPE_REF}#/properties/${field}`) {
+          errors.push(`${rel}: additionalProperties:false root must declare ${field} as a $ref to the envelope property`);
+        }
+      }
+    }
+  }
+  for (const rel of VERSION_ENVELOPE_EXEMPT_REQUESTS.keys()) {
+    if (!seenExempt.has(rel)) errors.push(`${rel}: stale exemption (file no longer exists)`);
+  }
+  return errors;
+}
+
 async function runTests() {
   log('Testing Composed Schema Validation (allOf patterns)', 'info');
   log('====================================================');
@@ -7522,6 +7585,59 @@ async function runTests() {
       description
     );
   }
+  log('');
+
+  // Version envelope composition (#7892, #7919)
+  log('Version envelope composition:', 'info');
+  totalTests++;
+  const envelopeErrors = versionEnvelopeCompositionErrors();
+  if (envelopeErrors.length === 0) {
+    log('  \u2713 Every request schema composes core/version-envelope.json via root allOf', 'success');
+    passedTests++;
+  } else {
+    log('  \u2717 Request schemas not composing core/version-envelope.json:', 'error');
+    for (const error of envelopeErrors) log(`      ${error}`, 'error');
+    failedTests++;
+  }
+  await testSchemaValidation(
+    '/schemas/media-buy/decline-proposals-request.json',
+    {
+      adcp_version: '3.2',
+      adcp_major_version: 3,
+      idempotency_key: 'decline-proposals-envelope-0001',
+      declines: [{ proposal_id: 'proposal-1', reason: 'inventory_fit' }]
+    },
+    'Strict compact request accepts envelope fields alongside allOf composition'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/decline-proposals-request.json',
+    {
+      adcp_version: '03.2',
+      idempotency_key: 'decline-proposals-envelope-0001',
+      declines: [{ proposal_id: 'proposal-1', reason: 'inventory_fit' }]
+    },
+    'Strict compact request still rejects a malformed adcp_version'
+  );
+  await testSchemaValidation(
+    '/schemas/core/compact-task-submitted.json',
+    { adcp_version: '3.2', status: 'submitted', task_id: 'task_123', message: 'Queued' },
+    'Compact submitted arm accepts version and protocol envelope fields'
+  );
+  await testSchemaRejection(
+    '/schemas/core/compact-task-submitted.json',
+    { adcp_version: '3.2.1', status: 'submitted', task_id: 'task_123' },
+    'Compact submitted arm rejects a malformed adcp_version'
+  );
+  await testSchemaRejection(
+    '/schemas/core/compact-task-submitted.json',
+    { status: 'completed', task_id: 'task_123' },
+    'Compact submitted arm rejects non-submitted status'
+  );
+  await testSchemaRejection(
+    '/schemas/core/compact-task-submitted.json',
+    { status: 'submitted', task_id: 'task_123', task_status: 'submitted' },
+    'Compact submitted arm rejects the legacy task_status field via protocol-envelope'
+  );
   log('');
 
   // Print results
