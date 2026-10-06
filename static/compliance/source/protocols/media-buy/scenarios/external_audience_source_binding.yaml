@@ -1,5 +1,5 @@
 id: media_buy_seller/external_audience_source_binding
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.2"
 title: "Seller binds an external audience source into a targetable audience"
 category: media_buy_seller
@@ -14,6 +14,8 @@ requires_all_capabilities:
       pattern: dataset_query
       vendor:
         domain: data-cloud.example
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - sync_audiences

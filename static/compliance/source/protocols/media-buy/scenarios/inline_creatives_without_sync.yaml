@@ -1,5 +1,5 @@
 id: media_buy_seller/inline_creatives_without_sync
-version: "1.0.0"
+version: "1.0.1"
 title: "Inline media-buy creatives without sync_creatives"
 category: media_buy_seller
 summary: "Verifies that a seller advertising inline_creative_management accepts package creatives on create_media_buy and update_media_buy without requiring the Creative Protocol or sync_creatives."
@@ -10,9 +10,11 @@ track: media_buy
 # not_applicable. The scenario intentionally does not call sync_creatives; that
 # keeps inline-only media-buy sellers from being forced into the creative
 # library surface.
-requires_capability:
-  path: media_buy.features.inline_creative_management
-  equals: true
+requires_all_capabilities:
+  - path: media_buy.features.inline_creative_management
+    equals: true
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - get_products

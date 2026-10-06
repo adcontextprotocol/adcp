@@ -1,13 +1,15 @@
 id: media_buy_seller/geo_place_targeting
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller resolves, validates, and echoes identifier-based place targeting"
 category: media_buy_seller
 summary: "Verifies known-now place discovery, declared-later place permission, create/update persistence, package-state echo, and deterministic semantic rejection cases."
 track: media_buy
 
-requires_capability:
-  path: media_buy.execution.targeting.geo_places.geonames.countries.NL
-  contains: city
+requires_all_capabilities:
+  - path: media_buy.execution.targeting.geo_places.geonames.countries.NL
+    contains: city
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - get_products

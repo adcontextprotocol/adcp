@@ -1,5 +1,5 @@
 id: media_buy_seller/product_signal_targeting
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller exposes wholesale signal options and honors package-level signal_targeting_groups"
 category: media_buy_seller
 summary: "Verifies that a seller with wholesale products and wholesale get_signals can expose signal targeting eligibility, accept package-level signal_targeting_groups with pricing, reject unknown signals, and echo the applied grouped expression on readback."
@@ -9,9 +9,11 @@ track: media_buy
 # through the wholesale signals feed. Product-specific inline menus are covered
 # by schema and product-discovery checks; this storyboard exercises the
 # cross-surface wholesale composition path.
-requires_capability:
-  path: signals.discovery_modes
-  present: true
+requires_all_capabilities:
+  - path: signals.discovery_modes
+    present: true
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - get_products

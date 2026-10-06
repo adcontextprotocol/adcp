@@ -9,6 +9,17 @@ const YAML = require('yaml');
 
 const { runStoryboard } = require('@adcp/sdk/testing');
 
+// Scenarios whose fixtures need non-guaranteed inventory also carry this gate
+// (adcp#7852). A seller that declares nothing gets the schema default (both
+// modes) from the runner's schema root; these unit tests run without one, so
+// they declare both modes explicitly.
+const DELIVERY_GATE = { path: 'media_buy.supported_delivery_types', contains: 'non_guaranteed' };
+const BOTH_MODES = ['guaranteed', 'non_guaranteed'];
+const withDeliveryTypes = capabilities => ({
+  ...capabilities,
+  media_buy: { ...(capabilities.media_buy ?? {}), supported_delivery_types: BOTH_MODES },
+});
+
 const mediaBuyScenariosPath = path.join(
   __dirname,
   '..',
@@ -178,17 +189,20 @@ test('inventory-list storyboards skip sellers that declare property-list support
     const storyboard = YAML.parse(
       fs.readFileSync(path.join(scenariosPath, `${name}.yaml`), 'utf8')
     );
-    assert.deepEqual(storyboard.requires_capability, {
-      path: 'media_buy.execution.targeting.property_list',
-      equals: true,
-    });
+    assert.deepEqual(storyboard.requires_all_capabilities, [
+      { path: 'media_buy.execution.targeting.property_list', equals: true },
+      DELIVERY_GATE,
+    ]);
 
     const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
     const result = await runStoryboard('https://agent.example/mcp', storyboard, {
       _profile: {
         tools,
         raw_capabilities: {
-          media_buy: { execution: { targeting: { property_list: false } } },
+          media_buy: {
+            execution: { targeting: { property_list: false } },
+            supported_delivery_types: BOTH_MODES,
+          },
         },
       },
       agentTools: tools,
@@ -238,7 +252,10 @@ test('inventory-list no-match requires canonical rejection and fails accepted bu
     _profile: {
       tools,
       raw_capabilities: {
-        media_buy: { execution: { targeting: { property_list: true } } },
+        media_buy: {
+          execution: { targeting: { property_list: true } },
+          supported_delivery_types: BOTH_MODES,
+        },
       },
     },
   };
@@ -679,14 +696,13 @@ test('creative-library storyboards fail closed before tool execution', async () 
 
   for (const item of cases) {
     const storyboard = loadMediaBuyStoryboard(item.name);
-    if (item.gate) {
-      assert.deepEqual(storyboard.requires_capability, item.gate);
-    } else {
-      assert.deepEqual(storyboard.requires_all_capabilities, item.gates);
-    }
+    const gates = storyboard.requires_all_capabilities
+      ? storyboard.requires_all_capabilities.filter(gate => gate.path !== DELIVERY_GATE.path)
+      : [storyboard.requires_capability];
+    assert.deepEqual(gates, item.gates ?? [item.gate]);
 
     const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
-    const librarylessCapabilities = structuredClone(item.capabilities);
+    const librarylessCapabilities = withDeliveryTypes(structuredClone(item.capabilities));
     librarylessCapabilities.creative = { has_creative_library: false };
     const libraryless = await runStoryboard('https://agent.example/mcp', storyboard, {
       _profile: { tools, raw_capabilities: librarylessCapabilities },
@@ -707,7 +723,7 @@ test('creative-library storyboards fail closed before tool execution', async () 
       'https://agent.example/mcp',
       { ...storyboard, prerequisites: undefined, fixtures: undefined, phases: [] },
       {
-        _profile: { tools, raw_capabilities: item.capabilities },
+        _profile: { tools, raw_capabilities: withDeliveryTypes(item.capabilities) },
         agentTools: tools,
       }
     );
@@ -719,7 +735,7 @@ test('creative-library storyboards fail closed before tool execution', async () 
         'https://agent.example/mcp',
         storyboard,
         {
-          _profile: { tools, raw_capabilities: item.otherGateFailure },
+          _profile: { tools, raw_capabilities: withDeliveryTypes(item.otherGateFailure) },
           agentTools: tools,
         }
       );
@@ -854,7 +870,10 @@ test('advanced delivery reporting dispatches wholesale discovery only to opted-i
       _profile: {
         tools,
         raw_capabilities: {
-          media_buy: buyingModes ? { buying_modes: buyingModes } : {},
+          media_buy: {
+            ...(buyingModes ? { buying_modes: buyingModes } : {}),
+            supported_delivery_types: BOTH_MODES,
+          },
         },
       },
       agentTools: tools,
@@ -976,10 +995,10 @@ test('measurement acceptance is split from the universal rejection scenario', as
     'reject_terms',
   ]);
   assert.equal(rejected.requires_capability, undefined);
-  assert.deepEqual(accepted.requires_capability, {
-    path: 'media_buy.measurement_terms_acceptance',
-    equals: true,
-  });
+  assert.deepEqual(accepted.requires_all_capabilities, [
+    { path: 'media_buy.measurement_terms_acceptance', equals: true },
+    DELIVERY_GATE,
+  ]);
   const scenarioIndexes = [
     path.join(mediaBuyScenariosPath, '..', 'index.yaml'),
     ...['sales-guaranteed', 'sales-broadcast-tv', 'sales-proposal-mode'].map(name =>
@@ -1025,7 +1044,7 @@ test('measurement acceptance is split from the universal rejection scenario', as
   const unsupported = await runStoryboard('https://agent.example/mcp', accepted, {
     _profile: {
       tools,
-      raw_capabilities: { media_buy: { measurement_terms_acceptance: false } },
+      raw_capabilities: { media_buy: { measurement_terms_acceptance: false, supported_delivery_types: BOTH_MODES } },
     },
     agentTools: tools,
   });
@@ -1038,7 +1057,7 @@ test('measurement acceptance is split from the universal rejection scenario', as
     {
       _profile: {
         tools,
-        raw_capabilities: { media_buy: { measurement_terms_acceptance: true } },
+        raw_capabilities: { media_buy: { measurement_terms_acceptance: true, supported_delivery_types: BOTH_MODES } },
       },
       agentTools: tools,
     }
@@ -1066,7 +1085,7 @@ test('measurement acceptance is split from the universal rejection scenario', as
   const workflow = await runStoryboard('https://agent.example/mcp', executable, {
     _profile: {
       tools,
-      raw_capabilities: { media_buy: { measurement_terms_acceptance: true } },
+      raw_capabilities: { media_buy: { measurement_terms_acceptance: true, supported_delivery_types: BOTH_MODES } },
     },
     agentTools: tools,
     _client: {

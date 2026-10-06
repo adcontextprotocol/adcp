@@ -1,5 +1,5 @@
 id: media_buy_seller/advanced_delivery_reporting
-version: "1.0.2"
+version: "1.0.3"
 introduced_in: "3.2"
 title: "Seller narrows metrics and reports delivery by canonical format"
 category: media_buy_seller
@@ -12,9 +12,11 @@ required_tools:
   - get_media_buy_delivery
   - comply_test_controller
 
-requires_capability:
-  path: media_buy.buying_modes
-  contains: wholesale
+requires_all_capabilities:
+  - path: media_buy.buying_modes
+    contains: wholesale
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 narrative: |
   AdCP 3.2 lets a buyer keep large delivery payloads focused with

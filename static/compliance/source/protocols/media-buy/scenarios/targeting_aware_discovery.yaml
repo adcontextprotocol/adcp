@@ -1,9 +1,13 @@
 id: media_buy_seller/targeting_aware_discovery
-version: "1.1.0"
+version: "1.1.1"
 title: "Seller resolves targeting during discovery and persists inventory selection"
 category: media_buy_seller
 summary: "Verifies targeting-scoped discovery forecasts, future overlay support, sparse configured-product modifications, opaque product acceptance, and inventory targeting across create/update/readback."
 track: media_buy
+
+requires_capability:
+  path: media_buy.supported_delivery_types
+  contains: non_guaranteed
 introduced_in: "3.2"
 
 required_tools:

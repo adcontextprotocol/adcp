@@ -1,13 +1,15 @@
 id: media_buy_seller/seller_optimized_budget
-version: "1.1.0"
+version: "1.1.1"
 title: "Seller accepts and persists a seller-optimized budget across packages"
 category: media_buy_seller
 summary: "Verifies that a seller advertising seller_optimized_budget accepts and persists the core shared-budget contract (shared total, cross-package goals, media-buy pacing, allocation echo). Package caps, minimum-spend targets, and package pacing are graded only when their own sub-capability is advertised, and must be rejected with UNSUPPORTED_FEATURE before any over-subscription validation when it is not."
 track: media_buy
 
-requires_capability:
-  path: media_buy.features.seller_optimized_budget
-  equals: true
+requires_all_capabilities:
+  - path: media_buy.features.seller_optimized_budget
+    equals: true
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - get_products

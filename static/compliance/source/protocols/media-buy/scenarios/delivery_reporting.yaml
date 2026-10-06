@@ -1,9 +1,13 @@
 id: media_buy_seller/delivery_reporting
-version: "1.0.1"
+version: "1.0.2"
 title: "Seller returns valid delivery reporting"
 category: media_buy_seller
 summary: "Verifies that get_media_buy_delivery returns schema-compliant delivery data after simulated delivery via the test controller."
 track: reporting
+
+requires_capability:
+  path: media_buy.supported_delivery_types
+  contains: non_guaranteed
 required_tools:
   - get_products
   - create_media_buy

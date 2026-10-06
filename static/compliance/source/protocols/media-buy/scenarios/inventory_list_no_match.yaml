@@ -1,5 +1,5 @@
 id: media_buy_seller/inventory_list_no_match
-version: "1.0.1"
+version: "1.0.2"
 title: "Seller handles a property_list reference that matches zero inventory"
 category: media_buy_seller
 summary: "Verifies a seller returns a clear unavailable-product error — not a crash — when a buyer references a property list that resolves to nothing in the seller's catalog."
@@ -8,9 +8,11 @@ required_tools:
   - get_products
   - create_media_buy
 
-requires_capability:
-  path: "media_buy.execution.targeting.property_list"
-  equals: true
+requires_all_capabilities:
+  - path: "media_buy.execution.targeting.property_list"
+    equals: true
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 narrative: |
   Not every buyer list matches every seller's inventory. A buyer may point at a

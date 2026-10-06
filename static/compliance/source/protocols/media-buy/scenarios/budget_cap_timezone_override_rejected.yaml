@@ -1,14 +1,16 @@
 id: media_buy_seller/budget_cap_timezone_override_rejected
-version: "1.0.0"
+version: "1.0.1"
 title: "Unadvertised budget-cap timezone override rejection"
 category: media_buy_seller
 summary: "Verifies that an aggregate-cap timezone override is rejected when buyer override support is false or absent."
 track: media_buy
 introduced_in: "3.2"
 
-requires_capability:
-  path: media_buy.budget_capping.supported_scopes
-  contains: media_buy
+requires_all_capabilities:
+  - path: media_buy.budget_capping.supported_scopes
+    contains: media_buy
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 requires:
   - controller

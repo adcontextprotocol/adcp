@@ -1,5 +1,5 @@
 id: media_buy_seller/dependency_impairment
-version: "2.0.1"
+version: "2.0.2"
 title: "Dependency impairment end-to-end — resource transition propagates to media buy health"
 category: media_buy_seller
 summary: "Forces a creative from approved → rejected on a non-terminal media buy, verifies the buy reflects health: impaired with a matching impairments[] entry, and recovers via assignment swap to a different creative (canonical recovery vector — re-approval of the same creative_id is uncommon in production)."
@@ -27,6 +27,8 @@ requires_all_capabilities:
     contains: "snapshot"
   - path: creative.has_creative_library
     equals: true
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 narrative: |
   Per the dependency-impairment surface ([adcp#2855](https://github.com/adcontextprotocol/adcp/issues/2855)

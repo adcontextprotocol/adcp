@@ -3089,7 +3089,7 @@ import {
   REPLAY_TTL_SECONDS,
 } from './idempotency.js';
 import {
-  DELIVERY_MODE_NOT_SUPPORTED,
+  UNSOLD_DELIVERY_MODE_ERROR_CODE,
   configuredDeliveryModes,
   isSingleModeSeller,
   sellerSellsProduct,
@@ -15605,7 +15605,7 @@ async function handleCreateMediaBuyUnlocked(
     ));
     if (unsold >= 0) {
       return { errors: [{
-        code: DELIVERY_MODE_NOT_SUPPORTED,
+        code: UNSOLD_DELIVERY_MODE_ERROR_CODE,
         message: `This seller does not sell ${productMap.get(createdPackages[unsold].productId)?.delivery_type} inventory.`,
         field: `packages[${unsold}].product_id`,
         recovery: 'correctable',

@@ -1,14 +1,16 @@
 id: media_buy_seller/budget_cap_timezone_account
-version: "1.0.0"
+version: "1.0.1"
 title: "Account-based budget-cap timezone resolution"
 category: media_buy_seller
 summary: "Verifies that aggregate and package daily caps default to Account.timezone and remain stable on readback."
 track: media_buy
 introduced_in: "3.2"
 
-requires_capability:
-  path: media_buy.budget_capping.timezone_basis
-  equals: account
+requires_all_capabilities:
+  - path: media_buy.budget_capping.timezone_basis
+    equals: account
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 requires:
   - controller

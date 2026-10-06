@@ -1,5 +1,5 @@
 id: media_buy_seller/acceptance_policy_discovery
-version: "1.0.1"
+version: "1.0.2"
 introduced_in: "3.2"
 title: "Seller exposes structured acceptance-policy discovery"
 category: media_buy_seller
@@ -13,9 +13,11 @@ required_tools:
   - get_adcp_capabilities
   - get_products
 
-requires_capability:
-  path: media_buy.acceptance_policy_discovery.catalog_digest
-  present: true
+requires_all_capabilities:
+  - path: media_buy.acceptance_policy_discovery.catalog_digest
+    present: true
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 narrative: |
   A seller that advertises structured acceptance discovery gives buyers a
