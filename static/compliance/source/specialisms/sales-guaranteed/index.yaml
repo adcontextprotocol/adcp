@@ -1,5 +1,5 @@
 id: sales_guaranteed
-version: "1.0.2"
+version: "1.0.3"
 title: "Guaranteed media buy with human IO approval"
 protocol: media-buy
 category: sales_guaranteed
@@ -8,6 +8,8 @@ track: media_buy
 required_tools:
   - get_products
   - create_media_buy
+  - get_task_status
+  - comply_test_controller
 requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
@@ -43,15 +45,25 @@ narrative: |
   single-agent registration and rejects multiple agents; the governance-aware-seller
   specialism owns the complete registration, approval, and governed-create loop.
 
-  The buyer either invokes get_task_status with the task_id or configures a push_notification_config
-  webhook to receive a callback when IO signing completes. Only on task completion does your
-  platform issue a media_buy_id and the final CreateMediaBuy result; the buyer then calls
-  get_media_buys to confirm the buy is active and sync creatives.
+  This storyboard exercises the polling path: the sandbox controller completes
+  the submitted task in place of a human IO reviewer, then the buyer invokes
+  get_task_status with the task_id. A buyer may separately configure a
+  push_notification_config webhook, but that optional channel is not registered
+  in this 3.x flow. Only on task completion does your platform issue a
+  media_buy_id and the final CreateMediaBuy result; the buyer then calls
+  get_media_buys to confirm the buy is awaiting creatives and then syncs them.
 
   This storyboard isolates the guaranteed approval path — the async handshake between agent
   automation and human decision-making that makes guaranteed buys work in practice. IO review
   is modelled entirely at the A2A task layer; there is no interim "pending_approval" media buy
   status (that value only exists on Account.status, not MediaBuy.status).
+  The sandbox controller must support force_create_media_buy_arm and
+  force_task_completion so this test does not depend on a human signing an IO
+  during the runner's timeout window.
+
+  If the production sandbox does not expose the controller, the forced approval
+  phases report a missing_test_controller coverage gap. Their skipped assertions
+  do not prove the guaranteed approval lifecycle for a Verified (Sandbox) run.
 
   Proposal-driven workflows are part of guaranteed selling: most guaranteed deals start with
   an RFP/brief, generate a proposal with curated bundles and rationale, refine, finalize to
@@ -65,14 +77,13 @@ narrative: |
   `committed` can be executed before `expires_at`.
 
   The requires_io_approval capability is scoped to creates that reference products with
-  delivery_type: guaranteed (those in this storyboard's primary fixtures). Five of the
-  general seller scenarios included via requires_scenarios — measurement_terms_rejected,
-  measurement_terms_accepted, pending_creatives_to_start, inventory_list_targeting, and
-  invalid_transitions — use open-ended product briefs and must complete creates synchronously,
-  returning a media_buy_id directly rather than a task envelope. This storyboard seeds
-  non-guaranteed fixture products so those five scenarios have a synchronous-create path
-  available. A seller whose catalog
-  contains only guaranteed products will fail those five shared scenarios.
+  delivery_type: guaranteed. The current 3.x media_buy_seller baseline uses
+  non-guaranteed fixtures in its core flow and several inherited scenarios.
+  Some inherited workflows require an immediately issued media_buy_id for follow-on
+  checks; others assert immediate preflight rejection or are capability-gated.
+  A guaranteed-only seller can satisfy this IO storyboard yet still lack a complete
+  media-buy grade. A versioned, delivery-mode-aware baseline must preserve synchronous
+  checks for non-guaranteed buys and add task completion/readback for guaranteed buys.
 
 agent:
   interaction_model: media_buy_seller
@@ -91,37 +102,28 @@ caller:
 
 prerequisites:
   description: |
-    The caller needs a brand identity and operator credentials for account setup.
-    The test kit provides a sample brand (Acme Outdoor) with campaign parameters
-    suitable for testing the guaranteed approval flow.
+    The caller needs a sandbox brand and operator identity. Account provisioning
+    is graded by the account scenarios; this storyboard keeps one account reference
+    throughout the guaranteed approval task. The test kit provides sample campaign
+    parameters for that flow.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_2512b4c133fb"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-sales_guaranteed-e941b849"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
-    # Non-guaranteed products listed first so open-brief get_products calls (used by
-    # requires_scenarios) resolve to products[0] as a non-guaranteed product, enabling
-    # synchronous creates. The five shared scenarios (measurement_terms_rejected,
-    # measurement_terms_accepted, pending_creatives_to_start, inventory_list_targeting, invalid_transitions) capture
-    # products[0].product_id and must get a non-guaranteed ID to complete synchronously.
-    - product_id: "display_outdoor_non_guaranteed"
-      delivery_type: "non_guaranteed"
-      channels: ["display"]
-      format_options:
-        - format_option_id: "display_300x250"
-          format_kind: "image"
-          params:
-            width: 300
-            height: 250
-    - product_id: "video_outdoor_non_guaranteed"
-      delivery_type: "non_guaranteed"
-      channels: ["olv"]
-      format_options:
-        - format_option_id: "video_30s"
-          format_kind: "video_hosted"
-          params:
-            duration_ms_exact: 30000
-    # Guaranteed products used by the main storyboard phases (hardcoded in sample_requests).
+    # This storyboard needs only guaranteed inventory. The protocol baseline
+    # owns its separate non-guaranteed fixtures and applicability policy.
     - product_id: "sports_preroll_q2_guaranteed"
       delivery_type: "guaranteed"
       channels: ["olv"]
@@ -139,16 +141,6 @@ fixtures:
           params:
             duration_ms_exact: 30000
   pricing_options:
-    - product_id: "display_outdoor_non_guaranteed"
-      pricing_option_id: "cpm_display_non_guaranteed"
-      pricing_model: "cpm"
-      currency: "USD"
-      floor_price: 5.0
-    - product_id: "video_outdoor_non_guaranteed"
-      pricing_option_id: "cpm_video_non_guaranteed"
-      pricing_model: "cpm"
-      currency: "USD"
-      floor_price: 12.0
     - product_id: "sports_preroll_q2_guaranteed"
       pricing_option_id: "cpm_guaranteed_fixed"
       pricing_model: "cpm"
@@ -205,63 +197,6 @@ phases:
             path: "context.correlation_id"
             value: "sales_guaranteed--get_capabilities"
             description: "Context correlation_id returned unchanged"
-  - id: account_setup
-    title: "Account setup"
-    narrative: |
-      Before buying anything, the buyer establishes an account relationship with
-      your platform. This is the handshake: the buyer tells you which brand and
-      agency (operator) they represent, and you return an account ID, status, and
-      any setup requirements.
-
-    steps:
-      - id: sync_accounts
-        title: "Establish account relationship"
-        narrative: |
-          The buyer registers their brand and operator with your platform. This is
-          the first call in any new relationship. Your platform validates the request,
-          provisions the account, and returns its status.
-        task: sync_accounts
-        schema_ref: "account/sync-accounts-request.json"
-        response_schema_ref: "account/sync-accounts-response.json"
-        doc_ref: "/accounts/tasks/sync_accounts"
-        stateful: true
-        expected: |
-          Return the account with:
-          - account_id: your platform's identifier for this relationship
-          - action: created or updated
-          - status: active or pending_approval
-          - account_scope: operator, brand, operator_brand, or agent
-          - setup: URL and message if pending_approval
-          - payment_terms: net_30, prepay, etc.
-
-        sample_request:
-          accounts:
-            - brand:
-                domain: "acmeoutdoor.example"
-              operator: "pinnacle-agency.example"
-              billing: "operator"
-              payment_terms: "net_30"
-
-          idempotency_key: "$generate:uuid_v4#sales_guaranteed_account_setup_sync_accounts"
-          context:
-            correlation_id: "sales_guaranteed--sync_accounts"
-        validations:
-          - check: response_schema
-            description: "Response matches sync-accounts-response.json schema"
-          - check: field_present
-            path: "accounts[0].account_id"
-            description: "Account has a platform-assigned ID"
-          - check: field_present
-            path: "accounts[0].status"
-            description: "Account has a status (active or pending_approval)"
-
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "sales_guaranteed--sync_accounts"
-            description: "Context correlation_id returned unchanged"
   - id: product_discovery
     title: "Discover guaranteed products"
     narrative: |
@@ -297,10 +232,15 @@ phases:
           idempotency_key: "$generate:uuid_v4#sales_guaranteed_product_discovery_get_products_brief"
           buying_mode: "brief"
           brief: "Guaranteed premium video on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US only. Need completion rate SLA."
+          filters:
+            delivery_type: "guaranteed"
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
+            sandbox: true
 
           context:
             correlation_id: "sales_guaranteed--get_products_brief"
@@ -309,10 +249,6 @@ phases:
             path: "products[0].product_id"
           - name: pricing_option_1_id
             path: "products[0].pricing_options[0].pricing_option_id"
-          - name: product_2_id
-            path: "products[1].product_id"
-          - name: pricing_option_2_id
-            path: "products[1].pricing_options[0].pricing_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -322,8 +258,9 @@ phases:
           - check: field_present
             path: "products[0].product_id"
             description: "Each product has a product_id"
-          - check: field_present
+          - check: field_value
             path: "products[0].delivery_type"
+            value: "guaranteed"
             description: "Each product declares delivery_type: guaranteed"
 
           - check: field_present
@@ -347,10 +284,45 @@ phases:
     narrative: |
       The buyer creates a guaranteed media buy. Because your platform requires human
       IO signing, the completed A2A invocation carries an AdCP Submitted response. The
-      buyer gets back an AdCP task_id and configures a webhook (or invokes
-      get_task_status) to be notified when IO review finishes.
+      buyer gets back an AdCP task_id. The sandbox controller completes that
+      task, then the buyer reads its terminal result through get_task_status.
+      This 3.x path does not require a task webhook.
 
     steps:
+      - id: force_submitted_buy
+        title: "Force the next guaranteed create into a submitted task"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
+            sandbox: true
+          scenario: "force_create_media_buy_arm"
+          params:
+            arm: "submitted"
+            task_id: "task_sales_guaranteed_signed_io"
+            message: "Awaiting IO signature"
+          context:
+            correlation_id: "sales_guaranteed--force_submitted_buy"
+        context_outputs:
+          - name: forced_guaranteed_task_id
+            path: "forced.task_id"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Controller accepted the submitted-arm directive"
+
       - id: create_media_buy
         title: "Create a guaranteed media buy"
         narrative: |
@@ -360,8 +332,9 @@ phases:
           DataPart — no media_buy_id is issued because IO signing may fail. The buyer
           receives an AdCP task_id to watch.
 
-          The buyer includes push_notification_config so your platform can call back
-          when the IO is signed (completed) or rejected (failed).
+          The buyer omits push_notification_config and captures the returned
+          task_id for a later get_task_status call. Sellers that offer callbacks are tested
+          separately by webhook-emission conformance.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -371,11 +344,13 @@ phases:
         expected: |
           Return a completed A2A task envelope whose artifact DataPart contains:
           - status: submitted (AdCP application-level status)
-          - task_id: the AdCP handle the buyer passes to get_task_status or receives webhooks on
+          - task_id: the AdCP handle the buyer passes to get_task_status
           - message (optional): human-readable explanation (e.g., "Awaiting IO signature from sales team; typical turnaround 2–4 hours")
 
           Do NOT return media_buy_id or packages yet — those land on the task's final artifact
-          returned by a later get_task_status call. Do NOT duplicate task_id as A2A taskId or
+          returned by a later get_task_status call, after the sandbox controller
+          forces task completion.
+          Do NOT duplicate task_id as A2A taskId or
           artifact metadata. Do NOT use a "pending_approval" media buy status; that value is not
           in MediaBuy.status — IO review is modelled at the AdCP task layer only.
 
@@ -386,32 +361,35 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
+            sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "$context.product_1_id"
-              budget: 30000
+              budget: 50000
               pricing_option_id: "$context.pricing_option_1_id"
-            - product_id: "$context.product_2_id"
-              budget: 20000
-              pricing_option_id: "$context.pricing_option_2_id"
-          push_notification_config:
-            url: "https://buyer.example/webhooks/adcp"
-            operation_id: "op_sales_guaranteed_create"
-            authentication:
-              schemes:
-                - "HMAC-SHA256"
-              credentials: "sales-guaranteed-webhook-secret-token"
-
           idempotency_key: "$generate:uuid_v4#sales_guaranteed_create_buy_submitted_create_media_buy"
           context:
             correlation_id: "sales_guaranteed--create_media_buy"
         context_outputs:
-          - name: media_buy_id
-            path: "task_completion.media_buy_id"
+          - name: guaranteed_task_id
+            path: "task_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
+          - check: field_value
+            path: "status"
+            value: "submitted"
+            description: "Guaranteed IO approval creates a submitted task"
+          - check: field_value
+            path: "task_id"
+            value: "$context.forced_guaranteed_task_id"
+            description: "Create returns the controller-issued task ID"
+          - check: field_absent
+            path: "media_buy_id"
+            description: "The media buy is not issued before IO approval"
 
           - check: field_present
             path: "context"
@@ -420,25 +398,147 @@ phases:
             path: "context.correlation_id"
             value: "sales_guaranteed--create_media_buy"
             description: "Context correlation_id returned unchanged"
-  - id: confirm_active
-    title: "Confirm active after IO signing"
+      - id: get_submitted_task
+        title: "Read the submitted task before IO approval"
+        task: get_task_status
+        schema_ref: "protocol/get-task-status-request.json"
+        response_schema_ref: "protocol/get-task-status-response.json"
+        doc_ref: "/protocol/get_task_status"
+        stateful: true
+        sample_request:
+          task_id: "$context.guaranteed_task_id"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
+            sandbox: true
+          context:
+            correlation_id: "sales_guaranteed--get_submitted_task"
+        validations:
+          - check: response_schema
+            description: "Response matches get-task-status-response.json schema"
+          - check: field_value
+            path: "task_id"
+            value: "$context.guaranteed_task_id"
+            description: "Polling finds the task created for this guaranteed buy"
+          - check: field_value
+            path: "status"
+            value: "submitted"
+            description: "Task is still awaiting IO approval"
+  - id: complete_io
+    title: "Complete IO review and read the task result"
+    narrative: |
+      Sandbox tests cannot wait for a human to sign an IO. The controller
+      completes the exact submitted task with a valid media-buy result, and
+      the buyer reads that result through get_task_status. No task webhook
+      registration or callback is involved in this polling path.
+
+    steps:
+      - id: force_task_completion
+        title: "Simulate signed IO for the submitted task"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
+            sandbox: true
+          scenario: "force_task_completion"
+          params:
+            task_id: "$context.guaranteed_task_id"
+            result:
+              media_buy_id: "mb_sales_guaranteed_signed_io"
+              media_buy_status: "pending_creatives"
+              confirmed_at: "2026-10-01T12:00:00Z"
+              revision: 1
+              currency: "USD"
+              packages:
+                - package_id: "pkg_sales_guaranteed_video"
+                  product_id: "$context.product_1_id"
+                  budget: 50000
+                  pricing_option_id: "$context.pricing_option_1_id"
+              context:
+                correlation_id: "sales_guaranteed--create_media_buy"
+          context:
+            correlation_id: "sales_guaranteed--force_task_completion"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Controller completed the submitted task"
+          - check: field_value
+            path: "current_state"
+            value: "completed"
+            description: "Task is complete before the buyer polls"
+
+      - id: get_completed_task
+        title: "Read the completed media-buy result"
+        task: get_task_status
+        schema_ref: "protocol/get-task-status-request.json"
+        response_schema_ref: "protocol/get-task-status-response.json"
+        doc_ref: "/protocol/get_task_status"
+        stateful: true
+        sample_request:
+          task_id: "$context.guaranteed_task_id"
+          include_result: true
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
+            sandbox: true
+          context:
+            correlation_id: "sales_guaranteed--get_completed_task"
+        context_outputs:
+          - name: media_buy_id
+            path: "result.media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-task-status-response.json schema"
+          - check: field_value
+            path: "task_id"
+            value: "$context.guaranteed_task_id"
+            description: "Polling reads the task created for this guaranteed buy"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "IO approval completed the task"
+          - check: field_value
+            path: "result.media_buy_id"
+            value: "mb_sales_guaranteed_signed_io"
+            description: "Terminal result issues the media buy ID"
+
+  - id: confirm_approved
+    title: "Confirm the approved buy after IO signing"
     narrative: |
       The human on your side reviews and signs the IO through your internal workflow.
       Your platform then completes the AdCP task and emits the final CreateMediaBuy
-      result — including the newly-issued media_buy_id — to the buyer's push_notification
-      webhook (or returns it from the next get_task_status invocation). The buyer now calls
-      get_media_buys with that media_buy_id and sees the buy active. There is no
+      result — including the newly-issued media_buy_id — through get_task_status.
+      The buyer now calls
+      get_media_buys with that media_buy_id and sees it pending creatives. IO
+      approval has committed the buy, while creative review still gates delivery. There is no
       intermediate "pending_approval" media buy status in this flow; the buy does not
       exist as a queryable MediaBuy until the task completes.
 
     steps:
-      - id: get_media_buys_active
-        title: "Check media buy status (active)"
+      - id: get_media_buys_approved
+        title: "Check approved media buy status"
         narrative: |
           After the task completes and your platform issues a media_buy_id, the buyer
-          calls get_media_buys to confirm the buy is live. Your platform returns active
-          (or pending_creatives when creatives are still outstanding), indicating the
-          buy is approved and inventory is reserved.
+          calls get_media_buys to confirm the controller's pending-creatives result was
+          materialized under the same media_buy_id.
         task: get_media_buys
         schema_ref: "media-buy/get-media-buys-request.json"
         response_schema_ref: "media-buy/get-media-buys-response.json"
@@ -446,39 +546,47 @@ phases:
         comply_scenario: media_buy_lifecycle
         stateful: true
         expected: |
-          Return the media buy in active status:
+          Return the approved media buy awaiting creatives:
           - media_buy_id: matches the buy created earlier
-          - status: active (IO has been signed)
+          - status: pending_creatives (IO has been signed, creatives are outstanding)
           - confirmed_at: timestamp when the IO was signed
           - packages: line items with reserved inventory
-          - valid_actions: updated for active state (creative sync, pause, etc.)
+          - valid_actions: appropriate for a buy awaiting creatives
 
         sample_request:
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
 
           context:
-            correlation_id: "sales_guaranteed--get_media_buys_active"
+            correlation_id: "sales_guaranteed--get_media_buys_approved"
         validations:
           - check: response_schema
             description: "Response matches get-media-buys-response.json schema"
-          - check: field_present
+          - check: field_value
+            path: "media_buys[0].media_buy_id"
+            value: "$context.media_buy_id"
+            description: "Readback returns the media buy issued by task completion"
+          - check: field_value
             path: "media_buys[0].status"
-            description: "Media buy status is active"
+            value: "pending_creatives"
+            description: "Approved buy awaits creative readiness"
           - check: field_present
             path: "media_buys[0].confirmed_at"
-            description: "Active buy includes a confirmed_at timestamp"
+            description: "Approved buy includes a confirmed_at timestamp"
 
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "sales_guaranteed--get_media_buys_active"
+            value: "sales_guaranteed--get_media_buys_approved"
             description: "Context correlation_id returned unchanged"
   - id: creative_sync
     title: "Creative sync"
@@ -486,7 +594,7 @@ phases:
       path: creative.has_creative_library
       equals: true
     narrative: |
-      With the IO signed and the media buy active, the buyer syncs creative assets
+      With the IO signed and the buy awaiting creatives, the buyer syncs creative assets
       to your platform. Each package has creative format requirements that the buyer
       discovered during product discovery.
 
@@ -513,6 +621,9 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
+            sandbox: true
           creatives:
             - creative_id: "video_30s_trail_pro"
               name: "Trail Pro 3000 - 30s CTV Spot"
@@ -545,16 +656,16 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: delivery_monitoring
     title: "Delivery and reporting"
-    depends_on: [confirm_active]
+    depends_on: [confirm_approved]
     narrative: |
-      The campaign is live with guaranteed delivery commitments. The buyer monitors
+      The approved campaign has guaranteed delivery commitments. The buyer monitors
       delivery to ensure the seller is meeting the SLA guarantees from the IO.
 
     steps:
       - id: get_delivery
         title: "Check delivery metrics"
         narrative: |
-          The buyer requests delivery data for the active guaranteed media buy. Your
+          The buyer requests delivery data for the approved guaranteed media buy. Your
           platform returns performance metrics with pacing against the guaranteed
           commitment.
         task: get_media_buy_delivery
@@ -575,6 +686,9 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_guaranteed-e941b849"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true
