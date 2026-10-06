@@ -387,18 +387,20 @@ function defaultVersionLine(config) {
   return versionLine(entry?.version);
 }
 
-function updateReleaseStoryAliases(config, releaseVersion) {
+function updateReleaseStoryAliases(config, releaseVersion, snapshotHasPage, { addCleanRoutes = false } = {}) {
   const line = versionLine(releaseVersion);
   if (!Array.isArray(config.redirects) || !line) {
     return;
   }
 
   const { short, clean } = releaseStoryAliases(line);
+  const shortAliases = new Set(short);
   const aliases = new Set(short);
   // An older line's clean routes belong to the default line's snapshot, so a
   // late patch of that line must not retarget them.
   const defaultLine = defaultVersionLine(config);
-  if (!defaultLine || compareVersionLines(line, defaultLine) >= 0) {
+  const ownsCleanRoutes = !defaultLine || compareVersionLines(line, defaultLine) >= 0;
+  if (ownsCleanRoutes) {
     for (const alias of clean) aliases.add(alias);
   }
 
@@ -407,10 +409,41 @@ function updateReleaseStoryAliases(config, releaseVersion) {
       aliases.has(redirect?.source) &&
       typeof redirect.destination === 'string'
     ) {
+      const sourcePage = /^\/docs\/(.+)$/.exec(redirect.destination)?.[1];
+      if (sourcePage && shortAliases.has(redirect.source)) {
+        // A short alias staged on the live source page moves to the snapshot
+        // as soon as the snapshot has that page.
+        if (snapshotHasPage(`dist/docs/${releaseVersion}/${sourcePage}`)) {
+          redirect.destination = `/dist/docs/${releaseVersion}/${sourcePage}`;
+        }
+        continue;
+      }
       redirect.destination = redirect.destination.replace(
         DIST_DOCS_ABSOLUTE_PREFIX_RE,
         `/dist/docs/${releaseVersion}/`
       );
+    }
+  }
+
+  if (!ownsCleanRoutes || !addCleanRoutes) return;
+  // The story pages serve from source until a snapshot has them, so their
+  // clean routes carry no redirect before then (a redirect would shadow the
+  // page). The first preview of a line adds each one the snapshot has; later
+  // snapshots retarget them above.
+  const redirectsBySource = new Map(
+    config.redirects.map((redirect) => [redirect?.source, redirect])
+  );
+  for (const { page } of releaseStoryPages(line)) {
+    const snapshotPage = `dist/docs/${releaseVersion}/${page}`;
+    if (!snapshotHasPage(snapshotPage)) continue;
+    const source = `/docs/${page}`;
+    const existing = redirectsBySource.get(source);
+    if (existing) {
+      existing.destination = `/${snapshotPage}`;
+    } else {
+      const added = { source, destination: `/${snapshotPage}`, permanent: false };
+      config.redirects.push(added);
+      redirectsBySource.set(source, added);
     }
   }
 }
@@ -602,7 +635,7 @@ function promoteStableLine(config, releaseVersion, majorMinor, snapshotHasPage) 
   // Point clean /docs/* routes at the new default. Aliases for pages that only
   // exist in the old default keep pointing at its immutable snapshot.
   updateDefaultSnapshotAliases(config, [], promoted.groups);
-  updateReleaseStoryAliases(config, releaseVersion);
+  updateReleaseStoryAliases(config, releaseVersion, snapshotHasPage);
   removeObsoleteCurrentLlmsRedirects(config);
 
   return {
@@ -646,7 +679,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor, options = {
       updateDefaultSnapshotAliases(config, previousGroups, entry.groups);
     }
     updatePrereleaseBanner(config, releaseVersion, majorMinor);
-    updateReleaseStoryAliases(config, releaseVersion);
+    updateReleaseStoryAliases(config, releaseVersion, snapshotHasPage);
     removeObsoleteCurrentLlmsRedirects(config);
     return {
       config,
@@ -708,7 +741,9 @@ export function updateDocsConfig(config, releaseVersion, majorMinor, options = {
       'is not the current preview story.'
     );
   }
-  updateReleaseStoryAliases(config, releaseVersion);
+  updateReleaseStoryAliases(config, releaseVersion, snapshotHasPage, {
+    addCleanRoutes: firstPreviewOfLine,
+  });
   removeObsoleteCurrentLlmsRedirects(config);
   result.warnings = warnings;
   return result;
