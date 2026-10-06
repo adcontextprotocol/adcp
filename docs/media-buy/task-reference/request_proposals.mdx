@@ -202,6 +202,10 @@ Every returned purchase references the exact `product_id` and `pricing_option_id
 
 The native response uses `outcome: "proposed"` for a successful draft set and `outcome: "rejected"` with a reason when the seller cannot construct a viable plan. A compatibility coordinator may also return the projection-only `products_available` outcome defined below.
 
+## Definition pins
+
+For callers negotiating AdCP 3.3 or later, every draft that references a publisher-catalog format option, publisher-catalog placement, `adagents.json` collection, or data-provider signal carries seller-authored `commercial_terms.definition_pins[]`, so `terms_digest` covers a pin over each of those published definitions. Buyers verify `terms_digest` as before and keep the pins for the later [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) finalize and [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) checks, which fail with `definition_changed` (finalize) or [`REFERENCE_DEFINITION_CHANGED`](/docs/building/verification/compliance-catalog#error-code-reference-definition-changed) if a covered definition changed after the pin was issued. Cancellation proposals carry no pins. The covered set and preimage rules are in [Definition pins](/docs/media-buy/specification#definition-pins).
+
 ## Products-only legacy compatibility
 
 A native 3.2 seller never reports products without a proposal as successful

@@ -122,6 +122,19 @@
       "x-adcp-validation": {
         "unique_by": "action"
       }
+    },
+    "definition_pins": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/definition-pin.json" },
+      "minItems": 1,
+      "description": "Seller-authored integrity pins over the third-party-published definitions these terms reference (publisher-catalog format options, publisher-catalog placements, adagents.json collections, data-provider signals). Present on new_media_buy and media_buy_update proposals whenever any purchase carries a covered reference, for callers negotiating AdCP 3.3 or later; omitted otherwise and on media_buy_cancellation proposals, which commit no new reference. Part of commercial_terms and therefore covered by terms_digest, which does not detect later changes to the published definitions themselves. Entries are unique by (ref_kind, reference) and ordered by ref_kind then by the JCS bytes of reference, so equal terms always serialize to equal digests. Requests never author pins: request_proposals, refine_proposals, accept_proposal, and buy_products inputs carrying definition_pins are rejected with INVALID_REQUEST (check_governance carries the seller-authored proposal and is exempt). Cancellation proposals commit no new reference and carry none. Verified against the current published entries at finalize and before accept_proposal mutates state; accepted terms retain them as the historical record.",
+      "x-adcp-validation": {
+        "unique_by": ["ref_kind", "reference"],
+        "verifier_constraints": {
+          "pin_coverage": "for_new_media_buy_and_media_buy_update_every_covered_reference_in_purchases_has_exactly_one_pin",
+          "pin_authority": "seller_authored_only"
+        }
+      }
     }
   },
   "required": ["brand", "purchases", "start_time", "end_time"],
