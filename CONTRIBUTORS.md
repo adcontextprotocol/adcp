@@ -10,9 +10,11 @@ Contributions to this repository are governed by the [IPR Policy](./IPR_POLICY.m
 
 Listings below give GitHub handle, name (where public on the contributor's profile), and affiliated organization (where public). No affiliation is inferred; missing fields mean the contributor has not published that detail on GitHub.
 
-## Interim board
+## Board and incorporation contributors
 
-The current governance body ahead of the first AGM on **May 6, 2026** (see [CHARTER.md](./CHARTER.md)):
+The [announced board roster](https://agenticadvertising.org/governance#board-roster) is the authoritative list of the founding board announced in September 2026, with Benjamin Masse as Board President.
+
+The following credits preserve the historical interim board appointed at incorporation, as recorded April 18, 2026 (see [CHARTER.md](./CHARTER.md#41-announced-board-and-incorporation-history)):
 
 - Michael Blum — Scope3
 - Brian O'Kelley ([@bokelley](https://github.com/bokelley)) — Scope3
@@ -64,7 +66,7 @@ If your handle appears here and you'd like your name or organization added, open
 
 ## Scope3 contributors
 
-Scope3 seeded AAO with foundational IP, funding, and the initial property-catalog knowledge graph. See [How is AAO related to Scope3?](https://docs.adcontextprotocol.org/docs/faq#how-is-aao-related-to-scope3) for the full relationship and the specific recusal rules that apply to Scope3-affiliated interim directors.
+Scope3 seeded AAO with foundational IP, funding, and the initial property-catalog knowledge graph. See [How is AAO related to Scope3?](https://docs.adcontextprotocol.org/docs/faq#how-is-aao-related-to-scope3) for the full relationship and the specific recusal rules for Scope3-related decisions.
 
 Scope3 engineers and staff who have committed code, reviewed pull requests, or shaped working-group discussion:
 

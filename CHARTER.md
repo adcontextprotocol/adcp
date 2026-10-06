@@ -46,20 +46,24 @@ Non-voting **observer** participation is available through Working Groups and th
 
 ## 4. Board of directors
 
-### 4.1 Interim board
+<a id="41-interim-board"></a>
 
-The Foundation operates under an interim board appointed at incorporation. The interim board will be replaced by an elected board at the first Annual General Meeting (AGM), scheduled for **May 6, 2026**. All voting members in good standing as of the AGM record date are eligible to vote. Interim directors (as of 2026-04-18):
+### 4.1 Announced board and incorporation history
+
+AgenticAdvertising.org announced its founding Board of Directors and Benjamin Masse as Board President in September 2026. The authoritative [announced board roster](https://agenticadvertising.org/governance#board-roster) records the directors' names, affiliations, professional titles, and the official announcement published September 29, 2026. Formal voting classes, individual terms, appointment or election dates, vacancies, and the AGM record still require confirmation; the announcement does not establish those details.
+
+For historical context, the interim directors appointed at incorporation and recorded in this repository as of April 18, 2026 were:
 
 - Michael Blum — Scope3
 - Brian O'Kelley — Scope3
 - Pia Malovrh — Celtra
 - Benjamin Masse — Triton Digital
 
-The authoritative list, including current titles and any changes since this Charter was last updated, lives at [agenticadvertising.org/governance](https://agenticadvertising.org/governance).
+This historical list is not the current announced roster.
 
 ### 4.2 Elected board
 
-After the first AGM, the Board consists of elected directors plus the CEO, with **equal representation across voting classes** per the Bylaws. The current target (subject to the Bylaws) is ten seats per class:
+After the first AGM, the Board consists of elected directors plus the CEO, with **equal representation across voting classes** per the Bylaws. The bylaw target is ten seats per class; this is a structural rule, not a count of occupied seats in the announced roster:
 
 | Class | Target seats |
 |---|---|
@@ -106,7 +110,7 @@ Day-to-day technical work happens in **Working Groups**, which are the Foundatio
 
 ## 7. Transparency principles
 
-- **Open meetings** — Once the elected Board convenes after the first AGM (scheduled May 6, 2026), Board meeting agendas and minutes will be published on the Foundation website. Working Group meetings are open to all members and publish agendas and minutes per Working Group at [agenticadvertising.org/working-groups](https://agenticadvertising.org/working-groups).
+- **Open meetings** — Once the elected Board convenes after the first AGM, Board meeting agendas and minutes will be published on the Foundation website. Working Group meetings are open to all members and publish agendas and minutes per Working Group at [agenticadvertising.org/working-groups](https://agenticadvertising.org/working-groups).
 - **Public governing documents** — Bylaws, Membership Agreement, IPR Policy, and Antitrust Policy are publicly available.
 - **Financial reporting** — Annual financial reports are shared with the membership.
 - **Equal voice** — Each voting class has equal representation regardless of company size.

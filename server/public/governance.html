@@ -186,6 +186,10 @@
       color: var(--color-text-secondary);
     }
 
+    .board-roster-table {
+      overflow-x: auto;
+    }
+
     /* Board Composition Table */
     .board-table {
       width: 100%;
@@ -407,48 +411,56 @@
     <section class="section" id="current-status">
       <h2>Current Status</h2>
 
-      <span class="status-badge">Interim Board</span>
+      <span class="status-badge">Founding board announced</span>
 
       <p>
         AgenticAdvertising.org is a pending 501(c)(6) nonprofit trade organization incorporated in Delaware. We are committed to transparent governance that gives all members of the advertising ecosystem an equal voice in shaping the future of AI-powered advertising.
       </p>
 
       <p>
-        The organization is currently operating with an <strong>interim board of directors</strong> appointed during incorporation. This interim board will be replaced by an elected board at our first Annual General Meeting.
+        AgenticAdvertising.org announced its founding board and <strong>Benjamin Masse as Board President</strong> in September 2026. Masse is Chief Product Officer at Triton Digital and EVP of the iHeart Technology Solutions Group.
       </p>
 
-      <h3>Interim Board Members</h3>
-      <div class="board-grid">
-        <div class="board-member">
-          <div class="board-photo" aria-hidden="true">MB</div>
-          <div class="board-name">Michael Blum</div>
-          <div class="board-title">Chief Legal Officer</div>
-          <div class="board-org">Scope3</div>
-        </div>
-        <div class="board-member">
-          <div class="board-photo" aria-hidden="true">BO</div>
-          <div class="board-name">Brian O'Kelley</div>
-          <div class="board-title">Founder</div>
-          <div class="board-org">Scope3</div>
-        </div>
-        <div class="board-member">
-          <div class="board-photo" aria-hidden="true">PM</div>
-          <div class="board-name">Pia Malovrh</div>
-          <div class="board-title">Co-founder &amp; CEO</div>
-          <div class="board-org">Celtra</div>
-        </div>
-        <div class="board-member">
-          <div class="board-photo" aria-hidden="true">BM</div>
-          <div class="board-name">Benjamin Masse</div>
-          <div class="board-title">Chief Strategy Officer</div>
-          <div class="board-org">Triton Digital</div>
-        </div>
+      <h3 id="board-roster">Announced board roster</h3>
+      <p>
+        As of September 29, 2026, the names, affiliations, and professional titles below reflect the <a href="https://www.agenticadvertising.org/perspectives/agenticadvertisingorg-names-benjamin-masse-president-solidifies-founding-board-with-leaders-from-wpp-mult54ru">official announcement by Benjamin Masse</a>, published <time datetime="2026-09-29">September 29, 2026</time> with a September 28 press dateline. Affiliations are recorded as announced; the Fortune 100 brand representative remains unnamed.
+      </p>
+      <div class="board-roster-table" role="region" aria-labelledby="board-roster" tabindex="0">
+      <table class="board-table">
+        <thead>
+          <tr><th scope="col">Director</th><th scope="col">Organization</th><th scope="col">Announced role</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Benjamin Masse</td><td>Triton Digital</td><td>Chief Product Officer; Board President</td></tr>
+          <tr><td>Name not announced</td><td>Fortune 100 brand (not named)</td><td>Global Director, Media Platforms</td></tr>
+          <tr><td>Ingmar Zach</td><td>WPP</td><td>CEO, WPP Media</td></tr>
+          <tr><td>John Koenigsberg</td><td>Horizon Media</td><td>EVP</td></tr>
+          <tr><td>Amanda DeVito</td><td>Butler/Till</td><td>CMO</td></tr>
+          <tr><td>Robert Webster</td><td>TAU Marketing Solutions</td><td>CEO</td></tr>
+          <tr><td>Gabriel Dewitt</td><td>Yahoo</td><td>Head of Consumer Monetization</td></tr>
+          <tr><td>David Rowley</td><td>News Corp</td><td>Global VP, Revenue Technology</td></tr>
+          <tr><td>Lisa Coffey</td><td>iHeartMedia</td><td>CBO</td></tr>
+          <tr><td>Alex Duncan</td><td>Global</td><td>CTO</td></tr>
+          <tr><td>Brian Hull</td><td>The Weather Company</td><td>Head of Global Creative Labs</td></tr>
+          <tr><td>Seth Rogin</td><td>McClatchy</td><td>President, Performance &amp; Intelligence</td></tr>
+          <tr><td>Parbinder Dhariwal</td><td>CVS Media Exchange</td><td>VP, General Manager</td></tr>
+          <tr><td>Gabe Joynt</td><td>Salesforce</td><td>Sr. Director, Product Management</td></tr>
+          <tr><td>Nishant Khatri</td><td>PubMatic</td><td>EVP Product</td></tr>
+          <tr><td>Nisim Tal</td><td>DoubleVerify</td><td>CTO</td></tr>
+          <tr><td>Sarah Acker</td><td>Human</td><td>SVP, Marketing</td></tr>
+          <tr><td>Bosko Milekic</td><td>Optable</td><td>Chief Product Officer</td></tr>
+          <tr><td>Joseph Hirsch</td><td>Swivel</td><td>CEO</td></tr>
+          <tr><td>Lars Noordewier</td><td>Ebiquity</td><td>CDTO</td></tr>
+          <tr><td>Katherine Tuluzova</td><td>Sigma Software</td><td>CEO</td></tr>
+          <tr><td>Anne Coghlan</td><td>Scope3</td><td>COO</td></tr>
+        </tbody>
+      </table>
       </div>
 
       <div class="highlight-box">
-        <h3>First Annual General Meeting</h3>
+        <h3>Governance details awaiting confirmation</h3>
         <p>
-          Our inaugural Annual General Meeting (AGM) is scheduled for <strong>May 6, 2026</strong>, where the membership will elect the first full board of directors. All voting members in good standing as of the AGM record date will be eligible to vote.
+          The announcement establishes the roster and Board President. It does not specify each director's formal voting class, appointment or election date, term, or which seats are vacant. Those details and the Annual General Meeting record remain pending confirmation in <a href="https://github.com/adcontextprotocol/adcp/issues/7055">the governance reconciliation report</a>.
         </p>
       </div>
     </section>
@@ -458,7 +470,7 @@
       <h2>Board Structure</h2>
 
       <p>
-        The elected board will consist of <strong>40 directors plus the CEO</strong>, with equal representation across four member categories. This balanced structure ensures no single sector can dominate the organization's direction.
+        The bylaws describe an elected board of <strong>40 directors plus the CEO</strong>, with equal representation across four member categories. The structure below summarizes those rules; it does not assign classes or terms to the announced directors, or establish current vacancies.
       </p>
 
       <table class="board-table">
@@ -490,7 +502,7 @@
 
       <h3>Executive Committee</h3>
       <p>
-        The board will elect an Executive Committee to handle time-sensitive decisions between full board meetings:
+        The bylaws provide for the board to elect an Executive Committee to handle time-sensitive decisions between full board meetings:
       </p>
       <ul>
         <li>3 directors from each voting category (12 total)</li>
@@ -510,7 +522,7 @@
       <h2>Member Categories</h2>
 
       <p>
-        The Agentic Advertising Network has four voting member categories, reflecting the major constituencies of the advertising ecosystem. Each category has equal representation on the board regardless of company size.
+        AgenticAdvertising.org has four voting member categories, reflecting the major constituencies of the advertising ecosystem. The bylaws provide for equal representation of each category on the elected board regardless of company size.
       </p>
 
       <h3>Brands (Advertisers)</h3>
