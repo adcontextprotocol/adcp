@@ -589,6 +589,9 @@ export interface SessionState {
   /** Caller-scoped agent-level capability-change subscribers. Values retain
    * write-only credentials; read responses redact them. */
   agentNotificationConfigs: Map<string, Record<string, unknown>>;
+  /** Caller-scoped principal documents (reporting destinations, declarations)
+   * keyed by the stable caller key. See principal.ts. */
+  principalConfigurations: Map<string, Record<string, unknown>>;
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
   signalActivations: Map<string, SignalActivationState>;

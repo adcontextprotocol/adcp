@@ -159,6 +159,8 @@ describe('tool-catalog drift detection', () => {
     }
     for (const tool of [
       'sync_agent_notification_configs',
+      'sync_principal',
+      'get_principal',
       'build_creative',
       'preview_creative',
       'validate_input',
