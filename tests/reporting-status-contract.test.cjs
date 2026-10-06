@@ -1353,7 +1353,13 @@ describe('managed reporting status contract', () => {
     );
     const syncRequestSchema = readSchema('/schemas/media-buy/sync-reporting-status-request.json');
     assert.equal(syncRequestSchema.additionalProperties, false);
-    assert.equal(syncRequestSchema.allOf, undefined, 'closed request inlines version properties instead of composing a permissive envelope');
+    assert.ok(
+      (syncRequestSchema.allOf || []).some((arm) => arm.$ref === '/schemas/core/version-envelope.json'),
+      'closed request composes the version envelope via root allOf',
+    );
+    for (const field of ['adcp_version', 'adcp_major_version']) {
+      assert.ok(syncRequestSchema.properties[field], `closed request keeps ${field} declared locally for draft-07 additionalProperties`);
+    }
   });
 
   it('rejects unverified, mutable, and method-mismatched ready materializations while allowing native controls', () => {
