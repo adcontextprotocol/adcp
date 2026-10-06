@@ -70,6 +70,10 @@ Your domain (e.g., agent.example.com)
 
 The `@adcp/client` SDK provides `BrandJsonJwksResolver` which handles this chain automatically with caching and refresh.
 
+<Note>
+**Buyers that only call sellers (no MCP server).** You do not need to host an MCP server or answer `get_adcp_capabilities`. You need a stable HTTPS signing-agent URL `A` (an identity coordinate, never fetched), an operator `brand.json` whose `agents[]` lists `A`, and the `jwks_uri` for that entry. During onboarding the seller binds your credential to `A` and your `brand_json_url`; on each request it resolves your keys through that pinned record and looks up your `keyid` only in those keys. A seller cannot find you from the `keyid`, the request's `brand.domain`, or a header you add, so sign only with a seller that has onboarded you. If a seller tries to start from `get_adcp_capabilities` on a client-only signer, it gets `request_signature_capabilities_unreachable`, not `request_signature_brand_json_url_missing`. See [Client-only signers](/docs/building/by-layer/L1/security#client-only-signers-no-capabilities-endpoint) for the verifier steps.
+</Note>
+
 ## Step 1: Generate a signing key
 
 ### CLI

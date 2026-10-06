@@ -1,0 +1,7 @@
+---
+"adcontextprotocol": minor
+---
+
+Add the optional `security_profiles` capability on `get_adcp_capabilities` and the proposed `adcp-prod-security-3.3` profile. An endpoint that advertises the id commits to enforce signing on a closed list of spend-committing operations, no unsigned fallback, a 15-minute revocation freshness ceiling with no grace multiplier, acts-for checks for the verified signer only, a deny-by-default spend-velocity ceiling per principal, and hard-refuse downgrade rules for buyers. The field is an open string array, so existing responses stay valid and consumers ignore ids they do not recognize. Profile requirements use existing fields and error codes.
+
+Also add the client-only signer bootstrap to the security specification. A buyer that only calls sellers needs no `get_adcp_capabilities` or MCP server: the seller resolves its signing agent from the onboarding record, skips the capabilities step, and resolves the `keyid` only inside the mapped JWKS. Deriving the signer from the `keyid`, the request's `brand.domain`, or an envelope field is forbidden. A seller that runs step 1 against a client-only signer gets `request_signature_capabilities_unreachable`, not `request_signature_brand_json_url_missing`. Adds resolver-level vectors under `test-vectors/client-only-signer-bootstrap/`.

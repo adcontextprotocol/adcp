@@ -1,0 +1,449 @@
+{
+  "$comment": "Resolver-level vectors for the client-only signer bootstrap in docs/building/by-layer/L1/security.mdx (Client-only signers). They exercise principal-to-signing-agent mapping, origin binding, canonical agents[].url matching, key-origin pinning, and keyid resolution inside the mapped JWKS. They do not carry signatures; request-signing/ vectors cover those. Hosts use the .example suffix, so the reference eTLD+1 is the last two labels.",
+  "version": 1,
+  "documents": {
+    "https://acme-ops.example/.well-known/brand.json": {
+      "agents": [
+        {
+          "url": "https://signer-a.acme-ops.example",
+          "type": "buying",
+          "jwks_uri": "https://keys.acme-ops.example/a/jwks.json"
+        },
+        {
+          "url": "https://signer-b.acme-ops.example",
+          "type": "buying",
+          "jwks_uri": "https://keys.acme-ops.example/b/jwks.json"
+        }
+      ]
+    },
+    "https://acme-dup.example/.well-known/brand.json": {
+      "agents": [
+        {
+          "url": "https://signer.acme-dup.example",
+          "type": "buying",
+          "jwks_uri": "https://keys.acme-dup.example/one/jwks.json"
+        },
+        {
+          "url": "https://SIGNER.acme-dup.example:443",
+          "type": "buying",
+          "jwks_uri": "https://keys.acme-dup.example/two/jwks.json"
+        }
+      ]
+    },
+    "https://acme-missing.example/.well-known/brand.json": {
+      "agents": [
+        {
+          "url": "https://someone-else.acme-missing.example",
+          "type": "buying",
+          "jwks_uri": "https://keys.acme-missing.example/jwks.json"
+        }
+      ]
+    },
+    "https://other-operator.example/.well-known/brand.json": {
+      "agents": [
+        {
+          "url": "https://signer.acme-ops.example",
+          "type": "buying",
+          "jwks_uri": "https://keys.other-operator.example/jwks.json"
+        }
+      ]
+    },
+    "https://acme-moved.example/.well-known/brand.json": {
+      "agents": [
+        {
+          "url": "https://signer.acme-moved.example",
+          "type": "buying",
+          "jwks_uri": "https://keys.attacker.example/jwks.json"
+        }
+      ]
+    },
+    "https://acme-path.example/.well-known/brand.json": {
+      "agents": [
+        {
+          "url": "https://signer.acme-path.example/agent",
+          "type": "buying",
+          "jwks_uri": "https://keys.acme-path.example/jwks.json"
+        }
+      ]
+    },
+    "https://acme-shared.example/.well-known/brand.json": {
+      "agents": [
+        {
+          "url": "https://signer.acme-shared.example",
+          "type": "buying",
+          "jwks_uri": "https://keys.shared-host.example/tenant-b/jwks.json"
+        }
+      ]
+    },
+    "https://acme-nojwks.example/.well-known/brand.json": {
+      "agents": [
+        {
+          "url": "https://signer.acme-nojwks.example",
+          "type": "buying"
+        }
+      ]
+    }
+  },
+  "jwks": {
+    "https://keys.acme-ops.example/a/jwks.json": [
+      "kid-a-1",
+      "kid-shared"
+    ],
+    "https://keys.acme-ops.example/b/jwks.json": [
+      "kid-b-1",
+      "kid-shared"
+    ],
+    "https://keys.acme-dup.example/one/jwks.json": [
+      "kid-d-1"
+    ],
+    "https://keys.acme-dup.example/two/jwks.json": [
+      "kid-d-2"
+    ],
+    "https://keys.acme-missing.example/jwks.json": [
+      "kid-m-1"
+    ],
+    "https://keys.other-operator.example/jwks.json": [
+      "kid-o-1"
+    ],
+    "https://keys.attacker.example/jwks.json": [
+      "kid-a-1",
+      "kid-x-1"
+    ],
+    "https://keys.acme-path.example/jwks.json": [
+      "kid-p-1"
+    ],
+    "https://keys.shared-host.example/tenant-a/jwks.json": [
+      "kid-ta-1"
+    ],
+    "https://keys.shared-host.example/tenant-b/jwks.json": [
+      "kid-tb-1"
+    ]
+  },
+  "capabilities_endpoints": {
+    "https://callable.acme-ops.example": {
+      "identity": {}
+    }
+  },
+  "vectors": [
+    {
+      "id": "positive-001-single-mapping",
+      "description": "One permitted signing agent; the keyid is in its JWKS. The agent identity is the canonical agents[].url. The signing-agent URL serves no capabilities, and the verifier never fetches it.",
+      "onboarding_record": {
+        "principal": "principal-1",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer-a.acme-ops.example",
+            "brand_json_url": "https://acme-ops.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.acme-ops.example/a/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-1",
+        "keyid": "kid-a-1"
+      },
+      "expected": {
+        "outcome": "accept",
+        "agent_url": "https://signer-a.acme-ops.example",
+        "must_not_fetch": [
+          "https://signer-a.acme-ops.example"
+        ]
+      }
+    },
+    {
+      "id": "positive-002-two-agents-keyid-in-one-jwks",
+      "description": "The principal has two permitted signing agents. The keyid appears in exactly one of their JWKS, so the mapping is unambiguous.",
+      "onboarding_record": {
+        "principal": "principal-2",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer-a.acme-ops.example",
+            "brand_json_url": "https://acme-ops.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.acme-ops.example/a/jwks.json"
+          },
+          {
+            "agent_url": "https://signer-b.acme-ops.example",
+            "brand_json_url": "https://acme-ops.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.acme-ops.example/b/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-2",
+        "keyid": "kid-b-1"
+      },
+      "expected": {
+        "outcome": "accept",
+        "agent_url": "https://signer-b.acme-ops.example"
+      }
+    },
+    {
+      "id": "negative-001-keyid-in-two-candidate-jwks",
+      "description": "The keyid is published in the JWKS of both permitted signing agents. The verifier cannot select exactly one and MUST NOT take the first.",
+      "onboarding_record": {
+        "principal": "principal-2",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer-a.acme-ops.example",
+            "brand_json_url": "https://acme-ops.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.acme-ops.example/a/jwks.json"
+          },
+          {
+            "agent_url": "https://signer-b.acme-ops.example",
+            "brand_json_url": "https://acme-ops.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.acme-ops.example/b/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-2",
+        "keyid": "kid-shared"
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_brand_json_ambiguous"
+      }
+    },
+    {
+      "id": "negative-002-keyid-belongs-to-sibling-agent-outside-record",
+      "description": "The keyid is valid for signer-b, which is in the same brand.json but not in this principal's record. The keyid is resolved only inside the mapped JWKS, so it is unknown. The same outcome applies to a keyid that belongs to another principal's agent: the request is authenticated as principal-1, and a signature that verifies only under another principal's agent is rejected.",
+      "onboarding_record": {
+        "principal": "principal-1",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer-a.acme-ops.example",
+            "brand_json_url": "https://acme-ops.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.acme-ops.example/a/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-1",
+        "keyid": "kid-b-1"
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_key_unknown"
+      }
+    },
+    {
+      "id": "negative-003-agent-not-in-brand-json",
+      "description": "The recorded signing agent is not listed in the operator brand.json.",
+      "onboarding_record": {
+        "principal": "principal-3",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer.acme-missing.example",
+            "brand_json_url": "https://acme-missing.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.acme-missing.example/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-3",
+        "keyid": "kid-m-1"
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_agent_not_in_brand_json"
+      }
+    },
+    {
+      "id": "negative-004-origin-mismatch",
+      "description": "The recorded agent URL and brand_json_url have different eTLD+1 and the brand.json carries no authorized_operators fallback.",
+      "onboarding_record": {
+        "principal": "principal-4",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer.acme-ops.example",
+            "brand_json_url": "https://other-operator.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.other-operator.example/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-4",
+        "keyid": "kid-o-1"
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_brand_origin_mismatch"
+      }
+    },
+    {
+      "id": "negative-005-duplicate-entries-after-canonicalization",
+      "description": "The brand.json lists the recorded agent twice, differing only by host case and a default port, with different JWKS sources. Canonical matching yields two entries.",
+      "onboarding_record": {
+        "principal": "principal-5",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer.acme-dup.example",
+            "brand_json_url": "https://acme-dup.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.acme-dup.example/one/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-5",
+        "keyid": "kid-d-1"
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_brand_json_ambiguous"
+      }
+    },
+    {
+      "id": "negative-006-jwks-host-moved",
+      "description": "At onboarding the seller recorded https://keys.acme-moved.example/jwks.json. The brand.json entry's jwks_uri now points at another host. There is no key_origins declaration to compare against, so the onboarding record is the only anchor, and the seller re-onboards the signer before accepting the new location.",
+      "onboarding_record": {
+        "principal": "principal-6",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer.acme-moved.example",
+            "brand_json_url": "https://acme-moved.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.acme-moved.example/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-6",
+        "keyid": "kid-x-1"
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_key_origin_mismatch",
+        "detail": {
+          "purpose": "request-signing",
+          "expected_origin": "https://keys.acme-moved.example",
+          "actual_origin": "https://keys.attacker.example"
+        }
+      }
+    },
+    {
+      "id": "negative-007-brand-domain-in-request-is-ignored",
+      "description": "The request body names an attacker brand.json through brand.domain and the attacker's JWKS carries the keyid. The verifier derives the signer only from the onboarding record, so the keyid is unknown.",
+      "onboarding_record": {
+        "principal": "principal-1",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer-a.acme-ops.example",
+            "brand_json_url": "https://acme-ops.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.acme-ops.example/a/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-1",
+        "keyid": "kid-x-1",
+        "asserted": {
+          "brand_domain": "attacker.example",
+          "agent_url": "https://keys.attacker.example"
+        }
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_key_unknown"
+      }
+    },
+    {
+      "id": "negative-008-no-onboarding-record-runs-step-1",
+      "description": "The seller has no onboarding record for the signer and runs the canonical chain from the agent URL. A client-only signer serves no capabilities, so the failure is step 1. The code is request_signature_capabilities_unreachable and never request_signature_brand_json_url_missing.",
+      "onboarding_record": null,
+      "request": {
+        "authenticated_principal": null,
+        "keyid": "kid-a-1",
+        "canonical_chain_agent_url": "https://signer-a.acme-ops.example"
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_capabilities_unreachable",
+        "not_code": "request_signature_brand_json_url_missing"
+      }
+    },
+    {
+      "id": "negative-009-trailing-slash-is-significant",
+      "description": "The recorded agent URL ends in a slash after a path segment that the brand.json entry lacks. A trailing slash on a non-empty path is significant under canonical matching, so the entry does not match. The match is exact, not by origin or host.",
+      "onboarding_record": {
+        "principal": "principal-1",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer.acme-path.example/agent/",
+            "brand_json_url": "https://acme-path.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.acme-path.example/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-1",
+        "keyid": "kid-p-1"
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_agent_not_in_brand_json"
+      }
+    },
+    {
+      "id": "negative-010-jwks-path-moved-on-same-host",
+      "description": "The recorded jwks_uri is tenant-a's path on a shared key host. The brand.json entry now points at tenant-b's path on the same host. Pinning only the host would accept it, so the whole URI is pinned.",
+      "onboarding_record": {
+        "principal": "principal-7",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer.acme-shared.example",
+            "brand_json_url": "https://acme-shared.example/.well-known/brand.json",
+            "jwks_uri": "https://keys.shared-host.example/tenant-a/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-7",
+        "keyid": "kid-tb-1"
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_key_origin_mismatch",
+        "detail": {
+          "purpose": "request-signing",
+          "expected_origin": "https://keys.shared-host.example",
+          "actual_origin": "https://keys.shared-host.example"
+        }
+      }
+    },
+    {
+      "id": "negative-011-entry-without-jwks-uri",
+      "description": "The matched agents[] entry carries no jwks_uri. The default location at the agent's origin does not apply on this path, so the entry does not qualify.",
+      "onboarding_record": {
+        "principal": "principal-8",
+        "signing_agents": [
+          {
+            "agent_url": "https://signer.acme-nojwks.example",
+            "brand_json_url": "https://acme-nojwks.example/.well-known/brand.json",
+            "jwks_uri": "https://signer.acme-nojwks.example/.well-known/jwks.json"
+          }
+        ]
+      },
+      "request": {
+        "authenticated_principal": "principal-8",
+        "keyid": "kid-n-1"
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_agent_not_in_brand_json"
+      }
+    },
+    {
+      "id": "negative-012-callable-agent-without-brand-json-url",
+      "description": "Control for negative-008. A callable agent answers capabilities but omits identity.brand_json_url, so the canonical chain fails at step 2 with request_signature_brand_json_url_missing. The two codes are distinct, and which one appears depends on whether step 1 succeeded.",
+      "onboarding_record": null,
+      "request": {
+        "authenticated_principal": null,
+        "keyid": "kid-c-1",
+        "canonical_chain_agent_url": "https://callable.acme-ops.example"
+      },
+      "expected": {
+        "outcome": "reject",
+        "code": "request_signature_brand_json_url_missing"
+      }
+    }
+  ]
+}

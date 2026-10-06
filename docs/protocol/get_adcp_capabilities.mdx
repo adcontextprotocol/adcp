@@ -1516,6 +1516,22 @@ Declares a seller's webhook-signing posture and maximum delivery-retry horizon. 
 
 The webhook-signing block is parallel to `request_signing` (inbound) and the two blocks cover the two signing directions between buyer and seller. Buyers SHOULD validate both at onboarding; a seller that signs one direction but not the other has a lopsided security posture that operators need to notice explicitly.
 
+### security_profiles
+
+Names the security profiles this endpoint commits to enforce. Optional. Absent or empty means no claim.
+
+| Field | Type | Description |
+|---|---|---|
+| `security_profiles` | string[] | Profile ids. Currently registered: `adcp-prod-security-3.3`. Consumers ignore ids they do not recognize and never treat one as satisfying a requirement. |
+
+```json
+{
+  "security_profiles": ["adcp-prod-security-3.3"]
+}
+```
+
+Advertising an id is a commitment to **enforce** the profile, not to support it. The claim covers the whole endpoint, every tenant, and every transport that serves its spend-committing operations. It is self-asserted until a registry verifies it. Only agents that verify inbound requests and serve this response can advertise a profile. A buyer that requires a profile and finds it absent refuses spend-committing calls instead of falling back to bearer-only. See the [production security profile](/docs/building/by-layer/L1/production-security-profile) for the admission preconditions, requirements, and downgrade rules.
+
 ### extensions_supported
 
 Array of extension namespaces this agent supports. Buyers can expect meaningful data in `ext.{namespace}` fields on responses from this agent.
