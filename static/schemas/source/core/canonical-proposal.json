@@ -78,7 +78,7 @@
     },
     {
       "if": { "properties": { "proposal_kind": { "const": "media_buy_cancellation" } }, "required": ["proposal_kind"] },
-      "then": { "properties": { "commercial_terms": { "required": ["cancellation_terms"] } } }
+      "then": { "properties": { "commercial_terms": { "required": ["cancellation_terms"], "not": { "required": ["definition_pins"] } } } }
     }
   ],
   "additionalProperties": false
