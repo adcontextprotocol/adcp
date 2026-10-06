@@ -1,0 +1,1166 @@
+{
+  "fixture_version": "1.0",
+  "description": "Executable vectors for report-definition metric aggregation_semantics (contract_version 1.2). Each vector applies its cases to the shared report_definition. Operations: combine (additive and legacy values), recompute_ratio, aggregate_unique, validate_definition. Numeric results are compared with an absolute tolerance of 1e-9. Consumers MUST reproduce every expected result.",
+  "report_definition": {
+    "contract_version": "1.2",
+    "media_type": "application/vnd.adcp.reporting-definition+json",
+    "report_definition_id": "aggregation-v1",
+    "reporting_profile": "aggregation-v1",
+    "grain": "media-buy-day",
+    "source": {
+      "provider": {
+        "domain": "seller.example.net"
+      },
+      "system": "fixture",
+      "api_version": "1",
+      "query_semantics": {}
+    },
+    "calendar": {
+      "timezone_basis": "utc"
+    },
+    "metrics": [
+      {
+        "name": "impressions",
+        "source_expression": "impressions",
+        "aggregation": "sum",
+        "aggregation_semantics": {
+          "kind": "additive",
+          "comparability": {
+            "population": "served_ad_events:v1",
+            "window_basis": "report_period"
+          }
+        },
+        "unit": "impressions"
+      },
+      {
+        "name": "spend",
+        "source_expression": "spend",
+        "aggregation": "sum",
+        "aggregation_semantics": {
+          "kind": "additive",
+          "comparability": {
+            "population": "billable_spend:v1",
+            "window_basis": "report_period"
+          }
+        },
+        "unit": "USD"
+      },
+      {
+        "name": "spend_eur",
+        "source_expression": "spend_eur",
+        "aggregation": "sum",
+        "aggregation_semantics": {
+          "kind": "additive",
+          "comparability": {
+            "population": "billable_spend:v1",
+            "window_basis": "report_period"
+          }
+        },
+        "unit": "EUR"
+      },
+      {
+        "name": "clicks",
+        "source_expression": "all_clicks",
+        "aggregation": "sum",
+        "aggregation_semantics": {
+          "kind": "additive",
+          "comparability": {
+            "population": "all_click_events:v1",
+            "window_basis": "report_period"
+          }
+        },
+        "unit": "clicks"
+      },
+      {
+        "name": "outbound_clicks",
+        "source_expression": "outbound_clicks",
+        "aggregation": "sum",
+        "aggregation_semantics": {
+          "kind": "additive",
+          "comparability": {
+            "population": "outbound_click_events:v1",
+            "window_basis": "report_period"
+          }
+        },
+        "unit": "clicks"
+      },
+      {
+        "name": "outbound_clicks_by_site",
+        "source_expression": "outbound_clicks_by_site",
+        "aggregation": "sum",
+        "aggregation_semantics": {
+          "kind": "additive",
+          "comparability": {
+            "population": "outbound_click_events:v1",
+            "window_basis": "report_period"
+          }
+        },
+        "unit": "clicks"
+      },
+      {
+        "name": "conversions_7d_click",
+        "source_expression": "conversions_7d_click",
+        "aggregation": "sum",
+        "aggregation_semantics": {
+          "kind": "additive",
+          "comparability": {
+            "population": "attributed_conversions:v1",
+            "window_basis": "report_period",
+            "qualifier": {
+              "attribution_window": {
+                "interval": 7,
+                "unit": "days"
+              }
+            }
+          }
+        },
+        "unit": "conversions"
+      },
+      {
+        "name": "conversions_28d_click",
+        "source_expression": "conversions_28d_click",
+        "aggregation": "sum",
+        "aggregation_semantics": {
+          "kind": "additive",
+          "comparability": {
+            "population": "attributed_conversions:v1",
+            "window_basis": "report_period",
+            "qualifier": {
+              "attribution_window": {
+                "interval": 28,
+                "unit": "days"
+              }
+            }
+          }
+        },
+        "unit": "conversions"
+      },
+      {
+        "name": "ctr",
+        "source_expression": "clicks / impressions",
+        "aggregation": "ratio",
+        "aggregation_semantics": {
+          "kind": "recomputable_ratio",
+          "numerator_metric": "clicks",
+          "denominator_metric": "impressions",
+          "zero_denominator": "null"
+        },
+        "unit": "ratio"
+      },
+      {
+        "name": "cpm",
+        "source_expression": "spend / impressions * 1000",
+        "aggregation": "ratio",
+        "aggregation_semantics": {
+          "kind": "recomputable_ratio",
+          "numerator_metric": "spend",
+          "denominator_metric": "impressions",
+          "zero_denominator": "zero",
+          "multiplier": 1000
+        },
+        "unit": "USD"
+      },
+      {
+        "name": "cpc",
+        "source_expression": "spend / clicks",
+        "aggregation": "ratio",
+        "aggregation_semantics": {
+          "kind": "recomputable_ratio",
+          "numerator_metric": "spend",
+          "denominator_metric": "clicks",
+          "zero_denominator": "omitted"
+        },
+        "unit": "USD"
+      },
+      {
+        "name": "reach",
+        "source_expression": "count_distinct(person_id)",
+        "aggregation": "custom",
+        "aggregation_semantics": {
+          "kind": "non_additive_unique",
+          "unique_unit": "individuals",
+          "deduplication_identity": "seller_graph:v3",
+          "comparability": {
+            "population": "served_ad_events:v1",
+            "window_basis": "cumulative"
+          }
+        },
+        "unit": "individuals"
+      },
+      {
+        "name": "quality_score",
+        "source_expression": "model_quality_score",
+        "aggregation": "custom",
+        "aggregation_semantics": {
+          "kind": "opaque",
+          "reason": "Proprietary score with no defined combination rule."
+        }
+      },
+      {
+        "name": "legacy_clicks",
+        "source_expression": "clicks",
+        "aggregation": "sum",
+        "unit": "clicks"
+      }
+    ],
+    "dimensions": [
+      "date",
+      "media_buy_id"
+    ],
+    "restatement_policy": {
+      "source_requery_duration": "P7D",
+      "emit_only_on_content_change": true,
+      "official_correction_mode": "adjustments_only"
+    },
+    "finality_policies": [
+      {
+        "finality_policy_id": "billing-close-v1",
+        "basis": "contractual_cutoff",
+        "duration_after_period_end": "PT4H"
+      }
+    ]
+  },
+  "union_report_definitions": {
+    "seller_graph_v3": {
+      "contract_version": "1.2",
+      "media_type": "application/vnd.adcp.reporting-definition+json",
+      "report_definition_id": "account-day-seller_graph-v3",
+      "reporting_profile": "account-day-seller_graph-v3",
+      "grain": "account-day",
+      "source": {
+        "provider": {
+          "domain": "seller.example.net"
+        },
+        "system": "fixture",
+        "api_version": "1",
+        "query_semantics": {}
+      },
+      "calendar": {
+        "timezone_basis": "utc"
+      },
+      "metrics": [
+        {
+          "name": "reach",
+          "source_expression": "count_distinct(person_id)",
+          "aggregation": "custom",
+          "aggregation_semantics": {
+            "kind": "non_additive_unique",
+            "unique_unit": "individuals",
+            "deduplication_identity": "seller_graph:v3",
+            "comparability": {
+              "population": "served_ad_events:v1",
+              "window_basis": "cumulative"
+            }
+          },
+          "unit": "individuals"
+        }
+      ],
+      "dimensions": [
+        "date"
+      ],
+      "restatement_policy": {
+        "source_requery_duration": "P7D",
+        "emit_only_on_content_change": true,
+        "official_correction_mode": "adjustments_only"
+      },
+      "finality_policies": [
+        {
+          "finality_policy_id": "billing-close-v1",
+          "basis": "contractual_cutoff",
+          "duration_after_period_end": "PT4H"
+        }
+      ]
+    },
+    "seller_graph_v2": {
+      "contract_version": "1.2",
+      "media_type": "application/vnd.adcp.reporting-definition+json",
+      "report_definition_id": "account-day-seller_graph-v2",
+      "reporting_profile": "account-day-seller_graph-v2",
+      "grain": "account-day",
+      "source": {
+        "provider": {
+          "domain": "seller.example.net"
+        },
+        "system": "fixture",
+        "api_version": "1",
+        "query_semantics": {}
+      },
+      "calendar": {
+        "timezone_basis": "utc"
+      },
+      "metrics": [
+        {
+          "name": "reach",
+          "source_expression": "count_distinct(person_id)",
+          "aggregation": "custom",
+          "aggregation_semantics": {
+            "kind": "non_additive_unique",
+            "unique_unit": "individuals",
+            "deduplication_identity": "seller_graph:v2",
+            "comparability": {
+              "population": "served_ad_events:v1",
+              "window_basis": "cumulative"
+            }
+          },
+          "unit": "individuals"
+        }
+      ],
+      "dimensions": [
+        "date"
+      ],
+      "restatement_policy": {
+        "source_requery_duration": "P7D",
+        "emit_only_on_content_change": true,
+        "official_correction_mode": "adjustments_only"
+      },
+      "finality_policies": [
+        {
+          "finality_policy_id": "billing-close-v1",
+          "basis": "contractual_cutoff",
+          "duration_after_period_end": "PT4H"
+        }
+      ]
+    }
+  },
+  "vectors": [
+    {
+      "id": "compatible_counts_sum_and_incompatible_populations_refuse",
+      "issue_example": 1,
+      "description": "Outbound-click values from different media buys sum. Outbound clicks and all clicks are different populations and never share an aggregate.",
+      "cases": [
+        {
+          "id": "outbound_clicks_across_buys",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "outbound_clicks",
+              "value": 100,
+              "finality": "official"
+            },
+            {
+              "metric": "outbound_clicks",
+              "value": 50,
+              "finality": "official"
+            }
+          ],
+          "expected": {
+            "result": "aggregated",
+            "value": 150
+          }
+        },
+        {
+          "id": "equal_comparability_under_different_names",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "outbound_clicks",
+              "value": 100,
+              "finality": "official"
+            },
+            {
+              "metric": "outbound_clicks_by_site",
+              "value": 40,
+              "finality": "official"
+            }
+          ],
+          "expected": {
+            "result": "aggregated",
+            "value": 140
+          }
+        },
+        {
+          "id": "outbound_clicks_with_all_clicks",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "outbound_clicks",
+              "value": 100,
+              "finality": "official"
+            },
+            {
+              "metric": "clicks",
+              "value": 400,
+              "finality": "official"
+            }
+          ],
+          "expected": {
+            "result": "refused",
+            "reason": "incompatible_comparability",
+            "differing": [
+              "population"
+            ]
+          }
+        },
+        {
+          "id": "spend_in_different_currencies",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "spend",
+              "value": 10,
+              "finality": "official"
+            },
+            {
+              "metric": "spend_eur",
+              "value": 8,
+              "finality": "official"
+            }
+          ],
+          "expected": {
+            "result": "refused",
+            "reason": "incompatible_comparability",
+            "differing": [
+              "unit"
+            ]
+          }
+        },
+        {
+          "id": "values_from_different_report_definitions",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "outbound_clicks",
+              "value": 100,
+              "finality": "official",
+              "report_definition_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+            },
+            {
+              "metric": "outbound_clicks",
+              "value": 50,
+              "finality": "official",
+              "report_definition_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+            }
+          ],
+          "expected": {
+            "result": "refused",
+            "reason": "different_report_definition"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ratio_recomputed_from_summed_operands",
+      "issue_example": 2,
+      "description": "CTR is recomputed from summed clicks and impressions. Row CTR values are never averaged.",
+      "cases": [
+        {
+          "id": "ctr_recomputed",
+          "operation": "recompute_ratio",
+          "metric": "ctr",
+          "rows": [
+            {
+              "finality": "official",
+              "values": {
+                "clicks": 10,
+                "impressions": 1000
+              },
+              "reported": {
+                "ctr": 0.01
+              }
+            },
+            {
+              "finality": "official",
+              "values": {
+                "clicks": 90,
+                "impressions": 4000
+              },
+              "reported": {
+                "ctr": 0.0225
+              }
+            }
+          ],
+          "expected": {
+            "result": "aggregated",
+            "value": 0.02,
+            "not_value": [
+              0.01625,
+              0.0325
+            ]
+          }
+        },
+        {
+          "id": "cpm_applies_multiplier",
+          "operation": "recompute_ratio",
+          "metric": "cpm",
+          "rows": [
+            {
+              "finality": "official",
+              "values": {
+                "spend": 5,
+                "impressions": 2000
+              }
+            },
+            {
+              "finality": "official",
+              "values": {
+                "spend": 7.5,
+                "impressions": 3000
+              }
+            }
+          ],
+          "expected": {
+            "result": "aggregated",
+            "value": 2.5
+          }
+        },
+        {
+          "id": "ctr_zero_denominator_null",
+          "operation": "recompute_ratio",
+          "metric": "ctr",
+          "rows": [
+            {
+              "finality": "official",
+              "values": {
+                "clicks": 0,
+                "impressions": 0
+              }
+            }
+          ],
+          "expected": {
+            "result": "aggregated",
+            "value": null
+          }
+        },
+        {
+          "id": "cpm_zero_denominator_zero",
+          "operation": "recompute_ratio",
+          "metric": "cpm",
+          "rows": [
+            {
+              "finality": "official",
+              "values": {
+                "spend": 0,
+                "impressions": 0
+              }
+            }
+          ],
+          "expected": {
+            "result": "aggregated",
+            "value": 0
+          }
+        },
+        {
+          "id": "cpc_zero_denominator_omitted",
+          "operation": "recompute_ratio",
+          "metric": "cpc",
+          "rows": [
+            {
+              "finality": "official",
+              "values": {
+                "spend": 4,
+                "clicks": 0
+              }
+            }
+          ],
+          "expected": {
+            "result": "not_computable"
+          }
+        },
+        {
+          "id": "missing_operand",
+          "operation": "recompute_ratio",
+          "metric": "ctr",
+          "rows": [
+            {
+              "finality": "official",
+              "values": {
+                "clicks": 10,
+                "impressions": null
+              }
+            },
+            {
+              "finality": "official",
+              "values": {
+                "clicks": 90,
+                "impressions": 4000
+              }
+            }
+          ],
+          "expected": {
+            "result": "not_computable"
+          }
+        },
+        {
+          "id": "cumulative_additive_is_invalid",
+          "operation": "validate_definition",
+          "override": {
+            "metrics": [
+              {
+                "name": "impressions",
+                "source_expression": "impressions",
+                "aggregation": "sum",
+                "unit": "impressions",
+                "aggregation_semantics": {
+                  "kind": "additive",
+                  "comparability": {
+                    "population": "served_ad_events:v1",
+                    "window_basis": "cumulative"
+                  }
+                }
+              }
+            ]
+          },
+          "expected": {
+            "valid": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "unique_values_require_pinned_dedup_identity",
+      "issue_example": 3,
+      "description": "Cross-buy reach is a bound unless the seller emits a value for a revision covering the union of the constituents under a metric with the same unique_unit, deduplication_identity, and comparability. A bound never feeds frequency.",
+      "cases": [
+        {
+          "id": "no_dedup_evidence",
+          "operation": "aggregate_unique",
+          "metric": "reach",
+          "constituents": [
+            {
+              "media_buy_ids": [
+                "buy_a"
+              ],
+              "value": 400000
+            },
+            {
+              "media_buy_ids": [
+                "buy_b"
+              ],
+              "value": 350000
+            }
+          ],
+          "combined": null,
+          "expected": {
+            "result": "bound",
+            "bound": "sum_of_constituent_reach",
+            "value": 750000,
+            "may_feed_frequency": false
+          }
+        },
+        {
+          "id": "pinned_compatible_identity",
+          "operation": "aggregate_unique",
+          "metric": "reach",
+          "constituents": [
+            {
+              "media_buy_ids": [
+                "buy_a"
+              ],
+              "value": 400000
+            },
+            {
+              "media_buy_ids": [
+                "buy_b"
+              ],
+              "value": 350000
+            }
+          ],
+          "combined": {
+            "union_report_definition": "seller_graph_v3",
+            "metric": "reach",
+            "media_buy_ids": [
+              "buy_a",
+              "buy_b"
+            ],
+            "value": 620000
+          },
+          "expected": {
+            "result": "unique",
+            "value": 620000,
+            "may_feed_frequency": true
+          }
+        },
+        {
+          "id": "incompatible_identity",
+          "operation": "aggregate_unique",
+          "metric": "reach",
+          "constituents": [
+            {
+              "media_buy_ids": [
+                "buy_a"
+              ],
+              "value": 400000
+            },
+            {
+              "media_buy_ids": [
+                "buy_b"
+              ],
+              "value": 350000
+            }
+          ],
+          "combined": {
+            "union_report_definition": "seller_graph_v2",
+            "metric": "reach",
+            "media_buy_ids": [
+              "buy_a",
+              "buy_b"
+            ],
+            "value": 620000
+          },
+          "expected": {
+            "result": "bound",
+            "bound": "sum_of_constituent_reach",
+            "value": 750000,
+            "may_feed_frequency": false
+          }
+        },
+        {
+          "id": "combined_value_does_not_cover_union",
+          "operation": "aggregate_unique",
+          "metric": "reach",
+          "constituents": [
+            {
+              "media_buy_ids": [
+                "buy_a"
+              ],
+              "value": 400000
+            },
+            {
+              "media_buy_ids": [
+                "buy_b"
+              ],
+              "value": 350000
+            }
+          ],
+          "combined": {
+            "union_report_definition": "seller_graph_v3",
+            "metric": "reach",
+            "media_buy_ids": [
+              "buy_a"
+            ],
+            "value": 400000
+          },
+          "expected": {
+            "result": "bound",
+            "bound": "sum_of_constituent_reach",
+            "value": 750000,
+            "may_feed_frequency": false
+          }
+        },
+        {
+          "id": "consumer_may_not_sum_uniques",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "reach",
+              "value": 400000,
+              "finality": "official"
+            },
+            {
+              "metric": "reach",
+              "value": 350000,
+              "finality": "official"
+            }
+          ],
+          "expected": {
+            "result": "refused",
+            "reason": "non_additive_unique"
+          }
+        },
+        {
+          "id": "unique_unit_custom_is_invalid",
+          "operation": "validate_definition",
+          "override": {
+            "metrics": [
+              {
+                "name": "reach",
+                "source_expression": "x",
+                "aggregation": "custom",
+                "unit": "audience",
+                "aggregation_semantics": {
+                  "kind": "non_additive_unique",
+                  "unique_unit": "custom",
+                  "deduplication_identity": "seller_graph:v3",
+                  "comparability": {
+                    "population": "served_ad_events:v1",
+                    "window_basis": "cumulative"
+                  }
+                }
+              }
+            ]
+          },
+          "expected": {
+            "valid": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "snapshot_and_official_are_separate_partitions",
+      "issue_example": 4,
+      "description": "A provisional snapshot value and an official value of the same metric never occupy one aggregate; each finality is aggregated in its own partition.",
+      "cases": [
+        {
+          "id": "official_with_official",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "impressions",
+              "value": 1000,
+              "finality": "official"
+            },
+            {
+              "metric": "impressions",
+              "value": 2000,
+              "finality": "official"
+            }
+          ],
+          "expected": {
+            "result": "aggregated",
+            "value": 3000
+          }
+        },
+        {
+          "id": "snapshot_with_official",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "impressions",
+              "value": 1000,
+              "finality": "snapshot"
+            },
+            {
+              "metric": "impressions",
+              "value": 2000,
+              "finality": "official"
+            }
+          ],
+          "expected": {
+            "result": "partitioned",
+            "partitions": [
+              {
+                "finality": "snapshot",
+                "value": 1000
+              },
+              {
+                "finality": "official",
+                "value": 2000
+              }
+            ]
+          }
+        },
+        {
+          "id": "ratio_operands_split_by_finality",
+          "operation": "recompute_ratio",
+          "metric": "ctr",
+          "rows": [
+            {
+              "finality": "snapshot",
+              "values": {
+                "clicks": 10,
+                "impressions": 1000
+              }
+            },
+            {
+              "finality": "official",
+              "values": {
+                "clicks": 90,
+                "impressions": 4000
+              }
+            }
+          ],
+          "expected": {
+            "result": "partitioned",
+            "partitions": [
+              {
+                "finality": "snapshot",
+                "value": 0.01
+              },
+              {
+                "finality": "official",
+                "value": 0.0225
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "attribution_windows_are_not_comparable",
+      "issue_example": 5,
+      "description": "Values measured over different attribution windows cannot occupy one aggregate.",
+      "cases": [
+        {
+          "id": "same_window",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "conversions_7d_click",
+              "value": 30,
+              "finality": "official"
+            },
+            {
+              "metric": "conversions_7d_click",
+              "value": 12,
+              "finality": "official"
+            }
+          ],
+          "expected": {
+            "result": "aggregated",
+            "value": 42
+          }
+        },
+        {
+          "id": "different_windows",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "conversions_7d_click",
+              "value": 30,
+              "finality": "official"
+            },
+            {
+              "metric": "conversions_28d_click",
+              "value": 55,
+              "finality": "official"
+            }
+          ],
+          "expected": {
+            "result": "refused",
+            "reason": "incompatible_comparability",
+            "differing": [
+              "qualifier"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "legacy_strings_validate_but_are_unsafe",
+      "issue_example": 6,
+      "description": "Legacy aggregation strings and contract_version 1.0 and 1.1 definitions keep validating. Without aggregation_semantics they are unsafe for generic aggregation, as is an opaque metric. The legacy label MUST agree with the semantics when both are present.",
+      "cases": [
+        {
+          "id": "legacy_sum_is_unsafe",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "legacy_clicks",
+              "value": 10,
+              "finality": "official"
+            },
+            {
+              "metric": "legacy_clicks",
+              "value": 20,
+              "finality": "official"
+            }
+          ],
+          "expected": {
+            "result": "refused",
+            "reason": "unsafe_legacy_aggregation"
+          }
+        },
+        {
+          "id": "opaque_is_unsafe",
+          "operation": "combine",
+          "contributions": [
+            {
+              "metric": "quality_score",
+              "value": 0.8,
+              "finality": "official"
+            },
+            {
+              "metric": "quality_score",
+              "value": 0.6,
+              "finality": "official"
+            }
+          ],
+          "expected": {
+            "result": "refused",
+            "reason": "opaque"
+          }
+        },
+        {
+          "id": "legacy_only_definition_1_1_validates",
+          "operation": "validate_definition",
+          "override": {
+            "contract_version": "1.1",
+            "metrics": [
+              {
+                "name": "impressions",
+                "source_expression": "impressions",
+                "aggregation": "sum",
+                "unit": "impressions"
+              }
+            ]
+          },
+          "expected": {
+            "valid": true
+          }
+        },
+        {
+          "id": "legacy_only_metric_in_1_2_validates",
+          "operation": "validate_definition",
+          "override": {
+            "metrics": [
+              {
+                "name": "impressions",
+                "source_expression": "impressions",
+                "aggregation": "sum",
+                "unit": "impressions"
+              }
+            ]
+          },
+          "expected": {
+            "valid": true
+          }
+        },
+        {
+          "id": "semantics_require_contract_version_1_2",
+          "operation": "validate_definition",
+          "override": {
+            "contract_version": "1.1",
+            "metrics": [
+              {
+                "name": "opaque_metric",
+                "source_expression": "x",
+                "aggregation": "custom",
+                "aggregation_semantics": {
+                  "kind": "opaque"
+                }
+              }
+            ]
+          },
+          "expected": {
+            "valid": false
+          }
+        },
+        {
+          "id": "legacy_label_must_match_semantics",
+          "operation": "validate_definition",
+          "override": {
+            "metrics": [
+              {
+                "name": "impressions",
+                "source_expression": "impressions",
+                "aggregation": "average",
+                "aggregation_semantics": {
+                  "kind": "additive",
+                  "comparability": {
+                    "population": "served_ad_events:v1",
+                    "window_basis": "report_period"
+                  }
+                }
+              }
+            ]
+          },
+          "expected": {
+            "valid": false
+          }
+        },
+        {
+          "id": "trailing_window_requires_duration",
+          "operation": "validate_definition",
+          "override": {
+            "metrics": [
+              {
+                "name": "impressions",
+                "source_expression": "impressions",
+                "aggregation": "sum",
+                "aggregation_semantics": {
+                  "kind": "additive",
+                  "comparability": {
+                    "population": "served_ad_events:v1",
+                    "window_basis": "trailing"
+                  }
+                }
+              }
+            ]
+          },
+          "expected": {
+            "valid": false
+          }
+        },
+        {
+          "id": "ratio_requires_zero_denominator_behavior",
+          "operation": "validate_definition",
+          "override": {
+            "metrics": [
+              {
+                "name": "ctr",
+                "source_expression": "clicks / impressions",
+                "aggregation": "ratio",
+                "aggregation_semantics": {
+                  "kind": "recomputable_ratio",
+                  "numerator_metric": "clicks",
+                  "denominator_metric": "impressions"
+                }
+              }
+            ]
+          },
+          "expected": {
+            "valid": false
+          }
+        },
+        {
+          "id": "opaque_accepts_any_legacy_label",
+          "operation": "validate_definition",
+          "override": {
+            "metrics": [
+              {
+                "name": "quality_score",
+                "source_expression": "x",
+                "aggregation": "average",
+                "aggregation_semantics": {
+                  "kind": "opaque"
+                }
+              }
+            ]
+          },
+          "expected": {
+            "valid": true
+          }
+        },
+        {
+          "id": "unique_accepts_count_label",
+          "operation": "validate_definition",
+          "override": {
+            "metrics": [
+              {
+                "name": "reach",
+                "source_expression": "x",
+                "aggregation": "count",
+                "unit": "individuals",
+                "aggregation_semantics": {
+                  "kind": "non_additive_unique",
+                  "unique_unit": "individuals",
+                  "deduplication_identity": "seller_graph:v3",
+                  "comparability": {
+                    "population": "served_ad_events:v1",
+                    "window_basis": "cumulative"
+                  }
+                }
+              }
+            ]
+          },
+          "expected": {
+            "valid": true
+          }
+        },
+        {
+          "id": "additive_requires_unit",
+          "operation": "validate_definition",
+          "override": {
+            "metrics": [
+              {
+                "name": "spend",
+                "source_expression": "spend",
+                "aggregation": "sum",
+                "aggregation_semantics": {
+                  "kind": "additive",
+                  "comparability": {
+                    "population": "billable_spend:v1",
+                    "window_basis": "report_period"
+                  }
+                }
+              }
+            ]
+          },
+          "expected": {
+            "valid": false
+          }
+        }
+      ]
+    }
+  ]
+}

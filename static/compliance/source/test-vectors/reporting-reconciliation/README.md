@@ -49,3 +49,16 @@ The accepted receipt retry uses the same receipt ID, idempotency key, and body.
 The first committed write returns `recorded`; a retry after an uncertain write
 returns the byte-pinned `unchanged` acknowledgement. Rejected receipts carry
 stable rejection codes rather than human-message parsing.
+
+## Aggregation semantics vectors
+
+`aggregation-semantics.json` carries a contract_version 1.2 report definition, two
+union definitions (account-day grain, different `deduplication_identity`), and the
+six executable acceptance examples for metric `aggregation_semantics`: additive
+and comparable counts, recomputed ratios, pinned unique values, the
+snapshot/official partition, attribution windows, and legacy strings. Apply each
+case's `operation` (`combine`, `recompute_ratio`, `aggregate_unique`,
+`validate_definition`) to the shared `report_definition` and compare the complete
+`expected` object, with numbers compared at an absolute tolerance of 1e-9. A case
+with `expected.not_value` additionally asserts that the averaged-row result is
+never produced. The reference evaluator is `tests/reporting-aggregation-semantics.test.cjs`.
