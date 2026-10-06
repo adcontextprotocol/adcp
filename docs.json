@@ -2272,6 +2272,41 @@
       "permanent": false
     },
     {
+      "source": "/3.3",
+      "destination": "/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3",
+      "permanent": false
+    },
+    {
+      "source": "/3.3/try",
+      "destination": "/dist/docs/3.3.0-beta.0/reference/3-3-beta",
+      "permanent": false
+    },
+    {
+      "source": "/3.3/migrate",
+      "destination": "/dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3",
+      "permanent": false
+    },
+    {
+      "source": "/3.3/sdk",
+      "destination": "/dist/docs/3.3.0-beta.0/building/by-layer/L4/choose-your-sdk",
+      "permanent": false
+    },
+    {
+      "source": "/docs/reference/whats-new-in-3-3",
+      "destination": "/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3",
+      "permanent": false
+    },
+    {
+      "source": "/docs/reference/3-3-beta",
+      "destination": "/dist/docs/3.3.0-beta.0/reference/3-3-beta",
+      "permanent": false
+    },
+    {
+      "source": "/docs/reference/migration/3-2-to-3-3",
+      "destination": "/dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3",
+      "permanent": false
+    },
+    {
       "source": "/docs/intro",
       "destination": "/dist/docs/3.2.2/intro",
       "permanent": false
