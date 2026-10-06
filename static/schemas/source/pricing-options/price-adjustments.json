@@ -1,0 +1,172 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/pricing-options/price-adjustments.json",
+  "title": "Price Adjustments",
+  "x-added-in": "3.3.0",
+  "description": "Ordered selection-dependent fee and discount rows on a binding fixed-price option. fixed_price is the base rate, charged when the buyer selects no declared value. A row matches when the buyer's selection includes its value (full-identity match). At most one row fires per dimension — the first match in declared order; firing rows apply in declared order to a running total starting at fixed_price (rate rows apply to the running total, so 10% then 10% is x1.21), rounded half away from zero to the option's price precision after each row, never below zero. Omitted or default selections match no row. The resolved total is the purchase's fixed_price. Changing the table requires a new pricing_option_id. Sellers MUST NOT return a table to callers below adcp_version 3.3; consumers treat an unknown dimension as unpurchasable. Normative rules: docs/media-buy/advanced-topics/pricing-models.mdx#selection-dependent-price-adjustments.",
+  "type": "array",
+  "items": {
+    "oneOf": [
+      {
+        "title": "Format Option Price Adjustment",
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "const": "format_option"
+          },
+          "format_option_ref": {
+            "$ref": "/schemas/core/format-option-ref.json",
+            "description": "Matches when the purchase's format_option_refs includes this reference; MUST resolve to a format option of the same product."
+          },
+          "kind": {
+            "$ref": "#/definitions/kind"
+          },
+          "name": {
+            "$ref": "#/definitions/name"
+          },
+          "rate": {
+            "$ref": "#/definitions/rate"
+          },
+          "amount": {
+            "$ref": "#/definitions/amount"
+          },
+          "description": {
+            "$ref": "#/definitions/description"
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "required": [
+          "dimension",
+          "format_option_ref",
+          "kind",
+          "name"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rate"
+            ]
+          },
+          {
+            "required": [
+              "amount"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      },
+      {
+        "title": "Placement Selection Price Adjustment",
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "const": "placement_selection"
+          },
+          "placement_ref": {
+            "description": "Matches when a mode selected placement_selection includes this placement; MUST resolve to a targetable placement of the same product, which MUST declare overlay_support.placement_selection.",
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "/schemas/core/placement-ref.json"
+                  },
+                  {
+                    "required": [
+                      "publisher_domain"
+                    ]
+                  }
+                ]
+              },
+              {
+                "$ref": "/schemas/core/placement-identity.json"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/definitions/kind"
+          },
+          "name": {
+            "$ref": "#/definitions/name"
+          },
+          "rate": {
+            "$ref": "#/definitions/rate"
+          },
+          "amount": {
+            "$ref": "#/definitions/amount"
+          },
+          "description": {
+            "$ref": "#/definitions/description"
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "required": [
+          "dimension",
+          "placement_ref",
+          "kind",
+          "name"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rate"
+            ]
+          },
+          {
+            "required": [
+              "amount"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "minItems": 1,
+  "maxItems": 20,
+  "definitions": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "fee",
+        "discount"
+      ],
+      "description": "fee raises the running total; discount lowers it."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Name carried into the resolved price_breakdown."
+    },
+    "rate": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "exclusiveMaximum": 1,
+      "description": "Decimal proportion of the running total at this row's position (0.15 for 15%). Mutually exclusive with amount."
+    },
+    "amount": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Fixed amount in the option's currency per pricing unit. Mutually exclusive with rate."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Human-readable explanation."
+    }
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "selector_resolution": "Each row's ref MUST resolve to a value the same product publishes; matching is full-identity equality after resolution.",
+      "resolution": "One row per dimension (first match); firing rows apply in declared order to a running total from fixed_price; round half away from zero to option price precision per row; never negative (reject with INVALID_REQUEST, never clamp).",
+      "resolved_price_binding": "A buyer-supplied pricing that differs from the resolved result MUST be rejected with INVALID_REQUEST; the seller MUST NOT silently reprice.",
+      "snapshot_rederivation": "In accepted purchase pricing, re-resolving the retained table from base_fixed_price over the purchase's selections equals fixed_price."
+    }
+  }
+}

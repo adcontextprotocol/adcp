@@ -722,6 +722,74 @@ The `price_breakdown` field also appears on the package response (confirmed line
 
 ---
 
+## Selection-dependent price adjustments
+
+A fixed-price `cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`, or `flat_rate` option can declare an ordered `price_adjustments` table when its rate depends on values the buyer selects after discovery. `fixed_price` stays the **base rate**: it is what the buyer pays when none of the declared values is selected, and it is already net of any negotiated discount in the option's own `price_breakdown`. Each row names one selectable value, and declares a `fee` or `discount` as exactly one of `rate` or `amount`. This is distinct from `eligible_adjustments` (which kinds of adjustment are possible) and from `price_breakdown` (how a negotiated price was derived): `price_adjustments` is the seller's declared, binding function from selections to price.
+
+```json
+{
+  "pricing_option_id": "cpm_usd_rate_card_v1",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "fixed_price": 20.00,
+  "price_adjustments": [
+    {
+      "dimension": "format_option",
+      "format_option_ref": { "scope": "product", "format_option_id": "video_30s" },
+      "kind": "fee",
+      "name": "video_30s_format",
+      "amount": 2.00
+    },
+    {
+      "dimension": "placement_selection",
+      "placement_ref": { "publisher_domain": "streamhaus.example", "placement_id": "premium_home" },
+      "kind": "fee",
+      "name": "premium_home_placement",
+      "rate": 0.15
+    }
+  ]
+}
+```
+
+A buyer selecting the 30-second video format and the premium home placement pays `20.00 + 2.00 = 22.00`, then `22.00 × 1.15 = 25.30`.
+
+### Eligible dimensions
+
+The first version prices only values that come from a seller-published catalog on the same product, so the seller can enumerate them in advance:
+
+| `dimension` | Row selector | Matches when |
+|---|---|---|
+| `format_option` | `format_option_ref` | The purchase's `format_option_refs` includes the reference. It MUST resolve to a format option the product declares. |
+| `placement_selection` | `placement_ref` | A `mode: "selected"` `placement_selection` includes the placement. It MUST resolve to a targetable placement of the product, and the product MUST declare `overlay_support.placement_selection`. |
+
+Matching is full-identity equality after resolving both sides to the product's declared entry: a legacy placement ref and a placement identity for the same placement match, and the same format option ID under a different `scope` does not. Only values the buyer actually selects match. Omitting the selection, or choosing the product default, matches no row, so the base rate always prices the default. Buyer-owned lists (`property_list`, `collection_list`) are not eligible: a seller cannot enumerate a price for a list the buyer controls. Activation method, measurement vendor, and reporting tier have no selectable anchor yet. None of them can appear in `dimension`: an unknown `dimension` is a schema error, and later minor versions add values as anchors appear.
+
+### Resolution
+
+Sellers and buyers MUST resolve a purchase's price in this order:
+
+1. **One row per dimension.** For each dimension, at most one row fires: the first row, in declared array order, that matches any selected value of that dimension. Later matching rows of the same dimension are inert. A dimension adjusts the price once, not once per selected value. Sellers who want multi-select purchases priced at the highest applicable row list it first.
+2. **Sequential running total.** Firing rows apply in declared array order to a running total that starts at `fixed_price`, using the same formulas as [`price_breakdown`](#invariant). A `rate` row applies to the running total at its position, so a 10% fee followed by a 10% fee multiplies by 1.21, not 1.20; an `amount` row adds or subtracts a fixed amount in the option's currency per pricing unit.
+3. **Rounding.** After every row the running total is rounded half away from zero to the option's **price precision**: the greater of the currency's minor-unit precision and the most decimal places carried by the option's `fixed_price` and row `amount` values. A `cpv` option priced at 0.0125 keeps four decimals, so a 5% fee yields 0.0131 rather than collapsing to 0.01. Implementations MUST use exact decimal or integer arithmetic.
+4. **Never negative.** The total MUST NOT fall below zero. Sellers MUST verify at publication that no permitted selection resolves below zero; a purchase that would is rejected with `INVALID_REQUEST`, never clamped.
+
+The result is the purchase's `fixed_price`. Rows with no selected match never appear in the result.
+
+Two consequences follow from one-row-per-dimension. A multi-select purchase pays the first matching row's rate on all of its volume, so a seller that wants each selected value priced separately sells separate packages or publishes fully resolved per-selection options. And a row that prices a placement already in the product's default set would make choosing it explicitly cost more than the default, so sellers should price only values that add to the default.
+
+### Resolved price and accepted terms
+
+- When `pricing` is omitted from a purchase, the seller computes the resolved price. When the buyer supplies `pricing`, the seller MUST reject any `fixed_price` or `price_breakdown` that differs from the resolved result with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming the pricing field, and SHOULD carry the resolved value in `error.details.resolved_fixed_price`. It MUST NOT silently reprice the request.
+- In the accepted purchase `pricing`, `fixed_price` is the resolved rate and `base_fixed_price` carries the declared option's `fixed_price`. When any row fired, `price_breakdown` is present: its `list_price` is the declared option's (or `base_fixed_price` when none was declared), and its `adjustments` are the declared breakdown's adjustments followed by the rows that fired, in order. `list_price` folded through them equals `fixed_price`, so the invariant above covers selection-dependent pricing unchanged. A verifier can re-resolve the retained table over the purchase's selections from `base_fixed_price` and compare.
+- The complete `price_adjustments` table is retained in the accepted `pricing` and is covered by `commercial_terms.terms_digest`. Unfired rows are part of the frozen commercial snapshot.
+- A change to the table, or to which selections it matches, is a change to binding price and receives a new `pricing_option_id`. After acceptance, a selection change that alters the resolved price requires a new accepted proposal unless the accepted `change_terms[]` explicitly permit it ([DR-0016](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0016-proposal-bound-buyer-change-rights.md)): an unpermitted change returns `ACTION_NOT_ALLOWED`, and a change that exceeds the accepted commercial envelope returns `REQUOTE_REQUIRED`.
+
+A seller MUST NOT return an option carrying `price_adjustments` to a caller whose `adcp_version` is below 3.3, because an older buyer would read `fixed_price` as the whole price and be repriced at create; for those callers it publishes fully resolved per-selection options or omits the option. A consumer that does not recognize a row's `dimension` treats the option as unpurchasable. Auction floors (`floor_price`) do not take adjustments, and `price_adjustments` requires `fixed_price`. Availability and forecasts stay seller-computed: the price resolves locally but feasibility does not.
+
+Rather than a table, a seller can instead publish a fully resolved pricing option per selection combination, or split the inventory into separately priced products. Both remain valid; `price_adjustments` is for sellers whose dimensions are orthogonal enough that a combination catalog would explode.
+
+---
+
 ## Eligible Adjustments
 
 Publishers can declare which adjustment kinds apply to a pricing option using `eligible_adjustments`. This tells buyer agents upfront whether discounts, commissions, or settlement terms are available — before any negotiation begins.

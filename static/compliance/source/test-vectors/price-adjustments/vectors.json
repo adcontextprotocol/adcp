@@ -1,0 +1,697 @@
+{
+  "description": "Deterministic resolution vectors for selection-dependent price_adjustments on binding fixed-price pricing options. Each resolution case names a declared option and the buyer's concrete selections (format_option_refs and placement refs, as they appear on the purchase), and asserts the resolved fixed_price and the ordered rows that fire. Rules under test: matching is full-identity equality across encodings; per dimension at most one row fires (the first matching row in declared order); firing rows apply in declared array order to a running total that starts at the option's fixed_price; rate rows apply to the running total at that position; after each row the total is rounded half away from zero to the option's price precision (the greater of the currency minor-unit precision and the most decimal places among fixed_price and row amounts) and never falls below zero. Arithmetic MUST be exact decimal or integer; binary floating point fails the rounding vectors.",
+  "currency_minor_unit_exponent": {
+    "USD": 2,
+    "JPY": 0
+  },
+  "options": {
+    "cpm_rate_card": {
+      "pricing_option_id": "cpm_usd_rate_card_v1",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 20.0,
+      "price_adjustments": [
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "fee",
+          "name": "video_30s_format",
+          "amount": 2.0
+        },
+        {
+          "dimension": "placement_selection",
+          "placement_ref": {
+            "publisher_domain": "streamhaus.example",
+            "placement_id": "premium_home"
+          },
+          "kind": "fee",
+          "name": "premium_home_placement",
+          "rate": 0.15
+        },
+        {
+          "dimension": "placement_selection",
+          "placement_ref": {
+            "publisher_domain": "streamhaus.example",
+            "placement_id": "premium_sports"
+          },
+          "kind": "fee",
+          "name": "premium_sports_placement",
+          "rate": 0.1
+        }
+      ]
+    },
+    "cpm_placement_first": {
+      "pricing_option_id": "cpm_usd_rate_card_v2",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 20.0,
+      "price_adjustments": [
+        {
+          "dimension": "placement_selection",
+          "placement_ref": {
+            "publisher_domain": "streamhaus.example",
+            "placement_id": "premium_home"
+          },
+          "kind": "fee",
+          "name": "premium_home_placement",
+          "rate": 0.15
+        },
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "fee",
+          "name": "video_30s_format",
+          "amount": 2.0
+        }
+      ]
+    },
+    "cpm_two_dimension_rates": {
+      "pricing_option_id": "cpm_usd_two_rates",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 10.0,
+      "price_adjustments": [
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "fee",
+          "name": "video_30s_format",
+          "rate": 0.1
+        },
+        {
+          "dimension": "placement_selection",
+          "placement_ref": {
+            "publisher_domain": "streamhaus.example",
+            "placement_id": "premium_home"
+          },
+          "kind": "fee",
+          "name": "premium_home_placement",
+          "rate": 0.1
+        }
+      ]
+    },
+    "cpm_rounding": {
+      "pricing_option_id": "cpm_usd_rounding",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 1.15,
+      "price_adjustments": [
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "fee",
+          "name": "video_30s_format",
+          "rate": 0.1
+        }
+      ]
+    },
+    "cpm_deep_discount": {
+      "pricing_option_id": "cpm_usd_deep_discount",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 1.0,
+      "price_adjustments": [
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "discount",
+          "name": "launch_credit",
+          "amount": 2.0
+        }
+      ]
+    },
+    "cpm_declared_breakdown": {
+      "pricing_option_id": "cpm_usd_negotiated_v1",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 20.0,
+      "price_breakdown": {
+        "list_price": 25.0,
+        "adjustments": [
+          {
+            "kind": "discount",
+            "name": "volume",
+            "rate": 0.2
+          }
+        ]
+      },
+      "price_adjustments": [
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "fee",
+          "name": "video_30s_format",
+          "amount": 2.0
+        }
+      ]
+    },
+    "cpm_publisher_format": {
+      "pricing_option_id": "cpm_usd_publisher_format",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 10.0,
+      "price_adjustments": [
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "publisher",
+            "publisher_domain": "streamhaus.example",
+            "format_option_id": "video_30s"
+          },
+          "kind": "fee",
+          "name": "publisher_video_30s",
+          "amount": 1.0
+        },
+        {
+          "dimension": "placement_selection",
+          "placement_ref": {
+            "publisher_domain": "streamhaus.example",
+            "placement_id": "premium_home"
+          },
+          "kind": "fee",
+          "name": "premium_home_placement",
+          "amount": 0.5
+        }
+      ]
+    },
+    "cpv_sub_cent": {
+      "pricing_option_id": "cpv_usd_sub_cent",
+      "pricing_model": "cpv",
+      "currency": "USD",
+      "fixed_price": 0.0125,
+      "parameters": {
+        "view_threshold": 0.5
+      },
+      "price_adjustments": [
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "fee",
+          "name": "video_30s_format",
+          "rate": 0.05
+        }
+      ]
+    },
+    "cpm_jpy": {
+      "pricing_option_id": "cpm_jpy_rate_card",
+      "pricing_model": "cpm",
+      "currency": "JPY",
+      "fixed_price": 150,
+      "price_adjustments": [
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "fee",
+          "name": "video_30s_format",
+          "rate": 0.15
+        }
+      ]
+    }
+  },
+  "resolution_cases": [
+    {
+      "id": "one_adjustment",
+      "option": "cpm_rate_card",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 22.0,
+        "applied": [
+          "video_30s_format"
+        ]
+      }
+    },
+    {
+      "id": "ordered_adjustments_amount_then_rate",
+      "option": "cpm_rate_card",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "selected",
+          "placement_refs": [
+            {
+              "publisher_domain": "streamhaus.example",
+              "placement_id": "premium_home"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "fixed_price": 25.3,
+        "applied": [
+          "video_30s_format",
+          "premium_home_placement"
+        ]
+      }
+    },
+    {
+      "id": "declared_order_is_application_order",
+      "option": "cpm_placement_first",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "selected",
+          "placement_refs": [
+            {
+              "publisher_domain": "streamhaus.example",
+              "placement_id": "premium_home"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "fixed_price": 25.0,
+        "applied": [
+          "premium_home_placement",
+          "video_30s_format"
+        ]
+      }
+    },
+    {
+      "id": "unmatched_selection_pays_base_rate",
+      "option": "cpm_rate_card",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "display_300x250"
+          }
+        ],
+        "placement_selection": {
+          "mode": "selected",
+          "placement_refs": [
+            {
+              "publisher_domain": "streamhaus.example",
+              "placement_id": "run_of_site"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "fixed_price": 20.0,
+        "applied": []
+      }
+    },
+    {
+      "id": "default_selection_matches_no_row",
+      "option": "cpm_rate_card",
+      "selection": {
+        "format_option_refs": [],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 20.0,
+        "applied": []
+      }
+    },
+    {
+      "id": "multi_value_dimension_fires_first_matching_row_once",
+      "option": "cpm_rate_card",
+      "selection": {
+        "format_option_refs": [],
+        "placement_selection": {
+          "mode": "selected",
+          "placement_refs": [
+            {
+              "publisher_domain": "streamhaus.example",
+              "placement_id": "premium_sports"
+            },
+            {
+              "publisher_domain": "streamhaus.example",
+              "placement_id": "premium_home"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "fixed_price": 23.0,
+        "applied": [
+          "premium_home_placement"
+        ]
+      }
+    },
+    {
+      "id": "rates_across_dimensions_compound",
+      "option": "cpm_two_dimension_rates",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "selected",
+          "placement_refs": [
+            {
+              "publisher_domain": "streamhaus.example",
+              "placement_id": "premium_home"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "fixed_price": 12.1,
+        "applied": [
+          "video_30s_format",
+          "premium_home_placement"
+        ]
+      }
+    },
+    {
+      "id": "rounds_half_away_from_zero_per_step",
+      "option": "cpm_rounding",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 1.27,
+        "applied": [
+          "video_30s_format"
+        ]
+      }
+    },
+    {
+      "id": "surcharge_applies_to_net_of_declared_breakdown",
+      "option": "cpm_declared_breakdown",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 22.0,
+        "applied": [
+          "video_30s_format"
+        ]
+      }
+    },
+    {
+      "id": "sub_cent_unit_price_keeps_option_precision",
+      "option": "cpv_sub_cent",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 0.0131,
+        "applied": [
+          "video_30s_format"
+        ]
+      }
+    },
+    {
+      "id": "zero_exponent_currency_rounds_to_whole_units",
+      "option": "cpm_jpy",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 173,
+        "applied": [
+          "video_30s_format"
+        ]
+      }
+    },
+    {
+      "id": "legacy_and_identity_placement_encodings_match",
+      "option": "cpm_publisher_format",
+      "selection": {
+        "format_option_refs": [],
+        "placement_selection": {
+          "mode": "selected",
+          "placement_refs": [
+            {
+              "kind": "publisher_ref",
+              "publisher_domain": "streamhaus.example",
+              "placement_id": "premium_home"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "fixed_price": 10.5,
+        "applied": [
+          "premium_home_placement"
+        ]
+      }
+    },
+    {
+      "id": "same_format_id_under_different_scope_does_not_match",
+      "option": "cpm_publisher_format",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 10.0,
+        "applied": []
+      }
+    },
+    {
+      "id": "publisher_scoped_format_matches_publisher_scoped_row",
+      "option": "cpm_publisher_format",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "publisher",
+            "publisher_domain": "streamhaus.example",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 11.0,
+        "applied": [
+          "publisher_video_30s"
+        ]
+      }
+    }
+  ],
+  "invalid_resolution_cases": [
+    {
+      "id": "discount_below_zero",
+      "option": "cpm_deep_discount",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect_error": "below_zero",
+      "expect_outcome": "INVALID_REQUEST"
+    }
+  ],
+  "buyer_supplied_pricing_cases": [
+    {
+      "id": "matching_buyer_pricing_accepted",
+      "option": "cpm_rate_card",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "supplied_fixed_price": 22.0,
+      "expect": "accepted"
+    },
+    {
+      "id": "base_rate_supplied_for_priced_selection_rejected",
+      "option": "cpm_rate_card",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "supplied_fixed_price": 20.0,
+      "expect": "INVALID_REQUEST",
+      "error_field": "pricing.fixed_price",
+      "resolved_fixed_price": 22.0
+    }
+  ],
+  "identity_cases": [
+    {
+      "id": "changed_table_requires_new_pricing_option_id",
+      "previous": "cpm_rate_card",
+      "current": "cpm_placement_first",
+      "expect": "distinct_pricing_option_ids"
+    }
+  ],
+  "schema_negative_cases": [
+    {
+      "id": "rate_and_amount_together",
+      "mutate": {
+        "price_adjustments": [
+          {
+            "dimension": "format_option",
+            "format_option_ref": {
+              "scope": "product",
+              "format_option_id": "video_30s"
+            },
+            "kind": "fee",
+            "name": "both",
+            "rate": 0.1,
+            "amount": 1.0
+          }
+        ]
+      },
+      "applies_to": "both"
+    },
+    {
+      "id": "commission_kind_not_selection_dependent",
+      "mutate": {
+        "price_adjustments": [
+          {
+            "dimension": "format_option",
+            "format_option_ref": {
+              "scope": "product",
+              "format_option_id": "video_30s"
+            },
+            "kind": "commission",
+            "name": "agency",
+            "rate": 0.1
+          }
+        ]
+      },
+      "applies_to": "both"
+    },
+    {
+      "id": "property_list_dimension_not_priceable_in_v1",
+      "mutate": {
+        "price_adjustments": [
+          {
+            "dimension": "property_list",
+            "kind": "fee",
+            "name": "premium_properties",
+            "rate": 0.1
+          }
+        ]
+      },
+      "applies_to": "both"
+    },
+    {
+      "id": "adjustments_require_fixed_price",
+      "mutate": {
+        "fixed_price": null,
+        "floor_price": 5.0
+      },
+      "applies_to": "both"
+    },
+    {
+      "id": "price_adjustments_on_cpa_not_defined",
+      "applies_to": "canonical",
+      "mutate": {
+        "pricing_model": "cpa",
+        "event_type": "purchase"
+      }
+    },
+    {
+      "id": "base_fixed_price_without_table",
+      "applies_to": "canonical",
+      "mutate": {
+        "price_adjustments": null,
+        "base_fixed_price": 20.0
+      }
+    }
+  ]
+}

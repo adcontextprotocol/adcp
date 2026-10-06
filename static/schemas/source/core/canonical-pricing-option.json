@@ -16,6 +16,17 @@
     "price_guidance": { "$ref": "/schemas/pricing-options/price-guidance.json" },
     "min_spend_per_package": { "type": "number", "minimum": 0 },
     "price_breakdown": { "$ref": "/schemas/pricing-options/price-breakdown.json" },
+    "price_adjustments": {
+      "$ref": "/schemas/pricing-options/price-adjustments.json",
+      "x-added-in": "3.3.0",
+      "description": "The selected option's complete adjustment table, retained verbatim and covered by terms_digest. On an offer, fixed_price is the base rate. In accepted purchase pricing, fixed_price is the resolved rate, base_fixed_price the declared rate, and price_breakdown the declared adjustments followed by the rows that fired."
+    },
+    "base_fixed_price": {
+      "type": "number",
+      "minimum": 0,
+      "x-added-in": "3.3.0",
+      "description": "The declared fixed_price before any price_adjustments row fired; present in accepted purchase pricing that carries price_adjustments so the resolved fixed_price is re-derivable."
+    },
     "eligible_adjustments": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/adjustment-kind.json" },
@@ -31,6 +42,11 @@
   "required": ["pricing_option_id", "pricing_model", "currency"],
   "allOf": [
     { "not": { "required": ["fixed_price", "floor_price"] } },
+    {
+      "description": "price_adjustments is defined for per-unit and flat fixed prices only; cpa, cpp, time, and revenue_share options do not carry it.",
+      "if": { "required": ["price_adjustments"] },
+      "then": { "properties": { "pricing_model": { "enum": ["cpm", "vcpm", "cpc", "cpcv", "cpv", "flat_rate"] } } }
+    },
     {
       "if": { "properties": { "pricing_model": { "const": "cpa" } }, "required": ["pricing_model"] },
       "then": { "required": ["event_type", "fixed_price"] }
@@ -48,5 +64,6 @@
       "then": { "required": ["custom_event_name"] }
     }
   ],
+  "dependencies": { "price_adjustments": ["fixed_price"], "base_fixed_price": ["price_adjustments"] },
   "additionalProperties": false
 }
