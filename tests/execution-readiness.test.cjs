@@ -477,10 +477,7 @@ test("the request flag is optional, boolean, and experimental", async () => {
 });
 
 test("schema examples validate against their own schemas", async () => {
-  for (const uri of [
-    "/schemas/core/execution-requirement-readiness.json",
-    "/schemas/core/product-execution-readiness.json",
-  ]) {
+  for (const uri of ["/schemas/core/execution-requirement-readiness.json"]) {
     const validate = await compileSchema(uri);
     const schema = await loadSchema(uri);
     assert.ok(schema.examples.length > 0, `${uri} should carry examples`);

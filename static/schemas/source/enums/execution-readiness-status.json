@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/execution-readiness-status.json",
   "title": "Execution Readiness Status",
-  "description": "Experimental (`media_buy.execution_readiness`). Whether the caller's account can satisfy one execution requirement of a product, and the product-level rollup. `unknown` means the seller could not check; it is never evidence that the account lacks the resource and never a reason to treat the product as not runnable.",
+  "description": "Experimental (`media_buy.execution_readiness`). Whether the account can satisfy one execution requirement of a product, and the product rollup. `unknown` means the seller could not check: never evidence the account lacks the resource, never a reason to treat the product as not runnable.",
   "type": "string",
   "enum": [
     "ready",
@@ -12,10 +12,10 @@
     "unknown"
   ],
   "enumDescriptions": {
-    "ready": "The account has exactly one suitable resource (for a connection, the one the seller would use is connected). Nothing more to set up or choose. Does not waive binding: for `event_source` and `catalog` the buyer still passes `resolved.resource_id` in the binding field.",
-    "setup_required": "The account has no suitable resource, or the connection is not usable (`missing`, `pending`, `expired`, `revoked`). The buyer can fix it, for example with `sync_event_sources`, `sync_catalogs`, or the connection's `authorization_url`.",
-    "selection_required": "The account has several suitable resources and the buyer must choose one and bind it. `candidates[]` lists them.",
-    "input_required": "The seller cannot discover a suitable resource from the account and the buyer must supply one on the request, for example an inline catalog.",
-    "unknown": "The seller could not read the account's resources (permission or platform error, or outside its evaluation budget). Distinct from `setup_required`; the product may be runnable. `unknown_reason` says whether to fix a grant, retry, or refetch."
+    "ready": "One suitable resource (for a connection, it is connected). Does not waive binding: for `event_source` and `catalog` the buyer still binds `resolved.resource_id`.",
+    "setup_required": "No suitable resource, or the connection is `missing`, `pending`, `expired`, or `revoked`. The buyer can fix it (`sync_event_sources`, `sync_catalogs`, `authorization_url`).",
+    "selection_required": "Several suitable resources; the buyer chooses one from `candidates[]` and binds it.",
+    "input_required": "The seller cannot discover a suitable resource; the buyer supplies one on the request, such as an inline catalog.",
+    "unknown": "The seller could not read the account's resources. Distinct from `setup_required`; the product may be runnable. `unknown_reason` says what to do."
   }
 }

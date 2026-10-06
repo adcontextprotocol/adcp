@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-execution-readiness.json",
   "title": "Product Execution Readiness",
-  "description": "Experimental (`media_buy.execution_readiness`). Whether the caller's account can satisfy a product's `execution_requirements[]`, one entry per requirement plus a rollup. Account-scoped; carried only in the response-level `execution_readiness` map of `get_products`. Annotate, never filter: a product whose status is not `ready`, including `unknown`, is still a product the buyer may be able to run.",
+  "description": "Experimental (`media_buy.execution_readiness`). Whether the caller's account can satisfy a product's `execution_requirements[]`: one entry per requirement plus a rollup. Carried only in the `get_products` `execution_readiness` map. Annotate, never filter: a product that is not `ready`, including `unknown`, may still be runnable.",
   "type": "object",
   "properties": {
     "status": {
@@ -11,7 +11,7 @@
     },
     "requirements": {
       "type": "array",
-      "description": "Readiness of each entry in the product's `execution_requirements[]`, in any order. Every declared entry MUST appear once; a seller that did not evaluate one reports it `unknown` with `unknown_reason: not_evaluated`.",
+      "description": "Readiness of each declared `execution_requirements[]` entry, once each. A seller that did not evaluate one reports it `unknown` with `unknown_reason: not_evaluated`.",
       "items": {
         "$ref": "/schemas/core/execution-requirement-readiness.json"
       },
@@ -22,39 +22,5 @@
     }
   },
   "required": ["status", "requirements"],
-  "additionalProperties": true,
-  "examples": [
-    {
-      "status": "setup_required",
-      "requirements": [
-        {
-          "requirement": { "kind": "catalog", "catalog_types": ["app"] },
-          "status": "ready",
-          "binding_field": "packages[].catalogs[]",
-          "resolved": {
-            "resource_id": "cat_app_1",
-            "name": "Acme app"
-          }
-        },
-        {
-          "requirement": {
-            "kind": "downstream_connection",
-            "connection": {
-              "connection_type": "publisher_identity",
-              "scope": "identity",
-              "required_for": ["create_media_buy"]
-            }
-          },
-          "status": "setup_required",
-          "connection_state": {
-            "connection_type": "publisher_identity",
-            "provider": "social.example",
-            "scope": "identity",
-            "status": "missing",
-            "authorization_url": "https://social.example/connect/identity"
-          }
-        }
-      ]
-    }
-  ]
+  "additionalProperties": true
 }

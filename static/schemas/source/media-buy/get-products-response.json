@@ -389,12 +389,12 @@
       "type": "object",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (`media_buy.execution_readiness`). Whether the request's `account` can satisfy the `execution_requirements[]` of the products on this response, keyed by `product_id`. Present only when the request set `include_execution_readiness: true` and carried an `account` the caller is authorized for; sellers MUST otherwise omit it. Advisory: `create_media_buy` still revalidates. **Not part of the cache layer.** The map describes the account's resources, not the catalogue: it does not change `cache_scope`, `wholesale_feed_version`, or `pricing_version`, and a public wholesale catalogue stays `cache_scope: 'public'` when it is present. Buyers MUST NOT dedupe or cache it under the public key and MUST key it by (account, `version`). Sellers MUST NOT put it in wholesale feed webhooks. Sellers MUST omit it on `unchanged: true` responses, which carry no products; refreshing readiness means refetching the page, and conditional fetch of the map is not specified. Covers only the products on this response; the rest of a paginated feed is not evaluated, so buyers merge pages by `product_id`. A seller MAY report products beyond its evaluation budget as `unknown` with `unknown_reason: not_evaluated`.",
+      "description": "Experimental (`media_buy.execution_readiness`). Whether the request's `account` can satisfy the `execution_requirements[]` of the products on this response, keyed by `product_id`. Present only when the request set `include_execution_readiness: true` and carried an authorized `account`. Advisory: `create_media_buy` revalidates. Not part of the cache layer: it does not change `cache_scope`, `wholesale_feed_version`, or `pricing_version`, buyers key it by (account, `version`) and MUST NOT cache it under the public key, sellers MUST NOT put it in wholesale feed webhooks and MUST omit it on `unchanged: true` responses. Covers only this response's products; merge pages by `product_id`. See the media-buy specification, 'Per-account execution readiness'.",
       "properties": {
         "version": {
           "type": "string",
           "minLength": 1,
-          "description": "Opaque token for the state of this account's readiness, independent of `wholesale_feed_version` and `pricing_version`. Changes when any reported readiness changes. Buyers MUST treat it as opaque and MAY compare it for equality only. It identifies the account's readiness state, not the page: equal versions MUST imply identical entries for any product present in both responses."
+          "description": "Opaque token for the account's readiness state, independent of `wholesale_feed_version` and `pricing_version`. Compare for equality only. Equal versions MUST imply identical entries for any product present in both responses."
         },
         "evaluated_at": {
           "type": "string",
@@ -403,7 +403,7 @@
         },
         "products": {
           "type": "object",
-          "description": "Readiness keyed by `product_id`, for products that declare `execution_requirements` and appear on this response. A product that declares none has no entry; a missing entry means not evaluated, not ready.",
+          "description": "Readiness keyed by `product_id`, for returned products that declare `execution_requirements`. A missing entry means not evaluated, not ready.",
           "propertyNames": {
             "minLength": 1
           },
@@ -415,7 +415,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["version", "products"],
+      "required": [
+        "version",
+        "products"
+      ],
       "additionalProperties": true
     },
     "cache_scope": {
