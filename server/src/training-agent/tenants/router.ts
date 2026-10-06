@@ -46,6 +46,7 @@ import {
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
+import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } from '../seller-optimized-budget.js';
 import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { runWithReleaseLineEcho } from './release-line-echo.js';
@@ -1174,6 +1175,9 @@ function projectTenantCapabilities(
           ...(storyboardCompat?.version !== '3.0' && supportsBiddingPolicyCapability(servedVersion) && {
             bidding_policy: structuredClone(TRAINING_BIDDING_POLICY_CAPABILITY),
           }),
+          // Shared seller-optimized budgets: only the controls create/update
+          // enforce (undeclared ones answer UNSUPPORTED_FEATURE).
+          ...(storyboardCompat?.version !== '3.0' && sellerOptimizedFeatureFlags(sellerOptimizedDeclarationForVersion(servedVersion))),
         },
         ...(supportsGetProductsRejected(servedVersion) && {
           audience_targeting: {

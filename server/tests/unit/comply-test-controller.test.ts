@@ -1992,6 +1992,8 @@ describe('comply_test_controller', () => {
       });
 
       const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+        // Seller-optimized budgets are declared on the 3.2 line, not the 3.0 default.
+        adcp_version: '3.2',
         account: ACCOUNT,
         brand: BRAND,
         media_buy_id: 'seller_optimized_cap_buy',
@@ -2008,6 +2010,7 @@ describe('comply_test_controller', () => {
       const packageId = ((created as any).packages as Array<{ package_id: string }>)[0].package_id;
 
       const { result: updated } = await simulateCallTool(server, 'update_media_buy', {
+        adcp_version: '3.2',
         account: ACCOUNT,
         brand: BRAND,
         media_buy_id: 'seller_optimized_cap_buy',
