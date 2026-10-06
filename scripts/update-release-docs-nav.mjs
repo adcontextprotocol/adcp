@@ -34,6 +34,8 @@ const LATEST_TAG = 'Latest';
 const PRERELEASE_BANNER_VERSION_RE = /AdCP (\d+)\.(\d+) ([0-9A-Za-z]+)\.\d+/g;
 const OFFICIAL_PRERELEASE_RELEASE_URL_RE = /https:\/\/github\.com\/adcontextprotocol\/adcp\/releases\/tag\/v\d+\.\d+\.\d+-(?:beta|rc)\.\d+/g;
 const VERSION_LINE_RE = /^(\d+\.\d+)/;
+const CLI_RELEASE_VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+\.\d+)?$/;
+const CLI_DOCS_LABEL_RE = /^\d+\.\d+(?:-[0-9A-Za-z]+)?$/;
 // Pages that only one line's story links to. They are rewritten with that
 // line's story aliases but are not derivable from the line number.
 const RELEASE_STORY_EXTRA_ALIASES = new Map([
@@ -257,11 +259,13 @@ function releaseStoryPages(line) {
       after: previous
         ? [`reference/${lineSlug(previous)}-beta`, `reference/whats-new-in-${lineSlug(previous)}`]
         : [],
+      siblings: /\/reference\/whats-new-in-/,
     },
-    { page: `reference/${slug}-beta`, after: [overview] },
+    { page: `reference/${slug}-beta`, after: [overview], siblings: /\/reference\/whats-new-in-/ },
     ...(migration
       ? [{
           page: migration,
+          siblings: /\/reference\/migration\//,
           after: [
             ...(beforePrevious
               ? [`reference/migration/${lineSlug(beforePrevious)}-to-${lineSlug(previous)}`]
@@ -296,25 +300,70 @@ function insertAfterPage(node, anchorSuffix, page) {
  * story pages next to their predecessors so they are reachable and indexed,
  * and report any that the snapshot does not contain.
  */
+function appendToGroupWith(node, siblingPattern, page) {
+  if (Array.isArray(node)) {
+    if (node.some((item) => typeof item === 'string' && siblingPattern.test(item))) {
+      node.push(page);
+      return true;
+    }
+    return node.some((item) => appendToGroupWith(item, siblingPattern, page));
+  }
+  if (node && typeof node === 'object') {
+    return appendToGroupWith(node.pages, siblingPattern, page);
+  }
+  return false;
+}
+
 function addReleaseStoryPages(groups, releaseVersion, line, snapshotHasPage) {
   const present = new Set(collectStrings(groups));
   const added = [];
-  const missing = [];
-  for (const { page, after } of releaseStoryPages(line)) {
+  const notInSnapshot = [];
+  const noInsertionPoint = [];
+  for (const { page, after, siblings } of releaseStoryPages(line)) {
     const snapshotPage = `dist/docs/${releaseVersion}/${page}`;
     if (present.has(snapshotPage)) continue;
     if (!snapshotHasPage(snapshotPage)) {
-      missing.push(page);
+      notInSnapshot.push(page);
       continue;
     }
-    if (after.some((anchor) => insertAfterPage(groups, anchor, snapshotPage))) {
+    if (
+      after.some((anchor) => insertAfterPage(groups, anchor, snapshotPage)) ||
+      appendToGroupWith(groups, siblings, snapshotPage)
+    ) {
       present.add(snapshotPage);
       added.push(page);
     } else {
-      missing.push(page);
+      noInsertionPoint.push(page);
     }
   }
-  return { added, missing };
+  return { added, notInSnapshot, noInsertionPoint };
+}
+
+function storyPageWarnings({ notInSnapshot, noInsertionPoint }, line, label) {
+  const warnings = [];
+  if (notInSnapshot.length > 0) {
+    warnings.push(
+      `${line} release story pages are not in the ${label} snapshot: ${notInSnapshot.join(', ')}. ` +
+      'Publish them in docs/ before cutting the release.'
+    );
+  }
+  if (noInsertionPoint.length > 0) {
+    warnings.push(
+      `${line} release story pages are in the ${label} snapshot but have no place in its navigation: ` +
+      `${noInsertionPoint.join(', ')}. Add them to docs.json by hand.`
+    );
+  }
+  return warnings;
+}
+
+// The banner must resolve to the line's story: a /X.Y alias, the overview or
+// beta page, or the line's GitHub release (what the docs-nav test accepts).
+function bannerLinksLineStory(content, line) {
+  const slug = lineSlug(line);
+  const escaped = line.replace('.', '\\.');
+  return new RegExp(
+    `\\(/${escaped}(?![0-9.])|/reference/(?:whats-new-in-${slug}|${slug}-beta)\\b|/releases/tag/v${escaped}\\.`
+  ).test(String(content ?? ''));
 }
 
 function snapshotPageExists(page) {
@@ -469,7 +518,7 @@ function shouldPromoteStableLine(versions, releaseVersion, majorMinor) {
   return true;
 }
 
-function promoteStableLine(config, releaseVersion, majorMinor) {
+function promoteStableLine(config, releaseVersion, majorMinor, snapshotHasPage) {
   const versions = config.navigation.versions;
   const previousDefaultIndex = versions.findIndex((entry) => entry.default);
   const previousDefault = versions[previousDefaultIndex >= 0 ? previousDefaultIndex : 0];
@@ -503,6 +552,18 @@ function promoteStableLine(config, releaseVersion, majorMinor) {
     mapStrings(sourceGroups, (value) => snapshotPath(releaseVersion, value)),
     releaseVersion
   );
+  const warnings = [];
+  if (sourceEntry === previousDefault) {
+    // A GA with no preview of its own is cloned from the old default, which
+    // lacks this line's story pages.
+    const story = addReleaseStoryPages(
+      promotedGroups,
+      releaseVersion,
+      majorMinor,
+      snapshotHasPage
+    );
+    warnings.push(...storyPageWarnings(story, majorMinor, majorMinor));
+  }
   const promoted = {
     version: majorMinor,
     tag: LATEST_TAG,
@@ -536,6 +597,7 @@ function promoteStableLine(config, releaseVersion, majorMinor) {
   return {
     config,
     action: 'promoted',
+    warnings,
     sourceVersion: sourceEntry.version,
     previousDefault: previousDefault.version,
     retired: sameLinePrereleases.map((entry) => entry.version),
@@ -554,7 +616,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor, options = {
   }
 
   if (shouldPromoteStableLine(versions, releaseVersion, majorMinor)) {
-    return promoteStableLine(config, releaseVersion, majorMinor);
+    return promoteStableLine(config, releaseVersion, majorMinor, snapshotHasPage);
   }
 
   const existingIndex = versions.findIndex((entry) => entry.version === majorMinor);
@@ -612,31 +674,23 @@ export function updateDocsConfig(config, releaseVersion, majorMinor, options = {
     delete versions[sameLineIndex].tag;
   }
   const warnings = [];
-  if (sameLineIndex < 0 && PRERELEASE_DOCS_LABEL_RE.test(majorMinor)) {
-    // First preview of a line cloned from another line's navigation.
-    const { added, missing } = addReleaseStoryPages(
+  const firstPreviewOfLine =
+    sameLineIndex < 0 && PRERELEASE_DOCS_LABEL_RE.test(majorMinor);
+  if (firstPreviewOfLine) {
+    // Cloned from another line's navigation, which lacks this line's story.
+    const story = addReleaseStoryPages(
       newEntry.groups,
       releaseVersion,
       targetLine,
       snapshotHasPage
     );
-    if (missing.length > 0) {
-      warnings.push(
-        `${targetLine} release story pages are not in ${majorMinor} navigation: ` +
-        `${missing.join(', ')}. Publish them in docs/ before cutting the beta.`
-      );
-    }
-    result.storyPagesAdded = added;
+    warnings.push(...storyPageWarnings(story, targetLine, majorMinor));
+    result.storyPagesAdded = story.added;
   }
   const insertionIndex = sameLineIndex >= 0 ? sameLineIndex : sourceIndex + 1;
   versions.splice(insertionIndex, 0, newEntry);
-  const bannerRetargeted = updatePrereleaseBanner(config, releaseVersion, majorMinor);
-  if (
-    sameLineIndex < 0 &&
-    PRERELEASE_DOCS_LABEL_RE.test(majorMinor) &&
-    !bannerRetargeted &&
-    !String(config.banner?.content ?? '').includes(`/${targetLine}`)
-  ) {
+  updatePrereleaseBanner(config, releaseVersion, majorMinor);
+  if (firstPreviewOfLine && !bannerLinksLineStory(config.banner?.content, targetLine)) {
     warnings.push(
       `banner does not link to the ${targetLine} release story. Point it at /${targetLine} ` +
       'in the beta.0 Version Packages PR; the docs-nav test rejects a banner that ' +
@@ -714,6 +768,16 @@ function main() {
   if (!releaseVersion || !majorMinor) {
     console.error(
       'Usage: update-release-docs-nav.mjs <release-version> <major-minor> [docs.json] [.dockerignore] [schema-tools.ts] [llms-current.md]'
+    );
+    process.exit(2);
+  }
+
+  // The release tag or dispatch input reaches file paths and string
+  // replacement here, so accept only release-shaped values.
+  if (!CLI_RELEASE_VERSION_RE.test(releaseVersion) || !CLI_DOCS_LABEL_RE.test(majorMinor)) {
+    console.error(
+      `Invalid release version "${releaseVersion}" or docs label "${majorMinor}"; ` +
+      'expected X.Y.Z[-tag.N] and X.Y[-tag]'
     );
     process.exit(2);
   }

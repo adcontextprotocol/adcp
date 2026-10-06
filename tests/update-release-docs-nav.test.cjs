@@ -858,7 +858,7 @@ function versionEntry(version, build, extra = {}) {
 
   // --- Release story for any minor line (3.3 beta on top of the 3.2 default) ---
 
-  function storyFixture({ default32 = '3.2.2' } = {}) {
+  function storyFixture({ default32 = '3.2.2', seed33 = '3.3.0-beta.0' } = {}) {
     const pages = (build, paths) => paths.map((page) => `dist/docs/${build}/${page}`);
     return {
       banner: {
@@ -908,13 +908,13 @@ function versionEntry(version, build, extra = {}) {
         { source: '/docs/media-buy/product-discovery/proposal-negotiation', destination: `/dist/docs/${default32}/media-buy/product-discovery/proposal-negotiation`, permanent: false },
         { source: '/docs/reference/whats-new-in-3-1', destination: `/dist/docs/${default32}/reference/whats-new-in-3-1`, permanent: false },
         { source: '/docs/reference/migration/3-0-to-3-1', destination: `/dist/docs/${default32}/reference/migration/3-0-to-3-1`, permanent: false },
-        { source: '/3.3', destination: '/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3', permanent: false },
-        { source: '/3.3/try', destination: '/dist/docs/3.3.0-beta.0/reference/3-3-beta', permanent: false },
-        { source: '/3.3/migrate', destination: '/dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3', permanent: false },
-        { source: '/3.3/sdk', destination: '/dist/docs/3.3.0-beta.0/building/by-layer/L4/choose-your-sdk', permanent: false },
-        { source: '/docs/reference/whats-new-in-3-3', destination: '/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3', permanent: false },
-        { source: '/docs/reference/3-3-beta', destination: '/dist/docs/3.3.0-beta.0/reference/3-3-beta', permanent: false },
-        { source: '/docs/reference/migration/3-2-to-3-3', destination: '/dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3', permanent: false },
+        { source: '/3.3', destination: `/dist/docs/${seed33}/reference/whats-new-in-3-3`, permanent: false },
+        { source: '/3.3/try', destination: `/dist/docs/${seed33}/reference/3-3-beta`, permanent: false },
+        { source: '/3.3/migrate', destination: `/dist/docs/${seed33}/reference/migration/3-2-to-3-3`, permanent: false },
+        { source: '/3.3/sdk', destination: `/dist/docs/${seed33}/building/by-layer/L4/choose-your-sdk`, permanent: false },
+        { source: '/docs/reference/whats-new-in-3-3', destination: `/dist/docs/${seed33}/reference/whats-new-in-3-3`, permanent: false },
+        { source: '/docs/reference/3-3-beta', destination: `/dist/docs/${seed33}/reference/3-3-beta`, permanent: false },
+        { source: '/docs/reference/migration/3-2-to-3-3', destination: `/dist/docs/${seed33}/reference/migration/3-2-to-3-3`, permanent: false },
         { source: '/unrelated', destination: '/docs/faq' },
       ],
     };
@@ -939,7 +939,7 @@ function versionEntry(version, build, extra = {}) {
   }
 
   test('a 3.3 beta.0 snapshot adds the 3.3 story beside the 3.2 pages and keeps the 3.2 aliases', () => {
-    const config = storyFixture();
+    const config = storyFixture({ seed33: '3.3.0-pending' });
     const before = destinations(config);
 
     const result = updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', { snapshotHasPage: hasStory33 });
@@ -974,7 +974,9 @@ function versionEntry(version, build, extra = {}) {
     assert.equal(collectStrings(config.navigation.versions[0].groups).some((value) => value.includes('3.3.0')), false);
 
     const after = destinations(config);
-    for (const source of Object.keys(before).filter((key) => /3\.2|3-2|proposal-negotiation|3-1|3-0/.test(key))) {
+    for (const source of Object.keys(before).filter(
+      (key) => /3\.2|3-2|proposal-negotiation|3-1|3-0/.test(key) && !/3\.3|3-3/.test(key)
+    )) {
       assert.equal(after[source], before[source], `${source} keeps pointing where it did`);
     }
     assert.equal(after['/3.3'], '/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3');
@@ -1077,6 +1079,84 @@ function versionEntry(version, build, extra = {}) {
     assert.equal(after['/3.2'], '/dist/docs/3.2.3/reference/whats-new-in-3-2');
     assert.equal(after['/3.2/migrate'], '/dist/docs/3.2.3/reference/migration/3-1-to-3-2');
     assert.equal(after['/docs/reference/whats-new-in-3-2'], '/dist/docs/3.2.2/reference/whats-new-in-3-2');
+  });
+
+  test('a direct 3.3.0 GA with no preview adds the 3.3 story to the promoted navigation', () => {
+    const config = storyFixture();
+    const hasGaStory = (page) => page.startsWith('dist/docs/3.3.0/reference/');
+
+    const result = updateDocsConfig(config, '3.3.0', '3.3', { snapshotHasPage: hasGaStory });
+
+    assert.equal(result.action, 'promoted');
+    const promoted = config.navigation.versions[0];
+    assert.equal(promoted.version, '3.3');
+    const strings = collectStrings(promoted.groups);
+    for (const page of ['whats-new-in-3-3', '3-3-beta', 'migration/3-2-to-3-3']) {
+      assert.ok(strings.includes(`dist/docs/3.3.0/reference/${page}`), `${page} is in the promoted navigation`);
+    }
+    assert.deepEqual(result.warnings, []);
+  });
+
+  test('the first preview of a new major without a predecessor line still lands its story pages', () => {
+    const config = storyFixture();
+    config.navigation.versions[0].version = '3.9';
+    const stories = new Set([
+      'dist/docs/4.0.0-beta.0/reference/whats-new-in-4-0',
+      'dist/docs/4.0.0-beta.0/reference/4-0-beta',
+    ]);
+
+    const result = updateDocsConfig(config, '4.0.0-beta.0', '4.0-beta', {
+      snapshotHasPage: (page) => stories.has(page),
+    });
+
+    assert.deepEqual(result.storyPagesAdded, ['reference/whats-new-in-4-0', 'reference/4-0-beta']);
+    assert.deepEqual(result.warnings.filter((warning) => /story pages/.test(warning)), []);
+  });
+
+  test('story pages in the snapshot but without a nav home are reported separately from missing ones', () => {
+    const config = storyFixture();
+    config.navigation.versions[0].groups = [
+      { group: 'Getting Started', pages: ['dist/docs/3.2.2/intro'] },
+    ];
+
+    const result = updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', { snapshotHasPage: hasStory33 });
+
+    assert.deepEqual(result.storyPagesAdded, []);
+    assert.match(result.warnings[0], /in the 3\.3-beta snapshot but have no place in its navigation/);
+    assert.doesNotMatch(result.warnings[0], /not in the 3\.3-beta snapshot/);
+  });
+
+  test('a banner linking the story overview directly raises no banner warning', () => {
+    const config = storyFixture();
+    config.banner.content = 'AdCP 3.3 beta — [see what is new →](/docs/reference/whats-new-in-3-3)';
+
+    const result = updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', { snapshotHasPage: hasStory33 });
+
+    assert.deepEqual(result.warnings, []);
+  });
+
+  test('a 3.3 beta.0 snapshot retargets seeded story aliases that point at another build', () => {
+    const config = storyFixture({ seed33: '3.3.0-pending' });
+
+    updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', { snapshotHasPage: hasStory33 });
+
+    const after = destinations(config);
+    assert.equal(after['/3.3'], '/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3');
+    assert.equal(after['/docs/reference/migration/3-2-to-3-3'], '/dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3');
+  });
+
+  test('CLI rejects release versions that are not release-shaped', () => {
+    const script = path.join(__dirname, '../scripts/update-release-docs-nav.mjs');
+    for (const [version, label] of [
+      ['3.3.0-beta.0$&', '3.3-beta'],
+      ['../3.3.0', '3.3'],
+      ['3.3.0-beta.0', '3.3-beta/..'],
+    ]) {
+      assert.throws(
+        () => execFileSync(process.execPath, [script, version, label], { stdio: 'pipe' }),
+        (error) => error.status === 2 && /Invalid release version/.test(String(error.stderr))
+      );
+    }
   });
 
   test('CLI adds the 3.3 beta from a copy of the repository docs.json', (t) => {
