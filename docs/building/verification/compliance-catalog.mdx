@@ -80,6 +80,7 @@ Specialisms are grouped below by parent protocol.
 |-----------|--------|---------|
 | `sales-guaranteed` | stable | Guaranteed media buys with human IO approval |
 | `sales-non-guaranteed` | stable | Non-guaranteed auction-based media buys |
+| `sales-fixed-rate` | stable | Non-guaranteed, fixed-price sales: no reserved inventory, no delivery commitment, no auction or bid; the seller MAY hold a buy for review before committing |
 | `sales-proposal-mode` | deprecated | **Deprecated in 3.1.** Drop this claim and replace with `sales-guaranteed` + `media_buy.supports_proposals: true`. See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823). |
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
@@ -170,9 +171,28 @@ Four specialisms apply to specific delivery channels and have their own storyboa
 
 | If you sell… | Claim |
 |---|---|
-| Guaranteed media (IO approval, fixed pricing) | `sales-guaranteed` → see Step 3 |
+| Fixed price, and you commit to delivery (IO approval, reserved inventory) | `sales-guaranteed` → see Step 3 |
+| Fixed price, and you make no delivery commitment (non-guaranteed; the seller MAY hold buys for review) | `sales-fixed-rate` |
 | Auction / PMP non-guaranteed | `sales-non-guaranteed` |
-| Both guaranteed and non-guaranteed | `sales-guaranteed` + `sales-non-guaranteed` |
+| More than one of the above | One claim per model, for example `sales-guaranteed` + `sales-fixed-rate` + `sales-non-guaranteed` |
+
+The question that separates `sales-guaranteed` from `sales-fixed-rate` is whether the seller commits to delivery, not whether a human reviews the buy. A fixed-rate seller publishes a price and sells at it without reserving inventory or promising delivery; a seller that reviews or approves buys but commits to delivery claims `sales-guaranteed`. Specialisms are independent claims: each is graded by its own storyboard, and a mixed seller that sells at a fixed rate on some products and by auction on others claims both `sales-fixed-rate` and `sales-non-guaranteed`.
+
+<a id="which-hold-path"></a>
+
+#### Which hold path does your seller use?
+
+Both `sales-guaranteed` and `sales-fixed-rate` can involve a human decision before the seller commits. They surface it differently on the wire:
+
+| | `sales-guaranteed` | `sales-fixed-rate` |
+|---|---|---|
+| What the seller commits to | Delivery against an IO | A published price; no delivery commitment |
+| Hold mechanism | Submitted task arm: [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) returns `status: "submitted"` with a `task_id` | Synchronous success: `create_media_buy` returns a `media_buy_id` with `confirmed_at: null` |
+| `media_buy_id` exists while held | No. It is issued when the task completes (for example, when the IO is signed). | Yes, immediately. The buy is retrievable through [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). |
+| How the buyer observes the outcome | Poll the task or receive the task webhook | Poll `get_media_buys` and watch `confirmed_at`, `status`, and `revision` |
+| Grading | Required for `sales-guaranteed` | Optional hold phase, graded only when the seller advertises the `force_media_buy_confirmation` controller scenario |
+
+Commitment is keyed off `confirmed_at`, never off `status`. A buy with `confirmed_at: null` is not committed, whatever its `status` says, and it is never `active`.
 
 </Step>
 
@@ -302,6 +322,7 @@ The kebab↔snake swap between wire specialism IDs and storyboard categories is 
 
 | Specialism ID (wire) | Channel / tool family | Storyboard category | Variant scenarios |
 |----------------------|-----------------------|---------------------|-------------------|
+| `sales-fixed-rate` | Pricing mechanic: `fixed_price` options on `non_guaranteed` products | [`sales_fixed_rate`](/compliance/latest/specialisms/sales-fixed-rate/index.yaml) | — |
 | `sales-broadcast-tv` | `channels: ['linear_tv']` | [`sales_broadcast_tv`](/compliance/latest/specialisms/sales-broadcast-tv/index.yaml) | — |
 | `sales-dooh` | `channels: ['dooh']` | [`sales_dooh`](/compliance/latest/specialisms/sales-dooh/index.yaml) | — |
 | `sales-social` | `channels: ['social']` | [`sales_social`](/compliance/latest/specialisms/sales-social/index.yaml) | — |

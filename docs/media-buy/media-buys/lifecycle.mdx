@@ -107,6 +107,18 @@ value outside the accepted commercial terms.
 | `canceled` | Buyer or seller terminated before completion | Yes |
 
 <Note>
+**Status and commitment are separate axes.** `status` tells the buyer what is
+actionable next (supply creatives, wait for the flight, and so on). Whether the
+seller has committed to the buy is the independent `confirmed_at` field, which
+is `null` until the seller commits. A seller that reviews buys before
+committing returns a provisional buy: synchronous success, `media_buy_id`
+issued, `confirmed_at: null`, and the `status` the buy will have on
+confirmation. Commitment is keyed off `confirmed_at`, never off `status`, and a
+buy with `confirmed_at: null` is never `active`. See
+[provisional buys](/docs/media-buy/specification#provisional-buys-seller-review-hold).
+</Note>
+
+<Note>
 `submitted`, `working`, and `input-required` are **task-level** statuses. They
 describe an operation such as `buy_products` or `accept_proposal`, not the
 MediaBuy itself. The completion artifact creates or updates the MediaBuy, whose

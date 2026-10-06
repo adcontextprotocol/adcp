@@ -198,6 +198,23 @@
       "if": {
         "properties": {
           "scenario": {
+            "const": "force_media_buy_confirmation"
+          }
+        }
+      },
+      "then": {
+        "required": ["params"],
+        "properties": {
+          "params": {
+            "required": ["action"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
             "const": "force_get_products_arm"
           }
         }
@@ -958,6 +975,11 @@
         "session_id": {
           "type": "string",
           "description": "Session to transition. Used by force_session_status."
+        },
+        "action": {
+          "type": "string",
+          "enum": ["hold", "confirm"],
+          "description": "force_media_buy_confirmation: hold the next create_media_buy (confirmed_at null), or confirm media_buy_id."
         },
         "product_id": {
           "type": "string",

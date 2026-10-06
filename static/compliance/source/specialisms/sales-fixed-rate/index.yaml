@@ -1,0 +1,768 @@
+id: sales_fixed_rate
+version: "1.0.0"
+title: "Non-guaranteed fixed-price sales"
+protocol: media-buy
+category: sales_fixed_rate
+summary: "Seller of non-guaranteed inventory at a published fixed price: no reserved inventory, no delivery commitment, no auction or bid. The seller MAY hold a buy for review before committing to it."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buys
+requires_scenarios:
+  - media_buy_seller/delivery_reporting
+  - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/invalid_transitions
+  - governance_aware_seller/governance_multi_agent_rejected
+
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that are not on the spec
+# lifecycle graph, for example active to pending_creatives on a media buy.
+invariants:
+  - status.monotonic
+
+narrative: |
+  You sell non-guaranteed inventory at a published fixed price. The product page says
+  what a thousand impressions cost and the buyer pays that, with no auction and no bid.
+  You reserve no inventory and make no delivery commitment: delivery is best effort and
+  the buyer is billed for what is delivered. This storyboard grades those mechanics, not
+  who the seller is, so a publisher, a rep firm, or an SSP selling fixed-rate packages
+  can all make the claim.
+
+  This is not the auction path. A fixed-rate product offers `fixed_price` pricing options
+  and carries no `floor_price` or `price_guidance`, and the buyer sends no `bid_price`.
+  This is also not the guaranteed path. There is no IO and no reserved inventory, and the
+  seller commits to a price, not to delivery. A seller that sells at a fixed rate and also
+  commits to delivery claims `sales-guaranteed`; a seller that runs an auction claims
+  `sales-non-guaranteed`. The claims are independent, and a mixed seller may make several.
+
+  Some fixed-rate sellers review a buy before they commit to it. When they do, the buy is
+  not an async task: `create_media_buy` returns synchronous success with a `media_buy_id`
+  and `confirmed_at: null`, and the buy stays provisional until the seller commits. Two
+  fields describe a buy and they are independent. `status` (`media_buy_status` on create,
+  `status` on `get_media_buys`) tells the buyer what is actionable next, such as supplying
+  creatives. `confirmed_at` records seller commitment. Commitment is keyed off
+  `confirmed_at`, never off `status`. A provisional buy reports the status it will have on
+  confirmation, `pending_creatives` while creatives are missing or unapproved and
+  `pending_start` once it is otherwise ready, and it is never `active`. This storyboard
+  asserts that a status is valid, not which valid status a seller reports.
+
+  The review hold is optional. The phases that exercise it run only when the seller
+  advertises the `force_media_buy_confirmation` controller scenario under
+  `compliance_testing.scenarios`; other sellers skip them as not applicable, so a seller
+  that commits to every buy immediately is graded on the core path alone. Confirmation is
+  observed by polling `get_media_buys`. No status-change webhook is graded because the
+  media-buy wire defines none.
+
+  Governance is deliberately outside the baseline. Registering a governance agent changes
+  the account contract, so a later context-free create would correctly be rejected. The
+  required governance-registration scenario separately proves valid single-agent
+  registration and rejects multiple agents.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - fixed_price
+  examples:
+    - "Publisher selling fixed-CPM packages with manual trafficking review"
+    - "Rep firm selling rate-card packages without reserving inventory"
+    - "SSP selling fixed-rate direct deals alongside auction inventory"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency buyer"
+
+prerequisites:
+  description: |
+    The caller needs a sandbox account. The test kit provides the fictional Acme Outdoor
+    brand. The product and its fixed-price option are seeded through the controller. The
+    optional review-hold phases additionally need the `force_media_buy_confirmation`
+    scenario; sellers that do not advertise it skip those phases.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_a348e1c72e7e"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-sales_fixed_rate-43b5c99e"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: "fixed_rate_display_q4"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
+  # The fixed price is on a vcpm option, not cpm, on purpose: the SDK runner's
+  # create_media_buy request builder auto-fills a bid_price for any `cpm`
+  # option the sample omits, which would turn the bid-less create below into a
+  # bid-carrying one. The graded mechanic is `fixed_price`, whatever the unit.
+  pricing_options:
+    - product_id: "fixed_rate_display_q4"
+      pricing_option_id: "vcpm_fixed_rate"
+      pricing_model: "vcpm"
+      currency: "USD"
+      fixed_price: 11.0
+
+phases:
+  - id: capability_discovery
+    title: "Discover the fixed-rate seller"
+    narrative: |
+      The buyer confirms that the agent sells media and claims the fixed-rate specialism
+      before sending a brief. The specialism selects this storyboard.
+    steps:
+      - id: get_capabilities
+        title: "Check fixed-rate capabilities"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Declare the media_buy protocol and the sales-fixed-rate specialism.
+        sample_request:
+          context:
+            correlation_id: "sales_fixed_rate--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "media_buy"
+            description: "Agent declares media_buy protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "sales-fixed-rate"
+            description: "Agent declares the sales-fixed-rate specialism"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_fixed_rate--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: product_discovery
+    title: "Discover fixed-price, non-guaranteed products"
+    narrative: |
+      The buyer asks for fixed-price, non-guaranteed inventory. Every product that comes
+      back is non-guaranteed and every pricing option it returns is a fixed price. There is
+      no floor to clear and no bid guidance, because nothing is auctioned.
+    steps:
+      - id: get_products_fixed_price
+        title: "Request fixed-price non-guaranteed products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          Return non-guaranteed products matching the brief. With filters.is_fixed_price set
+          to true, only fixed_price pricing options are returned, and no option carries
+          floor_price or price_guidance.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_fixed_rate_product_discovery_get_products_fixed_price"
+          buying_mode: "brief"
+          brief: "Display inventory at a published rate, Q4 flight, $10K budget. Adults 25-54, US. Fixed price, no auction."
+          filters:
+            delivery_type: "non_guaranteed"
+            is_fixed_price: true
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          ext:
+            adcp:
+              creative_wire: canonical
+          context:
+            correlation_id: "sales_fixed_rate--get_products_fixed_price"
+        context_outputs:
+          - name: fixed_rate_product_id
+            path: "products[0].product_id"
+          - name: fixed_rate_pricing_option_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "A product is returned"
+          - check: field_value
+            path: "products[0].delivery_type"
+            value: "non_guaranteed"
+            description: "Fixed-rate inventory is non-guaranteed: no reserved inventory and no delivery commitment"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The offer is a published fixed price"
+          - check: field_absent
+            path: "products[0].pricing_options[0].floor_price"
+            description: "A fixed-price option has no auction floor"
+          - check: field_absent
+            path: "products[0].pricing_options[0].price_guidance"
+            description: "A fixed-price option carries no bid guidance"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_fixed_rate--get_products_fixed_price"
+            description: "Context correlation_id returned unchanged"
+
+  - id: create_buy
+    title: "Create a fixed-price buy without a bid"
+    narrative: |
+      The buyer buys at the published price. The request carries no `bid_price`, and the
+      seller acknowledges synchronously with a `media_buy_id`. The response may report any
+      valid initial status. A seller that commits immediately sets `confirmed_at`; a seller
+      that reviews the buy first returns `confirmed_at: null`. The response schema carries
+      the rule that a buy with `confirmed_at: null` is never `active`.
+    steps:
+      - id: create_media_buy
+        title: "Buy the fixed-price product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return synchronous success with:
+          - media_buy_id and packages issued in-line
+          - media_buy_status of pending_creatives, pending_start, or active (any valid status)
+          - confirmed_at set, or null when the seller is holding the buy for review
+          - the selected fixed-price pricing_option_id echoed on the package, with no bid_price
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.fixed_rate_product_id"
+              budget: 5000
+              pricing_option_id: "$context.fixed_rate_pricing_option_id"
+          idempotency_key: "$generate:uuid_v4#sales_fixed_rate_create_buy_create_media_buy"
+          context:
+            correlation_id: "sales_fixed_rate--create_media_buy"
+        context_outputs:
+          - name: fixed_rate_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema, including the rule that confirmed_at null is never active"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller issues a media_buy_id synchronously"
+          - check: field_value
+            path: "media_buy_status"
+            allowed_values: ["pending_creatives", "pending_start", "active"]
+            description: "Initial status is any valid status; the storyboard does not mandate which one"
+          - check: field_equals_context
+            path: "packages[0].pricing_option_id"
+            context_key: "fixed_rate_pricing_option_id"
+            description: "Package echoes the selected fixed-price option"
+          - check: field_absent
+            path: "packages[0].bid_price"
+            description: "A fixed-price buy carries no bid_price"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_fixed_rate--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: held_buy_confirmation
+    title: "Optional: seller holds a buy, then confirms it"
+    depends_on: [product_discovery]
+    requires_capability:
+      path: compliance_testing.scenarios
+      contains: force_media_buy_confirmation
+    narrative: |
+      This phase runs only when the seller advertises `force_media_buy_confirmation`. The
+      controller makes the next create a held buy. The seller still answers synchronously
+      with a `media_buy_id`, but `confirmed_at` is null and the buy is not active. The
+      buyer can read the provisional buy back through `get_media_buys`. When the
+      controller confirms the buy, the seller sets `confirmed_at` and increments
+      `revision`, and the buyer observes both by polling. No webhook is involved.
+    steps:
+      - id: force_hold
+        title: "Hold the next buy for seller review"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Register a hold directive for the next create_media_buy from this sandbox account.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          scenario: "force_media_buy_confirmation"
+          params:
+            action: "hold"
+          context:
+            correlation_id: "sales_fixed_rate--force_hold_confirmation"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller accepts the hold directive"
+          - check: field_value
+            path: "simulated.action"
+            value: "hold"
+            description: "Controller echoes the registered hold"
+
+      - id: create_held_buy
+        title: "Create a buy that the seller holds"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return synchronous success with a media_buy_id, confirmed_at null, and a
+          media_buy_status of pending_creatives or pending_start. The buy is not active and
+          this is not the submitted task arm.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.fixed_rate_product_id"
+              budget: 5000
+              pricing_option_id: "$context.fixed_rate_pricing_option_id"
+          idempotency_key: "$generate:uuid_v4#sales_fixed_rate_held_buy_confirmation_create_held_buy"
+          context:
+            correlation_id: "sales_fixed_rate--create_held_buy"
+        context_outputs:
+          - name: held_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "A held buy exists immediately: media_buy_id is issued synchronously"
+          - check: field_absent
+            path: "confirmed_at"
+            description: "The seller has not committed: confirmed_at is null"
+          - check: field_value
+            path: "media_buy_status"
+            allowed_values: ["pending_creatives", "pending_start"]
+            description: "A held buy is never active and reports the status it will have on confirmation"
+
+      - id: read_held_buy
+        title: "Read the held buy back"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          The provisional buy is retrievable. confirmed_at is null and status is
+          pending_creatives or pending_start, never active.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          media_buy_ids:
+            - "$context.held_media_buy_id"
+          context:
+            correlation_id: "sales_fixed_rate--read_held_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "held_media_buy_id"
+            description: "Readback returns the held buy"
+          - check: field_absent
+            path: "media_buys[0].confirmed_at"
+            description: "Readback shows no seller commitment yet"
+          - check: field_value
+            path: "media_buys[0].status"
+            allowed_values: ["pending_creatives", "pending_start"]
+            description: "A held buy is not active"
+
+      - id: confirm_held_buy
+        title: "Confirm the held buy"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Commit the held buy as the seller would on approval.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          scenario: "force_media_buy_confirmation"
+          params:
+            action: "confirm"
+            media_buy_id: "$context.held_media_buy_id"
+          context:
+            correlation_id: "sales_fixed_rate--confirm_held_buy"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller confirms the held buy"
+
+      - id: read_confirmed_buy
+        title: "Read the confirmed buy back"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          confirmed_at is now set and revision has been incremented. The status is unchanged
+          or advanced along the ordinary lifecycle, and any valid status is accepted.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          media_buy_ids:
+            - "$context.held_media_buy_id"
+          context:
+            correlation_id: "sales_fixed_rate--read_confirmed_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_present
+            path: "media_buys[0].confirmed_at"
+            description: "Seller commitment is recorded: confirmed_at is set"
+          - check: field_greater_than
+            path: "media_buys[0].revision"
+            value: 1
+            description: "Confirmation incremented revision beyond the initial value of 1"
+          - check: field_value
+            path: "media_buys[0].status"
+            allowed_values: ["pending_creatives", "pending_start", "active"]
+            description: "Status after confirmation follows the ordinary lifecycle; any valid status is accepted"
+
+  - id: held_buy_rejection
+    title: "Optional: seller rejects a held buy"
+    depends_on: [product_discovery]
+    requires_capability:
+      path: compliance_testing.scenarios
+      contains: force_media_buy_confirmation
+    narrative: |
+      A held buy that the seller declines ends as rejected without ever being committed.
+      The controller holds a second buy and forces it to `rejected` with a reason. The
+      readback shows the terminal status, and `confirmed_at` stays null because a buy that
+      was never committed does not acquire a commitment timestamp by ending.
+    steps:
+      - id: force_hold
+        title: "Hold the next buy for seller review"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Register a hold directive for the next create_media_buy from this sandbox account.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          scenario: "force_media_buy_confirmation"
+          params:
+            action: "hold"
+          context:
+            correlation_id: "sales_fixed_rate--force_hold_rejection"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller accepts the hold directive"
+
+      - id: create_held_buy
+        title: "Create a buy that the seller holds"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return synchronous success with a media_buy_id and confirmed_at null.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.fixed_rate_product_id"
+              budget: 5000
+              pricing_option_id: "$context.fixed_rate_pricing_option_id"
+          idempotency_key: "$generate:uuid_v4#sales_fixed_rate_held_buy_rejection_create_held_buy"
+          context:
+            correlation_id: "sales_fixed_rate--create_held_buy_for_rejection"
+        context_outputs:
+          - name: rejected_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "A held buy exists immediately"
+          - check: field_absent
+            path: "confirmed_at"
+            description: "The seller has not committed: confirmed_at is null"
+
+      - id: force_rejection
+        title: "Seller rejects the held buy"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Transition the held buy to rejected using the existing status controller.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          scenario: "force_media_buy_status"
+          params:
+            media_buy_id: "$context.rejected_media_buy_id"
+            status: "rejected"
+            rejection_reason: "Seller review declined the buy"
+          context:
+            correlation_id: "sales_fixed_rate--force_rejection"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller rejects the held buy"
+
+      - id: read_rejected_buy
+        title: "Read the rejected buy back"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          status is rejected and confirmed_at is still null.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          media_buy_ids:
+            - "$context.rejected_media_buy_id"
+          context:
+            correlation_id: "sales_fixed_rate--read_rejected_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].status"
+            value: "rejected"
+            description: "The held buy ended as rejected"
+          - check: field_absent
+            path: "media_buys[0].confirmed_at"
+            description: "A rejected buy was never committed: confirmed_at stays null"
+
+  - id: held_buy_cancellation
+    title: "Optional: buyer cancels a held buy"
+    depends_on: [product_discovery]
+    requires_capability:
+      path: compliance_testing.scenarios
+      contains: force_media_buy_confirmation
+    narrative: |
+      The buyer is not obliged to wait for the seller. A held buy is a non-terminal buy, so
+      the buyer cancels it with `update_media_buy`. The buy ends as canceled and
+      `confirmed_at` stays null for the same reason as in the rejection branch.
+    steps:
+      - id: force_hold
+        title: "Hold the next buy for seller review"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Register a hold directive for the next create_media_buy from this sandbox account.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          scenario: "force_media_buy_confirmation"
+          params:
+            action: "hold"
+          context:
+            correlation_id: "sales_fixed_rate--force_hold_cancellation"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller accepts the hold directive"
+
+      - id: create_held_buy
+        title: "Create a buy that the seller holds"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return synchronous success with a media_buy_id and confirmed_at null.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.fixed_rate_product_id"
+              budget: 5000
+              pricing_option_id: "$context.fixed_rate_pricing_option_id"
+          idempotency_key: "$generate:uuid_v4#sales_fixed_rate_held_buy_cancellation_create_held_buy"
+          context:
+            correlation_id: "sales_fixed_rate--create_held_buy_for_cancellation"
+        context_outputs:
+          - name: canceled_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "A held buy exists immediately"
+          - check: field_absent
+            path: "confirmed_at"
+            description: "The seller has not committed: confirmed_at is null"
+
+      - id: cancel_held_buy
+        title: "Cancel the held buy"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Acknowledge the cancellation of the held buy.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          media_buy_id: "$context.canceled_media_buy_id"
+          canceled: true
+          cancellation_reason: "Buyer withdrew the order while the seller was reviewing it"
+          idempotency_key: "$generate:uuid_v4#sales_fixed_rate_held_buy_cancellation_cancel_held_buy"
+          context:
+            correlation_id: "sales_fixed_rate--cancel_held_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+
+      - id: read_canceled_buy
+        title: "Read the canceled buy back"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          status is canceled and confirmed_at is still null.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_fixed_rate-43b5c99e"
+            sandbox: true
+          media_buy_ids:
+            - "$context.canceled_media_buy_id"
+          context:
+            correlation_id: "sales_fixed_rate--read_canceled_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].status"
+            value: "canceled"
+            description: "The held buy ended as canceled"
+          - check: field_absent
+            path: "media_buys[0].confirmed_at"
+            description: "A canceled buy was never committed: confirmed_at stays null"

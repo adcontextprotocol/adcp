@@ -501,7 +501,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 **Rules:**
 
 - Sales agents MAY return `active`, `paused`, `pending_creatives`, or `pending_start` from `create_media_buy` (seller's choice based on platform setup time and the buyer's create-time `paused` request)
-- Sales agents MUST transition media buys from `pending_start` to `active` when the flight date arrives. Sales agents SHOULD notify orchestrators via webhook when this transition occurs.
+- Sales agents MUST transition committed media buys (`confirmed_at` non-null) from `pending_start` to `active` when the flight date arrives. A provisional buy (`confirmed_at: null`) never auto-activates; see [Provisional buys](#provisional-buys-seller-review-hold). Sales agents SHOULD notify orchestrators via webhook when this transition occurs.
 - A successful committed `create_media_buy` response constitutes **order confirmation**. Sales agents MUST include `confirmed_at` in create/get responses; the value is the seller commitment timestamp, or `null` for a provisional buy that exists but is still waiting for seller commitment.
 - Sales agents MUST include `revision` in create, get, and update responses. The revision number MUST increment on every mutating state change or update.
 - `active` ↔ `paused` transitions use `update_media_buy` with `paused: true` or `paused: false`
@@ -555,6 +555,18 @@ MediaBuy and accepted snapshot together MUST reject the compound facade update;
 it MUST NOT leave a stale accepted-proposal pointer.
 
 `confirmed_at` is the seller's commitment timestamp, not a delivery-status timestamp. Once populated, it remains stable through later pause, resume, cancellation, completion, and reporting transitions. Use the `submitted` response branch when no `media_buy_id` is being returned to the buyer. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
+
+#### Provisional buys (seller review hold)
+
+A seller that reviews a non-guaranteed buy before committing to it MAY hold the buy by returning synchronous success with a `media_buy_id` and `confirmed_at: null`, as described above. This is the hold path for [`sales-fixed-rate`](/docs/building/verification/compliance-catalog#which-hold-path); guaranteed sellers that need an IO signature use the `submitted` task arm instead. While `confirmed_at` is `null`:
+
+- **Two independent axes.** `status` (`media_buy_status` on `create_media_buy`, `status` on `get_media_buys`) is the buyer-actionable readiness axis. `confirmed_at` is the seller-commitment axis. Commitment is keyed off `confirmed_at`, never off `status`. A provisional buy reports the status it will have on confirmation: `pending_creatives` while creatives are missing or unapproved, `pending_start` once the buy is otherwise ready. Neither value means the seller has accepted the buy, and `active` is not permitted.
+- **Confirmation is a state change.** When the seller commits, it sets `confirmed_at` exactly once and, as for every mutating state change, increments `revision`. The `status` after confirmation follows the ordinary lifecycle for the buy's creative readiness and flight.
+- **Idempotency replay.** An exact replay of the original `create_media_buy` returns the original response, including `confirmed_at: null` and the original `revision`, even after the seller has confirmed. Buyers read current state through `get_media_buys`; a replay never shows the confirmed state and never increments `revision`.
+- **Rejection and cancellation.** The seller MAY reject a held buy (`status: rejected`, with `rejection_reason`), and the buyer MAY cancel it with `update_media_buy` (`canceled: true`). In both cases `confirmed_at` stays `null`: a buy that was never committed does not acquire a commitment timestamp by ending.
+- **Pause and resume.** The `valid_actions` table lists `pause` for `pending_creatives` and `pending_start` regardless of commitment. A buyer `pause` on a held buy sets the same latent create-time hold described above and does not commit the seller or change `confirmed_at`. A seller that does not accept buyer `pause` or `resume` on a buy it is still reviewing SHOULD omit them from `valid_actions` and reject the request with `INVALID_STATE`.
+- **Flight start before confirmation.** Because a provisional buy MUST NOT be `active`, the `pending_start` to `active` transition does not occur for it. A held buy whose flight start passes stays `pending_start` until the seller either confirms it (after which it follows the ordinary lifecycle, so a confirmed buy whose flight has begun and whose creatives are ready is `active`) or rejects it. Sellers SHOULD confirm or reject before the flight start.
+- **Observation is by polling.** Confirmation, rejection, and seller cancellation are observable through `get_media_buys`. The media-buy wire defines no status-change webhook, so buyers MUST NOT depend on one; a seller advertising the experimental `account.change_feed` capability with `media_buy` coverage MAY emit its generic invalidation, which the buyer repairs through `get_media_buys`.
 
 **Package-level lifecycle:**
 

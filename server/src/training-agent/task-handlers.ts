@@ -53,7 +53,7 @@ import {
 import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
-import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -4595,6 +4595,12 @@ export function deriveStatus(mb: MediaBuyState, session?: SessionState): string 
     : mb.packages.some(pkg => pkg.creativeAssignments.length === 0);
   if (needsCreative && mb.status !== 'completed' && !mb.complyControllerForced) {
     return 'pending_creatives';
+  }
+  // A provisional buy (confirmed_at null) is held for seller review. It reports
+  // the status it will have on confirmation and is never active, even when its
+  // flight has started: it stays pending_start until the seller commits.
+  if (mb.confirmedAt === null && (mb.status === 'active' || mb.status === 'paused')) {
+    return 'pending_start';
   }
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
@@ -14483,6 +14489,18 @@ async function handleCreateMediaBuyUnlocked(
     };
   }
 
+  // Peek at a force_media_buy_confirmation `hold` directive. It is consumed only
+  // when this call actually creates a media buy, so a request that fails
+  // validation leaves it in place for the buyer's retry.
+  let holdSession: SessionState | undefined = session.complyExtensions.forcedMediaBuyHold ? session : undefined;
+  if (!holdSession) {
+    const ownerKey = controllerPublicTaskSessionKey(req, ctx);
+    if (ownerKey && ownerKey !== sessionKey) {
+      const ownerSession = await getSession(ownerKey);
+      if (ownerSession.complyExtensions.forcedMediaBuyHold) holdSession = ownerSession;
+    }
+  }
+
   // Enforce account status gates set by comply_test_controller
   const accountId = (req as unknown as Record<string, unknown>).account as { account_id?: string } | undefined;
   if (accountId?.account_id) {
@@ -15699,7 +15717,7 @@ async function handleCreateMediaBuyUnlocked(
     startTime: resolvedStart,
     endTime: buyEnd,
     revision: 1,
-    confirmedAt: now,
+    confirmedAt: holdSession ? null : now,
     ...(governanceContext && { governanceContext }),
     ...(isRecord(req.context) && { context: req.context }),
     createdAt: now,
@@ -15759,6 +15777,7 @@ async function handleCreateMediaBuyUnlocked(
       }
     }
   }
+  if (holdSession) holdSession.complyExtensions.forcedMediaBuyHold = undefined;
   session.mediaBuys.set(mediaBuyId, mediaBuy);
   await captureMediaBuyReportingState(
     ctx,
@@ -15815,7 +15834,7 @@ async function handleCreateMediaBuyUnlocked(
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
       ...(pkg.context && { context: pkg.context }),
-      ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
+      ...(pkg.committedMetrics && mediaBuy.confirmedAt !== null && { committed_metrics: pkg.committedMetrics }),
       creative_assignments: pkg.creativeAssignmentDetails
         ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     })),
@@ -15994,7 +16013,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             ...(pkg.agencyEstimateNumber && { agency_estimate_number: pkg.agencyEstimateNumber }),
             ...(pkg.ext && { ext: pkg.ext }),
             ...(pkg.optimizationGoals && { optimization_goals: pkg.optimizationGoals }),
-            ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
+            ...(pkg.committedMetrics && mb.confirmedAt !== null && { committed_metrics: pkg.committedMetrics }),
             ...(pkg.canceledAt && {
               cancellation: {
                 canceled_at: pkg.canceledAt,
@@ -19046,6 +19065,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         'force_account_status',
         'force_media_buy_status',
         'force_create_media_buy_arm',
+        ...(supportsSalesFixedRate(servedAdcpVersion) ? ['force_media_buy_confirmation'] : []),
         'force_task_completion',
         'force_creative_purge',
         'force_session_status',

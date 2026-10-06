@@ -76,6 +76,7 @@ Sellers that implement compliance test controller MUST:
           "compact_direct_buy_lifecycle_probe",
           "reporting_core_lifecycle_probe",
           "force_create_media_buy_arm",
+          "force_media_buy_confirmation",
           "force_get_products_arm",
           "force_get_signals_arm",
           "force_get_creative_features_arm",
@@ -100,7 +101,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_media_buy_purge: {media_buy_id}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. reporting_core_lifecycle_probe: {operation: prepare | publish_zero_row | publish_nonempty | restate_snapshot | omit_obligation | advance_past_status_deadline | advance_past_escalation}, {operation: advance_time, target_health: delayed | action_required}, or {operation: restate_after_received, received_reporting_revision_id, advance_to?: within_grace | past_grace}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_creative_features_arm: {arm: submitted, task_id, evaluation_id, message?} or {arm: completed, result}. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_media_buy_purge: {media_buy_id}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. reporting_core_lifecycle_probe: {operation: prepare | publish_zero_row | publish_nonempty | restate_snapshot | omit_obligation | advance_past_status_deadline | advance_past_escalation}, {operation: advance_time, target_health: delayed | action_required}, or {operation: restate_after_received, received_reporting_revision_id, advance_to?: within_grace | past_grace}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_media_buy_confirmation: {action: hold} or {action: confirm, media_buy_id}. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_creative_features_arm: {arm: submitted, task_id, evaluation_id, message?} or {arm: completed, result}. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -664,6 +665,53 @@ The submitted-arm wire shape is otherwise implementation-dependent: most sellers
 `forced.task_id` is present only when `arm: submitted`.
 
 **Consumption and idempotency.** The directive is keyed to the caller's authenticated sandbox account (account + principal pair) and is consumed by the next `create_media_buy` call from that account. Subsequent calls without a fresh directive return the seller's default arm. Buyer-side `idempotency_key` semantics are unchanged: if the caller replays a `create_media_buy` request that already consumed a directive, the seller MUST replay the cached response (the request idempotency cache wins) and MUST NOT re-evaluate against the now-empty directive slot. Sellers MUST NOT match a directive against a `create_media_buy` call from a different account or principal, even within the same transport connection. A second `force_create_media_buy_arm` call before the directive is consumed overwrites the prior one.
+
+### `force_media_buy_confirmation`
+
+Drives the seller-review hold that a [`sales-fixed-rate`](/docs/building/verification/compliance-catalog#which-hold-path) seller MAY apply before committing to a non-guaranteed buy. A held buy is not an async task: `create_media_buy` returns synchronous success with a `media_buy_id` and `confirmed_at: null`, and the buy stays provisional until the seller commits. No buyer-side request shape reliably triggers a seller's review queue, so this scenario lets a storyboard hold one buy deterministically and then release it. It is optional: the `sales_fixed_rate` seller-review phase grades only when the seller advertises `force_media_buy_confirmation` under `compliance_testing.scenarios`, and grades `not_applicable` otherwise.
+
+One scenario covers both halves through `action`.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | `hold` \| `confirm` | Yes | `hold` registers a single-shot directive. `confirm` commits a held media buy. |
+| `media_buy_id` | string | When `action` = `confirm` | Held media buy to confirm. MUST resolve within the caller's authenticated sandbox account; otherwise `NOT_FOUND`. |
+
+**`hold`.** Registers a directive keyed to the caller's authenticated sandbox account (account + principal pair). The next `create_media_buy` from that account that creates a media buy MUST return synchronous success with `media_buy_id`, `packages`, `confirmed_at: null`, and a `media_buy_status` of `pending_creatives` or `pending_start`, and the directive is then consumed. A request that fails validation, an idempotency replay, and a request answered with the `submitted` arm do not consume it. Subsequent creates use the seller's default behavior, and a second `hold` before consumption leaves one directive registered. The response is a `SimulationSuccess` echoing the registered action:
+
+```json
+{
+  "success": true,
+  "simulated": { "action": "hold" },
+  "message": "Next create_media_buy call from this sandbox account will return synchronous success with confirmed_at null"
+}
+```
+
+**`confirm`.** Commits the held buy as the seller would on approval: it sets `confirmed_at` exactly once and increments `revision`. The resulting `status` follows the ordinary lifecycle for the buy's creative readiness and flight (it never becomes `active` while `confirmed_at` is null, and it MAY advance once `confirmed_at` is set). The response is a `StateTransitionSuccess`:
+
+```json
+{
+  "success": true,
+  "previous_state": "unconfirmed",
+  "current_state": "confirmed",
+  "message": "Media buy mb_held_q4 confirmed; revision incremented"
+}
+```
+
+Like other `force_*` scenarios, `confirm` is idempotent: confirming an already confirmed buy returns success with `previous_state` equal to `current_state`, and MUST NOT change `confirmed_at` or increment `revision` again. Confirming a buy that is `rejected`, `canceled`, or `completed` returns [`INVALID_TRANSITION`](/docs/building/by-layer/L3/comply-test-controller#error-codes). To reject a held buy, use the `force_media_buy_status` scenario with `status: rejected`; `confirmed_at` stays `null`.
+
+**Example:**
+
+```json
+{
+  "scenario": "force_media_buy_confirmation",
+  "params": { "action": "confirm", "media_buy_id": "mb_held_q4" }
+}
+```
+
+Confirmation is observable by polling [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys); the media-buy wire defines no status-change webhook, so this scenario grades no push notification.
 
 ### `force_get_products_arm` / `force_get_signals_arm` / `force_get_creative_features_arm`
 

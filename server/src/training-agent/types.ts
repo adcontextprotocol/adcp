@@ -126,6 +126,35 @@ export function supportsSellerGovernanceDiscovery(servedVersion: string | undefi
   return atLeastAdcpVersion(servedVersion, SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION);
 }
 
+/**
+ * First wire line (major.minor, prerelease qualifiers ignored) that may carry
+ * `sales-fixed-rate` in `specialisms` and `force_media_buy_confirmation` in the
+ * controller vocabulary. Bundles for 3.0 and 3.1.x have a closed specialism
+ * enum, so a strict consumer pinned to them would reject the new id.
+ *
+ * The in-repo candidate is still served as `3.2` until the wire line moves to
+ * 3.3, so 3.2 pins (including release candidates, which the 3.2 surface test
+ * keeps identical to GA) cannot be told apart from the current source run and
+ * still see the id. When TRAINING_AGENT_CURRENT_ADCP_VERSION moves to 3.3,
+ * raise this to `'3.3'` so released 3.2 pins stop seeing it too.
+ */
+export const SALES_FIXED_RATE_ADCP_LINE = '3.2' as const;
+
+/** Whether the served wire version may advertise `sales-fixed-rate` and its
+ * `force_media_buy_confirmation` controller scenario. The 3.0 storyboard
+ * compatibility surface is handled separately by its own `storyboardCompat`
+ * checks; this gates explicit and defaulted version pins. */
+export function supportsSalesFixedRate(servedVersion: string | undefined): boolean {
+  const match = (servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION).match(/^(\d+)\.(\d+)/);
+  const gate = SALES_FIXED_RATE_ADCP_LINE.match(/^(\d+)\.(\d+)/)!;
+  if (!match) return false;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2], 10);
+  const gateMajor = Number.parseInt(gate[1], 10);
+  const gateMinor = Number.parseInt(gate[2], 10);
+  return major > gateMajor || (major === gateMajor && minor >= gateMinor);
+}
+
 /** First served checkpoint whose media-buy features carry the structured
  * bidding_policy capability object (older bundles only allow booleans). */
 export const BIDDING_POLICY_CAPABILITY_ADCP_VERSION = '3.2-beta.6' as const;
@@ -557,6 +586,11 @@ export interface ComplyExtensions {
     taskId: string;
     message?: string;
   };
+  /** Single-shot directive registered via comply_test_controller.force_media_buy_confirmation
+   * `hold`. Consumed by the next create_media_buy from this sandbox account that creates a
+   * media buy, which then returns synchronous success with `confirmed_at: null` (a
+   * provisional buy held for seller review). A second `hold` before consumption is a no-op. */
+  forcedMediaBuyHold?: boolean;
   /** Single-shot submitted response for the next brief-mode get_signals call. */
   forcedGetSignalsArm?: {
     arm: 'submitted';
@@ -792,7 +826,9 @@ export interface MediaBuyState {
   startTime: string;
   endTime: string;
   revision: number;
-  confirmedAt: string;
+  /** Seller commitment timestamp; `null` while the buy is a provisional buy
+   * held for seller review (set once by force_media_buy_confirmation confirm). */
+  confirmedAt: string | null;
   canceledAt?: string;
   canceledBy?: string;
   cancellationReason?: string;

@@ -1,5 +1,5 @@
 /**
- * /sales tenant — non-guaranteed, guaranteed, and DOOH sales specialisms.
+ * /sales tenant — non-guaranteed, guaranteed, fixed-rate, and DOOH sales specialisms.
  *
  * Distinct platform from /signals (single-specialism per tenant). Buyers
  * call sales-track tools at this URL; signals tools live on /signals.

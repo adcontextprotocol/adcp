@@ -395,6 +395,8 @@ The `valid_actions` array tells agents what operations are permitted on a media 
 
 Sellers MAY omit actions based on business rules (e.g., omit `cancel` when the media buy has contractual obligations that prevent cancellation).
 
+The mapping is by `status` alone. A provisional buy (`confirmed_at: null`) reports `pending_creatives` or `pending_start` and uses those rows; it does not get a separate row. A seller that does not accept buyer `pause` or `resume` on a buy it is still reviewing SHOULD omit them from `valid_actions`. See [provisional buys](/docs/media-buy/specification#provisional-buys-seller-review-hold).
+
 For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-change action label, not proof that the `sync_creatives` task exists. Use the creative path the seller advertises: `sync_creatives` and `creative_assignments` for sellers with `creative.has_creative_library: true`, or `packages[].creatives` on [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) for inline-only sellers.
 
 ## Common Scenarios
