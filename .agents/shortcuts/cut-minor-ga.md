@@ -1,5 +1,13 @@
 # Cut the AdCP 3.2 GA (ships as 3.2.1)
 
+> **Line-specific.** This runbook records the 3.2 GA, which shipped as `3.2.1`
+> because `3.2.0` was withdrawn. For a normal line (3.3 onward), GA ships as
+> `X.Y.0`: skip the withdrawn-number steps (`skip-withdrawn-release.mjs`, the
+> `## X.Y.1` changelog retitle, the `unpublished` discovery entry) and substitute
+> the line being promoted for `3.2` and the previous stable line for `3.1`
+> everywhere else. Also confirm `scripts/update-release-docs-nav.mjs` maps the
+> new line's release-story aliases before tagging.
+
 Ordered runbook for promoting the 3.2 release candidate line to its first
 stable release. It builds on `cut-major.md` (generic stable cut) and
 `RELEASING.md` (publication authority, verification, recovery). Where they

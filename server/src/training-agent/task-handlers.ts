@@ -53,6 +53,7 @@ import {
 import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
+import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
 import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
 import {
   AccountRefValidationError,
@@ -3211,6 +3212,14 @@ function supportsLifecycleSplitCompatibility(version: string | undefined): boole
 
 function lifecycleSplitVersionForContext(ctx: TrainingContext): string | undefined {
   return isThreeZeroStoryboardCompat(ctx) ? '3.0' : ctx.servedAdcpVersion;
+}
+
+/** The seller-optimized capabilities this request's served release line declares. */
+function sellerOptimizedDeclarationForContext(ctx: TrainingContext) {
+  // In-process callers may carry no served version; they speak the current line.
+  return sellerOptimizedDeclarationForVersion(
+    lifecycleSplitVersionForContext(ctx) ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
 }
 
 function compareAdcpPrerelease(left: string, right: string): number {
@@ -11387,9 +11396,46 @@ async function handleGetProductsUnlocked(
   // In refine mode, use session proposals (which may include finalized
   // versions). In other discovery modes, replace registry drafts with the
   // exact committed object already held by this session.
-  const contextualProposals = (buyingMode === 'refine' && session.lastGetProductsContext?.proposals)
-    ? session.lastGetProductsContext.proposals
-    : getProposals().map(proposal => committedProposals.get(proposal.proposal_id) ?? proposal);
+  // A brief asking for a shared budget over buyer-seeded fixture products is
+  // answered with a seller-optimized proposal, when the seller declares it.
+  const sellerOptimizedProposal = buyingMode === 'brief'
+    ? sellerOptimizedProposalForBrief(
+        typeof brief === 'string' ? brief : undefined,
+        products.filter(product => session.complyExtensions.seededProducts.has(product.product_id)),
+        sellerOptimizedDeclarationForContext(ctx),
+      ) as unknown as Proposal | undefined
+    : undefined;
+  // The draft must stay resolvable by finalize and execution. Persist it
+  // insert-only: an existing entry (including a committed one) is never replaced.
+  if (
+    sellerOptimizedProposal
+    && !session.lastGetProductsContext?.proposals?.some(proposal => proposal.proposal_id === sellerOptimizedProposal.proposal_id)
+  ) {
+    session.lastGetProductsContext = {
+      ...session.lastGetProductsContext,
+      proposals: [
+        ...(session.lastGetProductsContext?.proposals ?? []),
+        sellerOptimizedProposal,
+      ],
+    };
+  }
+  // Session context holding only synthesized drafts (identified by ID prefix) is not a refine history:
+  // the registry proposals stay part of the refine view.
+  const sessionProposals = session.lastGetProductsContext?.proposals;
+  const onlySynthesizedDrafts = sessionProposals?.every(
+    proposal => isSellerOptimizedProposalId(proposal.proposal_id),
+  ) ?? false;
+  const contextualProposals = (buyingMode === 'refine' && sessionProposals)
+    ? onlySynthesizedDrafts
+      ? [...sessionProposals, ...getProposals()]
+      : sessionProposals
+    : [
+        // The brief asked for a shared budget, so that plan leads.
+        ...(sellerOptimizedProposal
+          ? [committedProposals.get(sellerOptimizedProposal.proposal_id) ?? sellerOptimizedProposal]
+          : []),
+        ...getProposals().map(proposal => committedProposals.get(proposal.proposal_id) ?? proposal),
+      ];
   const sourceProposals = [
     ...contextualProposals,
     ...Array.from(explicitlySelectedProposals.values()).filter(selected =>
@@ -15077,9 +15123,33 @@ async function handleCreateMediaBuyUnlocked(
     // Compact 3.2 proposals commit complete per-purchase terms. Preserve that
     // immutable envelope in operational package state; legacy proposals still
     // expand their percentage allocations as before.
+    const proposalAllocationMode = (proposal as unknown as { budget_allocation?: { mode?: string } }).budget_allocation?.mode;
     (req as { packages?: unknown[] }).packages = compactProposal && committedPurchases?.length
       ? legacyPackagesFromPurchases(committedPurchases, totalBudget, productMap)
-      : proposal.allocations.map(alloc => {
+      : proposalAllocationMode === 'seller_optimized'
+        // A seller-optimized proposal carries no allocation_percentage: the
+        // seller allocates the shared total, so packages carry only the
+        // controls the proposal committed (percentages become targets/caps,
+        // allocation pacing becomes package pacing).
+        ? proposal.allocations.map(alloc => {
+            const controls = alloc as unknown as {
+              min_spend_target_percentage?: number;
+              max_spend_percentage?: number;
+              pacing?: string;
+            };
+            return {
+              product_id: alloc.product_id,
+              pricing_option_id: alloc.pricing_option_id
+                || productMap.get(alloc.product_id)?.pricing_options[0]?.pricing_option_id
+                || '',
+              ...(controls.max_spend_percentage !== undefined
+                && { budget: Math.round(totalBudget * controls.max_spend_percentage / 100) }),
+              ...(controls.min_spend_target_percentage !== undefined
+                && { min_spend_target: Math.floor(totalBudget * controls.min_spend_target_percentage / 100) }),
+              ...(controls.pacing !== undefined && { pacing: controls.pacing }),
+            };
+          })
+        : proposal.allocations.map(alloc => {
           const product = productMap.get(alloc.product_id);
           const pricingOptionId = alloc.pricing_option_id || product?.pricing_options[0]?.pricing_option_id || '';
           const pricing = product?.pricing_options.find(po => po.pricing_option_id === pricingOptionId);
@@ -15098,6 +15168,40 @@ async function handleCreateMediaBuyUnlocked(
           };
         });
     const proposalRecord = proposal as unknown as Record<string, unknown>;
+    if (proposalAllocationMode === 'seller_optimized') {
+      // The committed proposal supplies the allocation and aggregate pacing.
+      // A buyer-authored value may repeat them but never contradict them.
+      const sellerOptimizedReq = req as unknown as Record<string, unknown>;
+      if (
+        sellerOptimizedReq.budget_allocation !== undefined
+        && !isDeepStrictEqual(sellerOptimizedReq.budget_allocation, proposalRecord.budget_allocation)
+      ) {
+        return {
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: 'budget_allocation must be omitted or match the committed proposal when executing a proposal.',
+            field: 'budget_allocation',
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
+      if (
+        sellerOptimizedReq.pacing !== undefined
+        && typeof proposalRecord.pacing === 'string'
+        && sellerOptimizedReq.pacing !== proposalRecord.pacing
+      ) {
+        return {
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: 'pacing must be omitted or match the committed proposal when executing a proposal.',
+            field: 'pacing',
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
+      sellerOptimizedReq.budget_allocation = structuredClone(proposalRecord.budget_allocation);
+      if (typeof proposalRecord.pacing === 'string') sellerOptimizedReq.pacing = proposalRecord.pacing;
+    }
     const proposalFrequencyCap = isRecord(committedTerms?.frequency_cap)
       ? committedTerms.frequency_cap
       : isRecord(proposalRecord.frequency_cap)
@@ -15145,6 +15249,26 @@ async function handleCreateMediaBuyUnlocked(
   if (buyStart !== 'asap' && new Date(buyStart) < new Date()) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must not be in the past' }] as TaskError[] };
   }
+
+  // Seller-optimized controls the seller does not declare are rejected before
+  // any other package validation or mutation; they are never dropped or coerced.
+  const sellerOptimizedDeclaration = sellerOptimizedDeclarationForContext(ctx);
+  const createSellerOptimizedState: SellerOptimizedState = {
+    allocationMode: (req as unknown as { budget_allocation?: { mode?: string } }).budget_allocation?.mode,
+    totalBudget: req.total_budget?.amount,
+    pacing: (req as unknown as { pacing?: string }).pacing,
+    packages: req.packages.map((pkg, index) => {
+      const controls = pkg as unknown as Partial<PackageInput>;
+      return {
+        ref: `packages[${index}]`,
+        budget: controls.budget,
+        min_spend_target: controls.min_spend_target,
+        pacing: controls.pacing,
+      };
+    }),
+  };
+  const sellerOptimizedUnsupported = sellerOptimizedUnsupportedError(createSellerOptimizedState, sellerOptimizedDeclaration);
+  if (sellerOptimizedUnsupported) return { errors: [sellerOptimizedUnsupported] as TaskError[] };
 
   // Validate all packages and collect errors before returning
   const confirmedAt = new Date().toISOString();
@@ -15275,7 +15399,9 @@ async function handleCreateMediaBuyUnlocked(
     const pricingStructure = pricingStructureForOption(pricing);
     if (pricingView.currency !== mediaBuyCurrency) {
       errors.push({
-        code: 'INVALID_REQUEST',
+        // A shared seller-optimized buy rejects a pricing option outside the
+        // media-buy currency as a terms conflict; fixed buys keep the legacy code.
+        code: createSellerOptimizedState.allocationMode === 'seller_optimized' ? 'TERMS_REJECTED' : 'INVALID_REQUEST',
         message: `${pkgLabel}: pricing option ${pkg.pricing_option_id} is denominated in ${pricingView.currency}, but the media buy uses ${mediaBuyCurrency}.`,
         field: `packages[${i}].pricing_option_id`,
         recovery: 'correctable',
@@ -15294,7 +15420,10 @@ async function handleCreateMediaBuyUnlocked(
     );
     const storedBidPrice = allowSeededMetricFloorCoercion ? floorPrice : pkg.bid_price;
 
-    if (isAuction && pkg.bid_price === undefined) {
+    // A seller-optimized buy delegates allocation and bidding to the seller.
+    // package-request.json makes bid_price optional (and deprecated in 3.2), so
+    // an omitted bid on a delegated buy is not an error.
+    if (isAuction && pkg.bid_price === undefined && createSellerOptimizedState.allocationMode !== 'seller_optimized') {
       errors.push({
         code: 'INVALID_REQUEST',
         message: `${pkgLabel}: bid_price is required for auction pricing (pricing option ${pkg.pricing_option_id})`,
@@ -15566,6 +15695,13 @@ async function handleCreateMediaBuyUnlocked(
       ...(committedMetrics && committedMetrics.length > 0 && { committedMetrics }),
     };
     createdPackages.push(candidatePackage);
+  }
+
+  // Over-subscription applies only to declared controls, so it runs after the
+  // undeclared-control gate and the per-package checks, and before mutation.
+  if (errors.length === 0) {
+    const oversubscription = sellerOptimizedOversubscriptionError(createSellerOptimizedState, sellerOptimizedDeclaration);
+    if (oversubscription) errors.push(oversubscription as TaskError);
   }
 
   // Root frequency cap: one counter shared across every package. Accepted
@@ -15846,8 +15982,10 @@ async function handleCreateMediaBuyUnlocked(
       product_id: pkg.productId,
       budget: pkg.budget,
       pricing_option_id: pkg.pricingOptionId,
+      ...(pkg.minSpendTarget !== undefined && { min_spend_target: pkg.minSpendTarget }),
       ...(pkg.bidPrice !== undefined && { bid_price: pkg.bidPrice }),
       ...(pkg.impressions !== undefined && { impressions: pkg.impressions }),
+      ...(pkg.pacing !== undefined && { pacing: pkg.pacing }),
       paused: pkg.paused,
       start_time: pkg.startTime,
       end_time: pkg.endTime,
@@ -18649,6 +18787,18 @@ async function handleUpdateMediaBuyUnlocked(
       if (!product) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Product not found for new package: ${productId}` }] };
       }
+      const addedPricing = product.pricing_options?.find(option => option.pricing_option_id === npkg.pricing_option_id) as
+        { currency?: string } | undefined;
+      if (sellerOptimized && addedPricing?.currency !== undefined && addedPricing.currency !== mb.currency) {
+        return {
+          errors: [{
+            code: 'TERMS_REJECTED',
+            message: `new_packages[${i}]: pricing option ${npkg.pricing_option_id} is denominated in ${addedPricing.currency}, but the media buy uses ${mb.currency}.`,
+            field: `new_packages[${i}].pricing_option_id`,
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
       const selectorCompatibilityError = validatePackageSelectorCompatibility(
         npkg,
         product,
@@ -18852,6 +19002,23 @@ async function handleUpdateMediaBuyUnlocked(
   if (aggregateUpdate.bidding === null) delete mb.aggregateBidding;
   else if (aggregateUpdate.bidding !== undefined) {
     mb.aggregateBidding = structuredClone(aggregateUpdate.bidding);
+  }
+  // The detached copy now carries the update's resulting state. A resulting
+  // seller-optimized buy must stay inside the declared package controls and
+  // must not over-subscribe them; a rejection discards the copy untouched.
+  {
+    const resultingSellerOptimizedError = sellerOptimizedStateError({
+      allocationMode: mb.budgetAllocation?.mode as string | undefined,
+      totalBudget: mb.totalBudget,
+      pacing: mb.aggregatePacing,
+      packages: mb.packages.filter(pkg => !pkg.canceled).map(pkg => ({
+        ref: `packages[${pkg.packageId}]`,
+        budget: pkg.budgetCapRemoved ? undefined : pkg.budget,
+        min_spend_target: pkg.minSpendTarget,
+        pacing: pkg.pacing,
+      })),
+    }, sellerOptimizedDeclarationForContext(ctx));
+    if (resultingSellerOptimizedError) return { errors: [resultingSellerOptimizedError] };
   }
   const reportingWebhook = (req as unknown as Record<string, unknown>).reporting_webhook;
   if (isRecord(reportingWebhook)) mb.reportingWebhook = structuredClone(reportingWebhook);
@@ -19232,6 +19399,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         ...(!isThreeZeroResponse && supportsBiddingPolicyCapability(servedAdcpVersion) && {
           bidding_policy: structuredClone(TRAINING_BIDDING_POLICY_CAPABILITY),
         }),
+        // Declared only when create/update enforce the contract: undeclared
+        // package controls are rejected with UNSUPPORTED_FEATURE and declared
+        // ones are checked for over-subscription before mutation.
+        ...(!isThreeZeroResponse && sellerOptimizedFeatureFlags(sellerOptimizedDeclarationForVersion(servedAdcpVersion))),
       },
       portfolio: {
         publisher_domains: publisherDomains,

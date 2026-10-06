@@ -579,7 +579,7 @@ phases:
       equals: true
     steps:
       - id: create_shared_buy_with_min_spend_targets
-        title: "Set a soft minimum on the prospecting package"
+        title: "Set a soft minimum on the retargeting package"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -587,7 +587,11 @@ phases:
         stateful: true
         expected: |
           Accept a soft minimum-spend target (20000) on an uncapped
-          prospecting package and echo it unchanged.
+          retargeting package and echo it unchanged. The target sits on the
+          second package because a conformance runner may author a package
+          cap on the first package of every create request; a target on that
+          package could then exceed its own cap, which is graded by
+          media_buy_seller/seller_optimized_min_spend_target_exceeds_package_cap.
         sample_request:
           account:
             brand:
@@ -608,9 +612,9 @@ phases:
           packages:
             - product_id: "shared_budget_prospecting"
               pricing_option_id: "prospecting_cpm"
-              min_spend_target: 20000
             - product_id: "shared_budget_retargeting"
               pricing_option_id: "retargeting_cpm"
+              min_spend_target: 20000
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#seller_optimized_budget_min_spend_targets"
@@ -627,7 +631,7 @@ phases:
           - check: field_contains
             path: "packages[*]"
             value:
-              product_id: "shared_budget_prospecting"
+              product_id: "shared_budget_retargeting"
               min_spend_target: 20000
             description: "Response preserves the soft package minimum-spend target"
 
@@ -652,7 +656,7 @@ phases:
           - check: field_contains
             path: "media_buys[0].packages[*]"
             value:
-              product_id: "shared_budget_prospecting"
+              product_id: "shared_budget_retargeting"
               min_spend_target: 20000
             description: "Readback preserves the package minimum-spend target"
 

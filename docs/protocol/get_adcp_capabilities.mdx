@@ -1288,6 +1288,10 @@ Signal-activation policy layered on the shared `adcp.attestations` allowlist. Pr
 
 See [`check_governance` runtime signal attestations](/docs/governance/campaign/tasks/check_governance#runtime-signal-attestations) for request, evaluation, signed-context, and audit binding.
 
+#### supports_budget_periods
+
+Boolean. `true` means this governance agent accepts `plans[].budget.periods[]` on [`sync_plans`](/docs/governance/campaign/tasks/sync_plans#budget-periods) and enforces it on [`check_governance`](/docs/governance/campaign/tasks/check_governance#budget-periods): it derives the period that contains a dated action's whole flight, denies straddling, unallocated, and over-period commitments, and returns `budget_period_id`. When `false` or absent, buyers MUST NOT rely on period limits being enforced and SHOULD NOT send `budget.periods`. The storyboard [`governance/budget_periods`](/compliance/latest/protocols/governance/scenarios/budget_periods.yaml) runs only against agents that declare `true`.
+
 #### property_features
 
 Array of property features this governance agent can evaluate. See [Property Governance](/docs/governance/property/index).
