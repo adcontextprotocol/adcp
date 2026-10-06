@@ -908,13 +908,22 @@ function versionEntry(version, build, extra = {}) {
         { source: '/docs/media-buy/product-discovery/proposal-negotiation', destination: `/dist/docs/${default32}/media-buy/product-discovery/proposal-negotiation`, permanent: false },
         { source: '/docs/reference/whats-new-in-3-1', destination: `/dist/docs/${default32}/reference/whats-new-in-3-1`, permanent: false },
         { source: '/docs/reference/migration/3-0-to-3-1', destination: `/dist/docs/${default32}/reference/migration/3-0-to-3-1`, permanent: false },
-        { source: '/3.3', destination: `/dist/docs/${seed33}/reference/whats-new-in-3-3`, permanent: false },
-        { source: '/3.3/try', destination: `/dist/docs/${seed33}/reference/3-3-beta`, permanent: false },
-        { source: '/3.3/migrate', destination: `/dist/docs/${seed33}/reference/migration/3-2-to-3-3`, permanent: false },
-        { source: '/3.3/sdk', destination: `/dist/docs/${seed33}/building/by-layer/L4/choose-your-sdk`, permanent: false },
-        { source: '/docs/reference/whats-new-in-3-3', destination: `/dist/docs/${seed33}/reference/whats-new-in-3-3`, permanent: false },
-        { source: '/docs/reference/3-3-beta', destination: `/dist/docs/${seed33}/reference/3-3-beta`, permanent: false },
-        { source: '/docs/reference/migration/3-2-to-3-3', destination: `/dist/docs/${seed33}/reference/migration/3-2-to-3-3`, permanent: false },
+        ...(seed33 === 'source'
+          ? [
+              { source: '/3.3', destination: '/docs/reference/whats-new-in-3-3', permanent: false },
+              { source: '/3.3/try', destination: '/docs/reference/3-3-beta', permanent: false },
+              { source: '/3.3/migrate', destination: '/docs/reference/migration/3-2-to-3-3', permanent: false },
+              { source: '/3.3/sdk', destination: `/dist/docs/${default32}/building/by-layer/L4/choose-your-sdk`, permanent: false },
+            ]
+          : [
+            { source: '/3.3', destination: `/dist/docs/${seed33}/reference/whats-new-in-3-3`, permanent: false },
+            { source: '/3.3/try', destination: `/dist/docs/${seed33}/reference/3-3-beta`, permanent: false },
+            { source: '/3.3/migrate', destination: `/dist/docs/${seed33}/reference/migration/3-2-to-3-3`, permanent: false },
+            { source: '/3.3/sdk', destination: `/dist/docs/${seed33}/building/by-layer/L4/choose-your-sdk`, permanent: false },
+            { source: '/docs/reference/whats-new-in-3-3', destination: `/dist/docs/${seed33}/reference/whats-new-in-3-3`, permanent: false },
+            { source: '/docs/reference/3-3-beta', destination: `/dist/docs/${seed33}/reference/3-3-beta`, permanent: false },
+            { source: '/docs/reference/migration/3-2-to-3-3', destination: `/dist/docs/${seed33}/reference/migration/3-2-to-3-3`, permanent: false },
+            ]),
         { source: '/unrelated', destination: '/docs/faq' },
       ],
     };
@@ -1142,6 +1151,48 @@ function versionEntry(version, build, extra = {}) {
     const result = updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', { snapshotHasPage: hasStory33 });
 
     assert.match(result.warnings.join('\n'), /banner does not link to the 3\.3 release story/);
+  });
+
+  test('a 3.3 beta.0 snapshot moves source-staged short aliases onto the snapshot and adds the clean page routes', () => {
+    const config = storyFixture({ seed33: 'source' });
+    const before = destinations(config);
+    assert.equal(before['/docs/reference/whats-new-in-3-3'], undefined, 'no clean redirect shadows the source page yet');
+
+    updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', { snapshotHasPage: hasStory33 });
+
+    const after = destinations(config);
+    assert.equal(after['/3.3'], '/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3');
+    assert.equal(after['/3.3/try'], '/dist/docs/3.3.0-beta.0/reference/3-3-beta');
+    assert.equal(after['/3.3/migrate'], '/dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3');
+    assert.equal(after['/3.3/sdk'], '/dist/docs/3.3.0-beta.0/building/by-layer/L4/choose-your-sdk');
+    assert.equal(after['/docs/reference/whats-new-in-3-3'], '/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3');
+    assert.equal(after['/docs/reference/3-3-beta'], '/dist/docs/3.3.0-beta.0/reference/3-3-beta');
+    assert.equal(after['/docs/reference/migration/3-2-to-3-3'], '/dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3');
+    for (const source of ['/docs/reference/whats-new-in-3-3', '/docs/reference/3-3-beta', '/docs/reference/migration/3-2-to-3-3']) {
+      assert.equal(config.redirects.find((redirect) => redirect.source === source).permanent, false);
+    }
+    for (const source of Object.keys(before).filter((key) => !/3\.3|3-3/.test(key))) {
+      assert.equal(after[source], before[source], `${source} keeps pointing where it did`);
+    }
+  });
+
+  test('story redirects stay staged on the source pages while the snapshot lacks them', () => {
+    const config = storyFixture({ seed33: 'source' });
+
+    updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', { snapshotHasPage: () => false });
+
+    const after = destinations(config);
+    assert.equal(after['/3.3'], '/docs/reference/whats-new-in-3-3');
+    assert.equal(after['/docs/reference/whats-new-in-3-3'], undefined);
+  });
+
+  test('a patch of a line older than the default adds no clean story routes', () => {
+    const config = storyFixture({ seed33: 'source' });
+    const count = config.redirects.length;
+
+    updateDocsConfig(config, '3.1.25', '3.1', { snapshotHasPage: () => true });
+
+    assert.equal(config.redirects.length, count);
   });
 
   test('a 3.3 beta.0 snapshot retargets seeded story aliases that point at another build', () => {
