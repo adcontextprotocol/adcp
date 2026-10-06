@@ -182,6 +182,10 @@
     "reporting_capabilities": {
       "$ref": "/schemas/core/reporting-capabilities.json"
     },
+    "dooh_inventory_summary": {
+      "$ref": "/schemas/core/dooh-inventory-summary.json",
+      "description": "Aggregate DOOH/OOH geographic footprint for network/regional products where per-placement dooh_placement_attributes.location is not practical. See dooh-inventory-summary.json for the full description."
+    },
     "creative_policy": {
       "$ref": "/schemas/core/creative-policy.json"
     },
