@@ -55,6 +55,7 @@ the same nondisclosing `REPORTING_REVISION_NOT_FOUND` result.
 | `start_date` | string | No | Report start date (YYYY-MM-DD), inclusive, as a calendar date in the product's reporting timezone (`reporting_capabilities.timezone`). Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
 | `end_date` | string | No | Report end date (YYYY-MM-DD), **exclusive**, in the same reporting timezone as `start_date`. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
 | `reporting_dimensions` | object | No | Request dimensional breakdowns within `by_package`. Include a key as an empty object (e.g., `"device_type": {}`) to activate with defaults. Keys: `geo`, `device_type`, `device_platform`, `format`, `audience`, `demographic`, `placement`, `property`, `collection`, `installment`, `collection_property`, `installment_property`, `placement_property`, `spot`, `creative`, `keyword`, `catalog_item`. Most accept optional `limit`, `sort_by`, and `sort_direction`. `format` groups rows by canonical `format_kind`, not duration or other format-option parameters. Demographic also accepts canonical `age_ranges`, each of which must match the product's independent demographic reporting capability exactly. `spot` accepts only `limit`, returns rows by `aired_at` ascending, and defaults to the complete log for the reporting period. Geo requires `geo_level`; include `system` for metro/postal levels. `creative`, `keyword`, and `catalog_item` are returned automatically when the seller supports them, even when omitted from this object — including one of their keys is optional and upgrades that breakdown to a negotiated contract (`limit`, `sort_by`, `sort_direction`, and a binding truncation/sort-echo disclosure) without changing the automatic default. Unsupported dimensions are silently omitted. When a requested dimension is supported, the seller returns its array (possibly empty) and truncation flag. Metric-sorted dimensions also return applied-sort echoes; demographic and property-grain arrays also return suppression flags. Spot has no sort echoes. Unsupported requested demographic ranges return [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); malformed requests return a validation error. |
+| `breakdown_composition` | object | No | Request one cross-tabulated result, returned as `by_package[].by_composition`, instead of independent marginal slices. `dimensions` is 2 to 3 of `date`, `geo`, `device_type`, `device_platform`, `placement`, `creative`, `property`; `geo` (required with the geo dimension) carries a `geo_level` of `country`, `region`, or `metro`, plus a `system` for metro. Experimental (`media_buy.delivery_composition`). Also accepts `limit` (cells per page), `sort_by`, `sort_direction`, and the opaque `cursor` from the previous page. Requires `reporting_capabilities.supports_breakdown_composition`; see [Composed breakdowns](#composed-breakdowns). Mutually exclusive with `reporting_revision_id`. |
 | `time_granularity` | string | No | Per-window slice granularity for pull recovery, matching `reporting_webhook.reporting_frequency` vocabulary (`hourly`, `daily`, `weekly`, `monthly`, `quarterly`, `post_campaign`). When set, the response includes `windows[]` slices shape-aligned with webhook fires at the same granularity. Capability-scoped — value MUST be in the product's `reporting_capabilities.windowed_pull_granularities`. See [Windowed pull recovery](#windowed-pull-recovery). |
 | `include_window_breakdown` | boolean | No | When `true` (and `time_granularity` is set), include the `windows[]` array on each media buy. Defaults to `false`. Ignored when `time_granularity` is omitted. |
 | `requested_metrics` | string[] | No | Narrow the response to a subset of metrics — same semantics as `reporting_webhook.requested_metrics`. Applies to `totals`, `by_package`, daily/window slices, and breakdown rows. When omitted, all available metrics are included (unchanged behavior). See [Requesting a metric subset](#requesting-a-metric-subset). |
@@ -694,6 +695,8 @@ asyncio.run(main())
 | [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | A date string or filter violates its schema constraints | Use YYYY-MM-DD dates and a documented status value |
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Only one date is present, `end_date` is not after `start_date`, or a dated request spans products with different reporting timezones | Supply both dates with `start_date < end_date`. Narrow `media_buy_ids` to buys sharing one reporting timezone, or omit both dates for lifetime delivery |
 | [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |
+| [`BREAKDOWN_COMPOSITION_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-breakdown-composition-unsupported) | `breakdown_composition` was sent for a product that does not declare `supports_breakdown_composition` | Drop `breakdown_composition` and use the marginal `reporting_dimensions`. See [Composed breakdowns](#composed-breakdowns). |
+| [`BREAKDOWN_DIMENSION_NOT_COMPOSABLE`](/docs/building/verification/compliance-catalog#error-code-breakdown-dimension-not-composable) | A requested dimension (including `date`) is outside `composable_dimensions`, the geo level or metro system is not declared in `supports_geo_breakdown`, the set exceeds `max_dimensions`, or the pair cannot be composed | Re-issue with dimensions from the product's declared set and within `max_dimensions`. |
 | [`UNSUPPORTED_GRANULARITY`](/docs/building/verification/compliance-catalog#error-code-unsupported-granularity) | Requested `time_granularity` is not in the product's `windowed_pull_granularities` | Re-issue with a granularity from `error.details.supported_granularities`, or omit `time_granularity` to fall back to cumulative date-range pulls. See [Windowed pull recovery](#windowed-pull-recovery). |
 
 A valid query with no matching media buys succeeds with an empty `media_buy_deliveries` array.
@@ -992,6 +995,65 @@ Each breakdown array has a sibling boolean flag (e.g., `by_geo_truncated`). When
 For the bounded-enum dimensions — `device_type`, `device_platform`, `audience`, and `placement` — a truncated breakdown is retrievable rather than a dead end: sellers MUST also return `by_<dim>_pagination` (the same cursor-pagination shape used by [`get_products`](/docs/media-buy/task-reference/get_products)) whenever `by_<dim>_truncated` is true. Pass the returned `cursor` back as `reporting_dimensions.<dim>.cursor` on the next request, repeating `limit`, `sort_by`, and `sort_direction` unchanged, to fetch the next page. Every other dimension's truncation — including `by_geo`, which can reach tens of thousands of rows at `postal_area` granularity — remains an analytical ranking rather than a complete export; AdCP 3.2 does not define a complete property-export operation for these, and buyers that need exhaustive brand-safety or allowlist reconciliation must use the seller's native reporting or export interface. Metric dimensions are sorted by the requested `sort_by` value in the requested `sort_direction` (descending by default); rows without the applied metric sort last regardless of direction. The seller echoes the metric and direction it actually applied in `by_*_sorted_by`/`by_*_sort_direction`, which sellers MUST return whenever a requested dimension's breakdown array is present. For `by_creative`, `by_keyword`, and `by_catalog_item` rows returned automatically without a request key, the truncated and echo fields are RECOMMENDED rather than required — automatic rows carry no completeness contract. Spot rows always use `aired_at` ascending and carry neither field.
 
 Demographic and property-grain reporting also return `by_*_suppressed`. `true` means privacy, policy, or measurement thresholds omitted otherwise reportable rows, so the visible rows may not reconcile to package totals. This is distinct from truncation caused by a row limit, and both flags may be true.
+
+### Composed breakdowns
+
+<Warning>
+Composed breakdowns are **experimental** in AdCP 3.3 (feature id `media_buy.delivery_composition`). A seller that implements them lists the id in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities); the surface may change inside 3.x. See [Experimental status](/docs/reference/experimental-status).
+</Warning>
+
+`reporting_dimensions` returns independent slices: each `by_*` array sums to the package total on its own, so a buyer cannot recover which creative ran in which geo on which day. `breakdown_composition` returns one cross-tabulated result instead. Each row is a cell keyed by every composed dimension, which is the grain geo-experiment and log reconciliation need. It is optional and additive, may be combined with `reporting_dimensions` in one call (both drawn from one data snapshot), and requires the product to declare `reporting_capabilities.supports_breakdown_composition`. If any in-scope package lacks the declaration, the whole request fails. Composition is not applied to webhook payloads or `windows[]` recovery slices.
+
+```json
+{
+  "media_buy_ids": ["mb_acme_001"],
+  "start_date": "2026-07-01",
+  "end_date": "2026-07-08",
+  "breakdown_composition": {
+    "dimensions": ["creative", "geo", "date"],
+    "geo": { "geo_level": "region" },
+    "limit": 5000,
+    "sort_by": "impressions"
+  }
+}
+```
+
+```json
+{
+  "package_id": "pkg_1",
+  "by_composition": {
+    "dimensions": ["creative", "geo", "date"],
+    "rows": [
+      {
+        "key": { "creative_id": "cr_hero", "geo_level": "region", "geo_code": "US-CA", "date": "2026-07-01" },
+        "metrics": { "impressions": 12044, "spend": 84.31, "clicks": 63 }
+      },
+      {
+        "key": { "creative_id": "cr_hero", "geo_level": "region", "geo_code": "US-NY", "date": "2026-07-01" },
+        "metrics": { "impressions": 9877, "spend": 69.14, "clicks": 51 }
+      }
+    ],
+    "truncated": false,
+    "suppressed": false,
+    "sorted_by": "impressions",
+    "sort_direction": "desc"
+  }
+}
+```
+
+The fragments above are the request body and one `by_package` entry; they omit the surrounding envelope.
+
+**Capability.** A seller declares `max_dimensions` (2 or 3; the protocol caps compositions at 3) and `composable_dimensions`, any of `date`, `geo`, `device_type`, `device_platform`, `placement`, `creative`, `property`. `date` is listed like any other dimension, and a `lifetime_only` product never lists it. A request outside the declared set MUST fail with [`BREAKDOWN_DIMENSION_NOT_COMPOSABLE`](/docs/building/verification/compliance-catalog#error-code-breakdown-dimension-not-composable), including a set longer than `max_dimensions`, a geo level or metro system the product does not declare in `supports_geo_breakdown`, or a pair the seller cannot compose even though each member is listed (the seller SHOULD name the pair in `error.details`). The seller never drops a dimension or truncates the set. A product without the declaration MUST answer [`BREAKDOWN_COMPOSITION_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-breakdown-composition-unsupported) rather than ignore the field. A `date` composition over products in more than one reporting timezone fails with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error), as for `start_date`.
+
+**Keys.** `key` carries exactly the members of the composed dimensions and no others, using the identity fields of the matching `by_*` row: `date`, `geo_level` and `geo_code` (plus `system`, required for metro), `device_type`, `device_platform`, `placement_id`, `creative_id`, and `publisher_domain` with `identifier` for `property` (compared as a whole object). Metrics the seller cannot report at cell grain are omitted from `metrics`. Cells with no delivery are omitted.
+
+**Geo.** Composition is limited to the `country`, `region`, and `metro` levels, and `metro` requires a `system`. `postal_area` is not composable: a cross-tab at postal grain can reach tens of thousands of cells, which is a bulk-export shape and stays with the seller's export interface, as for `by_geo` pagination above. Four-dimension compositions (for example creative × geo × date × placement) are made with two calls joined by the buyer.
+
+**Ordering and paging.** Cells are ordered by the applied `sorted_by` and `sort_direction`, which the seller MUST echo; ties break by key members ascending in `dimensions` order (dates ascending, other values bytewise). `limit` is advisory: the seller picks its page size and never returns more than requested. When more cells remain, `truncated` is `true` and `pagination` (the shared `has_more` / `cursor` / `total_count` shape, with `has_more` true) is returned; the final page has `truncated: false`. Pass `pagination.cursor` back as `breakdown_composition.cursor`. The cursor is whole-request state: one token advances every in-scope package, and a package that is exhausted returns empty `rows` with `truncated: false`. Repeat `dimensions`, `geo`, `limit`, `sort_by`, `sort_direction`, the date range, and the package selection unchanged. The seller binds the cursor to that request and to a data snapshot: a changed request fails with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request), and a snapshot the seller no longer retains fails with [`CURSOR_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-cursor-expired), after which the buyer restarts the walk without a cursor. `suppressed` is `true` when privacy, policy, or measurement thresholds omitted otherwise reportable cells.
+
+**Consistency.** Over the union of all pages of one completed walk (or the single response when no pagination is returned), and only when no page set `suppressed`, count and currency metrics (`impressions`, `spend`, `clicks`, and other additive counts) summed over every row MUST equal the package total for the period, with `spend` equal to the currency's minor unit. For each composed dimension that the same response also returns as an untruncated, unsuppressed marginal `by_*` array at the same grain (the same `geo_level` and `system` for geo), the per-value sums over rows MUST equal that marginal. Metrics a seller omits at cell grain or narrows away with `requested_metrics` are exempt. Rates, ratios, and unique counts (`ctr`, `reach`, `frequency`) are never summed across cells. The rule does not apply to a partial walk.
+
+Composition is the aggregate-side answer to cell-level reconciliation. It does not replace log-level or clean-room delivery: a buyer that needs every impression-level record, or postal-grain cells, uses a log-level export (see the clean-room and log-level delivery work in [#2196](https://github.com/adcontextprotocol/adcp/issues/2196)).
 
 ### Audience sources
 

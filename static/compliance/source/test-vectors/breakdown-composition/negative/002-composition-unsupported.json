@@ -1,0 +1,20 @@
+{
+  "description": "A product with no supports_breakdown_composition declaration rejects the request instead of ignoring the field.",
+  "request": {
+    "media_buy_ids": [
+      "mb_orchard_001"
+    ],
+    "breakdown_composition": {
+      "dimensions": [
+        "creative",
+        "date"
+      ]
+    }
+  },
+  "capability": null,
+  "product_date_range_support": "date_range",
+  "expected_outcome": {
+    "success": false,
+    "error_code": "BREAKDOWN_COMPOSITION_UNSUPPORTED"
+  }
+}

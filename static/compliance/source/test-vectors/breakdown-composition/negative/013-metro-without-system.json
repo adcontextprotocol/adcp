@@ -1,0 +1,21 @@
+{
+  "description": "A metro geo grain must name its system, because a metro code is ambiguous across systems.",
+  "request": {
+    "media_buy_ids": [
+      "mb_acme_001"
+    ],
+    "breakdown_composition": {
+      "dimensions": [
+        "geo",
+        "date"
+      ],
+      "geo": {
+        "geo_level": "metro"
+      }
+    }
+  },
+  "expected_outcome": {
+    "schema_valid": false,
+    "target": "request"
+  }
+}

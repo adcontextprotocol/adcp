@@ -34,6 +34,8 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `BILLING_NOT_SUPPORTED` | correctable | check get_adcp_capabilities for supported_billing and resubmit with a supported value, or omit billing to accept the seller's default |
 | `BILLING_OUT_OF_BAND` | terminal | do not retry — billing for this account runs through a non-AdCP channel. Pre-filter via capabilities.creative.bills_through_adcp before sending report_usage; flag the account in the buyer's routing table and fall back to the ad server's native billing export for cost reconciliation |
 | `BRAND_REQUIRED` | correctable | include brand (domain plus optional brand_id) on the request |
+| `BREAKDOWN_COMPOSITION_UNSUPPORTED` | correctable | drop breakdown_composition and request the marginal by_* breakdowns through reporting_dimensions, or choose a product that declares reporting_capabilities.supports_breakdown_composition |
+| `BREAKDOWN_DIMENSION_NOT_COMPOSABLE` | correctable | pick dimensions from the product's reporting_capabilities.supports_breakdown_composition.composable_dimensions (via get_adcp_capabilities), keep the set within max_dimensions, and resubmit |
 | `BUDGET_CAP_REACHED` | correctable | raise max_spend, or reduce max_creatives/max_variants, to produce the remaining items |
 | `BUDGET_EXCEEDED` | correctable | reduce requested amount or increase budget allocation |
 | `BUDGET_EXHAUSTED` | terminal | buyer must add funds or increase budget cap |
@@ -57,7 +59,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CREATIVE_VALIDATION_FAILED_GENERIC` | correctable | correct the buyer-visible validation problem and resubmit the creative |
 | `CREATIVE_VALUE_NOT_ALLOWED` | correctable | pick a value from error.details.allowed_values (or re-fetch the format) and resubmit |
 | `CREDENTIAL_IN_ARGS` | terminal | do NOT auto-retry — auto-retry re-logs the credential on each attempt. Move authentication material or caller-supplied trust material out of request args (top-level, <code>{"context"}</code>, <code>{"ext"}</code>, any nested location) onto the relevant transport authentication/trust channel or account provisioning path (Authorization: Bearer, RFC 9421 signature/JWKS, mTLS, MCP/A2A authentication framing); rotate any leaked credential, then resubmit |
-| `CURSOR_EXPIRED` | correctable | obtain a latest checkpoint, rebuild authoritative account snapshots, then drain changes after the checkpoint |
+| `CURSOR_EXPIRED` | correctable | for the account change feed obtain a latest checkpoint, rebuild authoritative account snapshots, then drain changes after the checkpoint; for composed delivery restart the breakdown_composition walk without a cursor |
 | `EVALUATOR_AGENT_NOT_ACCEPTED` | correctable | replace the evaluator agent_url (evaluator.feature_agent.agent_url or the evaluator agent-form agent_url) with one from the seller's published accepted_verifiers, or drop the evaluator agent pointer to fall back to seller-default ranking |
 | `FEED_FETCH_FAILED` | correctable | check URL accessibility, authentication, and that content matches the declared feed_format |
 | `FIELD_NOT_PERMITTED` | correctable | drop the disallowed field(s) and retry |
@@ -334,6 +336,24 @@ A creative-agent billing-loop operation (<code>{"report_usage"}</code> is the ca
 A billable operation was attempted without a brand reference. Every billable operation requires either a seller-assigned <code>{"account_id"}</code> or a natural key including <code>{"brand"}</code>. Recovery: correctable (include <code>{"brand"}</code> — <code>{"domain"}</code> plus optional <code>{"brand_id"}</code> — on the request).
 
 </Accordion>
+<a id="error-code-breakdown-composition-unsupported"></a>
+
+<Accordion title="BREAKDOWN_COMPOSITION_UNSUPPORTED — correctable">
+
+**Suggested action:** drop breakdown_composition and request the marginal by_* breakdowns through reporting_dimensions, or choose a product that declares reporting_capabilities.supports_breakdown_composition
+
+The request carried <code>{"breakdown_composition"}</code> on <code>{"get_media_buy_delivery"}</code>, but the product behind an in-scope package does not declare <code>{"reporting_capabilities.supports_breakdown_composition"}</code>. Distinct from <code>{"UNSUPPORTED_FEATURE"}</code> (generic capability mismatch) by being narrowly about composed delivery breakdowns, and from <code>{"BREAKDOWN_DIMENSION_NOT_COMPOSABLE"}</code>, which applies when composition is supported but the requested dimension set is not. The seller MUST NOT ignore the field and return only marginal <code>{"by_*"}</code> arrays. The <code>{"error.field"}</code> SHOULD point at <code>{"breakdown_composition"}</code>. Recovery: correctable (drop <code>{"breakdown_composition"}</code> and request the existing marginal <code>{"by_*"}</code> breakdowns through <code>{"reporting_dimensions"}</code>).
+
+</Accordion>
+<a id="error-code-breakdown-dimension-not-composable"></a>
+
+<Accordion title="BREAKDOWN_DIMENSION_NOT_COMPOSABLE — correctable">
+
+**Suggested action:** pick dimensions from the product's reporting_capabilities.supports_breakdown_composition.composable_dimensions (via get_adcp_capabilities), keep the set within max_dimensions, and resubmit
+
+The <code>{"breakdown_composition.dimensions"}</code> set on <code>{"get_media_buy_delivery"}</code> cannot be composed by the product: a requested dimension (including <code>{"date"}</code>) is not in the declared <code>{"reporting_capabilities.supports_breakdown_composition.composable_dimensions"}</code>, the geo level or metro system is not one the product declares in <code>{"supports_geo_breakdown"}</code>, the set is longer than the declared <code>{"max_dimensions"}</code>, or the seller cannot compose that particular combination of individually listed dimensions. The seller MUST reject the request rather than silently dropping a dimension or truncating the set. Sellers SHOULD name the offending dimension or pair in <code>{"error.details"}</code>, and MAY echo the declared <code>{"composable_dimensions"}</code> and <code>{"max_dimensions"}</code> when the caller is authorized to read the product's reporting capabilities; the same values are already available via <code>{"get_adcp_capabilities"}</code>. The <code>{"error.field"}</code> SHOULD point at <code>{"breakdown_composition.dimensions"}</code>. Recovery: correctable (re-issue with dimensions drawn from the declared set, within <code>{"max_dimensions"}</code>, avoiding the named pair).
+
+</Accordion>
 <a id="error-code-budget-cap-reached"></a>
 
 <Accordion title="BUDGET_CAP_REACHED — correctable">
@@ -545,9 +565,9 @@ The seller detected authentication material or caller-supplied trust material pl
 
 <Accordion title="CURSOR_EXPIRED — correctable">
 
-**Suggested action:** obtain a latest checkpoint, rebuild authoritative account snapshots, then drain changes after the checkpoint
+**Suggested action:** for the account change feed obtain a latest checkpoint, rebuild authoritative account snapshots, then drain changes after the checkpoint; for composed delivery restart the breakdown_composition walk without a cursor
 
-The list_account_changes cursor (experimental, account.change_feed) is no longer within the seller's retained account change window. The seller MUST NOT silently restart from the retention boundary. Recovery: correctable (obtain a new starting_position: latest checkpoint, rebuild every authoritative account snapshot, then drain changes after that checkpoint). error.details SHOULD include available_since and MAY include a replacement starting-position hint, without disclosing inaccessible history.
+A paging cursor is no longer valid because the seller no longer retains what it points at. For the <code>{"list_account_changes"}</code> cursor (experimental, <code>{"account.change_feed"}</code>) the position is no longer within the seller's retained account change window; the seller MUST NOT silently restart from the retention boundary. For a <code>{"get_media_buy_delivery"}</code> <code>{"breakdown_composition.cursor"}</code> (experimental, <code>{"media_buy.delivery_composition"}</code>) the data snapshot the cursor was bound to is no longer retained; the seller MUST NOT silently re-page against fresher data. Recovery: correctable (for the account change feed, obtain a new starting_position: latest checkpoint, rebuild every authoritative account snapshot, then drain changes after that checkpoint; for composed delivery, restart the composition walk without a cursor). error.details SHOULD include available_since for the account change feed and MAY include a replacement starting-position hint, without disclosing inaccessible history.
 
 </Accordion>
 <a id="error-code-evaluator-agent-not-accepted"></a>

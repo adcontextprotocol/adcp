@@ -1,0 +1,27 @@
+{
+  "description": "date is composable only when the product lists it in composable_dimensions; a lifetime_only product never lists it.",
+  "request": {
+    "media_buy_ids": [
+      "mb_acme_001"
+    ],
+    "breakdown_composition": {
+      "dimensions": [
+        "creative",
+        "date"
+      ]
+    }
+  },
+  "capability": {
+    "max_dimensions": 3,
+    "composable_dimensions": [
+      "geo",
+      "creative",
+      "placement"
+    ]
+  },
+  "product_date_range_support": "lifetime_only",
+  "expected_outcome": {
+    "success": false,
+    "error_code": "BREAKDOWN_DIMENSION_NOT_COMPOSABLE"
+  }
+}

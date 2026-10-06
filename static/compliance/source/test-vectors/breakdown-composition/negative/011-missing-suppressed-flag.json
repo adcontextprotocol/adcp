@@ -1,0 +1,32 @@
+{
+  "description": "Sellers MUST return suppressed whenever by_composition is present.",
+  "by_package": {
+    "by_composition": {
+      "dimensions": [
+        "creative",
+        "geo"
+      ],
+      "rows": [
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-CA"
+          },
+          "metrics": {
+            "impressions": 12044,
+            "spend": 84.31,
+            "clicks": 63
+          }
+        }
+      ],
+      "truncated": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc"
+    }
+  },
+  "expected_outcome": {
+    "schema_valid": false,
+    "target": "response"
+  }
+}

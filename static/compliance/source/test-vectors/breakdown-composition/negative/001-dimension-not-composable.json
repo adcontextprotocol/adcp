@@ -1,0 +1,30 @@
+{
+  "description": "A seller that composes only geo and placement rejects a request that includes creative rather than silently dropping it.",
+  "request": {
+    "media_buy_ids": [
+      "mb_nova_001"
+    ],
+    "breakdown_composition": {
+      "dimensions": [
+        "creative",
+        "geo",
+        "date"
+      ],
+      "geo": {
+        "geo_level": "region"
+      }
+    }
+  },
+  "capability": {
+    "max_dimensions": 3,
+    "composable_dimensions": [
+      "geo",
+      "placement"
+    ]
+  },
+  "product_date_range_support": "date_range",
+  "expected_outcome": {
+    "success": false,
+    "error_code": "BREAKDOWN_DIMENSION_NOT_COMPOSABLE"
+  }
+}

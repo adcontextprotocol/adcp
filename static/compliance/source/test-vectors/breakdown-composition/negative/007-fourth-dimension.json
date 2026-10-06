@@ -1,0 +1,20 @@
+{
+  "description": "The protocol caps compositions at three dimensions.",
+  "request": {
+    "media_buy_ids": [
+      "mb_acme_001"
+    ],
+    "breakdown_composition": {
+      "dimensions": [
+        "creative",
+        "placement",
+        "device_type",
+        "date"
+      ]
+    }
+  },
+  "expected_outcome": {
+    "schema_valid": false,
+    "target": "request"
+  }
+}

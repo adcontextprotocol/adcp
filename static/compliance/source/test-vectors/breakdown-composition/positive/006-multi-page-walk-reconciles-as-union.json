@@ -1,0 +1,108 @@
+{
+  "description": "A two-page cursor walk. The first page is truncated and does not sum to the package total; the union of both pages, ending with truncated false, reconciles to the package total and to the by_creative marginal returned with the final page.",
+  "package_totals": {
+    "impressions": 25921,
+    "spend": 180.0,
+    "clicks": 128
+  },
+  "marginals": {
+    "by_creative": [
+      {
+        "creative_id": "cr_hero",
+        "impressions": 21921,
+        "spend": 153.45,
+        "clicks": 114
+      },
+      {
+        "creative_id": "cr_alt",
+        "impressions": 4000,
+        "spend": 26.55,
+        "clicks": 14
+      }
+    ],
+    "by_creative_truncated": false
+  },
+  "pages": [
+    {
+      "dimensions": [
+        "creative",
+        "geo"
+      ],
+      "suppressed": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc",
+      "rows": [
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-CA"
+          },
+          "metrics": {
+            "impressions": 12044,
+            "spend": 84.31,
+            "clicks": 63
+          }
+        },
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-NY"
+          },
+          "metrics": {
+            "impressions": 9877,
+            "spend": 69.14,
+            "clicks": 51
+          }
+        }
+      ],
+      "truncated": true,
+      "pagination": {
+        "has_more": true,
+        "cursor": "opaque-page-2",
+        "total_count": 4
+      }
+    },
+    {
+      "dimensions": [
+        "creative",
+        "geo"
+      ],
+      "suppressed": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc",
+      "rows": [
+        {
+          "key": {
+            "creative_id": "cr_alt",
+            "geo_level": "region",
+            "geo_code": "US-CA"
+          },
+          "metrics": {
+            "impressions": 3000,
+            "spend": 20.0,
+            "clicks": 10
+          }
+        },
+        {
+          "key": {
+            "creative_id": "cr_alt",
+            "geo_level": "region",
+            "geo_code": "US-NY"
+          },
+          "metrics": {
+            "impressions": 1000,
+            "spend": 6.55,
+            "clicks": 4
+          }
+        }
+      ],
+      "truncated": false
+    }
+  ],
+  "expected": {
+    "schema_valid": true,
+    "marginals_reconcile": true
+  }
+}

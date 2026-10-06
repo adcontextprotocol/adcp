@@ -1,0 +1,34 @@
+{
+  "description": "A row key carries no member for a dimension that was not composed.",
+  "by_package": {
+    "by_composition": {
+      "dimensions": [
+        "creative",
+        "geo"
+      ],
+      "rows": [
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-CA",
+            "date": "2026-07-01"
+          },
+          "metrics": {
+            "impressions": 100,
+            "spend": 1.0,
+            "clicks": 1
+          }
+        }
+      ],
+      "truncated": false,
+      "suppressed": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc"
+    }
+  },
+  "expected_outcome": {
+    "schema_valid": false,
+    "target": "response"
+  }
+}

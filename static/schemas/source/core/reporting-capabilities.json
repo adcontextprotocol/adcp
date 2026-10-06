@@ -155,6 +155,28 @@
       "type": "boolean",
       "description": "Whether this product supports placement × property intersection reporting (by_placement_property within by_package)."
     },
+    "supports_breakdown_composition": {
+      "type": "object",
+      "x-status": "experimental",
+      "description": "Experimental (media_buy.delivery_composition). Whether this product supports composed (cross-tabulated) delivery breakdowns via get_media_buy_delivery breakdown_composition, returned as by_composition within by_package. Absence means undeclared: buyers MUST NOT send breakdown_composition, and a seller receiving it MUST return BREAKDOWN_COMPOSITION_UNSUPPORTED. Every composed dimension, including date, must be listed in composable_dimensions; a lifetime_only product MUST NOT list date. geo is composable only at the country, region, and metro levels (and metro systems) the product also declares in supports_geo_breakdown. The capability does not list unsupported pairs: a seller MAY reject a combination of individually listed dimensions with BREAKDOWN_DIMENSION_NOT_COMPOSABLE and SHOULD name the offending pair in error.details.",
+      "properties": {
+        "max_dimensions": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 3,
+          "description": "Largest number of dimensions, counting date, this product can compose in one request. The protocol caps compositions at 3; a seller MAY declare less. A longer request MUST be rejected with BREAKDOWN_DIMENSION_NOT_COMPOSABLE, never truncated to fit."
+        },
+        "composable_dimensions": {
+          "type": "array",
+          "description": "Dimensions that can be composed. A request naming any dimension outside this set MUST be rejected with BREAKDOWN_DIMENSION_NOT_COMPOSABLE. Each listed dimension other than date SHOULD also be supported as a marginal breakdown by the product.",
+          "items": { "type": "string", "enum": ["date", "geo", "device_type", "device_platform", "placement", "creative", "property"] },
+          "uniqueItems": true,
+          "minItems": 2
+        }
+      },
+      "required": ["max_dimensions", "composable_dimensions"],
+      "additionalProperties": true
+    },
     "supports_spot_breakdown": {
       "$ref": "/schemas/core/spot-reporting-capability.json",
       "description": "Spot-level as-run airing-log support and metrics available at spot grain for broadcast TV, radio, and other scheduled inventory."

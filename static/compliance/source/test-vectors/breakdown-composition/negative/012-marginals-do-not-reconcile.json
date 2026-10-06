@@ -1,0 +1,89 @@
+{
+  "description": "An untruncated, unsuppressed composition whose cells do not sum to the by_creative marginal violates the consistency rule.",
+  "package_totals": {
+    "impressions": 25921,
+    "spend": 180.0,
+    "clicks": 128
+  },
+  "by_package": {
+    "by_creative": [
+      {
+        "creative_id": "cr_hero",
+        "impressions": 30000,
+        "spend": 153.45,
+        "clicks": 114
+      },
+      {
+        "creative_id": "cr_alt",
+        "impressions": 4000,
+        "spend": 26.55,
+        "clicks": 14
+      }
+    ],
+    "by_creative_truncated": false,
+    "by_composition": {
+      "dimensions": [
+        "creative",
+        "geo"
+      ],
+      "rows": [
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-CA"
+          },
+          "metrics": {
+            "impressions": 12044,
+            "spend": 84.31,
+            "clicks": 63
+          }
+        },
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-NY"
+          },
+          "metrics": {
+            "impressions": 9877,
+            "spend": 69.14,
+            "clicks": 51
+          }
+        },
+        {
+          "key": {
+            "creative_id": "cr_alt",
+            "geo_level": "region",
+            "geo_code": "US-CA"
+          },
+          "metrics": {
+            "impressions": 3000,
+            "spend": 20.0,
+            "clicks": 10
+          }
+        },
+        {
+          "key": {
+            "creative_id": "cr_alt",
+            "geo_level": "region",
+            "geo_code": "US-NY"
+          },
+          "metrics": {
+            "impressions": 1000,
+            "spend": 6.55,
+            "clicks": 4
+          }
+        }
+      ],
+      "truncated": false,
+      "suppressed": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc"
+    }
+  },
+  "expected_outcome": {
+    "schema_valid": true,
+    "marginals_reconcile": false
+  }
+}

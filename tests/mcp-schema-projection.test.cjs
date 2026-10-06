@@ -86,9 +86,12 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // enums/outcome-target-cost-strength.json) that keep generated SDK type names
 // from colliding with BiddingPolicy's CostPer and Strength. It is embedded in
 // list_products, request_proposals, and refine_proposals (~0.5 KiB each),
-// measured at 452,953 bytes (442.3 KiB) and bounded at 443 KiB.
+// measured at 452,953 bytes (442.3 KiB) and bounded at 443 KiB. The
+// experimental breakdown_composition request and by_composition response
+// structure add ~1.1 KiB to get_media_buy_delivery, measured at 454,058 bytes
+// (443.4 KiB) and bounded at 444 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 443,
+  'media-buy': 444,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

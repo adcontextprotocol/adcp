@@ -1,0 +1,21 @@
+{
+  "description": "geo grain is forbidden unless the geo dimension is composed, and required when it is.",
+  "request": {
+    "media_buy_ids": [
+      "mb_acme_001"
+    ],
+    "breakdown_composition": {
+      "dimensions": [
+        "creative",
+        "date"
+      ],
+      "geo": {
+        "geo_level": "region"
+      }
+    }
+  },
+  "expected_outcome": {
+    "schema_valid": false,
+    "target": "request"
+  }
+}

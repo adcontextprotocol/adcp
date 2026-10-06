@@ -1,0 +1,55 @@
+{
+  "description": "A truncated page carries pagination and is exempt from the consistency rule: the returned cells need not sum to the package totals.",
+  "package_totals": {
+    "impressions": 25921,
+    "spend": 180.0,
+    "clicks": 128
+  },
+  "by_package": {
+    "by_composition": {
+      "dimensions": [
+        "creative",
+        "geo"
+      ],
+      "rows": [
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-CA"
+          },
+          "metrics": {
+            "impressions": 12044,
+            "spend": 84.31,
+            "clicks": 63
+          }
+        },
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-NY"
+          },
+          "metrics": {
+            "impressions": 9877,
+            "spend": 69.14,
+            "clicks": 51
+          }
+        }
+      ],
+      "truncated": true,
+      "suppressed": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc",
+      "pagination": {
+        "has_more": true,
+        "cursor": "opaque-page-2",
+        "total_count": 4
+      }
+    }
+  },
+  "expected": {
+    "schema_valid": true,
+    "marginals_reconcile": "not_applicable"
+  }
+}

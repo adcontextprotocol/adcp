@@ -15,7 +15,7 @@
         "not": {
           "anyOf": [
             { "required": ["media_buy_ids"] }, { "required": ["start_date"] }, { "required": ["end_date"] },
-            { "required": ["status_filter"] }, { "required": ["requested_metrics"] }, { "required": ["reporting_dimensions"] },
+            { "required": ["status_filter"] }, { "required": ["requested_metrics"] }, { "required": ["reporting_dimensions"] }, { "required": ["breakdown_composition"] },
             { "required": ["attribution_window"] }, { "required": ["include_package_daily_breakdown"] }, { "required": ["time_granularity"] }, { "required": ["include_window_breakdown"] }
           ]
         }
@@ -505,6 +505,75 @@
           "description": "Request delivery at the placement × property intersection. Use when a placement may span multiple web, app, social, or assistant properties. Check reporting_capabilities.supports_placement_property_breakdown."
         }
       },
+      "additionalProperties": true
+    },
+    "breakdown_composition": {
+      "type": "object",
+      "x-status": "experimental",
+      "description": "Experimental (media_buy.delivery_composition). Request one cross-tabulated result in which every row is a cell of the composed dimensions (for example creative x geo x date), instead of the independent marginal slices that reporting_dimensions returns. Optional and additive: omitting it preserves all existing behavior, and it MAY be combined with reporting_dimensions in one call. Requires reporting_capabilities.supports_breakdown_composition on the products behind every in-scope package; if any in-scope package lacks it the whole request fails with BREAKDOWN_COMPOSITION_UNSUPPORTED. A dimension set the seller cannot compose, including one longer than its declared max_dimensions, MUST be rejected with BREAKDOWN_DIMENSION_NOT_COMPOSABLE rather than silently dropping a dimension. Composition is not applied to webhook payloads or windows[] recovery slices. Results are returned as by_package[].by_composition, paged with an opaque cursor.",
+      "properties": {
+        "dimensions": {
+          "type": "array",
+          "description": "Dimensions to cross-tabulate. Between 2 and 3 entries; a single dimension is requested through reporting_dimensions. Order is echoed in the response and is the tie-break order for cells (see by_composition). date is a calendar date in the reporting timezone of the in-scope products; a date composition over packages whose products span more than one reporting timezone MUST be rejected with VALIDATION_ERROR, as for start_date. Each dimension, including date, must be listed in the product's supports_breakdown_composition.composable_dimensions.",
+          "items": { "type": "string", "enum": ["date", "geo", "device_type", "device_platform", "placement", "creative", "property"] },
+          "uniqueItems": true,
+          "minItems": 2,
+          "maxItems": 3
+        },
+        "geo": {
+          "type": "object",
+          "description": "Geographic grain for the geo dimension. Required when dimensions includes geo and forbidden otherwise. postal_area is not composable: a cross-tab at postal grain can reach tens of thousands of rows, which is a bulk-export shape rather than per-package cursor pagination (the same reason geo is excluded from by_<dim> cursor pagination).",
+          "properties": {
+            "geo_level": {
+              "allOf": [
+                { "$ref": "/schemas/enums/geo-level.json" },
+                { "not": { "const": "postal_area" } }
+              ],
+              "description": "country, region, or metro. Must also be a level the product declares in reporting_capabilities.supports_geo_breakdown."
+            },
+            "system": {
+              "$ref": "/schemas/enums/metro-system.json",
+              "description": "Metro classification system. Required when geo_level is metro, because a metro code is ambiguous across systems; forbidden otherwise. Must be a system the product declares in supports_geo_breakdown."
+            }
+          },
+          "required": ["geo_level"],
+          "allOf": [
+            {
+              "if": { "properties": { "geo_level": { "const": "metro" } }, "required": ["geo_level"] },
+              "then": { "required": ["system"] },
+              "else": { "not": { "required": ["system"] } }
+            }
+          ],
+          "additionalProperties": true
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Requested maximum number of cells per page. Advisory: the seller applies its own page size, MAY clamp the value down, and MUST NOT return more cells than requested. A seller MUST set truncated and return pagination whenever more cells remain."
+        },
+        "sort_by": {
+          "$ref": "/schemas/enums/sort-metric.json",
+          "description": "Metric used to order cells, in sort_direction order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at cell grain; on fallback the direction resets to 'desc'. Cells lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
+          "default": "spend"
+        },
+        "sort_direction": {
+          "$ref": "/schemas/enums/sort-direction.json",
+          "description": "Direction for sort_by ordering. Defaults to 'desc'. Sellers MUST apply the requested direction to the applied sort metric; direction has no availability fallback.",
+          "default": "desc"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor continuing a composition walk. Omit for the first page. The cursor is whole-request state: one token advances every in-scope package, and a package whose cells are exhausted returns empty rows with truncated false. dimensions, geo, limit, sort_by, sort_direction, the date range, and the package selection MUST be repeated unchanged; the seller binds the cursor to that request and to a data snapshot, MUST reject a changed request with INVALID_REQUEST, and MAY reject a cursor whose snapshot it no longer retains with CURSOR_EXPIRED."
+        }
+      },
+      "required": ["dimensions"],
+      "allOf": [
+        {
+          "if": { "properties": { "dimensions": { "contains": { "const": "geo" } } }, "required": ["dimensions"] },
+          "then": { "required": ["geo"] },
+          "else": { "not": { "required": ["geo"] } }
+        }
+      ],
       "additionalProperties": true
     },
     "context": {

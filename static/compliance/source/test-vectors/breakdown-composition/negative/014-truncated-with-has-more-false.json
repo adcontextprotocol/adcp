@@ -1,0 +1,36 @@
+{
+  "description": "truncated and pagination.has_more MUST agree.",
+  "by_package": {
+    "by_composition": {
+      "dimensions": [
+        "creative",
+        "geo"
+      ],
+      "rows": [
+        {
+          "key": {
+            "creative_id": "cr_hero",
+            "geo_level": "region",
+            "geo_code": "US-CA"
+          },
+          "metrics": {
+            "impressions": 100,
+            "spend": 1.0,
+            "clicks": 1
+          }
+        }
+      ],
+      "truncated": true,
+      "suppressed": false,
+      "sorted_by": "impressions",
+      "sort_direction": "desc",
+      "pagination": {
+        "has_more": false
+      }
+    }
+  },
+  "expected_outcome": {
+    "schema_valid": false,
+    "target": "response"
+  }
+}

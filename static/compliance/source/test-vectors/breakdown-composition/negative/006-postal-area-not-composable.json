@@ -1,0 +1,21 @@
+{
+  "description": "postal_area is excluded from compositions at the schema level (bulk-export shape).",
+  "request": {
+    "media_buy_ids": [
+      "mb_acme_001"
+    ],
+    "breakdown_composition": {
+      "dimensions": [
+        "geo",
+        "date"
+      ],
+      "geo": {
+        "geo_level": "postal_area"
+      }
+    }
+  },
+  "expected_outcome": {
+    "schema_valid": false,
+    "target": "request"
+  }
+}
