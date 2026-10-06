@@ -2,11 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/outcome-target.json",
   "title": "Outcome Target",
-  "description": "Reverse-forecast planning input: a goal plus a volume, a cost_per target, or both (at least one). Goals use the forecastable-metric and event-type vocabularies, so forecast points always carry the goal's metric or event key in metrics, with forecast_range_unit 'clicks' or 'conversions' where those units apply. volume and cost_per define the request shapes and answers, which travel on proposals. list_products returns no proposals, so there the field is inert for every seller, declaring or not: it does not filter or rank products, produces no answer, and MUST NOT cause a rejection beyond schema validation. On request_proposals and proposal refinement, sellers not declaring media_buy.outcome_target MUST reject the field with UNSUPPORTED_FEATURE rather than silently ignore it; declaring sellers MAY reject a goal they cannot plan against at all (for example 'spend', which restates budget) with INVALID_REQUEST naming criteria.outcome_target.goal. A planning input, not a delivery guarantee: obligations arise only at proposal finalization.",
+  "description": "Reverse-forecast planning input: a goal plus a volume, a cost_per target, or both (at least one). A metric or event goal uses the forecastable-metric or event-type vocabulary, so forecast points carry the goal's metric or event key in metrics, with forecast_range_unit 'clicks' or 'conversions' where those units apply. A vendor_metric goal is answered in the points' vendor_metric_values[] with forecast_range_unit 'spend'. volume and cost_per define the request shapes and answers, which travel on proposals. list_products returns no proposals, so there the field is inert for every seller, declaring or not: it does not filter or rank products, produces no answer, and MUST NOT cause a rejection beyond schema validation. On request_proposals and proposal refinement, sellers not declaring media_buy.outcome_target MUST reject the field with UNSUPPORTED_FEATURE rather than silently ignore it; declaring sellers MAY reject a goal they cannot plan against at all (for example 'spend', which restates budget) with INVALID_REQUEST naming criteria.outcome_target.goal. A vendor_metric goal is rejected the same way unless the products planned declare the pair in vendor_metric_optimization.supported_metrics[] and reporting_capabilities.vendor_metrics and the metric is a cumulative total. A planning input, not a delivery guarantee: obligations arise only at proposal finalization.",
   "type": "object",
   "properties": {
     "goal": {
-      "description": "The outcome to plan against: a seller-tracked delivery metric or an advertiser conversion event.",
+      "description": "The outcome to plan against: a seller-tracked delivery metric, an advertiser conversion event, or a vendor-measured metric.",
       "discriminator": { "propertyName": "kind" },
       "oneOf": [
         {
@@ -43,6 +43,24 @@
             "required": ["event_type"]
           },
           "then": { "required": ["custom_event_name"] },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "x-added-in": "3.3.0",
+          "description": "Plan against a vendor-measured outcome, such as store visits. The (vendor, metric_id) pair is the key optimization goals and delivery's vendor_metric_values[] use. The forecast carries the flight total in points' vendor_metric_values[] with the vendor's declared unit, not in metrics, and the proposal binds the goal and a vendor reporting commitment on every purchase.",
+          "properties": {
+            "kind": { "type": "string", "const": "vendor_metric" },
+            "vendor": {
+              "$ref": "/schemas/core/brand-key.json",
+              "description": "Measurement vendor, keyed as in the canonical optimization goal. Matched on domain and brand_id; countries is ignored. Asserts no buyer-vendor relationship: the seller's declared pair is the only planning-time eligibility test."
+            },
+            "metric_id": {
+              "$ref": "/schemas/core/vendor-metric-id.json",
+              "description": "Metric within the vendor's vocabulary. volume is a total of its declared unit, so only cumulative metrics are plannable."
+            }
+          },
+          "required": ["kind", "vendor", "metric_id"],
           "additionalProperties": false
         }
       ]

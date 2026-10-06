@@ -157,6 +157,12 @@ export const TRAINING_BIDDING_POLICY_CAPABILITY = {
   },
 } as const;
 
+/** Event-goal target kinds the training agent binds, advertised as
+ * media_buy.conversion_tracking.supported_targets on 3.1+ responses. cost_per
+ * is the criteria.outcome_target cost target the planner binds to an event
+ * source; the planner rejects an event-goal cost target when it is absent. */
+export const TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS = ['cost_per'] as const;
+
 /** Reliable Reporting 1.0 is available only from its matching RC.1 candidate. */
 export function supportsReliableReporting(servedVersion: string | undefined): boolean {
   return atLeastAdcpVersion(servedVersion, RELIABLE_REPORTING_ADCP_VERSION);

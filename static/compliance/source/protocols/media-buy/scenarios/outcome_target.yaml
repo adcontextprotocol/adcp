@@ -1,5 +1,5 @@
 id: media_buy_seller/outcome_target
-version: "1.1.0"
+version: "1.1.1"
 title: "Seller solves for budget from a structured outcome target"
 category: media_buy_seller
 summary: "Verifies criteria.outcome_target reverse forecasting: a metric or event goal plus desired volume answered with total_budget_guidance and a forecast whose points carry the goal's key in metrics, and a cost_per target answered in commercial_terms.bidding.cost_per with the buyer's strength and currency, or rejected when the products are not priced in that currency."
@@ -23,10 +23,12 @@ narrative: |
   `total_budget_guidance` (currency plus at least a recommended figure) and a
   forecast whose points carry the goal's metric or event key in `metrics`,
   with `forecast_range_unit` `clicks` structuring a clicks-goal curve and
-  `conversions` structuring an event-goal curve. Because the goal vocabulary
-  equals the forecast-metrics vocabulary, every permitted goal has a defined
-  answer — there is no goal a conformant seller can accept and then answer
-  with nothing.
+  `conversions` structuring an event-goal curve. Because the metric and event
+  goal vocabularies equal the forecast-metrics vocabulary, every permitted
+  goal has a defined answer — there is no goal a conformant seller can accept
+  and then answer with nothing. A vendor_metric goal is answered in
+  vendor_metric_values[] instead; see
+  media_buy_seller/outcome_target_vendor_metric.
 
   A buyer can also state the cost it will pay per result in
   `outcome_target.cost_per`, with a budget range, a volume, or both. The seller
