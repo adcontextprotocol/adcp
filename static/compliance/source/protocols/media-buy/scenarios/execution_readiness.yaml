@@ -1,0 +1,375 @@
+id: media_buy_seller/execution_readiness
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Seller reports per-account execution readiness honestly"
+category: media_buy_seller
+summary: "Verifies readiness for a unique candidate, missing setup, several candidates, and an account the seller cannot read, without changing the public cache scope."
+track: media_buy
+
+requires_capability:
+  path: experimental_features
+  contains: media_buy.execution_readiness
+
+required_tools:
+  - get_adcp_capabilities
+  - get_products
+  - sync_accounts
+  - sync_event_sources
+  - comply_test_controller
+
+narrative: |
+  A wholesale catalogue is the same for every buyer, but whether an account can
+  run a product depends on what that account has: a conversion product needs an
+  event source, and the buyer needs to know before calling create_media_buy
+  whether the account has none, one, or several to choose from.
+
+  The seller reports this in a response-level `execution_readiness` map keyed by
+  product_id. This scenario exercises the four states a buyer agent has to tell
+  apart: ready by a unique candidate, setup required when the account has none,
+  selection required when it has several, and unknown when the seller cannot
+  read the account. Unknown MUST NOT be reported as setup_required, because the
+  buyer would then try to fix something that may not be broken. The map is not
+  part of the cache layer, so every response here keeps `cache_scope: public`.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - execution_readiness
+  examples:
+    - "A social seller whose conversion products need a pixel or dataset on the ad account"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds one conversion product that declares an event_source
+    execution requirement. The scenario provisions four sandbox accounts through
+    sync_accounts and registers event sources on two of them through
+    sync_event_sources, so the seller needs no readiness-specific fixtures except
+    one: the reserved brand `readiness-unreadable.example` MUST resolve to an
+    account whose resources the seller cannot read (a revoked or insufficient
+    platform credential), so the seller reports permission_denied for it. This
+    follows the reserved account-overlay identity used by the wholesale feed
+    scope-isolation scenarios.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "execution_readiness_conversions"
+      delivery_type: "non_guaranteed"
+      channels: ["social"]
+      conversion_tracking:
+        action_sources: ["website"]
+      execution_requirements:
+        - kind: "event_source"
+          event_types: ["purchase"]
+  pricing_options:
+    - product_id: "execution_readiness_conversions"
+      pricing_option_id: "execution_readiness_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.0
+
+phases:
+  - id: provision_accounts
+    title: "Provision four sandbox accounts"
+    steps:
+      - id: sync_accounts
+        title: "Provision ready, setup, selection, and unreadable accounts"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return four active sandbox accounts, one per reserved brand.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_execution_readiness_provision_accounts_sync_accounts"
+          accounts:
+            - brand:
+                domain: "readiness-ready.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+            - brand:
+                domain: "readiness-setup.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+            - brand:
+                domain: "readiness-select.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+            - brand:
+                domain: "readiness-unreadable.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[3].account_id"
+            description: "All four accounts are provisioned"
+
+  - id: unique_candidate
+    title: "Ready by a unique candidate"
+    narrative: |
+      The account registers exactly one event source. The seller reports the
+      requirement ready and resolves it to that source, using the same ID the
+      buyer registered so it can go straight into the binding field.
+    steps:
+      - id: register_one_event_source
+        title: "Register one event source"
+        task: sync_event_sources
+        schema_ref: "media-buy/sync-event-sources-request.json"
+        response_schema_ref: "media-buy/sync-event-sources-response.json"
+        doc_ref: "/media-buy/task-reference/sync_event_sources"
+        stateful: true
+        expected: |
+          Return the event source with action: created.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_execution_readiness_unique_candidate_register_one_event_source"
+          account:
+            brand:
+              domain: "readiness-ready.example"
+            operator: "pinnacle-agency.example"
+          event_sources:
+            - event_source_id: "readiness_ready_pixel"
+              name: "Ready account pixel"
+              event_types: ["purchase"]
+              allowed_domains: ["readiness-ready.example"]
+        validations:
+          - check: response_schema
+            description: "Response matches sync-event-sources-response.json schema"
+          - check: field_present
+            path: "event_sources[0].event_source_id"
+            description: "The event source is registered"
+
+      - id: read_ready
+        title: "Read readiness for the account with one event source"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return the product with execution_readiness.products status ready and
+          the requirement resolved to the registered event source.
+        sample_request:
+          buying_mode: "wholesale"
+          include_execution_readiness: true
+          filters:
+            pricing_currencies: ["USD"]
+          account:
+            brand:
+              domain: "readiness-ready.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "cache_scope"
+            value: "public"
+            description: "Readiness does not move a public catalogue to the account cache scope"
+          - check: field_present
+            path: "execution_readiness.version"
+            description: "The map carries its own version"
+          - check: field_value
+            path: "execution_readiness.products.execution_readiness_conversions.status"
+            value: "ready"
+            description: "One suitable event source makes the product ready"
+          - check: field_value
+            path: "execution_readiness.products.execution_readiness_conversions.requirements[0].resolved.resource_id"
+            value: "readiness_ready_pixel"
+            description: "The resolved resource_id is the ID the buyer registered, usable in the binding field"
+          - check: field_absent
+            path: "execution_readiness.products.execution_readiness_conversions.requirements[0].candidates"
+            description: "A ready requirement lists no candidates"
+
+      - id: omit_without_opt_in
+        title: "Omit the map unless the buyer opts in"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return products without an execution_readiness map.
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            pricing_currencies: ["USD"]
+          account:
+            brand:
+              domain: "readiness-ready.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_absent
+            path: "execution_readiness"
+            description: "Readiness is opt-in"
+
+  - id: setup_required
+    title: "Setup required when the account has none"
+    steps:
+      - id: read_setup_required
+        title: "Read readiness for the account with no event source"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return the product, annotated setup_required rather than omitted.
+        sample_request:
+          buying_mode: "wholesale"
+          include_execution_readiness: true
+          filters:
+            pricing_currencies: ["USD"]
+          account:
+            brand:
+              domain: "readiness-setup.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_contains
+            path: "products[*].product_id"
+            value: "execution_readiness_conversions"
+            description: "A product that is not ready is annotated, never filtered out"
+          - check: field_value
+            path: "execution_readiness.products.execution_readiness_conversions.status"
+            value: "setup_required"
+            description: "An account with no event source needs setup"
+          - check: field_absent
+            path: "execution_readiness.products.execution_readiness_conversions.requirements[0].resolved"
+            description: "Nothing is resolved when the account has no resource"
+
+  - id: selection_required
+    title: "Selection required when the account has several"
+    steps:
+      - id: register_two_event_sources
+        title: "Register two event sources"
+        task: sync_event_sources
+        schema_ref: "media-buy/sync-event-sources-request.json"
+        response_schema_ref: "media-buy/sync-event-sources-response.json"
+        doc_ref: "/media-buy/task-reference/sync_event_sources"
+        stateful: true
+        expected: |
+          Return both event sources with action: created.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_execution_readiness_selection_required_register_two_event_sources"
+          account:
+            brand:
+              domain: "readiness-select.example"
+            operator: "pinnacle-agency.example"
+          event_sources:
+            - event_source_id: "readiness_select_site_pixel"
+              name: "Site pixel"
+              event_types: ["purchase"]
+              allowed_domains: ["readiness-select.example"]
+            - event_source_id: "readiness_select_checkout_pixel"
+              name: "Checkout pixel"
+              event_types: ["purchase"]
+              allowed_domains: ["readiness-select.example"]
+        validations:
+          - check: response_schema
+            description: "Response matches sync-event-sources-response.json schema"
+          - check: field_present
+            path: "event_sources[1].event_source_id"
+            description: "Both event sources are registered"
+
+      - id: read_selection_required
+        title: "Read readiness for the account with two event sources"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return the product as selection_required with both event sources as
+          candidates the buyer can bind directly.
+        sample_request:
+          buying_mode: "wholesale"
+          include_execution_readiness: true
+          filters:
+            pricing_currencies: ["USD"]
+          account:
+            brand:
+              domain: "readiness-select.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "execution_readiness.products.execution_readiness_conversions.status"
+            value: "selection_required"
+            description: "Several suitable event sources need a buyer choice"
+          - check: field_contains
+            path: "execution_readiness.products.execution_readiness_conversions.requirements[0].candidates[*].resource_id"
+            value: "readiness_select_site_pixel"
+            description: "The first registered source is a candidate under its registered ID"
+          - check: field_contains
+            path: "execution_readiness.products.execution_readiness_conversions.requirements[0].candidates[*].resource_id"
+            value: "readiness_select_checkout_pixel"
+            description: "The second registered source is a candidate under its registered ID"
+          - check: field_absent
+            path: "execution_readiness.products.execution_readiness_conversions.requirements[0].resolved"
+            description: "The seller does not pick for the buyer when an event source must be bound"
+
+  - id: unreadable_account
+    title: "Unknown when the seller cannot read the account"
+    narrative: |
+      The seller's credential for this account cannot read its resources. The
+      seller does not know whether the account has an event source, so it MUST
+      report unknown with a reason, not setup_required.
+    steps:
+      - id: read_unknown
+        title: "Read readiness for the unreadable account"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return the product, annotated unknown with unknown_reason
+          permission_denied and no resolved resource or candidates.
+        sample_request:
+          buying_mode: "wholesale"
+          include_execution_readiness: true
+          filters:
+            pricing_currencies: ["USD"]
+          account:
+            brand:
+              domain: "readiness-unreadable.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_contains
+            path: "products[*].product_id"
+            value: "execution_readiness_conversions"
+            description: "A product the seller could not check is still returned"
+          - check: field_value
+            path: "execution_readiness.products.execution_readiness_conversions.status"
+            value: "unknown"
+            description: "Could not check is unknown, not setup_required"
+          - check: field_value
+            path: "execution_readiness.products.execution_readiness_conversions.requirements[0].unknown_reason"
+            value: "permission_denied"
+            description: "The reason distinguishes a permission failure from a missing resource"
+          - check: field_absent
+            path: "execution_readiness.products.execution_readiness_conversions.requirements[0].candidates"
+            description: "No candidates are invented for an unreadable account"

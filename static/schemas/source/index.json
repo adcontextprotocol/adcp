@@ -670,6 +670,14 @@
           "$ref": "/schemas/core/downstream-connection-requirement.json",
           "description": "Seller/platform-side connection or grant required by a product, format, or request, distinct from the AdCP caller credential."
         },
+        "product-execution-readiness": {
+          "$ref": "/schemas/core/product-execution-readiness.json",
+          "description": "Experimental per-account readiness of a product's execution requirements, with a rollup status."
+        },
+        "execution-requirement-readiness": {
+          "$ref": "/schemas/core/execution-requirement-readiness.json",
+          "description": "Experimental per-account readiness of one execution requirement: status, candidates, the resolved resource, or the connection state."
+        },
         "product-execution-requirement": {
           "$ref": "/schemas/core/product-execution-requirement.json",
           "description": "Experimental account resource (event source, catalog, or downstream connection) a product needs before a package on it can be created."
@@ -1180,6 +1188,10 @@
         "pricing-model": {
           "$ref": "/schemas/enums/pricing-model.json",
           "description": "Supported pricing models for advertising products"
+        },
+        "execution-readiness-status": {
+          "$ref": "/schemas/enums/execution-readiness-status.json",
+          "description": "Experimental: whether an account can satisfy a product's execution requirement (ready, setup_required, selection_required, input_required, unknown)."
         },
         "pricing-structure": {
           "$ref": "/schemas/enums/pricing-structure.json",

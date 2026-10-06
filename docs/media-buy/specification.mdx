@@ -364,16 +364,156 @@ Rules:
 - **Proposal execution.** Packages a seller derives from
   `create_media_buy.proposal_id` are not buyer-supplied, so the rejection rule
   above does not apply to them in 3.2. How a proposal carries these bindings is
-  tracked with per-account readiness for 3.3.
+  not yet specified; it is tracked in
+  [adcp#7763](https://github.com/adcontextprotocol/adcp/issues/7763).
 
-This surface does not report the caller's account state. When an account has
-several eligible event sources or catalogs, the buyer chooses one by binding it
-on the request. When it has several eligible connections, such as several
-connected pages, the seller applies its documented default. Per-account
-readiness — which resources the account already has, which one to pick, the
-binding for lead forms and messaging destinations, and proposal bindings — is
-tracked for AdCP 3.3 in
-[adcp#7763](https://github.com/adcontextprotocol/adcp/issues/7763).
+When the product declares `execution_requirements`, this surface does not
+report the caller's account state; [per-account execution readiness](#per-account-execution-readiness-experimental)
+does.
+
+### Per-account execution readiness (experimental)
+
+`execution_requirements` says what a product needs. Execution readiness says
+whether the caller's account has it and, when it has several, which to use. A
+seller using this experimental surface lists `media_buy.execution_readiness` in
+`experimental_features` on `get_adcp_capabilities`, and also lists
+`media_buy.execution_requirements`.
+
+A buyer sets `include_execution_readiness: true` on `get_products` together with
+an `account`. A seller that supports it returns a response-level
+`execution_readiness` map keyed by `product_id`:
+
+```json
+{
+  "cache_scope": "public",
+  "wholesale_feed_version": "wf_2026_10_06",
+  "execution_readiness": {
+    "version": "er_7f3a",
+    "evaluated_at": "2026-10-06T12:00:00Z",
+    "products": {
+      "social_app_installs": {
+        "status": "setup_required",
+        "requirements": [
+          {
+            "requirement": { "kind": "event_source", "event_types": ["app_install"] },
+            "status": "selection_required",
+            "binding_field": "packages[].optimization_goals[].event_sources[].event_source_id",
+            "candidates": [
+              { "resource_id": "es_app_main", "name": "Main app SDK" },
+              { "resource_id": "es_app_beta", "name": "Beta app SDK" }
+            ]
+          },
+          {
+            "requirement": { "kind": "catalog", "catalog_types": ["app"] },
+            "status": "ready",
+            "binding_field": "packages[].catalogs[]",
+            "resolved": { "resource_id": "cat_app_1", "name": "Acme app" }
+          },
+          {
+            "requirement": {
+              "kind": "downstream_connection",
+              "connection": { "connection_type": "publisher_identity", "scope": "identity", "required_for": ["create_media_buy"] }
+            },
+            "status": "setup_required",
+            "connection_state": {
+              "connection_type": "publisher_identity",
+              "provider": "social.example",
+              "scope": "identity",
+              "status": "missing",
+              "authorization_url": "https://social.example/connect/identity"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+The excerpt shows only the fields relevant here.
+
+Statuses, per requirement and rolled up per product:
+
+| Status | Meaning | Buyer action |
+|---|---|---|
+| `ready` | The account has exactly one suitable resource (for a connection, the one the seller would use is connected) | None beyond binding (below) |
+| `setup_required` | The account has none, or the connection is `missing`, `pending`, `expired`, or `revoked` | Create or restore it, for example with `sync_event_sources`, `sync_catalogs`, or `connection_state.authorization_url` |
+| `selection_required` | The account has several suitable resources | Choose one from `candidates[]` and bind it |
+| `input_required` | The seller cannot discover a suitable resource from the account | Supply one on the request, such as an inline catalog |
+| `unknown` | The seller could not read the account's resources | Depends on `unknown_reason`: `permission_denied` needs a human to fix the seller's grant on the account, `platform_unavailable` is worth retrying, `not_evaluated` means refetch fewer products. Meanwhile `create_media_buy` decides |
+
+Rules:
+
+- **One entry per declared requirement.** `requirement` echoes the product's
+  declared entry and MUST deep-equal an entry in its current
+  `execution_requirements[]`; a buyer whose cached product has no match holds a
+  stale feed and SHOULD refetch it. Only products that declare
+  `execution_requirements` get an entry. A missing entry means not evaluated,
+  not ready.
+- **Rollup.** A product's `status` is the first of `setup_required`,
+  `input_required`, `selection_required`, `unknown` that any requirement
+  reports, else `ready`: the most blocking state the seller could establish.
+  Buyers needing more MUST read `requirements[]`.
+- **Could not check is not lacking.** `unknown` carries `unknown_reason`
+  (`permission_denied`, `platform_unavailable`, or `not_evaluated`) and no
+  resources. A seller MUST NOT report `setup_required` for a resource it could
+  not read, and a buyer MUST NOT filter out or treat as not runnable a product
+  that is `unknown`. A seller MAY report products beyond its evaluation budget
+  as `unknown` with `not_evaluated`.
+- **`ready` does not waive binding.** For `event_source` and `catalog`, the
+  buyer still passes `resolved.resource_id` in `binding_field`; an unbound
+  requirement is `not_bound` per
+  [`execution-requirement-unmet.json`](https://adcontextprotocol.org/schemas/v3/error-details/execution-requirement-unmet.json).
+  `resolved` is required when such a requirement is `ready`.
+- **Candidates are directly usable.** A `resource_id` MUST be a value the
+  binding field accepts: the `event_source_id` returned by `sync_event_sources`
+  (including a seller-managed source) or a `catalog_id`. A seller whose
+  platform ID differs MUST return the AdCP-facing ID, never the raw platform ID.
+  `candidates[]` appears only when `status` is `selection_required`, lists
+  resources the seller has no evidence would fail the requirement (it MAY
+  include one whose event types it cannot verify, since some platforms do not
+  expose them), and never discloses another account's resources.
+- **Connections report one state.** A `downstream_connection` requirement
+  reports `connection_state`, the state of the connection the seller would use
+  (its documented default when several are connected), and its status derives
+  from `connection_state.status`: `connected` and `not_required` are `ready`; `missing`, `pending`,
+  `expired`, and `revoked` are `setup_required`; `unknown` is `unknown`. A
+  `missing`, `expired`, or `revoked` connection SHOULD include
+  `authorization_url` or `authorization_instructions`; `pending` MAY omit both. This
+  slice does not list several identities or let the buyer choose among them.
+  `selection_required` and `input_required` never apply to connections.
+- **Account-scoped and advisory.** The map appears only when the request set
+  `include_execution_readiness: true` and carried an `account` the caller is
+  authorized for; otherwise the seller omits it (an `account` that does not
+  resolve still returns `ACCOUNT_NOT_FOUND`). It covers only the products on the
+  response. `create_media_buy` still revalidates and rejects per
+  `execution-requirement-unmet.json` or `AUTHORIZATION_REQUIRED`, which echo the
+  same requirement.
+- **Seller cost.** Whether an account has a pixel, catalog, or connection is the
+  same answer for every product that needs it. Sellers SHOULD read it once per
+  account and requirement kind and stamp every product on the page.
+
+**Caching.** The map is not part of the `cache_scope` layer. It does not change
+`cache_scope`, `wholesale_feed_version`, or `pricing_version`, so a public
+wholesale catalog stays `cache_scope: "public"` when readiness is added.
+`execution_readiness.version` is an opaque token for the account's readiness,
+independent of both feed tokens. Buyers MUST NOT dedupe or cache the map under
+the public key; they key it by `(account, execution_readiness.version)`. Sellers
+MUST NOT put it in wholesale feed webhooks. It is omitted on `unchanged: true`
+responses, which carry no products, so refreshing readiness means refetching the
+page; conditional fetch of the map is not specified. `version` identifies the
+account's readiness state, not the page: equal versions MUST imply identical
+entries for any product present in both responses, and buyers merge pages by
+`product_id`.
+
+Not in this slice: `lead_form` and `messaging_destination` requirements and
+bindings (Meta and TikTok attach lead forms at the ad level, so placement on the
+creative is checked first), listing several identities and buyer choice among
+them (tracked with the identity model in
+[adcp#7782](https://github.com/adcontextprotocol/adcp/issues/7782)), how a
+proposal carries bindings, conditional fetch of the map, and readiness change
+notifications. Proposal-derived packages remain outside the `execution_requirements`
+rejection rule.
 
 ### Product identity absence and reach reporting (experimental)
 
