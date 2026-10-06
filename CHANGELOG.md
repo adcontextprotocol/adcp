@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.2.3
+
+### Patch Changes
+
+- 59770c3: Make the acceptance-policy discovery compliance scenario provision and explicitly select its sandbox account, so account-scoped product fixtures remain visible when SDK discovery no longer synthesizes an account. Preserve the catalog and product-profile assertions and require the additional account-seeding check to pass.
+- 59770c3: Clarify that `authorized_agents[].url` in `adagents.json` is the agent's full protocol endpoint URL, including the path (for example `https://agent.example.com/mcp`), not the agent's origin. A new "Agent URL matching" section says which URL differences canonicalization ignores and which it keeps (trailing slash, path case, scheme, query). It also says to list one entry for each agent URL when MCP and A2A are served at different paths.
+- 59770c3: Correct the creative evaluator authentication storyboard's experimental feature membership check to inspect individual declared feature IDs, so agents advertising `creative.evaluator` pass the capability contract while agents omitting it still fail.
+- 59770c3: Gate advanced delivery reporting on advertised wholesale discovery support and
+  proposal-finalization replay on advertised idempotency support. Sellers that
+  opt out skip the unsupported checks while proposal finalization and acceptance
+  remain graded.
+- 59770c3: Make the sales-guaranteed compliance storyboard exercise its documented polling path without requiring an optional task webhook.
+- 59770c3: Gate the 3.2 CTV experience and premium display validation storyboards on
+  validate_input so controller-only agents are not selected. Retain the controller
+  workflow requirement for fixture setup. This is a narrow part of #7404; it does
+  not complete the hosted compliance landing, deployment, or public-card checks.
+
 ## 3.2.2
 
 ### Patch Changes
