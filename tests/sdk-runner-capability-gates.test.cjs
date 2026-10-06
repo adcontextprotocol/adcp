@@ -40,6 +40,53 @@ function loadMediaBuyStoryboard(name) {
   return YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
 }
 
+test('evaluator capability contract grades individual experimental feature declarations', async () => {
+  const storyboard = loadMediaBuyStoryboard('evaluator_auth');
+  const contract = storyboard.phases.find(phase => phase.id === 'evaluator_capability_contract');
+  const executable = {
+    ...storyboard,
+    prerequisites: undefined,
+    fixtures: undefined,
+    phases: [{
+      ...contract,
+      steps: contract.steps.map(step => ({
+        ...step,
+        validations: step.validations.filter(validation => validation.check !== 'response_schema'),
+      })),
+    }],
+  };
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+
+  for (const features of [[], ['other.feature'], ['creative.evaluator'], ['other.feature', 'creative.evaluator']]) {
+    const capabilities = {
+      creative: {
+        supports_evaluator: true,
+        supported_formats: [{ capability_id: 'display-build' }],
+      },
+      governance: { creative_features: [{ feature_id: 'visual-quality' }] },
+      experimental_features: features,
+    };
+    const requests = [];
+    const result = await runStoryboard('https://agent.example/mcp', executable, {
+      _profile: { tools, raw_capabilities: capabilities },
+      agentTools: tools,
+      context: { supports_evaluator: true },
+      skip_controller_seeding: true,
+      _client: {
+        resetContext() {},
+        async getAdcpCapabilities(request) {
+          requests.push(request);
+          return { success: true, data: { ...capabilities, context: request.context } };
+        },
+      },
+    });
+
+    assert.equal(requests.length, 1, 'the declared evaluator must execute its capability contract');
+    const step = result.phases[0].steps.find(entry => entry.step_id === 'confirm_experimental_feature');
+    assert.equal(step.passed, features.includes('creative.evaluator'), JSON.stringify(step));
+  }
+});
+
 test('phase capability gates do not dispatch dependents with unresolved context', async () => {
   const storyboard = {
     id: 'phase_capability_cascade_regression',
@@ -784,7 +831,7 @@ test('direct creative-library phases are gated without blocking later lifecycle 
   }
 
   const expectedDownstreamDependencies = new Map([
-    ['sales_guaranteed/delivery_monitoring', ['confirm_active']],
+    ['sales_guaranteed/delivery_monitoring', ['confirm_approved']],
     ['sales_broadcast_tv/delivery_monitoring', ['create_buy']],
     ['sales_broadcast_tv/reconciliation', ['delivery_monitoring']],
     ['sales_proposal_mode/delivery', ['accept_proposal']],
@@ -832,6 +879,140 @@ test('product refinement requires the advertised refine buying mode', async () =
   );
   assert.equal(supported.overall_passed, true);
   assert.equal(supported.phases[0].phase_id, 'no_phases');
+});
+
+test('advanced delivery reporting dispatches wholesale discovery only to opted-in sellers', async () => {
+  const storyboard = loadMediaBuyStoryboard('advanced_delivery_reporting');
+  const discovery = storyboard.phases[0].steps.find(step => step.id === 'discover_product');
+  const executable = {
+    ...storyboard,
+    prerequisites: undefined,
+    fixtures: undefined,
+    phases: [{
+      ...storyboard.phases[0],
+      steps: [{ ...discovery, context_outputs: [], validations: [] }],
+    }],
+  };
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+
+  for (const buyingModes of [undefined, ['brief'], ['brief', 'wholesale']]) {
+    const requests = [];
+    const result = await runStoryboard('https://agent.example/mcp', executable, {
+      _profile: {
+        tools,
+        raw_capabilities: {
+          media_buy: buyingModes ? { buying_modes: buyingModes } : {},
+        },
+      },
+      agentTools: tools,
+      _client: {
+        resetContext() {},
+        async getProducts(request) {
+          requests.push(request);
+          return { success: true, data: { products: [] } };
+        },
+      },
+    });
+
+    assert.equal(result.overall_passed, true);
+    if (buyingModes?.includes('wholesale')) {
+      assert.equal(requests.length, 1);
+      assert.equal(requests[0].buying_mode, 'wholesale');
+      assert.equal(result.passed_count, 1);
+    } else {
+      assert.deepEqual(requests, []);
+      assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported');
+      assert.equal(result.passed_count, 0);
+    }
+  }
+});
+
+test('proposal finalize skips unsupported replay while still executing the committed proposal', async () => {
+  const storyboard = loadMediaBuyStoryboard('proposal_finalize');
+  const executable = {
+    ...storyboard,
+    prerequisites: undefined,
+    phases: storyboard.phases
+      .filter(phase => ['finalize_proposal', 'finalize_replay', 'accept_proposal', 'unknown_proposal_references'].includes(phase.id))
+      .map(phase => ({
+        ...phase,
+        steps: phase.steps.map(step => ({
+          ...step,
+          validations: step.validations.filter(validation => phase.id === 'unknown_proposal_references'
+            ? validation.check === 'error_code'
+            : validation.check !== 'response_schema'),
+        })),
+      })),
+  };
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+
+  for (const [supported, brokenReplay] of [[false, false], [true, false], [true, true]]) {
+    const finalizedRequests = [];
+    const acceptedRequests = [];
+    const unknownReferenceRequests = [];
+    const unknownProposalError = {
+      success: false,
+      data: { errors: [{ code: 'PROPOSAL_NOT_FOUND', message: 'Unknown proposal' }] },
+    };
+    const result = await runStoryboard('https://agent.example/mcp', executable, {
+      _profile: {
+        tools,
+        raw_capabilities: {
+          media_buy: { supports_proposals: true },
+          adcp: { idempotency: { supported } },
+        },
+      },
+      agentTools: tools,
+      context: {
+        proposal_id: 'proposal-replay-test',
+        finalize_idempotency_key: '550e8400-e29b-41d4-a716-446655440000',
+      },
+      _client: {
+        resetContext() {},
+        async getProducts(request) {
+          if (request.refine[0].proposal_id === 'prop_unknown_proposal_not_found') {
+            unknownReferenceRequests.push(request);
+            return unknownProposalError;
+          }
+          finalizedRequests.push(request);
+          return {
+            success: true,
+            data: {
+              replayed: supported && !brokenReplay && finalizedRequests.length > 1,
+              proposals: [{
+                proposal_id: 'proposal-replay-test',
+                insertion_order: { io_id: 'io-replay-test' },
+                expires_at: '2099-06-30T23:59:59Z',
+              }],
+            },
+          };
+        },
+        async createMediaBuy(request) {
+          if (request.proposal_id === 'prop_unknown_proposal_not_found') {
+            unknownReferenceRequests.push(request);
+            return unknownProposalError;
+          }
+          acceptedRequests.push(request);
+          return { success: true, data: { media_buy_id: 'accepted-replay-test' } };
+        },
+      },
+    });
+
+    assert.equal(result.overall_passed, !brokenReplay, JSON.stringify(result.phases));
+    assert.equal(finalizedRequests.length, supported ? 2 : 1);
+    assert.equal(acceptedRequests.length, 1, 'replay opt-out must not skip acceptance');
+    assert.equal(unknownReferenceRequests.length, 2, 'replay opt-out must not skip unknown-reference checks');
+    assert.equal(acceptedRequests[0].io_acceptance.io_id, 'io-replay-test');
+    const replay = result.phases.flatMap(phase => phase.steps)
+      .find(step => step.step_id === 'get_products_finalize_replay');
+    if (supported) {
+      assert.deepEqual(finalizedRequests[1], finalizedRequests[0]);
+      assert.equal(replay.passed, !brokenReplay, 'an advertised but broken replay must still fail');
+    } else {
+      assert.equal(replay.skip_reason, 'not_applicable');
+      assert.equal(result.failed_count, 0);
+    }
+  }
 });
 
 test('measurement acceptance is split from the universal rejection scenario', async () => {

@@ -125,7 +125,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   ],
   "authorized_agents": [
     {
-      "url": "https://agent.example.com",
+      "url": "https://agent.example.com/mcp",
       "authorized_for": "Official sales agent",
       "authorization_type": "property_ids",
       "property_ids": ["example_site"],
@@ -279,7 +279,7 @@ Common internal cases:
 These internal mappings can produce public `placements[]` entries, but the mapping details themselves remain out of `adagents.json`.
 
 **`authorized_agents`** *(required)*: Array of authorized sales agents. MAY be empty (`[]`) for a **catalog-only community mirror** — a file that publishes `formats`/`properties`/`placements` (typically with a `catalog_etag`) for a platform that has not adopted AdCP, where there is no sales agent to authorize (see [Community mirror lifecycle](#community-mirror-lifecycle)). An empty array asserts **no sales authorization**: validators MUST NOT read it as deny-all, authorize-all, or a revocation, MUST NOT treat its presence as an error, and MUST still consume the catalog arrays. A file with neither sales authorization nor catalog content is invalid. The per-entry fields below apply only when the array is non-empty:
-  - **`url`** *(required)*: Agent's API endpoint URL
+  - **`url`** *(required)*: Agent's protocol endpoint URL, including the path (for example `https://agent.example.com/mcp`). See [Agent URL matching](#agent-url-matching)
   - **`authorized_for`** *(required)*: Human-readable authorization description
   - **`authorization_type`** *(required)*: Discriminator naming which selector field carries the scope. One of `property_ids`, `property_tags`, `inline_properties`, `publisher_properties` (for properties) or `signal_ids`, `signal_tags` (for signal providers). The corresponding selector field must be present and non-empty — see [Authorization Patterns](#authorization-patterns) below.
   - **`delegation_type`** *(optional)*: Commercial relationship for this path: `direct`, `delegated`, or `ad_network`
@@ -956,6 +956,15 @@ Set `exclusive: true` when this agent is the publisher's sole authorized path fo
 This lets a publisher say "buy host reads directly from us in some markets, but use a network path for pre-roll in others" without implying that every authorized path is equivalent.
 
 `adagents.json` now provides a canonical publisher-level placement registry. Products still return their own `placements`, but placement IDs are publisher-scoped: catalog-backed placements SHOULD reference the publisher registry with `{ publisher_domain, placement_id }`. When a product spans multiple publishers and catalog IDs collide, the `publisher_domain` disambiguates them; creative assignments should use structured `placement_refs` for those cases. Referencing a catalog placement means the product is inheriting that placement's identity; the product can narrow canonical `format_options`, preserve or narrow placement tags, or add operational detail, but it should not redefine the placement into something incompatible.
+
+## Agent URL Matching
+
+`authorized_agents[].url` identifies the agent by its protocol endpoint: the exact agent URL buyers are given and send AdCP requests to, including the path. Buyers check authorization by comparing that URL with the agent URL they connect to, so publishers should copy the URL the agent operator gives them rather than shortening it to a host.
+
+- **Include the path.** `https://agent.example.com` does not match `https://agent.example.com/mcp`. A bare origin is correct only when the agent serves AdCP at the root.
+- **Distinct paths are distinct agents.** Multi-tenant platforms that serve each seller at its own path (for example `https://platform.example/tenants/acme/mcp`) are authorized per path. Authorizing one tenant's URL does not authorize another tenant on the same host.
+- **One entry per agent URL.** An agent that serves MCP and A2A at different URLs needs one `authorized_agents[]` entry for each URL, usually with the same scope. A buyer that connects to a URL with no entry fails the check.
+- **Comparison is canonical, not byte-for-byte.** Validators canonicalize both sides with the [AdCP URL canonicalization](/docs/reference/url-canonicalization) rules, so letter case in the scheme and host, default ports, dot segments, and percent-encoding of unreserved characters do not matter. The scheme (`http` vs `https`), path case, a trailing slash (`/mcp` vs `/mcp/`), and the query string do matter. Publish `https://` URLs with no trailing slash, query, or fragment unless the agent operator's URL includes them.
 
 ## Domain Matching Rules
 
