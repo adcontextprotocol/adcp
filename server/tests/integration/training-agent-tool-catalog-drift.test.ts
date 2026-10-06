@@ -152,13 +152,15 @@ describe('tool-catalog drift detection', () => {
     expect(tools).toContain('comply_test_controller');
     expect(tools).not.toContain('validate_input');
     expect(toolsForTenant(tenant)).not.toContain('validate_input');
-    for (const [name, seedPasses] of [
-      ['ctv-experience-validate-input', 14],
-      ['premium-display-canonical-validation', 18],
-    ] as const) {
+    for (const name of ['ctv-experience-validate-input', 'premium-display-canonical-validation'] as const) {
       const storyboard = YAML.parse(readFileSync(new URL(
         `../../../static/compliance/source/universal/${name}.yaml`, import.meta.url,
       ), 'utf8')) as Storyboard;
+      // The runner seeds every fixture product and fixture account through the
+      // controller, so those seeds are the only passes the old OR gate earned.
+      const fixtures = (storyboard as { fixtures?: { products?: unknown[]; accounts?: unknown[] } }).fixtures;
+      const seedPasses = (fixtures?.products?.length ?? 0) + (fixtures?.accounts?.length ?? 0);
+      expect(seedPasses).toBeGreaterThan(0);
       const options = {
         auth: { type: 'bearer' as const, token: 'tool-catalog-drift-token' },
         allow_http: true,
@@ -177,7 +179,7 @@ describe('tool-catalog drift detection', () => {
       const passed = steps.filter(step => step.passed && !step.skipped);
       expect(passed).toHaveLength(seedPasses);
       expect(passed.every(step => step.task === 'comply_test_controller'
-        && step.step_id.startsWith('seed_product.'))).toBe(true);
+        && (step.step_id.startsWith('seed_product.') || step.step_id.startsWith('seed_account.')))).toBe(true);
       const validators = steps.filter(step => step.task === 'validate_input');
       expect(validators).toHaveLength(storyboard.phases.reduce((n, phase) => n + phase.steps.length, 0));
       expect(validators.every(step => step.skipped && step.skip_reason === 'missing_tool')).toBe(true);
