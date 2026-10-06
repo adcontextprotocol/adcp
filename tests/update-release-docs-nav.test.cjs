@@ -856,6 +856,282 @@ function versionEntry(version, build, extra = {}) {
     }
   });
 
+  // --- Release story for any minor line (3.3 beta on top of the 3.2 default) ---
+
+  function storyFixture({ default32 = '3.2.2' } = {}) {
+    const pages = (build, paths) => paths.map((page) => `dist/docs/${build}/${page}`);
+    return {
+      banner: {
+        content: "AdCP 3.2 is generally available — [see what's new →](/3.2)",
+      },
+      navigation: {
+        versions: [
+          {
+            version: '3.2',
+            tag: 'Latest',
+            default: true,
+            groups: [
+              { group: 'Getting Started', pages: pages(default32, ['intro', 'quickstart']) },
+              {
+                group: 'Building with AdCP',
+                pages: [
+                  ...pages(default32, ['building/index']),
+                  {
+                    group: 'Release notes & migration',
+                    pages: pages(default32, [
+                      'reference/whats-new-in-v3',
+                      'reference/whats-new-in-3-1',
+                      'reference/whats-new-in-3-2',
+                      'reference/3-2-beta',
+                      'reference/migration/index',
+                      'reference/migration/3-0-to-3-1',
+                      'reference/migration/3-1-to-3-2',
+                      'reference/migration/channels',
+                    ]),
+                  },
+                ],
+              },
+            ],
+          },
+          versionEntry('3.1', '3.1.24'),
+          versionEntry('2.5 (archived)', '2.5.3'),
+        ],
+      },
+      redirects: [
+        { source: '/3.2', destination: `/dist/docs/${default32}/reference/whats-new-in-3-2`, permanent: false },
+        { source: '/3.2/try', destination: `/dist/docs/${default32}/media-buy/product-discovery/proposal-negotiation`, permanent: false },
+        { source: '/3.2/migrate', destination: `/dist/docs/${default32}/reference/migration/3-1-to-3-2`, permanent: false },
+        { source: '/3.2/sdk', destination: `/dist/docs/${default32}/building/by-layer/L4/choose-your-sdk`, permanent: false },
+        { source: '/docs/reference/whats-new-in-3-2', destination: `/dist/docs/${default32}/reference/whats-new-in-3-2`, permanent: false },
+        { source: '/docs/reference/3-2-beta', destination: `/dist/docs/${default32}/reference/3-2-beta`, permanent: false },
+        { source: '/docs/reference/migration/3-1-to-3-2', destination: `/dist/docs/${default32}/reference/migration/3-1-to-3-2`, permanent: false },
+        { source: '/docs/media-buy/product-discovery/proposal-negotiation', destination: `/dist/docs/${default32}/media-buy/product-discovery/proposal-negotiation`, permanent: false },
+        { source: '/docs/reference/whats-new-in-3-1', destination: `/dist/docs/${default32}/reference/whats-new-in-3-1`, permanent: false },
+        { source: '/docs/reference/migration/3-0-to-3-1', destination: `/dist/docs/${default32}/reference/migration/3-0-to-3-1`, permanent: false },
+        { source: '/3.3', destination: '/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3', permanent: false },
+        { source: '/3.3/try', destination: '/dist/docs/3.3.0-beta.0/reference/3-3-beta', permanent: false },
+        { source: '/3.3/migrate', destination: '/dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3', permanent: false },
+        { source: '/3.3/sdk', destination: '/dist/docs/3.3.0-beta.0/building/by-layer/L4/choose-your-sdk', permanent: false },
+        { source: '/docs/reference/whats-new-in-3-3', destination: '/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3', permanent: false },
+        { source: '/docs/reference/3-3-beta', destination: '/dist/docs/3.3.0-beta.0/reference/3-3-beta', permanent: false },
+        { source: '/docs/reference/migration/3-2-to-3-3', destination: '/dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3', permanent: false },
+        { source: '/unrelated', destination: '/docs/faq' },
+      ],
+    };
+  }
+
+  const STORY_33_PAGES = new Set([
+    'dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3',
+    'dist/docs/3.3.0-beta.0/reference/3-3-beta',
+    'dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3',
+  ]);
+  const hasStory33 = (page) => STORY_33_PAGES.has(page);
+
+  function destinations(config) {
+    return Object.fromEntries(config.redirects.map((redirect) => [redirect.source, redirect.destination]));
+  }
+
+  function storyGroup(entry) {
+    return entry.groups
+      .flatMap((group) => group.pages)
+      .find((page) => page && page.group === 'Release notes & migration')
+      ?? entry.groups.find((group) => group.group === 'Release notes & migration');
+  }
+
+  test('a 3.3 beta.0 snapshot adds the 3.3 story beside the 3.2 pages and keeps the 3.2 aliases', () => {
+    const config = storyFixture();
+    const before = destinations(config);
+
+    const result = updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', { snapshotHasPage: hasStory33 });
+
+    assert.equal(result.action, 'added');
+    assert.equal(result.sourceVersion, '3.2');
+    assert.deepEqual(result.storyPagesAdded, [
+      'reference/whats-new-in-3-3',
+      'reference/3-3-beta',
+      'reference/migration/3-2-to-3-3',
+    ]);
+    assert.deepEqual(config.navigation.versions.map((entry) => entry.version), ['3.2', '3.3-beta', '3.1', '2.5 (archived)']);
+
+    const added = config.navigation.versions[1];
+    assert.equal(added.default, undefined);
+    const pages = storyGroup(added).pages;
+    assert.deepEqual(pages.slice(0, 7), [
+      'dist/docs/3.3.0-beta.0/reference/whats-new-in-v3',
+      'dist/docs/3.3.0-beta.0/reference/whats-new-in-3-1',
+      'dist/docs/3.3.0-beta.0/reference/whats-new-in-3-2',
+      'dist/docs/3.3.0-beta.0/reference/3-2-beta',
+      'dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3',
+      'dist/docs/3.3.0-beta.0/reference/3-3-beta',
+      'dist/docs/3.3.0-beta.0/reference/migration/index',
+    ]);
+    assert.deepEqual(pages.slice(-3), [
+      'dist/docs/3.3.0-beta.0/reference/migration/3-1-to-3-2',
+      'dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3',
+      'dist/docs/3.3.0-beta.0/reference/migration/channels',
+    ]);
+    // The default stays pinned to its own snapshot.
+    assert.equal(collectStrings(config.navigation.versions[0].groups).some((value) => value.includes('3.3.0')), false);
+
+    const after = destinations(config);
+    for (const source of Object.keys(before).filter((key) => /3\.2|3-2|proposal-negotiation|3-1|3-0/.test(key))) {
+      assert.equal(after[source], before[source], `${source} keeps pointing where it did`);
+    }
+    assert.equal(after['/3.3'], '/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3');
+    assert.equal(after['/unrelated'], '/docs/faq');
+    assert.ok(result.warnings.some((warning) => /banner does not link to the 3\.3 release story/.test(warning)));
+  });
+
+  test('a 3.3 beta checkpoint retargets only the 3.3 story aliases', () => {
+    const config = storyFixture();
+    updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', { snapshotHasPage: hasStory33 });
+    const before = destinations(config);
+
+    const result = updateDocsConfig(config, '3.3.0-beta.1', '3.3-beta', { snapshotHasPage: hasStory33 });
+
+    assert.equal(result.action, 'updated');
+    const after = destinations(config);
+    assert.equal(after['/3.3'], '/dist/docs/3.3.0-beta.1/reference/whats-new-in-3-3');
+    assert.equal(after['/3.3/try'], '/dist/docs/3.3.0-beta.1/reference/3-3-beta');
+    assert.equal(after['/3.3/migrate'], '/dist/docs/3.3.0-beta.1/reference/migration/3-2-to-3-3');
+    assert.equal(after['/3.3/sdk'], '/dist/docs/3.3.0-beta.1/building/by-layer/L4/choose-your-sdk');
+    assert.equal(after['/docs/reference/whats-new-in-3-3'], '/dist/docs/3.3.0-beta.1/reference/whats-new-in-3-3');
+    assert.equal(after['/docs/reference/3-3-beta'], '/dist/docs/3.3.0-beta.1/reference/3-3-beta');
+    assert.equal(after['/docs/reference/migration/3-2-to-3-3'], '/dist/docs/3.3.0-beta.1/reference/migration/3-2-to-3-3');
+    for (const source of Object.keys(before).filter((key) => !/3\.3|3-3/.test(key))) {
+      assert.equal(after[source], before[source], `${source} is not a 3.3 story alias`);
+    }
+    assert.ok(
+      collectStrings(config.navigation.versions[1].groups).every(
+        (value) => !value.startsWith('dist/docs/') || value.startsWith('dist/docs/3.3.0-beta.1/')
+      )
+    );
+  });
+
+  test('the 3.3 beta snapshot reports story pages it cannot find and a banner still on 3.2', () => {
+    const config = storyFixture();
+
+    const result = updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', {
+      snapshotHasPage: (page) => page.endsWith('/reference/whats-new-in-3-3'),
+    });
+
+    assert.deepEqual(result.storyPagesAdded, ['reference/whats-new-in-3-3']);
+    assert.match(result.warnings[0], /reference\/3-3-beta, reference\/migration\/3-2-to-3-3/);
+    assert.equal(result.warnings.length, 2);
+  });
+
+  test('a 3.3 banner that already links the line story raises no banner warning', () => {
+    const config = storyFixture();
+    config.banner.content = 'AdCP 3.3 beta is available — [start testing →](/3.3)';
+
+    const result = updateDocsConfig(config, '3.3.0-beta.0', '3.3-beta', { snapshotHasPage: hasStory33 });
+
+    assert.deepEqual(result.warnings, []);
+    assert.equal(config.banner.content, 'AdCP 3.3 beta is available — [start testing →](/3.3)');
+  });
+
+  test('a 3.2 patch while 3.2 is the default still retargets its whole story, as before', () => {
+    const config = storyFixture();
+
+    updateDocsConfig(config, '3.2.3', '3.2');
+
+    const after = destinations(config);
+    assert.equal(after['/3.2'], '/dist/docs/3.2.3/reference/whats-new-in-3-2');
+    assert.equal(after['/3.2/try'], '/dist/docs/3.2.3/media-buy/product-discovery/proposal-negotiation');
+    assert.equal(after['/3.2/migrate'], '/dist/docs/3.2.3/reference/migration/3-1-to-3-2');
+    assert.equal(after['/docs/reference/3-2-beta'], '/dist/docs/3.2.3/reference/3-2-beta');
+    assert.equal(
+      after['/docs/media-buy/product-discovery/proposal-negotiation'],
+      '/dist/docs/3.2.3/media-buy/product-discovery/proposal-negotiation'
+    );
+    // The default entry's own clean routes move with its snapshot, as before.
+    assert.equal(after['/docs/reference/whats-new-in-3-1'], '/dist/docs/3.2.3/reference/whats-new-in-3-1');
+    assert.equal(after['/3.3'], '/dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3');
+  });
+
+  test('a patch of a line older than the default leaves the default-owned clean routes alone', () => {
+    const config = storyFixture();
+    config.navigation.versions[2] = versionEntry('3.1', '3.1.24');
+
+    updateDocsConfig(config, '3.1.25', '3.1');
+
+    const after = destinations(config);
+    assert.equal(after['/docs/reference/whats-new-in-3-1'], '/dist/docs/3.2.2/reference/whats-new-in-3-1');
+    assert.equal(after['/docs/reference/migration/3-0-to-3-1'], '/dist/docs/3.2.2/reference/migration/3-0-to-3-1');
+  });
+
+  test('a late patch of an older line keeps its short aliases current but not the default-owned clean routes', () => {
+    const config = storyFixture();
+    config.navigation.versions.unshift({
+      version: '3.3',
+      tag: 'Latest',
+      default: true,
+      groups: [{ group: 'Getting Started', pages: ['dist/docs/3.3.0/intro'] }],
+    });
+    delete config.navigation.versions[1].default;
+    delete config.navigation.versions[1].tag;
+
+    updateDocsConfig(config, '3.2.3', '3.2');
+
+    const after = destinations(config);
+    assert.equal(after['/3.2'], '/dist/docs/3.2.3/reference/whats-new-in-3-2');
+    assert.equal(after['/3.2/migrate'], '/dist/docs/3.2.3/reference/migration/3-1-to-3-2');
+    assert.equal(after['/docs/reference/whats-new-in-3-2'], '/dist/docs/3.2.2/reference/whats-new-in-3-2');
+  });
+
+  test('CLI adds the 3.3 beta from a copy of the repository docs.json', (t) => {
+    const repoRoot = path.join(__dirname, '..');
+    const repoConfig = JSON.parse(fs.readFileSync(path.join(repoRoot, 'docs.json'), 'utf8'));
+    const repoDefault = repoConfig.navigation.versions.find((entry) => entry.default);
+    if (repoDefault.version !== '3.2') {
+      t.skip(`docs default ${repoDefault.version} is not the 3.2 line this scenario starts from`);
+      return;
+    }
+    // Start from the state before the first 3.3 snapshot, whatever main has since added.
+    repoConfig.navigation.versions = repoConfig.navigation.versions.filter(
+      (entry) => !/^3\.3(?:-|$)/.test(entry.version)
+    );
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-docs-33-'));
+    try {
+      const reference = path.join(root, 'dist/docs/3.3.0-beta.0/reference');
+      fs.mkdirSync(path.join(reference, 'migration'), { recursive: true });
+      for (const page of ['whats-new-in-3-3', '3-3-beta', 'migration/3-2-to-3-3']) {
+        fs.writeFileSync(path.join(reference, `${page}.mdx`), '---\ntitle: story\n---\n');
+      }
+      const files = {
+        docsJson: path.join(root, 'docs.json'),
+        dockerignore: path.join(root, '.dockerignore'),
+        schemaTools: path.join(root, 'schema-tools.ts'),
+        currentIndex: path.join(root, 'llms-current.md'),
+      };
+      fs.writeFileSync(files.docsJson, JSON.stringify(repoConfig));
+      fs.copyFileSync(path.join(repoRoot, '.dockerignore'), files.dockerignore);
+      fs.copyFileSync(path.join(repoRoot, 'server/src/addie/mcp/schema-tools.ts'), files.schemaTools);
+
+      execFileSync(process.execPath, [
+        path.join(repoRoot, 'scripts/update-release-docs-nav.mjs'),
+        '3.3.0-beta.0',
+        '3.3-beta',
+        files.docsJson,
+        files.dockerignore,
+        files.schemaTools,
+        files.currentIndex,
+      ], { cwd: root, encoding: 'utf8' });
+
+      const config = JSON.parse(fs.readFileSync(files.docsJson, 'utf8'));
+      const entry = config.navigation.versions.find((item) => item.version === '3.3-beta');
+      const strings = collectStrings(entry.groups);
+      for (const page of STORY_33_PAGES) {
+        assert.ok(strings.includes(page), `${page} is in the 3.3-beta navigation`);
+      }
+      assert.equal(config.navigation.versions[0].version, '3.2');
+      assert.match(fs.readFileSync(files.schemaTools, 'utf8'), /'3\.3-beta': '3\.3\.0-beta\.0',/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('throws a clear error when navigation.versions is empty', () => {
     assert.throws(
       () => updateDocsConfig({ navigation: { versions: [] } }, '3.1.0-rc.5', '3.1-rc'),

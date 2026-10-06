@@ -7,6 +7,13 @@
  * default navigation, pinned to dist/docs/<release-version>/, and flattened so
  * Mintlify can route the non-default version correctly.
  *
+ * The first preview of a new minor line (for example `3.3-beta` while 3.2 is
+ * the default) is cloned from another line's navigation, so the line's release
+ * story pages (whats-new-in-X-Y, X-Y-beta, migration/X-(Y-1)-to-X-Y) are added
+ * beside their predecessors. The line's public aliases (/X.Y, /X.Y/try|migrate|sdk
+ * and the clean /docs/reference routes) are retargeted to each new snapshot when
+ * they already exist in docs.json; other lines' aliases are never touched.
+ *
  * A stable release on a minor line newer than the current default (for
  * example `3.2.1 3.2` while 3.1 is the default) promotes that line: the new
  * stable entry becomes the only default and the only `Latest` entry, the old
@@ -14,7 +21,7 @@
  * picker. Their immutable dist/docs snapshots and redirects stay in place.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const DIST_DOCS_PREFIX_RE = /^dist\/docs\/[^/]+\//;
@@ -27,15 +34,10 @@ const LATEST_TAG = 'Latest';
 const PRERELEASE_BANNER_VERSION_RE = /AdCP (\d+)\.(\d+) ([0-9A-Za-z]+)\.\d+/g;
 const OFFICIAL_PRERELEASE_RELEASE_URL_RE = /https:\/\/github\.com\/adcontextprotocol\/adcp\/releases\/tag\/v\d+\.\d+\.\d+-(?:beta|rc)\.\d+/g;
 const VERSION_LINE_RE = /^(\d+\.\d+)/;
-const RELEASE_STORY_ALIASES = new Set([
-  '/3.2',
-  '/3.2/try',
-  '/3.2/migrate',
-  '/3.2/sdk',
-  '/docs/reference/whats-new-in-3-2',
-  '/docs/reference/3-2-beta',
-  '/docs/reference/migration/3-1-to-3-2',
-  '/docs/media-buy/product-discovery/proposal-negotiation',
+// Pages that only one line's story links to. They are rewritten with that
+// line's story aliases but are not derivable from the line number.
+const RELEASE_STORY_EXTRA_ALIASES = new Map([
+  ['3.2', ['/docs/media-buy/product-discovery/proposal-negotiation']],
 ]);
 // Mintlify Cloud handles Markdown requests before docs.json redirects, both
 // inside /_llms and at the root. These obsolete redirects must stay removed;
@@ -212,14 +214,137 @@ export function renderCurrentLlmsIndex(config) {
   ].join('\n');
 }
 
+function lineSlug(line) {
+  return line.replace('.', '-');
+}
+
+function previousLine(line) {
+  const [major, minor] = line.split('.').map(Number);
+  return minor > 0 ? `${major}.${minor - 1}` : undefined;
+}
+
+/**
+ * The public aliases and clean routes a minor line's release story owns:
+ * /X.Y, /X.Y/try|migrate|sdk, whats-new-in-X-Y, X-Y-beta, and the migration
+ * guide from the previous minor. Short aliases are always owned by the line.
+ * Clean /docs/ routes are also the default line's snapshot aliases, so they
+ * are returned separately and rewritten only for a line at or above the
+ * default (see updateReleaseStoryAliases).
+ */
+function releaseStoryAliases(line) {
+  const slug = lineSlug(line);
+  const previous = previousLine(line);
+  return {
+    short: [`/${line}`, `/${line}/try`, `/${line}/migrate`, `/${line}/sdk`],
+    clean: [
+      `/docs/reference/whats-new-in-${slug}`,
+      `/docs/reference/${slug}-beta`,
+      ...(previous ? [`/docs/reference/migration/${lineSlug(previous)}-to-${slug}`] : []),
+      ...(RELEASE_STORY_EXTRA_ALIASES.get(line) ?? []),
+    ],
+  };
+}
+
+function releaseStoryPages(line) {
+  const slug = lineSlug(line);
+  const previous = previousLine(line);
+  const beforePrevious = previous ? previousLine(previous) : undefined;
+  const overview = `reference/whats-new-in-${slug}`;
+  const migration = previous ? `reference/migration/${lineSlug(previous)}-to-${slug}` : undefined;
+  return [
+    {
+      page: overview,
+      after: previous
+        ? [`reference/${lineSlug(previous)}-beta`, `reference/whats-new-in-${lineSlug(previous)}`]
+        : [],
+    },
+    { page: `reference/${slug}-beta`, after: [overview] },
+    ...(migration
+      ? [{
+          page: migration,
+          after: [
+            ...(beforePrevious
+              ? [`reference/migration/${lineSlug(beforePrevious)}-to-${lineSlug(previous)}`]
+              : []),
+            'reference/migration/index',
+          ],
+        }]
+      : []),
+  ];
+}
+
+function insertAfterPage(node, anchorSuffix, page) {
+  if (Array.isArray(node)) {
+    const index = node.findIndex(
+      (item) => typeof item === 'string' && item.endsWith(`/${anchorSuffix}`)
+    );
+    if (index >= 0) {
+      node.splice(index + 1, 0, page);
+      return true;
+    }
+    return node.some((item) => insertAfterPage(item, anchorSuffix, page));
+  }
+  if (node && typeof node === 'object') {
+    return insertAfterPage(node.pages, anchorSuffix, page);
+  }
+  return false;
+}
+
+/**
+ * A new line's first preview is cloned from the default line's navigation,
+ * which has no entries for pages that line never shipped. Add the line's
+ * story pages next to their predecessors so they are reachable and indexed,
+ * and report any that the snapshot does not contain.
+ */
+function addReleaseStoryPages(groups, releaseVersion, line, snapshotHasPage) {
+  const present = new Set(collectStrings(groups));
+  const added = [];
+  const missing = [];
+  for (const { page, after } of releaseStoryPages(line)) {
+    const snapshotPage = `dist/docs/${releaseVersion}/${page}`;
+    if (present.has(snapshotPage)) continue;
+    if (!snapshotHasPage(snapshotPage)) {
+      missing.push(page);
+      continue;
+    }
+    if (after.some((anchor) => insertAfterPage(groups, anchor, snapshotPage))) {
+      present.add(snapshotPage);
+      added.push(page);
+    } else {
+      missing.push(page);
+    }
+  }
+  return { added, missing };
+}
+
+function snapshotPageExists(page) {
+  return ['.mdx', '.md'].some((extension) => existsSync(`${page}${extension}`));
+}
+
+function defaultVersionLine(config) {
+  const versions = config?.navigation?.versions;
+  const entry = Array.isArray(versions) ? versions.find((item) => item.default) ?? versions[0] : undefined;
+  return versionLine(entry?.version);
+}
+
 function updateReleaseStoryAliases(config, releaseVersion) {
-  if (!Array.isArray(config.redirects) || versionLine(releaseVersion) !== '3.2') {
+  const line = versionLine(releaseVersion);
+  if (!Array.isArray(config.redirects) || !line) {
     return;
+  }
+
+  const { short, clean } = releaseStoryAliases(line);
+  const aliases = new Set(short);
+  // An older line's clean routes belong to the default line's snapshot, so a
+  // late patch of that line must not retarget them.
+  const defaultLine = defaultVersionLine(config);
+  if (!defaultLine || compareVersionLines(line, defaultLine) >= 0) {
+    for (const alias of clean) aliases.add(alias);
   }
 
   for (const redirect of config.redirects) {
     if (
-      RELEASE_STORY_ALIASES.has(redirect?.source) &&
+      aliases.has(redirect?.source) &&
       typeof redirect.destination === 'string'
     ) {
       redirect.destination = redirect.destination.replace(
@@ -417,7 +542,8 @@ function promoteStableLine(config, releaseVersion, majorMinor) {
   };
 }
 
-export function updateDocsConfig(config, releaseVersion, majorMinor) {
+export function updateDocsConfig(config, releaseVersion, majorMinor, options = {}) {
+  const { snapshotHasPage = snapshotPageExists } = options;
   if (!releaseVersion || !majorMinor) {
     throw new Error('releaseVersion and majorMinor are required');
   }
@@ -467,6 +593,11 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
     throw new Error('docs.json navigation.versions cannot be empty');
   }
 
+  const result = {
+    config,
+    action: 'added',
+    sourceVersion: sourceEntry.version,
+  };
   const newEntry = clone(sourceEntry);
   delete newEntry.default;
   newEntry.version = majorMinor;
@@ -480,16 +611,42 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
   if (sameLineIndex >= 0) {
     delete versions[sameLineIndex].tag;
   }
+  const warnings = [];
+  if (sameLineIndex < 0 && PRERELEASE_DOCS_LABEL_RE.test(majorMinor)) {
+    // First preview of a line cloned from another line's navigation.
+    const { added, missing } = addReleaseStoryPages(
+      newEntry.groups,
+      releaseVersion,
+      targetLine,
+      snapshotHasPage
+    );
+    if (missing.length > 0) {
+      warnings.push(
+        `${targetLine} release story pages are not in ${majorMinor} navigation: ` +
+        `${missing.join(', ')}. Publish them in docs/ before cutting the beta.`
+      );
+    }
+    result.storyPagesAdded = added;
+  }
   const insertionIndex = sameLineIndex >= 0 ? sameLineIndex : sourceIndex + 1;
   versions.splice(insertionIndex, 0, newEntry);
-  updatePrereleaseBanner(config, releaseVersion, majorMinor);
+  const bannerRetargeted = updatePrereleaseBanner(config, releaseVersion, majorMinor);
+  if (
+    sameLineIndex < 0 &&
+    PRERELEASE_DOCS_LABEL_RE.test(majorMinor) &&
+    !bannerRetargeted &&
+    !String(config.banner?.content ?? '').includes(`/${targetLine}`)
+  ) {
+    warnings.push(
+      `banner does not link to the ${targetLine} release story. Point it at /${targetLine} ` +
+      'in the beta.0 Version Packages PR; the docs-nav test rejects a banner that ' +
+      'is not the current preview story.'
+    );
+  }
   updateReleaseStoryAliases(config, releaseVersion);
   removeObsoleteCurrentLlmsRedirects(config);
-  return {
-    config,
-    action: 'added',
-    sourceVersion: sourceEntry.version,
-  };
+  result.warnings = warnings;
+  return result;
 }
 
 export function updateDockerignore(content, releaseVersion) {
@@ -573,6 +730,10 @@ function main() {
   writeFileSync(dockerignorePath, dockerignore);
   writeFileSync(schemaToolsPath, schemaTools);
 
+  for (const warning of result.warnings ?? []) {
+    console.warn(`::warning::${warning}`);
+  }
+
   if (result.action === 'promoted') {
     console.log(
       `Promoted docs.json version ${majorMinor} (from ${result.sourceVersion}) to the default; ` +
@@ -581,6 +742,9 @@ function main() {
     );
   } else if (result.action === 'added') {
     console.log(`Added docs.json version ${majorMinor} from ${result.sourceVersion}`);
+    if (result.storyPagesAdded?.length > 0) {
+      console.log(`Added release story pages to ${majorMinor}: ${result.storyPagesAdded.join(', ')}`);
+    }
   } else {
     console.log(`Updated docs.json version ${majorMinor}`);
   }
