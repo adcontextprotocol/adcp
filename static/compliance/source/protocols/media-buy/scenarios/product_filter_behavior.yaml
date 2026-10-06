@@ -5,6 +5,7 @@ category: media_buy_seller
 summary: "Verifies schema-valid get_products filters affect brief curation, wholesale feeds, and refinement instead of silently no-oping."
 track: media_buy
 
+# TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
 requires_capability:
   path: media_buy.supported_delivery_types
   contains: non_guaranteed

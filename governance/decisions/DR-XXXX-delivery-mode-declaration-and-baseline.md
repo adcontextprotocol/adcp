@@ -34,6 +34,13 @@ declaration plus applicability gates is the smallest change that lets the runner
 pick the right baseline without a runner or schema-engine change, because the
 runner already resolves schema defaults for absent capability values.
 
+## Risks and preconditions
+
+- **Fail-closed default.** The gates rely on the runner resolving the schema default for an undeclared seller. The runner does that only when the capabilities response has a `media_buy` object and the schema root it loads carries this field. A seller with no `media_buy` block, or a bundle paired with an older schema root, grades the gated storyboards `not_applicable` and the guaranteed baseline does not run either. The decision therefore requires that the compliance bundle and schema ship together and that sellers emit a `media_buy` block. Applying defaults when the parent object is absent is an SDK change tracked separately. This is a blocking risk if shipped.
+- **Reduced coverage.** `not_applicable` is no coverage. A guaranteed-only seller's result is a profile with reduced coverage, not equivalence with the non-guaranteed baseline. A subset declaration is also an incentive to dodge scenarios; the guaranteed baseline checks the listing half of the declaration, the reject-on-create half is attestation-only.
+- **Gates are temporary.** Every delivery-mode gate is tagged `TEMPORARY(adcp#7852)` and is removed when the scenario is made delivery-mode aware (Option B). Compound gates use `requires_all_capabilities`, which fails closed when the raw capabilities response is missing, where a single gate fails open.
+- Declaration is seller-wide, not per product.
+
 ## Implications
 
 - Undeclared sellers see no change; the schema default is both modes.

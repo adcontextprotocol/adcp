@@ -13,6 +13,7 @@ requires_all_capabilities:
     equals: auto_approve
   - path: creative.has_creative_library
     equals: true
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
   - path: media_buy.supported_delivery_types
     contains: non_guaranteed
 

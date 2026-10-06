@@ -6,6 +6,7 @@ category: media_buy_seller
 summary: "Verifies an owner-sold channel product combines host property scope with the owner's canonical collection selector, that buyer collection selection requires explicit collection_ids, and that unknown or mismatched collection selectors are rejected rather than silently substituted."
 track: media_buy
 
+# TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
 requires_capability:
   path: media_buy.supported_delivery_types
   contains: non_guaranteed

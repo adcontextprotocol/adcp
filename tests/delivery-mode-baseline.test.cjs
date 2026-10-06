@@ -27,6 +27,7 @@ const { runStoryboard } = require('@adcp/sdk/testing');
 const ROOT = path.join(__dirname, '..');
 const PROTOCOL_DIR = path.join(ROOT, 'static', 'compliance', 'source', 'protocols', 'media-buy');
 const SCHEMA_ROOT = path.join(ROOT, 'dist', 'schemas', 'latest');
+const BUILT_CAPABILITIES_SCHEMA = path.join(SCHEMA_ROOT, 'protocol', 'get-adcp-capabilities-response.json');
 const CAPABILITIES_SCHEMA = path.join(
   ROOT, 'static', 'schemas', 'source', 'protocol', 'get-adcp-capabilities-response.json'
 );
@@ -111,7 +112,7 @@ test('base baseline is gated on non_guaranteed and the guaranteed baseline on it
   // missing-controller coverage-gap wording.
   assert.match(guaranteed.narrative, /missing_test_controller/);
   assert.match(guaranteed.narrative, /not a complete grade/);
-  for (const stepId of ['force_submitted_buy', 'create_media_buy', 'get_submitted_task', 'force_task_completion', 'get_completed_task']) {
+  for (const stepId of ['get_products_unfiltered', 'get_products_non_guaranteed_empty', 'force_submitted_buy', 'create_media_buy', 'get_submitted_task', 'force_task_completion', 'get_completed_task']) {
     const found = guaranteed.phases.flatMap(p => p.steps).some(step => step.id === stepId);
     assert.ok(found, `guaranteed baseline carries step ${stepId}`);
   }
@@ -154,6 +155,78 @@ test('edited storyboards carry both gate predicates through requires_all_capabil
       `${id}: use one gate form`
     );
   }
+});
+
+test('every added non_guaranteed gate is tagged TEMPORARY so it is removed with Option B', () => {
+  const missing = [];
+  let gates = 0;
+  const walk = dir => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!entry.name.endsWith('.yaml')) continue;
+      const lines = fs.readFileSync(full, 'utf8').split('\n');
+      lines.forEach((line, index) => {
+        if (!/path: media_buy\.supported_delivery_types$/.test(line) || !/^\s*contains: non_guaranteed/.test(lines[index + 1] ?? '')) return;
+        gates += 1;
+        const above = /^\s*- path:/.test(line) ? lines[index - 1] : lines[index - 2];
+        if (!/TEMPORARY\(adcp#7852\)/.test(above ?? '')) missing.push(`${path.relative(PROTOCOL_DIR, full)}:${index + 1}`);
+      });
+    }
+  };
+  walk(PROTOCOL_DIR);
+  assert.ok(gates >= 36);
+  assert.deepEqual(missing, []);
+});
+
+function walkYaml(dir, visit) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walkYaml(full, visit);
+    else if (entry.name.endsWith('.yaml')) visit(full, YAML.parse(fs.readFileSync(full, 'utf8')));
+  }
+}
+
+function schemaNodeAt(schema, dottedPath) {
+  let node = schema;
+  for (const key of dottedPath.split('.')) {
+    if (!node || !node.properties || !(key in node.properties)) return undefined;
+    node = node.properties[key];
+  }
+  return node;
+}
+
+test('every value gate whose path has a source schema default resolves that default in the built schema', () => {
+  // The runner resolves an absent capability from the default in the schema root it loads. A
+  // bundle must therefore never ship paired with a schema root that lacks a default its gates
+  // depend on: the gate would fail closed and grade the storyboard not_applicable.
+  assert.ok(fs.existsSync(BUILT_CAPABILITIES_SCHEMA), 'run `npm run build:schemas` first');
+  const source = JSON.parse(fs.readFileSync(CAPABILITIES_SCHEMA, 'utf8'));
+  const built = JSON.parse(fs.readFileSync(BUILT_CAPABILITIES_SCHEMA, 'utf8'));
+  const compliance = path.join(ROOT, 'static', 'compliance', 'source');
+  const problems = [];
+  let relied = 0;
+  walkYaml(compliance, (file, doc) => {
+    if (!doc || !Array.isArray(doc.phases)) return;
+    const predicates = [
+      ...predicatesOf(doc),
+      ...doc.phases.flatMap(phase => (phase.requires_capability ? [phase.requires_capability] : [])),
+    ];
+    for (const predicate of predicates) {
+      if ('present' in predicate) continue; // `present` never uses defaults
+      const sourceNode = schemaNodeAt(source, predicate.path);
+      if (!sourceNode || !('default' in sourceNode)) continue;
+      relied += 1;
+      const builtNode = schemaNodeAt(built, predicate.path);
+      if (!builtNode || JSON.stringify(builtNode.default) !== JSON.stringify(sourceNode.default)) {
+        problems.push(`${path.relative(compliance, file)}: ${predicate.path} default is missing from the built schema`);
+      }
+    }
+  });
+  assert.deepEqual(problems, []);
+  assert.ok(relied > 30, `expected to find default-reliant gates, found ${relied}`);
+  const delivery = schemaNodeAt(built, 'media_buy.supported_delivery_types');
+  assert.deepEqual(delivery.default, ['guaranteed', 'non_guaranteed']);
 });
 
 /**
@@ -203,6 +276,20 @@ test('gates select the right baseline per declaration, and an undeclared seller 
     });
   }
 
+  // Documented hazard: the runner resolves the schema default only when the `media_buy` object
+  // exists. A seller that advertises the protocol with no `media_buy` block fails every
+  // delivery-mode gate closed, so the base baseline is not applicable AND the guaranteed baseline
+  // is not selected: neither baseline grades it. Sellers MUST emit a media_buy block; the SDK fix
+  // (apply defaults when the parent is absent) is tracked separately. If this assertion starts
+  // failing because the runner learned to apply the default, update the docs and the DR.
+  await t.test('no media_buy block: fail-closed, neither baseline grades the seller', async () => {
+    const outcomes = [];
+    for (const [, storyboard] of subjects) {
+      outcomes.push(await gateOutcome(storyboard, { supported_protocols: ['media_buy'] }));
+    }
+    assert.deepEqual(outcomes, ['not_applicable', 'not_applicable', 'not_applicable']);
+  });
+
   // An undeclared seller must be indistinguishable from an explicit "both" on storyboards
   // whose only gate is the delivery-mode predicate. Each runner call is slow, so sample the
   // scenario kinds (no other gate, gate on creates, gate on discovery) rather than all of them.
@@ -221,4 +308,41 @@ test('gates select the right baseline per declaration, and an undeclared seller 
       assert.equal(both, 'selected', id);
     }
   });
+});
+
+test('a missing approval controller grades the forced steps missing_test_controller, not the whole storyboard missing_tool', async () => {
+  const guaranteed = loadByIdFromProtocolDir().get('media_buy_seller_guaranteed');
+  assert.ok(!guaranteed.required_tools.includes('comply_test_controller'));
+  const forced = guaranteed.phases.flatMap(p => p.steps).filter(step => step.task === 'comply_test_controller');
+  assert.ok(forced.length >= 2);
+  for (const step of forced) assert.equal(step.requires_tool, 'comply_test_controller', step.id);
+
+  const tools = ['get_adcp_capabilities', 'get_products', 'create_media_buy', 'get_task_status', 'get_media_buys', 'get_media_buy_delivery'];
+  const result = await runStoryboard('https://agent.example/mcp', { ...guaranteed, prerequisites: undefined, fixtures: undefined }, {
+    _profile: {
+      tools,
+      raw_capabilities: { media_buy: { supported_delivery_types: ['guaranteed'] } },
+    },
+    agentTools: tools,
+    schemaRoot: SCHEMA_ROOT,
+    adcpVersion: JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, 'index.json'), 'utf8')).adcp_version,
+    _client: new Proxy({}, {
+      get(_target, name) {
+        if (name === 'resetContext') return () => {};
+        return async () => ({ success: false, error: 'mock transport' });
+      },
+    }),
+  });
+  const steps = result.phases.flatMap(phase => phase.steps);
+  const byId = id => steps.find(step => (step.step_id ?? step.id) === id);
+  // The first forced step is the gap itself. Steps that depend on forced state are skipped by the
+  // runner's cascade (prerequisite_failed, or missing_tool for the later forced step): a coverage
+  // gap that does not fail the run and is not a complete grade.
+  assert.equal(byId('force_submitted_buy').skip_reason, 'missing_test_controller');
+  for (const id of ['create_media_buy', 'get_submitted_task', 'force_task_completion', 'get_completed_task', 'get_media_buys_approved', 'get_delivery']) {
+    const step = byId(id);
+    assert.ok(step && step.skipped, `${id} is skipped, not failed`);
+    assert.ok(['missing_test_controller', 'missing_tool', 'prerequisite_failed'].includes(step.skip_reason), `${id}: ${step.skip_reason}`);
+  }
+  assert.ok(!result.phases.some(phase => phase.phase_id === 'missing_tool'), 'the storyboard is not skipped wholesale for a missing tool');
 });

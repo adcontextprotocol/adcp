@@ -14,6 +14,7 @@ required_tools:
 requires_all_capabilities:
   - path: media_buy.propagation_surfaces
     contains: "snapshot"
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
   - path: media_buy.supported_delivery_types
     contains: non_guaranteed
 

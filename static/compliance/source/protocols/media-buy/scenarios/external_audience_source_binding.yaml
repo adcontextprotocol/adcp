@@ -14,6 +14,7 @@ requires_all_capabilities:
       pattern: dataset_query
       vendor:
         domain: data-cloud.example
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
   - path: media_buy.supported_delivery_types
     contains: non_guaranteed
 

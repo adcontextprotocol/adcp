@@ -18,7 +18,10 @@ required_tools:
   - get_products
   - create_media_buy
   - get_task_status
-  - comply_test_controller
+
+# comply_test_controller is deliberately NOT a storyboard-level required tool: the two
+# forced-approval steps carry `requires_tool`, so a missing controller grades those
+# steps `missing_test_controller` instead of making the whole storyboard `missing_tool`.
 
 # Cross-step assertion (adcp#2664): reject resource status transitions that are
 # not on the spec lifecycle graph.
@@ -35,14 +38,29 @@ narrative: |
   grades the guaranteed core flow instead: guaranteed discovery, a submitted create,
   controller-forced completion in place of the human IO signer, get_task_status polling,
   get_media_buys readback of the issued buy, and delivery reporting. The steps match
-  the media_buy_seller_guaranteed specialism, which additionally grades proposal and creative
+  the sales_guaranteed specialism, which additionally grades proposal and creative
   behavior; claiming sales-guaranteed remains separate.
 
   The sandbox controller must support force_create_media_buy_arm and force_task_completion
   so this test does not depend on a human signing an IO during the runner's timeout
-  window. If the controller does not expose them, the forced approval phases report a
-  missing_test_controller coverage gap. Their skipped assertions do not prove the
-  guaranteed approval lifecycle, so such a run is not a complete grade.
+  window. If the controller does not expose them, the first forced approval step skips with
+  missing_test_controller and the steps that depend on forced state skip behind it
+  (prerequisite_failed). That is a coverage gap: the skipped assertions do not prove the
+  guaranteed approval lifecycle, so such a run does not fail but is not a complete grade.
+
+  This baseline is a reduced-coverage profile, not equivalence with media_buy_seller.
+  The inherited scenarios gated on non_guaranteed grade not_applicable, which means no
+  coverage and is not a pass. What a guaranteed-only seller is graded on is this
+  11-step flow, the ungated inherited scenarios, and sales_guaranteed. Making each
+  inherited scenario delivery-mode aware is the real fix and is not done here.
+
+  Declaring the mode is part of the grade. Discovery below asserts that no
+  non_guaranteed product is listed (exhaustively, through a non_guaranteed filter).
+  The other half of the declaration, rejecting a create on a non_guaranteed product
+  with UNSUPPORTED_FEATURE, is attestation-only: asserting it needs a non_guaranteed
+  product, and a seller that sells none cannot be required to seed one. A seller that
+  falsely declares ["guaranteed"] only to skip the gated scenarios is detectable
+  here only through that listing check.
 
 agent:
   interaction_model: media_buy_seller
@@ -238,6 +256,76 @@ phases:
           - check: field_present
             path: "products[0].format_options[0].format_option_id"
             description: "Canonical format options include a stable ID accepted by sync_creatives"
+      - id: get_products_unfiltered
+        title: "Discover products without a delivery-type filter"
+        narrative: |
+          An unfiltered request must not surface inventory of an undeclared mode. This
+          samples the first returned product; the exhaustive assertion is the filtered
+          step that follows.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return only guaranteed products.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_guaranteed_product_discovery_get_products_unfiltered"
+          buying_mode: "brief"
+          brief: "Premium video on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US only."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_guaranteed-e9aae2fe"
+            sandbox: true
+          context:
+            correlation_id: "media_buy_seller_guaranteed--get_products_unfiltered"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].delivery_type"
+            value: "guaranteed"
+            description: "An unfiltered listing does not lead with a non_guaranteed product"
+
+      - id: get_products_non_guaranteed_empty
+        title: "Ask for non-guaranteed products"
+        narrative: |
+          A seller that declares only guaranteed sells no non_guaranteed product, so a
+          filter for them matches nothing. A seller that lists such a product contradicts
+          its own media_buy.supported_delivery_types declaration.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return an empty products array.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_guaranteed_product_discovery_get_products_non_guaranteed_empty"
+          buying_mode: "brief"
+          brief: "Auction video inventory on sports and outdoor lifestyle publishers."
+          filters:
+            delivery_type: "non_guaranteed"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_guaranteed-e9aae2fe"
+            sandbox: true
+          context:
+            correlation_id: "media_buy_seller_guaranteed--get_products_non_guaranteed_empty"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: array_length
+            path: "products"
+            value: 0
+            description: "No non_guaranteed product is listed by a seller that declares guaranteed only"
+
   - id: create_buy_submitted
     title: "Create guaranteed buy (task submitted for approval)"
     narrative: |

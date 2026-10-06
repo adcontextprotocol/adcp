@@ -6,6 +6,7 @@ category: media_buy_seller
 summary: "Verifies mode: selected accepts an explicit domain-qualified subset, mode: default materializes the product's full bundle on readback, package readback always echoes committed collection_selection as concrete selectors, and a fixed (non-selectable) bundle rejects partial selection while accepting an exact restatement."
 track: media_buy
 
+# TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
 requires_capability:
   path: media_buy.supported_delivery_types
   contains: non_guaranteed

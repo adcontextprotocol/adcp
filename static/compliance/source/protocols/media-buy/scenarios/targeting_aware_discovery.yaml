@@ -5,6 +5,7 @@ category: media_buy_seller
 summary: "Verifies targeting-scoped discovery forecasts, future overlay support, sparse configured-product modifications, opaque product acceptance, and inventory targeting across create/update/readback."
 track: media_buy
 
+# TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
 requires_capability:
   path: media_buy.supported_delivery_types
   contains: non_guaranteed
