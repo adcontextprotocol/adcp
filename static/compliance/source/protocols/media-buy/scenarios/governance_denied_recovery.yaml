@@ -42,6 +42,9 @@ narrative: |
   Override by supplying a different `governance_agent_url` in the run's initial context
   (e.g., via `--context` on `adcp storyboard run` once the CLI supports it).
 
+# Hosted grading uses a resolvable buyer brand whose brand.json lists the
+# sandbox governance agent. Match the account and test-kit brand throughout;
+# see test-kits/hosted-grader.yaml for sandbox trust and credential mapping.
 context:
   governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
@@ -62,7 +65,7 @@ prerequisites:
     A multi-agent runner with `sales` and `governance` agents. The governance
     agent supports sync_plans and check_governance; the sales agent supports
     sync_governance and create_media_buy.
-  test_kit: "test-kits/acme-outdoor.yaml"
+  test_kit: "test-kits/hosted-grader.yaml"
 
 phases:
   - id: governance_plan_setup
@@ -87,7 +90,7 @@ phases:
           plans:
             - plan_id: "comply-gov-recovery-plan"
               brand:
-                domain: "acmeoutdoor.example"
+                domain: "hosted-grader.adcontextprotocol.org"
               objectives: "Strict-budget plan for denial + recovery validation"
               budget:
                 total: 10000
@@ -117,7 +120,7 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.example"
+                domain: "hosted-grader.adcontextprotocol.org"
               operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
@@ -143,7 +146,7 @@ phases:
           accounts:
             - account:
                 brand:
-                  domain: "acmeoutdoor.example"
+                  domain: "hosted-grader.adcontextprotocol.org"
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
@@ -176,7 +179,7 @@ phases:
             is_fixed_price: true
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "hosted-grader.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
         context_outputs:
           - path: "products[0].product_id"
@@ -210,10 +213,10 @@ phases:
 
         sample_request:
           brand:
-            domain: "acmeoutdoor.example"
+            domain: "hosted-grader.adcontextprotocol.org"
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "hosted-grader.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
           idempotency_key: "$generate:uuid_v4#governance_denied_recovery_create_media_buy_denied"
           start_time: "asap"
@@ -256,10 +259,10 @@ phases:
 
         sample_request:
           brand:
-            domain: "acmeoutdoor.example"
+            domain: "hosted-grader.adcontextprotocol.org"
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "hosted-grader.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
           idempotency_key: "$generate:uuid_v4#governance_denied_recovery_create_media_buy_retry"
           start_time: "asap"
