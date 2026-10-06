@@ -147,7 +147,7 @@ phases:
             value: true
             description: "Creative evaluator support is declared"
           - check: field_contains
-            path: "experimental_features"
+            path: "experimental_features[*]"
             value: "creative.evaluator"
             description: "Experimental evaluator feature id is declared"
           - check: field_present
