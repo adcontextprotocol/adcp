@@ -1,5 +1,5 @@
 id: media_buy_seller/advanced_delivery_reporting
-version: "1.0.1"
+version: "1.0.2"
 introduced_in: "3.2"
 title: "Seller narrows metrics and reports delivery by canonical format"
 category: media_buy_seller
@@ -11,6 +11,10 @@ required_tools:
   - create_media_buy
   - get_media_buy_delivery
   - comply_test_controller
+
+requires_capability:
+  path: media_buy.buying_modes
+  contains: wholesale
 
 narrative: |
   AdCP 3.2 lets a buyer keep large delivery payloads focused with
@@ -24,6 +28,9 @@ narrative: |
   quartiles or average viewed_seconds. This scenario proves those distinctions
   with deterministic simulated delivery rather than validating only the JSON
   shapes.
+
+  Discovery uses the opt-in wholesale buying mode. Sellers that do not
+  advertise wholesale support grade this scenario not_applicable.
 
 agent:
   interaction_model: media_buy_seller
