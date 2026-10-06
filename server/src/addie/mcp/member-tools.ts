@@ -62,6 +62,7 @@ import {
   hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
+  hostedCapabilityDiscoveryOptions,
   selectedComplianceTargetMatchesObservedProfile,
   UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
   type ComplyOptions,
@@ -5371,9 +5372,10 @@ export function createMemberToolHandlers(
     let profile: AgentProfile | undefined;
     let discoveryProbeError: string | undefined;
     try {
-      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, withSdkSafeTransport({
-        ...(authOption && { auth: authOption }),
-      }));
+      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, hostedCapabilityDiscoveryOptions(
+        { ...(authOption && { auth: authOption }) },
+        hasExplicitComplianceTarget(input) ? runTarget : undefined,
+      ));
       profile = caps.profile;
       discoveryProbeError = capabilityDiscoveryProbeError(caps);
       if (!hasExplicitComplianceTarget(input)) {

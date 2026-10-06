@@ -43,8 +43,11 @@ describe("fixed-trace rollout test-aware typecheck wiring", () => {
     const compiler = spawnSync(
       process.platform === "win32" ? "npx.cmd" : "npx",
       ["tsc", "--project", "server/tsconfig.json", "--noEmit", "--pretty", "false"],
-      { cwd: root, encoding: "utf8" },
+      // Cold compilation exceeds 30 s on supported development VMs. Bound
+      // the wrapper wait separately from the surrounding Vitest deadline.
+      { cwd: root, encoding: "utf8", timeout: 200_000 },
     );
+    expect(compiler.error, `${compiler.error?.message ?? ""}${compiler.stdout}${compiler.stderr}`).toBeUndefined();
     expect(compiler.status, `${compiler.stdout}${compiler.stderr}`).toBe(0);
 
     const orphaned = {
@@ -61,5 +64,5 @@ describe("fixed-trace rollout test-aware typecheck wiring", () => {
     } finally {
       rmSync(isolated, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 210_000);
 });

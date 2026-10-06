@@ -117,7 +117,11 @@ describe('perspective asset cache privacy', () => {
     [true, undefined, 'public, max-age=0, must-revalidate'],
     [false, 'draft-author', 'private, no-store'],
   ])('sets visibility-aware asset caching when is_public=%s', async (isPublic, userId, expected) => {
-    mocks.query.mockResolvedValueOnce({ rows: [{ id: 'perspective-1', is_public: isPublic }] });
+    // HTTPServer also schedules unrelated documentation reads; bind the
+    // visibility fixture to its query instead of consuming the next DB call.
+    mocks.query.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('AS is_public') ? [{ id: 'perspective-1', is_public: isPublic }] : [],
+    }));
     mocks.getAssetData.mockResolvedValueOnce({
       file_data: Buffer.from('asset bytes'),
       file_mime_type: 'image/png',

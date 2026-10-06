@@ -22,6 +22,7 @@ import {
   type TrackResult,
   type AdvisoryObservation,
   type SampleBrief,
+  type TestOptions,
 } from '@adcp/sdk/testing';
 import {
   hostedComplianceTarget,
@@ -57,6 +58,16 @@ import type {
 
 const logger = createLogger('addie-compliance-testing');
 export const HOSTED_TARGET_DISCOVERY_TIMEOUT_MS = 30_000;
+
+/** Pin selected targets; bootstrap discovery must not inherit the SDK's version. */
+export function hostedCapabilityDiscoveryOptions(
+  options: TestOptions,
+  target?: HostedComplianceTarget,
+): TestOptions {
+  return withSdkSafeTransport(target
+    ? withHostedTestOptions({ ...options, versionEnvelope: 'auto' }, target)
+    : { ...options, adcpVersion: undefined, versionEnvelope: 'major-only' });
+}
 
 export interface ComplianceTargetSelection {
   target: HostedComplianceTarget;
@@ -362,9 +373,7 @@ export async function selectComplianceTargetForAgentSelection(
     // gets a chance to report supported_versions.
     const discovery = await discoverCapabilitiesWithDeadline(
       agentUrl,
-      compatibleSeededTarget
-        ? withHostedTestOptions(options, compatibleSeededTarget)
-        : options,
+      hostedCapabilityDiscoveryOptions(options, compatibleSeededTarget),
     );
     const target = mode === 'canonical'
       ? selectCanonicalHostedComplianceTargetForProfile(discovery.profile, fallback)

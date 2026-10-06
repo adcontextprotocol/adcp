@@ -1018,6 +1018,8 @@ export class AgentContextDatabase {
    * `client_secret` is encrypted at rest regardless of whether it's a literal
    * value or a `$ENV:VAR_NAME` reference — the SDK resolves the reference at
    * exchange time, the server just stores and returns.
+   * Saving selects client credentials over any connect-form bearer/basic token;
+   * clear that token atomically so every resolver observes the same switch.
    */
   async saveOAuthClientCredentials(id: string, creds: OAuthClientCredentials): Promise<void> {
     const context = await this.getById(id);
@@ -1038,6 +1040,10 @@ export class AgentContextDatabase {
          oauth_cc_resource = $6,
          oauth_cc_audience = $7,
          oauth_cc_auth_method = $8,
+         auth_token_encrypted = NULL,
+         auth_token_iv = NULL,
+         auth_token_hint = NULL,
+         auth_type = 'bearer',
          updated_at = NOW()
        WHERE id = $9`,
       [

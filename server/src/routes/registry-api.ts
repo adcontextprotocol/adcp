@@ -68,6 +68,7 @@ import {
   hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
+  hostedCapabilityDiscoveryOptions,
   selectedComplianceTargetMatchesObservedProfile,
   UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
 } from "../addie/services/compliance-testing.js";
@@ -4562,6 +4563,27 @@ registry.registerPath({
         },
       },
     },
+    400: { description: "Invalid parameters", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: "/api/registry/agents/{encodedUrl}/connect",
+  operationId: "removeAgentAuthToken",
+  summary: "Clear saved bearer or basic credentials",
+  description: "Clear the selected organization's static credential while retaining OAuth configuration and compliance history. Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({ encodedUrl: z.string() }),
+    query: z.object({ org: z.string().optional() }),
+  },
+  responses: {
+    204: { description: "Static credential cleared" },
     400: { description: "Invalid parameters", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
@@ -9557,6 +9579,33 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     },
   );
 
+  router.delete("/registry/agents/:encodedUrl/connect", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const orgSelection = parseRequestedOrganizationQuery(req.query);
+      if (!orgSelection.ok) {
+        return res.status(400).json({ error: "org must be a non-empty organization ID" });
+      }
+      const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, orgSelection.organizationId);
+      if (!orgId) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
+      }
+      const context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+      if (context) await agentContextDb.removeAuthToken(context.id);
+      return res.status(204).end();
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to clear agent auth token");
+      return res.status(500).json({ error: "Failed to clear agent auth token" });
+    }
+  });
+
   /**
    * Dry-run the saved client-credentials config by exchanging at the token
    * endpoint and discarding the result. Converts the dashboard's "save and
@@ -9707,7 +9756,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       try {
         const caps = await testCapabilityDiscovery(
           agentUrl,
-          withSdkSafeTransport({ ...(probeAuth && { auth: probeAuth }) }),
+          hostedCapabilityDiscoveryOptions({ ...(probeAuth && { auth: probeAuth }) }),
         );
         profile = caps.profile;
 
