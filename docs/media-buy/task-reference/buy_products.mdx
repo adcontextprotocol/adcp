@@ -59,6 +59,8 @@ commitment and subsequent [`get_media_buys`](/docs/media-buy/task-reference/get_
 reads. It is operational display metadata outside `accepted_proposal` and is
 not covered by `terms_digest`.
 
+To receive scheduled reports, a `reporting_webhook` registered on this task needs a buyer-supplied `operation_id` (see [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks)); sellers MUST NOT send `media_buy_delivery` reports to a registration that omits it.
+
 Each purchase uses request-only `ProductPurchaseInput`. Its
 `targeting_overlay` has three states per dimension: omission inherits the
 selected product's configured/default value, a non-null value replaces it, and
