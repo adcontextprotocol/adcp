@@ -3088,6 +3088,12 @@ import {
   payloadHash,
   REPLAY_TTL_SECONDS,
 } from './idempotency.js';
+import {
+  DELIVERY_MODE_NOT_SUPPORTED,
+  configuredDeliveryModes,
+  isSingleModeSeller,
+  sellerSellsProduct,
+} from './delivery-mode-seam.js';
 import { maybeEmitCompletionWebhook } from './webhooks.js';
 import {
   CURRENT_REQUEST_SIGNING_PROFILE_VERSION,
@@ -10636,6 +10642,11 @@ async function handleGetProductsUnlocked(
   }
   if (buyingMode !== 'wholesale') overlayNegotiatedPricingOptions(session, productMap);
   products = Array.from(productMap.values());
+  if (isSingleModeSeller()) {
+    // Test-only delivery-mode seam (adcp#7852): list only what this seller sells.
+    const seededIds = seededProductIds(session);
+    products = products.filter(product => sellerSellsProduct(product, seededIds.has(product.product_id)));
+  }
   let registryProducts = [...products];
   const requestedProductIds = Array.isArray((req as unknown as Record<string, unknown>).product_ids)
     ? new Set(((req as unknown as Record<string, unknown>).product_ids as unknown[])
@@ -15582,6 +15593,36 @@ async function handleCreateMediaBuyUnlocked(
 
   if (errors.length > 0) {
     return { errors };
+  }
+
+  // Test-only delivery-mode seam (adcp#7852). Runs after every request
+  // validation and before the buy is minted, like a seller whose only
+  // remaining step is accepting the commitment.
+  if (isSingleModeSeller()) {
+    const seededIds = seededProductIds(session);
+    const unsold = createdPackages.findIndex(pkg => (
+      !sellerSellsProduct(productMap.get(pkg.productId), seededIds.has(pkg.productId))
+    ));
+    if (unsold >= 0) {
+      return { errors: [{
+        code: DELIVERY_MODE_NOT_SUPPORTED,
+        message: `This seller does not sell ${productMap.get(createdPackages[unsold].productId)?.delivery_type} inventory.`,
+        field: `packages[${unsold}].product_id`,
+        recovery: 'correctable',
+      }] as TaskError[] };
+    }
+    // Guaranteed-only: every guaranteed buy needs a human-signed IO, so the
+    // seller always answers with the submitted arm (no media_buy_id yet).
+    if (
+      configuredDeliveryModes() === 'guaranteed'
+      && createdPackages.every(pkg => productMap.get(pkg.productId)?.delivery_type === 'guaranteed')
+    ) {
+      return {
+        status: 'submitted',
+        task_id: `task_io_${randomUUID().slice(0, 12)}`,
+        message: 'Awaiting IO signature from the sales team',
+      };
+    }
   }
 
   // Accept a buyer-supplied `media_buy_id` when present. Conformance

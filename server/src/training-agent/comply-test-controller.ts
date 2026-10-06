@@ -90,6 +90,7 @@ import {
   type TrainingAudienceStatus,
 } from './audience-handlers.js';
 import { validateViewedSecondsDistributionSemantics } from './delivery-metrics-semantics.js';
+import { seedRefusal } from './delivery-mode-seam.js';
 import {
   taskRegistryNamespaceForTenant,
   type TaskRegistryTenant,
@@ -1273,6 +1274,8 @@ function createStore(
     // is enforced by the SDK's seed cache wired in handleComplyTestController.
 
     async seedProduct(productId, fixture) {
+      const refusal = seedRefusal(fixture); // test-only delivery-mode seam (adcp#7852)
+      if (refusal) throw new TestControllerError('INVALID_PARAMS', refusal);
       const ext = session.complyExtensions;
       enforceMapCap(ext.seededProducts, productId, 'seeded products');
       // fixture.availability is seller-internal booking calendar state (spec:
