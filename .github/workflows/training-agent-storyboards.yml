@@ -371,18 +371,23 @@ jobs:
         if: matrix.surface == 'current' && matrix.tenant == 'governance'
         run: |
           set -euo pipefail
-          requirement="governance/failed_outcome_audit_persistence:4:0"
-          storyboard_id="${requirement%%:*}"
-          counts="${requirement#*:}"
-          expected_passed="${counts%%:*}"
-          expected_skipped="${counts##*:}"
-          if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓[[:space:]]+${expected_passed}P / ${expected_skipped}S" /tmp/storyboards.log >/dev/null; then
-            echo "Required-exact storyboard passed: ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
-          else
-            echo "::error::Required-exact storyboard counts changed on /governance current surface: ${storyboard_id}"
-            grep -F "${storyboard_id}" /tmp/storyboards.log || true
-            exit 1
-          fi
+          requirements=(
+            "governance/failed_outcome_audit_persistence:4:0"
+            "governance/budget_periods:7:0"
+          )
+          for requirement in "${requirements[@]}"; do
+            storyboard_id="${requirement%%:*}"
+            counts="${requirement#*:}"
+            expected_passed="${counts%%:*}"
+            expected_skipped="${counts##*:}"
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓[[:space:]]+${expected_passed}P / ${expected_skipped}S" /tmp/storyboards.log >/dev/null; then
+              echo "Required-exact storyboard passed: ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
+            else
+              echo "::error::Required-exact storyboard counts changed on /governance current surface: ${storyboard_id}"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
 
       - name: Enforce routed multi-agent governance storyboards
         if: matrix.surface == 'current' && (matrix.tenant == 'signals' || matrix.tenant == 'brand' || matrix.tenant == 'creative-builder')
