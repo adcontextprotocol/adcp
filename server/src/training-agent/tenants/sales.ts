@@ -27,6 +27,7 @@ import { customToolFor } from './custom-tool-helper.js';
 import { handleSyncCatalogs } from '../catalog-event-handlers.js';
 import { supportsAccountChangeFeed, type TrainingContext } from '../types.js';
 import { syncAgentNotificationConfigsLegacy } from '../agent-notification-configs.js';
+import { getPrincipalLegacy, syncPrincipalLegacy } from '../principal.js';
 
 const TENANT_ID = 'sales';
 
@@ -317,6 +318,26 @@ export function buildSalesTenantConfig(
                 annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
                 enforceIdempotency: true,
                 payloadErrorsAsSuccess: true,
+              },
+            ),
+            // Experimental principal layer, keyed to the authenticated caller.
+            // Request-level failures ride the response's `kind: failed` arm;
+            // only a missing principal surfaces as an AUTH_REQUIRED error.
+            get_principal: customToolFor(
+              'get_principal',
+              'Read the authenticated caller\'s seller-resolved identity, standing configuration, version, and destination setup states.',
+              TOOL_INPUT_SHAPES.get_principal!,
+              getPrincipalLegacy,
+              { annotations: { readOnlyHint: true, idempotentHint: true } },
+            ),
+            sync_principal: customToolFor(
+              'sync_principal',
+              'Synchronize caller-scoped webhooks, reusable reporting destinations, and declarations with this seller agent.',
+              TOOL_INPUT_SHAPES.sync_principal!,
+              syncPrincipalLegacy,
+              {
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+                enforceIdempotency: true,
               },
             ),
             sync_governance: syncGovernanceTool(options.storyboardCompat),

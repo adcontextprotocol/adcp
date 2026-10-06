@@ -261,6 +261,7 @@ function createSession(): SessionState {
   const now = new Date();
   return {
     agentNotificationConfigs: new Map(),
+    principalConfigurations: new Map(),
     mediaBuys: new Map(),
     governancePlans: new Map(),
     governanceChecks: new Map(),
@@ -508,6 +509,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     ...fresh,
     ...hydrated,
     agentNotificationConfigs: asMap(hydrated.agentNotificationConfigs, fresh.agentNotificationConfigs),
+    principalConfigurations: asMap(hydrated.principalConfigurations, fresh.principalConfigurations),
     mediaBuys: asMap(hydrated.mediaBuys, fresh.mediaBuys),
     creatives: asMap(hydrated.creatives, fresh.creatives),
     signalActivations: asMap(hydrated.signalActivations, fresh.signalActivations),

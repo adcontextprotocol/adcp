@@ -1,7 +1,7 @@
 ---
 title: Migration guides
 sidebarTitle: Migration guides
-description: "Upgrade paths between AdCP versions: 3.1 to 3.2, 3.0 to 3.1, and v2 to v3, with breaking changes, effort estimates, and deep-dive pages for each area."
+description: "Upgrade paths between AdCP versions: 3.2 to 3.3, 3.1 to 3.2, 3.0 to 3.1, and v2 to v3, with breaking changes, effort estimates, and deep-dive pages for each area."
 "og:title": "AdCP — Migration guides"
 ---
 
@@ -11,11 +11,18 @@ Pick the guide for the version you run today.
 
 | From → To | Current status | Guide | What it covers |
 |---|---|---|---|
+| **3.2 → 3.3** | 3.3 is in its beta cycle; 3.2 stays the current stable release. | [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3) | Two behavior tightenings (discovery never provisions accounts, one agent-resolution rule for signatures), optional catalog ingestion, DOOH location, and `ext.adcp` declarations, and no deprecations |
 | **3.1 → 3.2** | 3.2 is the current stable release (`3.2.1`, wire pin `"3.2"`). 3.1 stays supported. | [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2) | Compatibility exceptions, mixed-version request signing, SDK version map, day-one checklists by role, and the full wire-change table |
 | **3.0 → 3.1** | 3.1 is the previous supported release. | [3.0 to 3.1 badge checklist](/docs/reference/migration/3-0-to-3-1) | Additive prep for buyers, sellers, agents, SDKs, and compliance workflows |
 | **v2 → v3** | v2 reached end of life on August 1, 2026 (UTC). | [Migrating from v2 to v3](#migrating-from-v2-to-v3) (below) | Every breaking change from 2.x to 3.0, with effort estimates |
 
 For the status of every published version, see [Versions & Compatibility](/docs/reference/versions). For the rules that govern what a release may change, see [Versioning & Governance](/docs/reference/versioning).
+
+## 3.3 migration guide
+
+<Info>
+**Preparing for 3.3?** Start with the [3.2 to 3.3 migration guide](/docs/reference/migration/3-2-to-3-3). During beta, also read the [3.3 beta program](/docs/reference/3-3-beta).
+</Info>
 
 ## 3.2 migration guides
 

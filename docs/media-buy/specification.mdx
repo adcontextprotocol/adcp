@@ -479,6 +479,169 @@ creative library. A targeting change that would orphan an assignment MUST be
 validated with its complete assignment replacement in the same facade update;
 `control_media_buy` followed by `sync_creatives` cannot provide that guarantee.
 
+### Definition pins
+
+`terms_digest` covers `commercial_terms`, but `commercial_terms` names some
+definitions that a third party publishes and can change after the proposal is
+committed: a publisher's format option, a placement, a collection, a data
+provider's signal. A pin records what the seller resolved when it authored the
+terms, so a buyer or seller can detect that a referenced definition changed even
+though `terms_digest` still verifies.
+
+Pins are `commercial_terms.definition_pins[]` entries
+([`definition-pin.json`](https://adcontextprotocol.org/schemas/latest/core/definition-pin.json)).
+Each carries `ref_kind`, a closed canonical `reference` identity object, a
+lowercase-hex SHA-256 `content_digest`, and an optional informational
+`source_version`.
+
+#### Covered set
+
+A covered reference is one of these, found in `commercial_terms.purchases[]`:
+
+| `ref_kind` | Where it occurs | Reference | Published entry |
+| --- | --- | --- | --- |
+| `publisher_format_option` | `format_option_refs[]` items with `scope: publisher` | `{ publisher_domain, format_option_id }` | Top-level `formats[]` of the publisher's `adagents.json` |
+| `publisher_placement` | `targeting_overlay.placement_selection.placement_refs[]` when `mode` is `selected`, for a `placement-identity` of `kind: publisher_ref` or a legacy `{ publisher_domain, placement_id }` that resolves in the publisher's `placements[]` | `{ publisher_domain, placement_id }` | `placements[]` |
+| `publisher_collection` | `targeting_overlay.collection_selection.collections[]`, one pin per `collection_ids[]` entry | `{ publisher_domain, collection_id }` | `collections[]` |
+| `data_provider_signal` | `targeting_overlay.signal_targeting_groups` entries, and the deprecated `signal_targeting`, whose `signal_ref` has `scope: data_provider` | `{ data_provider_domain, signal_id }` | `signals[]` of the data provider's `adagents.json` |
+
+These are not pinned: property lists and collection lists (buyer-managed and
+designed to change during a flight, with `list_applications` receipts as the
+evaluation record), product-local format options, seller-inline placements,
+product-scoped and signal-source signals (a seller would only be hashing and
+checking its own data), and default-mode selections (`mode: default`). A pin
+covers the entry as published, not the entries it names by ID: a placement pin
+does not pin the catalog format options that placement lists, which are pinned
+only when a purchase references them itself.
+
+#### Authoring and verification
+
+- A seller MUST emit one pin for every distinct covered reference in
+  `purchases[]` on every `new_media_buy` and `media_buy_update` draft and
+  revision, and MUST NOT emit such terms without the pins. Entries are unique by
+  `(ref_kind, reference)`, with `reference` compared by its JCS bytes, and
+  ordered by `ref_kind`, then by the JCS bytes of `reference`, both compared as
+  UTF-8 bytes, so equal terms always produce equal `terms_digest` values. An
+  amendment is a new commitment over the whole resulting envelope, so its pins
+  are issued at the current definitions; the prior accepted snapshot is
+  immutable and keeps its own pins. A `media_buy_cancellation` proposal commits
+  no new reference and carries no pins. Sellers emit pins, and
+  `definition_changed`, only to callers negotiating AdCP 3.3 or later.
+- Only sellers author pins. The `request_proposals`, `refine_proposals`,
+  `accept_proposal`, and `buy_products` inputs reject `definition_pins` with
+  `INVALID_REQUEST`; `check_governance` is exempt because it carries the
+  seller-authored proposal. A direct `buy_products` creates the seller-authored
+  pins and the accepted snapshot atomically.
+- A revision re-resolves every covered definition and issues fresh pins. A
+  committed proposal is term-preserving, so `refine_proposals` `finalize`
+  re-resolves each existing pin and verifies every pin in the batch **before**
+  taking any hold. If any pin fails, no hold is taken and the entry is
+  `outcome: unable` with `reason_code: definition_changed` and a required
+  `drifted_pins[]` naming each failing pin and the digest the definition
+  resolves to now; its own `definition_changed` takes precedence over
+  `batch_aborted`, which the otherwise-eligible siblings return. Only
+  `commercial_terms` is frozen; `forecast` may differ between a draft and its
+  committed successor.
+- `accept_proposal` re-verifies every pin **before** mutating any state, after
+  the cheaper proposal ID, digest, expiry, and authorization checks. A failing
+  pin returns `REFERENCE_DEFINITION_CHANGED`, one error per drifted pin, with
+  `error.field` naming the pin (for example `commercial_terms.definition_pins[2]`)
+  and `details.current_content_digest`. An idempotent replay of an acceptance
+  that already completed returns the stored result without re-verifying pins.
+  The seller fetches and compares outside the commit, performs no network I/O
+  while holding a lock, and commits only if the proposal state is still the one
+  it verified. `finalize` likewise runs its authorization and expiry checks
+  before any fetch.
+- Resolution uses a copy of the publisher's document no older than its own HTTP
+  cache validity and in any case no older than 300 seconds: a verifier
+  revalidates an older copy with a conditional request, and the
+  serve-stale-on-error fallback does not apply to pin verification. A verifier
+  fetches each distinct domain once per verification under an aggregate
+  deadline and follows the `adagents.json` location, `authoritative_location`,
+  redirect, and size rules unchanged. A document that was fetched and validated but no longer
+  contains the entry means the definition was withdrawn: that is drift, with
+  `current_content_digest` omitted. A document that cannot be fetched or
+  parsed is transient, not drift: the seller returns `SERVICE_UNAVAILABLE`
+  at task level without taking a hold or mutating state, with an error message
+  that does not expose the fetch target, resolver detail, or internal addresses.
+  Duplicate IDs in the
+  source array make the definition unresolvable. Document-level context outside
+  the entry (`properties[]`, `authorized_agents`, tag maps) is outside the pin.
+- Accepted terms retain their pins as the historical record. Post-acceptance
+  drift and remedy policy, retention of pinned content, and signal-source
+  signals are not specified in this version.
+- Private-list credentials, including `auth_token`, never appear in a pin.
+  Keeping them out of accepted commercial terms is specified separately from
+  this version's pins. A readback of accepted terms shows pins as the record of
+  what was resolved at commitment and makes no ongoing integrity claim.
+  `check_governance` carries a buyer-submitted proposal, so a governance agent
+  treats its pins as unverified claims.
+
+#### Definition pin preimage
+
+The preimage rules cannot change without making existing pins unverifiable, so
+the normative form is data:
+[`test-vectors/definition-pins/vectors.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/test-vectors/definition-pins/vectors.json)
+`projection_rules`. The algorithm is:
+
+1. Take the published entry exactly as parsed from the publisher's
+   `adagents.json`, resolved from the same source the seller used for the
+   reference. Apply no schema defaults; an absent member and a `null` member are
+   different. Every own member is hashed, including one literally named
+   `__proto__`. An entry that is not I-JSON ([RFC 7493](https://www.rfc-editor.org/rfc/rfc7493)),
+   such as one with a lone surrogate, a duplicate member name, a number that is
+   not finite or not exactly representable as an IEEE 754 double, nesting deeper
+   than 64 levels, or an entry or nested element that is not an object, has no
+   JCS form; a verifier treats that definition as unresolvable, which is drift.
+   Pins are computed only from public, unauthenticated sources.
+2. Remove the top-level members named in the kind's exclusion list below.
+   Exclusion applies only to top-level members, and to top-level members of each
+   element of a nested array. Deeper members stay verbatim.
+3. For each named set array present, de-duplicate its elements by JCS bytes and
+   sort them ascending by the UTF-8 bytes of their JCS serialization. Elements
+   of a nested array are projected with the nested kind's rules first.
+4. Serialize with [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JCS),
+   compute SHA-256 over the UTF-8 bytes, and encode as lowercase hex with no
+   algorithm prefix.
+
+| `ref_kind` | Excluded members | Named set arrays |
+| --- | --- | --- |
+| `publisher_format_option` | `display_name`, `ext`, `publisher_domain`, `reference_renderer`, `sample_render_url`, `seller_preference` | `applies_to_channels`, `applies_to_property_ids`, `applies_to_property_tags`, `v1_format_ref` |
+| `publisher_placement` | `description`, `ext`, `name`, `presentation_ref`, `preview_provider`, `publisher_domain`, `tags` | `audio_distribution_types`, `channels`, `collection_ids`, `identifiers`, `property_ids`, `property_tags`, `social_placement_surfaces`, `sponsored_placement_types`, `video_placement_types`; `format_options[]` elements are projected as `publisher_format_option` and then treated as a set |
+| `publisher_collection` | `description`, `ext`, `name`, `publisher_domain`, `related_collections`, `season`, `talent` | `distribution`, `genre` |
+| `data_provider_signal` | `criteria_url`, `description`, `ext`, `last_updated`, `name`, `tags` | `allowed_values`, `consent_basis`, `countries`, `data_sources`, `id_types`, `policy_categories`, `restricted_attributes` |
+
+The exclusions are display text, presentation pointers, extension data,
+freshness timestamps, cast, tags, and the origin-dependent `publisher_domain`.
+Only a top-level `ext` is excluded (and the top-level `ext` of each nested
+element); an `ext` deeper in the entry, such as inside `params`, stays verbatim.
+Excluding `tags` is deliberate: authorization scope is verified through supply
+path, not through pins. Everything else, including members the AdCP schemas do
+not name, is part of the preimage. A rename is not drift; a change to
+`content_rating`, creative `params`, a collection's `status`, or a signal's
+`segmentation_criteria` is. Publishers keep non-material metadata in `ext`.
+Arrays that are not named set arrays keep their published order. The table is
+frozen for each `ref_kind`; changing a rule requires a new `ref_kind` value,
+because the pin carries no projection version. The pointer members
+`presentation_ref`, `preview_provider`, `reference_renderer`, and `criteria_url`
+are excluded because they name where to find presentation or disclosure
+material, not what is being bought; a verified pin does not vouch for what those
+pointers serve, so consumers apply the SSRF profile when fetching them. The digest does not bind
+`ref_kind` or `reference`: the pin's own fields and `terms_digest` bind identity,
+and a digest is only ever compared with the digest of the same pin.
+
+Re-resolving a pin is a fetch of the publisher's `adagents.json` and follows the
+same safeguards as every other counterparty-controlled fetch (HTTPS, reserved
+address rejection, bounded redirects, no credentials; see the
+[SSRF profile](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf)).
+The pin's domains are seller-chosen, so a buyer verifying pins applies those
+rules rather than trusting the host named in a pin. `source_version` is never
+dereferenced.
+
+The vectors include a collection-mutation case: the pinned collection's
+`content_rating` changes after commitment, `terms_digest` still verifies, and
+the pin fails.
+
 ### Media Buy State Transitions
 
 Media buys progress through a defined set of states. Terminal states (`completed`, `rejected`, `canceled`) allow no further transitions.
@@ -885,6 +1048,7 @@ Common error codes:
 - `BIDDING_PLACEMENT_CONFLICT`: Media-buy/package bidding scopes cannot be represented by the provider's native campaign, package, or shared-strategy placement. Sellers MUST reject before mutation and identify conflicting scopes where safe.
 - `AMBIGUOUS_BIDDING_POLICY`: Canonical `bidding` and legacy bidding fields are both present on the same effective package. Sellers reject rather than choosing precedence.
 - `REQUOTE_REQUIRED`: An `update_media_buy` request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The `pricing_option` remains locked; the seller is declining the requested shape at that price. Distinct from `TERMS_REJECTED` (measurement) and `POLICY_VIOLATION` (content). Details SHOULD follow [`error-details/requote-required.json`](https://adcontextprotocol.org/schemas/v3/error-details/requote-required.json): `envelope_field` names the breached paths, `change_term_id` identifies the governing accepted right when present, and `decline_reason` SHOULD classify a structured seller-policy reason when the coarse dimension is safe to disclose. AdCP 3.2 buyers use the reason to inform refinement of `accepted_proposal_id`; some policies still require the buyer-safe message, a free-text `ask`, or human negotiation. Legacy 3.1 callers adjust the update, rediscover products or terms, add packages when available, or create a separate media buy.
+- `REFERENCE_DEFINITION_CHANGED`: A third-party-published definition pinned in `commercial_terms.definition_pins[]` no longer resolves to the pinned `content_digest`. `accept_proposal` returns it before mutating state. Details SHOULD follow [`error-details/reference-definition-changed.json`](https://adcontextprotocol.org/schemas/latest/error-details/reference-definition-changed.json). Recovery: refine the proposal to obtain fresh pins, review the changed definition, and finalize again. See [Definition pins](#definition-pins).
 - `VALIDATION_ERROR`: Request format or parameter errors
 - `AUTH_MISSING`: No credentials were presented. Recovery: correctable.
 - `AUTH_INVALID`: Credentials were presented but rejected (expired / revoked / malformed). Recovery: terminal.
@@ -928,6 +1092,7 @@ A conformant Media Buy Protocol sales agent MUST:
 8. Omit `targeting_resolution` for exact matches and disclose only modifications for configured alternatives
 9. Treat placement, property, and collection selection as targeting and return complete effective package targeting on readback
 10. Return dimension-specific execution details, including demographics, inside the generic package `targeting_resolution` envelope
+11. For callers negotiating AdCP 3.3 or later, pin every covered third-party-published definition in `commercial_terms.definition_pins[]`, verify the pins at `finalize` and before `accept_proposal` mutates state, and never accept request-authored pins
 
 See [Required tasks by protocol](/docs/protocol/required-tasks) for a consolidated view of required and optional tasks across all AdCP protocols.
 

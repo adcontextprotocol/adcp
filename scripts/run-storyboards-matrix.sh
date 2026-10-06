@@ -268,7 +268,7 @@ else
     # declared-scope applicability and quarantines separately from these
     # clean-result-row and passing-step regression floors.
     "signals:45:80"
-    "sales:163:1088"
+    "sales:160:1050"
     "governance:47:160"
     "creative:49:209"
     "creative-builder:50:184"
@@ -316,6 +316,7 @@ REQUIRED_EXACT_CURRENT_SALES=(
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"
+  "governance/budget_periods:7:0"
 )
 REQUIRED_CLEAN_CURRENT_SIGNALS=(
   "wholesale_feed_signals"
