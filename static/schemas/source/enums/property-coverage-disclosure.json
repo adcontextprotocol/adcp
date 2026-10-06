@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/property-coverage-disclosure.json",
+  "title": "Property Coverage Disclosure",
+  "description": "Whether a product's publisher_properties[] is an exhaustive description of the properties on which the product may deliver. complete: the list is exhaustive and delivery outside it is non-conformant. partial: the list names some properties but is explicitly non-exhaustive and is not a delivery-containment guarantee. undisclosed: the seller discloses no property roster; publisher_properties is empty.",
+  "type": "string",
+  "enum": ["complete", "partial", "undisclosed"],
+  "enumDescriptions": {
+    "complete": "publisher_properties[] exhaustively describes every property on which the product may deliver. This is the meaning when property_coverage is absent. Delivery outside the list is non-conformant.",
+    "partial": "publisher_properties[] names properties the seller knows are included but is explicitly non-exhaustive. Buyers MUST NOT treat it as a delivery-containment guarantee.",
+    "undisclosed": "The seller discloses no underlying property roster; publisher_properties is empty. The product may still be buyable, and buyers apply their own policy to opaque inventory."
+  }
+}

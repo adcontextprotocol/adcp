@@ -7473,7 +7473,7 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
 // is_custom (canonical products mark request-specific configured offers with
 // expires_at alone).
 const COMPACT_PRODUCT_FIELDS = new Set([
-  'product_id', 'name', 'description', 'publisher_properties', 'channels',
+  'product_id', 'name', 'description', 'publisher_properties', 'property_coverage', 'channels',
   'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
   'placements', 'forecast', 'expires_at', 'brief_relevance', 'catalog_match',
   'allowed_actions', 'catalog_types', 'signal_targeting_allowed',
@@ -7522,6 +7522,15 @@ function compactLifecycleProduct(
     ? new Set(['product_id', 'name', ...requestedFields, ...requiredFields])
     : COMPACT_PRODUCT_FIELDS;
   const projected = pickCompactFields(product, selectedFields);
+  // A returned publisher_properties roster must not be readable as complete
+  // when the product declares partial or undisclosed coverage.
+  if (
+    projected.publisher_properties !== undefined
+    && isRecord(product.property_coverage)
+    && product.property_coverage.disclosure !== 'complete'
+  ) {
+    projected.property_coverage = structuredClone(product.property_coverage);
+  }
   // A returned overlay_support.collection_list is only schema-valid alongside
   // collection_targeting_allowed: true, so it overrides a narrower projection.
   if (

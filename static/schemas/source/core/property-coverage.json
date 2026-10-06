@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/property-coverage.json",
+  "title": "Property Coverage",
+  "description": "Declares whether a product's publisher_properties[] is an exhaustive coverage boundary. Absence of this object on a product means disclosure is `complete`: it never means `undisclosed`, so an omitted roster is never silently opaque. Disclosure and targetability are orthogonal: property_targeting_allowed and overlay_support describe what buyers may select, while disclosure describes what the seller tells buyers about the roster. An `undisclosed` product cannot offer inclusion targeting over properties it does not name. A network or operator domain MUST NOT stand in for third-party publisher properties; list only properties whose publisher-owned adagents.json authorizes the selling agent. Actual delivered properties are reported separately at delivery time. Sellers MUST return a partial or undisclosed product only on a request that declares adcp_version 3.3 or later, because earlier buyers read a partial list as exhaustive and reject an empty roster. Consumers MUST treat an unrecognized disclosure value as undisclosed. See the property coverage section of the media-products reference.",
+  "type": "object",
+  "properties": {
+    "disclosure": {
+      "$ref": "/schemas/enums/property-coverage-disclosure.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["disclosure"]
+}

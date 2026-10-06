@@ -701,7 +701,8 @@ result set. Otherwise confirmation remains a best practice.
 | `is_custom` | boolean | `true` for a request-specific configured offer. Products issued through targeting-aware discovery include `expires_at`, including exact targeting configurations with no Product resolution echo. Legacy custom products remain schema-valid when expiry is absent. |
 | `name` | string | Human-readable product name |
 | `description` | string | Detailed product description |
-| `publisher_properties` | PublisherProperty[] | Array of publisher entries, each with `publisher_domain` and either `property_ids` or `property_tags` |
+| `publisher_properties` | PublisherProperty[] | Array of publisher entries, each with `publisher_domain` and either `property_ids` or `property_tags`. Empty only when `property_coverage.disclosure` is `undisclosed` |
+| `property_coverage` | PropertyCoverage | (Optional) `disclosure`: `complete` (default when absent), `partial`, or `undisclosed`. Declares whether `publisher_properties` is an exhaustive coverage boundary. See [Property coverage](/docs/media-buy/product-discovery/media-products#property-coverage). |
 | `format_options` | ProductFormatDeclaration[] | Closed canonical creative contracts this product can deliver, including optional seller-enforced `locale_policy.accepted_language_ranges` that buyers use to preflight planned creative languages before purchase. |
 | `format_ids` | FormatID[] | Deprecated 3.x compatibility projection, when emitted. Locale-constrained options cannot be represented on this path. |
 | `delivery_type` | string | `"guaranteed"` or `"non_guaranteed"` |
