@@ -268,7 +268,7 @@ else
     # declared-scope applicability and quarantines separately from these
     # clean-result-row and passing-step regression floors.
     "signals:45:80"
-    "sales:133:632"
+    "sales:163:1088"
     "governance:47:160"
     "creative:49:209"
     "creative-builder:50:184"

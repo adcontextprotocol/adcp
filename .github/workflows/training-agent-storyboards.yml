@@ -670,8 +670,8 @@ jobs:
           # Beta.12 capability-resolved replay. Result-row totals include the
           # three signed-request route profiles; storyboard applicability is
           # reported separately in the aggregate summary.
-          MIN_CLEAN: 133
-          MIN_PASSED: 632
+          MIN_CLEAN: 163
+          MIN_PASSED: 1088
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
