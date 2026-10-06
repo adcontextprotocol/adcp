@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": patch
+---
+
+Compose `core/version-envelope.json` via root `allOf` in the nine 3.2 compact/experimental request schemas (`accept_proposal`, `buy_products`, `control_media_buy`, `decline_proposals`, `list_products`, `refine_proposals`, `request_proposals`, `list_account_changes`, `sync_reporting_status`) and `core/compact-task-submitted.json` (version and protocol envelopes), so generated SDK types share envelope ancestry with the rest of the spec. The local `adcp_version` / `adcp_major_version` property declarations are retained on strict (`additionalProperties: false`) requests because draft-07 does not evaluate properties across `allOf`; request validation is unchanged. Response validation of `compact-task-submitted.json` is tightened: it now enforces the version-envelope grammar and the protocol envelope's field constraints (including the `task_status`/`response_status` ban); conformant sellers already satisfy both. `tests/composed-schema-validation.test.cjs` now fails when any non-MCP `*-request.json` stops composing the envelope, and `core/version-envelope.json` states its actual coverage.
