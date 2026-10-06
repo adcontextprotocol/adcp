@@ -649,11 +649,13 @@ Machine-readable test vectors are available at [`/static/test-vectors/webhook-pa
 
 Reporting webhooks are separate from task status webhooks. They deliver periodic performance data for active media buys and are configured via `reporting_webhook` in `create_media_buy`, not via `push_notification_config`.
 
+As of AdCP 3.3, each `reporting_webhook` registration MAY carry a buyer-supplied `operation_id` (same constraints as `push_notification_config.operation_id`); the seller MUST echo it verbatim in every delivery payload's `operation_id`, and MUST NOT derive it by parsing the registration URL. Sellers MUST NOT emit delivery reports to a registration that omits it — fail closed rather than emitting a schema-invalid payload.
+
 ### AdCP 3.2 interim reporting correlation
 
-AdCP 3.2.1 requires `operation_id` in the `media_buy_delivery` webhook envelope, but its `reporting_webhook` registration schema does not define that field. This gap is tracked in [#7885](https://github.com/adcontextprotocol/adcp/issues/7885); [#7895](https://github.com/adcontextprotocol/adcp/pull/7895) proposes a core field for AdCP 3.3.
+AdCP 3.2.1 requires `operation_id` in the `media_buy_delivery` webhook envelope, but its `reporting_webhook` registration schema does not define that field ([#7885](https://github.com/adcontextprotocol/adcp/issues/7885)). The field is standardized as an optional field in AdCP 3.3; the 3.2 interim wire shape is identical. The fail-closed `MUST NOT` above applies from 3.3; on 3.2 it remains opt-in guidance.
 
-Until that field is standardized, cooperating buyers and sellers can agree to carry `reporting_webhook.operation_id` as an additive field. The published 3.2.1 registration schema has `additionalProperties: true`, so this uses the existing [extensibility allowance](/docs/reference/versioning#extensibility). No `ext.{namespace}` wrapper is needed inside this container. This is opt-in implementation guidance, not a new requirement for all 3.2 implementations; accepting the field does not establish that a seller supports it. Confirm support during integration onboarding before depending on scheduled delivery.
+On the 3.2 line, cooperating buyers and sellers can agree to carry `reporting_webhook.operation_id` as an additive field. The published 3.2.1 registration schema has `additionalProperties: true`, so this uses the existing [extensibility allowance](/docs/reference/versioning#extensibility). No `ext.{namespace}` wrapper is needed inside this container. This is opt-in implementation guidance, not a new requirement for all 3.2 implementations; accepting the field does not establish that a seller supports it. Confirm support during integration onboarding before depending on scheduled delivery.
 
 For integrations adopting this interim agreement:
 
@@ -677,7 +679,7 @@ For example, the reporting registration below validates against the published 3.
 }
 ```
 
-The Python SDK restoration is tracked in [adcp-client-python#1092](https://github.com/adcontextprotocol/adcp-client-python/issues/1092). Adding model support alone does not persist the seller's registration or resume existing subscriptions. Verify registration → storage → scheduled send → authenticated receipt together. When a later release defines this field in core, its definition takes precedence over the interim agreement.
+The Python SDK restoration is tracked in [adcp-client-python#1092](https://github.com/adcontextprotocol/adcp-client-python/issues/1092). Adding model support alone does not persist the seller's registration or resume existing subscriptions. Verify registration → storage → scheduled send → authenticated receipt together. Where a release defines this field in core (3.3 and later), its definition takes precedence over the interim agreement.
 
 See [Task Reference](/docs/media-buy/task-reference) for details on `reporting_webhook`.
 
