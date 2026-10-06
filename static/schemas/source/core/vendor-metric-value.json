@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/vendor-metric-value.json",
   "title": "Vendor Metric Value",
-  "description": "A reported value for a vendor-defined metric, emitted in `delivery-metrics.json` `vendor_metric_values` parallel to standard scalars. Identifies the vendor (BrandRef), the metric name within that vendor's vocabulary, the value, and the coverage denominator (`measurable_impressions`) — vendor measurement is rarely 100% coverage. Channels whose atomic observation unit is a play or screen-second rather than an impression (DOOH, cinema, place-based) use the sibling denominators `measurable_plays` / `measurable_play_seconds`. `vendor_relationship` optionally echoes the seller's declared relationship to the vendor (`first_party` / `affiliated` / `third_party`) so a row is self-describing without a discovery hop. The `breakdown` slot accommodates vendors that emit structured payloads beyond a single scalar (panel demographic breakouts, co-view ratios, incremental decompositions). To add fields beyond what this schema defines, vendors place them inside `breakdown` rather than alongside the standard envelope.",
+  "description": "A reported value for a vendor-defined metric, emitted in `delivery-metrics.json` `vendor_metric_values` parallel to standard scalars. Identifies the vendor (BrandRef), the metric name within that vendor's vocabulary, the value, and the coverage denominator (`measurable_impressions`) — vendor measurement is rarely 100% coverage. Channels whose atomic observation unit is a play or screen-second rather than an impression (DOOH, cinema, place-based) use the sibling denominators `measurable_plays` / `measurable_play_seconds`. `vendor_relationship` optionally echoes the seller's declared relationship to the vendor (`first_party` / `affiliated` / `third_party`) so a row is self-describing without a discovery hop. The `breakdown` slot accommodates vendors that emit structured payloads beyond a single scalar (panel demographic breakouts, co-view ratios, incremental decompositions). `measurement_provenance` carries protocol-defined source provenance for the row. To add fields beyond what this schema defines, vendors place them inside `breakdown` rather than alongside the standard envelope.",
   "type": "object",
   "properties": {
     "vendor": {
@@ -63,6 +63,25 @@
       },
       "additionalProperties": false
     },
+    "measurement_provenance": {
+      "type": "object",
+      "description": "Optional structured provenance for this row: which collection mechanisms the value was built from and whether the vendor deduplicated across them. Row-level rather than vendor-level because a vendor's metrics are built from different sources (e.g., a reach metric from STB plus panel, a tune-in metric from STB alone). `source_types` is the union across the row's aggregation scope; variance finer than the row (STB-only in dense metros, panel in thin DMAs) is visible only on geo or other breakdown rows that carry their own provenance. Orthogonal to `qualifier.attribution_methodology` (how exposure was tied to an outcome) and `qualifier.completion_source` (who attested). Keys defined here are protocol-defined, so buyers MAY filter or group rows on them; readers MUST ignore unknown keys and MUST NOT compare unknown keys across vendors. When absent, provenance is unspecified — buyers resolve it from the vendor's measurement-agent `methodology_url`; absence is never an implicit `server_logs` or any other source. Deliberately not a `qualifier` key: provenance describes how a value was produced and does not partition rows, so it stays out of the `(vendor, metric_id, qualifier)` reconciliation join. Open per DR-0009 (not a join-key object under DR-0019); vendor-specific detail belongs in `breakdown`.",
+      "properties": {
+        "source_types": {
+          "type": "array",
+          "description": "Collection mechanisms that contributed to this row. A set: order carries no meaning (consumers MUST NOT infer weight or primacy from position) and values MUST NOT repeat. List only mechanisms that contributed to this row's value, not every mechanism the vendor operates.",
+          "items": { "$ref": "/schemas/enums/measurement-source-type.json" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "deduplicated": {
+          "type": "boolean",
+          "description": "Whether the vendor deduplicated across the feeds that contributed to this row. `true` — a cross-feed dedup methodology was applied across all of the feeds behind the listed `source_types` (if only some were deduplicated, omit the field and describe it in the vendor's methodology); `false` — feeds were combined without dedup (a simple union, so overlapping audiences may be double-counted); absent — unspecified, never implicitly `false`. Senders MUST serialize an explicit `false` and MUST NOT drop it (many generated clients omit zero-value booleans), and receivers MUST NOT coalesce null or absent to `false`. The field does not say at what level dedup occurred (household, person, device); that stays in the vendor's methodology documentation. SHOULD be omitted when the row derives from a single feed. MAY be set when `source_types` has one entry if several feeds of that type were combined (e.g., return-path data from multiple MVPDs)."
+        }
+      },
+      "required": ["source_types"],
+      "additionalProperties": true
+    },
     "breakdown": {
       "type": "object",
       "description": "Optional structured payload for vendor metrics that don't fit a single scalar — panel demographic breakouts, co-view audience composition, incremental reach + frequency + lift decompositions. Free-form; the keys and value semantics are defined by the vendor (see the vendor's `brand.json` measurement-agent docs). Buyers MUST treat this object as opaque without consulting the vendor's documentation. Vendors place any fields beyond the standard envelope (e.g., confidence intervals, panel sizes) inside this object rather than at the top level.",
@@ -92,6 +111,10 @@
       "value": 1500000,
       "unit": "persons",
       "measurable_impressions": 9200000,
+      "measurement_provenance": {
+        "source_types": ["set_top_box", "panel"],
+        "deduplicated": true
+      },
       "breakdown": {
         "age_18_34_male": 320000,
         "age_18_34_female": 295000,

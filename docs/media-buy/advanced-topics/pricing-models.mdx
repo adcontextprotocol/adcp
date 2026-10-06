@@ -96,7 +96,7 @@ Beyond declaring a provider, sellers can publish structured terms on products �
 
 **Measurement terms fields:**
 
-- **`billing_measurement`** — Which vendor's count of the billing metric (determined by `pricing_model`) governs invoicing. `max_variance_percent` defines the threshold at which the non-billing party's count divergence triggers resolution.
+- **`billing_measurement`** — Which vendor's count of the billing metric (determined by `pricing_model`) governs invoicing. `max_variance_percent` defines the threshold at which the non-billing party's count divergence triggers resolution. Optional `counting_sources[]` declares what the billing count is counted from (`server_logs`, `client_tracker`, `sdk`, `set_top_box`, `acr`, `panel`); see [Billing authority](/docs/media-buy/advanced-topics/billing-authority#declaring-how-the-billing-count-is-built).
 - **`makegood_policy`** — Closed menu of remedies available when any performance standard or billing variance is breached. Three remedy types: `additional_delivery` (extend/add impressions, like-for-like), `credit` (toward future buys), `invoice_adjustment` (reduce current invoice). Seller proposes from this menu; buyer accepts or disputes.
 
 **Performance standards fields:**

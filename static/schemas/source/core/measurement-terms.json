@@ -13,6 +13,16 @@
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Vendor whose measurement of the billing metric is authoritative for invoicing (e.g., { domain: 'campaignmanager.google.com' } for buyer's DCM, { domain: 'admanager.google.com' } for seller's GAM)."
         },
+        "counting_sources": {
+          "type": "array",
+          "description": "What the billing metric named by `vendor` is counted from. `vendor` says *who* counts; `counting_sources` says *how*. Lists the sources whose events enter the billed count; sources used only for audit or cross-check MUST NOT be listed. The rule for merging several listed sources is not encoded — the seller describes it in its methodology. Scope is the billing count only; provenance on individual reported vendor values is `vendor_metric_values[].measurement_provenance`, which shares this vocabulary. A set: order carries no meaning and values MUST NOT repeat. A claim by the declaring party that receiving parties should verify, in the manner of `provenance.json`; it is enforced through the contract (`vendor`, `max_variance_percent`, `makegood_policy`), not tested by a conformance probe. Absence means *undeclared*, never `server_logs` or any other default. Declared only alongside `vendor`; a seller that omits `billing_measurement` declares nothing. Appears in all three term contexts: on a product it is the seller's declared default; on a package request it is the buyer's proposed term, which the seller MAY accept, adjust, or reject with `TERMS_REJECTED` like any other measurement term; on a confirmed package it is the agreed term. A seller (or its ad server) that is itself the named `vendor` SHOULD declare it; a buyer-attested or third-party `vendor` describes its own method in its measurement-agent catalog and MAY omit it.",
+          "items": {
+            "$ref": "/schemas/enums/measurement-source-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "examples": [["server_logs"], ["client_tracker"], ["server_logs", "sdk"]]
+        },
         "max_variance_percent": {
           "type": "number",
           "minimum": 0,

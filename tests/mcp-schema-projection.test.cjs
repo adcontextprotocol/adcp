@@ -98,8 +98,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // supported_viewability_standards capability add ~1.8 KB to the
 // comply_test_controller request, which already sat at 1_249_930 bytes.
 // Experimental Product.execution_requirements (#7763) reaches it through the
-// seeded Product and brings it to ~1_260_400 bytes.
-const PARITY_COMPILE_LIMIT = 1_265_000;
+// seeded Product and brings it to ~1_260_400 bytes. The measurement-source
+// vocabulary (counting_sources, measurement_provenance) adds ~8 KB and brings
+// it to ~1_268_500 bytes.
+const PARITY_COMPILE_LIMIT = 1_275_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
