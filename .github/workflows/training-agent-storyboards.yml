@@ -725,6 +725,15 @@ jobs:
             "media_buy_seller/governance_agent_binding_acceptance:5:0"
             "media_buy_seller/external_audience_source_binding:9:0"
             "media_buy_seller/get_products_async:11:0"
+            # Seller-optimized shared budgets: the tenant declares the core
+            # contract and every enforced package control, so the three
+            # scenarios run end to end. The 9 skips are the cost-cap and
+            # package-automatic bidding phases (bidding_policy.*.seller_optimized
+            # is not declared) and the six negative phases for undeclared
+            # package controls.
+            "media_buy_seller/seller_optimized_budget:21:9"
+            "media_buy_seller/seller_optimized_min_spend_target_exceeds_package_cap:7:0"
+            "media_buy_seller/seller_optimized_proposal_package_pacing:10:0"
             # Routed requires: [multi_agent] storyboards: exact counts prove
             # the governed calls ran against the governance tenant.
             "media_buy_seller/governance_approved:13:0"
