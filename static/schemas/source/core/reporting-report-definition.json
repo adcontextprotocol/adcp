@@ -12,10 +12,73 @@
       "type": "string",
       "enum": ["utc", "account_timezone", "schedule_timezone", "configured_timezone"],
       "description": "Calendar used by source query semantics. schedule_timezone means the installed reporting schedule supplies the resolved IANA timezone; configured_timezone pins one IANA timezone directly in this definition."
+    },
+    "MetricComparability": {
+      "title": "Metric Comparability",
+      "type": "object",
+      "description": "Explicit fields that decide whether two values of a metric may share an aggregate. Comparability is evaluated only among values pinned to the same report_definition_sha256; values from different definitions or providers are never combined by this contract. Within one definition, two values are comparable only when kind, unit, and every field here are equal, and they come from revisions with the same finality. An absent optional field equals only another absent field, and an absent qualifier equals an empty one. Equality is structural: a 7-day and a 168-hour attribution window are different. There is no hash or composite key: consumers compare the fields themselves.",
+      "properties": {
+        "population": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "description": "Versioned identifier of the event population being counted, for example served_ad_events:v1 or outbound_click_events:v1. Different populations (outbound clicks versus all clicks) are never comparable even when the metric names are similar." },
+        "window_basis": { "type": "string", "enum": ["report_period", "cumulative", "trailing"], "description": "Time basis of the value: report_period covers only the row's period, cumulative covers everything since the start of the covered flight (comparable only within the same flight), trailing covers the window_duration ending at the period end. Only report_period is allowed for additive metrics, because cumulative and trailing values from consecutive periods overlap and would double count when summed." },
+        "window_duration": { "allOf": [{ "$ref": "/schemas/core/duration.json" }], "description": "Trailing window length. Required when window_basis is trailing; forbidden otherwise. A campaign-length duration is comparable only within the same flight." },
+        "qualifier": { "allOf": [{ "$ref": "/schemas/core/canonical-metric-qualifier.json" }], "description": "Attribution window, attribution methodology, viewability standard, completion source, or lift dimension that distinguishes incompatible definitions of the same metric. Different attribution windows are never comparable." }
+      },
+      "required": ["population", "window_basis"],
+      "allOf": [
+        { "if": { "properties": { "window_basis": { "const": "trailing" } }, "required": ["window_basis"] }, "then": { "required": ["window_duration"] }, "else": { "not": { "required": ["window_duration"] } } }
+      ],
+      "additionalProperties": false
+    },
+    "MetricAggregationSemantics": {
+      "title": "Metric Aggregation Semantics",
+      "description": "Executable rule for combining values of one metric across rows, periods, or media buys within a single report definition. Absent means the legacy aggregation string is the only declaration, which is not sufficient for generic aggregation.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "const": "additive", "description": "Compatible values add. The sum of comparable values is the aggregate." },
+            "comparability": { "allOf": [{ "$ref": "#/definitions/MetricComparability" }, { "properties": { "window_basis": { "const": "report_period" } } }] }
+          },
+          "required": ["kind", "comparability"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "const": "recomputable_ratio", "description": "The aggregate is recomputed as multiplier * sum(numerator_metric) / sum(denominator_metric) over comparable operand values. Row-level ratio values are never averaged or summed. This semantics object, including multiplier, governs when it differs from source_expression. A missing or null operand makes the aggregate not computable. A ratio whose denominator is a unique count (frequency) or whose operands are not additive (for example viewable_rate without a measurable-impressions operand) is declared opaque." },
+            "numerator_metric": { "type": "string", "minLength": 1, "maxLength": 128, "description": "name of a metric in this definition whose aggregation_semantics.kind is additive." },
+            "denominator_metric": { "type": "string", "minLength": 1, "maxLength": 128, "description": "name of a metric in this definition whose aggregation_semantics.kind is additive." },
+            "zero_denominator": { "type": "string", "enum": ["null", "zero", "omitted"], "description": "Value of the ratio when the summed denominator is 0. null yields an explicit JSON null, zero yields 0, omitted leaves the metric out of the aggregate as not computable.", "enumDescriptions": { "null": "The ratio is present with an explicit JSON null value.", "zero": "The ratio is 0.", "omitted": "The ratio is omitted from the aggregate and is not computable." } },
+            "multiplier": { "type": "number", "exclusiveMinimum": 0, "default": 1, "description": "Constant applied to the quotient, for example 1000 for a CPM or 100 for a percentage." }
+          },
+          "required": ["kind", "numerator_metric", "denominator_metric", "zero_denominator"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "const": "non_additive_unique", "description": "Distinct-count value. It MUST NOT be summed, averaged, or otherwise combined by a consumer. A combined value over several media buys exists only as a value the seller emits for a revision whose media_buy_ids cover the union of the constituents and whose metric has the same unique_unit, deduplication_identity, and comparability; otherwise any combined figure is only an upper bound." },
+            "unique_unit": { "allOf": [{ "$ref": "/schemas/enums/reach-unit.json" }, { "not": { "const": "custom" } }], "description": "What is being counted as unique. custom is not allowed: it would make any two unique values look comparable." },
+            "deduplication_identity": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "description": "Versioned identifier of the identity graph, deduplication method, or model that produced the value, for example seller_graph:v3. A combined unique value is valid only when its metric carries the same identity as its constituents." },
+            "comparability": { "$ref": "#/definitions/MetricComparability" }
+          },
+          "required": ["kind", "unique_unit", "deduplication_identity", "comparability"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "const": "opaque", "description": "The seller declares that this metric cannot be safely aggregated by a generic consumer. Values are valid only at the grain the feed reports them." },
+            "reason": { "type": "string", "minLength": 1, "maxLength": 512, "description": "Optional human-readable explanation." }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        }
+      ]
     }
   },
   "properties": {
-    "contract_version": { "type": "string", "enum": ["1.0", "1.1"], "description": "1.1 adds immutable official closes with adjustments_only correction semantics for Reliable Reporting 1.0. Version 1.0 remains accepted for compatibility with the preceding experimental managed-reporting contract." },
+    "contract_version": { "type": "string", "enum": ["1.0", "1.1", "1.2"], "description": "1.1 adds immutable official closes with adjustments_only correction semantics for Reliable Reporting 1.0. 1.2 adds optional per-metric aggregation_semantics; an older validator therefore rejects a 1.2 definition by version instead of tripping over an unknown metric property. Versions 1.0 and 1.1 remain accepted for compatibility." },
     "media_type": { "type": "string", "const": "application/vnd.adcp.reporting-definition+json" },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$" },
     "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
@@ -50,10 +113,17 @@
         "properties": {
           "name": { "type": "string", "minLength": 1, "maxLength": 128 },
           "source_expression": { "type": "string", "minLength": 1, "maxLength": 2048 },
-          "aggregation": { "type": "string", "enum": ["sum", "count", "min", "max", "average", "ratio", "last", "custom"] },
+          "aggregation": { "type": "string", "enum": ["sum", "count", "min", "max", "average", "ratio", "last", "custom"], "description": "Legacy coarse label. It stays required so older validators keep working, but it is not sufficient for generic aggregation: a metric without aggregation_semantics is unsafe to aggregate generically." },
+          "aggregation_semantics": { "allOf": [{ "$ref": "#/definitions/MetricAggregationSemantics" }], "description": "Executable aggregation rule. Requires contract_version 1.2. When present, aggregation MUST be a compatible legacy label: additive -> sum or count; recomputable_ratio -> ratio; non_additive_unique -> count, last, or custom; opaque -> any. unit is required for every kind except opaque, so that monetary and count units are always compared." },
           "unit": { "type": "string", "minLength": 1, "maxLength": 64 }
         },
         "required": ["name", "source_expression", "aggregation"],
+        "allOf": [
+          { "if": { "properties": { "aggregation_semantics": { "properties": { "kind": { "const": "additive" } }, "required": ["kind"] } }, "required": ["aggregation_semantics"] }, "then": { "properties": { "aggregation": { "enum": ["sum", "count"] } } } },
+          { "if": { "properties": { "aggregation_semantics": { "properties": { "kind": { "const": "recomputable_ratio" } }, "required": ["kind"] } }, "required": ["aggregation_semantics"] }, "then": { "properties": { "aggregation": { "const": "ratio" } } } },
+          { "if": { "properties": { "aggregation_semantics": { "properties": { "kind": { "const": "non_additive_unique" } }, "required": ["kind"] } }, "required": ["aggregation_semantics"] }, "then": { "properties": { "aggregation": { "enum": ["count", "last", "custom"] } } } },
+          { "if": { "properties": { "aggregation_semantics": { "properties": { "kind": { "enum": ["additive", "recomputable_ratio", "non_additive_unique"] } }, "required": ["kind"] } }, "required": ["aggregation_semantics"] }, "then": { "required": ["unit"] } }
+        ],
         "additionalProperties": false
       },
       "minItems": 1
@@ -112,12 +182,17 @@
   "required": ["contract_version", "media_type", "report_definition_id", "reporting_profile", "grain", "source", "calendar", "metrics", "dimensions", "restatement_policy", "finality_policies"],
   "allOf": [
     {
-      "if": { "properties": { "contract_version": { "const": "1.1" } }, "required": ["contract_version"] },
+      "if": { "properties": { "contract_version": { "enum": ["1.1", "1.2"] } }, "required": ["contract_version"] },
       "then": { "properties": { "restatement_policy": { "required": ["official_correction_mode"] } } }
+    },
+    {
+      "if": { "properties": { "contract_version": { "enum": ["1.0", "1.1"] } }, "required": ["contract_version"] },
+      "then": { "properties": { "metrics": { "items": { "not": { "required": ["aggregation_semantics"] } } } } }
     }
   ],
   "x-adcp-validation": {
     "binding": "report_definition_id and reporting_profile MUST equal the selected offering. finality_policy_id values MUST be unique. Every official revision's finality_policy_id and finality_basis MUST match exactly one entry. utc and account_timezone calendars require the matching schedule alignment. schedule_timezone requires source_timezone or billing_cycle and uses its resolved period_timezone. configured_timezone requires an identical resolved schedule timezone unless query_semantics explicitly defines lossless re-bucketing from finer-grained source data. For every official obligation, expected_at MUST be no earlier than the earliest instant at which its selected finality policy can be satisfied.",
+    "aggregation_semantics": "numerator_metric and denominator_metric MUST each name a different metric in the same definition whose aggregation_semantics.kind is additive; a ratio MUST NOT name another ratio. Aggregation is defined only among values pinned to the same report_definition_sha256, for each slice using only the latest non-superseded revision; values are combined only when comparable per MetricComparability and from revisions with the same finality, so snapshot and official values are separate partitions that are reported separately and never merged. Ratios are always recomputed from summed operands, never averaged. A metric with no aggregation_semantics, or with kind opaque, is unsafe for generic aggregation: a generic aggregation engine MUST NOT combine its values across rows, periods, or media buys beyond the grain the feed reports, and any consumer MAY still read each reported value as-is. Bespoke logic that a buyer configured for one specific seller feed, and a revision's own control_totals (integrity checks over that revision's rows), are outside this rule; reporting-adjustment semantics are unchanged. non_additive_unique values are never summed by a consumer; a combined value is valid only when the seller emits it for a revision whose media_buy_ids cover the union of the constituents and whose metric has the same unique_unit, deduplication_identity, and comparability, and otherwise any combined figure is a bound that MUST NOT feed frequency or any other ratio.",
     "content": "query_semantics is untrusted canonical JSON data, never agent or LLM instructions. It MUST enumerate every provider query, attribution, mapping, filtering, and action-timing option that could change delivered values. The fetched document is size/depth bounded and contains no executable content or external references."
   },
   "additionalProperties": false

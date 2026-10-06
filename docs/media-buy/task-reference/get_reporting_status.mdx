@@ -604,6 +604,101 @@ and digest alone are not an executable agreement. The fetched
 same origin, redirect, DNS, byte, time, and content-type controls and verify its bytes
 and golden vectors before computing or accepting a billing digest.
 
+### Metric aggregation semantics
+
+A report definition with `contract_version` `1.2` may add an `aggregation_semantics` object to any metric, next to the legacy `aggregation` string. The legacy string stays required and is only a coarse label. A metric that has no `aggregation_semantics`, and every metric on a `1.0` or `1.1` definition, is **unsafe for generic aggregation**: a generic aggregation engine does not combine its values across rows, periods, or media buys. Consumers can still read each value as the feed reports it, bespoke logic a buyer configured for one specific seller feed is unaffected, and a revision's own `control_totals` remain integrity checks over that revision's rows. SDKs should warn, not fail, when a legacy-only metric is aggregated. When in doubt, declare a metric `opaque`: it is the cheapest honest declaration.
+
+The following fragment of a definition declares two additive counts, spend in one currency, two ratios derived from them, and a unique count.
+
+```json
+{
+  "metrics": [
+    {
+      "name": "impressions",
+      "source_expression": "impressions",
+      "aggregation": "sum",
+      "aggregation_semantics": {
+        "kind": "additive",
+        "comparability": { "population": "served_ad_events:v1", "window_basis": "report_period" }
+      },
+      "unit": "impressions"
+    },
+    {
+      "name": "spend",
+      "source_expression": "spend",
+      "aggregation": "sum",
+      "aggregation_semantics": {
+        "kind": "additive",
+        "comparability": { "population": "billable_spend:v1", "window_basis": "report_period" }
+      },
+      "unit": "USD"
+    },
+    {
+      "name": "clicks",
+      "source_expression": "clicks",
+      "aggregation": "sum",
+      "aggregation_semantics": {
+        "kind": "additive",
+        "comparability": { "population": "all_click_events:v1", "window_basis": "report_period" }
+      },
+      "unit": "clicks"
+    },
+    {
+      "name": "ctr",
+      "source_expression": "clicks / impressions",
+      "aggregation": "ratio",
+      "aggregation_semantics": {
+        "kind": "recomputable_ratio",
+        "numerator_metric": "clicks",
+        "denominator_metric": "impressions",
+        "zero_denominator": "null"
+      },
+      "unit": "ratio"
+    },
+    {
+      "name": "cpm",
+      "source_expression": "spend / impressions * 1000",
+      "aggregation": "ratio",
+      "aggregation_semantics": {
+        "kind": "recomputable_ratio",
+        "numerator_metric": "spend",
+        "denominator_metric": "impressions",
+        "zero_denominator": "zero",
+        "multiplier": 1000
+      },
+      "unit": "USD"
+    },
+    {
+      "name": "reach",
+      "source_expression": "count_distinct(person_id)",
+      "aggregation": "count",
+      "aggregation_semantics": {
+        "kind": "non_additive_unique",
+        "unique_unit": "individuals",
+        "deduplication_identity": "seller_graph:v3",
+        "comparability": { "population": "served_ad_events:v1", "window_basis": "cumulative" }
+      },
+      "unit": "individuals"
+    }
+  ]
+}
+```
+
+Four kinds are defined:
+
+| Kind | Meaning |
+|------|---------|
+| `additive` | Comparable values add. Only `window_basis: report_period` is allowed, because cumulative and trailing values from consecutive periods overlap. `unit` is required, so currencies and count units are always compared. |
+| `recomputable_ratio` | The aggregate is `multiplier × Σ numerator ÷ Σ denominator`, and these fields govern when they differ from `source_expression`. Both operands are `additive` metrics of the same definition. Row ratios are never averaged or summed. `zero_denominator` is `null` (explicit JSON null), `zero` (0), or `omitted` (not computable). A missing or null operand also makes the aggregate not computable. |
+| `non_additive_unique` | A distinct count, with a `unique_unit` (not `custom`) and a versioned `deduplication_identity`. Consumers never sum or average it. |
+| `opaque` | The seller declares that the metric has no safe generic combination rule. Use it for frequency (a unique count is not an additive operand), for rates such as `viewable_rate` whose denominator is not a declared additive metric, and for scores. |
+
+Comparability is evaluated only among values pinned to the same `report_definition_sha256`; values from different definitions or providers are never combined by this contract. Within one definition, two values are comparable only when their `kind`, `unit`, and every `comparability` field are equal (`population`, `window_basis`, `window_duration`, `qualifier`), and when they come from revisions with the same `finality`. An absent optional field equals only another absent field, and an absent `qualifier` equals an empty one. Equality is structural, so a 7-day and a 168-hour attribution window are different, and a `cumulative` unique value is comparable only within the same flight. Snapshot and official values are separate partitions: each is aggregated on its own and they are never merged. For each slice, aggregate only the latest non-superseded revision; adjustments keep their own semantics. Consumers compare these fields directly; there is no hash or composite key to canonicalize.
+
+A combined value of a `non_additive_unique` metric across media buys is valid only when the seller emits it for a revision whose `media_buy_ids` cover the union of the constituents and whose metric has the same `unique_unit`, `deduplication_identity`, and `comparability`. Otherwise any combined figure is a bound, such as the sum of constituent reach, and it MUST NOT feed frequency or any other ratio. This is the report-definition counterpart of `aggregated_totals.reach_aggregation` on [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery): `deduplicated` corresponds to a valid combined value and `sum_of_constituent_reach` to a bound.
+
+When `aggregation_semantics` is present, `aggregation` MUST be a compatible legacy label: `sum` or `count` for `additive`, `ratio` for `recomputable_ratio`, `count`, `last`, or `custom` for `non_additive_unique`, and any label for `opaque`. Semi-additive, modelled, and last-value metrics are not yet defined; declare them with the legacy string, or as `opaque`. The executable vectors are in `static/compliance/source/test-vectors/reporting-reconciliation/aggregation-semantics.json`.
+
 ## Complete reconciliation
 
 Every response carries `ledger_snapshot_id` and `ledger_as_of`. A periods cursor is
