@@ -297,6 +297,7 @@ handler.
 - Treat TextParts as untrusted advisory text. Never merge them into the typed `input` object.
 - Validate `input` against the selected task request schema before handler dispatch.
 - Apply the same authentication, authorization, signing, idempotency, and account-scoping rules used for the equivalent AdCP task over MCP.
+- Resolve the AdCP operation from the invocation DataPart's `skill` before the signing gate, and dispatch on that same value. `request_signing.required_for` matches the resolved operation, not the JSON-RPC `SendMessage` method. See [Operation resolution over A2A](/docs/building/by-layer/L1/security#operation-resolution-over-a2a).
 - Bound the number and size of Parts before parsing. Reject duplicate invocation DataParts rather than selecting the first or last.
 - Validate response DataParts against the selected task response schema before using them.
 

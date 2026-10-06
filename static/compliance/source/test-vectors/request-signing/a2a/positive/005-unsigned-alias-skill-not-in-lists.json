@@ -1,0 +1,41 @@
+{
+  "name": "Unsigned A2A 1.0 SendMessage whose skill is a case variant of create_media_buy; it resolves to a name that is not an operation",
+  "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
+  "signing_profile_version": "3.2",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/a2a/jsonrpc",
+    "headers": {
+      "Content-Type": "application/json",
+      "A2A-Version": "1.0",
+      "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-pos-005\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-pos-005\",\"role\":\"ROLE_USER\",\"parts\":[{\"data\":{\"skill\":\"Create_Media_Buy\",\"input\":{\"idempotency_key\":\"vector-a2a-create-media-buy-0001\",\"account\":{\"brand\":{\"domain\":\"acmeoutdoor.example\"},\"operator\":\"pinnacle-agency.example\",\"sandbox\":false},\"packages\":[{\"product_id\":\"prod-1\",\"budget\":5000,\"pricing_option_id\":\"cpm_usd_fixed\",\"paused\":false}],\"brand\":{\"domain\":\"brand.example\"},\"start_time\":\"2027-01-04T00:00:00Z\",\"end_time\":\"2027-02-01T00:00:00Z\",\"paused\":false,\"plan_id\":\"plan_001\"}}}]}}}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "supported_for": [
+      "create_media_buy",
+      "get_products"
+    ],
+    "required_for": [
+      "create_media_buy"
+    ],
+    "operation_sources": [
+      "mcp_tools_call",
+      "a2a_invocation_skill"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": true,
+    "status": "unsigned",
+    "resolved_operation": "Create_Media_Buy",
+    "dispatch": "unsupported_operation"
+  },
+  "$comment": "Exact-match canary. Matching is case-sensitive with no alias or normalization, so the resolved operation matches no list entry and the signature gate does not apply. The agent MUST then reject the unknown skill as an unsupported operation. It MUST NOT route it to create_media_buy through a case-insensitive, hyphen-folding, or alias lookup, which would run an unsigned create_media_buy past a gate that never saw the name."
+}

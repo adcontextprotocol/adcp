@@ -1,0 +1,41 @@
+{
+  "name": "Unsigned A2A 1.0 SendMessage whose TextPart and metadata name a different operation; only the DataPart skill counts",
+  "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
+  "signing_profile_version": "3.2",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/a2a/jsonrpc",
+    "headers": {
+      "Content-Type": "application/json",
+      "A2A-Version": "1.0",
+      "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-pos-004\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-pos-004\",\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"AdCP task: create_media_buy\",\"mediaType\":\"text/plain\"},{\"data\":{\"skill\":\"get_products\",\"input\":{\"buying_mode\":\"brief\",\"brief\":\"Premium CTV inventory for a spring campaign\"}}}],\"metadata\":{\"skill\":\"create_media_buy\"}}}}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "supported_for": [
+      "create_media_buy",
+      "get_products"
+    ],
+    "required_for": [
+      "create_media_buy"
+    ],
+    "operation_sources": [
+      "mcp_tools_call",
+      "a2a_invocation_skill"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": true,
+    "status": "unsigned",
+    "resolved_operation": "get_products",
+    "dispatched_operation": "get_products"
+  },
+  "$comment": "Skill-to-handler binding canary. The resolved operation is get_products, so the unsigned request passes the signature gate. The agent MUST then dispatch get_products (and validate input against its request schema): it MUST NOT re-derive the operation from the TextPart or message metadata, which would run create_media_buy past a gate that only checked get_products."
+}

@@ -1,0 +1,47 @@
+{
+  "name": "Unsigned A2A 1.0 SendMessage carrying get_products; SendMessage is in protocol_methods_required_for",
+  "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
+  "signing_profile_version": "3.2",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/a2a/jsonrpc",
+    "headers": {
+      "Content-Type": "application/json",
+      "A2A-Version": "1.0",
+      "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-neg-007\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-neg-007\",\"role\":\"ROLE_USER\",\"parts\":[{\"data\":{\"skill\":\"get_products\",\"input\":{\"buying_mode\":\"brief\",\"brief\":\"Premium CTV inventory for a spring campaign\"}}}]}}}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "supported_for": [
+      "create_media_buy",
+      "get_products"
+    ],
+    "required_for": [
+      "create_media_buy"
+    ],
+    "protocol_methods_supported_for": [
+      "SendMessage"
+    ],
+    "protocol_methods_required_for": [
+      "SendMessage"
+    ],
+    "operation_sources": [
+      "mcp_tools_call",
+      "a2a_invocation_skill"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_required",
+    "failed_step": 0,
+    "resolved_operation": "get_products"
+  },
+  "$comment": "Namespaces stay disjoint and independent. protocol_methods_required_for matches the JSON-RPC method only, so listing SendMessage demands a signature on every A2A 1.0 message, including get_products. This is the over-covering interim mitigation for verifiers that predate operation_sources; it is unchanged by the operation-resolution rule."
+}
