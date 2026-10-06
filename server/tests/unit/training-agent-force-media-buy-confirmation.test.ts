@@ -322,6 +322,53 @@ describe('force_media_buy_confirmation', () => {
     });
   });
 
+  describe('directive precedence and confirm edge cases', () => {
+    it('a forced submitted arm wins the create and the hold stays registered for the next real create', async () => {
+      const pkg = await getFixedPricePackage(server);
+      await hold(server);
+      const arm = await callTool(server, 'comply_test_controller', {
+        ...VERSION,
+        scenario: 'force_create_media_buy_arm',
+        params: { arm: 'submitted', task_id: 'task_hold_precedence' },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(arm.success).toBe(true);
+
+      const submitted = await callTool(server, 'create_media_buy', createArgs(pkg));
+      expect(submitted.status).toBe('submitted');
+      expect(submitted.task_id).toBe('task_hold_precedence');
+      expect(submitted.media_buy_id).toBeUndefined();
+
+      const held = await callTool(server, 'create_media_buy', createArgs(pkg));
+      expect(typeof held.media_buy_id).toBe('string');
+      expect(held.confirmed_at).toBeNull();
+    });
+
+    it('confirm on an already confirmed buy that later reached a terminal state is idempotent success', async () => {
+      const pkg = await getFixedPricePackage(server);
+      await hold(server);
+      const created = await callTool(server, 'create_media_buy', createArgs(pkg));
+      const mediaBuyId = created.media_buy_id as string;
+      await confirm(server, mediaBuyId);
+      const before = await readBuy(server, mediaBuyId);
+
+      await callTool(server, 'update_media_buy', {
+        ...VERSION,
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: mediaBuyId,
+        canceled: true,
+      });
+
+      const again = await confirm(server, mediaBuyId);
+      expect(again.success).toBe(true);
+      expect(again.previous_state).toBe('confirmed');
+      const after = await readBuy(server, mediaBuyId);
+      expect(after.confirmed_at).toBe(before.confirmed_at);
+    });
+  });
+
   describe('held buy outcomes other than confirmation', () => {
     it('a held buy rejected through force_media_buy_status ends rejected with confirmed_at null', async () => {
       const pkg = await getFixedPricePackage(server);

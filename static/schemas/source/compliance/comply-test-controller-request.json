@@ -206,7 +206,13 @@
         "required": ["params"],
         "properties": {
           "params": {
-            "required": ["action"]
+            "required": ["action"],
+            "allOf": [
+              {
+                "if": { "properties": { "action": { "const": "confirm" } } },
+                "then": { "required": ["media_buy_id"] }
+              }
+            ]
           }
         }
       }
