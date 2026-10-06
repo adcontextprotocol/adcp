@@ -122,6 +122,53 @@ The plan specifies campaign context -- budget, channels, flight dates, and autho
 
 These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) -- ensuring consistent geo vocabulary across the protocol. A pharma campaign running nationally uses `countries: ["US"]`; a cannabis campaign limited to legal states uses `regions: ["US-CO", "US-CA", "US-MA"]`.
 
+## Budget periods
+
+`budget.allocations` partitions a plan's budget by purchase type; `budget.periods` partitions it by time. Use periods when a campaign budget is split across windows: monthly or quarterly flights, a launch burst followed by a sustain phase, or money that has to be spent before a fiscal quarter closes. Without them, the governance agent can confirm that a buy sits inside the plan `flight` and that total commitments stay under `budget.total`, but it cannot stop a buy from spending Q2 money in Q1.
+
+```json
+{
+  "$schema": "/schemas/governance/sync-plans-request.json",
+  "idempotency_key": "sync-nova-spring-2027-0001",
+  "plans": [
+    {
+      "plan_id": "nova-spring-2027",
+      "brand": { "domain": "novabrands.example" },
+      "objectives": "Spring launch with a heavier first quarter and a sustain phase.",
+      "flight": { "start": "2027-01-01T00:00:00Z", "end": "2027-07-01T00:00:00Z" },
+      "budget": {
+        "total": 100000,
+        "currency": "USD",
+        "reallocation_threshold": 5000,
+        "periods": [
+          { "budget_period_id": "q1", "start": "2027-01-01T00:00:00Z", "end": "2027-04-01T00:00:00Z", "amount": 60000 },
+          { "budget_period_id": "q2", "start": "2027-04-01T00:00:00Z", "end": "2027-07-01T00:00:00Z", "amount": 40000 }
+        ]
+      }
+    }
+  ]
+}
+```
+
+The buyer never names a period when it buys. The governance agent derives the period from the dates of the action being checked; see [Budget periods](/docs/governance/campaign/tasks/check_governance#budget-periods) on [`check_governance`](/docs/governance/campaign/tasks/check_governance). Sellers see nothing new: [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and every other seller-facing task are unchanged, and the seller receives an ordinary media buy whose dates happen to fit one window.
+
+**Windows.** A period runs from `start` up to but not including `end`. Periods MUST sit inside the plan `flight` and MUST NOT overlap. Adjacent periods MAY share a boundary: delivery at that instant belongs to the later period, so `q1` above covers 31 March and `q2` begins at midnight on 1 April. `budget_period_id` MUST be unique within the plan and SHOULD stay stable across syncs, because buyers record it against each buy.
+
+**Money.** `amount` is denominated in `budget.currency`. Period amounts MUST sum to at most `budget.total`. Any remainder is unallocated: it cannot be committed to a dated action until the buyer assigns it to a period by syncing the plan again. The existing `budget.total` and `budget.allocations` limits still apply to every commitment, so a dated commitment has to fit both its period and its purchase-type allocation.
+
+**Undated commitments.** Periods govern commitments that carry a flight. A commitment without dates counts against `budget.total` and its purchase-type allocation only, as it does for a plan without periods, and it never consumes a period's `amount`.
+
+**Re-sync.** Syncing a plan again replaces its periods. The governance agent MUST reject the sync with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) when it:
+
+- leaves an existing dated commitment outside every period, including a commitment whose flight would now straddle a boundary, or
+- sets a period's `amount` below what is already committed to that period.
+
+This is the same `VALIDATION_ERROR` used when `budget.total` drops below committed spend, and `error.field` identifies the offending `budget.periods` entry. A rejected sync leaves the plan unchanged. Periods can be added, extended, or have money moved between them, as long as every existing commitment still sits inside a period with room for it. This applies on the first sync that adds `periods` to a plan that already has buys: the governance agent applies the same two checks to the dated commitments it already retained. To stop new spending in a period, set its `amount` to what is already committed. Omitting `budget.periods` on a re-sync removes period enforcement and returns the plan to total-only governance.
+
+A plan without `budget.periods` behaves exactly as before, which is the same as one period covering the whole flight with the whole budget. Governance agents that enforce periods declare [`governance.supports_budget_periods`](/docs/protocol/get_adcp_capabilities); a buyer SHOULD NOT send `budget.periods` to an agent that does not, because an agent that ignores the field cannot honor a time-partitioned budget.
+
+Automatic reallocation between periods, splitting a live buy at a period boundary, and seller-reported delivery broken out by period are out of scope.
+
 ## Plan-hash preimage
 
 Each plan item a buyer supplies here is the preimage the governance agent hashes to produce the `plan_hash` audit-layer claim carried in every [signed `governance_context`](/docs/building/by-layer/L1/security#signed-governance-context). Canonicalization rules, the closed bookkeeping exclusion list, retention obligations, and the full set of reference test vectors are specified in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). Governance-agent implementers SHOULD run their hashing code against the eleven vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) before shipping.
@@ -143,6 +190,11 @@ Each plan item a buyer supplies here is the preimage the governance agent hashes
 | `plans[].budget.reallocation_threshold` | number | Yes | Amount the agent may reallocate without escalation. `0` requires human approval for every reallocation; a value at or above `budget.total` is effectively unlimited. See [specification](/docs/governance/campaign/specification#budget-reallocation). |
 | `plans[].budget.per_seller_max_pct` | number | No | Maximum percentage of budget that can go to a single seller. |
 | `plans[].budget.allocations` | object | No | Optional per-purchase-type budget partitions. Keys are purchase types (`media_buy`, `rights_license`, `signal_activation`, `creative_services`), values are objects with `amount`. When present, the governance agent validates spend against both the per-type allocation and the overall total. When absent, all spend counts against the single total regardless of purchase type. Allocations are guardrails, not hard partitions -- the sum of allocations MAY differ from the total. |
+| `plans[].budget.periods` | array | No | Optional budget partition across time. Each entry is a half-open `[start, end)` window with its own `amount`, inside the plan `flight` and non-overlapping; amounts sum to at most `budget.total`. When present, dated commitments must fit the period that contains their whole flight. See [Budget periods](#budget-periods). |
+| `plans[].budget.periods[].budget_period_id` | string | Yes | Identifier unique within the plan and stable across syncs. Pattern `^[A-Za-z0-9_.:-]+$`, at most 64 characters. |
+| `plans[].budget.periods[].start` | date-time | Yes | Period start, inclusive. |
+| `plans[].budget.periods[].end` | date-time | Yes | Period end, exclusive. Later than `start`. |
+| `plans[].budget.periods[].amount` | number | Yes | Maximum budget committed to dated actions in this period, in `budget.currency`. Minimum 0. |
 | `plans[].channels` | object | No | Channel constraints. If omitted, all channels are allowed. |
 | `plans[].flight` | object | Yes | Authorized flight dates. Governed actions with dates outside this window are rejected. |
 | `plans[].countries` | array | No | ISO 3166-1 alpha-2 country codes for authorized markets. The governance agent rejects governed actions targeting outside these countries and resolves applicable policies by matching against policy jurisdictions. |
@@ -232,9 +284,9 @@ Policy categories are distinct from `brand.industries`. Industries describe what
 
 | Code | Recovery | Description |
 |------|----------|-------------|
-| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | correctable | Plan is missing required fields or has invalid values. `error.field` identifies the offending plan field. |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | correctable | Plan is missing required fields or has invalid values. For `budget.periods`, this covers a duplicate `budget_period_id`, overlapping or empty windows, a window outside `flight`, amounts above `budget.total`, and more than 366 periods. `error.field` identifies the offending plan field. |
 | [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. `error.field` MUST identify the brand field that failed to resolve. |
-| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | correctable | Cannot reduce budget below the amount already committed (on plan update). `error.field` identifies the budget field. |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | correctable | Cannot reduce budget below the amount already committed (on plan update), leave a dated commitment outside every budget period, or set a period `amount` below what is already committed to it. `error.field` identifies the budget field. |
 
 ## Related tasks
 

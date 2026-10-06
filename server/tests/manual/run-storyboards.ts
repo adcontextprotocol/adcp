@@ -479,6 +479,7 @@ function patchStoryboardForLocalRunner(sb: Storyboard): Storyboard {
     || sb.id === 'governance_spend_authority/denied'
     || sb.id === 'governance_delivery_monitor'
     || sb.id === 'governance/failed_outcome_audit_persistence'
+    || sb.id === 'governance/budget_periods'
     || sb.requires?.includes('multi_agent')
   ) {
     patched = structuredClone(patched) as Storyboard;
