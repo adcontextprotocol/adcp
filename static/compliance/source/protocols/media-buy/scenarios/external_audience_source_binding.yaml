@@ -5,6 +5,8 @@ title: "Seller binds an external audience source into a targetable audience"
 category: media_buy_seller
 summary: "Verifies dataset-source ingestion, discovery echo, media-buy targeting, unsupported-rail rejection, and transport immutability."
 track: media_buy
+requires:
+  - controller
 
 requires_all_capabilities:
   - path: experimental_features

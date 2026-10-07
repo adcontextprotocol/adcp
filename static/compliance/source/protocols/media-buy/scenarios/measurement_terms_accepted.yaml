@@ -4,6 +4,9 @@ title: "Seller accepts supported measurement_terms"
 category: media_buy_seller
 summary: "A seller that advertises measurement-term acceptance accepts a supported configuration and returns the confirmed terms."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy

@@ -4,6 +4,9 @@ title: "Generative creative agent"
 protocol: creative
 category: creative_generative
 summary: "Agent that takes a brief and generates finished creatives from scratch — no input assets required."
+requires:
+  - controller
+
 required_tools:
   - build_creative
 # Note: sync_catalogs is NOT in required_tools. The catalog_augmented_generation

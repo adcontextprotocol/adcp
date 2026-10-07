@@ -4,6 +4,9 @@ title: "Seller answers flexible-window availability with eligibility-aware statu
 category: media_buy_seller
 summary: "Verifies offer_filters.availability_horizon discovery: time-dimensioned forecast points that partition the horizon, availability_status computed from booking eligibility (not only holds), forecast excluded from conditional reads, and PRODUCT_UNAVAILABLE on buys against closed or too-short windows."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - list_products
   - buy_products

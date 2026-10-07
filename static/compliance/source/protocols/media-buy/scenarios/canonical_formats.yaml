@@ -4,6 +4,9 @@ title: "Canonical formats and deprecated named-format compatibility"
 category: media_buy_seller
 summary: "Validates canonical product formats and the optional, explicitly deprecated named-format compatibility projection."
 track: products
+requires:
+  - controller
+
 introduced_in: "3.1"
 required_tools:
   - get_products
