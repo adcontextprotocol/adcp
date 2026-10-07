@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.28
+
+### Patch Changes
+
+- 6006af0: Keep deterministic media-buy phases independent of the Sponsored Intelligence session phase on 3.0.x.
+- bf83885: Require current-branch authority, final-head human approval and matching release
+  provenance before maintained 3.0 publication. Stage and verify the immutable signed
+  four-asset tuple in a GitHub draft, refuse missing signatures or ambiguous release
+  inventory, and preserve the main line's Latest alias. No CDN or historical
+  publication authority is added.
+
 ## 3.0.27
 
 ### Patch Changes
