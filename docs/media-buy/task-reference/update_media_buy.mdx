@@ -319,6 +319,7 @@ Configure automated delivery reporting for this media buy:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `url` | string | Yes | Webhook endpoint URL |
+| `operation_id` | string | No | Buyer-supplied correlation ID for the reporting stream (1–255 chars, `[A-Za-z0-9_.:-]`). Sellers echo it verbatim as `operation_id` on every `media_buy_delivery` webhook and MUST NOT send reports to a registration that omits it. See [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks). |
 | `authentication` | object | Yes | Auth config with `schemes` and `credentials` |
 | `reporting_frequency` | string | Yes | `hourly`, `daily`, `weekly`, `monthly`, `quarterly`, or `post_campaign` |
 | `requested_metrics` | string[] | No | Specific metrics to include (defaults to all) |

@@ -829,7 +829,6 @@
       }
     },
     {
-      "description": "A placement_selection price adjustment prices a value the buyer can only choose when the product declares selectable placements.",
       "if": {
         "properties": {
           "pricing_options": {

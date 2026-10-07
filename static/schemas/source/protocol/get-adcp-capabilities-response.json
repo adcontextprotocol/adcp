@@ -1357,7 +1357,7 @@
         "outcome_target": {
           "type": "boolean",
           "default": false,
-          "description": "Whether this seller supports reverse-forecast planning: parsing criteria.outcome_target (a compact goal — a forecastable-metric delivery metric or an event-type conversion event — plus a desired volume, a cost_per target, or both) and planning against it, answering with total_budget_guidance and forecasts whose points carry the goal's key in metrics; see outcome-target.json for cost_per answers and rejections. This flag does not distinguish sellers that plan cost_per; buyers rely on the negotiated adcp_version together with features.bidding_policy. false or absent means support is unknown: buyers SHOULD express outcome goals in brief prose instead, and sellers reject a structured outcome_target on proposal requests with UNSUPPORTED_FEATURE rather than silently ignoring it (list_products ignores it for every seller).",
+          "description": "Whether this seller supports reverse-forecast planning: parsing criteria.outcome_target (a compact goal — a forecastable-metric delivery metric, an event-type conversion event, or a vendor_metric — plus a desired volume, a cost_per target, or both) and planning against it, answering with total_budget_guidance and forecasts whose points carry the goal's key in metrics, or its (vendor, metric_id) in vendor_metric_values[] for a vendor_metric goal; see outcome-target.json for cost_per answers and rejections. This flag does not distinguish sellers that plan cost_per or vendor_metric goals; buyers rely on the negotiated adcp_version together with features.bidding_policy, conversion_tracking.supported_targets, and vendor_metric_optimization. false or absent means support is unknown: buyers SHOULD express outcome goals in brief prose instead, and sellers reject a structured outcome_target on proposal requests with UNSUPPORTED_FEATURE rather than silently ignoring it (list_products ignores it for every seller).",
           "x-added-in": "3.2.0"
         },
         "governance_aware": {
@@ -1943,7 +1943,7 @@
             },
             "supported_targets": {
               "type": "array",
-              "description": "Event-goal target kinds this seller can compute against. Buyers should only submit event-kind optimization goals whose target.kind is listed here — sellers MUST reject goals with unlisted target kinds. When omitted, only target-less event goals (maximize conversion count within budget) are guaranteed; sellers MAY accept specific target kinds but buyers should not rely on it. Named to parallel `metric_optimization.supported_targets` at the product level — same concept (which target kinds are supported), one at seller-capability granularity and one at product granularity.",
+              "description": "Event-goal target kinds this seller can compute against. Buyers should only submit event-kind optimization goals whose target.kind is listed here — sellers MUST reject goals with unlisted target kinds. cost_per also declares that the seller binds criteria.outcome_target.cost_per to an event goal; buyers do not rely on event-goal cost targets without it. When omitted, only target-less event goals (maximize conversion count within budget) are guaranteed; sellers MAY accept specific target kinds but buyers should not rely on it. Named to parallel `metric_optimization.supported_targets` at the product level — same concept (which target kinds are supported), one at seller-capability granularity and one at product granularity.",
               "items": {
                 "type": "string",
                 "enum": ["cost_per", "per_ad_spend", "maximize_value"]
@@ -2270,6 +2270,10 @@
           "minimum": 1,
           "maximum": 365,
           "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (buyer_agent, seller_agent, account_id) and spans all spend-commit task types. Upper bound 365 represents a one-year trailing window (fiscal-year alignment with grace); governance agents needing longer scopes negotiate via operator sign-off, not this capability. No schema default: absence of this field indicates the governance agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). A declared value of 30 is a common starting point but is not implied by omission. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push."
+        },
+        "supports_budget_periods": {
+          "type": "boolean",
+          "description": "Whether this governance agent accepts `plans[].budget.periods[]` on sync_plans and enforces it on check_governance: deriving the containing period for dated actions, denying straddling or over-period commitments, and returning `budget_period_id`. When false or absent, buyers MUST NOT rely on period limits being enforced and SHOULD NOT send `budget.periods`; an agent that does not implement the field cannot honor a time-partitioned budget."
         },
         "property_features": {
           "type": "array",

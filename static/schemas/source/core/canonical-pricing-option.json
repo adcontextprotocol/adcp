@@ -18,14 +18,13 @@
     "price_breakdown": { "$ref": "/schemas/pricing-options/price-breakdown.json" },
     "price_adjustments": {
       "$ref": "/schemas/pricing-options/price-adjustments.json",
-      "x-added-in": "3.3.0",
-      "description": "The selected option's complete adjustment table, retained verbatim and covered by terms_digest. On an offer, fixed_price is the base rate. In accepted purchase pricing, fixed_price is the resolved rate, base_fixed_price the declared rate, and price_breakdown the declared adjustments followed by one entry per fired row carrying its currency delta as amount."
+      "description": "Retained adjustment table, covered by terms_digest. See price-adjustments.json."
     },
     "base_fixed_price": {
       "type": "number",
       "minimum": 0,
       "x-added-in": "3.3.0",
-      "description": "The declared fixed_price before any price_adjustments row fired; present in accepted purchase pricing that carries price_adjustments so the resolved fixed_price is re-derivable."
+      "description": "Declared fixed_price before any price_adjustments row fired; present in accepted purchase pricing that carries the table."
     },
     "eligible_adjustments": {
       "type": "array",

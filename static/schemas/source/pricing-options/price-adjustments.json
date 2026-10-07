@@ -3,171 +3,149 @@
   "$id": "/schemas/pricing-options/price-adjustments.json",
   "title": "Price Adjustments",
   "x-added-in": "3.3.0",
-  "description": "Ordered selection-dependent fee and discount rows on a binding fixed-price option. fixed_price is the base rate, charged when the buyer selects no declared value. A row matches when the buyer's selection includes its value (full-identity match). At most one row fires per dimension — the first match in declared order. Stacking is additive against the base rate: each firing row contributes a delta computed from fixed_price (an amount row contributes its amount, a rate row contributes fixed_price x rate), fees add and discounts subtract, so 10% and 10% from two dimensions add 20% of fixed_price and cross-dimension order does not change the price. Each rate delta is rounded half away from zero to the option's price precision — the greatest of the currency minor-unit exponent, 4 for cpm/vcpm/cpc/cpcv/cpv, and the fewest decimal places that exactly represent fixed_price and each amount (by numeric value, not lexical form) — and the resolved price is the exact sum, never below zero. Omitted or default selections match no row. The resolved total is the purchase's fixed_price and each fired row is recorded in price_breakdown as its currency amount. Changing the table requires a new pricing_option_id. Sellers MUST NOT return a table to callers below adcp_version 3.3; consumers treat an unknown dimension as unpurchasable. Normative rules: docs/media-buy/advanced-topics/pricing-models.mdx#selection-dependent-price-adjustments.",
+  "description": "Ordered selection-dependent fee and discount rows on a binding fixed-price option; fixed_price is the base rate. One row fires per dimension (first match in declared order). Stacking is additive against the base rate: each row's delta is computed from fixed_price, so cross-dimension order does not change the price. Changing the table requires a new pricing_option_id. Sellers MUST NOT return a table to callers below adcp_version 3.3; consumers treat an unknown dimension as unpurchasable. Normative rules: docs/media-buy/advanced-topics/pricing-models.mdx#selection-dependent-price-adjustments.",
   "type": "array",
   "items": {
-    "oneOf": [
-      {
-        "title": "Format Option Price Adjustment",
-        "type": "object",
-        "properties": {
-          "dimension": {
-            "type": "string",
-            "const": "format_option"
-          },
-          "format_option_ref": {
-            "$ref": "/schemas/core/format-option-ref.json",
-            "description": "Matches when the purchase's format_option_refs includes this reference; MUST resolve to a format option of the same product."
-          },
-          "kind": {
-            "$ref": "#/definitions/kind"
-          },
-          "name": {
-            "$ref": "#/definitions/name"
-          },
-          "rate": {
-            "$ref": "#/definitions/rate"
-          },
-          "amount": {
-            "$ref": "#/definitions/amount"
-          },
-          "description": {
-            "$ref": "#/definitions/description"
-          },
-          "ext": {
-            "$ref": "/schemas/core/ext.json"
-          }
-        },
-        "required": [
-          "dimension",
-          "format_option_ref",
-          "kind",
-          "name"
+    "type": "object",
+    "properties": {
+      "dimension": {
+        "type": "string",
+        "enum": [
+          "format_option",
+          "placement_selection"
         ],
-        "oneOf": [
-          {
-            "required": [
-              "rate"
-            ]
-          },
-          {
-            "required": [
-              "amount"
-            ]
-          }
-        ],
-        "additionalProperties": false
+        "description": "Value this row prices; names which ref field is required."
       },
-      {
-        "title": "Placement Selection Price Adjustment",
-        "type": "object",
-        "properties": {
-          "dimension": {
-            "type": "string",
-            "const": "placement_selection"
-          },
-          "placement_ref": {
-            "description": "Matches when a mode selected placement_selection includes this placement; MUST resolve to a targetable placement of the same product, which MUST declare overlay_support.placement_selection.",
-            "anyOf": [
+      "format_option_ref": {
+        "$ref": "/schemas/core/format-option-ref.json",
+        "description": "Matches when the purchase's format_option_refs includes it; MUST resolve to a format option of the product."
+      },
+      "placement_ref": {
+        "description": "Matches when a mode selected placement_selection includes it; MUST resolve to a targetable placement of the product.",
+        "anyOf": [
+          {
+            "allOf": [
               {
-                "allOf": [
-                  {
-                    "$ref": "/schemas/core/placement-ref.json"
-                  },
-                  {
-                    "required": [
-                      "publisher_domain"
-                    ]
-                  }
-                ]
+                "$ref": "/schemas/core/placement-ref.json"
               },
               {
-                "$ref": "/schemas/core/placement-identity.json"
+                "required": [
+                  "publisher_domain"
+                ]
               }
             ]
           },
-          "kind": {
-            "$ref": "#/definitions/kind"
-          },
-          "name": {
-            "$ref": "#/definitions/name"
-          },
-          "rate": {
-            "$ref": "#/definitions/rate"
-          },
-          "amount": {
-            "$ref": "#/definitions/amount"
-          },
-          "description": {
-            "$ref": "#/definitions/description"
-          },
-          "ext": {
-            "$ref": "/schemas/core/ext.json"
-          }
-        },
-        "required": [
-          "dimension",
-          "placement_ref",
-          "kind",
-          "name"
-        ],
-        "oneOf": [
           {
-            "required": [
-              "rate"
-            ]
-          },
-          {
-            "required": [
-              "amount"
-            ]
+            "$ref": "/schemas/core/placement-identity.json"
           }
+        ]
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "fee",
+          "discount"
         ],
-        "additionalProperties": false
+        "description": "fee adds its delta; discount subtracts it."
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "description": "Name carried into the resolved price_breakdown."
+      },
+      "rate": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "exclusiveMaximum": 1,
+        "description": "Proportion of the option's fixed_price (0.15 = 15%), never of another row. Exclusive with amount; use amount for 100% or more."
+      },
+      "amount": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "description": "Amount in the option's currency per pricing unit. Exclusive with rate."
+      },
+      "description": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "ext": {
+        "$ref": "/schemas/core/ext.json"
       }
-    ]
+    },
+    "required": [
+      "dimension",
+      "kind",
+      "name"
+    ],
+    "oneOf": [
+      {
+        "required": [
+          "rate"
+        ]
+      },
+      {
+        "required": [
+          "amount"
+        ]
+      }
+    ],
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "dimension": {
+              "const": "format_option"
+            }
+          },
+          "required": [
+            "dimension"
+          ]
+        },
+        "then": {
+          "required": [
+            "format_option_ref"
+          ],
+          "not": {
+            "required": [
+              "placement_ref"
+            ]
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "dimension": {
+              "const": "placement_selection"
+            }
+          },
+          "required": [
+            "dimension"
+          ]
+        },
+        "then": {
+          "required": [
+            "placement_ref"
+          ],
+          "not": {
+            "required": [
+              "format_option_ref"
+            ]
+          }
+        }
+      }
+    ],
+    "additionalProperties": false
   },
   "minItems": 1,
   "maxItems": 20,
-  "definitions": {
-    "kind": {
-      "type": "string",
-      "enum": [
-        "fee",
-        "discount"
-      ],
-      "description": "fee adds its delta to the resolved price; discount subtracts it."
-    },
-    "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "description": "Name carried into the resolved price_breakdown."
-    },
-    "rate": {
-      "type": "number",
-      "exclusiveMinimum": 0,
-      "exclusiveMaximum": 1,
-      "description": "Decimal proportion of the option's fixed_price (0.15 for 15%), never of another row. Mutually exclusive with amount. A premium of 100% or more uses amount."
-    },
-    "amount": {
-      "type": "number",
-      "exclusiveMinimum": 0,
-      "description": "Fixed amount in the option's currency per pricing unit. Mutually exclusive with rate."
-    },
-    "description": {
-      "type": "string",
-      "maxLength": 256,
-      "description": "Human-readable explanation."
-    }
-  },
   "x-adcp-validation": {
     "verifier_constraints": {
-      "selector_resolution": "Each row's ref MUST resolve to a value the same product publishes; matching is full-identity equality after resolution.",
-      "resolution": "One row per dimension (first match). Each firing row contributes a delta from fixed_price (amount, or fixed_price x rate rounded half away from zero to price precision); resolved price = fixed_price + sum of fee deltas - sum of discount deltas, independent of cross-dimension order; never negative (reject with INVALID_REQUEST, never clamp).",
-      "price_precision": "Greatest of the currency minor-unit exponent, 4 for cpm/vcpm/cpc/cpcv/cpv, and the fewest decimal places exactly representing fixed_price and each amount, by numeric value.",
-      "resolved_price_binding": "A buyer-supplied pricing that differs from the resolved result MUST be rejected with INVALID_REQUEST; the seller MUST NOT silently reprice and SHOULD return error.details.resolved_fixed_price and resolved_price_breakdown.",
-      "snapshot_rederivation": "In accepted purchase pricing, base_fixed_price plus the recorded fired-row amounts equals fixed_price, and re-resolving the retained table from base_fixed_price over the purchase's selections reproduces them."
+      "selector_resolution": "Each row's ref MUST resolve to a value the same product publishes; matching is full-identity equality.",
+      "price_precision": "Greatest of the currency minor-unit exponent, 4 for cpm/vcpm/cpc/cpcv/cpv, and the fewest decimals exactly representing fixed_price and each amount, by numeric value.",
+      "resolved_price_binding": "A buyer-supplied pricing that differs from the resolved result MUST be rejected with INVALID_REQUEST carrying resolved_fixed_price and resolved_price_breakdown; never silently reprice.",
+      "snapshot_rederivation": "base_fixed_price plus the recorded fired-row amounts equals fixed_price."
     }
   }
 }

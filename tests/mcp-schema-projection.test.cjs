@@ -87,7 +87,9 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // from colliding with BiddingPolicy's CostPer and Strength. It is embedded in
 // list_products, request_proposals, and refine_proposals (~0.5 KiB each),
 // measured at 452,953 bytes (442.3 KiB) and bounded at 443 KiB. The
-// selection-dependent price_adjustments table (#7659) adds its two typed row
+// outcome_target vendor_metric goal branch (vendor BrandKey plus metric_id,
+// ~0.3 KiB) reaches the same three tasks, bounded at 444 KiB.
+// The selection-dependent price_adjustments table (#7659) adds its two typed row
 // variants to the canonical pricing option embedded in media-buy tool inputs
 // (~1.9 KiB), measured at 455,180 bytes (444.5 KiB) and
 // bounded at 446 KiB.
