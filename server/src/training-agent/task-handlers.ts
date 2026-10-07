@@ -2174,6 +2174,8 @@ interface ReportingCapabilitiesView {
   vendor_metrics?: VendorMetricRefView[];
   available_metrics?: string[];
   supports_format_breakdown?: boolean;
+  supports_property_breakdown?: boolean;
+  supports_installment_property_breakdown?: boolean;
 }
 
 function deterministicTimeBasedViews(impressions: number): Array<Record<string, unknown>> {
@@ -2249,6 +2251,52 @@ function formatDeliveryBreakdown(
     by_format_truncated: rows.length > limit,
     by_format_sorted_by: appliedSort,
     by_format_sort_direction: appliedDirection,
+  };
+}
+
+/**
+ * Property-grain breakdowns echo only rows injected through
+ * comply_test_controller simulate_delivery. They are never derived from
+ * catalog eligibility or publisher_properties: absent injected rows, the
+ * array is empty.
+ */
+function injectedRowsBreakdown(
+  field: 'by_property' | 'by_installment_property',
+  injectedRows: Array<Record<string, unknown>> | undefined,
+  dimension: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!dimension) return {};
+  const rows = injectedRows ?? [];
+  const requestedSort = typeof dimension.sort_by === 'string' ? dimension.sort_by : 'spend';
+  const requestedDirection = dimension.sort_direction === 'asc' ? 'asc' : 'desc';
+  // The reference seller sorts on flat row metrics only; a metric it does not
+  // carry at this grain (for example nested viewability) falls back to spend,
+  // which delivery-breakdown-controls.json permits.
+  const hasMetric = (row: Record<string, unknown>, metric: string) => (
+    typeof row[metric] === 'number' && Number.isFinite(row[metric])
+  );
+  // Fall back to spend only when no row reports the requested metric; rows
+  // lacking it order last regardless of direction.
+  const appliedSort = rows.some(row => hasMetric(row, requestedSort)) ? requestedSort : 'spend';
+  const appliedDirection = appliedSort === requestedSort ? requestedDirection : 'desc';
+  const ordered = structuredClone(rows).sort((left, right) => {
+    const leftHas = hasMetric(left, appliedSort);
+    const rightHas = hasMetric(right, appliedSort);
+    if (!leftHas || !rightHas) return Number(rightHas) - Number(leftHas);
+    const a = left[appliedSort] as number;
+    const b = right[appliedSort] as number;
+    return appliedDirection === 'asc' ? a - b : b - a;
+  });
+  const limit = typeof dimension.limit === 'number' && Number.isInteger(dimension.limit) && dimension.limit >= 1
+    ? dimension.limit
+    : 25;
+  return {
+    [field]: ordered.slice(0, limit),
+    [`${field}_truncated`]: ordered.length > limit,
+    // Injected rows are exempt from threshold suppression.
+    [`${field}_suppressed`]: false,
+    [`${field}_sorted_by`]: appliedSort,
+    [`${field}_sort_direction`]: appliedDirection,
   };
 }
 
@@ -16604,6 +16652,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const formatDimension = isRecord(req.reporting_dimensions?.format)
     ? req.reporting_dimensions.format
     : undefined;
+  const propertyDimension = isRecord(req.reporting_dimensions?.property)
+    ? req.reporting_dimensions.property
+    : undefined;
+  const installmentPropertyDimension = isRecord(req.reporting_dimensions?.installment_property)
+    ? req.reporting_dimensions.installment_property
+    : undefined;
 
   const mediaBuyPaused = mb.status === 'paused';
   const simulatedPackages = mb.packages.filter(pkg => (
@@ -16940,9 +16994,21 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     }
 
     const formatBreakdown = formatDeliveryBreakdown(product, packageDeliveryMetrics, formatDimension);
+    // Injected rows are single-package scoped; a multi-package buy has none,
+    // so a requested breakdown is an empty array rather than a guess.
+    const injectedRows = mb.packages.length === 1 ? simDelivery : undefined;
+    const injectedPropertyBreakdown = {
+      ...(reporting?.supports_property_breakdown === true
+        ? injectedRowsBreakdown('by_property', injectedRows?.propertyDelivery, propertyDimension)
+        : {}),
+      ...(reporting?.supports_installment_property_breakdown === true
+        ? injectedRowsBreakdown('by_installment_property', injectedRows?.installmentPropertyDelivery, installmentPropertyDimension)
+        : {}),
+    };
     const packageMetricsWithBreakdown = {
       ...packageDeliveryMetrics,
       ...formatBreakdown,
+      ...injectedPropertyBreakdown,
     };
     return {
       package_id: pkg.packageId,
@@ -19561,6 +19627,13 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       features: {
         inline_creative_management: true,
         catalog_management: true,
+        // Rollups for the per-product flags. The training agent honors them
+        // by echoing property rows injected via comply_test_controller; it
+        // never derives property delivery from catalog eligibility.
+        ...(!isThreeZeroResponse && {
+          supports_property_breakdown: true,
+          supports_installment_property_breakdown: true,
+        }),
         // Canonical bidding the agent preserves: fixed media-buy cost_per.
         // The outcome_target planner answers cost targets inside this
         // profile; create_media_buy rejects canonical policies outside it.
