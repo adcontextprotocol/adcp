@@ -91,6 +91,14 @@
                   "dist/docs/3.2.3/reference/whats-new-in-3-1",
                   "dist/docs/3.2.3/reference/whats-new-in-3-2",
                   "dist/docs/3.2.3/reference/3-2-beta",
+                  {
+                    "group": "3.3 preview",
+                    "pages": [
+                      "dist/docs/3.2.3/reference/whats-new-in-3-3",
+                      "dist/docs/3.2.3/reference/3-3-beta",
+                      "dist/docs/3.2.3/reference/migration/3-2-to-3-3"
+                    ]
+                  },
                   "dist/docs/3.2.3/reference/migration/v3-readiness",
                   "dist/docs/3.2.3/reference/migration/index",
                   "dist/docs/3.2.3/reference/migration/3-0-to-3-1",
@@ -245,6 +253,7 @@
                 "expanded": false,
                 "pages": [
                   "dist/docs/3.2.3/accounts/overview",
+                  "dist/docs/3.2.3/accounts/principal-registration-walkthrough",
                   "dist/docs/3.2.3/accounts/provisioning-walkthrough",
                   "dist/docs/3.2.3/accounts/tasks/sync_accounts",
                   "dist/docs/3.2.3/accounts/tasks/list_accounts",
@@ -4403,6 +4412,26 @@
     {
       "source": "/docs/learning/shared-account-change-feed",
       "destination": "/dist/docs/3.2.3/learning/shared-account-change-feed",
+      "permanent": false
+    },
+    {
+      "source": "/docs/reference/whats-new-in-3-3",
+      "destination": "/dist/docs/3.2.3/reference/whats-new-in-3-3",
+      "permanent": false
+    },
+    {
+      "source": "/docs/reference/3-3-beta",
+      "destination": "/dist/docs/3.2.3/reference/3-3-beta",
+      "permanent": false
+    },
+    {
+      "source": "/docs/reference/migration/3-2-to-3-3",
+      "destination": "/dist/docs/3.2.3/reference/migration/3-2-to-3-3",
+      "permanent": false
+    },
+    {
+      "source": "/docs/accounts/principal-registration-walkthrough",
+      "destination": "/dist/docs/3.2.3/accounts/principal-registration-walkthrough",
       "permanent": false
     }
   ],
