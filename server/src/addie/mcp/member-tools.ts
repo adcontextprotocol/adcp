@@ -5371,9 +5371,14 @@ export function createMemberToolHandlers(
     let profile: AgentProfile | undefined;
     let discoveryProbeError: string | undefined;
     try {
-      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, withSdkSafeTransport({
-        ...(authOption && { auth: authOption }),
-      }));
+      // An explicit target pins the probe to its version; otherwise no target
+      // exists yet, so send only the major rather than the SDK's prerelease default.
+      const probeOptions = { ...(authOption && { auth: authOption }) };
+      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, withSdkSafeTransport(
+        hasExplicitComplianceTarget(input)
+          ? withHostedTestOptions(probeOptions, runTarget)
+          : { ...probeOptions, versionEnvelope: 'major-only' as const },
+      ));
       profile = caps.profile;
       discoveryProbeError = capabilityDiscoveryProbeError(caps);
       if (!hasExplicitComplianceTarget(input)) {
