@@ -3,11 +3,11 @@ import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 
 const html = readFileSync(new URL('../../public/oauth-complete.html', import.meta.url), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
-if (!script) throw new Error('OAuth completion script missing');
 const CONTEXT = '11111111-2222-4333-8444-555555555555';
 
-function render(query: Record<string, string>) {
+function render(query: Record<string, string>, page = html) {
+  const script = page.match(/<script>([\s\S]*?)<\/script>/i)?.[1];
+  if (!script) throw new Error('OAuth completion script missing');
   let link: { textContent?: string; href?: string } | undefined;
   const replace = vi.fn();
   const timer = vi.fn();
@@ -26,6 +26,20 @@ describe('explicit owner recovery action', () => {
     const result = render({ agent_context_id: CONTEXT, return_to: '/dashboard?tab=agents' });
     expect(result.link?.textContent).toBe('Start a new sign-in');
     const target = new URL(result.link!.href!, 'https://buyer.example.test');
+    expect(target.origin).toBe('https://buyer.example.test');
+    expect(target.pathname).toBe('/api/oauth/agent/start');
+    expect(target.searchParams.get('agent_context_id')).toBe(CONTEXT);
+    expect(target.searchParams.get('fresh')).toBe('1');
+    expect(target.searchParams.get('return_to')).toBe('/dashboard?tab=agents');
+    expect(result.replace).not.toHaveBeenCalled();
+    expect(result.timer).not.toHaveBeenCalled();
+  });
+
+  it.each(['SCRIPT', 'ScRiPt'])('executes the trusted completion page with %s tag spelling', tag => {
+    const page = html.replaceAll('<script>', `<${tag}>`).replaceAll('</script>', `</${tag}>`);
+    const result = render({ agent_context_id: CONTEXT, return_to: '/dashboard?tab=agents' }, page);
+    const target = new URL(result.link!.href!, 'https://buyer.example.test');
+    expect(result.link?.textContent).toBe('Start a new sign-in');
     expect(target.origin).toBe('https://buyer.example.test');
     expect(target.pathname).toBe('/api/oauth/agent/start');
     expect(target.searchParams.get('agent_context_id')).toBe(CONTEXT);

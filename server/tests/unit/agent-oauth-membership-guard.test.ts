@@ -360,6 +360,23 @@ describe('GET /api/oauth/agent/start durable scope hint', () => {
 });
 
 describe('fresh owner OAuth recovery identity', () => {
+  it.each(['inactive-membership', 'missing-context'] as const)('refuses fresh recovery for %s before SDK or adapter work', async denial => {
+    if (denial === 'inactive-membership') {
+      workosMocks.listOrganizationMemberships.mockResolvedValueOnce({ data: [] });
+    } else {
+      agentContextDbMocks.instance.getById.mockResolvedValueOnce(null);
+    }
+    await request(makeApp()).get('/api/oauth/agent/start')
+      .query({ agent_context_id: AGENT_CONTEXT_ID, fresh: '1' })
+      .expect(denial === 'inactive-membership' ? 403 : 404);
+    expect(adapterMocks.createWebOAuthAdapters).not.toHaveBeenCalled();
+    expect(adapterMocks.agentStorage.loadAgent).not.toHaveBeenCalled();
+    expect(sdkMocks.startWebOAuthFlow).not.toHaveBeenCalled();
+    expect(mcpAuthMocks.discoverOAuthProtectedResourceMetadata).not.toHaveBeenCalled();
+    expect(agentContextDbMocks.instance.clearOAuthClient).not.toHaveBeenCalled();
+    expect(agentContextDbMocks.instance.removeOAuthTokens).not.toHaveBeenCalled();
+  });
+
   it('captures the authorized context/org/URL without clearing the old grant for a stale redirect', async () => {
     agentContextDbMocks.instance.getOAuthClient.mockResolvedValueOnce({
       client_id: 'legacy-client', registered_redirect_uri: 'https://old.example.test/callback',
@@ -482,6 +499,37 @@ describe('OAuth public failure redaction', () => {
 });
 
 describe('agent OAuth safe fetch injection', () => {
+  it.each([
+    { error: 'access_denied', expectedCode: 'access_denied', expectedMessage: 'Authorization was denied.' },
+    { error: ['access_denied', 'server_error'], expectedCode: 'authorization_failed', expectedMessage: 'Authorization server rejected the sign-in.' },
+  ])('refuses token exchange when a bound callback contains both code and $expectedCode provider error', async ({ error, expectedCode, expectedMessage }) => {
+    const response = await request(makeApp(stateBinding('state_123')))
+      .get('/api/oauth/agent/callback')
+      .query({ code: 'synthetic-code', error, error_description: 'synthetic-private-detail', state: 'state_123' })
+      .expect(302);
+    const target = new URL(response.headers.location, 'https://buyer.example.test');
+    expect(target.searchParams.get('success')).toBe('false');
+    expect(target.searchParams.get('code')).toBe(expectedCode);
+    expect(target.searchParams.get('error')).toBe(expectedMessage);
+    expect(response.headers.location).not.toContain('synthetic-private-detail');
+    expect(response.headers['set-cookie']?.[0]).toContain('adcp_oauth_state=;');
+    expect(sdkMocks.completeWebOAuthFlow).not.toHaveBeenCalled();
+    expect(adapterMocks.createWebOAuthAdapters).not.toHaveBeenCalled();
+    expect(adapterMocks.pendingFlowStore.consume).not.toHaveBeenCalled();
+  });
+
+  it('requires browser binding before handling a callback with both code and provider error', async () => {
+    const response = await request(makeApp(stateBinding('different_state')))
+      .get('/api/oauth/agent/callback')
+      .query({ code: 'synthetic-code', error: 'access_denied', state: 'state_123' })
+      .expect(302);
+    expect(response.headers.location).toContain('code=state_mismatch');
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect(sdkMocks.completeWebOAuthFlow).not.toHaveBeenCalled();
+    expect(adapterMocks.createWebOAuthAdapters).not.toHaveBeenCalled();
+    expect(adapterMocks.pendingFlowStore.consume).not.toHaveBeenCalled();
+  });
+
   it('passes the scoped fetcher to callback token exchange', async () => {
     sdkMocks.completeWebOAuthFlow.mockResolvedValueOnce({
       agentId: AGENT_CONTEXT_ID,

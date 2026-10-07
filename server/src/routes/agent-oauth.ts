@@ -386,7 +386,9 @@ export function createAgentOAuthRouter(): Router {
       }
       const { code, message } = classifyStartError(error, req.query.fresh === '1');
       const params = new URLSearchParams({ success: 'false', error: message, code });
-      if (recoveryContext && req.query.fresh !== '1' && isOwnerReauthorizationError(error)) {
+      // Classify the trusted SDK failure independently of the requested UI mode.
+      const ownerReauthorizationRequired = isOwnerReauthorizationError(error);
+      if (recoveryContext && req.query.fresh !== '1' && ownerReauthorizationRequired) {
         params.set('agent_context_id', recoveryContext.id);
         if (recoveryContext.returnTo) params.set('return_to', recoveryContext.returnTo);
       }
@@ -444,12 +446,15 @@ export function createAgentOAuthRouter(): Router {
     // (or cancel) it. Invalid callbacks leave the short-lived cookie intact so
     // a forged navigation cannot terminate the legitimate flow.
     clearStateCookie();
+    // Project any provider code through the fixed allowlist before choosing
+    // the failure response; this does not authorize token exchange.
+    const providerErrorCode = publicOAuthCode(error, 'authorization_failed');
     if (error) {
       logger.warn({ error, error_description }, 'OAuth error from provider');
       const params = new URLSearchParams({
         success: 'false',
         error: error === 'access_denied' ? 'Authorization was denied.' : 'Authorization server rejected the sign-in.',
-        code: publicOAuthCode(error, 'authorization_failed'),
+        code: providerErrorCode,
       });
       return res.redirect(`/oauth-complete.html?${params.toString()}`);
     }
