@@ -516,6 +516,13 @@ bis test.)
 
 These are version-level concerns. Security fixes ship as out-of-band advisories or in the next minor.
 
+**Security errata exception.** A confirmed security fix may ship in a patch, alongside its advisory, when:
+1. the spec contradicts itself, or is ambiguous, about whether a security control applies;
+2. the fix resolves it toward the fail-closed reading another normative passage already requires; and
+3. the signature format, covered components, algorithms and wire shapes stay unchanged.
+
+The only implementations that fail the corrected text are the vulnerable ones, so the "any conformant implementation already satisfies it" test above is waived for this case. New fields or capability markers that come with the fix still ship in the next minor. Example: #7820 (GHSA-2pm6-6mc8-8xcm). `security.mdx` said `required_for` matched only MCP `tools/call`, but the A2A profile required the same signing rules over A2A. The A2A operation-resolution fix shipped as 3.2.3 errata; the new `operation_sources` marker shipped in 3.3.
+
 If unsure, default to no changeset and discuss whether the change belongs on
 `3.1.x` at all. New protocol surface stays on `main` for 3.2.
 
