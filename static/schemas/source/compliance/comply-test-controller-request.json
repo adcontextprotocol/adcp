@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/compliance/comply-test-controller-request.json",
   "title": "Comply Test Controller Request",
-  "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production. Naturally idempotent: each known `scenario` is either a lookup (`list_scenarios`) or a state-forcing operation whose target state is carried in the payload (`force_*_status`, `simulate_*`), so replays converge to the same observable state without needing an idempotency_key. The compliance harness drives this tool deterministically and does not rely on the seller's at-most-once replay cache.",
+  "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production. Naturally idempotent: each known `scenario` is either a lookup (`list_scenarios`) or a state-forcing operation whose target state is carried in the payload (`force_*_status`, `simulate_*`), so replays converge to the same observable state without needing an idempotency_key. The one exception is definition_pin_probe mutate_definition with mutation material, which advances the published definition so every call yields a digest distinct from all earlier digests of that definition. The compliance harness drives this tool deterministically and does not rely on the seller's at-most-once replay cache.",
   "type": "object",
   "allOf": [
     {
@@ -928,6 +928,53 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": { "const": "definition_pin_probe" }
+        },
+        "required": ["scenario"]
+      },
+      "then": {
+        "required": ["params"],
+        "properties": {
+          "params": {
+            "required": ["operation"],
+            "properties": {
+              "operation": { "enum": ["prepare", "mutate_definition"] }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": { "operation": { "const": "prepare" } },
+                  "required": ["operation"]
+                },
+                "then": {
+                  "required": ["product_id"],
+                  "not": {
+                    "anyOf": [
+                      { "required": ["proposal_id"] },
+                      { "required": ["ref_kind"] },
+                      { "required": ["mutation"] }
+                    ]
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": { "operation": { "const": "mutate_definition" } },
+                  "required": ["operation"]
+                },
+                "then": {
+                  "required": ["proposal_id", "ref_kind", "mutation"],
+                  "not": { "required": ["product_id"] }
+                }
+              }
+            ]
+          }
+        }
+      }
     }
   ],
   "x-mutates-state": true,
@@ -961,13 +1008,13 @@
         },
         "product_id": {
           "type": "string",
-          "description": "Product to seed or prepare for deterministic compact lifecycle testing. Used by seed_product, seed_pricing_option, compact_product_lifecycle_probe prepare, and compact_direct_buy_lifecycle_probe prepare.",
+          "description": "Product to seed or prepare for deterministic compact lifecycle testing. Used by seed_product, seed_pricing_option, compact_product_lifecycle_probe prepare, compact_direct_buy_lifecycle_probe prepare, and definition_pin_probe prepare.",
           "x-entity": "product"
         },
         "proposal_id": {
           "type": "string",
           "minLength": 1,
-          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires.",
+          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires, or the draft or committed proposal whose pinned definition definition_pin_probe mutate_definition changes.",
           "x-entity": "proposal"
         },
         "pricing_option_id": {
@@ -992,8 +1039,17 @@
         },
         "operation": {
           "type": "string",
-          "enum": ["seed_inaccessible_item", "query_eligibility", "advance_time", "recreate_catalog", "prepare", "expire_proposal", "publish_zero_row", "publish_nonempty", "restate_snapshot", "restate_after_received", "omit_obligation", "advance_past_status_deadline", "advance_past_escalation", "publish_official_adjustment", "probe_scheduler_dst", "suppress_readiness", "advance_within_retention", "revoke_access", "publish_adjustment"],
-          "description": "Scenario-specific probe operation. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, omit_obligation, advance_past_status_deadline, and advance_past_escalation to exercise obligation availability, health deadlines, explicit reporting, provisional restatement, stale-received grace, buyer-side missing-obligation detection, counted consumer-status silence, and consumer-mismatch escalation. advance_past_status_deadline moves the clock strictly past expected_at plus the advertised automated_recovery_window_seconds without recording any consumer status, so obligation_counts.consumer_status_pending is gradable; advance_past_escalation moves it strictly past the open CONSUMER_STATUS_MISMATCH issue opened_at plus the advertised consumer_mismatch_escalation_seconds and returns both that boundary and any still-future stale_received_grace_deadline, so the escalation precedence rule is gradable. restate_snapshot publishes a new snapshot revision that immediately supersedes the current snapshot for the same logical slice and is invalid when the current revision is official. restate_after_received does the same restatement but only against the revision named in received_reporting_revision_id, so the stale-received grace projection can be graded live; it returns the grace deadline and advance_to positions the virtual clock inside or past it. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence."
+          "enum": ["seed_inaccessible_item", "query_eligibility", "advance_time", "recreate_catalog", "prepare", "expire_proposal", "publish_zero_row", "publish_nonempty", "restate_snapshot", "restate_after_received", "omit_obligation", "advance_past_status_deadline", "advance_past_escalation", "publish_official_adjustment", "probe_scheduler_dst", "suppress_readiness", "advance_within_retention", "revoke_access", "publish_adjustment", "mutate_definition"],
+          "description": "Scenario-specific probe operation. definition_pin_probe uses prepare to make one seeded product reference a controller-published publisher-catalog definition so its proposals carry definition pins, and mutate_definition to change that published definition behind an existing proposal's pin without touching the proposal: mutation material changes a digest-covered field and mutation cosmetic changes only a projection-excluded field such as name. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, omit_obligation, advance_past_status_deadline, and advance_past_escalation to exercise obligation availability, health deadlines, explicit reporting, provisional restatement, stale-received grace, buyer-side missing-obligation detection, counted consumer-status silence, and consumer-mismatch escalation. advance_past_status_deadline moves the clock strictly past expected_at plus the advertised automated_recovery_window_seconds without recording any consumer status, so obligation_counts.consumer_status_pending is gradable; advance_past_escalation moves it strictly past the open CONSUMER_STATUS_MISMATCH issue opened_at plus the advertised consumer_mismatch_escalation_seconds and returns both that boundary and any still-future stale_received_grace_deadline, so the escalation precedence rule is gradable. restate_snapshot publishes a new snapshot revision that immediately supersedes the current snapshot for the same logical slice and is invalid when the current revision is official. restate_after_received does the same restatement but only against the revision named in received_reporting_revision_id, so the stale-received grace projection can be graded live; it returns the grace deadline and advance_to positions the virtual clock inside or past it. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence."
+        },
+        "ref_kind": {
+          "$ref": "/schemas/enums/definition-pin-ref-kind.json",
+          "description": "Kind of pinned definition that definition_pin_probe mutate_definition changes. The controller mutates the definition behind the first pin of this kind in the named proposal's commercial_terms.definition_pins."
+        },
+        "mutation": {
+          "type": "string",
+          "enum": ["material", "cosmetic"],
+          "description": "Required by definition_pin_probe mutate_definition. material changes a field inside the kind's pin projection (for example a member of a format option's params) so the definition's content_digest changes. cosmetic changes only a field the projection excludes (for example display_name) so the content_digest is unchanged and the pin still verifies."
         },
         "target_health": {
           "type": "string",

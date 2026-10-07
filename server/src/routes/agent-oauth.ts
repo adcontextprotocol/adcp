@@ -127,12 +127,6 @@ function isValidUUID(id: string): boolean {
   return uuidValidate(id);
 }
 
-function sanitizeErrorMessage(error: unknown): string {
-  return String(error)
-    .slice(0, 200)
-    .replace(/[<>]/g, '');
-}
-
 /** OAuth failures returned by an agent's authorization server are not app faults. */
 export function isAgentSideOAuthError(error: unknown): error is OAuthError | McpOAuthError {
   return error instanceof OAuthError || error instanceof McpOAuthError;
@@ -233,6 +227,43 @@ cleanupTimer.unref();
  * via the oauth-complete redirect. Keeps the user-facing copy generic
  * — the structured code is for support / diagnostics.
  */
+// Public diagnostics are finite app-owned values. Upstream descriptions and
+// exception messages remain in the existing structured server logs only.
+const PUBLIC_OAUTH_CODES = new Set([
+  'invalid_request', 'invalid_client', 'invalid_grant', 'unauthorized_client',
+  'unsupported_grant_type', 'invalid_scope', 'access_denied',
+  'unsupported_response_type', 'server_error', 'temporarily_unavailable',
+]);
+
+function publicOAuthCode(code: unknown, fallback: string): string {
+  return typeof code === 'string' && PUBLIC_OAUTH_CODES.has(code) ? code : fallback;
+}
+
+const OWNER_REAUTHORIZATION_CODES = new Set([
+  'owner_reauthorization_required', 'oauth_issuer_binding_required',
+  'oauth_issuer_required', 'oauth_issuer_mismatch',
+]);
+
+function isOwnerReauthorizationError(err: unknown): err is OAuthError {
+  return err instanceof OAuthError && OWNER_REAUTHORIZATION_CODES.has(err.code);
+}
+
+function classifyStartError(err: unknown, fresh: boolean): { code: string; message: string } {
+  if (isOwnerReauthorizationError(err)) {
+    return { code: err.code, message: fresh
+      ? 'Check the agent authorization server and client configuration before starting a new sign-in.'
+      : 'Start a new sign-in to authorize this agent.' };
+  }
+  // These classes already have fixed app-owned copy; never trust their .message.
+  if (err instanceof ProtectedResourceMetadataError || err instanceof ConfidentialClientNotAllowedError ||
+      err instanceof AgentVanishedDuringFlowError || err instanceof TokenExchangeError) {
+    return classifyCallbackError(err);
+  }
+  return { code: 'oauth_start_failed', message: isAgentSideOAuthError(err)
+    ? 'The agent authorization server could not start sign-in.'
+    : 'Unable to start sign-in. Please try again.' };
+}
+
 function classifyCallbackError(err: unknown): { code: string; message: string } {
   if (err instanceof InvalidOrExpiredFlowError) {
     return { code: 'invalid_or_expired_flow', message: 'Invalid or expired OAuth session' };
@@ -241,7 +272,7 @@ function classifyCallbackError(err: unknown): { code: string; message: string } 
     return { code: 'state_mismatch', message: 'OAuth state does not match this browser session' };
   }
   if (err instanceof TokenExchangeError) {
-    return { code: err.oauthErrorCode ?? 'token_exchange_failed', message: 'Token exchange failed' };
+    return { code: publicOAuthCode(err.oauthErrorCode, 'token_exchange_failed'), message: 'Token exchange failed' };
   }
   if (err instanceof ProtectedResourceMetadataError) {
     return { code: 'protected_resource_metadata_error', message: 'Agent OAuth metadata is invalid' };
@@ -252,7 +283,7 @@ function classifyCallbackError(err: unknown): { code: string; message: string } 
   if (err instanceof ConfidentialClientNotAllowedError) {
     return { code: 'confidential_client_not_allowed', message: 'Authorization server requires a confidential client' };
   }
-  return { code: 'oauth_error', message: err instanceof Error ? err.message : 'Unknown error' };
+  return { code: 'oauth_error', message: 'Unable to complete sign-in. Please start again.' };
 }
 
 export function createAgentOAuthRouter(): Router {
@@ -264,6 +295,7 @@ export function createAgentOAuthRouter(): Router {
    * GET /api/oauth/agent/start?agent_context_id=...
    */
   router.get('/start', requireAuth, async (req: Request, res: Response) => {
+    let recoveryContext: { id: string; returnTo?: string } | undefined;
     try {
       const { agent_context_id, return_to } = req.query;
       const returnTo = typeof return_to === 'string' ? safeReturnTo(return_to) : undefined;
@@ -283,30 +315,19 @@ export function createAgentOAuthRouter(): Router {
       }
       const agentContext = access.agentContext;
       const organizationId = agentContext.organization_id;
+      recoveryContext = { id: agentContext.id, ...(returnTo && { returnTo }) };
 
       const redirectUri = getCallbackUrl(req);
 
-      // Stale-client clearing. `loadAgent` already filters oauth_client
-      // by registered_redirect_uri, so the SDK would skip the cached row
-      // anyway — but tokens issued to that client are also dead, and we
-      // want them gone before the SDK persists fresh ones. (Today's
-      // `clearOAuthClient` clears tokens too.)
-      const existingClient = await agentContextDb.getOAuthClient(agent_context_id);
-      if (existingClient && existingClient.registered_redirect_uri !== redirectUri) {
-        logger.info(
-          {
-            agentUrl: agentContext.agent_url,
-            oldRedirectUri: existingClient.registered_redirect_uri ?? '(unknown)',
-            newRedirectUri: redirectUri,
-          },
-          'Redirect URI changed — clearing stale OAuth client and tokens',
-        );
-        await agentContextDb.clearOAuthClient(agent_context_id);
-      }
-
+      // Bound credentials retain ordinary reuse. Explicit fresh=1 omits the old
+      // grant and stages any new client privately; neither mode clears old bytes
+      // until a completed replacement wins the captured-state CAS.
       const { pendingFlowStore, agentStorage } = createWebOAuthAdapters({
         agentContextDb,
         redirectUri,
+        userId,
+        ownerStart: { id: agent_context_id, organizationId, agentUrl: agentContext.agent_url, fresh: req.query.fresh === '1' },
+        authorize: orgId => hasActiveWorkosMembership(userId, orgId),
       });
 
       const agent = await agentStorage.loadAgent(agent_context_id);
@@ -363,8 +384,13 @@ export function createAgentOAuthRouter(): Router {
       } else {
         logger.error({ error }, 'Failed to start OAuth flow');
       }
-      const message = sanitizeErrorMessage(error instanceof Error ? error.message : 'Unknown error');
-      res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(message)}`);
+      const { code, message } = classifyStartError(error, req.query.fresh === '1');
+      const params = new URLSearchParams({ success: 'false', error: message, code });
+      if (recoveryContext && req.query.fresh !== '1' && isOwnerReauthorizationError(error)) {
+        params.set('agent_context_id', recoveryContext.id);
+        if (recoveryContext.returnTo) params.set('return_to', recoveryContext.returnTo);
+      }
+      res.redirect(`/oauth-complete.html?${params.toString()}`);
     }
   });
 
@@ -420,8 +446,12 @@ export function createAgentOAuthRouter(): Router {
     clearStateCookie();
     if (error) {
       logger.warn({ error, error_description }, 'OAuth error from provider');
-      const safeError = sanitizeErrorMessage(error_description || error);
-      return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(safeError)}`);
+      const params = new URLSearchParams({
+        success: 'false',
+        error: error === 'access_denied' ? 'Authorization was denied.' : 'Authorization server rejected the sign-in.',
+        code: publicOAuthCode(error, 'authorization_failed'),
+      });
+      return res.redirect(`/oauth-complete.html?${params.toString()}`);
     }
     if (typeof code !== 'string' || code.length === 0) {
       return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('No authorization code received')}`);
@@ -436,6 +466,8 @@ export function createAgentOAuthRouter(): Router {
     const { pendingFlowStore, agentStorage } = createWebOAuthAdapters({
       agentContextDb,
       redirectUri,
+      userId,
+      authorize: orgId => hasActiveWorkosMembership(userId, orgId),
     });
     const guardedPendingFlowStore = createMembershipGuardedPendingFlowStore(pendingFlowStore, userId);
 
@@ -451,22 +483,11 @@ export function createAgentOAuthRouter(): Router {
         expectedState: state,
       });
 
-      // Defense in depth: the guarded pending-flow store already checked
-      // active membership before token exchange/persistence. At this point
-      // only reject malformed carry data without making another external
-      // WorkOS call after tokens may have been saved.
+      // Carry and current membership were checked before metadata/exchange and
+      // again by the flow-bound storage before the atomic final replacement.
       const flowOrgId = result.carry?.organization_id;
       if (typeof flowOrgId !== 'string') {
-        logger.warn(
-          { agentUrl: result.agentUrl, flowOrgIdPresent: typeof flowOrgId === 'string' },
-          'OAuth callback org mismatch — refusing token persistence path',
-        );
-        // Tokens were just persisted by the SDK; immediately revoke
-        // them at the agent_context level so the cross-org user
-        // doesn't end up with usable bearer tokens.
-        await agentContextDb.removeOAuthTokens(result.agentId).catch((err) => {
-          logger.error({ err, agentId: result.agentId }, 'Failed to revoke tokens after org mismatch');
-        });
+        logger.warn({ flowOrgIdPresent: false }, 'OAuth callback missing trusted owner state');
         const params = new URLSearchParams({
           success: 'false',
           error: 'OAuth flow does not match this session',
@@ -507,7 +528,7 @@ export function createAgentOAuthRouter(): Router {
       logger.warn({ err, code: errCode }, 'OAuth callback failed');
       const params = new URLSearchParams({
         success: 'false',
-        error: sanitizeErrorMessage(message),
+        error: message,
         code: errCode,
       });
       return res.redirect(`/oauth-complete.html?${params.toString()}`);

@@ -1,0 +1,2053 @@
+{
+  "description": "Normative vectors for definition pins (docs/media-buy/specification.mdx#definition-pins). projection_rules is the machine-readable form of the per-kind preimage rules; every vector below is reproducible from it with RFC 8785 JCS and SHA-256.",
+  "projection_rules": {
+    "publisher_format_option": {
+      "adagents_array": "formats",
+      "exclude": [
+        "display_name",
+        "ext",
+        "publisher_domain",
+        "reference_renderer",
+        "sample_render_url",
+        "seller_preference"
+      ],
+      "set_arrays": [
+        "applies_to_channels",
+        "applies_to_property_ids",
+        "applies_to_property_tags",
+        "v1_format_ref"
+      ]
+    },
+    "publisher_placement": {
+      "adagents_array": "placements",
+      "exclude": [
+        "description",
+        "ext",
+        "name",
+        "presentation_ref",
+        "preview_provider",
+        "publisher_domain",
+        "tags"
+      ],
+      "set_arrays": [
+        "audio_distribution_types",
+        "channels",
+        "collection_ids",
+        "identifiers",
+        "property_ids",
+        "property_tags",
+        "social_placement_surfaces",
+        "sponsored_placement_types",
+        "video_placement_types"
+      ],
+      "nested": {
+        "format_options": "publisher_format_option"
+      }
+    },
+    "publisher_collection": {
+      "adagents_array": "collections",
+      "exclude": [
+        "description",
+        "ext",
+        "name",
+        "publisher_domain",
+        "related_collections",
+        "season",
+        "talent"
+      ],
+      "set_arrays": [
+        "distribution",
+        "genre"
+      ]
+    },
+    "data_provider_signal": {
+      "adagents_array": "signals",
+      "exclude": [
+        "criteria_url",
+        "description",
+        "ext",
+        "last_updated",
+        "name",
+        "tags"
+      ],
+      "set_arrays": [
+        "allowed_values",
+        "consent_basis",
+        "countries",
+        "data_sources",
+        "id_types",
+        "policy_categories",
+        "restricted_attributes"
+      ]
+    }
+  },
+  "projection_vectors": [
+    {
+      "id": "format-option-baseline",
+      "ref_kind": "publisher_format_option",
+      "name": "Format option: display, preview, preference, and ext members are excluded; channel set is de-duplicated and sorted",
+      "spec_reference": "#definition-pin-preimage",
+      "published_entry": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "expected": {
+        "projection": {
+          "format_option_id": "video_30s",
+          "format_kind": "video_hosted",
+          "applies_to_channels": [
+            "ctv",
+            "olv"
+          ],
+          "applies_to_property_ids": [
+            "app_ios",
+            "site_main"
+          ],
+          "params": {
+            "duration_ms_exact": 30000,
+            "aspect_ratios": [
+              "16:9",
+              "9:16"
+            ],
+            "name": "preroll",
+            "description": "nested members named like excluded ones stay",
+            "ext": {
+              "kept": true
+            }
+          }
+        },
+        "jcs_bytes": "{\"applies_to_channels\":[\"ctv\",\"olv\"],\"applies_to_property_ids\":[\"app_ios\",\"site_main\"],\"format_kind\":\"video_hosted\",\"format_option_id\":\"video_30s\",\"params\":{\"aspect_ratios\":[\"16:9\",\"9:16\"],\"description\":\"nested members named like excluded ones stay\",\"duration_ms_exact\":30000,\"ext\":{\"kept\":true},\"name\":\"preroll\"}}",
+        "content_digest": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d"
+      }
+    },
+    {
+      "id": "placement-baseline",
+      "ref_kind": "publisher_placement",
+      "name": "Placement: name, description, tags, presentation, and ext are excluded; nested format_options are projected, de-duplicated, and sorted by JCS bytes",
+      "spec_reference": "#definition-pin-preimage",
+      "published_entry": {
+        "placement_id": "home_hero",
+        "name": "Homepage Hero",
+        "description": "Top-of-page takeover",
+        "tags": [
+          "premium",
+          "homepage"
+        ],
+        "property_ids": [
+          "site_main"
+        ],
+        "collection_ids": [
+          "evening_news",
+          "morning_show"
+        ],
+        "channels": [
+          "display",
+          "olv"
+        ],
+        "presentation_ref": {
+          "url": "https://sports-network.example/chrome/home_hero.json"
+        },
+        "ext": {
+          "owner": "ops"
+        },
+        "format_options": [
+          {
+            "format_option_id": "video_30s",
+            "format_kind": "video_hosted",
+            "display_name": "30s",
+            "params": {
+              "duration_ms_exact": 30000
+            }
+          },
+          {
+            "format_option_id": "display_970",
+            "format_kind": "image",
+            "display_name": "970x250",
+            "params": {
+              "width": 970,
+              "height": 250
+            }
+          }
+        ]
+      },
+      "expected": {
+        "projection": {
+          "placement_id": "home_hero",
+          "property_ids": [
+            "site_main"
+          ],
+          "collection_ids": [
+            "evening_news",
+            "morning_show"
+          ],
+          "channels": [
+            "display",
+            "olv"
+          ],
+          "format_options": [
+            {
+              "format_option_id": "display_970",
+              "format_kind": "image",
+              "params": {
+                "width": 970,
+                "height": 250
+              }
+            },
+            {
+              "format_option_id": "video_30s",
+              "format_kind": "video_hosted",
+              "params": {
+                "duration_ms_exact": 30000
+              }
+            }
+          ]
+        },
+        "jcs_bytes": "{\"channels\":[\"display\",\"olv\"],\"collection_ids\":[\"evening_news\",\"morning_show\"],\"format_options\":[{\"format_kind\":\"image\",\"format_option_id\":\"display_970\",\"params\":{\"height\":250,\"width\":970}},{\"format_kind\":\"video_hosted\",\"format_option_id\":\"video_30s\",\"params\":{\"duration_ms_exact\":30000}}],\"placement_id\":\"home_hero\",\"property_ids\":[\"site_main\"]}",
+        "content_digest": "ec96133a9a920b1e6cf15de93395f811be221a17d00d1007049285246d4a16ce"
+      }
+    },
+    {
+      "id": "collection-baseline",
+      "ref_kind": "publisher_collection",
+      "name": "Collection: publisher_domain, name, description, talent, season, related_collections, and ext are excluded",
+      "spec_reference": "#definition-pin-preimage",
+      "published_entry": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        }
+      },
+      "expected": {
+        "projection": {
+          "collection_id": "evening_news",
+          "kind": "series",
+          "genre": [
+            "news",
+            "politics"
+          ],
+          "language": "en",
+          "content_rating": {
+            "system": "tv_parental",
+            "rating": "TV-PG"
+          },
+          "cadence": "daily",
+          "status": "active"
+        },
+        "jcs_bytes": "{\"cadence\":\"daily\",\"collection_id\":\"evening_news\",\"content_rating\":{\"rating\":\"TV-PG\",\"system\":\"tv_parental\"},\"genre\":[\"news\",\"politics\"],\"kind\":\"series\",\"language\":\"en\",\"status\":\"active\"}",
+        "content_digest": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5"
+      }
+    },
+    {
+      "id": "signal-baseline",
+      "ref_kind": "data_provider_signal",
+      "name": "Signal: name, description, tags, last_updated, criteria_url, and ext are excluded",
+      "spec_reference": "#definition-pin-preimage",
+      "published_entry": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        }
+      },
+      "expected": {
+        "projection": {
+          "id": "likely_ev_buyers",
+          "value_type": "binary",
+          "countries": [
+            "CA",
+            "US"
+          ],
+          "restricted_attributes": [],
+          "segmentation_criteria": "Visited EV configurators in the last 30 days",
+          "methodology": "observed",
+          "refresh_cadence": "daily"
+        },
+        "jcs_bytes": "{\"countries\":[\"CA\",\"US\"],\"id\":\"likely_ev_buyers\",\"methodology\":\"observed\",\"refresh_cadence\":\"daily\",\"restricted_attributes\":[],\"segmentation_criteria\":\"Visited EV configurators in the last 30 days\",\"value_type\":\"binary\"}",
+        "content_digest": "559f95c90dda3bfea3f54ddad137923ee25d4df6c7083ca17b6c6998235b8330"
+      }
+    },
+    {
+      "id": "signal-unicode-set",
+      "ref_kind": "data_provider_signal",
+      "name": "Signal: allowed_values with non-ASCII elements are de-duplicated and sorted by UTF-8 bytes",
+      "spec_reference": "#definition-pin-preimage",
+      "published_entry": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        },
+        "allowed_values": [
+          "😀",
+          "～",
+          "é",
+          "a",
+          "a"
+        ]
+      },
+      "expected": {
+        "projection": {
+          "id": "likely_ev_buyers",
+          "value_type": "binary",
+          "countries": [
+            "CA",
+            "US"
+          ],
+          "restricted_attributes": [],
+          "segmentation_criteria": "Visited EV configurators in the last 30 days",
+          "methodology": "observed",
+          "refresh_cadence": "daily",
+          "allowed_values": [
+            "a",
+            "é",
+            "～",
+            "😀"
+          ]
+        },
+        "jcs_bytes": "{\"allowed_values\":[\"a\",\"é\",\"～\",\"😀\"],\"countries\":[\"CA\",\"US\"],\"id\":\"likely_ev_buyers\",\"methodology\":\"observed\",\"refresh_cadence\":\"daily\",\"restricted_attributes\":[],\"segmentation_criteria\":\"Visited EV configurators in the last 30 days\",\"value_type\":\"binary\"}",
+        "content_digest": "9b0b17eafa093720afc97902a27342c4b7ece3b9fa5294d5ff3fac7832f86e1e"
+      }
+    }
+  ],
+  "equivalence_vectors": [
+    {
+      "id": "collection-rename-is-not-drift",
+      "ref_kind": "publisher_collection",
+      "name": "Renaming, re-describing, recasting, and rolling the season is not drift",
+      "why": "Every changed member is on the exclusion list.",
+      "entry_a": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        }
+      },
+      "entry_b": {
+        "publisher_domain": "mirror.example",
+        "collection_id": "evening_news",
+        "name": "Evening News Tonight",
+        "description": "Updated blurb",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2027",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Sam Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 9
+        }
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5",
+        "content_digest_b": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5"
+      }
+    },
+    {
+      "id": "collection-content-rating-is-drift",
+      "ref_kind": "publisher_collection",
+      "name": "Changing content_rating is drift",
+      "why": "content_rating is inside the projection; a stricter rating changes what the buyer is buying.",
+      "entry_a": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        }
+      },
+      "entry_b": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-MA"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        }
+      },
+      "expected": {
+        "same_content_digest": false,
+        "content_digest_a": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5",
+        "content_digest_b": "fae2a9a11574c1a9a20e8c379e4a194ca47bf6d0a886de980b8de64f046ac24d"
+      }
+    },
+    {
+      "id": "collection-genre-order-is-not-drift",
+      "ref_kind": "publisher_collection",
+      "name": "Reordering and repeating a named set array is not drift",
+      "why": "genre is a named set array: de-duplicated and sorted by JCS bytes.",
+      "entry_a": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        }
+      },
+      "entry_b": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "politics",
+          "news",
+          "news"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        }
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5",
+        "content_digest_b": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5"
+      }
+    },
+    {
+      "id": "collection-status-is-drift",
+      "ref_kind": "publisher_collection",
+      "name": "Changing lifecycle status is drift",
+      "why": "status is inside the projection.",
+      "entry_a": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        }
+      },
+      "entry_b": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "ended",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        }
+      },
+      "expected": {
+        "same_content_digest": false,
+        "content_digest_a": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5",
+        "content_digest_b": "7af923c5d99ee27ecf262cbb8b9b94a82e963ca7a98a2b29c08895c62ed96e6a"
+      }
+    },
+    {
+      "id": "format-option-cosmetic-is-not-drift",
+      "ref_kind": "publisher_format_option",
+      "name": "Display label, sample, preference, and ext changes are not drift",
+      "why": "Every changed member is on the exclusion list.",
+      "entry_a": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "entry_b": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "Thirty Second Video",
+        "sample_render_url": "https://sports-network.example/other",
+        "seller_preference": "discouraged",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {},
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d",
+        "content_digest_b": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d"
+      }
+    },
+    {
+      "id": "format-option-params-is-drift",
+      "ref_kind": "publisher_format_option",
+      "name": "Changing creative params is drift",
+      "why": "params is inside the projection.",
+      "entry_a": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "entry_b": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 15000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "expected": {
+        "same_content_digest": false,
+        "content_digest_a": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d",
+        "content_digest_b": "88bc91e5666704772360f8763a4799cb9f17b611fa976e025524d1f1ecf01e2a"
+      }
+    },
+    {
+      "id": "format-option-unnamed-array-order-is-drift",
+      "ref_kind": "publisher_format_option",
+      "name": "Reordering an array that is not a named set is drift",
+      "why": "params.aspect_ratios is not a named set array, so its order is preserved verbatim.",
+      "entry_a": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "entry_b": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "9:16",
+            "16:9"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "expected": {
+        "same_content_digest": false,
+        "content_digest_a": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d",
+        "content_digest_b": "06fbaca6faea3c2ada223e5e3fa0e708a5310d7fc205ea8a278ff46427bbda48"
+      }
+    },
+    {
+      "id": "format-option-set-order-is-not-drift",
+      "ref_kind": "publisher_format_option",
+      "name": "Reordering named set arrays is not drift",
+      "why": "applies_to_channels and applies_to_property_ids are named set arrays.",
+      "entry_a": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "entry_b": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "app_ios",
+          "site_main"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d",
+        "content_digest_b": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d"
+      }
+    },
+    {
+      "id": "placement-cosmetic-and-nested-order-is-not-drift",
+      "ref_kind": "publisher_placement",
+      "name": "Placement rename, retag, new chrome, and reordered nested format options are not drift",
+      "why": "Excluded members and nested format-option display_name are removed; nested format_options are a set.",
+      "entry_a": {
+        "placement_id": "home_hero",
+        "name": "Homepage Hero",
+        "description": "Top-of-page takeover",
+        "tags": [
+          "premium",
+          "homepage"
+        ],
+        "property_ids": [
+          "site_main"
+        ],
+        "collection_ids": [
+          "evening_news",
+          "morning_show"
+        ],
+        "channels": [
+          "display",
+          "olv"
+        ],
+        "presentation_ref": {
+          "url": "https://sports-network.example/chrome/home_hero.json"
+        },
+        "ext": {
+          "owner": "ops"
+        },
+        "format_options": [
+          {
+            "format_option_id": "video_30s",
+            "format_kind": "video_hosted",
+            "display_name": "30s",
+            "params": {
+              "duration_ms_exact": 30000
+            }
+          },
+          {
+            "format_option_id": "display_970",
+            "format_kind": "image",
+            "display_name": "970x250",
+            "params": {
+              "width": 970,
+              "height": 250
+            }
+          }
+        ]
+      },
+      "entry_b": {
+        "placement_id": "home_hero",
+        "name": "Home Hero",
+        "description": "Top-of-page takeover",
+        "tags": [
+          "homepage"
+        ],
+        "property_ids": [
+          "site_main"
+        ],
+        "collection_ids": [
+          "evening_news",
+          "morning_show"
+        ],
+        "channels": [
+          "display",
+          "olv"
+        ],
+        "presentation_ref": {
+          "url": "https://sports-network.example/chrome/v2.json"
+        },
+        "ext": {
+          "owner": "ops"
+        },
+        "format_options": [
+          {
+            "format_option_id": "display_970",
+            "format_kind": "image",
+            "display_name": "970 wide",
+            "params": {
+              "width": 970,
+              "height": 250
+            }
+          },
+          {
+            "format_option_id": "video_30s",
+            "format_kind": "video_hosted",
+            "display_name": "30s",
+            "params": {
+              "duration_ms_exact": 30000
+            }
+          },
+          {
+            "format_option_id": "video_30s",
+            "format_kind": "video_hosted",
+            "display_name": "30s",
+            "params": {
+              "duration_ms_exact": 30000
+            }
+          }
+        ]
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "ec96133a9a920b1e6cf15de93395f811be221a17d00d1007049285246d4a16ce",
+        "content_digest_b": "ec96133a9a920b1e6cf15de93395f811be221a17d00d1007049285246d4a16ce"
+      }
+    },
+    {
+      "id": "placement-collection-scope-is-drift",
+      "ref_kind": "publisher_placement",
+      "name": "Narrowing placement collection_ids is drift",
+      "why": "collection_ids is inside the projection.",
+      "entry_a": {
+        "placement_id": "home_hero",
+        "name": "Homepage Hero",
+        "description": "Top-of-page takeover",
+        "tags": [
+          "premium",
+          "homepage"
+        ],
+        "property_ids": [
+          "site_main"
+        ],
+        "collection_ids": [
+          "evening_news",
+          "morning_show"
+        ],
+        "channels": [
+          "display",
+          "olv"
+        ],
+        "presentation_ref": {
+          "url": "https://sports-network.example/chrome/home_hero.json"
+        },
+        "ext": {
+          "owner": "ops"
+        },
+        "format_options": [
+          {
+            "format_option_id": "video_30s",
+            "format_kind": "video_hosted",
+            "display_name": "30s",
+            "params": {
+              "duration_ms_exact": 30000
+            }
+          },
+          {
+            "format_option_id": "display_970",
+            "format_kind": "image",
+            "display_name": "970x250",
+            "params": {
+              "width": 970,
+              "height": 250
+            }
+          }
+        ]
+      },
+      "entry_b": {
+        "placement_id": "home_hero",
+        "name": "Homepage Hero",
+        "description": "Top-of-page takeover",
+        "tags": [
+          "premium",
+          "homepage"
+        ],
+        "property_ids": [
+          "site_main"
+        ],
+        "collection_ids": [
+          "evening_news"
+        ],
+        "channels": [
+          "display",
+          "olv"
+        ],
+        "presentation_ref": {
+          "url": "https://sports-network.example/chrome/home_hero.json"
+        },
+        "ext": {
+          "owner": "ops"
+        },
+        "format_options": [
+          {
+            "format_option_id": "video_30s",
+            "format_kind": "video_hosted",
+            "display_name": "30s",
+            "params": {
+              "duration_ms_exact": 30000
+            }
+          },
+          {
+            "format_option_id": "display_970",
+            "format_kind": "image",
+            "display_name": "970x250",
+            "params": {
+              "width": 970,
+              "height": 250
+            }
+          }
+        ]
+      },
+      "expected": {
+        "same_content_digest": false,
+        "content_digest_a": "ec96133a9a920b1e6cf15de93395f811be221a17d00d1007049285246d4a16ce",
+        "content_digest_b": "10b71f743afd53f02dcd61ec0419976d0b5653ebc959ed2ffb1806cc90f2e4f2"
+      }
+    },
+    {
+      "id": "signal-metadata-is-not-drift",
+      "ref_kind": "data_provider_signal",
+      "name": "Rename, retag, freshness timestamp, criteria pointer, and country order are not drift",
+      "why": "Every changed member is excluded or a named set array.",
+      "entry_a": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        }
+      },
+      "entry_b": {
+        "id": "likely_ev_buyers",
+        "name": "EV intenders",
+        "description": "Rewritten",
+        "value_type": "binary",
+        "tags": [
+          "auto",
+          "ev"
+        ],
+        "last_updated": "2026-10-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev-v2",
+        "countries": [
+          "CA",
+          "US",
+          "US"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        }
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "559f95c90dda3bfea3f54ddad137923ee25d4df6c7083ca17b6c6998235b8330",
+        "content_digest_b": "559f95c90dda3bfea3f54ddad137923ee25d4df6c7083ca17b6c6998235b8330"
+      }
+    },
+    {
+      "id": "signal-segmentation-criteria-is-drift",
+      "ref_kind": "data_provider_signal",
+      "name": "Changing segmentation criteria is drift",
+      "why": "segmentation_criteria is inside the projection.",
+      "entry_a": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        }
+      },
+      "entry_b": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 90 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        }
+      },
+      "expected": {
+        "same_content_digest": false,
+        "content_digest_a": "559f95c90dda3bfea3f54ddad137923ee25d4df6c7083ca17b6c6998235b8330",
+        "content_digest_b": "a17eb7e8ba91af537794f40748ff0daaf7e3dbad022270bc0441f5b0f23dac5c"
+      }
+    },
+    {
+      "id": "signal-unknown-member-is-drift",
+      "ref_kind": "data_provider_signal",
+      "name": "A member the schema does not name is part of the preimage",
+      "why": "The preimage is the verbatim entry minus the exclusion list; unknown members are included, so publishers keep non-material metadata in ext.",
+      "entry_a": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        }
+      },
+      "entry_b": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        },
+        "x_vendor_flag": true
+      },
+      "expected": {
+        "same_content_digest": false,
+        "content_digest_a": "559f95c90dda3bfea3f54ddad137923ee25d4df6c7083ca17b6c6998235b8330",
+        "content_digest_b": "67247a2ec191986fa007f27f67a00bd70df589cd61aa2ed8a15ad646f8c66be9"
+      }
+    },
+    {
+      "id": "signal-ext-is-not-drift",
+      "ref_kind": "data_provider_signal",
+      "name": "ext changes are not drift",
+      "why": "ext is excluded for every kind.",
+      "entry_a": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        }
+      },
+      "entry_b": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "changed",
+          "more": 1
+        }
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "559f95c90dda3bfea3f54ddad137923ee25d4df6c7083ca17b6c6998235b8330",
+        "content_digest_b": "559f95c90dda3bfea3f54ddad137923ee25d4df6c7083ca17b6c6998235b8330"
+      }
+    },
+    {
+      "id": "signal-proto-member-is-drift",
+      "ref_kind": "data_provider_signal",
+      "name": "A published member literally named __proto__ is part of the preimage",
+      "why": "Unknown members are included; implementations must hash own enumerable keys including __proto__ rather than dropping it.",
+      "entry_a": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        }
+      },
+      "entry_b": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        },
+        "__proto__": {
+          "x": 1
+        }
+      },
+      "expected": {
+        "same_content_digest": false,
+        "content_digest_a": "559f95c90dda3bfea3f54ddad137923ee25d4df6c7083ca17b6c6998235b8330",
+        "content_digest_b": "7e1af4a03945902b43e44d74b435bbf1ec8e1249c4b8a8dbeda4b7549634c178"
+      }
+    },
+    {
+      "id": "format-option-nested-excluded-name-is-drift",
+      "ref_kind": "publisher_format_option",
+      "name": "Exclusion is top-level only: a nested member named like an excluded one is verbatim",
+      "why": "params.name is not top-level, so it is not excluded.",
+      "entry_a": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "entry_b": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "changed",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "expected": {
+        "same_content_digest": false,
+        "content_digest_a": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d",
+        "content_digest_b": "8e04b4ec4fa82103d6508202761354c361b08d94804358887fdbb329520c994f"
+      }
+    },
+    {
+      "id": "signal-set-order-is-utf8-bytes",
+      "ref_kind": "data_provider_signal",
+      "name": "Set arrays sort by UTF-8 bytes of JCS serialization, not UTF-16 code units",
+      "why": "U+FF5E (EF BD 9E) sorts before U+1F600 (F0 9F 98 80) in UTF-8 byte order; a UTF-16 sort reverses them and produces a different digest.",
+      "entry_a": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        },
+        "allowed_values": [
+          "😀",
+          "～",
+          "é",
+          "a",
+          "a"
+        ]
+      },
+      "entry_b": {
+        "id": "likely_ev_buyers",
+        "name": "Likely EV buyers",
+        "description": "Modeled intent",
+        "value_type": "binary",
+        "tags": [
+          "auto"
+        ],
+        "last_updated": "2026-09-01T00:00:00Z",
+        "criteria_url": "https://data-provider.example/criteria/ev",
+        "countries": [
+          "US",
+          "CA"
+        ],
+        "restricted_attributes": [],
+        "segmentation_criteria": "Visited EV configurators in the last 30 days",
+        "methodology": "observed",
+        "refresh_cadence": "daily",
+        "ext": {
+          "vendor_ref": "abc"
+        },
+        "allowed_values": [
+          "a",
+          "é",
+          "～",
+          "😀"
+        ]
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "9b0b17eafa093720afc97902a27342c4b7ece3b9fa5294d5ff3fac7832f86e1e",
+        "content_digest_b": "9b0b17eafa093720afc97902a27342c4b7ece3b9fa5294d5ff3fac7832f86e1e"
+      }
+    },
+    {
+      "id": "format-option-origin-domain-is-not-drift",
+      "ref_kind": "publisher_format_option",
+      "name": "A publisher_domain member present on one origin and absent on a mirror is not drift",
+      "why": "publisher_domain is origin-dependent and excluded; identity lives in the pin reference.",
+      "entry_a": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        }
+      },
+      "entry_b": {
+        "format_option_id": "video_30s",
+        "format_kind": "video_hosted",
+        "display_name": "30s Video",
+        "sample_render_url": "https://sports-network.example/preview/video_30s",
+        "seller_preference": "preferred",
+        "applies_to_channels": [
+          "olv",
+          "ctv",
+          "olv"
+        ],
+        "applies_to_property_ids": [
+          "site_main",
+          "app_ios"
+        ],
+        "ext": {
+          "note": "curated"
+        },
+        "params": {
+          "duration_ms_exact": 30000,
+          "aspect_ratios": [
+            "16:9",
+            "9:16"
+          ],
+          "name": "preroll",
+          "description": "nested members named like excluded ones stay",
+          "ext": {
+            "kept": true
+          }
+        },
+        "publisher_domain": "sports-network.example"
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d",
+        "content_digest_b": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d"
+      }
+    }
+  ],
+  "pin_ordering_vector": {
+    "description": "definition_pins[] is ordered by ref_kind, then by the JCS bytes of reference (whose members sort by name, so collection_id precedes publisher_domain), both compared as UTF-8 bytes. The input order below is deliberately shuffled and includes same-kind pins whose domain order disagrees with their id order and a non-ASCII id.",
+    "input": [
+      {
+        "ref_kind": "publisher_placement",
+        "reference": {
+          "publisher_domain": "sports-network.example",
+          "placement_id": "home_hero"
+        },
+        "content_digest": "ec96133a9a920b1e6cf15de93395f811be221a17d00d1007049285246d4a16ce"
+      },
+      {
+        "ref_kind": "data_provider_signal",
+        "reference": {
+          "data_provider_domain": "data-provider.example",
+          "signal_id": "likely_ev_buyers"
+        },
+        "content_digest": "559f95c90dda3bfea3f54ddad137923ee25d4df6c7083ca17b6c6998235b8330"
+      },
+      {
+        "ref_kind": "publisher_collection",
+        "reference": {
+          "publisher_domain": "sports-network.example",
+          "collection_id": "morning_show"
+        },
+        "content_digest": "0000000000000000000000000000000000000000000000000000000000000001"
+      },
+      {
+        "ref_kind": "publisher_collection",
+        "reference": {
+          "publisher_domain": "sports-network.example",
+          "collection_id": "evening_news"
+        },
+        "content_digest": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5"
+      },
+      {
+        "ref_kind": "publisher_collection",
+        "reference": {
+          "publisher_domain": "b-network.example",
+          "collection_id": "a_show"
+        },
+        "content_digest": "0000000000000000000000000000000000000000000000000000000000000002"
+      },
+      {
+        "ref_kind": "publisher_collection",
+        "reference": {
+          "publisher_domain": "a-network.example",
+          "collection_id": "z_show"
+        },
+        "content_digest": "0000000000000000000000000000000000000000000000000000000000000003"
+      },
+      {
+        "ref_kind": "publisher_collection",
+        "reference": {
+          "publisher_domain": "sports-network.example",
+          "collection_id": "é_show"
+        },
+        "content_digest": "0000000000000000000000000000000000000000000000000000000000000004"
+      },
+      {
+        "ref_kind": "publisher_format_option",
+        "reference": {
+          "publisher_domain": "sports-network.example",
+          "format_option_id": "video_30s"
+        },
+        "content_digest": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d"
+      }
+    ],
+    "expected_order": [
+      {
+        "ref_kind": "data_provider_signal",
+        "reference": {
+          "data_provider_domain": "data-provider.example",
+          "signal_id": "likely_ev_buyers"
+        }
+      },
+      {
+        "ref_kind": "publisher_collection",
+        "reference": {
+          "publisher_domain": "b-network.example",
+          "collection_id": "a_show"
+        }
+      },
+      {
+        "ref_kind": "publisher_collection",
+        "reference": {
+          "publisher_domain": "sports-network.example",
+          "collection_id": "evening_news"
+        }
+      },
+      {
+        "ref_kind": "publisher_collection",
+        "reference": {
+          "publisher_domain": "sports-network.example",
+          "collection_id": "morning_show"
+        }
+      },
+      {
+        "ref_kind": "publisher_collection",
+        "reference": {
+          "publisher_domain": "a-network.example",
+          "collection_id": "z_show"
+        }
+      },
+      {
+        "ref_kind": "publisher_collection",
+        "reference": {
+          "publisher_domain": "sports-network.example",
+          "collection_id": "é_show"
+        }
+      },
+      {
+        "ref_kind": "publisher_format_option",
+        "reference": {
+          "publisher_domain": "sports-network.example",
+          "format_option_id": "video_30s"
+        }
+      },
+      {
+        "ref_kind": "publisher_placement",
+        "reference": {
+          "publisher_domain": "sports-network.example",
+          "placement_id": "home_hero"
+        }
+      }
+    ]
+  },
+  "non_ijson_vectors": [
+    {
+      "id": "lone-surrogate",
+      "description": "A string containing a lone surrogate is not I-JSON, so the entry has no JCS form. A verifier treats the definition as unresolvable (changed).",
+      "published_entry_raw": "{\"id\":\"likely_ev_buyers\",\"name\":\"\\ud800\"}",
+      "expected": {
+        "resolvable": false
+      }
+    },
+    {
+      "id": "integer-beyond-2-53",
+      "description": "An integer a double cannot hold exactly is not I-JSON; two different published numbers would collide. A verifier treats the definition as unresolvable (changed).",
+      "published_entry_raw": "{\"id\":\"likely_ev_buyers\",\"range\":{\"max\":9007199254740993}}",
+      "expected": {
+        "resolvable": false
+      }
+    },
+    {
+      "id": "duplicate-member-name",
+      "description": "A duplicate member name is not I-JSON and parsers disagree on which value wins, so two verifiers could compute different digests. A verifier treats the definition as unresolvable (changed).",
+      "published_entry_raw": "{\"id\":\"likely_ev_buyers\",\"name\":\"a\",\"name\":\"b\"}",
+      "expected": {
+        "resolvable": false
+      }
+    },
+    {
+      "id": "non-finite-number",
+      "description": "A number that overflows an IEEE 754 double is not I-JSON. A verifier treats the definition as unresolvable (changed).",
+      "published_entry_raw": "{\"id\":\"likely_ev_buyers\",\"range\":{\"max\":1e400}}",
+      "expected": {
+        "resolvable": false
+      }
+    },
+    {
+      "id": "nesting-beyond-64",
+      "description": "Nesting deeper than 64 levels is rejected so a hostile document cannot exhaust a verifier. A verifier treats the definition as unresolvable (changed).",
+      "published_entry_raw": "{\"id\":\"likely_ev_buyers\",\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+      "expected": {
+        "resolvable": false
+      }
+    },
+    {
+      "id": "escaped-backslash-before-surrogate-text",
+      "description": "A literal backslash followed by the text ud800 is not a lone surrogate and resolves.",
+      "published_entry_raw": "{\"id\":\"likely_ev_buyers\",\"name\":\"\\\\ud800\"}",
+      "expected": {
+        "resolvable": true
+      }
+    },
+    {
+      "id": "proto-member-resolves",
+      "description": "A member literally named __proto__ is valid and stays in the preimage.",
+      "published_entry_raw": "{\"id\":\"likely_ev_buyers\",\"__proto__\":{\"x\":1}}",
+      "expected": {
+        "resolvable": true
+      }
+    },
+    {
+      "id": "largest-safe-integer-and-surrogate-pair",
+      "description": "The largest exactly representable integer and a valid surrogate pair are I-JSON and resolve.",
+      "published_entry_raw": "{\"id\":\"likely_ev_buyers\",\"range\":{\"max\":9007199254740991},\"allowed_values\":[\"\\ud83d\\ude00\"]}",
+      "expected": {
+        "resolvable": true
+      }
+    }
+  ],
+  "collection_mutation_vector": {
+    "description": "The pinned collection is mutated after the proposal is committed. commercial_terms is untouched, so terms_digest still verifies, but the pin no longer verifies.",
+    "commercial_terms": {
+      "brand": {
+        "domain": "acmeoutdoor.example"
+      },
+      "purchases": [
+        {
+          "product_id": "news_video",
+          "pricing_option_id": "news_cpm",
+          "pricing": {
+            "pricing_option_id": "news_cpm",
+            "pricing_model": "cpm",
+            "currency": "USD",
+            "fixed_price": 17
+          },
+          "format_option_refs": [
+            {
+              "scope": "publisher",
+              "publisher_domain": "sports-network.example",
+              "format_option_id": "video_30s"
+            }
+          ],
+          "targeting_overlay": {
+            "collection_selection": {
+              "mode": "selected",
+              "collections": [
+                {
+                  "publisher_domain": "sports-network.example",
+                  "collection_ids": [
+                    "evening_news"
+                  ]
+                }
+              ]
+            }
+          },
+          "start_time": "2099-01-01T00:00:00Z",
+          "end_time": "2099-03-31T00:00:00Z"
+        }
+      ],
+      "start_time": "2099-01-01T00:00:00Z",
+      "end_time": "2099-03-31T00:00:00Z",
+      "total_budget": {
+        "amount": 50000,
+        "currency": "USD"
+      },
+      "definition_pins": [
+        {
+          "ref_kind": "publisher_collection",
+          "reference": {
+            "publisher_domain": "sports-network.example",
+            "collection_id": "evening_news"
+          },
+          "content_digest": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5"
+        },
+        {
+          "ref_kind": "publisher_format_option",
+          "reference": {
+            "publisher_domain": "sports-network.example",
+            "format_option_id": "video_30s"
+          },
+          "content_digest": "d2e626a6708b7a85aae05d30087fce077754654a1f9a013778c9b3983804010d"
+        }
+      ]
+    },
+    "terms_digest": "sha256:wsDeUOMBhV9MYkyytRDRok-bF2mwDqeRhjTFpbmcmUc",
+    "definition_at_pin_time": {
+      "ref_kind": "publisher_collection",
+      "published_entry": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        }
+      }
+    },
+    "definition_after_mutation": {
+      "ref_kind": "publisher_collection",
+      "published_entry": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-MA"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        }
+      }
+    },
+    "expected": {
+      "terms_digest_after_mutation": "sha256:wsDeUOMBhV9MYkyytRDRok-bF2mwDqeRhjTFpbmcmUc",
+      "terms_digest_still_verifies": true,
+      "pin_content_digest": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5",
+      "current_content_digest": "fae2a9a11574c1a9a20e8c379e4a194ca47bf6d0a886de980b8de64f046ac24d",
+      "pin_still_verifies": false,
+      "accept_proposal_error_code": "REFERENCE_DEFINITION_CHANGED",
+      "error_field": "commercial_terms.definition_pins[0]"
+    }
+  }
+}
