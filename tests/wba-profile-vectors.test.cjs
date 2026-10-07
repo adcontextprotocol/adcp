@@ -340,3 +340,93 @@ describe('Web Bot Auth profile negative vectors', () => {
     assert.deepEqual(vector.request, original.request);
   });
 });
+
+// ── Governance tokens: key purpose ────────────────────────────────────────
+
+const GOVERNANCE_ALGORITHMS = ['Ed25519', 'EdDSA'];
+const DIRECTORY_PATH = '/.well-known/http-message-signatures-directory';
+
+class DocumentError extends Error {
+  constructor(stage, code, message) {
+    super(`${stage}: ${message}`);
+    this.stage = stage;
+    this.code = code;
+  }
+}
+
+/**
+ * Verifies a governance token's key purpose and returns the issuer origin.
+ * Each option skips one check, so a test can show a vector fails on that check alone.
+ */
+function verifyGovernanceToken(vector, { skipDirectory = false, skipRole = false } = {}) {
+  const parts = vector.jws.split('.');
+  let header;
+  let payload;
+  try {
+    if (parts.length !== 3) throw new Error('not three segments');
+    header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+    payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  } catch (e) {
+    throw new DocumentError('parse', 'governance_token_invalid', e.message);
+  }
+  if (!GOVERNANCE_ALGORITHMS.includes(header.alg)) throw new DocumentError('header', 'governance_token_invalid', `alg ${header.alg}`);
+  if (header.typ !== 'adcp-gov+jws') throw new DocumentError('header', 'governance_token_invalid', `typ ${header.typ}`);
+  const issuer = new URL(payload.iss);
+  if (issuer.protocol !== 'https:') throw new DocumentError('header', 'governance_token_invalid', 'iss is not https');
+  if (header.jku !== `${issuer.origin}${DIRECTORY_PATH}`) throw new DocumentError('header', 'governance_token_invalid', 'jku is not the iss origin directory');
+  const published = skipDirectory ? keys.map(k => k.kid) : (vector.directories?.[issuer.origin]?.keys_ref ?? []);
+  if (!published.includes(header.kid)) throw new DocumentError('directory', 'governance_key_unknown', `key ${header.kid} is not in ${issuer.origin}'s directory`);
+  const jwk = keys.find(k => k.kid === header.kid);
+  const signature = Buffer.from(parts[2], 'base64url');
+  if (!crypto.verify(null, Buffer.from(`${parts[0]}.${parts[1]}`), publicKey(jwk), signature)) {
+    throw new DocumentError('signature', 'governance_token_invalid', 'signature does not verify');
+  }
+  if (payload.exp < vector.reference_now) throw new DocumentError('claims', 'governance_token_expired', 'exp is in the past');
+  if (payload.iat > vector.reference_now + 60) throw new DocumentError('claims', 'governance_token_not_yet_valid', 'iat is in the future');
+  if (!skipRole && !(vector.role_listing?.['adcp:governance'] ?? []).includes(issuer.origin)) {
+    throw new DocumentError('role', 'governance_issuer_not_authorized', `${issuer.origin} is not listed in the governance role`);
+  }
+  return issuer.origin;
+}
+
+const governance = loadDir('governance');
+
+// The check each negative governance vector targets, and the option that skips only that check.
+const GOVERNANCE_TARGETS = {
+  '002-governance-token-signed-with-transport-key.json': { stage: 'directory', skip: { skipDirectory: true } },
+  '003-governance-token-issued-as-transport-identity.json': { stage: 'role', skip: { skipRole: true } },
+};
+
+describe('Web Bot Auth profile governance vectors (key purpose)', () => {
+  it('names a targeted check for every negative governance vector', () => {
+    const negatives = governance.filter(e => !e.vector.expected_outcome.success).map(e => e.file);
+    assert.deepEqual(negatives, Object.keys(GOVERNANCE_TARGETS).sort());
+  });
+
+  for (const { file, vector } of governance) {
+    it(`${file}: decoded header and payload match the token`, () => {
+      const [h, p] = vector.jws.split('.');
+      assert.deepEqual(JSON.parse(Buffer.from(h, 'base64url').toString('utf8')), vector.decoded.header);
+      assert.deepEqual(JSON.parse(Buffer.from(p, 'base64url').toString('utf8')), vector.decoded.payload);
+    });
+
+    if (vector.expected_outcome.success) {
+      it(`${file}: verifies and names the expected issuer`, () => {
+        assert.equal(verifyGovernanceToken(vector), vector.expected_outcome.issuer);
+      });
+      continue;
+    }
+
+    const target = GOVERNANCE_TARGETS[file];
+    it(`${file}: rejected with ${vector.expected_outcome.error_code} at the ${target?.stage} check`, () => {
+      assert.throws(
+        () => verifyGovernanceToken(vector),
+        e => e instanceof DocumentError && e.code === vector.expected_outcome.error_code && e.stage === target.stage
+      );
+    });
+
+    it(`${file}: verifies once the targeted check is skipped`, () => {
+      assert.doesNotThrow(() => verifyGovernanceToken(vector, target.skip));
+    });
+  }
+});

@@ -17,6 +17,10 @@
  * valid signature verify once the targeted check is skipped; the test suite
  * (tests/wba-profile-vectors.test.cjs) proves that for each of them.
  *
+ * Governance vectors are compact JWS tokens (RFC 7515) that grade the
+ * key-purpose rule: the key must be in the iss origin's directory, and the
+ * iss origin must be listed in the governance role.
+ *
  * Usage:
  *   node scripts/generate-wba-profile-vectors.mjs          # write
  *   node scripts/generate-wba-profile-vectors.mjs --check  # verify committed files are current
@@ -25,7 +29,7 @@
  */
 
 import { createHash, createPrivateKey, createPublicKey, sign } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -57,13 +61,21 @@ function signBase(privateKey, lines, params) {
   return [base, b64(sign(null, Buffer.from(base), privateKey))];
 }
 
+/** Compact JWS (RFC 7515) over compact-JSON header and payload. */
+function jws(privateKey, header, payload) {
+  const signingInput = `${b64u(JSON.stringify(header))}.${b64u(JSON.stringify(payload))}`;
+  return `${signingInput}.${b64u(sign(null, Buffer.from(signingInput), privateKey))}`;
+}
+
 // ── Identities and keys ───────────────────────────────────────────────────
 const BUYER = 'https://buyer-7k3q.com';
 const BRAND = 'https://agent.brand-7k3q.com';
 const RELAY = 'https://relay.agency-7k3q.com';
+const GOVERNANCE = 'https://governance-7k3q.com';
 const buyer = key('buyer-request');
 const brand = key('brand-request');
 const relay = key('relay-request');
+const governance = key('governance-document');
 
 const files = {};
 const write = (rel, doc) => {
@@ -77,6 +89,7 @@ write('keys.json', {
     { identity: BUYER, seed_name: 'buyer-request', ...buyer.jwk, _private_d_for_test_only: buyer.d },
     { identity: BRAND, seed_name: 'brand-request', ...brand.jwk, _private_d_for_test_only: brand.d },
     { identity: RELAY, seed_name: 'relay-request', ...relay.jwk, _private_d_for_test_only: relay.d },
+    { identity: GOVERNANCE, seed_name: 'governance-document', ...governance.jwk, _private_d_for_test_only: governance.d },
   ],
 });
 
@@ -377,10 +390,83 @@ write('negative/007-malformed-signature-agent.json', {
     "Signature is a 64-zero-byte placeholder: parsing fails before any key is resolved or any signature is checked, so a verifier that reaches cryptographic verification has skipped the parse step. No Accept-Signature is sent, because the signer's headers, not its signature, need fixing.",
 });
 
+// ── Governance tokens: key purpose ────────────────────────────────────────
+// A key's purpose follows from the identity that publishes it. The verifier
+// accepts a governance token only when the key is in the iss origin's
+// directory AND the iss origin is listed in the governance role of a record it
+// already trusts. Each negative token breaks one of the two.
+const GOVERNANCE_DIRECTORY = `${GOVERNANCE}/.well-known/http-message-signatures-directory`;
+const BUYER_DIRECTORY = `${BUYER}/.well-known/http-message-signatures-directory`;
+const ROLE_LISTING = { 'adcp:governance': [GOVERNANCE] };
+const GOVERNANCE_DIRECTORIES = {
+  [GOVERNANCE]: { keys_ref: [governance.jwk.kid] },
+  [BUYER]: { keys_ref: [buyer.jwk.kid] },
+};
+const ROLE_NOTE =
+  'role_listing stands in for the record the verifier already trusts: in deployment, the governance-typed agents[] entry in the buyer\'s brand.json, or the adcp:governance role in trust.json once #7809 lands. The token\'s other claims (aud, phase, sub, action binding, revocation, replay) follow the existing governance checklist and are not graded here.';
+
+const governanceHeader = (kid, directory) => ({ alg: 'Ed25519', typ: 'adcp-gov+jws', jku: directory, kid });
+const governancePayload = (iss, jti) => ({ iss, aud: TARGET, phase: 'intent', jti, iat: 1790841500, exp: 1790842400 });
+
+function governanceVector(rel, { name, header, payload, signer, expected, comment }) {
+  write(rel, {
+    name,
+    spec_reference: `${SPEC}#key-purposes`,
+    signing_profile: 'web-bot-auth',
+    document_type: 'governance_context',
+    reference_now: NOW,
+    jws: jws(signer, header, payload),
+    decoded: { header, payload },
+    directories: GOVERNANCE_DIRECTORIES,
+    role_listing: ROLE_LISTING,
+    expected_outcome: expected,
+    $comment: `${comment} ${ROLE_NOTE}`,
+  });
+}
+
+governanceVector('governance/001-governance-token.json', {
+  name: 'Governance token issued by the governance identity https://governance-7k3q.com with its own key',
+  header: governanceHeader(governance.jwk.kid, GOVERNANCE_DIRECTORY),
+  payload: governancePayload(GOVERNANCE, '01J9ZQ4M8T6W3R5Y2K7N1P0B9C'),
+  signer: governance.privateKey,
+  expected: { success: true, issuer: GOVERNANCE },
+  comment:
+    "The token in RFC #7878's illustrations. jku is the WBA directory of the iss origin, the kid is in that directory, the signature verifies, and the iss origin is listed in the governance role.",
+});
+
+governanceVector('governance/002-governance-token-signed-with-transport-key.json', {
+  name: 'Governance token naming the governance identity, signed with a key that only the transport identity publishes',
+  header: governanceHeader(buyer.jwk.kid, GOVERNANCE_DIRECTORY),
+  payload: governancePayload(GOVERNANCE, '01J9ZQ4M8T6W3R5Y2K7N1P0B9D'),
+  signer: buyer.privateKey,
+  expected: {
+    success: false,
+    error_code: 'governance_key_unknown',
+    reason: "The kid is not in the key directory of the iss origin. Key lookup is keyed on the pair of origin and key, so a key the transport identity publishes cannot sign as the governance identity.",
+  },
+  comment:
+    'The signature is valid under the buyer agent\'s transport key, which the directories object lists under its own origin. A verifier that looks keys up by thumbprint alone finds the key and accepts the token.',
+});
+
+governanceVector('governance/003-governance-token-issued-as-transport-identity.json', {
+  name: 'Governance token issued by the transport identity https://buyer-7k3q.com, with its own key and directory',
+  header: governanceHeader(buyer.jwk.kid, BUYER_DIRECTORY),
+  payload: governancePayload(BUYER, '01J9ZQ4M8T6W3R5Y2K7N1P0B9E'),
+  signer: buyer.privateKey,
+  expected: {
+    success: false,
+    error_code: 'governance_issuer_not_authorized',
+    reason: 'The iss origin is not listed in the governance role. The key, jku, and signature are all consistent, so this check alone binds the purpose.',
+  },
+  comment:
+    'Every check up to the role check passes: jku is the iss origin\'s directory, the kid is in it, and the signature verifies. This vector proves that purpose is bound by who the issuer is. A verifier that checks only that the key sits in the iss directory accepts it.',
+});
+
 // ── Write or check ────────────────────────────────────────────────────────
 const check = process.argv.includes('--check');
 let stale = 0;
-for (const sub of ['positive', 'negative']) {
+for (const sub of ['positive', 'negative', 'governance']) {
+  if (!existsSync(join(VECTOR_DIR, sub))) continue;
   for (const file of readdirSync(join(VECTOR_DIR, sub)).filter(name => name.endsWith('.json'))) {
     if (!(`${sub}/${file}` in files)) {
       console.error(`${sub}/${file} is not produced by ${SCRIPT}; delete it or add it to the generator`);
@@ -397,6 +483,7 @@ for (const [rel, doc] of Object.entries(files)) {
       stale++;
     }
   } else {
+    mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, rendered);
   }
 }

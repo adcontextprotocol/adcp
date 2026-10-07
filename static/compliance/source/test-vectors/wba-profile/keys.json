@@ -30,6 +30,16 @@
       "x": "8nrvWz557SHSlmuXE2dMstsU_WmRQNze3VIIeNhN-VE",
       "use": "sig",
       "_private_d_for_test_only": "9HMKspy6Bjt8vLzngwm2L1pzrbxOn6A7nTDBRhmRYOE"
+    },
+    {
+      "identity": "https://governance-7k3q.com",
+      "seed_name": "governance-document",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "1XlJ3EIte7bPOEqKQtKrKNTNy5hywTyrwFXWrMbXKqE",
+      "x": "k-Q_ekTZQ_Hv6lLlIUYfE7jpJSCZ5nsLDfeoLIAkrL4",
+      "use": "sig",
+      "_private_d_for_test_only": "nfv0d9-TrrE1ajrAPEK-2yPoG9PHHbex-aqnv4xVnKQ"
     }
   ]
 }
