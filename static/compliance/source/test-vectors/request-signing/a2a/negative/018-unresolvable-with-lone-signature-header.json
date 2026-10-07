@@ -2,7 +2,7 @@
   "name": "Unsigned-looking A2A 1.0 SendMessage with two DataParts and a Signature header but no Signature-Input",
   "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
   "signing_profile_version": "3.2",
-  "tier": "hardening",
+  "tier": "contradiction-resolution",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",
@@ -34,5 +34,5 @@
     "error_code": "request_body_malformed",
     "failed_step": 0
   },
-  "$comment": "Ordering canary. The request is both unresolvable and carries a malformed header pair (Signature without Signature-Input). Resolution runs first in the pre-check, so the code is request_body_malformed, not request_signature_header_malformed."
+  "$comment": "Rule 4 (pre-check ordering) canary, a contradiction-resolution vector. The request is both unresolvable and carries a malformed header pair (Signature without Signature-Input). Resolution runs first in the pre-check, so the code is request_body_malformed, not request_signature_header_malformed."
 }
