@@ -788,3 +788,104 @@ test('version aws-dry-run only executes provider dryrun and never immutable or G
   assert.equal(fs.existsSync(path.join(f.dir,'bucket')),false);
   assert.deepEqual(fs.readdirSync(path.join(f.dir,'private-temp')),['.keep']);
 });
+
+// Deterministic leaf races use a child-process preload, not timing or a real
+// concurrent attacker. Git/AWS tools and ancestor paths remain trusted.
+function publicationReadRace(f, target, stage, replacement) {
+  const bytes = fs.readFileSync(path.join(f.dir, target));
+  const replacementBytes = target === 'package.json' ? JSON.stringify({version: '9.9.9', unapprovedReplacement: true}) : 'unapproved replacement bytes';
+  f.write('race-outside.bin', stage === 'after-open' ? Buffer.from(replacementBytes) : bytes);
+  f.write('race-preload.cjs', `
+    const fs = require('node:fs'), path = require('node:path');
+    const target = path.resolve(${JSON.stringify(target)});
+    const stage = ${JSON.stringify(stage)}, replacement = ${JSON.stringify(replacement)};
+    const lstat = fs.lstatSync, open = fs.openSync, fstat = fs.fstatSync;
+    const read = fs.readFileSync, close = fs.closeSync;
+    let replaced = false, descriptor;
+    const matches = file => typeof file === 'string' && path.resolve(file) === target;
+    const record = fields => {
+      const prior = fs.existsSync('race-proof.json') ? JSON.parse(read('race-proof.json', 'utf8')) : {};
+      fs.writeFileSync('race-proof.json', JSON.stringify({...prior, ...fields}));
+    };
+    const replace = phase => {
+      if (replaced) return;
+      replaced = true;
+      fs.unlinkSync(target);
+      if (replacement === 'mode') {
+        fs.writeFileSync(target, read('race-outside.bin'));
+        fs.chmodSync(target, 0o755);
+      } else fs.symlinkSync(path.resolve('race-outside.bin'), target);
+      record({replaced: true, phase});
+    };
+    fs.lstatSync = function(file, ...args) {
+      const metadata = lstat.call(this, file, ...args);
+      if (matches(file) && stage === 'before-open') replace('after-lstat');
+      return metadata;
+    };
+    fs.openSync = function(file, ...args) {
+      if (matches(file) && stage === 'before-open') replace('before-open');
+      const result = open.call(this, file, ...args);
+      if (matches(file)) { descriptor = result; record({descriptor: result, flags: args[0]}); }
+      return result;
+    };
+    fs.fstatSync = function(file, ...args) {
+      const metadata = fstat.call(this, file, ...args);
+      if (file === descriptor && stage === 'after-open') replace('after-fstat');
+      return metadata;
+    };
+    fs.readFileSync = function(file, ...args) {
+      if (file === descriptor && typeof file === 'number') record({readDescriptor: true});
+      return read.call(this, file, ...args);
+    };
+    fs.closeSync = function(file, ...args) {
+      const result = close.call(this, file, ...args);
+      if (file === descriptor) record({closedDescriptor: true});
+      return result;
+    };
+  `);
+  return {
+    env: { ...f.authority, NODE_OPTIONS: `--require=${path.join(f.dir, 'race-preload.cjs')}` },
+    proof: () => JSON.parse(fs.readFileSync(path.join(f.dir, 'race-proof.json'), 'utf8')),
+  };
+}
+
+for (const target of ['package.json', `dist/schemas/${version}/index.json`]) {
+  test(`publication refuses symlink replacement of ${target} before descriptor open`, t => {
+    const f = mergedFixture(t);
+    const race = publicationReadRace(f, target, 'before-open', 'symlink');
+    const result = f.run('node', ['scripts/check-release-state.cjs', 'committed', version], race.env);
+    assert.equal(race.proof().replaced, true, 'control must replace the formerly regular leaf');
+    refused(result, /ELOOP|symbolic link/);
+    assert.equal(f.calls(), '', 'replacement must not reach signature or publication mutations');
+  });
+}
+
+test('publication checks executable mode on the replacement inode before reading bytes', t => {
+  const f = mergedFixture(t);
+  const target = `dist/schemas/${version}/index.json`;
+  const race = publicationReadRace(f, target, 'before-open', 'mode');
+  const result = f.run('node', ['scripts/check-release-state.cjs', 'committed', version], race.env);
+  assert.equal(race.proof().replaced, true);
+  assert.equal(fs.statSync(path.join(f.dir, target)).mode & 0o111, 0o111, 'replacement mode must differ');
+  refused(result, /Uncommitted publication file or mode/);
+  assert.equal(race.proof().closedDescriptor, true, 'validation failure must close the opened descriptor');
+  assert.equal(f.calls(), '');
+});
+
+for (const target of ['package.json', `dist/schemas/${version}/index.json`]) {
+  test(`publication reads the validated ${target} inode after pathname replacement`, t => {
+    const f = mergedFixture(t);
+    const race = publicationReadRace(f, target, 'after-open', 'symlink');
+    successful(f.run('node', ['scripts/check-release-state.cjs', 'committed', version], race.env));
+    const proof = race.proof();
+    assert.equal(proof.replaced, true, 'pathname must really change after descriptor metadata validation');
+    assert.equal(proof.phase, 'after-fstat');
+    assert.equal(proof.flags & fs.constants.O_NOFOLLOW, fs.constants.O_NOFOLLOW);
+    assert.equal(proof.readDescriptor, true);
+    assert.equal(proof.closedDescriptor, true);
+    const substituted = fs.readFileSync(path.join(f.dir, target), 'utf8');
+    if (target === 'package.json') assert.deepEqual(JSON.parse(substituted), {version: '9.9.9', unapprovedReplacement: true});
+    else assert.equal(substituted, 'unapproved replacement bytes');
+    assert.equal(f.calls(), '', 'this read-only preflight control grants no publication authority');
+  });
+}

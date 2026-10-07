@@ -39,6 +39,23 @@ function current() {
   return expected;
 }
 
+// Read metadata and bytes through one opened descriptor. O_NOFOLLOW refuses a
+// leaf replaced with a symlink; fstat checks the exact inode read below.
+function readPublicationFile(file, expectedMode) {
+  const descriptor = fs.openSync(
+    file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+  );
+  try {
+    const metadata = fs.fstatSync(descriptor);
+    const mode = metadata.mode & 0o111 ? "100755" : "100644";
+    if (!metadata.isFile() || (expectedMode && (mode !== expectedMode || metadata.mode & 0o7000)))
+      throw new Error(`Uncommitted publication file or mode: ${file}`);
+    return fs.readFileSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
 // Publication authority applies to this checkout's committed current version,
 // not to arbitrary historical artifacts that happen to remain in dist/.
 function committed(version) {
@@ -49,10 +66,7 @@ function committed(version) {
   if (git("rev-parse", "HEAD") !== tested)
     throw new Error("Local checkout is not the current tested publication commit.");
   git("merge-base", "--is-ancestor", source, tested);
-  const packageMetadata = fs.lstatSync("package.json");
-  if (!packageMetadata.isFile() || packageMetadata.isSymbolicLink())
-    throw new Error("Publication package authority must be a regular committed file.");
-  const localPackage = fs.readFileSync("package.json");
+  const localPackage = readPublicationFile("package.json");
   const testedPackage = execFileSync("git", ["show", `${tested}:package.json`], { stdio: ["ignore", "pipe", "pipe"] });
   const localVersion = JSON.parse(localPackage).version;
   const testedVersion = JSON.parse(testedPackage).version;
@@ -94,10 +108,9 @@ function committed(version) {
       return;
     }
     const entry = expected.get(file);
-    const mode = metadata.mode & 0o111 ? "100755" : "100644";
-    if (!metadata.isFile() || !entry || mode !== entry.mode || metadata.mode & 0o7000)
+    if (!entry)
       throw new Error(`Uncommitted publication file or mode: ${file}`);
-    const bytes = fs.readFileSync(file);
+    const bytes = readPublicationFile(file, entry.mode);
     const oid = crypto.createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
     if (oid !== entry.oid) throw new Error(`Publication bytes differ from original commit: ${file}`);
     actual.add(file);
