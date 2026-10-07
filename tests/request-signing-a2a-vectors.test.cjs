@@ -237,7 +237,7 @@ describe('A2A operation-resolution vectors: corpus shape', () => {
     assert.ok(all.some(e => e.vector.tier === 'contradiction-resolution'));
     // The original bypass vectors are errata, never hardening.
     for (const { id, vector } of negative) {
-      if (/001-unsigned-sendmessage|002-unsigned-message-send|003-unsigned-sendstreaming|022-unsigned-http-json/.test(id)) {
+      if (/001-unsigned-sendmessage|002-unsigned-message-send|003-unsigned-sendstreaming|022-unsigned-http-json|018-unresolvable-with-lone-signature-header/.test(id)) {
         assert.equal(vector.tier, 'contradiction-resolution', id);
       }
     }

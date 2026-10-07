@@ -107,7 +107,7 @@ const SIGNED_NOTE =
  * `contradiction-resolution`: derived from the A2A profile's MCP-parity rule.
  */
 const HARDENING = new Set([
-  'negative/010', 'negative/011', 'negative/013', 'negative/014', 'negative/018', 'negative/019',
+  'negative/010', 'negative/011', 'negative/013', 'negative/014', 'negative/019',
   'negative/020', 'negative/021', 'negative/023', 'negative/024', 'negative/025',
 ]);
 
@@ -401,7 +401,7 @@ const DEFINITIONS = [
     unsigned: true,
     capability: CAPABILITY,
     outcome: { success: false, error_code: 'request_body_malformed', failed_step: 0 },
-    comment: 'Ordering canary. The request is both unresolvable and carries a malformed header pair (Signature without Signature-Input). Resolution runs first in the pre-check, so the code is request_body_malformed, not request_signature_header_malformed.',
+    comment: 'Rule 4 (pre-check ordering) canary, a contradiction-resolution vector. The request is both unresolvable and carries a malformed header pair (Signature without Signature-Input). Resolution runs first in the pre-check, so the code is request_body_malformed, not request_signature_header_malformed.',
   },
   {
     out: 'negative/019-raw-part-present.json',
