@@ -28,7 +28,7 @@ for (const scenarioName of SCENARIOS) {
       (step) => ['check_governance', 'report_plan_outcome'].includes(step.task),
     );
 
-    assert.deepEqual(scenario.requires, ['multi_agent']);
+    assert.deepEqual(scenario.requires, ['multi_agent', 'controller']);
     assert.equal(scenario.default_agent, 'sales');
     assert.equal(syncPlans.agent, 'governance');
     assert.ok(

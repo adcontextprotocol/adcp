@@ -4,6 +4,8 @@ title: "End-to-end vendor-metric accountability: declaration → commitment → 
 category: media_buy_seller
 summary: "Buyer commits vendor metrics on two packages, then verifies one clean package, one overdue gap, and one not-yet-measurable omission."
 track: reporting
+requires:
+  - controller
 
 requires_capability:
   path: media_buy.features.committed_metrics_supported
