@@ -78,18 +78,6 @@
       "kind",
       "name"
     ],
-    "oneOf": [
-      {
-        "required": [
-          "rate"
-        ]
-      },
-      {
-        "required": [
-          "amount"
-        ]
-      }
-    ],
     "allOf": [
       {
         "if": {
@@ -136,7 +124,25 @@
         }
       }
     ],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "anyOf": [
+      {
+        "required": [
+          "rate"
+        ]
+      },
+      {
+        "required": [
+          "amount"
+        ]
+      }
+    ],
+    "not": {
+      "required": [
+        "rate",
+        "amount"
+      ]
+    }
   },
   "minItems": 1,
   "maxItems": 20,
