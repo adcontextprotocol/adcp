@@ -230,3 +230,13 @@ The version script runs tests automatically. If they fail:
 ## Questions?
 
 For questions about the release process, open an issue on GitHub or reach out to the maintainers.
+
+## Maintained 3.1 publication authority
+
+The 3.1 release workflow publishes only the exact committed version after current-branch and original release-merge provenance checks. Its final generated head needs approval from a non-author human with current repository write, maintain or admin permission. Existing approval on an older head does not authorize a refreshed candidate. Here, non-author means the release PR author; this check does not establish last-pusher independence. Independently verify the actual bot producer/run and final generated head before recording human approval.
+
+This maintained-line policy overrides the older direct tag/public-release fallbacks in `cut-patch.md` and `cut-major.md`; do not use those fallbacks or their `--latest` flag for 3.1 publication. Keep the maintained branch unchanged until its publication run completes.
+
+Changesets prepares the release PR without tagging or publishing. Publication requires all four committed signed tuple files; it never re-signs or rebuilds missing artifacts. GitHub assets are byte-checked and staged as an exact four-file draft before publication. R2 publication uses `--version VERSION --skip-latest`, preserves existing objects only when their bytes match, and conditionally creates missing objects. It cannot write historical versions, mutable aliases, CORS or deletions. A failed or stale release remains held for separately reviewed recovery.
+
+R2 object writes are individually atomic, not a bundle transaction. A branch move or storage failure after GitHub publication can leave the CDN version missing or partial. The failed publication/CDN verification run is the signal; the later `pending` check verifies GitHub only and does not certify R2 completeness. Do not rerun an obsolete workflow, bulk-backfill, or infer authority from a public tag alone. Hold publication and prepare a separately reviewed recovery plan tied to the original signed tuple, exact original release merge, current tested maintained head and current-version final-head human approval. Historical versions need separate explicit authorization. Any regenerated release candidate needs a fresh human review on its exact head. Maintenance publication explicitly preserves the repository's GitHub Latest alias.
