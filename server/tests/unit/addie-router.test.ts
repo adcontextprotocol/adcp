@@ -948,14 +948,14 @@ describeWithApi('AddieRouter.route (LLM)', () => {
       }
     }, 15000);
 
-    // External industry question — suggest or low
-    it('should return suggest/low for questions outside core domain', async () => {
+    // External industry question — ignore, or respond at calibrated low/suggest confidence
+    it('should avoid high-confidence responses for questions outside core domain', async () => {
       const plan = await routeAsMember(
         'how does Google Privacy Sandbox affect header bidding?'
       );
-      expect(plan.action).toBe('respond');
+      expect(['ignore', 'respond']).toContain(plan.action);
       if (plan.action === 'respond') {
-        expect(['high', 'suggest', 'low']).toContain(plan.confidence);
+        expect(['suggest', 'low']).toContain(plan.confidence);
       }
     }, 15000);
 

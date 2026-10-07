@@ -3815,6 +3815,226 @@ paths:
                 required:
                   - error
                   - message
+  /api/registry/authorizations:
+    get:
+      operationId: getAgentAuthorizations
+      summary: Per-agent authorization pull
+      description: |-
+        Default endpoint for verification consumers (DSPs, sales houses, agencies). Returns the rows where the requested agent appears as `agent_url` — typically ≤ a few hundred. Pair with `/api/registry/feed?entity_type=authorization` to tail subsequent changes via the `X-Sync-Cursor` header.
+
+        **evidence** defaults to `adagents_json` only. `agent_claim` is opt-in (`?evidence=adagents_json,agent_claim`) to prevent buy-side trust misuse — see specs/registry-authorization-model.md.
+      tags:
+        - Change Feed
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: Agent URL to look up. Canonicalized server-side (lowercased, trailing slashes trimmed).
+          required: true
+          description: Agent URL to look up. Canonicalized server-side (lowercased, trailing slashes trimmed).
+          name: agent_url
+          in: query
+        - schema:
+            type: string
+            enum:
+              - raw
+              - effective
+            description: "`effective` (default) applies override layer; `raw` reads base table."
+          required: false
+          description: "`effective` (default) applies override layer; `raw` reads base table."
+          name: include
+          in: query
+        - schema:
+            type: string
+            description: Comma-separated evidence allowlist. Defaults to `adagents_json`.
+            example: adagents_json,agent_claim
+          required: false
+          description: Comma-separated evidence allowlist. Defaults to `adagents_json`.
+          name: evidence
+          in: query
+      responses:
+        "200":
+          description: Authorization rows for the agent.
+          headers:
+            X-Sync-Cursor:
+              description: UUIDv7 cursor for the authorization change feed at snapshot time. Pass to /api/registry/feed?entity_type=authorization&cursor=<value>.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  evidence:
+                    type: array
+                    items:
+                      type: string
+                  include:
+                    type: string
+                    enum:
+                      - raw
+                      - effective
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        agent_url:
+                          type: string
+                        agent_url_canonical:
+                          type: string
+                        property_rid:
+                          type:
+                            - string
+                            - "null"
+                          format: uuid
+                        property_id_slug:
+                          type:
+                            - string
+                            - "null"
+                        publisher_domain:
+                          type:
+                            - string
+                            - "null"
+                        authorized_for:
+                          type:
+                            - string
+                            - "null"
+                        evidence:
+                          type: string
+                        disputed:
+                          type: boolean
+                        created_by:
+                          type:
+                            - string
+                            - "null"
+                        expires_at:
+                          type:
+                            - string
+                            - "null"
+                          format: date-time
+                        created_at:
+                          type: string
+                          format: date-time
+                        updated_at:
+                          type: string
+                          format: date-time
+                        override_applied:
+                          type: boolean
+                        override_reason:
+                          type:
+                            - string
+                            - "null"
+                      required:
+                        - id
+                        - agent_url
+                        - agent_url_canonical
+                        - property_rid
+                        - property_id_slug
+                        - publisher_domain
+                        - authorized_for
+                        - evidence
+                        - disputed
+                        - created_by
+                        - expires_at
+                        - created_at
+                        - updated_at
+                        - override_applied
+                        - override_reason
+                  count:
+                    type: integer
+                required:
+                  - agent_url
+                  - evidence
+                  - include
+                  - rows
+                  - count
+        "400":
+          description: Validation error (missing/empty agent_url, unknown evidence, unknown include)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/authorizations/snapshot:
+    get:
+      operationId: getAgentAuthorizationsSnapshot
+      summary: Bootstrap snapshot for inline verifiers
+      description: |-
+        Streams the full effective authorization set as gzipped NDJSON (one JSON object per line). Consumers persist `X-Sync-Cursor` and tail `/api/registry/feed?entity_type=authorization&cursor=<value>` for deltas.
+
+        **ETag** is the hash of the X-Sync-Cursor — clients can `If-None-Match` to skip a re-pull when nothing has changed. **evidence** defaults to `adagents_json` only; long-run wire size ~150 MB gzipped.
+      tags:
+        - Change Feed
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - raw
+              - effective
+            description: "`effective` (default) applies override layer; `raw` reads base table."
+          required: false
+          description: "`effective` (default) applies override layer; `raw` reads base table."
+          name: include
+          in: query
+        - schema:
+            type: string
+            description: Comma-separated evidence allowlist. Defaults to `adagents_json`.
+            example: adagents_json,agent_claim
+          required: false
+          description: Comma-separated evidence allowlist. Defaults to `adagents_json`.
+          name: evidence
+          in: query
+      responses:
+        "200":
+          description: gzipped NDJSON stream — one authorization row per line.
+          headers:
+            X-Sync-Cursor:
+              description: UUIDv7 cursor for the authorization change feed at snapshot time.
+              schema:
+                type: string
+            ETag:
+              description: Hash of X-Sync-Cursor; clients can If-None-Match.
+              schema:
+                type: string
+            Content-Encoding:
+              description: gzip
+              schema:
+                type: string
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: Newline-delimited JSON, gzip-compressed.
+        "304":
+          description: Not modified — cursor unchanged from If-None-Match.
+        "400":
+          description: Validation error (unknown evidence, unknown include)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/search:
     get:
       operationId: searchAgentProfiles
