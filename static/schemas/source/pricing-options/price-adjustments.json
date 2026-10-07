@@ -3,7 +3,7 @@
   "$id": "/schemas/pricing-options/price-adjustments.json",
   "title": "Price Adjustments",
   "x-added-in": "3.3.0",
-  "description": "Ordered selection-dependent fee and discount rows on a binding fixed-price option. fixed_price is the base rate, charged when the buyer selects no declared value. A row matches when the buyer's selection includes its value (full-identity match). At most one row fires per dimension — the first match in declared order; firing rows apply in declared order to a running total starting at fixed_price (rate rows apply to the running total, so 10% then 10% is x1.21), rounded half away from zero to the option's price precision after each row, never below zero. Omitted or default selections match no row. The resolved total is the purchase's fixed_price. Changing the table requires a new pricing_option_id. Sellers MUST NOT return a table to callers below adcp_version 3.3; consumers treat an unknown dimension as unpurchasable. Normative rules: docs/media-buy/advanced-topics/pricing-models.mdx#selection-dependent-price-adjustments.",
+  "description": "Ordered selection-dependent fee and discount rows on a binding fixed-price option. fixed_price is the base rate, charged when the buyer selects no declared value. A row matches when the buyer's selection includes its value (full-identity match). At most one row fires per dimension — the first match in declared order. Stacking is additive against the base rate: each firing row contributes a delta computed from fixed_price (an amount row contributes its amount, a rate row contributes fixed_price x rate), fees add and discounts subtract, so 10% and 10% from two dimensions add 20% of fixed_price and cross-dimension order does not change the price. Each rate delta is rounded half away from zero to the option's price precision — the greatest of the currency minor-unit exponent, 4 for cpm/vcpm/cpc/cpcv/cpv, and the fewest decimal places that exactly represent fixed_price and each amount (by numeric value, not lexical form) — and the resolved price is the exact sum, never below zero. Omitted or default selections match no row. The resolved total is the purchase's fixed_price and each fired row is recorded in price_breakdown as its currency amount. Changing the table requires a new pricing_option_id. Sellers MUST NOT return a table to callers below adcp_version 3.3; consumers treat an unknown dimension as unpurchasable. Normative rules: docs/media-buy/advanced-topics/pricing-models.mdx#selection-dependent-price-adjustments.",
   "type": "array",
   "items": {
     "oneOf": [
@@ -136,7 +136,7 @@
         "fee",
         "discount"
       ],
-      "description": "fee raises the running total; discount lowers it."
+      "description": "fee adds its delta to the resolved price; discount subtracts it."
     },
     "name": {
       "type": "string",
@@ -148,7 +148,7 @@
       "type": "number",
       "exclusiveMinimum": 0,
       "exclusiveMaximum": 1,
-      "description": "Decimal proportion of the running total at this row's position (0.15 for 15%). Mutually exclusive with amount."
+      "description": "Decimal proportion of the option's fixed_price (0.15 for 15%), never of another row. Mutually exclusive with amount. A premium of 100% or more uses amount."
     },
     "amount": {
       "type": "number",
@@ -164,9 +164,10 @@
   "x-adcp-validation": {
     "verifier_constraints": {
       "selector_resolution": "Each row's ref MUST resolve to a value the same product publishes; matching is full-identity equality after resolution.",
-      "resolution": "One row per dimension (first match); firing rows apply in declared order to a running total from fixed_price; round half away from zero to option price precision per row; never negative (reject with INVALID_REQUEST, never clamp).",
-      "resolved_price_binding": "A buyer-supplied pricing that differs from the resolved result MUST be rejected with INVALID_REQUEST; the seller MUST NOT silently reprice.",
-      "snapshot_rederivation": "In accepted purchase pricing, re-resolving the retained table from base_fixed_price over the purchase's selections equals fixed_price."
+      "resolution": "One row per dimension (first match). Each firing row contributes a delta from fixed_price (amount, or fixed_price x rate rounded half away from zero to price precision); resolved price = fixed_price + sum of fee deltas - sum of discount deltas, independent of cross-dimension order; never negative (reject with INVALID_REQUEST, never clamp).",
+      "price_precision": "Greatest of the currency minor-unit exponent, 4 for cpm/vcpm/cpc/cpcv/cpv, and the fewest decimal places exactly representing fixed_price and each amount, by numeric value.",
+      "resolved_price_binding": "A buyer-supplied pricing that differs from the resolved result MUST be rejected with INVALID_REQUEST; the seller MUST NOT silently reprice and SHOULD return error.details.resolved_fixed_price and resolved_price_breakdown.",
+      "snapshot_rederivation": "In accepted purchase pricing, base_fixed_price plus the recorded fired-row amounts equals fixed_price, and re-resolving the retained table from base_fixed_price over the purchase's selections reproduces them."
     }
   }
 }

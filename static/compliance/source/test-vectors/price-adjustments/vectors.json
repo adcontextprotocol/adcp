@@ -1,5 +1,5 @@
 {
-  "description": "Deterministic resolution vectors for selection-dependent price_adjustments on binding fixed-price pricing options. Each resolution case names a declared option and the buyer's concrete selections (format_option_refs and placement refs, as they appear on the purchase), and asserts the resolved fixed_price and the ordered rows that fire. Rules under test: matching is full-identity equality across encodings; per dimension at most one row fires (the first matching row in declared order); firing rows apply in declared array order to a running total that starts at the option's fixed_price; rate rows apply to the running total at that position; after each row the total is rounded half away from zero to the option's price precision (the greater of the currency minor-unit precision and the most decimal places among fixed_price and row amounts) and never falls below zero. Arithmetic MUST be exact decimal or integer; binary floating point fails the rounding vectors.",
+  "description": "Deterministic resolution vectors for selection-dependent price_adjustments on binding fixed-price pricing options. Each resolution case names a declared option and the buyer's concrete selections, and asserts the resolved fixed_price, the ordered rows that fire, and each fired row's currency amount. Rules under test: matching is full-identity equality across encodings; per dimension at most one row fires (the first matching row in declared order); stacking is additive against the base rate (each delta is computed from fixed_price, never from another row, so cross-dimension order does not change the price); each rate delta is rounded half away from zero to the option's price precision (greatest of the currency minor-unit exponent, 4 for cpm/vcpm/cpc/cpcv/cpv, and the fewest decimal places that exactly represent fixed_price and each amount, by numeric value); the resolved price is the exact sum and never below zero. Arithmetic MUST be exact decimal or integer.",
   "currency_minor_unit_exponent": {
     "USD": 2,
     "JPY": 0
@@ -113,7 +113,7 @@
           },
           "kind": "fee",
           "name": "video_30s_format",
-          "rate": 0.1
+          "rate": 0.001
         }
       ]
     },
@@ -160,6 +160,16 @@
           "kind": "fee",
           "name": "video_30s_format",
           "amount": 2.0
+        },
+        {
+          "dimension": "placement_selection",
+          "placement_ref": {
+            "publisher_domain": "streamhaus.example",
+            "placement_id": "premium_home"
+          },
+          "kind": "fee",
+          "name": "premium_home_placement",
+          "rate": 0.15
         }
       ]
     },
@@ -213,11 +223,11 @@
         }
       ]
     },
-    "cpm_jpy": {
-      "pricing_option_id": "cpm_jpy_rate_card",
-      "pricing_model": "cpm",
+    "flat_jpy": {
+      "pricing_option_id": "flat_jpy_rate_card",
+      "pricing_model": "flat_rate",
       "currency": "JPY",
-      "fixed_price": 150,
+      "fixed_price": 1000,
       "price_adjustments": [
         {
           "dimension": "format_option",
@@ -227,7 +237,28 @@
           },
           "kind": "fee",
           "name": "video_30s_format",
-          "rate": 0.15
+          "rate": 0.0005
+        }
+      ]
+    },
+    "cpv_five_decimals": {
+      "pricing_option_id": "cpv_usd_five_decimals",
+      "pricing_model": "cpv",
+      "currency": "USD",
+      "fixed_price": 0.00125,
+      "parameters": {
+        "view_threshold": 0.5
+      },
+      "price_adjustments": [
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "fee",
+          "name": "video_30s_format",
+          "rate": 0.1
         }
       ]
     }
@@ -251,11 +282,14 @@
         "fixed_price": 22.0,
         "applied": [
           "video_30s_format"
+        ],
+        "adjustment_amounts": [
+          2.0
         ]
       }
     },
     {
-      "id": "ordered_adjustments_amount_then_rate",
+      "id": "amount_and_rate_add_against_base",
       "option": "cpm_rate_card",
       "selection": {
         "format_option_refs": [
@@ -275,15 +309,19 @@
         }
       },
       "expect": {
-        "fixed_price": 25.3,
+        "fixed_price": 25.0,
         "applied": [
           "video_30s_format",
           "premium_home_placement"
+        ],
+        "adjustment_amounts": [
+          2.0,
+          3.0
         ]
       }
     },
     {
-      "id": "declared_order_is_application_order",
+      "id": "cross_dimension_order_does_not_change_price",
       "option": "cpm_placement_first",
       "selection": {
         "format_option_refs": [
@@ -307,6 +345,10 @@
         "applied": [
           "premium_home_placement",
           "video_30s_format"
+        ],
+        "adjustment_amounts": [
+          3.0,
+          2.0
         ]
       }
     },
@@ -332,7 +374,8 @@
       },
       "expect": {
         "fixed_price": 20.0,
-        "applied": []
+        "applied": [],
+        "adjustment_amounts": []
       }
     },
     {
@@ -346,7 +389,8 @@
       },
       "expect": {
         "fixed_price": 20.0,
-        "applied": []
+        "applied": [],
+        "adjustment_amounts": []
       }
     },
     {
@@ -372,11 +416,14 @@
         "fixed_price": 23.0,
         "applied": [
           "premium_home_placement"
+        ],
+        "adjustment_amounts": [
+          3.0
         ]
       }
     },
     {
-      "id": "rates_across_dimensions_compound",
+      "id": "rates_across_dimensions_add",
       "option": "cpm_two_dimension_rates",
       "selection": {
         "format_option_refs": [
@@ -396,15 +443,19 @@
         }
       },
       "expect": {
-        "fixed_price": 12.1,
+        "fixed_price": 12.0,
         "applied": [
           "video_30s_format",
           "premium_home_placement"
+        ],
+        "adjustment_amounts": [
+          1.0,
+          1.0
         ]
       }
     },
     {
-      "id": "rounds_half_away_from_zero_per_step",
+      "id": "rate_delta_rounds_half_away_from_zero_to_price_precision",
       "option": "cpm_rounding",
       "selection": {
         "format_option_refs": [
@@ -418,14 +469,49 @@
         }
       },
       "expect": {
-        "fixed_price": 1.27,
+        "fixed_price": 1.1512,
         "applied": [
           "video_30s_format"
+        ],
+        "adjustment_amounts": [
+          0.0012
         ]
       }
     },
     {
-      "id": "surcharge_applies_to_net_of_declared_breakdown",
+      "id": "surcharges_apply_to_net_of_declared_breakdown",
+      "option": "cpm_declared_breakdown",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "selected",
+          "placement_refs": [
+            {
+              "publisher_domain": "streamhaus.example",
+              "placement_id": "premium_home"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "fixed_price": 25.0,
+        "applied": [
+          "video_30s_format",
+          "premium_home_placement"
+        ],
+        "adjustment_amounts": [
+          2.0,
+          3.0
+        ]
+      }
+    },
+    {
+      "id": "declared_breakdown_with_amount_row_only",
       "option": "cpm_declared_breakdown",
       "selection": {
         "format_option_refs": [
@@ -442,11 +528,14 @@
         "fixed_price": 22.0,
         "applied": [
           "video_30s_format"
+        ],
+        "adjustment_amounts": [
+          2.0
         ]
       }
     },
     {
-      "id": "sub_cent_unit_price_keeps_option_precision",
+      "id": "sub_cent_unit_price_keeps_four_decimals",
       "option": "cpv_sub_cent",
       "selection": {
         "format_option_refs": [
@@ -463,12 +552,15 @@
         "fixed_price": 0.0131,
         "applied": [
           "video_30s_format"
+        ],
+        "adjustment_amounts": [
+          0.0006
         ]
       }
     },
     {
-      "id": "zero_exponent_currency_rounds_to_whole_units",
-      "option": "cpm_jpy",
+      "id": "declared_five_decimals_set_price_precision",
+      "option": "cpv_five_decimals",
       "selection": {
         "format_option_refs": [
           {
@@ -481,9 +573,36 @@
         }
       },
       "expect": {
-        "fixed_price": 173,
+        "fixed_price": 0.00138,
         "applied": [
           "video_30s_format"
+        ],
+        "adjustment_amounts": [
+          0.00013
+        ]
+      }
+    },
+    {
+      "id": "flat_rate_zero_exponent_currency_rounds_to_whole_units",
+      "option": "flat_jpy",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 1001,
+        "applied": [
+          "video_30s_format"
+        ],
+        "adjustment_amounts": [
+          1
         ]
       }
     },
@@ -606,7 +725,10 @@
       "supplied_fixed_price": 20.0,
       "expect": "INVALID_REQUEST",
       "error_field": "pricing.fixed_price",
-      "resolved_fixed_price": 22.0
+      "resolved_fixed_price": 22.0,
+      "resolved_adjustment_amounts": [
+        2.0
+      ]
     }
   ],
   "identity_cases": [
