@@ -1,0 +1,403 @@
+{
+  "source": "Exhibit A of the unanimous written consent dated August 6, 2026",
+  "description": "Public directory additions only; does not confer billing status or application permissions. Remove entries manually when appropriate.",
+  "members": [
+    {
+      "display_name": "Chime",
+      "category": "Marketer"
+    },
+    {
+      "display_name": "Coca-Cola",
+      "category": "Marketer"
+    },
+    {
+      "display_name": "BRIDGE",
+      "category": "Marketing Agency"
+    },
+    {
+      "display_name": "Butler/Till",
+      "category": "Marketing Agency"
+    },
+    {
+      "display_name": "Draft Digital",
+      "category": "Marketing Agency"
+    },
+    {
+      "display_name": "Garritz International",
+      "category": "Marketing Agency"
+    },
+    {
+      "display_name": "Horizon Media",
+      "category": "Marketing Agency"
+    },
+    {
+      "display_name": "IDM Group",
+      "category": "Marketing Agency"
+    },
+    {
+      "display_name": "TAU Marketing Solutions",
+      "category": "Marketing Agency"
+    },
+    {
+      "display_name": "WPP",
+      "category": "Marketing Agency"
+    },
+    {
+      "display_name": "CVS Media Exchange",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "Global",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "iHeartMedia",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "McClatchy",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "Media.net",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "News Corp",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "O-N-X",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "Talpa Network",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "THE HOOK",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "The Weather Company",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "TimeTree",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "Yahoo",
+      "category": "Publisher"
+    },
+    {
+      "display_name": "Addiscovery",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Adgentek",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Adobe",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Advendio",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Adzymic",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Affinity Answers",
+      "category": "Technology Provider",
+      "aliases": [
+        "AffinityAnswers"
+      ]
+    },
+    {
+      "display_name": "Affinity Global",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "AudioStack",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Awarion",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Bidcliq",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "BidMachine",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "BigAds",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Bionic Advertising Systems",
+      "category": "Technology Provider",
+      "aliases": [
+        "Bionic"
+      ]
+    },
+    {
+      "display_name": "Boltive",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Boostr",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Calder",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Celtra",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "citadelx.ai",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Content Ignite",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Cora AI",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "DanAds",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "DoubleVerify",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Dstillery",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "ebiquity",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Elemental TV",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "emberos",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Encypher Corporation",
+      "category": "Technology Provider",
+      "aliases": [
+        "Encypher"
+      ]
+    },
+    {
+      "display_name": "Equativ",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Fairo",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "goTom",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "HUMAN",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Infillion",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "InMobi",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Kawarizmi Group",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Kiln",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Klever Programmatic",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Knower Tech",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Kyber1",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Limelight",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "LiveRamp",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "LoopMe",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Magnite",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Mediaocean",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Mogl",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Moloco",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Newton Research",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "NHN ACE",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "OpenX",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Optable",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "PadSquad",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Passendo",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Postindustria",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Propulso",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "PubMatic",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Pubx",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Radio Net Media (AdTonos)",
+      "category": "Technology Provider",
+      "aliases": [
+        "AdTonos",
+        "Radio Net Media"
+      ]
+    },
+    {
+      "display_name": "ResponsiveAds",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Salesforce",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Scope3",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Sigma Software Americas",
+      "category": "Technology Provider",
+      "aliases": [
+        "Sigma Software",
+        "Sigma Software Group"
+      ]
+    },
+    {
+      "display_name": "Spectrum Reach",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Spotwise",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Swivel",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Teal",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Transfon",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Triton Digital",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "TVIQ",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Unity3d",
+      "category": "Technology Provider",
+      "aliases": [
+        "Unity",
+        "Unity Technologies"
+      ]
+    },
+    {
+      "display_name": "Veylan",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Voise Tech",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "VOW",
+      "category": "Technology Provider"
+    },
+    {
+      "display_name": "Zeroma",
+      "category": "Technology Provider"
+    }
+  ]
+}
