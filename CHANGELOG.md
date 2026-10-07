@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.1.26
+
+### Patch Changes
+
+- 83e02b0: Fix `field_contains` path in `creative/evaluator_auth` storyboard to use `experimental_features[*]` so the array-membership check fans out over elements instead of comparing the whole array to the scalar value. Every conformant agent that declares `creative.evaluator` was incorrectly failing this step.
+- bdd9d99: Backport the hosted-grader buyer brand from #7803 to the four 3.1 media-buy governance scenarios. The scenarios and their new sandbox test kit consistently use `hosted-grader.adcontextprotocol.org`, whose brand.json lists the sandbox governance agent and its governance-only JWKS. This allows hosted multi-agent routing to register the same buyer account and governance relationship that it authenticates.
+
+  Only buyer/test-kit identities change; the existing 3.1 steps, schemas, validations, and grading behavior remain unchanged. Published release artifacts are preserved. Refs #7758.
+
+- ba2f0dd: Restrict maintained 3.1 release publication to the approved committed version and original release merge. Require current-branch, final-head maintainer permission and provenance checks; stage and verify the exact four signed GitHub assets before publication; preserve immutable R2 bytes with conditional creation. Remove publisher re-signing, direct Changesets tagging and unfiltered historical uploads. Existing released artifacts and protocol semantics remain unchanged.
+- 356df06: Recheck final-head human approval after all four signed release assets are staged, before making a maintained release public. Bind verification to the original producer commit, maintained branch, repository and push event while preserving the committed archive and signature bytes during same-version recovery. CDN verification refuses failed tuple downloads or checksums before signature verification.
+
 ## 3.1.25
 
 ### Patch Changes
