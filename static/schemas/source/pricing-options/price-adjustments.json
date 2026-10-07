@@ -3,146 +3,147 @@
   "$id": "/schemas/pricing-options/price-adjustments.json",
   "title": "Price Adjustments",
   "x-added-in": "3.3.0",
-  "description": "Ordered selection-dependent fee and discount rows on a binding fixed-price option; fixed_price is the base rate. One row fires per dimension (first match in declared order). Stacking is additive against the base rate: each row's delta is computed from fixed_price, so cross-dimension order does not change the price. Changing the table requires a new pricing_option_id. Sellers MUST NOT return a table to callers below adcp_version 3.3; consumers treat an unknown dimension as unpurchasable. Normative rules: docs/media-buy/advanced-topics/pricing-models.mdx#selection-dependent-price-adjustments.",
+  "description": "Ordered selection-dependent fee and discount rows on a binding fixed-price option; fixed_price is the base rate. One row fires per dimension (first match in declared order); stacking is additive against the base rate, so cross-dimension order does not change the price. Changing the table requires a new pricing_option_id. Sellers MUST NOT return a table to callers below adcp_version 3.3. Normative rules: docs/media-buy/advanced-topics/pricing-models.mdx#selection-dependent-price-adjustments.",
   "type": "array",
   "items": {
-    "type": "object",
-    "properties": {
-      "dimension": {
-        "type": "string",
-        "enum": [
-          "format_option",
-          "placement_selection"
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "const": "format_option"
+          },
+          "format_option_ref": {
+            "$ref": "/schemas/core/format-option-ref.json",
+            "description": "Matches when the purchase selects it; MUST resolve to a value of the same product."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "fee",
+              "discount"
+            ],
+            "description": "fee adds its delta; discount subtracts it."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Name carried into the resolved price_breakdown."
+          },
+          "rate": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1,
+            "description": "Proportion of the option's fixed_price (0.15 = 15%), never of another row. Exclusive with amount; use amount for 100% or more."
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Amount in the option's currency per pricing unit. Exclusive with rate."
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "required": [
+          "dimension",
+          "format_option_ref",
+          "kind",
+          "name"
         ],
-        "description": "Value this row prices; names which ref field is required."
-      },
-      "format_option_ref": {
-        "$ref": "/schemas/core/format-option-ref.json",
-        "description": "Matches when the purchase's format_option_refs includes it; MUST resolve to a format option of the product."
-      },
-      "placement_ref": {
-        "description": "Matches when a mode selected placement_selection includes it; MUST resolve to a targetable placement of the product.",
-        "anyOf": [
+        "oneOf": [
           {
-            "allOf": [
+            "required": [
+              "rate"
+            ]
+          },
+          {
+            "required": [
+              "amount"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "const": "placement_selection"
+          },
+          "placement_ref": {
+            "description": "Matches when the purchase selects it; MUST resolve to a value of the same product.",
+            "anyOf": [
               {
-                "$ref": "/schemas/core/placement-ref.json"
+                "allOf": [
+                  {
+                    "$ref": "/schemas/core/placement-ref.json"
+                  },
+                  {
+                    "required": [
+                      "publisher_domain"
+                    ]
+                  }
+                ]
               },
               {
-                "required": [
-                  "publisher_domain"
-                ]
+                "$ref": "/schemas/core/placement-identity.json"
               }
             ]
           },
-          {
-            "$ref": "/schemas/core/placement-identity.json"
+          "kind": {
+            "type": "string",
+            "enum": [
+              "fee",
+              "discount"
+            ],
+            "description": "fee adds its delta; discount subtracts it."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Name carried into the resolved price_breakdown."
+          },
+          "rate": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1,
+            "description": "Proportion of the option's fixed_price (0.15 = 15%), never of another row. Exclusive with amount; use amount for 100% or more."
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Amount in the option's currency per pricing unit. Exclusive with rate."
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
           }
-        ]
-      },
-      "kind": {
-        "type": "string",
-        "enum": [
-          "fee",
-          "discount"
+        },
+        "required": [
+          "dimension",
+          "placement_ref",
+          "kind",
+          "name"
         ],
-        "description": "fee adds its delta; discount subtracts it."
-      },
-      "name": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 64,
-        "description": "Name carried into the resolved price_breakdown."
-      },
-      "rate": {
-        "type": "number",
-        "exclusiveMinimum": 0,
-        "exclusiveMaximum": 1,
-        "description": "Proportion of the option's fixed_price (0.15 = 15%), never of another row. Exclusive with amount; use amount for 100% or more."
-      },
-      "amount": {
-        "type": "number",
-        "exclusiveMinimum": 0,
-        "description": "Amount in the option's currency per pricing unit. Exclusive with rate."
-      },
-      "description": {
-        "type": "string",
-        "maxLength": 256
-      },
-      "ext": {
-        "$ref": "/schemas/core/ext.json"
-      }
-    },
-    "required": [
-      "dimension",
-      "kind",
-      "name"
-    ],
-    "allOf": [
-      {
-        "if": {
-          "properties": {
-            "dimension": {
-              "const": "format_option"
-            }
-          },
-          "required": [
-            "dimension"
-          ]
-        },
-        "then": {
-          "required": [
-            "format_option_ref"
-          ],
-          "not": {
+        "oneOf": [
+          {
             "required": [
-              "placement_ref"
+              "rate"
+            ]
+          },
+          {
+            "required": [
+              "amount"
             ]
           }
-        }
-      },
-      {
-        "if": {
-          "properties": {
-            "dimension": {
-              "const": "placement_selection"
-            }
-          },
-          "required": [
-            "dimension"
-          ]
-        },
-        "then": {
-          "required": [
-            "placement_ref"
-          ],
-          "not": {
-            "required": [
-              "format_option_ref"
-            ]
-          }
-        }
+        ],
+        "additionalProperties": false
       }
-    ],
-    "additionalProperties": false,
-    "anyOf": [
-      {
-        "required": [
-          "rate"
-        ]
-      },
-      {
-        "required": [
-          "amount"
-        ]
-      }
-    ],
-    "not": {
-      "required": [
-        "rate",
-        "amount"
-      ]
-    }
+    ]
   },
   "minItems": 1,
   "maxItems": 20,
@@ -150,8 +151,7 @@
     "verifier_constraints": {
       "selector_resolution": "Each row's ref MUST resolve to a value the same product publishes; matching is full-identity equality.",
       "price_precision": "Greatest of the currency minor-unit exponent, 4 for cpm/vcpm/cpc/cpcv/cpv, and the fewest decimals exactly representing fixed_price and each amount, by numeric value.",
-      "resolved_price_binding": "A buyer-supplied pricing that differs from the resolved result MUST be rejected with INVALID_REQUEST carrying resolved_fixed_price and resolved_price_breakdown; never silently reprice.",
-      "snapshot_rederivation": "base_fixed_price plus the recorded fired-row amounts equals fixed_price."
+      "resolved_price_binding": "A buyer-supplied pricing that differs from the resolved result MUST be rejected with INVALID_REQUEST carrying resolved_fixed_price and resolved_price_breakdown."
     }
   }
 }
