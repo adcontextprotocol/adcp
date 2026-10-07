@@ -1147,6 +1147,39 @@
           ],
           "description": "DOOH delivery detail to inject. Used by simulate_delivery for single-package buys; the latest injected block replaces the previous simulated DOOH detail and MUST surface at totals.dooh_metrics and by_package[0].dooh_metrics. Multi-package simulations require a future package-scoped form and MUST reject this media-buy-scoped field."
         },
+        "property_delivery": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["publisher_domain", "identifier", "impressions", "spend"],
+            "properties": {
+              "publisher_domain": { "type": "string" },
+              "identifier": { "type": "object", "required": ["type", "value"] },
+              "impressions": { "type": "number", "minimum": 0 },
+              "spend": { "type": "number", "minimum": 0 }
+            },
+            "additionalProperties": true
+          },
+          "description": "Property-grain rows for simulate_delivery on single-package buys; each MUST be a complete core/property-delivery-metrics.json row. The latest array replaces the previous one and is neither dated nor added to totals. Sandbox sellers MUST build by_property from exactly these rows (applying limit, sort_by, sort_direction), MUST NOT synthesize property delivery from catalog eligibility, and SHOULD validate each row against the full row schema. Injected rows are exempt from threshold suppression. Multi-package buys or delivery_date MUST be rejected with INVALID_PARAMS."
+        },
+        "installment_property_delivery": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["installment_ref", "publisher_domain", "identifier", "impressions", "spend"],
+            "properties": {
+              "installment_ref": { "type": "object", "required": ["collection_ref", "installment_id"] },
+              "publisher_domain": { "type": "string" },
+              "identifier": { "type": "object", "required": ["type", "value"] },
+              "impressions": { "type": "number", "minimum": 0 },
+              "spend": { "type": "number", "minimum": 0 }
+            },
+            "additionalProperties": true
+          },
+          "description": "Installment x property rows for simulate_delivery on single-package buys; each MUST be a complete core/installment-property-delivery-metrics.json row, where installment_ref.collection_ref.publisher_domain is the collection owner and publisher_domain namespaces the host property. Same replace, undated, suppression-exempt, and rejection rules as property_delivery; sandbox sellers MUST build by_installment_property from exactly these rows."
+        },
         "conversions": {
           "type": "integer",
           "minimum": 0,

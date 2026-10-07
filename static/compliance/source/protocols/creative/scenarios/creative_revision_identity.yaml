@@ -5,6 +5,8 @@ title: "Creative revision identity is immutable and reads back exactly"
 category: creative
 summary: "Verifies capability-gated revision echo, immutable content reuse, non-mutation on mismatch, and current library readback."
 track: creative
+requires:
+  - controller
 
 required_tools:
   - get_adcp_capabilities

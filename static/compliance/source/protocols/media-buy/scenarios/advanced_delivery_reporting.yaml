@@ -5,6 +5,8 @@ title: "Seller narrows metrics and reports delivery by canonical format"
 category: media_buy_seller
 summary: "Verifies requested-metric narrowing, time-threshold video views, negotiated format breakdowns, truncation disclosure, and applied-sort echoes."
 track: reporting
+requires:
+  - controller
 
 required_tools:
   - get_products

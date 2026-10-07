@@ -4,6 +4,18 @@ import request from 'supertest';
 import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
+import { randomUUID } from 'node:crypto';
+import { getSlackUsers, getUserChannels, isSlackConfigured } from '../../src/slack/client.js';
+import { syncSlackUsers } from '../../src/slack/sync.js';
+import { SlackDatabase } from '../../src/db/slack-db.js';
+
+// Keep sync, account linking, chapter sync and SQL real; control Slack transport.
+vi.mock('../../src/slack/client.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/slack/client.js')>()),
+  isSlackConfigured: vi.fn().mockReturnValue(true),
+  getSlackUsers: vi.fn().mockResolvedValue([]),
+  getUserChannels: vi.fn().mockResolvedValue([]),
+}));
 
 // Override only the auth gates; spread the real module so HTTPServer setup
 // still finds optionalAuth and other exports it imports.
@@ -501,17 +513,73 @@ describe('Admin Endpoints Integration Tests', () => {
   });
 
   describe('POST /api/admin/slack/auto-link-suggested', () => {
+    const ownedFixtures: Array<{ slackId: string; userId: string; orgId: string; email: string; identityId?: string }> = [];
+    const ownedSlackIds = new Set<string>();
+
+    async function createOwnedMember() {
+      const id = randomUUID().replaceAll('-', '');
+      const fixture: typeof ownedFixtures[number] = {
+        slackId: `UHTTP${id.toUpperCase()}`,
+        userId: `user_http_boundary_${id}`,
+        orgId: `org_http_boundary_${id}`,
+        email: `fixture-${id}@http-boundary.invalid`,
+      };
+      ownedFixtures.push(fixture);
+      ownedSlackIds.add(fixture.slackId);
+      // Nonpersonal membership makes the real domain assignment return locally.
+      await pool.query(
+        'INSERT INTO organizations (workos_organization_id, name, is_personal) VALUES ($1, $2, false)',
+        [fixture.orgId, 'Fixture HTTP Organization']
+      );
+      // Main's credential lifecycle guard requires a live user and its primary identity.
+      await pool.query('INSERT INTO users (workos_user_id, email) VALUES ($1, $2)', [fixture.userId, fixture.email]);
+      const identity = await pool.query<{ identity_id: string }>(
+        'SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1 AND is_primary = true',
+        [fixture.userId]
+      );
+      fixture.identityId = identity.rows[0].identity_id;
+      await pool.query(
+        'INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email) VALUES ($1, $2, $3)',
+        [fixture.userId, fixture.orgId, fixture.email]
+      );
+      return fixture;
+    }
+
+    function fetchedUser(fixture: { slackId: string; email: string }) {
+      return {
+        id: fixture.slackId, team_id: 'THTTPFIXTURE', name: 'fixture-http-user',
+        is_bot: false, deleted: false,
+        profile: { email: fixture.email, display_name: 'Fixture HTTP User', real_name: 'Fixture HTTP User' },
+      };
+    }
+
     beforeEach(async () => {
-      // Clean up any existing test data
-      await pool.query('DELETE FROM slack_user_mappings WHERE slack_user_id LIKE $1', ['U_test_%']);
+      vi.mocked(isSlackConfigured).mockReset().mockReturnValue(true);
+      vi.mocked(getSlackUsers).mockReset().mockResolvedValue([]);
+      vi.mocked(getUserChannels).mockReset().mockResolvedValue([]);
     });
 
     afterEach(async () => {
-      // Clean up test data
-      await pool.query('DELETE FROM slack_user_mappings WHERE slack_user_id LIKE $1', ['U_test_%']);
+      for (const slackId of ownedSlackIds) {
+        await pool.query('DELETE FROM slack_user_mappings WHERE slack_user_id = $1', [slackId]);
+      }
+      ownedSlackIds.clear();
+      for (const fixture of ownedFixtures.splice(0)) {
+        await pool.query('DELETE FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2',
+          [fixture.userId, fixture.orgId]);
+        await pool.query('DELETE FROM users WHERE workos_user_id = $1 AND email = $2', [fixture.userId, fixture.email]);
+        if (fixture.identityId) {
+          await pool.query('DELETE FROM identities WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM identity_workos_users WHERE identity_id = $1)',
+            [fixture.identityId]);
+        }
+        await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [fixture.orgId]);
+      }
     });
 
     it('should return linked count and errors array', async () => {
+      const fixture = await createOwnedMember();
+      vi.mocked(getSlackUsers).mockResolvedValue([fetchedUser(fixture)]);
+      expect((await pool.query('SELECT 1 FROM slack_user_mappings WHERE slack_user_id = $1', [fixture.slackId])).rows).toEqual([]);
       const response = await request(app)
         .post('/api/admin/slack/auto-link-suggested')
         .expect(200);
@@ -520,16 +588,86 @@ describe('Admin Endpoints Integration Tests', () => {
       expect(response.body).toHaveProperty('errors');
       expect(typeof response.body.linked).toBe('number');
       expect(response.body.errors).toBeInstanceOf(Array);
+      expect(response.body.linked).toBe(1);
+      expect(response.body.errors).toEqual([]);
+      expect(getSlackUsers).toHaveBeenCalledOnce();
+      expect(getUserChannels).toHaveBeenCalledExactlyOnceWith(fixture.slackId);
+      const stored = await pool.query(
+        'SELECT slack_email, slack_display_name, workos_user_id, mapping_status, mapping_source, last_slack_sync_at FROM slack_user_mappings WHERE slack_user_id = $1',
+        [fixture.slackId]
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0]).toMatchObject({
+        slack_email: fixture.email, slack_display_name: 'Fixture HTTP User', workos_user_id: fixture.userId,
+        mapping_status: 'mapped', mapping_source: 'email_auto',
+      });
+      expect(stored.rows[0].last_slack_sync_at).not.toBeNull();
+      expect((await pool.query('SELECT email FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2',
+        [fixture.userId, fixture.orgId])).rows).toEqual([{ email: fixture.email }]);
+
+      const repeated = await request(app).post('/api/admin/slack/auto-link-suggested').expect(200);
+      expect(repeated.body.linked).toBe(0);
+      expect(repeated.body.errors).toEqual([]);
+      expect(getSlackUsers).toHaveBeenCalledTimes(2);
+      expect(getUserChannels).toHaveBeenCalledExactlyOnceWith(fixture.slackId);
+    });
+
+    it('should retain the DB link pass when the upstream Slack list rejects', async () => {
+      const existing = await createOwnedMember();
+      const notFetched = await createOwnedMember();
+      await new SlackDatabase().upsertSlackUser({
+        slack_user_id: existing.slackId, slack_email: existing.email,
+        slack_display_name: 'Existing Fixture', slack_real_name: 'Existing Fixture', slack_is_bot: false, slack_is_deleted: false,
+      });
+      vi.mocked(getSlackUsers).mockRejectedValue(new Error('Synthetic list unavailable'));
+      const syncResult = await syncSlackUsers();
+      expect(syncResult).toEqual({ total_synced: 0, new_users: 0, updated_users: 0, auto_mapped: 0,
+        errors: ['Sync failed: Synthetic list unavailable'] });
+      expect((await pool.query('SELECT 1 FROM slack_user_mappings WHERE slack_user_id = $1', [notFetched.slackId])).rows).toEqual([]);
+
+      const response = await request(app).post('/api/admin/slack/auto-link-suggested').expect(200);
+      expect(response.body.linked).toBe(1);
+      expect(response.body.errors).toEqual([]);
+      expect(getSlackUsers).toHaveBeenCalledTimes(2);
+      expect(getUserChannels).toHaveBeenCalledExactlyOnceWith(existing.slackId);
+      expect((await pool.query('SELECT workos_user_id, mapping_status, mapping_source FROM slack_user_mappings WHERE slack_user_id = $1',
+        [existing.slackId])).rows).toEqual([{ workos_user_id: existing.userId, mapping_status: 'mapped', mapping_source: 'email_auto' }]);
+      expect((await pool.query('SELECT 1 FROM slack_user_mappings WHERE slack_user_id = $1', [notFetched.slackId])).rows).toEqual([]);
+      expect(response.text).not.toContain('Synthetic list unavailable');
+    });
+
+    it('should report a real link failure without changing the owned mapping', async () => {
+      const fixture = await createOwnedMember();
+      vi.mocked(getSlackUsers).mockResolvedValue([fetchedUser(fixture)]);
+      const originalMapUser = SlackDatabase.prototype.mapUser;
+      const spy = vi.spyOn(SlackDatabase.prototype, 'mapUser').mockImplementation(function (this: SlackDatabase, input) {
+        if (input.slack_user_id === fixture.slackId) return Promise.reject(new Error('Synthetic map failure'));
+        return originalMapUser.call(this, input);
+      });
+      try {
+        const response = await request(app).post('/api/admin/slack/auto-link-suggested').expect(200);
+        expect(response.body.linked).toBe(0);
+        expect(response.body.errors).toEqual(['1 users failed to link']);
+        expect(spy).toHaveBeenCalledWith({ slack_user_id: fixture.slackId, workos_user_id: fixture.userId, mapping_source: 'email_auto' });
+        expect(getUserChannels).not.toHaveBeenCalled();
+        expect((await pool.query('SELECT workos_user_id, mapping_status, mapping_source FROM slack_user_mappings WHERE slack_user_id = $1',
+          [fixture.slackId])).rows).toEqual([{ workos_user_id: null, mapping_status: 'unmapped', mapping_source: null }]);
+        expect(response.text).not.toContain('Synthetic map failure');
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('should return 0 linked when no matches exist', async () => {
+      const slackId = `UHTTPNOMATCH${randomUUID().replaceAll('-', '').toUpperCase()}`;
+      ownedSlackIds.add(slackId);
       // Create an unmapped Slack user with no matching AAO email
       await pool.query(
         `INSERT INTO slack_user_mappings (
           slack_user_id, slack_email, slack_display_name, slack_real_name,
           slack_is_bot, slack_is_deleted, mapping_status
         ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        ['U_test_no_match', 'no-match-email@nonexistent-domain.invalid', 'No Match', 'No Match User', false, false, 'unmapped']
+        [slackId, 'no-match-email@nonexistent-domain.invalid', 'No Match', 'No Match User', false, false, 'unmapped']
       );
 
       const response = await request(app)
