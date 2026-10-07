@@ -300,9 +300,11 @@ separates rows.
 - **Segments and chunks (fixed in the contract).**
   - A *segment* is up to 500 consecutive rows. Segments are the unit of verification
     and of paged reads, so a 500-row delivery page touches at most two segments.
-  - A *chunk* is up to 20 segments and at most 8 MiB of canonical bytes. Chunks are the
-    unit of storage: one object, or one PostgreSQL body.
-  - Boundaries are deterministic given the row sequence.
+  - A *chunk* is up to 20 segments (10,000 rows) and at most 8 MiB of canonical bytes.
+    Chunks are the unit of storage: one object, or one PostgreSQL body.
+  - Boundaries are deterministic given the row sequence. A new chunk starts when the
+    current chunk holds 10,000 rows, or when appending the next row would exceed
+    8 MiB. Segments restart at each chunk boundary and close every 500 rows.
   - A single row larger than 8 MiB forms its own segment and chunk.
 - **Manifest.** Each chunk records `{chunk_index, first_ordinal, row_count, byte_count,
   sha256, segments: [{first_ordinal, row_count, byte_offset, byte_count, sha256}]}`.
