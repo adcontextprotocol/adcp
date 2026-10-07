@@ -1,268 +1,893 @@
-# Shared SDK persistence contracts
+# Shared SDK persistence: canonical reporting layout and pluggable row storage
 
-**Status:** Proposal for review; no new protocol requirements or storage compatibility claims.
+**Status:** Proposal for review. Reference-SDK persistence only; no new protocol requirements.
 **Date:** 2026-10-07
-**Scope:** Official JavaScript and Python SDKs, starting with reporting and idempotency.
+**Scope:** Official JavaScript and Python SDKs. Reporting first, then idempotency.
 
-## Recommendation
+## Summary
 
-Create a language-neutral persistence package containing canonical record
-contracts, PostgreSQL migrations, Redis key/value contracts and scripts, and
-shared conformance fixtures. Both SDKs consume pinned releases of these assets.
-Their public APIs and database drivers remain native to each language.
-
-Start the source in a dedicated `persistence/` directory in this repository.
-Version and release its artifacts independently of SDK releases. A separate
-repository can follow if ownership or release operations warrant it; repository
-creation is not a prerequisite for agreeing on the contracts.
-
-Keep a versioned reporting archive as the explicit migration/export path for
-existing installations. Converge new installations on
-one physical PostgreSQL layout per supported component. Qualify switching SDKs
-against that layout before claiming compatibility. Qualify concurrent writers
-separately.
+1. **One shared PostgreSQL layout for Reliable Reporting, owned outside either SDK.**
+   Both SDKs ship the same `adcp_reporting_*` tables, migrations, lock keys, catalog
+   manifests and conformance fixtures from one versioned asset package. Switching
+   SDKs, or running both against one database, stops being a data migration.
+2. **Revision headers stay in PostgreSQL. Row bytes can live in object storage.** A
+   revision header holds identity, finality, supersession, the protocol content binding
+   and a digest of its chunk manifest. Rows are canonical JSONL chunks stored in
+   PostgreSQL (the default) or in object storage: GCS, S3, Azure Blob, or a local
+   filesystem. Every read is verified against digests committed in PostgreSQL.
+3. **Warehouses get a derived copy, not the authoritative one.** A *warehouse sink*
+   loads committed revisions from the change feed into adopter-defined BigQuery (or
+   other warehouse) tables, once per tick. Table names, columns, types, partitioning
+   and retention are the adopter's. The sink is never read for serving or
+   verification, so it can never break a hash.
+4. **PostgreSQL stays the only coordination database.** Locks, leases, gapless revision
+   numbering, the change feed and lifecycle compare-and-set need row locks and
+   multi-statement transactions. BigQuery and object stores hold bytes; they never run
+   the ledger.
+5. **Retention is explicit and protocol-aligned.** Superseded snapshots stay readable
+   for the advertised `status_retention_days`, as the protocol requires. Volume is
+   controlled three ways:
+   - moving bytes out of PostgreSQL;
+   - not minting revisions for unchanged pulses;
+   - advertising a retention window that matches what the adopter actually needs.
 
 ## Problem and evidence
 
-The SDKs implement the same protocol but currently define their own durable
-storage. Differences extend beyond naming:
+The SDKs implement the same protocol but define incompatible durable storage. Both
+keep every reporting row in PostgreSQL forever.
 
 | Surface | JavaScript SDK | Python SDK | Consequence |
 | --- | --- | --- | --- |
-| Reporting ledger | `adcp_reporting_*`, retained native JSONB records plus indexed columns | `reporting_*`, normalized records and separate row storage | Renaming tables does not permit switching SDKs. |
-| PostgreSQL idempotency | `adcp_idempotency`, one `scoped_key`, explicit retention horizon | `adcp_idempotency`, `(scope_key, key)`, different retained columns | The same table name already describes incompatible layouts. |
-| Idempotency coordination | Durable claims and owner-fenced transitions | Execution locks around lookup, handler execution and cache commit | Common columns alone would not align crash recovery. |
+| Table naming | `adcp_reporting_*` | `reporting_*` (newer private tables `adcp_reporting_*`) | Renaming alone does not permit switching SDKs. |
+| Record style | Thin indexed columns plus the full domain object in `data JSONB` | Fully columnar; JSONB only for nested values | No shared reader is possible today. |
+| Revision rows | Inline in `adcp_reporting_revisions.data` | Separate `reporting_revision_rows(revision_id, ordinal, row_payload JSONB)` | Python already has the header/row split; JS does not. |
+| Revision ordering | Gapless `revision_number`, lease-fenced insert | Supersession chain plus partial unique indexes. No root constraint, so two parentless revisions can fork an obligation | Neither constraint set is complete. |
+| Work lease | Per obligation, fenced by generation on every write | Per configuration generation; writes carry no fencing token | Different safety models. |
+| Account lock key | `hashtextextended('adcp-reporting-account:'‖id, 0)` | `hashtext('adcp.reporting:'‖id)` | Two SDKs on one database do not exclude each other. |
+| Control totals in the content hash | `{name, value, value_type}` (protocol shape) | The Core path hashes `{name, value}` pairs, then serves typed totals | Python Core digests cannot be recomputed by buyers when totals are non-empty. |
+| Identifier collation | Database default | `COLLATE "C"` | Ordering and uniqueness can differ. |
+| Change feed | `recorded_at` timestamps under the account lock; persisted snapshot documents | Global `BIGSERIAL` change table, read per (account, consumer); stateless snapshots | Different cursors and recovery semantics. |
+| Schema verification | None at runtime | Required-object catalog fingerprints at startup | Only Python detects DDL drift. |
+| Retention | Revisions and rows are never deleted | A `readable` flag; rows are never deleted | Unbounded growth at pulse cadence. |
+| PostgreSQL idempotency | `adcp_idempotency`, one `scoped_key` | `adcp_idempotency`, `(scope_key, key)` | The same table name already means two layouts. |
 
-These observations refer to JavaScript snapshot `68614aa0` and Python snapshot
-`a5d56a68`. Implementation references:
+Snapshots: JS `68614aa0`; Python `a5d56a68` (idempotency) and `3c5fa308` (reporting).
+References:
 [JS reporting](https://github.com/adcontextprotocol/adcp-client/blob/68614aa0ce84046c78d76dda9721ffbf9328639a/src/lib/reporting/ledger/postgres.ts),
 [Python reporting](https://github.com/adcontextprotocol/adcp-client-python/blob/a5d56a683661a79d76861ea6d1043a3aceda77f8/src/adcp/reporting/ledger/reporting_ledger.sql),
 [JS idempotency](https://github.com/adcontextprotocol/adcp-client/blob/68614aa0ce84046c78d76dda9721ffbf9328639a/src/lib/server/idempotency/backends/pg.ts),
 [JS claim coordination](https://github.com/adcontextprotocol/adcp-client/blob/68614aa0ce84046c78d76dda9721ffbf9328639a/src/lib/server/idempotency/store.ts),
 [Python idempotency](https://github.com/adcontextprotocol/adcp-client-python/blob/a5d56a683661a79d76861ea6d1043a3aceda77f8/src/adcp/server/idempotency/backends.py).
 
-Language differences justify different object models, async APIs and drivers.
-They do not require different durable identities, evidence encodings, expiry
-rules or transaction semantics. Separate implementations need one executable
-contract to prevent those differences from accumulating.
+**Volume is the second problem.** Social and retail adapters pull pacing snapshots every
+15 minutes and an official report daily. As an illustration, take 2,000 feeds × 96
+pulses × 1,000 rows of about 350 bytes each. That is about 192,000 revisions, 192 million
+rows and 67 GB of canonical JSON per day, all in the transactional database. Adopters
+that already land the same platform data in a warehouse then store it twice. Neither
+SDK offers a supported way to put rows anywhere else.
 
-## Ownership and boundaries
+## Design principles
 
-| Owner | Responsibility |
-| --- | --- |
-| Shared persistence package | Canonical records, backend layouts, migrations, atomic operations, compatibility manifest and conformance fixtures |
-| Each SDK | Driver integration, native APIs, record projection, transaction participation and contract enforcement |
-| Deployment operator | Run approved migrations once, select deployment namespace, coordinate cutover and retain recovery material |
+- **Coordinate in PostgreSQL, store bytes anywhere.** Anything that needs a lock, a
+  lease, a sequence or a compare-and-set lives in PostgreSQL. Only immutable,
+  hash-bound row bytes may live outside it.
+- **PostgreSQL is the trust anchor.** External stores are untrusted for integrity.
+  Every read is verified against digests committed in PostgreSQL before rows are
+  released.
+- **Stored canonical bytes are authoritative.** Hashed content is stored as the exact
+  canonical bytes the writer produced. Readers verify bytes and never re-serialize
+  parsed values. Cross-language verification therefore never depends on number parsing
+  or timestamp formatting.
+- **Derived copies never feed back.** Warehouse sinks, analytics views and caches are
+  downstream of the ledger. Nothing is served or verified from them.
+- **No SDK's object graph is the schema.** Shared tables use explicit columns for
+  identity, relationships, scheduling and protocol-defined evidence, and JSONB only for
+  extensible payloads.
+- **Credentials never reach the database, and the database cannot redirect writes.**
+  Bindings hold non-secret coordinates. Clients and the set of permitted destinations
+  come from host code.
+- **Fail closed, visibly.** Expired, unavailable and corrupt rows produce distinct
+  operator signals and are never reported as one another. The buyer-facing surface
+  follows the protocol mapping in §3.5.
 
-JavaScript can provide the first migration CLI. Its SDK is not the schema
-authority. Python also needs an administrative runner using the same SQL assets;
-a Python deployment should not require the JS SDK to manage its database.
-Reviewed migration tools may apply the same assets directly.
+## 1. Ownership and release model
 
-For each component, require review from both SDK maintainers. Changes to protocol
-semantics follow the protocol's existing governance and release process. This
-package specifies reference SDK persistence, not a mandatory database technology
-for every AdCP implementation. Custom stores can implement the semantic contract
-without adopting the reference PostgreSQL or Redis layout.
+Create a language-neutral persistence package. It contains:
 
-Shared storage covers evidence and state that affect future behavior: accepted
-configuration generations, obligations, revisions and rows, adjustments,
-consumer history, idempotency records, and eventually durable worker and delivery
-state. Local object caches, connection pools and logging remain implementation
-details. Durable extensions get explicit namespaces and compatibility declarations;
-they cannot silently become language-specific requirements for reading shared data.
+- canonical record contracts;
+- PostgreSQL migrations and generated catalog manifests;
+- Redis key/value contracts and scripts;
+- the canonical row encoding;
+- shared conformance fixtures.
 
-## Package contents and release model
-
-The following is a proposed source layout, not an existing package:
+Both SDKs consume pinned releases. Public APIs and database drivers stay native to each
+language.
 
 ```text
 persistence/
   manifest.json
   contracts/
     reporting-core/
+    reporting-row-storage/
+    reporting-warehouse-sink/
     idempotency/
   postgres/
-    reporting-core/migrations/
-    idempotency/migrations/
+    reporting-core/{migrations,catalog}/
+    reporting-row-storage/{migrations,catalog}/
+    idempotency/{migrations,catalog}/
   redis/
     idempotency/
-  fixtures/
-  conformance/
+  fixtures/            # golden canonical bytes, chunk/segment manifests, digests
+  conformance/         # backend-neutral qualification cases
 ```
 
-Publish immutable archives containing these assets and checksums. npm and Python
-distributions can bundle the same bytes. SDKs pin exact artifact releases and
-operate from local assets; startup and migration do not fetch a mutable latest
-definition from the network.
+- **Location.** Start the source in a `persistence/` directory in this repository. Move
+  it to a separate repository only if ownership or release operations warrant it.
+- **Artifacts.** Publish immutable archives with checksums. npm and PyPI distributions
+  bundle the same bytes. SDKs pin exact artifact releases. Startup and migration never
+  fetch a mutable "latest" definition over the network.
+- **Versions.** Protocol, persistence contract, component migration revision and SDK
+  are versioned separately. The manifest records each component's dependencies,
+  read/write contract versions, installed features and asset checksums. A reporting
+  upgrade does not require an unrelated idempotency migration.
+- **Migrations.** One history table, `adcp_persistence_migrations`, records component,
+  revision, checksum and applied time. Migrations run under one deployment-wide
+  advisory lock. Applied revisions are immutable. A non-transactional step needs a
+  separately specified, resumable procedure.
+- **Catalog verification.** Each component revision ships a generated catalog manifest:
+  fingerprints of the required tables, columns, collations, defaults, constraints,
+  indexes and triggers. Both SDKs verify required-object fingerprints at startup and
+  ignore extra objects. That catches adopter DDL drift, which a migration history table
+  cannot. This generalizes Python's `required_schema.json` model.
+- **Administration.** Production migration is an explicit administrative action.
+  Runtime SDKs inspect the manifest and catalog and refuse incompatible access; they
+  never invent DDL. Existing helpers (`REPORTING_LEDGER_MIGRATION`, `create_schema()`)
+  become thin wrappers around the shared runner. JS ships the first CLI. Python ships
+  its own runner over the same assets, so a Python deployment never needs Node.
+- **Governance.** Each component requires review from both SDK maintainers. This is
+  reference persistence, not a mandatory technology for AdCP implementations. Custom
+  stores may implement the semantic contracts on other substrates.
 
-Track protocol version, persistence contract version, component migration
-revision and SDK version separately. The manifest records each component's
-dependencies, supported read/write contracts, installed features and asset
-checksums. SDK releases declare which combinations they support. A reporting
-upgrade should not require an unrelated idempotency migration.
+## 2. Canonical reporting layout
 
-Use one migration history table in the selected PostgreSQL namespace, with
-component, revision, checksum and application time. Apply migrations under a
-shared deployment migration lock. Previously applied revisions are immutable.
-Transactional migrations roll back on failure; any required nontransactional
-operation needs a separately specified, resumable procedure.
+### 2.1 Conventions
 
-Production migration is an explicit administrative action. Runtime SDKs inspect
-compatibility and refuse incompatible access rather than inventing their own
-DDL. Existing bootstrap helpers can wrap the shared runner to preserve APIs.
-Read-only participants need no DDL permissions. Use additive upgrades first,
-and document supported old/new readers and writers before allowing overlap.
+- **Names.** Table prefix `adcp_reporting_`, in a deployment-selected PostgreSQL schema.
+  Legacy names are migration inputs only, never aliases that let old writers continue.
+- **Identifiers.** Every identifier column is `TEXT COLLATE "C"`.
+  `reporting_revision_id` is constrained to `^[A-Za-z0-9_.:-]{1,255}$`. Digests the SDK
+  produces are lowercase hex. Comparisons against buyer-echoed digests are
+  case-insensitive, matching the protocol pattern `^[A-Fa-f0-9]{64}$`.
+- **Clocks.** Every authority instant (`recorded_at`, lease expiry, retention cutoffs)
+  comes from `clock_timestamp()` in the committing database. It is rendered with
+  exactly six fractional digits.
+- **Installation identity.** The row-storage migration creates a singleton
+  `adcp_persistence_installation(installation_id UUID)`. A restore of the same
+  authority keeps it. An independently writable clone must mint a new one before it
+  writes (§3.4).
+- **Lock keys.** One account lock:
+  `pg_advisory_xact_lock(hashtextextended('adcp.reporting.account:' || installation_id || ':' || account_id, 0))`.
+  - Every writer takes it at transaction level, after any policy-row lock and before
+    any other lock.
+  - Transaction-level locks survive transaction-pooling proxies; session locks do not.
+  - The contract lists every lock key and its order. Lock keys are part of the
+    persistence contract version.
+  - **Rolling upgrades.** A transitional contract version takes the SDK's legacy key,
+    then the shared key, in that order. It does so until the manifest records that no
+    legacy-key writer remains, so old and new workers of one SDK keep excluding each
+    other.
+- **Change feed.** A sequence-based change table is written in the same transaction as
+  each record. `nextval` is taken only after the account lock, so per-account sequence
+  order equals commit order and `changes_after` cursors never skip a lower number that
+  commits later.
+- **Payload JSONB.** Extensible evidence goes in an `evidence JSONB` column with a
+  declared schema per contract version. When a payload field is also projected into a
+  column, the contract states which side is authoritative.
+- **PostgreSQL floor.** PostgreSQL 13 or later.
 
-## Shared backend contracts
+### 2.2 Core decisions
 
-### Reporting PostgreSQL
+Each row proposes how to resolve a divergence. Exact DDL is a Stage 0 deliverable; this
+table fixes the semantics it must encode.
 
-Use a common `adcp_` prefix for new reference tables, with a deployment-selected
-PostgreSQL namespace. Both SDKs receive the same namespace configuration.
-Legacy names remain migration inputs, not aliases that permit old writers to
-continue against a new layout.
+| Topic | JS today | Python today | Proposal |
+| --- | --- | --- | --- |
+| Write safety | Obligation lease with generation fencing | Account lock, content-derived IDs, replay compare | **Database invariants are the safety contract.** Under the account lock, the rules in the next row serialize writers, and an unfenced stale writer loses cleanly with a numbering or supersession conflict. Obligation-lease fencing remains an optional scheduling optimization. |
+| Revision ordering | Gapless `revision_number`; `NOT EXISTS official` predicate | Supersession chain; `_one_official`, `_one_successor` | **Both, database-enforced:** `UNIQUE(obligation, revision_number)` with number 1 as the root, which closes Python's two-root gap; `supersedes` is the number − 1 revision; one official per obligation; one successor per revision. |
+| Configuration identity | Surrogate `configuration_id`; unique `(account, cfg, version)` | Natural key `(account, consumer, cfg, version)` | Natural key including `consumer_id`. JS writes its resolved account boundary as the consumer, preserving today's isolation. |
+| Revision `kind` column | Always equals `finality` | Absent | Drop it. |
+| Account on child rows | Revisions and adjustments lack `account_id` | Present, with account-qualified composite FKs | Present everywhere, with account-qualified composite FKs, including the chunk tables. |
+| Content binding | `content_sha256` (= binding) plus JSON | `revision_content_sha256`, `row_count`, `control_totals` (pairs) | Explicit columns: `binding_algorithm`, `revision_content_sha256`, `canonical_byte_count`, `row_count`, `control_totals` in protocol shape (§2.4), and `row_manifest_sha256`. The name `content_sha256` is not reused. |
+| Replay identity | Fingerprint of the stored object minus rows | Separate fingerprint over a field list | Replay compares **specified immutable columns**. Row location and `rows_state` are never part of replay identity. |
+| Adjustments | Full corrected rows plus a rows-only hash | Control-total deltas only | Protocol shape: deltas, no rows. JS's retained adjustment rows move to the row store under digest profile `rows_v1` in Stage 1 (no data loss). Whether to keep them is decided in Stage 3. |
+| Change feed | `recorded_at` plus persisted snapshot documents | Global sequence change table | Sequence-based change table (§2.1). Snapshot documents become an optional cache. |
+| Readability | None | Bidirectional `readable`; `readable_at_commit` in identity | `rows_state` (§3.2). Python's `readable=false` maps to `unavailable`, and `readable_at_commit` is preserved in `evidence`. An operator restore may move `unavailable` back to `live` after re-verification. |
+| Currency | Inside `data` | Column with CHECK and immutability trigger | Column with CHECK and immutability trigger. |
+| Immutability | Application-enforced | Triggers on several evidence columns | Triggers on every immutable column. Only the row-location columns (§3.2) are mutable, guarded by `row_location_version`. |
 
-Prefer explicit identity, relationship and scheduling columns, with JSONB for
-extensible evidence payloads. Neither SDK's complete native object graph becomes
-the persisted canonical record. If evidence fields are projected into indexed
-columns, specify how writes enforce agreement with the retained payload.
+### 2.3 Revision header (sketch)
 
-The contract defines account-qualified references and exact identifier equality,
-row order, frozen definition/schema bindings, coverage, currency and units,
-finality, and supersession. Consumer statement identity includes its account and
-authenticated principal. Preserve stronger uniqueness where the protocol requires
-it; do not rename existing IDs to fit a narrower implementation key.
+```sql
+CREATE TABLE adcp_reporting_revisions (
+  reporting_revision_id        TEXT COLLATE "C" PRIMARY KEY
+                               CHECK (reporting_revision_id ~ '^[A-Za-z0-9_.:-]{1,255}$'),
+  account_id                   TEXT COLLATE "C" NOT NULL,
+  reporting_obligation_id      TEXT COLLATE "C" NOT NULL,
+  revision_number              INTEGER NOT NULL CHECK (revision_number > 0),
+  finality                     TEXT NOT NULL CHECK (finality IN ('snapshot', 'official')),
+  supersedes_reporting_revision_id TEXT COLLATE "C",
+  -- protocol content binding (immutable)
+  binding_algorithm            TEXT NOT NULL
+                               CHECK (binding_algorithm IN ('rfc8785_jcs_v1', 'legacy_py_core_pairs_v0')),
+  revision_content_sha256      TEXT COLLATE "C" NOT NULL CHECK (revision_content_sha256 ~ '^[0-9a-f]{64}$'),
+  canonical_byte_count         BIGINT NOT NULL CHECK (canonical_byte_count > 0),
+  row_count                    BIGINT NOT NULL CHECK (row_count >= 0),
+  control_totals               JSONB NOT NULL,            -- protocol shape, §2.4
+  row_manifest_sha256          TEXT COLLATE "C" NOT NULL, -- §3.1; immutable
+  -- protocol metadata (immutable)
+  observed_at TIMESTAMPTZ NOT NULL, data_through TIMESTAMPTZ, finalized_at TIMESTAMPTZ,
+  finality_basis TEXT, finality_policy_id TEXT,
+  source_publication_id TEXT COLLATE "C", source_manifest_sha256 TEXT COLLATE "C",
+  canonical_content_digest JSONB,
+  evidence                     JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  -- row location (the only mutable group; never part of replay identity)
+  row_binding_id               TEXT COLLATE "C" NOT NULL,
+  row_location_version         INTEGER NOT NULL DEFAULT 1,
+  rows_state                   TEXT NOT NULL DEFAULT 'live'
+                               CHECK (rows_state IN ('live', 'pruning', 'pruned', 'unavailable')),
+  rows_state_changed_at        TIMESTAMPTZ,
+  UNIQUE (reporting_obligation_id, revision_number),
+  UNIQUE (account_id, reporting_revision_id)
+  -- plus account-qualified composite FKs to the obligation and to the predecessor
+);
+CREATE UNIQUE INDEX adcp_reporting_revisions_one_official
+  ON adcp_reporting_revisions (reporting_obligation_id) WHERE finality = 'official';
+CREATE UNIQUE INDEX adcp_reporting_revisions_one_successor
+  ON adcp_reporting_revisions (supersedes_reporting_revision_id)
+  WHERE supersedes_reporting_revision_id IS NOT NULL;
+```
 
-Specify timestamp precision, numeric ranges, exact decimal representation and
-canonicalization explicitly. Migration preserves existing content digests and
-evidence values; changing a decimal, rounding a timestamp or coercing a row
-number to make it importable is not a migration. Unsupported evidence causes a
-checked refusal. The archive retains original producer metadata until an
-explicit source-binding conversion is available.
+### 2.4 Hashing and number contract
 
-### Idempotency PostgreSQL and Redis
+- **Revision binding.** `revision_content_sha256` is SHA-256 over the RFC 8785 JCS
+  bytes of `{reporting_revision_id, row_count, control_totals, reporting_rows}`, as the
+  protocol defines. Rows are concatenated in served order. In storage that is ordinal
+  order, which is immutable. `control_totals` uses `reporting-control-total.json`:
+  `{name, value, value_type[, unit]}` with canonical string values.
+- **Python Core totals.** Python's Core path hashes `{name, value}` pairs, then serves
+  typed totals. A buyer recomputing the digest from the wire fails whenever totals are
+  non-empty, so this is a conformance bug. Python writes protocol-shape totals before
+  any shared-layout claim.
+  - Existing pair-hashed revisions are imported with
+    `binding_algorithm = 'legacy_py_core_pairs_v0'`. That value is import-only, never
+    written.
+  - Exact reads of those revisions carry an operator diagnostic.
+  - Legacy revisions with empty totals are byte-identical and import as
+    `rfc8785_jcs_v1`.
+- **Write-side number domain.** Writers emit RFC 8785 bytes. JS uses its existing
+  `canonicalize`; Python uses `rfc8785.dumps`, already a core dependency. Writers refuse:
+  - non-finite numbers;
+  - integers beyond ±(2^53 − 1), which must be strings in the row schema;
+  - lone surrogates;
+  - duplicate object keys, detected while parsing source input.
 
-Agree on the semantic state machine before finalizing the physical layout.
-It covers deployment/tenant/principal scope, account binding where required,
-operation binding, canonical request hashing and its exclusion rules, cached
-response representation, claim ownership, completion, conflicts, recovery and
-retention. Where the protocol requires a reused key on another tool to conflict,
-bind the tool in the request fingerprint rather than giving it a separate slot
-that avoids the conflict. Specify extra scope only for operations whose protocol
-semantics permit it; do not silently change key scope during language migration.
+  `-0` serializes as `0` per RFC 8785; that is not a refusal. The domain is fixed per
+  contract version, not per SDK.
+- **Read side.** Readers verify stored bytes and MUST accept any RFC 8785 number. A
+  reader never re-canonicalizes stored rows for verification. Python's current
+  float-rejecting re-verification in the materializer changes accordingly.
+- **Digest profiles.** Each stored row set declares its profile:
+  - `revision_envelope_v1`: the protocol revision binding.
+  - `rows_v1`: SHA-256 of `JCS(rows)`, used only for JS-retained adjustment rows.
+- **Other protocol digests.**
+  - `canonical_content_digest` is the primary-key-sorted digest under a pinned
+    canonicalization contract. It is mandatory for billing obligations and for
+    materializations that select `canonical_digest`.
+  - `canonical_adjustment_sha256` is required for `consumer_receipt` obligations.
 
-Represent request fingerprints separately from owner tokens and lease
-generations. Specify atomic claim, renewal, completion and release operations,
-including rejection of a stale owner. An expired handler lease does not prove
-that a side effect did not commit. Ambiguous outcomes require reconciliation
-before execution can resume. Keep cached outcomes independent of resource
-deletion for the applicable replay window, and define logical expiry separately
-from physical pruning.
+  Both are stored as evidence and are never recomputed from typed columns.
 
-These contracts implement the applicable
+## 3. Row storage
+
+### 3.1 Canonical row encoding
+
+Rows are stored as **canonical JSONL**: for each row in ordinal order, `JCS(row)`
+followed by a single `\n`. JCS escapes newlines inside strings, so `0x0A` only ever
+separates rows.
+
+- **Segments and chunks (fixed in the contract).**
+  - A *segment* is up to 500 consecutive rows. Segments are the unit of verification
+    and of paged reads, so a 500-row delivery page touches at most two segments.
+  - A *chunk* is up to 20 segments and at most 8 MiB of canonical bytes. Chunks are the
+    unit of storage: one object, or one PostgreSQL body.
+  - Boundaries are deterministic given the row sequence.
+  - A single row larger than 8 MiB forms its own segment and chunk.
+- **Manifest.** Each chunk records `{chunk_index, first_ordinal, row_count, byte_count,
+  sha256, segments: [{first_ordinal, row_count, byte_offset, byte_count, sha256}]}`.
+  The digests cover uncompressed canonical JSONL bytes. The header's immutable
+  `row_manifest_sha256` is SHA-256 over the JCS of the ordered chunk manifests,
+  locators excluded. So a database editor cannot drop, reorder or truncate chunks
+  without failing every read.
+- **Verification.** A reader checks that the manifest digest matches the header. It
+  checks that ordinals are contiguous from 0 and sum to `row_count`. It checks that
+  each segment it releases matches its digest and line count. A full read also
+  verifies `revision_content_sha256`.
+- **Envelope reconstruction.** JCS orders the envelope keys as `control_totals`,
+  `reporting_revision_id`, `reporting_rows`, `row_count`. The preimage is therefore:
+  - `{"control_totals":` + JCS(totals)
+  - `,"reporting_revision_id":` + JCS(id)
+  - `,"reporting_rows":[` + rows + `],"row_count":` + n + `}`
+
+  Here "rows" is the JSONL lines without newlines, joined by `,`. There is no other
+  whitespace. A zero-row revision contains `"reporting_rows":[]`. A verifier streams
+  bytes and never parses a row. This equivalence has been checked against the JS
+  canonicalizer for Unicode, nested values, numeric edge cases and many chunkings.
+  Golden fixtures pin it for both SDKs.
+- **Compression.** Optional per binding (`gzip`, one member). The locator records
+  `physical_sha256` and `physical_byte_count`. A reader:
+  1. aborts the read at `physical_byte_count`;
+  2. verifies `physical_sha256` before inflating;
+  3. rejects trailing data and extra gzip members;
+  4. inflates to at most the manifest's `byte_count`.
+
+  Objects are never stored with `Content-Encoding: gzip` on any provider; they use
+  `application/gzip`. Compressed chunks are read whole, which is why chunks are capped
+  at 8 MiB and SDKs may keep a verified-segment cache.
+- **Empty revisions.** A zero-row revision has an empty manifest and no stored bytes. It
+  is still distinct from a missing revision.
+
+### 3.2 Storage bindings, chunks and write intents
+
+A **storage binding** is an immutable, non-secret description of where row bytes go.
+Revisions record the binding they were written with and their concrete chunk
+locations, so old revisions resolve after configuration changes.
+
+```sql
+CREATE TABLE adcp_reporting_row_bindings (
+  row_binding_id   TEXT COLLATE "C" PRIMARY KEY,
+  kind             TEXT NOT NULL CHECK (kind IN ('postgres', 'object')),
+  provider         TEXT NOT NULL,             -- postgres | gcs | s3 | azure_blob | filesystem | <host>
+  identity_config  JSONB NOT NULL,            -- where bytes live: bucket/container, endpoint host, prefix, key template
+  identity_sha256  TEXT COLLATE "C" NOT NULL, -- sha256(JCS(kind, provider, identity_config))
+  operational_config JSONB NOT NULL,          -- compression, CMEK key name, labels; may change without a new binding
+  namespace_key    TEXT COLLATE "C" NOT NULL, -- sha256(JCS(["adcp.rows.v1", deployment namespace, installation_id]))
+  state            TEXT NOT NULL CHECK (state IN ('active', 'read_only', 'retired')),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  retired_at       TIMESTAMPTZ
+);
+
+CREATE TABLE adcp_reporting_revision_chunks (
+  account_id       TEXT COLLATE "C" NOT NULL,
+  reporting_revision_id TEXT COLLATE "C" NOT NULL,
+  chunk_index      INTEGER NOT NULL CHECK (chunk_index >= 0),
+  first_ordinal    BIGINT NOT NULL,
+  row_count        INTEGER NOT NULL CHECK (row_count > 0),
+  byte_count       BIGINT NOT NULL CHECK (byte_count > 0),
+  sha256           TEXT COLLATE "C" NOT NULL,
+  segments         JSONB NOT NULL,
+  -- location (mutable only through a guarded move, §3.6)
+  object_key       TEXT COLLATE "C",          -- NULL for postgres; indexed for sweeps
+  native_version   TEXT,                      -- GCS generation, S3/Azure version id or ETag
+  physical_sha256  TEXT COLLATE "C",
+  physical_byte_count BIGINT,
+  PRIMARY KEY (reporting_revision_id, chunk_index),
+  FOREIGN KEY (account_id, reporting_revision_id)
+    REFERENCES adcp_reporting_revisions (account_id, reporting_revision_id)
+);
+
+CREATE TABLE adcp_reporting_revision_chunk_bodies (   -- postgres kind only
+  account_id       TEXT COLLATE "C" NOT NULL,
+  reporting_revision_id TEXT COLLATE "C" NOT NULL,
+  chunk_index      INTEGER NOT NULL,
+  body             BYTEA NOT NULL,
+  body_sha256      TEXT COLLATE "C" NOT NULL CHECK (body_sha256 = encode(sha256(body), 'hex')),
+  PRIMARY KEY (reporting_revision_id, chunk_index),
+  FOREIGN KEY (reporting_revision_id, chunk_index)
+    REFERENCES adcp_reporting_revision_chunks (reporting_revision_id, chunk_index)
+);
+
+CREATE TABLE adcp_reporting_row_write_intents (
+  row_binding_id   TEXT COLLATE "C" NOT NULL REFERENCES adcp_reporting_row_bindings,
+  account_id       TEXT COLLATE "C" NOT NULL,
+  reporting_revision_id TEXT COLLATE "C" NOT NULL,
+  revision_content_sha256 TEXT COLLATE "C" NOT NULL,
+  state            TEXT NOT NULL CHECK (state IN ('open', 'sweeping')),
+  owner_token      TEXT COLLATE "C" NOT NULL,
+  created_objects  JSONB NOT NULL DEFAULT '[]', -- [{object_key, native_version}] this installation created
+  expires_at       TIMESTAMPTZ NOT NULL,        -- derived from the database lease expiry, not a host clock
+  PRIMARY KEY (row_binding_id, reporting_revision_id, revision_content_sha256)
+);
+```
+
+- **Inline storage is still split.** The `postgres` kind stores canonical JSONL chunk
+  bodies as `BYTEA`, and the database checks each body's digest. That gives byte-exact
+  cross-SDK verification and about a thousand times fewer tuples than one JSONB value
+  per row. Rows never return to the header.
+- **`rows_state`.**
+  - `live`: rows are readable.
+  - `pruning` / `pruned`: rows were deliberately removed by retention (§4).
+  - `unavailable`: a verified read found bytes missing, a key revoked, or an adopter
+    restore pending. A reader that hits a missing or mismatched chunk first re-reads
+    the header. If the location moved or retention ran, the reader retries or reports
+    expiry. Only a confirmed loss marks `unavailable` and raises an operator alert.
+- **Hold-creating writes.** Receipts, consumer statuses, adjustments and
+  materializations take the account lock and require `rows_state = 'live'` in the same
+  transaction. Pruning cannot race them.
+- **Binding allowlist.** A binding is usable only if its
+  `(provider, identity_config)` appears in a host-code allowlist. The SDK refuses writes
+  and deletes on any binding whose `namespace_key` differs from the locally computed
+  one, including imported bindings. Someone with database write access therefore cannot
+  redirect rows to a bucket they control.
+- **Credentials.** The host maps a binding's `credential_ref` to an official client
+  through a closed map: ADC, workload identity or impersonation on GCP; IAM roles or
+  IRSA on AWS; managed identity on Azure. There is never an environment or file lookup.
+  Per-provider config schemas are closed (`additionalProperties: false`, endpoint host
+  only), so a secret embedded in a URL cannot enter the database.
+
+### 3.3 Row store port
+
+Each SDK exposes the same semantic port, in its own idiom.
+
+```ts
+interface ReportingRowStoreV1 {
+  readonly kind: 'postgres' | 'object';
+  readonly capabilities: { nativeCreateOnly: boolean; rangedReads: boolean };
+  /** Validates the binding, its policy and (for S3-compatible stores) empirical create-only behaviour. */
+  probe(binding: RowBindingV1, ctx: RowStoreContextV1): Promise<void>;
+  /** Writes every chunk create-only. Returns locators plus the subset this call created. A different
+   *  body already at a derived key is CONTENT_CONFLICT; identical bytes are adopted, never recorded as created. */
+  putChunks(input: RowWriteInputV1, ctx: RowStoreContextV1): Promise<RowPutResultV1>;
+  /** Returns verified canonical bytes for one segment range of one chunk. */
+  readSegments(header: RowSetHeaderV1, chunk: RowChunkManifestV1, segments: [number, number], ctx: RowStoreContextV1):
+    Promise<Uint8Array>;
+  /** Deletes exactly the recorded native versions. 'absent' is success. */
+  deleteObjects(binding: RowBindingV1, objects: RowObjectRefV1[], ctx: RowStoreContextV1):
+    Promise<'deleted' | 'absent'>;
+}
+```
+
+- **Guarantees.**
+  - Bytes at a locator never change, either natively or because every read verifies
+    them.
+  - Retries converge, and a concurrent writer with different content cannot replace
+    the first.
+  - Once `putChunks` returns, every chunk is readable.
+  - Deletes target exact recorded versions, so they cannot remove a later object at
+    the same key.
+- **Deadlines.** Every operation has a deadline and honours cancellation. A timeout
+  never means "nothing was written".
+- **Operator error codes.** Stable and secret-free: `INVALID_INPUT`, `CONTENT_CONFLICT`,
+  `ROWS_INTEGRITY_FAILED`, `ROWS_UNAVAILABLE`, `ROWS_EXPIRED`, `PROVIDER_UNAVAILABLE`,
+  `DEADLINE_EXCEEDED`, `ABORTED`, `UNSAFE_BINDING`, `STATE_UNAVAILABLE`. Raw provider
+  errors are never surfaced.
+
+### 3.4 Backends
+
+**`postgres` (default).** Chunk bodies are written in the same transaction as the header.
+This is the only backend where header and rows commit atomically. It suits tests, small
+deployments and small revisions. Batches stay small enough to fit the account-lock
+timeout.
+
+**`object`: GCS, S3, Azure Blob, filesystem.** One object per chunk, written create-only.
+On a precondition failure, the writer reads the existing object and adopts it only if its
+bytes are identical.
+
+| Provider | Create-only write | Conflict | Native version recorded |
+| --- | --- | --- | --- |
+| GCS | `ifGenerationMatch: 0` | 412 | generation |
+| S3 | `If-None-Match: *` on PutObject / CompleteMultipartUpload | 412 (retry on 409) | version id when versioned, else ETag |
+| Azure Blob | `If-None-Match: *` | 409 `BlobAlreadyExists` or 412 | version id or ETag |
+| Filesystem | write temp, `fsync`, `link()` to final name (no-replace) | `EEXIST` | inode + mtime (tests only) |
+
+- **Keys.** Rendered keys MUST begin `{prefix}/{namespace_key}/`. Templates may add:
+  - `{account_key}`
+  - `{period_date}` with a declared format and timezone
+  - `{finality}`
+  - `{revision_key}`
+  - `{content_sha256}` (required)
+  - `{chunk_index}` (required)
+
+  The SDK rejects any rendered key outside the binding's owned prefix. The rendered
+  key is stored, never re-derived.
+- **Account key.**
+  `account_key = sha256(JCS(["adcp.account_key.v1", namespace_key, account_id]))`.
+  A host HMAC key can replace it where account identity is sensitive. Raw account IDs
+  are never placed in keys. Hashed keys are pseudonymous: object sizes and timing still
+  reveal per-account volume.
+- **Default template.**
+  `{prefix}/{namespace_key}/{account_key}/{period_date:yyyy/MM/dd}/{finality}/{revision_key}/{content_sha256}/{chunk_index}.jsonl[.gz]`.
+  The date and finality segments let adopters attach lifecycle rules and load scopes by
+  prefix.
+- **Bucket policy.** Row bindings use a probe profile separate from Managed Delivery.
+  - Required: private access, and uniform bucket-level access on GCS.
+  - Allowed as backstops: versioning, soft delete and retention locks. `pruned` is not
+    "erased" while versioning or soft delete keeps old bytes.
+  - Refused with `UNSAFE_BINDING`: any lifecycle rule or expiration that can delete
+    live rows sooner than the ledger's retention. The check is repeated periodically,
+    not once.
+  - Row buckets and Managed Delivery buckets are separate bindings.
+- **Clones and restores.** A restored replica of the same authority keeps
+  `installation_id`. An independently writable clone (staging from a production
+  snapshot) must mint a new `installation_id` and new bindings before writing or
+  sweeping.
+- **Implementations.** The SDK ships GCS, S3 and Azure Blob providers against the
+  official clients, as optional peer dependencies (Python extras
+  `adcp[reporting-gcs|reporting-s3|reporting-azure]`). It also ships the filesystem
+  provider for tests. Hosts can register other providers, for example R2 or MinIO,
+  behind the same probe.
+
+### 3.5 Write, read and the wire mapping
+
+**Write** (external backends):
+
+1. **Check for replay.** If a header for this revision ID and content already exists,
+   return it without uploading.
+2. **Canonicalize and chunk.** Compute segments, chunks, the manifest digest and the
+   envelope digest, and run the existing binding validation.
+3. **Check the lease budget.** Read the remaining lease from the database. Refuse to
+   upload unless it covers the write deadline plus a margin; renew it if the store
+   supports renewal.
+4. **Transaction A: open or take over the intent.** Upsert the intent for
+   `(binding, revision, content)`. A writer takes over an expired `open` intent but
+   never one in `sweeping`.
+5. **Upload.** Run `putChunks` outside any transaction and without the account lock.
+   Append the objects this call created to `created_objects`.
+6. **Transaction B: commit.** Run the existing `commitRevision` under the account lock:
+   insert the header and chunk manifest, then delete the intent with
+   `WHERE state = 'open' AND owner_token = $owner`. If that delete matches nothing,
+   the transaction fails and the header does not commit.
+
+A crash, lost lease or numbering conflict leaves an intent that the sweep (§4.3)
+resolves. A header never commits without its bytes. A sweep takes an intent to
+`sweeping` under the account lock before deleting, so transaction B can no longer
+commit against it. The `postgres` backend skips steps 3–5 and writes bodies in
+transaction B.
+
+**Read:**
+1. Load the header and manifest with the account check, and require
+   `rows_state = 'live'`.
+2. Verify the manifest digest.
+3. Read only the segments the page needs, and verify each one before releasing rows.
+
+Delivery pages map to segments, and `total_count` comes from the header. The status
+`revision` view is bounded by the same paging. Cursors carry `row_location_version`
+and re-resolve if rows move.
+
+**Metadata-only paths never read rows.** These include the producer, lifecycle
+reconciliation, status ingest, snapshot building, materialization planning and
+notification ports. Managed Delivery claims return the header; the runtime hydrates and
+verifies rows within the adapter's byte limit before calling `deliver()`.
+
+**Wire mapping.**
+- **Inside the retention window**, `ROWS_UNAVAILABLE` and `ROWS_INTEGRITY_FAILED`
+  never become a not-found and never release unverified rows.
+  - An exact read returns `SERVICE_UNAVAILABLE`.
+  - The obligation can no longer be `healthy` or `complete`.
+- **Outside the window**, `ROWS_EXPIRED` returns the same non-disclosing not-found as an
+  unknown ID. The revision leaves every protocol projection, and
+  `scope.ledger_retained_from` advances past its period.
+- **Buyer-facing responses** collapse the operator codes, so a buyer cannot use them to
+  test whether an object exists.
+
+### 3.6 Warehouse sinks and adopter flexibility
+
+A **warehouse sink** is a derived, non-authoritative copy of committed revisions, fed
+from the PostgreSQL change feed. It is never read for serving or verification. Because
+it cannot break a hash, everything about it is adopter-defined:
+
+- project, dataset and table names;
+- column mapping and types (money as `NUMERIC`, never `FLOAT64`);
+- partitioning and clustering;
+- retention.
+
+**BigQuery sink (first implementation).**
+- Each tick, one load job lists the exact objects of revisions committed in that tick.
+  Its job ID is deterministic, derived from the sink, the change-feed cursor range and
+  the batch, so retries are idempotent.
+  - Only committed revisions are loaded; orphans and losing attempts never reach the
+    warehouse.
+  - Ingestion uses the free shared slot pool.
+  - Ninety-six ticks a day sit far below per-table load quotas.
+- Rows land with the adopter's column map applied. Optional columns: `row_jcs STRING`
+  for exact bytes, and `row JSON` for cheap field access.
+- The sink also writes commit metadata: revision ID, obligation, finality, supersession
+  and period.
+- The sink ships a reference **`current_rows` view** that keeps only each obligation's
+  leaf revision: the official revision, otherwise the latest snapshot. Cumulative
+  snapshots double-count spend when summed across revisions, which is the most likely
+  analyst error.
+- `period_date` is defined explicitly: the reporting period's date in the source
+  timezone, for example the ad account's timezone on Meta. Row-level dates are
+  projection columns.
+- Binding options:
+  - `location`, so jobs run in the dataset's region (residency per tenant);
+  - a separate billing project from the data project;
+  - a CMEK `kms_key_name`;
+  - table and job labels for cost attribution;
+  - a reservation assignment;
+  - separate impersonated service accounts for writer, reader and sweeper.
+- All calls work through VPC Service Controls restricted endpoints. Identifiers are
+  validated and quoted, and values are always query parameters.
+- Shared analytics datasets are never granted to tenant principals. Per-tenant
+  analytics use a per-tenant dataset sink or row-access policies.
+- **Sink retention is the adopter's.** Ledger row retention governs serving copies
+  only. Superseded snapshots are the intraday pacing curves analysts want, and a sink
+  may keep them indefinitely.
+
+**Recommended GCP deployment:** an `object` binding on GCS, plus a BigQuery load-job
+sink into a native table. GCS gives create-only writes, reads in tens of milliseconds and
+negligible storage cost. BigQuery gets typed, partitioned, analyst-ready rows. That is
+the "metadata in PostgreSQL, raw partitioned data in the warehouse" split, without a
+second authoritative copy. External or BigLake tables over the prefix suit low volume or
+ad hoc use only: pulse volume produces hundreds of thousands of small objects a day.
+
+**Other flexibility:**
+- **Choosing a binding per revision.** The host supplies
+  `selectRowBinding({account_id, adapter_id, feed_purpose, finality, canonical_byte_count})`.
+  `adapter_id` comes from the reporting service, which knows the adapter. Example
+  routes: inline under 256 KiB, a tenant-specific bucket for one agency, a shared
+  bucket for everyone else. Several bindings can be active at once.
+- **Per-tenant isolation.** A bucket, prefix or project per tenant is just another
+  binding.
+- **Moving rows between backends.**
+  1. Copy and verify each chunk on the new binding.
+  2. Compare-and-set the chunk locations and `row_location_version`.
+  3. Delete the old versions after a grace period longer than the longest read
+     deadline.
+
+  A move whose destination key equals a source key is refused, so a move can never
+  delete the only copy.
+- **Source-manifest reuse.** The JS producer already pins its source objects by SHA-256
+  and size. A future `reference` kind could serve rows from those pinned objects
+  through the pinned adapter transform, as a documented, verified exception to "never
+  re-serialize". It is out of scope until an adopter needs it (§9).
+
+## 4. Retention
+
+### 4.1 Protocol constraints
+
+- **Metadata.** `status_retention_days` is the minimum period for which obligation,
+  revision and materialization metadata remain queryable.
+- **Superseded snapshots.** `reporting-revision.json` says provisional restatements
+  "preserve the superseded snapshot for the advertised retention window". Exact reads
+  by `reporting_revision_id` are not limited to current revisions.
+  `get_reporting_status` says all historical revisions retained under the window
+  appear in the ledger. Superseded snapshot content therefore stays readable for
+  `status_retention_days`.
+- **Healthy and complete obligations.** `core_readability` requires an authoritative
+  revision readable through `get_media_buy_delivery` and reporting webhooks for
+  `healthy` and `complete` obligations.
+- **Managed Delivery.** `resource_retention_days` and `resource_retained_until` govern
+  materializations.
+- **Period alignment.** `scope.ledger_retained_from` is a period boundary across every
+  selected configuration generation. Obligations, revisions, adjustments, consumer
+  statuses and receipts for a period therefore expire together.
+
+### 4.2 Policy
+
+- **Retained as a unit.** Every revision's header, manifest and rows are retained for at
+  least `status_retention_days`. The window is anchored at the later of publication and
+  obligation completion, and expiry is period-aligned. Rows outlive that window while a
+  receipt, consumer status, adjustment or live materialization still names the
+  revision.
+- **After expiry.** The period's records leave the protocol projection together, and
+  `ledger_retained_from` advances. Headers may persist longer for internal audit, but
+  they are not served.
+- **Configuring a shorter window.** A deployment that needs less pulse history
+  advertises a shorter `status_retention_days`. A row retention shorter than the
+  advertised window is non-conformant, and the SDK refuses it.
+- **Unchanged pulses.** When a pulse's canonical rows are byte-identical to the current
+  leaf's, the producer MAY skip minting a revision. Identity is judged by comparing
+  chunk manifests, not `revision_content_sha256`, which binds the revision ID.
+  - Instead it records an internal observation. Observations never change a wire field:
+    `observed_at` and `data_through` stay those of the leaf, which the protocol permits
+    as a conservative value. Health is unaffected because the leaf still satisfies the
+    obligation.
+  - Observations are retained as `stabilized` finality evidence until the slice's
+    official revision is finalized.
+
+### 4.3 Pruning and intent sweeps
+
+- **Pruning.**
+  1. In one transaction under the account lock, mark an expired period's revisions
+     `pruning`, after re-checking holds.
+  2. Delete the recorded object versions. Deletion is idempotent and resumable.
+  3. Mark the revisions `pruned`.
+
+  External bytes are never deleted first. The `postgres` backend deletes bodies in
+  step 1's transaction.
+- **Intent sweeps.** Under the account lock, move an expired `open` intent with no
+  committed header to `sweeping`. Then delete only its `created_objects`, at their
+  recorded versions, and drop the intent.
+  - Adopted objects are never recorded as created, so they are never swept.
+  - A locator named by any header or unexpired intent, in any binding, is skipped.
+  - Created objects carry `adcp-installation` and `adcp-intent` metadata.
+  - A listing-based backstop is off by default. When enabled, it deletes only objects
+    whose metadata names this installation and an expired local intent.
+- **Scheduling.** The production service schedules pruning, intent sweeps and the
+  existing snapshot and checkpoint sweep. Today JS exports
+  `sweepExpiredReportingLedgerState`, but nothing schedules it.
+
+## 5. Concurrency contract across SDKs
+
+The shared layout is qualified for **concurrent mixed-SDK writers**, not only sequential
+handoff. That requires:
+
+- identical lock keys, lock order and timeouts, including the transitional dual-key
+  rule (§2.1);
+- database-enforced revision invariants as the safety contract (§2.2);
+- the change table written after the account lock, in the same transaction as each
+  record;
+- database-clock instants only;
+- startup catalog verification;
+- a recorded installed-feature set. An SDK that cannot read an installed component (for
+  example, a provider it lacks) refuses the affected work rather than skipping it.
+
+## 6. Idempotency
+
+Idempotency stays in scope as a later stage. The semantic state machine is agreed before
+the physical layout. It covers:
+
+- deployment, tenant and principal scope;
+- account binding where required;
+- operation binding (a reused key on another tool conflicts);
+- canonical request hashing and its exclusions;
+- cached response representation;
+- claim ownership with owner tokens and lease generations;
+- completion, conflicts and ambiguous-outcome reconciliation;
+- logical versus physical expiry.
+
+PostgreSQL gets one shared DDL and operation contract. Redis gets versioned key
+encoding, value schemas, clock rules and shared Lua scripts with defined cluster key
+placement. The store alone cannot make arbitrary external side effects atomic.
+These contracts implement the
 [security and idempotency rules](../docs/building/by-layer/L1/security.mdx).
-[DR-0021](../governance/decisions/DR-0021-idempotency-ledger-outlives-resource.md)
-provides related rationale but is currently marked proposed; this proposal does
-not ratify it or introduce new wire errors.
+[DR-0021](../governance/decisions/DR-0021-idempotency-ledger-outlives-resource.md) is
+related but still proposed; this document does not ratify it.
 
-PostgreSQL gets one shared DDL and operation contract. Redis gets versioned,
-unambiguous key encoding, value schemas, authoritative clock rules, retention
-rules and shared Lua scripts. Define cluster key placement for multi-key
-operations. A backend format version is deployment/component-specific, not
-language-specific; changing versions requires an explicit transition that
-preserves live claims rather than making existing keys disappear.
+## 7. Adoption plan
 
-Qualify the backend's configured durability as well as its record format. A
-Redis deployment that cannot retain outcomes for the declared replay window
-does not qualify merely because it runs the shared scripts.
-
-PostgreSQL and Redis implement the same observable semantics with different
-physical storage. This does not imply that moving live idempotency state between
-backends is automatically supported. Nor can the store alone guarantee atomicity
-with arbitrary external side effects: same-database operations need documented
-transaction participation, and external operations need durable downstream
-deduplication or reconciliation.
-
-## Adoption plan
+The row-storage tables are new, so they are designed in the canonical shape from day one.
+They ship before the full Core layout converges, which delivers storage relief first
+without doing the work twice.
 
 | Stage | Deliverable | Acceptance gate |
 | --- | --- | --- |
-| 0. Inventory and contracts | Field/state comparison for both SDKs, component boundaries, manifest, preservation/refusal rules and shared fixtures | Both SDK maintainers agree on semantics and identify every unmapped durable field. |
-| 1. Reporting Core | Canonical PostgreSQL layout, immutable migrations, administrative runners and adapters in both SDKs | JS and Python write, read and perform supported sequential handoff against the same database. |
-| 2. Existing installations | Explicit migrations from both legacy layouts into the canonical layout; retained archive and cutover runbook | Evidence readback, rollback and exact retry pass against real legacy stores. |
-| 3. Idempotency | Shared state machine, PostgreSQL operations, Redis format/scripts and SDK integration | Mixed-language retries, contention, stale-owner and crash-recovery cases pass for each backend. |
-| 4. Operational extensions | Managed delivery, receipts/batches, notifications/outboxes, replay protection and durable producer scheduling | Each extension qualifies separately, with installed-feature checks preventing unsupported participation. |
+| 0. Contracts | `persistence/` skeleton and manifest; canonical JSONL encoding, segment/chunk rules and golden fixtures; row-storage DDL and catalog manifest; Core field mapping and decisions; lock-key registry | Both SDK maintainers approve. JS and Python produce byte-identical chunks, manifests and digests for every fixture. |
+| 1. JS row storage | See the PR sequence below | Each provider passes shared conformance against a real or emulated backend. Legacy inline rows migrate without changing any digest. |
+| 2. Python row storage | Python adopts the same tables and encoding. Row location lives in a side table until Stage 3. `reporting_revision_rows` is migrated with verification, then dropped or renamed, not truncated, so pre-chunk binaries fail closed. Protocol-shape control totals; byte-verifying readers. | JS-written chunks verify in Python and vice versa, against one database and one bucket. Any migration mismatch quarantines the revision as `ROWS_INTEGRITY_FAILED`; it is never rewritten. |
+| 3. Canonical Core layout | Shared Core DDL, immutable migrations, catalog manifests; runners in both languages; migrations from both legacy layouts; transitional dual-key locks; cutover runbook | JS and Python write, read and hand off against one database. Concurrent mixed writers pass contention tests. Legacy evidence keeps its original digests. |
+| 4. Idempotency | Shared state machine, PostgreSQL operations, Redis format and scripts | Mixed-language replay, contention, stale-owner and crash-recovery cases pass for each backend. |
+| 5. Operational extensions | Managed delivery, receipts, notifications and outboxes, replay protection, scheduling | Each qualifies separately behind installed-feature checks. |
 
-Keep each stage in small PRs: contract/assets first, one SDK adapter per PR,
-then the shared qualification gate and migration tooling. Do not advertise a
-component as interoperable until both adapters and its storage tests are released.
+**Stage 1 PR sequence (JS).** Each PR is small and carries a changeset.
+1. Canonical JSONL encoder, segmenter, chunker and streaming verifiers, with golden
+   fixtures. No database.
+2. Metadata-only read paths (`listRevisionMetadata` and siblings), switching the
+   producer, lifecycle, status ingest and planner. No schema change.
+3. Paged, verified `readRevisionRows` for the delivery handler, and a bounded status
+   `revision` view.
+4. `REPORTING_ROW_STORAGE_MIGRATION`: installation identity, bindings, chunks, bodies,
+   intents, and nullable location and `rows_state` columns on existing tables.
+5. `postgres` kind behind a `rowStorage` store option, and dual-path reads (inline or
+   chunked).
+6. Managed Delivery hydration in the runtime; header-only claims.
+7. Resumable in-place migration of inline rows. Batches are bounded for the lock
+   timeout, and the guide notes that `VACUUM FULL` or a repack reclaims space.
+8. `ReportingRowStoreV1`, the external write path (replay check, lease budget, fenced
+   intents), the filesystem provider and the conformance suite.
+9. Retention and intent sweeps, scheduled by the production service.
+10. GCS provider.
+11. S3 provider.
+12. Azure Blob provider.
+13. BigQuery load-job warehouse sink with the `current_rows` view.
+14. Guides and migration notes.
 
-The initial archive route has a narrower scope: TypeScript PostgreSQL Core
-evidence to Python's existing layout. Its initial scope excludes managed delivery,
-operational checkpoints and pending claims. Stage 2 adds distinct
-legacy-to-canonical migrations without expanding the initial archive's
-compatibility promise.
+The existing `ReportingLedgerStore` stays source-compatible. New capabilities are
+optional methods that callers feature-detect. `commitRevision` still receives full
+rows, and the store decides where they go. `getRevision` remains as a verified,
+size-capped hydrating read.
 
-For legacy cutover, stop writers and drain or explicitly preserve outstanding
-work, export a consistent account snapshot, preflight it, migrate atomically into
-an empty destination, and verify readback before resuming. Keep the source for
-recovery. After destination writes begin, reverting requires reconciling those
-writes; switching back to a stale source is not a safe rollback. Checkpoints and
-in-flight state transfer only when their component has a specified conversion.
+**Legacy cutover.**
+1. Stop writers, and drain or explicitly preserve outstanding work.
+2. Export a consistent account snapshot and preflight it.
+3. Migrate it atomically into an empty destination.
+4. Verify readback before resuming.
 
-## Qualification and compatibility claims
+Keep the source for recovery. Once destination writes begin, reverting requires
+reconciling them.
 
-Run both adapters against the same real backend namespace in CI. Tests using
-separate SDK databases establish wire interoperability, not shared persistence.
+## 8. Qualification
 
-The qualification suite covers both write/read directions, sequential SDK
-handoff, account isolation, identical-ID replay, conflicting-content refusal,
-zero rows versus missing reports, typed totals, Unicode canonicalization,
-historical supersession and readback of original digests. Migration tests cover
-failed imports, retry, occupied destinations, unknown versions and unsupported
-evidence without partial destination state.
+- **Same backend, both SDKs.** Both adapters run against the same PostgreSQL schema and
+  the same bucket in CI. Separate databases only prove wire interoperability.
+- **Core cases:**
+  - write and read in both directions; sequential handoff; concurrent writers;
+  - rolling upgrade under dual lock keys;
+  - account isolation;
+  - identical-ID replay; conflicting-content refusal;
+  - zero rows versus a missing report;
+  - typed totals; Unicode and JCS number edge cases;
+  - supersession and root uniqueness; readback of original digests;
+  - catalog-drift detection.
+- **Row-storage cases**, per provider:
+  - create-only conflict with identical and different bytes;
+  - a crash after upload but before commit;
+  - intent takeover versus sweep;
+  - a sweep never deleting adopted objects;
+  - chunk tampering, truncation and reordering, in the bucket and in PostgreSQL;
+  - a deleted object (`ROWS_UNAVAILABLE`);
+  - pruning racing a reader (expiry, never integrity failure);
+  - pruning racing a hold-creating write;
+  - moves with colliding keys;
+  - decompression limits;
+  - key-template and allowlist refusal;
+  - an empirical create-only probe on S3-compatible stores;
+  - the wire mapping for every row-state.
+- **Sink cases:**
+  - idempotent load-job retry;
+  - orphan exclusion;
+  - `current_rows` leaf selection across restatements.
+- **Compatibility matrix.** Published per component and artifact version, distinguishing
+  export/import, sequential handoff and concurrent participation.
 
-Idempotency qualification includes a completed JS request replayed by Python
-and the reverse; simultaneous attempts with the same and different payloads;
-stale-owner publication; lease expiry during an ambiguous outcome; deletion of
-the affected resource; logical/physical expiry boundaries; and failure between
-business commit and response publication. Inspect durable outcomes as well as
-responses. Redis tests exercise the real scripts, restart/recovery behavior and
-supported cluster topology.
+## 9. Alternatives considered
 
-Publish a compatibility matrix per component and artifact version distinguishing
-export/import, sequential handoff and concurrent mixed-SDK participation.
-Concurrent writers require shared locks/fencing and dedicated tests. An SDK that
-does not understand an installed behavioral extension refuses participation in
-affected work. The same table layout alone is not a compatibility declaration.
+- **BigQuery as the ledger database.** Rejected. The ledger needs row locks, `SKIP
+  LOCKED` leases, gapless numbering under concurrency, and a change feed committed with
+  each record. BigQuery offers none of these and limits concurrent DML per table.
+- **BigQuery as the authoritative row store.** Deferred.
+  - It works only with exact canonical strings, mandatory re-verification (BigQuery has
+    no row immutability) and attempt filtering.
+  - Point reads take about a second, and the query minimum is 10 MB billed.
+  - Per-revision write streams hit project stream quotas at pulse volume.
+  - The warehouse sink gives analysts typed BigQuery tables without those costs. A
+    `bigquery` row-store kind can be added later behind the same port if an adopter
+    needs a single copy.
+- **Pointing at rows the adopter already stores in a warehouse.** Deferred.
+  - Typical platform landing tables are merged or have partitions overwritten, which
+    breaks earlier revisions.
+  - Selectors re-run per read, which drives warehouse cost.
+  - A selector that misses its account filter mints another tenant's evidence.
+  - Re-deriving bytes from typed columns contradicts the canonical-bytes principle.
+  - The sink covers the analytics need without this.
+- **Rows inline in PostgreSQL, with retention only.** Simpler, but it keeps bulk bytes in
+  the transactional database and makes verification depend on JSONB re-serialization.
+- **One JSONB per row (Python today).** Rejected for storage. It does not preserve
+  canonical bytes, and per-row tuples create very large indexes and vacuum load.
+- **Each SDK designs its own row store.** Rejected. Readers must verify each other's
+  bytes, so encoding, chunking and locators must be shared.
+- **Making one SDK the schema manager.** It ties the other language to that SDK's release
+  cadence and runtime.
 
-## Alternatives and tradeoffs
+## 10. Decisions for review
 
-Making the JS SDK the sole schema manager gives a fast initial implementation
-but ties Python deployments to its release cadence and runtime. A shared asset
-package retains that initial tooling option without assigning permanent ownership
-to one language.
+Recommended:
+- shared package ownership, with source in this repository;
+- independently versioned components and generated catalog manifests;
+- explicit production migrations;
+- the Core decisions in §2.2;
+- row storage (§3) and the BigQuery warehouse sink, shipped first in Stages 1 and 2.
 
-Keeping export-only interoperability minimizes immediate adapter changes but
-leaves every future language switch as a migration and permits storage semantics
-to drift. Matching table names while retaining separate layouts does not address
-that drift. Forking SQL/scripts into each SDK also leaves two editable authorities;
-bundled copies should be checksum-verified outputs of one artifact release.
+Open questions and upstream follow-ups:
 
-Shared contracts introduce coordination cost: both SDKs need to participate in
-format changes, and deployments need a compatibility check and upgrade procedure.
-Component releases, explicit support matrices and staged migration contain that
-cost while preserving independently released language APIs.
-
-## Decisions for review
-
-The recommended decisions are shared package ownership, source initially in this
-repository, independently versioned component artifacts, explicit production
-migrations, and Reporting Core as the first common layout. JS can implement the
-first CLI; both SDKs need independent administrative access to the same assets.
-
-Before implementation, settle the exact Core DDL and field mapping, supported
-backend versions/topologies, and the idempotency state-machine differences.
-Neither existing SDK automatically wins those decisions. Changes to protocol
-semantics are separate from choosing a reference persistence layout.
+1. **Superseded-snapshot readability (protocol).** Confirm that the
+   `reporting-revision.json` description is normative for content readability. Name the
+   instant that anchors `status_retention_days`. Promote both to normative text.
+2. **Unreadable retained revision (protocol).** No issue code currently means "a
+   retained revision is unreadable". This proposes adding one rather than overloading
+   `PRODUCTION_FAILED`.
+3. **Not-found error code (protocol).** `get_media_buy_delivery` names
+   `REPORTING_REVISION_NOT_FOUND`, which is not in `enums/error-code.json`. That enum
+   requires `REFERENCE_NOT_FOUND` for untyped references. SDKs follow the task document
+   until the two are reconciled.
+4. **Configuration identity.** Is `consumer_id` in the configuration key the right
+   general boundary, or should both SDKs use account-only identity with distinct
+   internal accounts per caller?
+5. **Retained adjustment rows.** Keep JS's adjustment rows under `rows_v1`, or drop them
+   in favour of the protocol's delta-only adjustments (Stage 3)?
+6. **Python-only stores.** Does `reporting_inline_objects` (content-addressed source
+   staging) and Python's provisional-observation payload storage converge onto the
+   shared row store, or stay outside the shared contract?
