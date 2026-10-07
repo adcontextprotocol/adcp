@@ -11,7 +11,15 @@ on:
       # date unless we extend the v2 support window.
       - '2.5-maintenance'
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+
+env:
+  TESTED_SHA: ${{ github.sha }}
+  PUBLICATION_BRANCH: ${{ github.ref_name }}
+  RELEASE_SHA: ${{ github.sha }}
 
 jobs:
   release:
@@ -52,6 +60,9 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Require current release branch
+        run: node scripts/check-release-state.cjs current
+
       - name: Detect release-relevant push
         id: release-relevance
         env:
@@ -62,7 +73,7 @@ jobs:
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-          changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
+          changed_files="$(git show --first-parent --format= --name-only --no-renames "${GITHUB_SHA}")"
           if grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-[^/]+[.]sh|run-storyboards-matrix[.]sh|stage-sdk-schema-bundle[.]sh|overlay-compliance-cache[.]sh)|[.]github/workflows/(release|training-agent-storyboards)[.]yml$)' <<< "${changed_files}"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             echo "Release-relevant files changed."
@@ -71,6 +82,17 @@ jobs:
 
           echo "relevant=false" >> "$GITHUB_OUTPUT"
           echo "No release-relevant changes detected; skipping release job body."
+
+      - name: Detect stranded committed release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          changed_files="$(git show --first-parent --format= --name-only --no-renames "$GITHUB_SHA")"
+          VERSION=$(node -p "require('./package.json').version")
+          if ! grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"; then
+            node scripts/check-release-state.cjs pending
+          fi
 
       - name: Install cosign
         if: steps.release-relevance.outputs.relevant == 'true'
@@ -83,6 +105,10 @@ jobs:
         run: npm ci
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Recheck current release branch after installation
+        if: steps.release-relevance.outputs.relevant == 'true'
+        run: node scripts/check-release-state.cjs current
 
       - name: Verify current storyboard coverage
         if: steps.release-relevance.outputs.relevant == 'true' && github.ref_name == 'main'
@@ -105,7 +131,7 @@ jobs:
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-          changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
+          changed_files="$(git show --first-parent --format= --name-only --no-renames "${GITHUB_SHA}")"
           if grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"; then
             echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
             echo "Detected committed release artifact changes for ${VERSION}."
@@ -114,21 +140,37 @@ jobs:
             echo "No committed release artifacts detected for ${VERSION}."
           fi
 
-      - name: Create Release Pull Request or Tag Release
+      - name: Require current branch before Changesets generation
+        if: steps.release-relevance.outputs.relevant == 'true' && steps.release-artifacts.outputs.has_release_artifacts != 'true'
+        run: node scripts/check-release-state.cjs current
+
+      - name: Create Release Pull Request
         if: steps.release-relevance.outputs.relevant == 'true' && steps.release-artifacts.outputs.has_release_artifacts != 'true'
         id: changesets
         uses: changesets/action@v1
         with:
           version: npm run version
-          publish: npx --no-install changeset tag
           commit: 'Version Packages'
           title: 'Version Packages'
-          createGithubReleases: true
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Sign local protocol tarball if needed
-        if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
+      - name: Recheck current branch after Changesets generation
+        if: steps.release-relevance.outputs.relevant == 'true' && steps.release-artifacts.outputs.has_release_artifacts != 'true'
+        run: node scripts/check-release-state.cjs current
+
+      - name: Require human approval for committed release artifacts
+        if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          node scripts/check-release-state.cjs committed "${{ steps.release-artifacts.outputs.version }}"
+          node scripts/check-release-state.cjs approval
+
+      - name: Require committed signed protocol tarball
+        if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
         run: |
           set -euo pipefail
           VERSION="${{ steps.release-artifacts.outputs.version }}"
@@ -137,14 +179,12 @@ jobs:
             echo "::error::Tarball not found at ${TARBALL}. Did npm run version fail upstream?"
             exit 1
           fi
-          if [ ! -f "${TARBALL}.sig" ] || [ ! -f "${TARBALL}.crt" ]; then
-            npm run sign:protocol-tarball
-          fi
           test -f "${TARBALL}.sig"
           test -f "${TARBALL}.crt"
+          test -f "${TARBALL}.sha256"
 
       - name: Verify local protocol tarball before publication
-        if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
         run: |
           set -euo pipefail
           VERSION="${{ steps.release-artifacts.outputs.version }}"
@@ -154,27 +194,14 @@ jobs:
           cosign verify-blob \
             --signature "${TARBALL}.sig" \
             --certificate "${TARBALL}.crt" \
-            --certificate-identity-regexp '^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/heads/.*$' \
+            --certificate-identity "https://github.com/adcontextprotocol/adcp/.github/workflows/release.yml@refs/heads/${PUBLICATION_BRANCH}" \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
             "${TARBALL}"
 
-      # Attach the protocol tarball + signature sidecars to the GitHub
-      # Release. For packages with real publish output, changesets/action may
-      # create the GitHub Release first. For this private repo, Version
-      # Packages commits can already contain the release artifacts while
-      # changesets/action reports "All changesets are empty"; create the
-      # release here if needed.
-      #
-      # Tarballs and sidecars (.sha256, .sig, .crt) are written to
-      # dist/protocol/${VERSION}.tgz{,.sha256,.sig,.crt} by `npm run version`
-      # in the Version Packages PR (build-protocol-tarball +
-      # sign-protocol-tarball).
-      # Without this step the artifacts ship to the repo's dist/ tree but
-      # are never attached as Release assets, leaving adopters who pin via
-      # release URL with a 404. v3.0.0 had assets only because they were
-      # uploaded manually; v3.0.1, v3.0.2, v3.0.3 all shipped empty.
+      # Stage all four committed assets in a draft, then publish the release
+      # before R2. Failed staging stays a draft for explicit recovery.
       - name: Upload protocol tarball to GitHub Release
-        if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -186,16 +213,61 @@ jobs:
             echo "::error::Tarball not found at ${TARBALL}. Did npm run version fail upstream?"
             exit 1
           fi
-          if ! gh release view "${TAG}" >/dev/null 2>&1; then
+          node scripts/check-release-state.cjs current
+          remote_tag="$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}" | tail -1 | cut -f1)"
+          if [ -n "$remote_tag" ] && [ "$remote_tag" != "$RELEASE_SHA" ]; then
+            echo '::error::Existing release tag targets a different commit.'
+            exit 1
+          fi
+          # Only a successful complete inventory can establish absence.
+          # Transport, permissions, malformed responses and duplicate drafts refuse.
+          release_inventory="$(mktemp)"
+          trap 'rm -f "$release_inventory"' EXIT
+          timeout 60s gh api --paginate --slurp "/repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$release_inventory"
+          if [ "$(wc -c < "$release_inventory")" -gt 16777216 ]; then
+            echo '::error::Release inventory exceeds the bounded read budget.'
+            exit 1
+          fi
+          jq -e 'type == "array" and all(.[]; type == "array") and
+            ([.[][]] | all(.[]; type == "object" and (.id | type) == "number" and .id > 0 and .id == (.id | floor) and (.tag_name | type) == "string" and (.tag_name | length) > 0)) and
+            (([.[][].id] | length) == ([.[][].id] | unique | length))' "$release_inventory" >/dev/null
+          release_count="$(jq -er --arg tag "$TAG" '[.[][] | select(.tag_name == $tag)] | length' "$release_inventory")"
+          rm -f "$release_inventory"
+          if [ "$release_count" -gt 1 ]; then
+            echo '::error::Ambiguous releases share the requested version tag.'
+            exit 1
+          fi
+          if [ "$release_count" -eq 0 ]; then
             release_args=()
             if [[ "${VERSION}" == *-* ]]; then
               release_args+=(--prerelease)
             fi
-            gh release create "${TAG}" \
-              --target "${GITHUB_SHA}" \
+            node scripts/check-release-state.cjs current
+            gh release create "${TAG}" --draft --latest=false \
+              --target "${RELEASE_SHA}" \
               --title "${TAG}" \
               --notes "AdCP ${VERSION}" \
               "${release_args[@]}"
+          fi
+
+          release_state="$(gh release view "$TAG" --json isDraft,isPrerelease,targetCommitish)"
+          jq -e '(.isDraft | type) == "boolean"' <<< "$release_state" >/dev/null
+          if [ "$(jq -r '.isDraft' <<< "$release_state")" = false ]; then
+            # Published releases are immutable: a retry only verifies authority
+            # and bytes. Missing assets require a separate recovery plan.
+            node scripts/check-release-state.cjs published "$VERSION"
+            exit 0
+          fi
+          if [ "$(jq -r '.isDraft' <<< "$release_state")" = true ] && [ "$(jq -r '.targetCommitish' <<< "$release_state")" != "$RELEASE_SHA" ]; then
+            echo '::error::Existing draft targets a different release commit.'
+            exit 1
+          fi
+
+          expected_prerelease=false
+          if [[ "$VERSION" == *-* ]]; then expected_prerelease=true; fi
+          if [ "$(jq -r '.isPrerelease' <<< "$release_state")" != "$expected_prerelease" ]; then
+            echo '::error::Existing release prerelease status conflicts with the version.'
+            exit 1
           fi
 
           upload_asset_if_missing() {
@@ -203,34 +275,69 @@ jobs:
             local name
             name="$(basename "${path}")"
             local remote_name
-            remote_name="$(gh release view "${TAG}" --json assets --jq ".assets[] | select(.name == \"${name}\") | .name" || true)"
-            local remote_digest
-            remote_digest="$(gh release view "${TAG}" --json assets --jq ".assets[] | select(.name == \"${name}\") | .digest" || true)"
-
+            remote_name="$(gh release view "${TAG}" --json assets --jq ".assets[] | select(.name == \"${name}\") | .name")"
             if [ -n "${remote_name}" ]; then
-              if [[ "${remote_digest}" == sha256:* && "${name}" != *.sig && "${name}" != *.crt ]]; then
-                local local_digest
-                local_digest="sha256:$(shasum -a 256 "${path}" | awk '{print $1}')"
-                if [ "${local_digest}" != "${remote_digest}" ]; then
-                  echo "::error::Release asset ${name} already exists on ${TAG} with digest ${remote_digest}, but local digest is ${local_digest}. Refusing to overwrite immutable release asset."
-                  exit 1
-                fi
+              local existing
+              existing="$(mktemp -d)"
+              gh release download "$TAG" --pattern "$name" --dir "$existing"
+              if ! cmp -s "$path" "$existing/$name"; then
+                echo "::error::Release asset $name differs; refusing immutable overwrite."
+                rm -rf "$existing"
+                exit 1
               fi
+              rm -rf "$existing"
               echo "Release asset ${name} already exists on ${TAG}; leaving it untouched."
               return 0
             fi
 
+            node scripts/check-release-state.cjs current
             gh release upload "${TAG}" "${path}"
+            node scripts/check-release-state.cjs current
           }
 
           upload_asset_if_missing "${TARBALL}"
           upload_asset_if_missing "${TARBALL}.sha256"
           upload_asset_if_missing "${TARBALL}.sig"
           upload_asset_if_missing "${TARBALL}.crt"
+          gh release view "$TAG" --json assets | jq -e --arg v "$VERSION" \
+            '([.assets[].name] | sort) == (["", ".sha256", ".sig", ".crt"] | map($v + ".tgz" + .) | sort)' >/dev/null
+          # Names are insufficient: verify every newly staged byte before making
+          # the draft public, including signature and certificate assets.
+          staged_tuple="$(mktemp -d)"
+          trap 'rm -rf "$staged_tuple"' EXIT
+          for suffix in "" ".sha256" ".sig" ".crt"; do
+            name="${VERSION}.tgz${suffix}"
+            node scripts/check-release-state.cjs current
+            gh release download "$TAG" --pattern "$name" --dir "$staged_tuple"
+            if ! cmp -s "dist/protocol/$name" "$staged_tuple/$name"; then
+              echo "::error::Staged release asset $name differs; keeping the release draft."
+              exit 1
+            fi
+            node scripts/check-release-state.cjs current
+          done
+          node scripts/check-release-state.cjs current
+          node scripts/check-release-state.cjs committed "$VERSION"
+          gh release edit "$TAG" --draft=false --latest=false
+          node scripts/check-release-state.cjs published "$VERSION"
+
+      # Immutable R2 publication checks the maintained branch before and after every object.
+      # Refresh the persisted Git credential with the job-scoped token so a
+      # large release cannot exhaust the one-hour App token after the GitHub
+      # Release has already been published. This phase performs GitHub reads
+      # only; the App token above remains the authority for release mutations
+      # whose downstream events must escape GITHUB_TOKEN recursion blocking.
+      - name: Refresh credentials for artifact publication
+        if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          token: ${{ github.token }}
 
       - name: Publish release artifacts to R2
-        if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           ADCP_ARTIFACT_R2_BUCKET: ${{ vars.ADCP_ARTIFACT_R2_BUCKET || 'adcp-artifacts' }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
@@ -241,14 +348,10 @@ jobs:
             echo "::error::Missing R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, or R2_SECRET_ACCESS_KEY secret."
             exit 1
           fi
-          latest_args=()
-          if [ "${GITHUB_REF_NAME}" != "main" ]; then
-            latest_args=(--skip-latest)
-          fi
-          npm run backfill:cdn-artifacts -- --bucket "${ADCP_ARTIFACT_R2_BUCKET}" --quiet "${latest_args[@]}"
+          npm run backfill:cdn-artifacts -- --bucket "${ADCP_ARTIFACT_R2_BUCKET}" --quiet --version "${{ steps.release-artifacts.outputs.version }}" --skip-latest
 
       - name: Verify published protocol tarball from CDN
-        if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
         run: |
           set -euo pipefail
           VERSION="${{ steps.release-artifacts.outputs.version }}"
@@ -269,7 +372,7 @@ jobs:
             cosign verify-blob \
               --signature "${VERSION}.tgz.sig" \
               --certificate "${VERSION}.tgz.crt" \
-              --certificate-identity-regexp '^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/heads/.*$' \
+              --certificate-identity "https://github.com/adcontextprotocol/adcp/.github/workflows/release.yml@refs/heads/${PUBLICATION_BRANCH}" \
               --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
               "${VERSION}.tgz"
           }

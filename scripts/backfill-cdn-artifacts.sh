@@ -19,6 +19,10 @@ Options:
   --aws-dry-run       Execute AWS with --dryrun. Very verbose: AWS prints
                       every object it would upload.
   --build-latest      Rebuild dist/*/latest and dist/protocol/latest.tgz first.
+  --latest-only       Upload only mutable development artifacts (routine deploy).
+  --version VERSION   Publish only this already-approved, tagged GitHub release.
+                      Existing objects must match; missing objects are created
+                      conditionally. Requires --skip-latest.
   --skip-latest       Upload only versioned artifacts; do not update mutable
                       schemas/latest, compliance/latest, or protocol/latest.
   --apply-cors        Apply public read CORS config to the bucket via Wrangler.
@@ -45,6 +49,8 @@ dry_run=0
 aws_dry_run=0
 build_latest=0
 skip_latest=0
+latest_only=0
+release_version=""
 apply_cors=0
 quiet=0
 
@@ -89,6 +95,14 @@ while [[ $# -gt 0 ]]; do
       build_latest=1
       shift
       ;;
+    --latest-only)
+      latest_only=1
+      shift
+      ;;
+    --version)
+      release_version="$(require_option_value "$1" "${2:-}")"
+      shift 2
+      ;;
     --skip-latest)
       skip_latest=1
       shift
@@ -116,6 +130,20 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Live bulk backfills could publish unapproved versions. Select one authority.
+if [[ "$latest_only" -eq 1 && ( "$skip_latest" -eq 1 || -n "$release_version" ) ]]; then
+  echo "--latest-only cannot be combined with versioned publication." >&2
+  exit 2
+fi
+if [[ -n "$release_version" && ( ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ || "$skip_latest" -ne 1 || "$build_latest" -eq 1 || "$apply_cors" -eq 1 ) ]]; then
+  echo "--version requires exact semver, --skip-latest, committed artifacts, and no bucket policy changes." >&2
+  exit 2
+fi
+if [[ "$dry_run" -eq 0 && "$latest_only" -eq 0 && -z "$release_version" ]]; then
+  echo "Live bulk backfill is disabled; use --latest-only or --version VERSION --skip-latest. See RELEASING.md." >&2
+  exit 2
+fi
 
 if [[ -n "$env_file" ]]; then
   if [[ ! -f "$env_file" ]]; then
@@ -186,6 +214,19 @@ Run with --build-latest if this checkout has not already run the artifact build.
 WARN
 fi
 
+fence_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-release-state.cjs"
+if [[ "$dry_run" -eq 0 ]]; then
+  node "$fence_script" current
+  if [[ -n "$release_version" ]]; then
+    node "$fence_script" committed "$release_version"
+    node "$fence_script" approval
+    node "$fence_script" published "$release_version"
+    # Readback is sequential: a previously compared local file may change.
+    # Revalidate the complete committed surface before enumerating R2 writes.
+    node "$fence_script" committed "$release_version"
+  fi
+fi
+
 planned_count="$(find dist/schemas dist/compliance dist/protocol -type f ! -path '*/.staging/*' | wc -l | tr -d ' ')"
 planned_bytes="$(du -sk dist/schemas dist/compliance dist/protocol | awk '{sum += $1} END {printf "%.0f", sum * 1024}')"
 
@@ -215,6 +256,7 @@ apply_bucket_cors() {
   ]
 }
 JSON
+  node "$fence_script" current
   wrangler r2 bucket cors set "$bucket" --file "$cors_file" --force
   rm -f "$cors_file"
 }
@@ -226,7 +268,101 @@ run_cmd() {
   if [[ "$dry_run" -eq 1 && "$aws_dry_run" -eq 0 ]]; then
     return 0
   fi
+  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" current; fi
   "$@"
+  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" current; fi
+}
+
+# R2 writes are atomic per object, not per bundle. Compare every existing
+# object byte-for-byte; conditional creation closes the head/put overwrite race.
+# Only this private original-Git body is read after the full committed preflight;
+# concurrent working-tree writes cannot change the bytes supplied to AWS.
+immutable_tmpdir=""
+immutable_lists_dir=""
+cleanup_immutable_body() {
+  if [[ -n "$immutable_tmpdir" ]]; then rm -rf -- "$immutable_tmpdir"; fi
+}
+cleanup_immutable_publication() {
+  cleanup_immutable_body
+  if [[ -n "$immutable_lists_dir" ]]; then rm -rf -- "$immutable_lists_dir"; fi
+}
+verify_immutable_body() {
+  if [[ ! -f "$1" || -L "$1" || "$(stat -c '%a' "$1")" != 600 || "$(sha256sum "$1" | cut -d ' ' -f1)" != "$2" ]]; then
+    echo 'Private immutable publication body changed; refusing object mutation.' >&2
+    exit 1
+  fi
+}
+put_immutable() {
+  local source="$1" key="$2" cache_control="$3" content_type="$4"
+  local existing head_error body_digest
+  immutable_tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/adcp-immutable-body.XXXXXX")"
+  trap cleanup_immutable_publication EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  existing="$immutable_tmpdir/existing"
+  head_error="$immutable_tmpdir/head-error"
+  # One exact original blob read per object; no per-object tree/API enumeration.
+  # Missing/unapproved paths and unsupported tree objects fail before AWS calls.
+  (umask 077; git cat-file blob "${RELEASE_SHA}:${source}" > "$immutable_tmpdir/body")
+  source="$immutable_tmpdir/body"
+  body_digest="$(sha256sum "$source" | cut -d ' ' -f1)"
+  verify_immutable_body "$source" "$body_digest"
+  node "$fence_script" current
+  if aws s3api head-object --bucket "$bucket" --key "$key" \
+      --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" --no-cli-pager >/dev/null 2>"$head_error"; then
+    aws s3 cp "s3://${bucket}/${key}" "$existing" "${common_aws_args[@]}"
+    verify_immutable_body "$source" "$body_digest"
+    if ! cmp -s "$source" "$existing"; then
+      echo "Immutable object differs: $key; refusing overwrite." >&2
+      rm -f "$existing" "$head_error"
+      exit 1
+    fi
+  else
+    if ! grep -Eq 'An error occurred \(404\)|\(NoSuchKey\)' "$head_error"; then
+      cat "$head_error" >&2
+      rm -f "$existing" "$head_error"
+      exit 1
+    fi
+    node "$fence_script" current
+    verify_immutable_body "$source" "$body_digest"
+    aws s3api put-object --bucket "$bucket" --key "$key" --body "$source" \
+      --if-none-match '*' --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
+      --no-cli-pager --cache-control "$cache_control" --content-type "$content_type" >/dev/null
+  fi
+  cleanup_immutable_body
+  immutable_tmpdir=""
+  node "$fence_script" current
+}
+
+publish_filtered() {
+  local root="$1" prefix="$2" cache_control="$3" content_type="$4"
+  shift 4
+  local file relative pattern file_list
+  if [[ -z "$immutable_lists_dir" ]]; then
+    immutable_lists_dir="$(mktemp -d "${TMPDIR:-/tmp}/adcp-immutable-list.XXXXXX")"
+    trap cleanup_immutable_publication EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+  fi
+  file_list="$immutable_lists_dir/$(printf '%s' "$root" | sha256sum | cut -d ' ' -f1).list"
+  if [[ ! -f "$file_list" ]]; then
+    # One successful original-tree enumeration per surface, cached across MIME
+    # filters. Mutable index additions/removals cannot alter publication scope.
+    (umask 077; git ls-tree -r -z --name-only "$RELEASE_SHA" -- "$root" > "$file_list")
+    [[ -s "$file_list" ]] || { echo "Empty original publication surface: $root" >&2; exit 1; }
+  fi
+  while IFS= read -r -d '' file; do
+    [[ -f "$file" && ! -L "$file" ]] || { echo "Missing or symlinked artifact: $file" >&2; exit 1; }
+    relative="${file#"$root"/}"
+    for pattern in "$@"; do
+      # Deliberately use the same extension globs as the AWS filters.
+      # shellcheck disable=SC2053
+      if [[ "$relative" == $pattern ]]; then
+        put_immutable "$file" "$prefix/$relative" "$cache_control" "$content_type"
+        break
+      fi
+    done
+  done < "$file_list"
 }
 
 sync_filtered() {
@@ -236,6 +372,10 @@ sync_filtered() {
   local content_type="$4"
   shift 4
   local patterns=("$@")
+  if [[ -n "$release_version" && "$dry_run" -eq 0 ]]; then
+    publish_filtered "$source_dir" "$dest_prefix" "$cache_control" "$content_type" "${patterns[@]}"
+    return
+  fi
   local args=(
     s3 sync
     "$source_dir"
@@ -265,6 +405,10 @@ cp_filtered_recursive() {
   local content_type="$4"
   shift 4
   local patterns=("$@")
+  if [[ -n "$release_version" && "$dry_run" -eq 0 ]]; then
+    publish_filtered "$source_dir" "$dest_prefix" "$cache_control" "$content_type" "${patterns[@]}"
+    return
+  fi
   local args=(
     s3 cp
     "$source_dir"
@@ -292,6 +436,10 @@ cp_file() {
   local dest_key="$2"
   local cache_control="$3"
   local content_type="$4"
+  if [[ -n "$release_version" && "$dry_run" -eq 0 ]]; then
+    put_immutable "$file" "$dest_key" "$cache_control" "$content_type"
+    return
+  fi
   run_cmd aws s3 cp "$file" "s3://${bucket}/${dest_key}" \
     "${common_aws_args[@]}" \
     --no-guess-mime-type \
@@ -319,6 +467,7 @@ sync_compliance_tree() {
   local cache_control="$3"
   sync_filtered "$root" "$dest_prefix" "$cache_control" "application/yaml; charset=utf-8" "*.yaml" "*.yml"
   sync_filtered "$root" "$dest_prefix" "$cache_control" "application/json; charset=utf-8" "*.json"
+  sync_filtered "$root" "$dest_prefix" "$cache_control" "application/x-ndjson; charset=utf-8" "*.jsonl"
   sync_filtered "$root" "$dest_prefix" "$cache_control" "text/markdown; charset=utf-8" "*.md" "*.mdx"
   sync_filtered "$root" "$dest_prefix" "$cache_control" "text/plain; charset=utf-8" "*.txt"
 }
@@ -329,6 +478,7 @@ cp_compliance_tree() {
   local cache_control="$3"
   cp_filtered_recursive "$root" "$dest_prefix" "$cache_control" "application/yaml; charset=utf-8" "*.yaml" "*.yml"
   cp_filtered_recursive "$root" "$dest_prefix" "$cache_control" "application/json; charset=utf-8" "*.json"
+  cp_filtered_recursive "$root" "$dest_prefix" "$cache_control" "application/x-ndjson; charset=utf-8" "*.jsonl"
   cp_filtered_recursive "$root" "$dest_prefix" "$cache_control" "text/markdown; charset=utf-8" "*.md" "*.mdx"
   cp_filtered_recursive "$root" "$dest_prefix" "$cache_control" "text/plain; charset=utf-8" "*.txt"
 }
@@ -344,21 +494,28 @@ fi
 immutable_cache="public, max-age=31536000, immutable"
 revalidate_cache="public, no-cache, must-revalidate"
 
+if [[ "$latest_only" -eq 0 ]]; then
+if [[ -n "$release_version" ]]; then
+  # Exact version scope must not disappear from mutable directory discovery.
+  sync_schema_tree "dist/schemas/$release_version" "schemas/$release_version" "$immutable_cache"
+else
 for schema_dir in dist/schemas/*; do
   if [[ ! -d "$schema_dir" ]]; then
     continue
   fi
   schema_version="$(basename "$schema_dir")"
-  if [[ "$schema_version" == "latest" ]]; then
+  if [[ "$schema_version" == "latest" || ( -n "$release_version" && "$schema_version" != "$release_version" ) ]]; then
     continue
   fi
   sync_schema_tree "$schema_dir" "schemas/$schema_version" "$immutable_cache"
 done
+fi
+fi
 if [[ "$skip_latest" -eq 0 ]]; then
-  if [[ -f dist/schemas/index.json ]]; then
+  if [[ "$latest_only" -eq 0 && -f dist/schemas/index.json ]]; then
     cp_file dist/schemas/index.json schemas/index.json "$revalidate_cache" "application/json; charset=utf-8"
   fi
-  if [[ -f dist/schemas/latest.json ]]; then
+  if [[ "$latest_only" -eq 0 && -f dist/schemas/latest.json ]]; then
     cp_file dist/schemas/latest.json schemas/latest.json "$revalidate_cache" "application/json; charset=utf-8"
   fi
   if [[ -d dist/schemas/latest ]]; then
@@ -366,15 +523,27 @@ if [[ "$skip_latest" -eq 0 ]]; then
   fi
 fi
 
-exclude_latest=1 sync_compliance_tree dist/compliance compliance "$immutable_cache"
+if [[ -n "$release_version" ]]; then
+  sync_compliance_tree "dist/compliance/$release_version" "compliance/$release_version" "$immutable_cache"
+elif [[ "$latest_only" -eq 0 ]]; then
+  exclude_latest=1 sync_compliance_tree dist/compliance compliance "$immutable_cache"
+fi
 if [[ "$skip_latest" -eq 0 && -d dist/compliance/latest ]]; then
   cp_compliance_tree dist/compliance/latest compliance/latest "$revalidate_cache"
 fi
 
+if [[ -n "$release_version" ]]; then
+  cp_file "dist/protocol/$release_version.tgz" "protocol/$release_version.tgz" "$immutable_cache" "application/gzip"
+  cp_file "dist/protocol/$release_version.tgz.sha256" "protocol/$release_version.tgz.sha256" "$immutable_cache" "text/plain; charset=utf-8"
+  cp_file "dist/protocol/$release_version.tgz.sig" "protocol/$release_version.tgz.sig" "$immutable_cache" "application/octet-stream"
+  cp_file "dist/protocol/$release_version.tgz.crt" "protocol/$release_version.tgz.crt" "$immutable_cache" "application/x-pem-file"
+elif [[ "$latest_only" -eq 0 ]]; then
 exclude_latest=1 sync_filtered dist/protocol protocol "$immutable_cache" "application/gzip" "*.tgz"
 exclude_latest=1 cp_filtered_recursive dist/protocol protocol "$revalidate_cache" "text/plain; charset=utf-8" "*.sha256"
 exclude_latest=1 cp_filtered_recursive dist/protocol protocol "$revalidate_cache" "application/octet-stream" "*.sig"
 exclude_latest=1 cp_filtered_recursive dist/protocol protocol "$revalidate_cache" "application/x-pem-file" "*.crt"
+
+fi
 
 if [[ "$skip_latest" -eq 0 && -f dist/protocol/latest.tgz ]]; then
   cp_file dist/protocol/latest.tgz protocol/latest.tgz "$revalidate_cache" "application/gzip"
