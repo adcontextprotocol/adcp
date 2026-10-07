@@ -188,6 +188,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ steps.release-artifacts.outputs.version }}"
+          PRODUCER_SHA="$(git rev-parse "${RELEASE_SHA}^1")"
           cd dist/protocol
           TARBALL="${VERSION}.tgz"
           shasum -a 256 -c "${TARBALL}.sha256"
@@ -196,6 +197,10 @@ jobs:
             --certificate "${TARBALL}.crt" \
             --certificate-identity "https://github.com/adcontextprotocol/adcp/.github/workflows/release.yml@refs/heads/${PUBLICATION_BRANCH}" \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            --certificate-github-workflow-sha "${PRODUCER_SHA}" \
+            --certificate-github-workflow-ref "refs/heads/${PUBLICATION_BRANCH}" \
+            --certificate-github-workflow-repository "${GITHUB_REPOSITORY}" \
+            --certificate-github-workflow-trigger push \
             "${TARBALL}"
 
       # Stage all four committed assets in a draft, then publish the release
@@ -317,6 +322,9 @@ jobs:
           done
           node scripts/check-release-state.cjs current
           node scripts/check-release-state.cjs committed "$VERSION"
+          # Revalidate review state and current maintainer permission after
+          # all four staged assets have been read back, before publication.
+          node scripts/check-release-state.cjs approval
           gh release edit "$TAG" --draft=false --latest=false
           node scripts/check-release-state.cjs published "$VERSION"
 
@@ -355,6 +363,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ steps.release-artifacts.outputs.version }}"
+          PRODUCER_SHA="$(git rev-parse "${RELEASE_SHA}^1")"
           BASE_URL="https://adcontextprotocol.org/protocol"
           workdir="$(mktemp -d)"
           trap 'rm -rf "${workdir}"' EXIT
@@ -364,16 +373,20 @@ jobs:
             local attempt="$1"
             local bust="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}-$(date +%s)"
             rm -f "${VERSION}.tgz" "${VERSION}.tgz.sha256" "${VERSION}.tgz.sig" "${VERSION}.tgz.crt"
-            curl -fsSLo "${VERSION}.tgz" "${BASE_URL}/${VERSION}.tgz?cache_bust=${bust}"
-            curl -fsSLo "${VERSION}.tgz.sha256" "${BASE_URL}/${VERSION}.tgz.sha256?cache_bust=${bust}"
-            curl -fsSLo "${VERSION}.tgz.sig" "${BASE_URL}/${VERSION}.tgz.sig?cache_bust=${bust}"
-            curl -fsSLo "${VERSION}.tgz.crt" "${BASE_URL}/${VERSION}.tgz.crt?cache_bust=${bust}"
-            shasum -a 256 -c "${VERSION}.tgz.sha256"
+            curl -fsSLo "${VERSION}.tgz" "${BASE_URL}/${VERSION}.tgz?cache_bust=${bust}" || return 1
+            curl -fsSLo "${VERSION}.tgz.sha256" "${BASE_URL}/${VERSION}.tgz.sha256?cache_bust=${bust}" || return 1
+            curl -fsSLo "${VERSION}.tgz.sig" "${BASE_URL}/${VERSION}.tgz.sig?cache_bust=${bust}" || return 1
+            curl -fsSLo "${VERSION}.tgz.crt" "${BASE_URL}/${VERSION}.tgz.crt?cache_bust=${bust}" || return 1
+            shasum -a 256 -c "${VERSION}.tgz.sha256" || return 1
             cosign verify-blob \
               --signature "${VERSION}.tgz.sig" \
               --certificate "${VERSION}.tgz.crt" \
               --certificate-identity "https://github.com/adcontextprotocol/adcp/.github/workflows/release.yml@refs/heads/${PUBLICATION_BRANCH}" \
               --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+              --certificate-github-workflow-sha "${PRODUCER_SHA}" \
+              --certificate-github-workflow-ref "refs/heads/${PUBLICATION_BRANCH}" \
+              --certificate-github-workflow-repository "${GITHUB_REPOSITORY}" \
+              --certificate-github-workflow-trigger push \
               "${VERSION}.tgz"
           }
 

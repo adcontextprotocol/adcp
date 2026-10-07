@@ -72,6 +72,12 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   git("add", ".");
   git("commit", "-qm", "Later changeset");
   const head = git("rev-parse", "HEAD");
+  write('certificate-claims.json', JSON.stringify({
+    sha: git('rev-parse', `${source}^1`),
+    ref: 'refs/heads/3.1.x',
+    repository: 'adcontextprotocol/adcp',
+    trigger: 'push',
+  }));
   write("remote", head);
   write("tag", source);
   write("calls", "");
@@ -129,11 +135,18 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
         else output(fs.existsSync('release.json')?[release()]:[]);
       }
       else if(url.includes('/commits/')) { if(process.env.PULLS_ERROR) process.exit(1); output(JSON.parse(process.env.ASSOCIATED_PRS||'[{"number":1,"merged_at":"2026-09-14","base":{"ref":"3.1.x"}}]')); }
-      else if(url.endsWith('/reviews')) output(JSON.parse(process.env.REVIEWS||'[]'));
+      else if(url.endsWith('/reviews')) {
+        const reviews=JSON.parse(process.env.REVIEWS||'[]');
+        if(fs.existsSync('staging-revocation') && ['DISMISSED','CHANGES_REQUESTED'].includes(read('staging-revocation'))) {
+          reviews.push({...reviews[0],id:2,state:read('staging-revocation'),submitted_at:'2026-09-15'});
+        }
+        output(reviews);
+      }
       else if(url.includes('/collaborators/')) {
         fs.appendFileSync('permission-calls',url+'\\n');
         if(process.env.PERMISSION_ERROR && (!process.env.PERMISSION_ERROR_LOGIN || url.includes('/'+process.env.PERMISSION_ERROR_LOGIN+'/'))) {console.error(process.env.PERMISSION_ERROR);process.exit(1);}
-        console.log(process.env.PERMISSION_RESPONSE||JSON.stringify({permission:'write',role_name:'write',user:{id:123,login:'reviewer',type:'User'}}));
+        const permissionRevoked=fs.existsSync('staging-revocation')&&read('staging-revocation')==='permission';
+        console.log(permissionRevoked ? JSON.stringify({permission:'read',role_name:'read',user:{id:123,login:'reviewer',type:'User'}}) : process.env.PERMISSION_RESPONSE||JSON.stringify({permission:'write',role_name:'write',user:{id:123,login:'reviewer',type:'User'}}));
         if(process.env.ADVANCE_PERMISSION) change();
       } else output(JSON.parse(process.env.MERGED_PR||JSON.stringify({number:1,head:{sha:process.env.RELEASE_SHA},merged:true,merge_commit_sha:process.env.RELEASE_SHA,base:{ref:'3.1.x',repo:{full_name:'adcontextprotocol/adcp'}},user:{id:456,login:'author',type:'User'}})));
     } else if(args[1]==='view') {
@@ -155,6 +168,7 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
       if(process.env.DIFFERING_GITHUB_ASSET===name||release().assets.find(a=>a.name===name)?.corrupt) fs.appendFileSync(path.join(dir,name),'different');
       if(process.env.ADVANCE_DOWNLOAD) change();
       if(process.env.MUTATE_LOCAL_DURING_DOWNLOAD && name.endsWith('.crt')) fs.appendFileSync('dist/protocol/${version}.tgz.sig','modified-after-readback');
+      if(process.env.REVOKE_DURING_STAGING && name.endsWith('.crt')) fs.writeFileSync('staging-revocation',process.env.REVOKE_DURING_STAGING);
     } else if(args[1]==='edit') {
       const r=release();if(r.assets.length!==4) throw Error('incomplete release');r.isDraft=false;r.isLatest=!args.includes('--latest=false');save(r);fs.writeFileSync('tag',process.env.RELEASE_SHA);log('github publish');
     } else throw Error('unexpected gh '+args);
@@ -203,6 +217,19 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   executable("cosign", common + `
     if(args[0]!=='verify-blob'||args.includes('--certificate-identity-regexp')) throw Error('unexpected verification policy');
     if(args[args.indexOf('--certificate-identity')+1]!=='https://github.com/adcontextprotocol/adcp/.github/workflows/release.yml@refs/heads/3.1.x') throw Error('wrong workflow identity');
+    const claims=JSON.parse(read(path.join(__dirname,'..','certificate-claims.json')));
+    for(const field of ['sha','ref','repository','trigger']) {
+      const flag='--certificate-github-workflow-'+field;
+      if(args.includes(flag) && args[args.indexOf(flag)+1]!==claims[field]) {
+        console.error('certificate producer '+field+' mismatch');process.exit(1);
+      }
+    }
+    if(process.env.CDN_FIXTURE) {
+      for(const suffix of ['', '.sig', '.crt']) {
+        const name='${version}.tgz'+suffix;
+        if(!fs.readFileSync(name).equals(fs.readFileSync(path.join(__dirname,'..','dist/protocol',name)))) throw Error('CDN signature fixture tuple differs');
+      }
+    }
     if(process.env.COSIGN_ERROR) process.exit(1);
     log('signature verify');
   `);
@@ -216,6 +243,8 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
     PUBLICATION_BRANCH: "3.1.x",
     GITHUB_REF_NAME: "3.1.x",
     GITHUB_REPOSITORY: "adcontextprotocol/adcp",
+    GITHUB_RUN_ID: "1234",
+    GITHUB_RUN_ATTEMPT: "1",
     RELEASE_SHA: source,
     R2_ENDPOINT: "https://r2.invalid",
     AWS_ACCESS_KEY_ID: "test",
@@ -241,6 +270,7 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
     dir,
     source,
     head,
+    executable,
     write,
     git,
     run,
@@ -641,6 +671,47 @@ test('local tuple mutation during draft readback is rechecked against the origin
   assert.doesNotMatch(f.calls(), /github publish|r2 /);
 });
 
+for (const state of ['DISMISSED','CHANGES_REQUESTED','permission']) {
+  test(`approval ${state} during all-four staging refuses the public edit`, t => {
+    const f = mergedFixture(t);
+    absentRelease(f);
+    refused(f.publish({REVOKE_DURING_STAGING:state}), /no current write\/maintain\/admin non-author approval/);
+    assert.equal(fs.readFileSync(path.join(f.dir,'staging-revocation'),'utf8'), state, 'the control must revoke authority only after staging');
+    const draft = JSON.parse(fs.readFileSync(path.join(f.dir,'release.json')));
+    assert.equal(draft.assets.length, 4, 'all four approved assets must have been staged');
+    assert.equal(draft.isDraft, true, 'revoked publication authority must leave the complete tuple draft');
+    assert.doesNotMatch(f.calls(), /github publish|r2 /);
+  });
+}
+
+for (const [field, value] of [
+  ['sha', 'e'.repeat(40)],
+  ['ref', 'refs/heads/main'],
+  ['repository', 'other/repository'],
+  ['trigger', 'workflow_dispatch'],
+]) {
+  test(`a signature from another producer ${field} refuses before release staging`, t => {
+    const f = mergedFixture(t);
+    absentRelease(f);
+    const claims = JSON.parse(fs.readFileSync(path.join(f.dir,'certificate-claims.json')));
+    f.write('certificate-claims.json', JSON.stringify({...claims,[field]:value}));
+    refused(f.publish(), new RegExp('certificate producer '+field+' mismatch'));
+    assert.equal(f.calls(), '', 'producer mismatch must fail before any GitHub mutation');
+  });
+}
+
+test('same-version recovery verifies the original producer rather than the later tested source', t => {
+  const f = mergedFixture(t);
+  absentRelease(f);
+  const producer = f.git('rev-parse', `${f.merged}^1`);
+  const claims = JSON.parse(fs.readFileSync(path.join(f.dir,'certificate-claims.json')));
+  assert.equal(claims.sha, producer);
+  assert.notEqual(f.authority.TESTED_SHA, producer);
+  successful(f.publish());
+  assert.match(f.calls(), /signature verify/);
+  assert.match(f.calls(), /github publish/);
+});
+
 test('COMMENTED cannot upgrade a stale-head approval to the current generated head', t => {
   const f = mergedFixture(t);
   const approved = JSON.parse(approval('b'.repeat(40)))[0];
@@ -889,3 +960,46 @@ for (const target of ['package.json', `dist/schemas/${version}/index.json`]) {
     assert.equal(f.calls(), '', 'this read-only preflight control grants no publication authority');
   });
 }
+
+function mockCdnTuple(f) {
+  // Invoke the exact CDN step without network or real retry sleeps. A failed
+  // fetch can leave all bytes present, so signature success must not mask it.
+  f.executable('curl', `
+    const fs=require('node:fs'),path=require('node:path'),args=process.argv.slice(2);
+    const name=path.basename(new URL(args.at(-1)).pathname),output=args[args.indexOf('-fsSLo')+1];
+    if(!output || !['${version}.tgz','${version}.tgz.sha256','${version}.tgz.sig','${version}.tgz.crt'].includes(name)) throw Error('unexpected CDN fetch');
+    fs.appendFileSync(path.join(__dirname,'..','cdn-fetches'),name+'\\n');
+    fs.copyFileSync(path.join(__dirname,'..','dist/protocol',name),output);
+    if(process.env.CDN_BAD_CHECKSUM && name.endsWith('.sha256')) fs.writeFileSync(output,'0'.repeat(64)+'  ${version}.tgz\\n');
+    if(process.env.CDN_TRANSPORT_FAILURE===name) process.exit(22);
+  `);
+  f.executable('sleep', `if(process.argv.length!==3) throw Error('unexpected retry sleep');`);
+}
+
+for (const suffix of ['', '.sha256', '.sig', '.crt']) {
+  test(`CDN transport failure for ${suffix || 'archive'} cannot be masked by a valid signature`, t => {
+    const f = mergedFixture(t);
+    mockCdnTuple(f);
+    refused(f.execute(['Verify published protocol tarball from CDN'], {CDN_FIXTURE:'1',CDN_TRANSPORT_FAILURE:`${version}.tgz${suffix}`}), /failed checksum\/cosign verification after retries/);
+    assert.equal(fs.readFileSync(path.join(f.dir,'cdn-fetches'),'utf8').split('\n').filter(name=>name===`${version}.tgz${suffix}`).length, 5);
+    assert.equal(f.calls(), '', 'no signature success, publication or storage operation follows a failed fetch');
+  });
+}
+
+test('CDN bad checksum cannot be masked by the valid original signed tuple', t => {
+  const f = mergedFixture(t);
+  mockCdnTuple(f);
+  refused(f.execute(['Verify published protocol tarball from CDN'], {CDN_FIXTURE:'1',CDN_BAD_CHECKSUM:'1'}), /failed checksum\/cosign verification after retries/);
+  assert.equal(fs.readFileSync(path.join(f.dir,'cdn-fetches'),'utf8').trim().split('\n').length, 20);
+  assert.equal(f.calls(), '', 'checksum failure must precede signature verification');
+});
+
+test('CDN valid four-file tuple passes the actual checksum and signature fixture once', t => {
+  const f = mergedFixture(t);
+  mockCdnTuple(f);
+  const result = f.execute(['Verify published protocol tarball from CDN'], {CDN_FIXTURE:'1'});
+  successful(result);
+  assert.match(result.stdout, /Verified published protocol tarball .* on attempt 1/);
+  assert.equal(fs.readFileSync(path.join(f.dir,'cdn-fetches'),'utf8').trim().split('\n').length, 4);
+  assert.equal(f.calls(), 'signature verify\n', 'only the exact synthetic tuple is verified, with no publication operation');
+});
