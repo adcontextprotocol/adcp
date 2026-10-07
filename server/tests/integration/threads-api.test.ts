@@ -4,6 +4,13 @@ import request from 'supertest';
 import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
+import { resolveSlackUserDisplayNames } from '../../src/slack/client.js';
+
+// HTTP/PG coverage controls only Slack name enrichment, not its transport.
+vi.mock('../../src/slack/client.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/slack/client.js')>()),
+  resolveSlackUserDisplayNames: vi.fn().mockResolvedValue({}),
+}));
 
 // Mock auth middleware to bypass authentication in tests
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
@@ -53,6 +60,7 @@ describe('Threads API Integration Tests', () => {
   let pool: Pool;
   let testThreadId: string;
   let testMessageId: string;
+  let testUserMessageId: string;
 
   beforeAll(async () => {
     // Initialize test database
@@ -88,6 +96,7 @@ describe('Threads API Integration Tests', () => {
       RETURNING message_id
     `, [testThreadId]);
     testMessageId = msgResult.rows[1].message_id; // Get the assistant message ID
+    testUserMessageId = msgResult.rows[0].message_id;
   });
 
   afterAll(async () => {
@@ -95,6 +104,10 @@ describe('Threads API Integration Tests', () => {
     await pool.query(`DELETE FROM addie_threads WHERE external_id LIKE 'test-api-%'`);
     await server?.stop();
     await closeDatabase();
+  });
+
+  beforeEach(() => {
+    vi.mocked(resolveSlackUserDisplayNames).mockReset().mockResolvedValue({});
   });
 
   // =========================================================================
@@ -162,14 +175,55 @@ describe('Threads API Integration Tests', () => {
 
   describe('GET /api/admin/addie/threads/:id', () => {
     it('should return thread with messages', async () => {
+      const userNames = { U_test: 'Fixture Owner', UHTTPMENTION1: 'Fixture Mention' };
+      vi.mocked(resolveSlackUserDisplayNames).mockResolvedValue(userNames);
+      try {
+        await pool.query('UPDATE addie_threads SET user_display_name = NULL WHERE thread_id = $1', [testThreadId]);
+        await pool.query('UPDATE addie_thread_messages SET content = $1 WHERE message_id = $2',
+          ['Hello <@UHTTPMENTION1>!', testUserMessageId]);
+        const response = await request(app)
+          .get(`/api/admin/addie/threads/${testThreadId}`)
+          .expect(200);
+
+        expect(response.body.thread_id).toBe(testThreadId);
+        expect(response.body.channel).toBe('slack');
+        expect(response.body.messages).toBeInstanceOf(Array);
+        expect(response.body.messages.length).toBeGreaterThanOrEqual(2);
+        expect(resolveSlackUserDisplayNames).toHaveBeenCalledExactlyOnceWith(['U_test', 'UHTTPMENTION1']);
+        expect(response.body.user_names).toEqual(userNames);
+        expect(response.body.user_display_name).toBe('Fixture Owner');
+        expect(response.body.messages.map((message: any) => ({
+          id: message.message_id, role: message.role, content: message.content, sequence: message.sequence_number,
+        }))).toEqual([
+          { id: testUserMessageId, role: 'user', content: 'Hello <@UHTTPMENTION1>!', sequence: 1 },
+          { id: testMessageId, role: 'assistant', content: 'Hi! How can I help?', sequence: 2 },
+        ]);
+      } finally {
+        await pool.query('UPDATE addie_threads SET user_display_name = $1 WHERE thread_id = $2', ['Test User', testThreadId]);
+        await pool.query('UPDATE addie_thread_messages SET content = $1 WHERE message_id = $2', ['Hello!', testUserMessageId]);
+      }
+    });
+
+    it('should retain the stored display name when enrichment returns no names', async () => {
       const response = await request(app)
         .get(`/api/admin/addie/threads/${testThreadId}`)
         .expect(200);
 
-      expect(response.body.thread_id).toBe(testThreadId);
-      expect(response.body.channel).toBe('slack');
-      expect(response.body.messages).toBeInstanceOf(Array);
-      expect(response.body.messages.length).toBeGreaterThanOrEqual(2);
+      expect(resolveSlackUserDisplayNames).toHaveBeenCalledExactlyOnceWith(['U_test']);
+      expect(response.body.user_names).toEqual({});
+      expect(response.body.user_display_name).toBe('Test User');
+      expect(response.body.messages.map((message: any) => message.message_id)).toEqual([testUserMessageId, testMessageId]);
+    });
+
+    it('should return the generic HTTP error when name enrichment rejects', async () => {
+      vi.mocked(resolveSlackUserDisplayNames).mockRejectedValue(new Error('Synthetic upstream detail'));
+      const response = await request(app)
+        .get(`/api/admin/addie/threads/${testThreadId}`)
+        .expect(500);
+
+      expect(resolveSlackUserDisplayNames).toHaveBeenCalledExactlyOnceWith(['U_test']);
+      expect(response.body).toEqual({ error: 'Internal server error', message: 'Unable to fetch thread' });
+      expect(response.text).not.toContain('Synthetic upstream detail');
     });
 
     it('should return 404 for non-existent thread', async () => {
