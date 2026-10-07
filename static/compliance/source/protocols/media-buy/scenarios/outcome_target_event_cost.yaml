@@ -1,0 +1,251 @@
+id: media_buy_seller/outcome_target_event_cost
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Seller plans an event-goal cost target"
+category: media_buy_seller
+summary: "Verifies a cost_per cap on a purchase event goal: the seller binds one event source available on the buyer's account and states an attribution window on every purchase's primary goal, and answers in commercial_terms.bidding.cost_per with the buyer's strength."
+track: media_buy
+required_tools:
+  - request_proposals
+  - sync_event_sources
+
+requires_all_capabilities:
+  - path: media_buy.outcome_target
+    equals: true
+  - path: media_buy.conversion_tracking.supported_targets
+    contains: cost_per
+  - path: media_buy.features.bidding_policy.media_buy.fixed.cost_per_strengths
+    contains: cap
+
+narrative: |
+  A buyer states the cost it will pay per conversion, not a volume: purchases
+  at 50 USD or less within a 10,000 USD budget. The goal is an event goal, so
+  the seller must bind it to an event source before it can answer. Sellers
+  declare that they bind event-goal cost targets by listing cost_per in
+  conversion_tracking.supported_targets, and that they answer media-buy cost
+  caps by advertising them in features.bidding_policy; this scenario runs when
+  both are declared.
+
+  The buyer registers a purchase event source on its account first. The seller
+  fills the goal's event_sources from the sources available on the account,
+  buyer-synced or seller-managed, exactly one unless it advertises
+  conversion_tracking.multi_source_event_dedup, and states the attribution
+  window. The answer is commercial_terms.bidding.cost_per with the buyer's cap
+  strength and an amount never below the ask. Purchases carry no purchase-level
+  bidding, so the media-buy policy binds to each purchase's primary goal.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - generates_proposals
+    - conversion_tracking
+  examples:
+    - "Retail media network quoting cost per purchase against closed-loop attribution"
+    - "Performance publisher planning CPA targets"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and operator credentials. The runner
+    seeds an auction-priced USD product, so the cost phase has a product a
+    cost cap can apply to.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "outcome_target_event_cost_video"
+      name: "Outcome Target Event Cost Video"
+      description: "Compliance fixture: auction-priced video inventory for event-goal cost-target planning."
+      delivery_type: "non_guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "outcome_target_event_cost_video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+  pricing_options:
+    - product_id: "outcome_target_event_cost_video"
+      pricing_option_id: "outcome_target_event_cost_auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.50
+
+phases:
+  - id: setup
+    title: "Account setup"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_outcome_target_event_cost_setup_sync_accounts"
+          context:
+            correlation_id: "outcome_target_event_cost--sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "outcome_target_event_cost--sync_accounts"
+            description: "Context correlation_id returned unchanged"
+
+  - id: register_event_source
+    title: "Register a purchase event source"
+    depends_on: [setup]
+    narrative: |
+      The buyer registers a website purchase source on its account, so the
+      seller has a source available to bind to the event goal.
+    steps:
+      - id: sync_event_sources
+        title: "Register a purchase source"
+        task: sync_event_sources
+        schema_ref: "media-buy/sync-event-sources-request.json"
+        response_schema_ref: "media-buy/sync-event-sources-response.json"
+        doc_ref: "/media-buy/task-reference/sync_event_sources"
+        stateful: true
+        expected: |
+          Return the event source with an event_source_id and action created.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          event_sources:
+            - event_source_id: "outcome_target_purchase_pixel"
+              name: "Acme Outdoor purchase pixel"
+              event_types: ["purchase"]
+              allowed_domains: ["acmeoutdoor.example"]
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_outcome_target_event_cost_register_event_source_sync_event_sources"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-event-sources-response.json schema"
+          - check: field_present
+            path: "event_sources[0].event_source_id"
+            description: "The event source has a platform-assigned ID"
+
+  - id: event_cost_target
+    title: "Plan a purchase cost cap within a buyer budget"
+    depends_on: [register_event_source]
+    narrative: |
+      The buyer states purchases at 50 USD or less within a 10,000 USD budget.
+      The seller binds one event source and states an attribution window on
+      every purchase's primary goal, and answers in
+      commercial_terms.bidding.cost_per with the buyer's strength.
+    steps:
+      - id: request_purchase_cost_cap
+        title: "Request proposals for purchases at a 50 USD cap on a 10,000 USD budget"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        expected: |
+          Return outcome proposed with at least one proposal carrying:
+          - commercial_terms.bidding.cost_per with strength "cap" and an
+            amount no lower than 50
+          - no purchase-level bidding
+          - an event optimization goal for purchase, with one event source
+            and a stated attribution_window, as every purchase's primary goal
+          - a forecast in USD whose points carry metrics.purchase
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_outcome_target_event_cost_event_cost_target_request_purchase_cost_cap"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brief: "Drive Trail Pro 3000 purchases from the seeded video placement."
+          criteria:
+            product_ids: ["outcome_target_event_cost_video"]
+            offer_filters:
+              budget_range:
+                max: 10000
+                currency: "USD"
+            outcome_target:
+              goal:
+                kind: "event"
+                event_type: "purchase"
+              cost_per:
+                amount: 50
+                currency: "USD"
+                strength: "cap"
+          context:
+            correlation_id: "outcome_target_event_cost--request_purchase_cost_cap"
+        validations:
+          - check: response_schema
+            description: "Response matches request-proposals-response.json schema"
+          - check: field_value
+            path: "outcome"
+            value: "proposed"
+            description: "A seller declaring event-goal cost support returns at least one proposal"
+          - check: field_greater_than
+            path: "proposals[0].commercial_terms.bidding.cost_per.amount"
+            value: 49.99
+            description: "The answered cost is never below the 50 USD ask (strict greater-than against 49.99 with a 0.01 epsilon, the cent precision of the amount)"
+          - check: field_value
+            path: "proposals[0].commercial_terms.bidding.cost_per.strength"
+            value: "cap"
+            description: "The answer keeps the buyer's strength"
+          - check: field_absent
+            path: "proposals[0].commercial_terms.purchases[0].bidding"
+            description: "The answer carries no purchase-level bidding, so the media-buy cost_per binds to the purchase's primary goal"
+          - check: field_value
+            path: "proposals[0].commercial_terms.purchases[0].optimization_goals[0].kind"
+            value: "event"
+            description: "The purchase's primary goal is the event goal the cost policy binds to"
+          - check: field_contains
+            path: "proposals[0].commercial_terms.purchases[0].optimization_goals[0].event_sources[*]"
+            value:
+              event_type: "purchase"
+            description: "The bound event source tracks the goal's event type"
+          - check: array_length
+            path: "proposals[0].commercial_terms.purchases[0].optimization_goals[0].event_sources"
+            min: 1
+            description: "At least one source is bound: exactly one unless the seller advertises multi-source dedup"
+          - check: field_present
+            path: "proposals[0].commercial_terms.purchases[0].optimization_goals[0].attribution_window"
+            description: "The seller states the attribution window the cost is measured under"
+          - check: field_value
+            path: "proposals[0].commercial_terms.purchases[0].pricing.currency"
+            value: "USD"
+            description: "The purchase pricing currency, which bidding amounts are denominated in, equals cost_per.currency"
+          - check: field_value
+            path: "proposals[0].forecast.currency"
+            value: "USD"
+            description: "The forecast is in the requested currency"
+          - check: field_present
+            path: "proposals[0].forecast.points[0].metrics.purchase.mid"
+            description: "Forecast points carry the event-type key planned at the stated cost"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "outcome_target_event_cost--request_purchase_cost_cap"
+            description: "Context correlation_id returned unchanged"

@@ -60,6 +60,27 @@
             "allOf": [{ "$ref": "/schemas/core/product-change-map.json" }],
             "description": "Requested product actions not satisfied by every returned draft. This is a subset of the request product_changes map and is valid only on partial or unable results."
           },
+          "drifted_pins": {
+            "type": "array",
+            "description": "Pins from the source proposal's commercial_terms.definition_pins[] whose published definition no longer resolves to the pinned content_digest, in the pins' canonical order. Required on, and valid only with, reason_code definition_changed.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pin": {
+                  "$ref": "/schemas/core/definition-pin.json",
+                  "description": "The drifted pin exactly as carried by the source proposal."
+                },
+                "current_content_digest": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$",
+                  "description": "Lowercase-hex SHA-256 the definition resolves to now. Omitted only when the entry was withdrawn from a successfully fetched, validated document."
+                }
+              },
+              "required": ["pin"],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
           "suggestions": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
@@ -140,6 +161,19 @@
           }
         ],
         "allOf": [
+          {
+            "if": {
+              "properties": { "reason_code": { "const": "definition_changed" } },
+              "required": ["reason_code"]
+            },
+            "then": {
+              "properties": { "outcome": { "const": "unable" } },
+              "required": ["drifted_pins"]
+            },
+            "else": {
+              "not": { "required": ["drifted_pins"] }
+            }
+          },
           {
             "if": {
               "properties": { "reason_code": { "const": "constraint_unsatisfiable" } },

@@ -42,6 +42,7 @@
     "time_based_views",
     "dooh_metrics",
     "ooh_metrics",
+    "print_metrics",
     "cost_per_click",
     "cost_per_completed_view",
     "cpm",
