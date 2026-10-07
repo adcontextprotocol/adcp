@@ -2,6 +2,7 @@
   "name": "Signed A2A 0.3 message/send carrying create_media_buy; operation resolves from DataPart skill",
   "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
   "signing_profile_version": "3.2",
+  "tier": "contradiction-resolution",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

@@ -2,6 +2,7 @@
   "name": "Unsigned A2A 1.0 SendMessage whose only DataPart has no skill; the operation cannot be resolved",
   "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
   "signing_profile_version": "3.2",
+  "tier": "contradiction-resolution",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

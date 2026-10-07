@@ -101,6 +101,16 @@ const CAPABILITY = {
 const SIGNED_NOTE =
   'AdCP 3.2 request-signing wire profile, unchanged: the signature covers content-digest and binary values are RFC 8941 sf-binary. Only the operation-resolution rule is new.';
 
+/**
+ * `hardening` vectors grade clauses that go beyond resolving the 3.2.x
+ * contradiction (SHOULD in 3.2.x, MUST from 3.3). Everything else is
+ * `contradiction-resolution`: derived from the A2A profile's MCP-parity rule.
+ */
+const HARDENING = new Set([
+  'negative/010', 'negative/011', 'negative/013', 'negative/014', 'negative/018', 'negative/019',
+  'negative/020', 'negative/021', 'negative/023', 'negative/024', 'negative/025',
+]);
+
 const DEFINITIONS = [
   // ── Positive ────────────────────────────────────────────────────────────
   {
@@ -180,6 +190,17 @@ const DEFINITIONS = [
     capability: CAPABILITY,
     outcome: { success: true, status: 'unsigned', resolved_operation: 'get_products' },
     comment: 'Legacy 3.0/3.1 A2A clients send parameters instead of input and never send A2A-Extensions. Resolution reads only skill, so the gate neither fails on parameters nor depends on extension activation. Rejecting parameters is the dispatcher job under the v3 profile.',
+  },
+
+  {
+    out: 'positive/007-unsigned-method-case-variant.json',
+    name: 'Unsigned request whose JSON-RPC method is a case variant of SendMessage; the gate resolves no operation',
+    body: a2a10('sendmessage', [invocation('create_media_buy', CREATE_MEDIA_BUY_INPUT)], 'a2a-pos-007'),
+    headers: HEADERS_1_0,
+    unsigned: true,
+    capability: CAPABILITY,
+    outcome: { success: true, status: 'unsigned', resolved_operation: null, dispatch: 'method_not_found' },
+    comment: 'Method names match exactly. sendmessage is not a message-carrying method, so it resolves no operation and passes the gate. The dispatcher MUST reject it as an unknown method. A lenient dispatcher that case-folds the method would run an unsigned create_media_buy past a gate that saw no operation.',
   },
 
   // ── Negative ────────────────────────────────────────────────────────────
@@ -392,6 +413,80 @@ const DEFINITIONS = [
     outcome: { success: false, error_code: 'request_body_malformed', failed_step: 0 },
     comment: 'raw and url are both A2A 1.0 file content members; either makes a FilePart, which the invocation profile does not allow.',
   },
+  {
+    out: 'negative/020-case-variant-member-name.json',
+    name: 'Unsigned A2A 1.0 SendMessage whose DataPart carries both skill and a case variant Skill',
+    body: '{"jsonrpc":"2.0","id":"a2a-neg-020","method":"SendMessage","params":{"message":{"messageId":"msg-a2a-neg-020","role":"ROLE_USER","parts":[{"data":{"skill":"get_products","Skill":"create_media_buy","input":{}}}]}}}',
+    headers: HEADERS_1_0,
+    unsigned: true,
+    capability: CAPABILITY,
+    outcome: { success: false, error_code: 'request_body_malformed', failed_step: 0 },
+    comment: 'Some decoders match member names case-insensitively (Go encoding/json). A case-sensitive gate reads get_products while such a dispatcher reads create_media_buy. A recognized member name in another case is rejected.',
+  },
+  {
+    out: 'negative/021-escaped-duplicate-skill-key.json',
+    name: 'Unsigned A2A 1.0 SendMessage whose DataPart repeats skill, once written with a JSON unicode escape',
+    body: '{"jsonrpc":"2.0","id":"a2a-neg-021","method":"SendMessage","params":{"message":{"messageId":"msg-a2a-neg-021","role":"ROLE_USER","parts":[{"data":{"skill":"get_products","sk\\u0069ll":"create_media_buy","input":{}}}]}}}',
+    headers: HEADERS_1_0,
+    unsigned: true,
+    capability: CAPABILITY,
+    outcome: { success: false, error_code: 'request_body_malformed', failed_step: 0 },
+    comment: 'Duplicate detection runs after JSON string decoding, so skill and sk\\u0069ll are the same key. A byte-level duplicate check misses this and the two parsers disagree on the value.',
+  },
+  {
+    out: 'negative/022-unsigned-http-json-message-send-required.json',
+    name: 'Unsigned A2A 1.0 HTTP+JSON POST /message:send carrying create_media_buy; operation is in required_for',
+    url: 'https://seller.example.com/a2a/v1/message:send',
+    body: JSON.stringify({ message: { messageId: 'msg-a2a-neg-022', role: 'ROLE_USER', parts: [invocation('create_media_buy', CREATE_MEDIA_BUY_INPUT)] } }),
+    headers: HEADERS_1_0,
+    unsigned: true,
+    capability: CAPABILITY,
+    outcome: { success: false, error_code: 'request_signature_required', failed_step: 0, resolved_operation: 'create_media_buy' },
+    comment: 'The HTTP+JSON binding has no JSON-RPC method, so method-keyed resolution never fires. The same skill resolution applies to the decoded message. The binding path is /message:send or /message:stream.',
+  },
+  {
+    out: 'negative/023-batch-body.json',
+    name: 'Unsigned JSON array of two A2A 1.0 SendMessage requests, one carrying create_media_buy',
+    body: JSON.stringify([
+      JSON.parse(a2a10('SendMessage', [invocation('get_products', GET_PRODUCTS_INPUT)], 'a2a-neg-023-a')),
+      JSON.parse(a2a10('SendMessage', [invocation('create_media_buy', CREATE_MEDIA_BUY_INPUT)], 'a2a-neg-023-b')),
+    ]),
+    headers: HEADERS_1_0,
+    unsigned: true,
+    capability: CAPABILITY,
+    outcome: { success: false, error_code: 'request_body_malformed', failed_step: 0 },
+    comment: 'A batch has no top-level method. A verifier that does not support batches rejects it. A verifier that does MUST resolve every element and demand a signature because the second element is in required_for, so request_signature_required is the only other conformant outcome. Batch semantics are tracked in adcp#7565.',
+  },
+  {
+    out: 'negative/024-duplicate-method-key.json',
+    name: 'Unsigned JSON-RPC body that repeats the method key, tasks/get first and SendMessage last',
+    body: '{"jsonrpc":"2.0","id":"a2a-neg-024","method":"tasks/get","method":"SendMessage","params":{"message":{"messageId":"msg-a2a-neg-024","role":"ROLE_USER","parts":[{"data":{"skill":"create_media_buy","input":{}}}]}}}',
+    headers: HEADERS_1_0,
+    unsigned: true,
+    capability: CAPABILITY,
+    outcome: { success: false, error_code: 'request_body_malformed', failed_step: 0 },
+    comment: 'A first-wins gate classifies the request as tasks/get (no operation) while a last-wins executor dispatches SendMessage carrying create_media_buy.',
+  },
+  {
+    out: 'negative/025-missing-method.json',
+    name: 'Unsigned JSON-RPC body with no method member',
+    body: JSON.stringify({ jsonrpc: '2.0', id: 'a2a-neg-025', params: { message: { messageId: 'msg-a2a-neg-025', role: 'ROLE_USER', parts: [invocation('create_media_buy', CREATE_MEDIA_BUY_INPUT)] } } }),
+    headers: HEADERS_1_0,
+    unsigned: true,
+    capability: CAPABILITY,
+    outcome: { success: false, error_code: 'request_body_malformed', failed_step: 0 },
+    comment: 'A JSON-RPC request has a string method. Without one nothing classifies the body, so it is rejected rather than treated as a request for no operation.',
+  },
+  {
+    out: 'negative/026-empty-skill.json',
+    name: 'Unsigned A2A 1.0 SendMessage whose skill is the empty string',
+    body: a2a10('SendMessage', [{ data: { skill: '', input: CREATE_MEDIA_BUY_INPUT } }], 'a2a-neg-026'),
+    headers: HEADERS_1_0,
+    unsigned: true,
+    capability: CAPABILITY,
+    outcome: { success: false, error_code: 'request_body_malformed', failed_step: 0 },
+    comment: 'skill MUST be a non-empty string.',
+  },
 ];
 
 function buildVector(def) {
@@ -401,8 +496,9 @@ function buildVector(def) {
     name: def.name,
     spec_reference: SPEC,
     signing_profile_version: '3.2',
+    tier: HARDENING.has(def.out.slice(0, 12)) ? 'hardening' : 'contradiction-resolution',
     reference_now: CREATED,
-    request: { method: 'POST', url: URL, headers, body: def.body },
+    request: { method: 'POST', url: def.url ?? URL, headers, body: def.body },
     verifier_capability: def.capability,
     jwks_ref: [KEYID],
   };
@@ -412,7 +508,7 @@ function buildVector(def) {
     const serialized = `(${COMPONENTS.map(c => `"${c}"`).join(' ')});created=${CREATED};expires=${EXPIRES};nonce="${def.nonce}";keyid="${KEYID}";alg="ed25519";tag="adcp/request-signing/v1"`;
     const base = [
       `"@method": POST`,
-      `"@target-uri": ${URL}`,
+      `"@target-uri": ${def.url ?? URL}`,
       `"@authority": ${AUTHORITY}`,
       `"content-type": application/json`,
       `"content-digest": ${digest}`,

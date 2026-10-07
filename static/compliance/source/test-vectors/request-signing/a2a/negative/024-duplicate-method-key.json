@@ -1,8 +1,8 @@
 {
-  "name": "Unsigned A2A 1.0 SendMessage with only a TextPart on an interface that dispatches AdCP operations",
+  "name": "Unsigned JSON-RPC body that repeats the method key, tasks/get first and SendMessage last",
   "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
   "signing_profile_version": "3.2",
-  "tier": "contradiction-resolution",
+  "tier": "hardening",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",
@@ -12,7 +12,7 @@
       "A2A-Version": "1.0",
       "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
     },
-    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-neg-016\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-neg-016\",\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"Please create a media buy for the spring campaign\",\"mediaType\":\"text/plain\"}]}}}"
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-neg-024\",\"method\":\"tasks/get\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-neg-024\",\"role\":\"ROLE_USER\",\"parts\":[{\"data\":{\"skill\":\"create_media_buy\",\"input\":{}}}]}}}"
   },
   "verifier_capability": {
     "supported": true,
@@ -33,5 +33,5 @@
     "error_code": "request_body_malformed",
     "failed_step": 0
   },
-  "$comment": "Zero DataParts: no operation resolves. A text- or model-based router MUST NOT infer create_media_buy from the prose and dispatch it past the signature gate."
+  "$comment": "A first-wins gate classifies the request as tasks/get (no operation) while a last-wins executor dispatches SendMessage carrying create_media_buy."
 }

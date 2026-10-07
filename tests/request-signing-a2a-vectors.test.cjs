@@ -108,18 +108,31 @@ function strictParse(text) {
 const A2A_INVOCATION_METHODS = new Set(['SendMessage', 'SendStreamingMessage', 'message/send', 'message/stream']);
 const PART_CONTENT_MEMBERS = ['text', 'data', 'raw', 'url', 'file']; // 1.0: text/data/raw/url; 0.3: text/data/file
 const FILE_MEMBERS = new Set(['raw', 'url', 'file']);
+const RECOGNIZED_MEMBERS = [
+  'jsonrpc', 'id', 'method', 'params', 'message', 'messageId', 'taskId', 'parts', 'kind',
+  'text', 'data', 'raw', 'url', 'file', 'skill', 'input', 'parameters', 'name',
+];
 
-/** Reference implementation of "Operation resolution over A2A". Throws on any unresolvable request. */
-function resolveOperation(body) {
-  const rpc = strictParse(body);
-  if (rpc === null || typeof rpc !== 'object' || Array.isArray(rpc)) throw new Error('malformed: not one JSON-RPC request object');
-  if (rpc.method === 'tools/call') return rpc.params?.name;
-  if (!A2A_INVOCATION_METHODS.has(rpc.method)) return undefined;
-  const parts = rpc.params?.message?.parts;
-  if (!Array.isArray(parts)) throw new Error('malformed: no parts');
+const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** Reject an object carrying a case variant of a recognized member name (case-insensitive decoders). */
+function assertExactMemberNames(obj) {
+  for (const key of Object.keys(obj)) {
+    if (RECOGNIZED_MEMBERS.some(name => name !== key && name.toLowerCase() === key.toLowerCase())) {
+      throw new Error(`malformed: case variant of a recognized member: ${key}`);
+    }
+  }
+}
+
+/** Resolve the operation from a Message (shared by the JSON-RPC and HTTP+JSON bindings). */
+function resolveMessageSkill(message) {
+  if (!isObject(message)) throw new Error('malformed: no message');
+  assertExactMemberNames(message);
+  if (!Array.isArray(message.parts)) throw new Error('malformed: no parts');
   const dataParts = [];
-  for (const part of parts) {
-    if (part === null || typeof part !== 'object' || Array.isArray(part)) throw new Error('malformed: part');
+  for (const part of message.parts) {
+    if (!isObject(part)) throw new Error('malformed: part');
+    assertExactMemberNames(part);
     const members = PART_CONTENT_MEMBERS.filter(m => part[m] !== undefined);
     if (members.length !== 1) throw new Error('malformed: part must carry exactly one content member');
     if (part.kind !== undefined && part.kind !== members[0]) throw new Error('malformed: kind disagrees with member');
@@ -128,9 +141,33 @@ function resolveOperation(body) {
   }
   if (dataParts.length !== 1) throw new Error('malformed: exactly one DataPart required');
   const [data] = dataParts;
-  if (data === null || typeof data !== 'object' || Array.isArray(data)) throw new Error('malformed: data must be an object');
+  if (!isObject(data)) throw new Error('malformed: data must be an object');
+  assertExactMemberNames(data);
   if (typeof data.skill !== 'string' || data.skill === '') throw new Error('malformed: skill');
   return data.skill;
+}
+
+/**
+ * Reference implementation of "Operation resolution over A2A" for one POST.
+ * Returns the resolved operation, or undefined when the request resolves to no
+ * operation (protocol-method traffic). Throws on any unresolvable request.
+ */
+function resolveOperation(request) {
+  const body = strictParse(request.body);
+  const pathname = new URL(request.url).pathname;
+  if (/\/message:(send|stream)$/.test(pathname)) return resolveMessageSkill(body.message); // A2A HTTP+JSON
+  // A JSON array has no method; a verifier that does not support batches rejects it.
+  if (!isObject(body)) throw new Error('malformed: not one JSON-RPC request object');
+  assertExactMemberNames(body);
+  if (typeof body.method !== 'string') throw new Error('malformed: method must be a string');
+  if (body.method === 'tools/call') {
+    if (typeof body.params?.name !== 'string' || body.params.name === '') throw new Error('malformed: tool name');
+    return body.params.name;
+  }
+  if (!A2A_INVOCATION_METHODS.has(body.method)) return undefined;
+  if (!isObject(body.params)) throw new Error('malformed: params');
+  assertExactMemberNames(body.params);
+  return resolveMessageSkill(body.params.message);
 }
 
 function header(request, name) {
@@ -169,7 +206,7 @@ function jwksFor(vector) {
 
 /** What an adopter's gate does: resolve once, then call the verifier with that operation. */
 async function gate(vector) {
-  const operation = resolveOperation(vector.request.body);
+  const operation = resolveOperation(vector.request);
   const capability = vector.verifier_capability;
   return verifyRequestSignature(
     { method: vector.request.method, url: vector.request.url, headers: vector.request.headers, body: vector.request.body },
@@ -192,6 +229,18 @@ describe('A2A operation-resolution vectors: corpus shape', () => {
     assert.ok(positive.some(e => e.vector.expected_outcome.status === 'verified'));
     assert.ok(negative.some(e => e.vector.expected_outcome.error_code === 'request_signature_required'));
     assert.ok(negative.some(e => e.vector.expected_outcome.error_code === 'request_body_malformed'));
+  });
+
+  it('tags every vector as contradiction-resolution or hardening', () => {
+    for (const { id, vector } of all) assert.ok(['contradiction-resolution', 'hardening'].includes(vector.tier), id);
+    assert.ok(all.some(e => e.vector.tier === 'hardening'));
+    assert.ok(all.some(e => e.vector.tier === 'contradiction-resolution'));
+    // The original bypass vectors are errata, never hardening.
+    for (const { id, vector } of negative) {
+      if (/001-unsigned-sendmessage|002-unsigned-message-send|003-unsigned-sendstreaming|022-unsigned-http-json/.test(id)) {
+        assert.equal(vector.tier, 'contradiction-resolution', id);
+      }
+    }
   });
 
   it('pins every vector to the 3.2 wire profile with required digest coverage and no fallback credential', () => {
@@ -226,9 +275,9 @@ describe('A2A operation-resolution vectors verify independently', () => {
 
     it(`${id}: reference resolver ${outcome.error_code === 'request_body_malformed' ? 'rejects the body as unresolvable' : 'resolves the expected operation'}`, () => {
       if (outcome.error_code === 'request_body_malformed') {
-        assert.throws(() => resolveOperation(vector.request.body), /malformed/);
+        assert.throws(() => resolveOperation(vector.request), /malformed/);
       } else {
-        assert.equal(resolveOperation(vector.request.body), outcome.resolved_operation);
+        assert.equal(resolveOperation(vector.request), outcome.resolved_operation ?? undefined);
       }
     });
 

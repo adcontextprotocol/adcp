@@ -2,6 +2,7 @@
   "name": "Unsigned-looking A2A 1.0 SendMessage with two DataParts and a Signature header but no Signature-Input",
   "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
   "signing_profile_version": "3.2",
+  "tier": "hardening",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

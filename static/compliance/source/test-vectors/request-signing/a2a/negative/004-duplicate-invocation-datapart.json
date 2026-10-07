@@ -2,6 +2,7 @@
   "name": "Unsigned A2A 1.0 SendMessage with two invocation DataParts; the operation is ambiguous",
   "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
   "signing_profile_version": "3.2",
+  "tier": "contradiction-resolution",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

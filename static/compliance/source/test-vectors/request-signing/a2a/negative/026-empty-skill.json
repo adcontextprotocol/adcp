@@ -1,5 +1,5 @@
 {
-  "name": "Unsigned A2A 1.0 SendMessage with only a TextPart on an interface that dispatches AdCP operations",
+  "name": "Unsigned A2A 1.0 SendMessage whose skill is the empty string",
   "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
   "signing_profile_version": "3.2",
   "tier": "contradiction-resolution",
@@ -12,7 +12,7 @@
       "A2A-Version": "1.0",
       "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
     },
-    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-neg-016\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-neg-016\",\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"Please create a media buy for the spring campaign\",\"mediaType\":\"text/plain\"}]}}}"
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-neg-026\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-neg-026\",\"role\":\"ROLE_USER\",\"parts\":[{\"data\":{\"skill\":\"\",\"input\":{\"idempotency_key\":\"vector-a2a-create-media-buy-0001\",\"account\":{\"brand\":{\"domain\":\"acmeoutdoor.example\"},\"operator\":\"pinnacle-agency.example\",\"sandbox\":false},\"packages\":[{\"product_id\":\"prod-1\",\"budget\":5000,\"pricing_option_id\":\"cpm_usd_fixed\",\"paused\":false}],\"brand\":{\"domain\":\"brand.example\"},\"start_time\":\"2027-01-04T00:00:00Z\",\"end_time\":\"2027-02-01T00:00:00Z\",\"paused\":false,\"plan_id\":\"plan_001\"}}}]}}}"
   },
   "verifier_capability": {
     "supported": true,
@@ -33,5 +33,5 @@
     "error_code": "request_body_malformed",
     "failed_step": 0
   },
-  "$comment": "Zero DataParts: no operation resolves. A text- or model-based router MUST NOT infer create_media_buy from the prose and dispatch it past the signature gate."
+  "$comment": "skill MUST be a non-empty string."
 }
