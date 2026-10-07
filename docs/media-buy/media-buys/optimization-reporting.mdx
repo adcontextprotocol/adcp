@@ -381,7 +381,7 @@ A single vendor number can be built from very different inputs: set-top-box retu
 - **Not a reconciliation key.** `measurement_provenance` describes how a value was produced and does not partition rows, so it stays out of the `(vendor, metric_id, qualifier)` join.
 - **Protocol-defined keys, neutral values.** Buyers MAY filter or group rows on `source_types`; readers MUST ignore unknown keys. The values are not a quality ranking, and the same value from two vendors is not thereby comparable. Vendor-specific detail still belongs in `breakdown`.
 
-The same vocabulary appears at discovery time as [`billing_measurement.counting_sources[]`](/docs/media-buy/advanced-topics/billing-authority#declaring-how-the-billing-count-is-built). Standard scalar metrics such as `impressions` have no report-time provenance slot in this release.
+The same vocabulary appears at discovery time as [`billing_measurement.counting_sources[]`](/docs/media-buy/advanced-topics/billing-authority#declaring-how-the-billing-count-is-built). Standard scalar metrics such as `impressions` have no report-time provenance slot in this release. Broadcast as-run logs and station affidavits are airing evidence, not a source for audience measurement, and are not values in this vocabulary; as-run data is carried in `by_spot[]`, separately from the audience rows.
 
 ```json
 {

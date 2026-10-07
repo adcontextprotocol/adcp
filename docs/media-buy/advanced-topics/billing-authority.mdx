@@ -62,6 +62,7 @@ Two sellers can both name themselves as `billing_measurement.vendor` and still c
 - **Self-counting sellers SHOULD declare it.** When the seller (or its ad server) is the named `vendor`, declare `counting_sources[]`. Buyer-attested and third-party vendors describe their own method in their measurement-agent catalog and MAY omit it.
 - **Negotiable like any other term.** On a product it is the seller's default; on a package request it is a buyer's proposed term; the seller accepts, adjusts, or rejects with `TERMS_REJECTED`. In practice a seller will rarely agree to a different method for its own count, so treat it as a handshake more than a lever.
 - **A set.** Order carries no meaning and values MUST NOT repeat.
+- **Airing evidence is not a counting source.** Broadcast as-run logs and station affidavits prove that a spot ran; they are not a source for audience measurement and have no value in this vocabulary. Delivery reports carry as-run data in `by_spot[]`, separate from the audience rows that `counting_sources[]` and `measurement_provenance` describe.
 
 ```json title="Product excerpt — a CTV seller billing from its server-side logs"
 {
