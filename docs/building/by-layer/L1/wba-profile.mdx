@@ -41,6 +41,15 @@ An agent that shares a host with other agents under the AdCP RFC 9421 profile ke
 
 Key lookup is keyed on the pair of origin and key, never on the key alone (section 5.4). A verifier that indexes keys by thumbprint alone attributes a request to whatever origin the signer claims. Negative vector `006-key-not-in-named-directory` grades this rule.
 
+## Key purposes
+
+A key's purpose follows from the identity that publishes it. A governance agent signs from its own identity, on its own origin, and never from a transport identity. A verifier accepts a governance token only when both of the following hold:
+
+1. The token's `kid` is in the key directory of the `iss` origin, and `jku` is that directory's URL.
+2. The `iss` origin is listed in the governance role of a record the verifier already trusts: the governance-typed `agents[]` entry in the buyer's `brand.json`, or the `adcp:governance` role in `trust.json` once [#7809](https://github.com/adcontextprotocol/adcp/issues/7809) lands.
+
+The second check binds the purpose. A transport identity that names itself in `iss` passes the first check with its own key and fails the second. How documents are signed is a separate decision (RFC #7878, D11). The vectors under `governance/` grade only this rule, and the rest of the token follows the existing [governance verification checklist](/docs/building/by-layer/L1/security#signed-governance-context).
+
 ## Profile rules
 
 RFC 9421 section 3.2.1 lets an application impose requirements beyond the base specification. Its examples include "Requiring a specific set of header fields to be signed", "Enforcing a maximum signature age", and "Enforcing uniqueness of the nonce parameter". The profile consists of the following rules. Each rule is a requirement of that kind or a choice among options WBA defines.
@@ -296,6 +305,9 @@ The vectors live at `static/compliance/source/test-vectors/wba-profile/` and are
 - `negative/005-relay-inner-signature-altered`: `403`; the brand agent's signature changed after the relay signed over it.
 - `negative/006-key-not-in-named-directory`: `403`; the signing key is published by a different origin than the one `Signature-Agent` names.
 - `negative/007-malformed-signature-agent`: `400`; the header does not parse.
+- `governance/001-governance-token`: a governance token from the governance identity, with its own key; it verifies.
+- `governance/002-governance-token-signed-with-transport-key`: `governance_key_unknown`; the key is published only by the transport identity.
+- `governance/003-governance-token-issued-as-transport-identity`: `governance_issuer_not_authorized`; the key and signature are consistent, and the issuer is not in the governance role.
 
 The keys in `keys.json` are public test keys with published private seeds. Section 6.8 says test keys "MUST NOT be used in production", and verifiers SHOULD reject them when detected. The README in the vector directory describes the file format and the harness state each vector needs.
 
