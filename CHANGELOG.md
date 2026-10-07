@@ -1,5 +1,27 @@
 # Changelog
 
+## 3.2.3
+
+### Patch Changes
+
+- 1e5a85c: Security errata for GHSA-2pm6-6mc8-8xcm (adcp#7820): `request_signing.required_for` / `supported_for` / `warn_for` now match the AdCP operation resolved from the request, so they apply over A2A. This resolves a contradiction in favor of the fail-closed reading. The A2A profile extension already requires the signing rules used for the equivalent task over MCP, while `security.mdx` said a `required_for` match could not be satisfied by any JSON-RPC `method` other than `tools/call`, which made `required_for` unenforceable for A2A messages and let an unsigned A2A `create_media_buy` through a seller that listed it. The `tools/call`-only sentence is superseded. This is a behavior change for sellers that followed that sentence literally: once their verifier adopts the rule, unsigned A2A calls to an operation in `required_for` are rejected. Stage the change through `warn_for` first. `required_for` still yields to a configured fallback authenticator, and 3.0/3.1 digest postures do not bind the body.
+  
+  Core rules (MUST): MCP `tools/call` resolves to `params.name`; A2A `SendMessage`, `SendStreamingMessage`, `message/send`, `message/stream`, and the A2A HTTP+JSON and gRPC equivalents resolve to the `skill` of the Message's sole DataPart; `protocol_methods_*` keep matching the JSON-RPC `method` only. A request that does not resolve to exactly one operation fails closed with the existing `request_body_malformed` code (the code's description is widened; no new code), and the resolved operation is the only input to the signature gate, handler dispatch, and schema selection. A2A 0.3 and the non-JSON-RPC bindings are covered by analogy; the A2A profile defines only 1.0 over JSON-RPC.
+  
+  Hardening, additions beyond the contradiction (SHOULD in 3.2.x, MUST from 3.3): strict parsing of unsigned bodies including batches, duplicate and case-variant member names; A2A Part shape (one content member, no FilePart, `kind` agreement); and task-continuation binding. Adds 33 A2A conformance vectors under `test-vectors/request-signing/a2a/`, tagged `contradiction-resolution` or `hardening`, with a generator and an independent test. This relies on the maintainer-approved security-errata exception to the signing-profile patch rule.
+- 4a2da37: Make the acceptance-policy discovery compliance scenario provision and explicitly select its sandbox account, so account-scoped product fixtures remain visible when SDK discovery no longer synthesizes an account. Preserve the catalog and product-profile assertions and require the additional account-seeding check to pass.
+- 4a2da37: Clarify that `authorized_agents[].url` in `adagents.json` is the agent's full protocol endpoint URL, including the path (for example `https://agent.example.com/mcp`), not the agent's origin. A new "Agent URL matching" section says which URL differences canonicalization ignores and which it keeps (trailing slash, path case, scheme, query). It also says to list one entry for each agent URL when MCP and A2A are served at different paths.
+- 4a2da37: Correct the creative evaluator authentication storyboard's experimental feature membership check to inspect individual declared feature IDs, so agents advertising `creative.evaluator` pass the capability contract while agents omitting it still fail.
+- 4a2da37: Gate advanced delivery reporting on advertised wholesale discovery support and
+  proposal-finalization replay on advertised idempotency support. Sellers that
+  opt out skip the unsupported checks while proposal finalization and acceptance
+  remain graded.
+- 4a2da37: Make the sales-guaranteed compliance storyboard exercise its documented polling path without requiring an optional task webhook.
+- 4a2da37: Gate the 3.2 CTV experience and premium display validation storyboards on
+  validate_input so controller-only agents are not selected. Retain the controller
+  workflow requirement for fixture setup. This is a narrow part of #7404; it does
+  not complete the hosted compliance landing, deployment, or public-card checks.
+
 ## 3.2.2
 
 ### Patch Changes

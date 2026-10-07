@@ -1,0 +1,235 @@
+id: media_buy_seller/budget_cap_timezone_override
+version: "1.0.0"
+title: "Buyer budget-cap timezone override"
+category: media_buy_seller
+summary: "Verifies that an advertised buyer timezone override applies to aggregate and package caps and is echoed on readback."
+track: media_buy
+introduced_in: "3.2"
+
+requires_capability:
+  path: media_buy.budget_capping.buyer_timezone_override
+  equals: true
+
+requires:
+  - controller
+
+required_tools:
+  - list_accounts
+  - create_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+narrative: |
+  Sellers advertising buyer_timezone_override accept a buyer-selected IANA
+  boundary on capped media buys. The selected value is shared by every cap on
+  the buy. Aggregate and package scopes are exercised independently when each
+  is advertised, and durable readback must echo the accepted override.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - buyer_budget_cap_timezone_override
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The controller seeds a sandbox account and one non-guaranteed product."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_timezone_override"
+      brand:
+        domain: "acmeoutdoor.example"
+      operator: "pinnacle-agency.example"
+      billing: "operator"
+      status: "active"
+      sandbox: true
+      timezone: "America/New_York"
+  products:
+    - product_id: "timezone_override_display"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "Europe/London"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+  pricing_options:
+    - product_id: "timezone_override_display"
+      pricing_option_id: "timezone_override_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 5
+
+phases:
+  - id: account_readback
+    title: "Confirm the account's default differs from the override"
+    steps:
+      - id: read_override_account
+        title: "Read the operational account clock"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "acct_timezone_override"
+        validations:
+          - check: response_schema
+            description: "Account response matches the canonical schema"
+          - check: field_value
+            path: "accounts[0].timezone"
+            value: "America/New_York"
+            description: "Account default is explicit before the buyer overrides it"
+
+  - id: aggregate_override
+    title: "Override an aggregate daily cap"
+    depends_on: [account_readback]
+    requires_capability:
+      path: media_buy.budget_capping.supported_scopes
+      contains: media_buy
+    steps:
+      - id: create_aggregate_override_buy
+        title: "Create an aggregate-capped buy with a buyer boundary"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acct_timezone_override"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 3000
+            currency: "USD"
+          daily_budget_cap: 100
+          budget_cap_timezone: "Pacific/Honolulu"
+          packages:
+            - product_id: "timezone_override_display"
+              pricing_option_id: "timezone_override_cpm"
+              budget: 3000
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#budget_cap_timezone_override_aggregate_create"
+        context_outputs:
+          - name: aggregate_override_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Create response matches the canonical schema"
+          - check: field_value
+            path: "daily_budget_cap"
+            value: 100
+            description: "Aggregate hard cap is accepted"
+          - check: field_value
+            path: "budget_cap_timezone"
+            value: "Pacific/Honolulu"
+            description: "Seller accepts and echoes the buyer override"
+
+      - id: read_aggregate_override_buy
+        title: "Read back the aggregate override"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "acct_timezone_override"
+          media_buy_ids: ["$context.aggregate_override_media_buy_id"]
+        validations:
+          - check: response_schema
+            description: "Read response matches the canonical schema"
+          - check: field_value
+            path: "media_buys[0].daily_budget_cap"
+            value: 100
+            description: "Aggregate cap survives readback"
+          - check: field_value
+            path: "media_buys[0].budget_cap_timezone"
+            value: "Pacific/Honolulu"
+            description: "Aggregate override survives readback"
+
+  - id: package_override
+    title: "Override a package daily cap"
+    depends_on: [account_readback]
+    requires_capability:
+      path: media_buy.budget_capping.supported_scopes
+      contains: package
+    steps:
+      - id: create_package_override_buy
+        title: "Create a package-capped buy with the same buyer boundary"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acct_timezone_override"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 3000
+            currency: "USD"
+          budget_cap_timezone: "Pacific/Honolulu"
+          packages:
+            - product_id: "timezone_override_display"
+              pricing_option_id: "timezone_override_cpm"
+              budget: 3000
+              daily_budget_cap: 80
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#budget_cap_timezone_override_package_create"
+        context_outputs:
+          - name: package_override_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Create response matches the canonical schema"
+          - check: field_value
+            path: "packages[0].daily_budget_cap"
+            value: 80
+            description: "Package hard cap is accepted"
+          - check: field_value
+            path: "budget_cap_timezone"
+            value: "Pacific/Honolulu"
+            description: "The buyer override applies to a package-only cap"
+
+      - id: read_package_override_buy
+        title: "Read back the package override"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "acct_timezone_override"
+          media_buy_ids: ["$context.package_override_media_buy_id"]
+        validations:
+          - check: response_schema
+            description: "Read response matches the canonical schema"
+          - check: field_value
+            path: "media_buys[0].packages[0].daily_budget_cap"
+            value: 80
+            description: "Package cap survives readback"
+          - check: field_value
+            path: "media_buys[0].budget_cap_timezone"
+            value: "Pacific/Honolulu"
+            description: "Package override survives readback"
