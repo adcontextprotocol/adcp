@@ -4,6 +4,8 @@ title: "Seller fulfills a video media buy with a completed_views optimization go
 category: media_buy_seller
 summary: "Verifies that a seller advertising completed_views in supported_optimization_metrics can accept a media buy whose metric-kind optimization_goal targets completed views at a buyer-supplied view_duration_seconds, reject view_duration_seconds values not in the product's metric_optimization.supported_view_durations, and report completed_views + completion_rate on delivery. Sibling to reach_buy_flow on the video-completion side: sellers without video inventory (display-only DSPs, retail-media networks, audio-only sellers without video products) grade not_applicable."
 track: media_buy
+requires:
+  - controller
 
 # Gate: scenario runs only when the seller declares completed_views in
 # media_buy.supported_optimization_metrics (proposed in #4669). Sellers

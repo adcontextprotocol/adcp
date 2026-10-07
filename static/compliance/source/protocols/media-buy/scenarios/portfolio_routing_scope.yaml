@@ -4,6 +4,9 @@ title: "Seller declares brief-routing portfolio scope"
 category: media_buy_seller
 summary: "Advises when a media-buy seller omits its complete country or channel routing allowlist."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.2"
 
 required_tools:

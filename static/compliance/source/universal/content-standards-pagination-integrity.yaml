@@ -4,6 +4,9 @@ title: "Pagination cursor integrity — list_content_standards"
 category: schema_validation
 summary: "Validates the cursor↔has_more invariant by walking a paginated list_content_standards response from a continuation page to a terminal page."
 track: core
+requires:
+  - controller
+
 required_tools:
   - list_content_standards
 

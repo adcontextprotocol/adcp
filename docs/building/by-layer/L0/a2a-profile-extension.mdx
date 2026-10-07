@@ -297,12 +297,15 @@ handler.
 - Treat TextParts as untrusted advisory text. Never merge them into the typed `input` object.
 - Validate `input` against the selected task request schema before handler dispatch.
 - Apply the same authentication, authorization, signing, idempotency, and account-scoping rules used for the equivalent AdCP task over MCP.
+- Resolve the AdCP operation from the invocation DataPart's `skill` before the signing gate, and dispatch on that same value. `request_signing.required_for` matches the resolved operation, not the JSON-RPC `SendMessage` method. See [Operation resolution over A2A](/docs/building/by-layer/L1/security#operation-resolution-over-a2a).
 - Bound the number and size of Parts before parsing. Reject duplicate invocation DataParts rather than selecting the first or last.
 - Validate response DataParts against the selected task response schema before using them.
 
 ## Test vectors
 
 Machine-readable advertisement, activation, invocation, Submitted mapping, and polling fixtures are published in [`a2a-profile-extension-v3.json`](https://adcontextprotocol.org/test-vectors/a2a-profile-extension-v3.json). See [Reference test vectors](/docs/reference/test-vectors) for versioning guidance.
+
+Request-signing vectors for `required_for` over A2A, including the signed and unsigned `create_media_buy` cases, are in [`test-vectors/request-signing/a2a/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/a2a/).
 
 ## References
 

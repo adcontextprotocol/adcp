@@ -5,6 +5,8 @@ title: "Seller discovers audience activation paths honestly"
 category: media_buy_seller
 summary: "Verifies capability and product declarations, vendor-constrained matching, OR semantics, omitted-field wildcards, and exclusion of undeclared products."
 track: media_buy
+requires:
+  - controller
 
 requires_capability:
   path: experimental_features
