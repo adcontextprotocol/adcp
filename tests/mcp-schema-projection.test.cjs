@@ -98,8 +98,13 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // KiB), bounded at 447 KiB. Assignment-scoped trackers add a shared event/URL
 // row and assignment arrays to create/update/sync (+766 bytes measured against
 // main, 457,150 → 457,916 bytes / 447.2 KiB), bounded at 448 KiB.
+// The Web Bot Auth webhook profile adds signing_profile to the push-notification
+// and notification configurations, as one enum schema of its own
+// (enums/webhook-signing-profile.json) that keeps generated SDK type names from
+// colliding. It reaches 11 media-buy inputs (~0.2 KiB each), measured at
+// 460,025 bytes (449.2 KiB) and bounded at 450 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 448,
+  'media-buy': 450,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -124,8 +129,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // closure to that collection copy (1_251_212 bytes measured), bounded at
 // 1_255_000. Experimental hold_policy (#7661) reaches it through the seeded
 // Product and the committed proposal (1_259_242 bytes measured), bounded at
-// 1_265_000.
-const PARITY_COMPILE_LIMIT = 1_265_000;
+// 1_265_000. The Web Bot Auth signing_profile on push-notification and
+// notification configurations reaches it as well (+1_271
+// bytes measured, 1_264_154 → 1_265_425), bounded at 1_270_000.
+const PARITY_COMPILE_LIMIT = 1_270_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
