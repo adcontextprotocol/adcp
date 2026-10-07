@@ -1354,6 +1354,10 @@ The runner distinguishes three outcome categories in deterministic mode:
 - **Transition correctly rejected** — controller returned [`INVALID_TRANSITION`](/docs/building/by-layer/L3/comply-test-controller#error-codes) for an invalid state change. This is a pass.
 - **Unexpected failure** — controller returned an error for a transition that should be valid, or succeeded on a transition that should fail. This is a compliance failure.
 
+### Who is expected to implement the controller
+
+Reference sellers (implementations published to demonstrate full conformance, such as the SDK reference and example sellers that SDK CI grades) SHOULD implement `comply_test_controller`; one that omits it leaves its controller-seeded lifecycle coverage ungraded. Translator and adapter sellers that front platforms which cannot seed state are not expected to implement it. Storyboards that seed through the controller declare `requires: [controller]`, so a seller without the controller receives one storyboard-level `requirement_unmet` skip naming `controller` on each such storyboard it is graded on, not a `missing_test_controller` grade on every seeded step. If the controller disappears mid-run, the runner still grades each affected step `missing_test_controller`.
+
 ### Example: creative lifecycle in deterministic mode
 
 ```

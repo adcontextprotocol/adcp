@@ -4,6 +4,8 @@ title: "Seller replaces, clears, and guards a MediaBuy frequency cap after creat
 category: media_buy_seller
 summary: "Verifies update_media_buy_frequency_cap availability, root-cap replacement and null clearing without touching package caps, atomic rejection of new_packages that cannot join the shared counter, the resulting-state rule for clearing a cap while adding packages, and ACTION_NOT_ALLOWED once the package mix can no longer change the root cap."
 track: media_buy
+requires:
+  - controller
 
 requires_capability:
   path: media_buy.aggregate_frequency_capping
