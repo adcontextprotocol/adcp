@@ -127,6 +127,50 @@ describe('training agent canonical bidding policy', () => {
     expect(await mediaBuyIds()).toEqual(before);
   });
 
+  it('binds a media-buy cost_per to a vendor_metric primary goal on create_media_buy', async () => {
+    const vendor = { domain: 'footfallvendor.example' };
+    const seeded = await callTool(server, 'comply_test_controller', {
+      scenario: 'seed_product',
+      account: ACCOUNT,
+      brand: BRAND,
+      params: {
+        product_id: 'bp_store_visits_auction',
+        fixture: {
+          delivery_type: 'non_guaranteed',
+          channels: ['display'],
+          format_options: [{ format_option_id: 'bp_store_visits_300x250', format_kind: 'image', params: { width: 300, height: 250 } }],
+          pricing_options: [{ pricing_option_id: 'bp_store_visits_cpm', pricing_model: 'cpm', currency: 'USD', floor_price: 1.5 }],
+          reporting_capabilities: {
+            available_metrics: ['impressions', 'spend'],
+            vendor_metrics: [{ vendor, metric_id: 'store_visits_14d_exposed', vendor_relationship: 'third_party' }],
+          },
+          vendor_metric_optimization: {
+            supported_metrics: [{ vendor, metric_id: 'store_visits_14d_exposed', supported_targets: ['cost_per'] }],
+          },
+        },
+      },
+    });
+    expect(seeded.result.success, JSON.stringify(seeded.result)).toBe(true);
+    const created = await callTool(server, 'create_media_buy', {
+      account: ACCOUNT,
+      brand: BRAND,
+      ...FLIGHT,
+      total_budget: { amount: 5000, currency: 'USD' },
+      budget_allocation: { mode: 'fixed' },
+      bidding: { cost_per: { amount: 4, strength: 'cap' } },
+      packages: [{
+        product_id: 'bp_store_visits_auction',
+        pricing_option_id: 'bp_store_visits_cpm',
+        budget: 5000,
+        bid_price: 2,
+        optimization_goals: [{ kind: 'vendor_metric', vendor, metric_id: 'store_visits_14d_exposed', priority: 1 }],
+        committed_metrics: [{ scope: 'vendor', vendor, metric_id: 'store_visits_14d_exposed' }],
+      }],
+    });
+    expect(created.error, JSON.stringify(created.result)).toBeUndefined();
+    expect(typeof created.result.media_buy_id).toBe('string');
+  });
+
   it('keeps accepting package bid_amount and max_bid on buy_products purchases', async () => {
     await seedAuctionProducts(server);
     const bought = await executeTrainingAgentTool('buy_products', {

@@ -5,7 +5,50 @@ description: "Authoritative AdCP version-by-version release record with cumulati
 ---
 
 
-Authoritative version-by-version release record for AdCP, with cumulative change detail, migration guidance, and per-version adoption notes. For the 3.2 adopter overview, see [What's New in AdCP 3.2](/docs/reference/whats-new-in-3-2); for the upgrade checklist, see [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2); and for beta and RC history, see the [3.2 prerelease history](/docs/reference/3-2-beta). For the at-a-glance status of every published version, see [Versions & Compatibility](/docs/reference/versions). For source-level changelogs, see [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md). For version stability, schema-change scope, and the 3.x guarantees see [Versioning & Governance](/docs/reference/versioning). For v2 end-of-life see the [v2 sunset page](/docs/reference/v2-sunset).
+Authoritative version-by-version release record for AdCP, with cumulative change detail, migration guidance, and per-version adoption notes. For the 3.3 beta overview, see [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3), [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3), and the [3.3 beta program](/docs/reference/3-3-beta). For the 3.2 adopter overview, see [What's New in AdCP 3.2](/docs/reference/whats-new-in-3-2); for the upgrade checklist, see [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2); and for beta and RC history, see the [3.2 prerelease history](/docs/reference/3-2-beta). For the at-a-glance status of every published version, see [Versions & Compatibility](/docs/reference/versions). For source-level changelogs, see [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md). For version stability, schema-change scope, and the 3.x guarantees see [Versioning & Governance](/docs/reference/versioning). For v2 end-of-life see the [v2 sunset page](/docs/reference/v2-sunset).
+
+---
+
+## Version 3.3.0
+
+**Status:** Beta cycle. 3.3 is a minor release targeting the 3.3.0 milestone. Beta.0 is the protocol-first cut used as the canonical input for SDK work; beta.1 incorporates integration feedback and becomes SDK-backed only after SDKs ingest the exact beta.1 bundle. No stable field, enum value, or task is removed, renamed, or deprecated. Two normative changes narrow conformant behavior and are listed under [Behavior changes to review](#behavior-changes-to-review). This section is the cumulative 3.3 narrative and is refreshed at each beta cut; `CHANGELOG.md` records what each individual cut consumed.
+
+**Where to start:** [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3) is the adopter overview. [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3) has the role-based checklist. The [3.3 beta program](/docs/reference/3-3-beta) covers artifacts, SDK timing, and the proposals still in working-group review.
+
+### Beta checkpoints
+
+| Release | Purpose | SDK posture |
+|---|---|---|
+| `3.3.0-beta.0` | Publish signed schemas, compliance assets, skills, and manifest for implementation feedback | SDK support follows this cut; beta.0 is not an SDK-backed certification target |
+| `3.3.0-beta.1` | Incorporate beta.0 integration corrections, then trigger an exact beta.1 SDK refresh | SDK-informed at protocol publication; SDK-backed after matching SDK support and integration evidence publish |
+
+Each beta is immutable. The `3.3-beta` documentation selector advances to the latest beta, while pinned protocol, schema, compliance, and documentation artifacts remain available. See the [3.3 beta program](/docs/reference/3-3-beta).
+
+### 3.3 feature index
+
+- **Accounts:** discovery and negotiation tasks never provision an account; unresolved `account` references return `ACCOUNT_NOT_FOUND` with one recovery path (#7848, #7871).
+- **Trust and signing:** one agent-resolution algorithm for every signing surface, canonical URL matching, publisher key pins that only narrow, and `adagents.json` agent URLs that include the endpoint path (#7882, #7827, #7881).
+- **Media buy:** optional `media_buy.features.catalog_ingestion` declarations for catalog types, modes, feed formats, identifiers, batch limits, and item status reporting (#7927).
+- **Channels:** structured DOOH `location` on placements and `dooh_inventory_summary.venue_counts[]` on products (#7416).
+- **Extensions:** the AdCP-owned `ext.adcp` namespace with an optional `opportunity` binding for 3.2 `get_products` integrations (#7904).
+- **Conformance:** a new advisory unprovisioned-account storyboard, capability-gated wholesale and replay checks, and a polling-based `sales-guaranteed` path (#7848, #7893, #7854, #7931).
+
+### Behavior changes to review
+
+- **Discovery never provisions (#7848).** Discovery and negotiation tasks, including `get_products`, `list_products`, `get_signals`, `request_proposals`, `refine_proposals`, and `decline_proposals`, MUST NOT create or activate an account or accept default terms. A lazily provisioning seller provisions only on a provisioning task (`create_media_buy`, `buy_products`, `accept_proposal`, `sync_accounts`, `sync_creatives`, `sync_catalogs`, `sync_event_sources`, `activate_signal`), and every unresolved `account` returns `ACCOUNT_NOT_FOUND` unless a seller that provisions lazily instead of exposing `sync_accounts` answers for the account it would create without creating it. This narrows the 3.2 wording "first account-scoped request", so a seller that provisioned on `get_products` is no longer conformant. The request and response schemas are unchanged, but the required side effect is not: such a seller may still answer, and must not create the account while doing so.
+- **One agent-resolution algorithm (#7882).** Pinned keys must be published in the agent's JWKS, a `kid`-only pin matches nothing, `key_origins` is checked for every webhook signer that publishes `brand_json_url`, and agent URLs match by canonical URL. Signatures that verified under 3.2 can fail; the list is in the [migration guide](/docs/reference/migration/3-2-to-3-3#signature-verification-tightens).
+
+### Additive surfaces and conformance
+
+Catalog ingestion declarations, DOOH location, `ext.adcp`, and the 3.3 grading changes are described in [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3) and [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3). 3.3 deprecates no stable field, task, or enum value.
+
+### Already shipped in 3.2.2
+
+The account-reference clarification (#7871) and the trust-docs consistency fixes (#7881) were published as documentation-only changes in [3.2.2](https://github.com/adcontextprotocol/adcp/releases/tag/v3.2.2). They appear again in the 3.3.0 changelog but are not new to 3.2.2 adopters.
+
+### In working-group review
+
+Proposals still in review, and not part of any beta until they merge, are listed in the [3.3 beta program](/docs/reference/3-3-beta#in-working-group-review-for-3-3).
 
 ---
 
