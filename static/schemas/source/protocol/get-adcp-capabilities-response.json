@@ -2805,7 +2805,7 @@
         },
         "required_for": {
           "type": "array",
-          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Over MCP the verifier matches the tools/call params.name; over A2A, a verifier that lists 'a2a_invocation_skill' in `operation_sources` matches the invocation DataPart's skill, which for the AdCP A2A profile equals the AdCP operation name; a verifier without that marker does not enforce this list over A2A. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Every operation listed MUST also appear in `supported_for`; see `x-adcp-validation`.",
+          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Over MCP the verifier matches the tools/call params.name; over A2A it matches the skill of the sole invocation DataPart of the message (SendMessage, SendStreamingMessage, message/send, message/stream), which for the AdCP A2A profile equals the AdCP operation name. A request that does not resolve to exactly one operation is rejected with request_body_malformed; see docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Every operation listed MUST also appear in `supported_for`; see `x-adcp-validation`.",
           "items": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9_]*$"
@@ -2881,19 +2881,6 @@
           "x-adcp-validation": {
             "subset_of": "request_signing.protocol_methods_supported_for",
             "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
-          }
-        },
-        "operation_sources": {
-          "type": "array",
-          "description": "Transport bindings from which this verifier resolves the AdCP operation name it matches against supported_for, warn_for, and required_for. 'mcp_tools_call' resolves from the decoded params.name of a JSON-RPC tools/call request. 'a2a_invocation_skill' resolves from the decoded skill of the sole DataPart of an A2A SendMessage, SendStreamingMessage, message/send, or message/stream request, and commits the verifier to the fail-closed and skill-to-handler binding rules in docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a for every A2A version and binding the endpoint serves. A verifier MUST list a source only if it implements that source's rules and passes its conformance vectors, and a present array MUST list every source the verifier supports. Absent means a legacy verifier (an empty array is not valid; omit the field): operation lists are enforced for MCP tools/call only, and a counterparty MUST NOT infer that required_for is enforced over A2A. The field is self-attested and informational; buyers SHOULD sign any operation listed in required_for regardless of it. It never changes the protocol_methods_* namespace, which matches the JSON-RPC method only.",
-          "items": {
-            "type": "string",
-            "enum": ["mcp_tools_call", "a2a_invocation_skill"]
-          },
-          "minItems": 1,
-          "uniqueItems": true,
-          "x-adcp-validation": {
-            "spec": "docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a"
           }
         }
       },

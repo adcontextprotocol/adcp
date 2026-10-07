@@ -96,7 +96,6 @@ const CAPABILITY = {
   covers_content_digest: 'required',
   supported_for: ['create_media_buy', 'get_products'],
   required_for: ['create_media_buy'],
-  operation_sources: ['mcp_tools_call', 'a2a_invocation_skill'],
 };
 
 const SIGNED_NOTE =
@@ -192,7 +191,7 @@ const DEFINITIONS = [
     unsigned: true,
     capability: CAPABILITY,
     outcome: { success: false, error_code: 'request_signature_required', failed_step: 0, resolved_operation: 'create_media_buy' },
-    comment: 'The bypass in adcp#7820: the JSON-RPC method is SendMessage, not tools/call, so a verifier following the pre-3.3 cross-namespace rule never enters the required_for check and the unsigned create_media_buy proceeds.',
+    comment: 'The bypass in adcp#7820: the JSON-RPC method is SendMessage, not tools/call, so a verifier following the superseded cross-namespace rule never enters the required_for check and the unsigned create_media_buy proceeds.',
   },
   {
     out: 'negative/002-unsigned-message-send-v0-3-required.json',
@@ -264,10 +263,9 @@ const DEFINITIONS = [
       required_for: ['create_media_buy'],
       protocol_methods_supported_for: ['SendMessage'],
       protocol_methods_required_for: ['SendMessage'],
-      operation_sources: ['mcp_tools_call', 'a2a_invocation_skill'],
     },
     outcome: { success: false, error_code: 'request_signature_required', failed_step: 0, resolved_operation: 'get_products' },
-    comment: 'Namespaces stay disjoint and independent. protocol_methods_required_for matches the JSON-RPC method only, so listing SendMessage demands a signature on every A2A 1.0 message, including get_products. This is the over-covering interim mitigation for verifiers that predate operation_sources; it is unchanged by the operation-resolution rule.',
+    comment: 'Namespaces stay disjoint and independent. protocol_methods_required_for matches the JSON-RPC method only, so listing SendMessage demands a signature on every A2A 1.0 message, including get_products. This is the over-covering interim mitigation for operators who cannot adopt the operation-resolution rule yet; it is unchanged by the operation-resolution rule.',
   },
   {
     out: 'negative/008-no-extension-header.json',

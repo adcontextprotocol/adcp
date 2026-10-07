@@ -1264,7 +1264,7 @@ Buyers reading capability blocks in 3.x MUST NOT assume protocol-method coverage
 
 #### Operation resolution over A2A
 
-AdCP 3.3 and later. `required_for`, `supported_for`, and `warn_for` are matched against the **resolved AdCP operation**, which the verifier computes once from the decoded request:
+`required_for`, `supported_for`, and `warn_for` are matched against the **resolved AdCP operation**, which the verifier computes once from the decoded request. This section applies to every 3.2 verifier. The A2A profile already requires the signing rules used for the equivalent task over MCP, so a verifier that skips `required_for` for an A2A message does not conform; earlier wording that matched `required_for` only against `tools/call` is superseded:
 
 | Request | Resolved operation |
 |---|---|
@@ -1284,9 +1284,7 @@ A verifier on an A2A interface that dispatches AdCP operations MUST apply these 
 
 On the 3.2 profile a signed A2A request covers `content-digest`, so `skill` is bound by the signature and a captured body cannot be replayed as a different operation. Legacy `"either"` and `"forbidden"` endpoints do not bind the body and get no such guarantee. `warn_for` resolves the same way, so a seller can watch unsigned A2A traffic for an operation in `warn_for` before it moves the operation to `required_for`; a seller that turns A2A enforcement on without that step will start rejecting buyers that were previously getting through.
 
-**Marker.** A verifier lists `a2a_invocation_skill` in `request_signing.operation_sources` to declare that it implements this section and passes the [A2A conformance vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/a2a/). The claim covers every A2A version and binding the endpoint serves. A2A HTTP+JSON and gRPC requests carry no JSON-RPC `method`, and this section does not define their wire form, so a verifier lists the marker only if those bindings are disabled or each one resolves the operation from the decoded Message under rules 1 to 3 before dispatch. A present `operation_sources` array MUST list every source the verifier supports. A verifier without the field is a legacy verifier, and a counterparty MUST NOT infer from `required_for` that A2A requests are signature-enforced. Like every capability field, the marker is self-attested. Buyers SHOULD sign any operation in `required_for` regardless of it, and SDKs SHOULD choose what to sign from the resolved `skill`, not the JSON-RPC method.
-
-**Interim guidance for verifiers that predate this section.** Over A2A, `required_for` does nothing on those verifiers. The reliable mitigation is an A2A gateway that rejects unsigned requests whose decoded `skill` is in `required_for` and exempts `get_adcp_capabilities`. Listing the A2A message methods in `protocol_methods_required_for` (and `protocol_methods_supported_for`) also works, but it requires a credential on every A2A message, including the capability fetch a new buyer uses to bootstrap, and it does not help a seller whose per-caller fallback-authenticator exemption is keyed on `required_for` membership alone.
+**Signing.** Buyers sign any operation in `required_for`, and SDKs SHOULD choose what to sign from the resolved `skill`, not the JSON-RPC method. A signature on an operation the seller does not require costs nothing.
 
 #### Agent key publication
 

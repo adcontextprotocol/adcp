@@ -31,9 +31,6 @@ const ROOT = path.join(__dirname, '..');
 const VECTOR_DIR = path.join(ROOT, 'static/compliance/source/test-vectors/request-signing');
 const A2A_DIR = path.join(VECTOR_DIR, 'a2a');
 const keys = JSON.parse(fs.readFileSync(path.join(VECTOR_DIR, 'keys.json'), 'utf8')).keys;
-const capabilitiesSchema = JSON.parse(
-  fs.readFileSync(path.join(ROOT, 'static/schemas/source/protocol/get-adcp-capabilities-response.json'), 'utf8')
-);
 const securityDoc = fs.readFileSync(path.join(ROOT, 'docs/building/by-layer/L1/security.mdx'), 'utf8');
 
 function loadDir(rel) {
@@ -173,7 +170,7 @@ function jwksFor(vector) {
 /** What an adopter's gate does: resolve once, then call the verifier with that operation. */
 async function gate(vector) {
   const operation = resolveOperation(vector.request.body);
-  const { operation_sources, ...capability } = vector.verifier_capability;
+  const capability = vector.verifier_capability;
   return verifyRequestSignature(
     { method: vector.request.method, url: vector.request.url, headers: vector.request.headers, body: vector.request.body },
     {
@@ -202,18 +199,6 @@ describe('A2A operation-resolution vectors: corpus shape', () => {
       assert.equal(vector.signing_profile_version, '3.2', id);
       assert.equal(vector.verifier_capability.covers_content_digest, 'required', id);
       assert.equal(header(vector.request, 'authorization'), undefined, `${id} must not carry a fallback credential`);
-    }
-  });
-
-  it('declares only operation_sources values the capabilities schema defines', () => {
-    const field = capabilitiesSchema.properties.request_signing.properties.operation_sources;
-    assert.equal(field.type, 'array');
-    assert.equal(field.uniqueItems, true);
-    const allowed = new Set(field.items.enum);
-    assert.deepEqual([...allowed].sort(), ['a2a_invocation_skill', 'mcp_tools_call']);
-    assert.equal(capabilitiesSchema.properties.request_signing.required.includes('operation_sources'), false);
-    for (const { id, vector } of all) {
-      for (const source of vector.verifier_capability.operation_sources ?? []) assert.ok(allowed.has(source), `${id}: ${source}`);
     }
   });
 
@@ -277,7 +262,7 @@ describe('A2A operation-resolution vectors verify independently', () => {
 
   it('a gate that resolves the operation from the JSON-RPC method alone lets the bypass vectors through', async () => {
     const bypass = negative.find(e => e.id.endsWith('001-unsigned-sendmessage-required')).vector;
-    const { operation_sources, ...capability } = bypass.verifier_capability;
+    const capability = bypass.verifier_capability;
     const result = await verifyRequestSignature(
       { method: 'POST', url: bypass.request.url, headers: bypass.request.headers, body: bypass.request.body },
       {
