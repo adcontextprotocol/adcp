@@ -9,7 +9,7 @@ This guide is for sellers publishing linear TV inventory and for buyer agents pl
 
 ## Reference format declarations
 
-The following :15, :30, and :60 declarations use a common delivery profile: 16:9 at 1920×1080 or larger, 29.97 fps, ProRes video with PCM audio in a MOV container. A station or network may publish a different accepted profile, and the buyer matches the declaration it is offered rather than this one. The canonical `containers` vocabulary is `mp4`, `webm`, and `mov`, so a station whose traffic system ingests another wrapper (MXF, for example) cannot express that wrapper in a declaration today; read its delivery spec sheet for the file wrapper. Loudness, scan type, and caption encoding are likewise outside these declarations today (`captions` only states whether captions are required) and come from the station's spec sheet.
+The following :15, :30, and :60 declarations use a common US delivery profile: 16:9 at 1920×1080 or larger, 29.97 fps, MPEG-2 4:2:2 video with PCM audio in an MXF wrapper, and ATSC A/85 loudness (-24 LKFS ±2 dB, true peak -2 dBTP). A station or network may publish a different accepted profile (EBU R 128 loudness in Europe, for example), and the buyer matches the declaration it is offered rather than this one. See [Delivery files](#delivery-files) for the file fields, including the experimental `loudness` object.
 
 ### :15 spot
 
@@ -25,10 +25,16 @@ The following :15, :30, and :60 declarations use a common delivery profile: 16:9
     "aspect_ratio": "16:9",
     "min_width": 1920,
     "min_height": 1080,
-    "video_codecs": ["prores"],
+    "video_codecs": ["mpeg2"],
     "audio_codecs": ["pcm"],
-    "containers": ["mov"],
+    "containers": ["mxf"],
     "frame_rates": [29.97],
+    "loudness": {
+      "standard": "atsc_a85",
+      "target_lufs": -24,
+      "tolerance_db": 2,
+      "max_true_peak_dbfs": -2
+    },
     "asset_source": "buyer_uploaded",
     "buyer_asset_acceptance": "accepted",
     "slots": [
@@ -52,10 +58,16 @@ The following :15, :30, and :60 declarations use a common delivery profile: 16:9
     "aspect_ratio": "16:9",
     "min_width": 1920,
     "min_height": 1080,
-    "video_codecs": ["prores"],
+    "video_codecs": ["mpeg2"],
     "audio_codecs": ["pcm"],
-    "containers": ["mov"],
+    "containers": ["mxf"],
     "frame_rates": [29.97],
+    "loudness": {
+      "standard": "atsc_a85",
+      "target_lufs": -24,
+      "tolerance_db": 2,
+      "max_true_peak_dbfs": -2
+    },
     "asset_source": "buyer_uploaded",
     "buyer_asset_acceptance": "accepted",
     "slots": [
@@ -79,10 +91,16 @@ The following :15, :30, and :60 declarations use a common delivery profile: 16:9
     "aspect_ratio": "16:9",
     "min_width": 1920,
     "min_height": 1080,
-    "video_codecs": ["prores"],
+    "video_codecs": ["mpeg2"],
     "audio_codecs": ["pcm"],
-    "containers": ["mov"],
+    "containers": ["mxf"],
     "frame_rates": [29.97],
+    "loudness": {
+      "standard": "atsc_a85",
+      "target_lufs": -24,
+      "tolerance_db": 2,
+      "max_true_peak_dbfs": -2
+    },
     "asset_source": "buyer_uploaded",
     "buyer_asset_acceptance": "accepted",
     "slots": [
@@ -93,6 +111,31 @@ The following :15, :30, and :60 declarations use a common delivery profile: 16:9
 ```
 
 Each unit length is its own format option, and a product may offer any subset. Other lengths (:10, :05) use the same shape with a different `duration_ms_exact`.
+
+## Delivery files
+
+Broadcast traffic systems ingest a mezzanine file, not a web-playable MP4. A `video_hosted` option narrows to that file with `containers`, `video_codecs`, and `audio_codecs`.
+
+| Field | Broadcast values |
+|-------|------------------|
+| `containers` | `mxf` (SMPTE Material Exchange Format) |
+| `video_codecs` | `mpeg2` (MPEG-2 video, typically 4:2:2 in broadcast delivery, the video essence of XDCAM HD422), `avc_intra` (AVC-Intra), `xavc` (XAVC) |
+| `audio_codecs` | `pcm` |
+
+The codec slugs name codec families, not recording formats or profiles. `avc_intra` and `xavc` are H.264-based but distinct from `h264`: a product that accepts `h264` does not thereby accept them. Wrapper (`containers`) and bitrate bounds are declared separately; chroma subsampling, profile, and scan type are not machine-declarable on `video_hosted` yet, so a seller states them in the product description or its delivery spec sheet. Other mezzanine codecs (for example DNxHD) are not yet in the enum, and `captions` only states whether captions are required.
+
+### Loudness (experimental)
+
+`loudness` states the audio loudness a delivered spot MUST meet. It is optional and [experimental](/docs/reference/experimental-status) in AdCP 3.3, so sellers that populate it list `creative.broadcast_loudness` in `experimental_features`.
+
+| Field | Meaning |
+|-------|---------|
+| `standard` | `ebu_r128` (EBU R 128, Europe), `atsc_a85` (ATSC A/85, US), or `custom` |
+| `target_lufs` | Target integrated loudness measured per ITU-R BS.1770, negative LUFS/LKFS (typical: -23 for R 128, -24 for A/85) |
+| `tolerance_db` | Permitted deviation from `target_lufs` in LU (typical: 0.5 for R 128, 2 for A/85) |
+| `max_true_peak_dbfs` | Maximum true-peak level in dBTP (typical: -1 for R 128, -2 for A/85) |
+
+The three numeric fields carry the same semantics as `loudness_lufs`, `loudness_tolerance_db`, and `true_peak_dbfs` on [`audio_hosted`](/docs/creative/channels/audio). `standard` labels the requirement; the numeric fields are what the receiver checks, and `standard` alone does not imply numeric values. Declare all three numeric fields when the requirement is to be checked.
 
 ## Creative identifiers
 
@@ -112,12 +155,12 @@ Use the manifest's `industry_identifiers` list for the traffic or clearance iden
   "assets": {
     "video_main": {
       "asset_type": "video",
-      "url": "https://cdn.novabrands.example/tv/summer-30.mov",
+      "url": "https://cdn.novabrands.example/tv/summer-30.mxf",
       "duration_ms": 30000,
       "width": 1920,
       "height": 1080,
-      "container_format": "mov",
-      "video_codec": "prores",
+      "container_format": "mxf",
+      "video_codec": "mpeg2",
       "frame_rate": "29.97",
       "audio_codec": "pcm"
     }
@@ -147,7 +190,7 @@ Where a spot runs is described outside the creative, in three places:
 
 Linear TV plans and guarantees on measured audience: panel, set-top-box, and automatic-content-recognition data licensed from a currency or measurement provider, not served-event counts. What is invoiced depends on the pricing model. CPM and CPP bill on the currency count; a per-spot unit-rate buy bills on aired units, where the as-run log is the evidence of what aired. Three declarations carry the audience contract, and a fourth question (did it air?) is answered by separate evidence.
 
-- **Demographic notation** — `demographic_system` and `demographic` on the forecast (and on the CPP pricing option) say how the audience is written. `nielsen` notation is `A25-54`, `P2+`, `W18-49`. Notation is not a provider.
+- **Demographic notation** — `demographic_system` and `demographic` on the forecast (and on the CPP pricing option) say how the audience is written. `nielsen` notation is `A25-54`, `P2+`, `W18-49`. The enum also carries `videoamp` (age bands with an optional gender prefix, such as `P25-54`) and `nmo` (Netherlands: age bands such as `25-67` or `M25-54`); the notation strings for both are still being confirmed with the providers, so treat the examples as provisional. The worked example below writes its demo in `nielsen` notation while VideoAmp counts it; a seller whose provider publishes its own notation declares `demographic_system: "videoamp"` instead. Notation is not a provider.
 - **Provider identity** — `measurement_source` on forecast and delivery rows names whose data produced the numbers, as a lowercase slug (`nielsen`, `videoamp`, `ispot`). The same `demographic_system: "nielsen"` notation can be measured by different providers. The contract names the billing vendor as a brand key (`{ "domain": "videoamp.com" }`, resolved through [brand.json](/docs/brand-protocol/brand-json)) in `measurement_terms.billing_measurement.vendor` (`nielsen.com`, `videoamp.com`, `ispot.tv`). A seller offering the same inventory under more than one currency publishes a forecast per `measurement_source`; each forecast belongs to one product or proposal, so that means one per currency.
 - **Maturation** — `reporting_capabilities.measurement_windows` declares the stages: `live` (the airing day), `c3` (live plus three days of time-shifted viewing), and `c7` (live plus seven). A product typically marks one window `is_guarantee_basis: true`, but which window a deal settles on is a term of the deal: read it from `billing_measurement.measurement_window`, not from convention. A window's `expected_availability_days` says when the vendor publishes it; for C7 that is roughly two to three weeks after the airing. Until a row is `is_final: true` for the billing window, the number is provisional and not an invoicing source; a later window supersedes an earlier one with its own provisional-to-final lifecycle. See [Billing authority](/docs/media-buy/advanced-topics/billing-authority).
 
@@ -213,10 +256,16 @@ The product is a `linear_tv` package with two `video_hosted` format options, one
         "aspect_ratio": "16:9",
         "min_width": 1920,
         "min_height": 1080,
-        "video_codecs": ["prores"],
+        "video_codecs": ["mpeg2"],
         "audio_codecs": ["pcm"],
-        "containers": ["mov"],
+        "containers": ["mxf"],
         "frame_rates": [29.97],
+        "loudness": {
+          "standard": "atsc_a85",
+          "target_lufs": -24,
+          "tolerance_db": 2,
+          "max_true_peak_dbfs": -2
+        },
         "slots": [
           { "asset_group_id": "video_main", "asset_type": "video", "required": true }
         ]
@@ -230,10 +279,16 @@ The product is a `linear_tv` package with two `video_hosted` format options, one
         "aspect_ratio": "16:9",
         "min_width": 1920,
         "min_height": 1080,
-        "video_codecs": ["prores"],
+        "video_codecs": ["mpeg2"],
         "audio_codecs": ["pcm"],
-        "containers": ["mov"],
+        "containers": ["mxf"],
         "frame_rates": [29.97],
+        "loudness": {
+          "standard": "atsc_a85",
+          "target_lufs": -24,
+          "tolerance_db": 2,
+          "max_true_peak_dbfs": -2
+        },
         "slots": [
           { "asset_group_id": "video_main", "asset_type": "video", "required": true }
         ]
