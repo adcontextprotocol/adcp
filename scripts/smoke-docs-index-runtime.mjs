@@ -1,11 +1,25 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
-const require = createRequire(import.meta.url);
-const { docsNavigationVersions } = require('./docs-navigation.cjs');
+// Inlined on purpose. The broken-links workflow runs this file through stdin
+// inside the runtime image (`node --input-type=module < scripts/smoke-docs-index-runtime.mjs`).
+// That image does not contain scripts/, and stdin ESM resolves import.meta.url
+// to file:///app/[stdin], so a relative require of scripts/docs-navigation.cjs
+// cannot load. Keep this in sync with scripts/docs-navigation.cjs.
+function docsNavigationVersions(config) {
+  const navigation = config?.navigation;
+  if (!navigation || typeof navigation !== 'object') return undefined;
+  if (Array.isArray(navigation.versions)) return navigation.versions;
+  const languages = navigation.languages;
+  if (!Array.isArray(languages)) return undefined;
+  const english =
+    languages.find((entry) => entry?.language === 'en') ??
+    languages.find((entry) => entry?.default) ??
+    languages[0];
+  return Array.isArray(english?.versions) ? english.versions : undefined;
+}
 
 const APP_ROOT = process.env.DOCS_SMOKE_APP_ROOT || '/app';
 const DOCS_CONFIG_PATH = path.join(APP_ROOT, 'docs.json');
