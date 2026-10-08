@@ -47,7 +47,10 @@ test-vectors/request-signing/
 │   ├── 025-jwk-alg-crv-mismatch.json      → request_signature_key_purpose_invalid (step 8; alg=EdDSA with crv=P-256 is impossible per RFC 8037)
 │   ├── 026-non-ascii-host.json            → request_signature_header_malformed (step 1; raw IDN U-label on wire; MUST be A-label)
 │   ├── 027-webhook-registration-authentication-unsigned.json → request_signature_required (webhook-reg with push_notification_config.authentication over bearer on a seller supporting signing; operation NOT in required_for)
-│   └── 028-unsigned-protocol-method-required.json → request_signature_required (unsigned `tasks/cancel` JSON-RPC POST; method is in `protocol_methods_required_for`)
+│   ├── 028-unsigned-protocol-method-required.json → request_signature_required (unsigned `tasks/cancel` JSON-RPC POST; method is in `protocol_methods_required_for`)
+│   ├── 029-duplicate-signature-label.json → request_signature_header_malformed (step 1; RFC 9421 §4.2 / RFC 8941 §3.2 duplicate key on the `Signature` header)
+│   ├── 030-content-digest-key-case.json   → request_signature_header_malformed (step 1; RFC 8941 §3.1.2 keys are lowercase only — `SHA-256` is not a synonym of `sha-256`)
+│   └── 031-malformed-host-authority.json  → request_target_uri_malformed (step 10; unbracketed IPv6 literal in the `Host` header, URL clean, real signature)
 ├── a2a/                                  A2A operation-resolution vectors (adcp#7820, 33 vectors): `required_for` over A2A; see "A2A operation-resolution vectors" below
 ├── profile-3.2/                          3.2 vectors: RFC 8941 Base64 sf-binary, content-digest covered, covers_content_digest 'required'
 │   ├── positive/                         counterparts keep the root vector's number and slug; gaps = not mirrored
@@ -94,7 +97,10 @@ test-vectors/request-signing/
     ├── 009-percent-encoded-unreserved-decoded.json  Path has %7E/%2D/%5F/%2E; canonical decodes unreserved per RFC 3986 §6.2.2.2
     ├── 010-percent-encoded-slash-preserved.json     Path has %2F (reserved); stays percent-encoded, not treated as segment separator
     ├── 011-ipv6-authority.json                       IPv6 literal host; brackets preserved in @target-uri and @authority
-    └── 012-ipv6-authority-default-port-stripped.json IPv6 literal with :443; port stripped, brackets preserved
+    ├── 012-ipv6-authority-default-port-stripped.json IPv6 literal with :443; port stripped, brackets preserved
+    ├── 013-two-signature-labels-distinct.json        sig1 and sig2 on both Signature-Input and Signature; guard for negative/029
+    ├── 014-content-digest-two-algorithms.json       Content-Digest with sha-256 and sha-512, both correct; guard for negative/030
+    └── 015-bracketed-ipv6-host-with-port.json        Host: [2001:db8::1]:8443 matches the URL authority; guard for negative/031
 ```
 
 ## Canonicalization vectors (`canonicalization.json`)
@@ -245,7 +251,7 @@ The shipped signatures were generated from those base strings using the correspo
 
 ## Profile 3.2 vectors
 
-A 3.2 signing peer MUST advertise `covers_content_digest: "required"`, and every accepted signature on a body-bearing request covers `content-digest`. Most root vectors sign without `content-digest`, so a `required` verifier cannot grade them. `profile-3.2/` restores that coverage: each root positive vector and each root negative for checklist steps 2–12 has a 3.2 counterpart **with the same number and slug** (for example, `profile-3.2/negative/003-expired-signature.json` is the 3.2 version of `negative/003-expired-signature.json`). Root vectors that are not mirrored leave gaps in the numbering. Root `positive/001` (basic POST) and `positive/002` (POST with content-digest) are the same request in 3.2, so both map to `profile-3.2/positive/001-post-with-content-digest.json`. `profile-3.2/negative/001` and `002-multiple-trailing-dots` are 3.2-only wire-format vectors that predate this scheme; `002-multiple-trailing-dots` shares its number with the `002-wrong-tag` counterpart, and file names stay unique.
+A 3.2 signing peer MUST advertise `covers_content_digest: "required"`, and every accepted signature on a body-bearing request covers `content-digest`. Most root vectors sign without `content-digest`, so a `required` verifier cannot grade them. `profile-3.2/` restores that coverage: each root positive vector and each root negative for checklist steps 2–12 has a 3.2 counterpart (except `positive/013`–`015` and `negative/031`, whose mirrors are pending in adcp#7733) **with the same number and slug** (for example, `profile-3.2/negative/003-expired-signature.json` is the 3.2 version of `negative/003-expired-signature.json`). Root vectors that are not mirrored leave gaps in the numbering. Root `positive/001` (basic POST) and `positive/002` (POST with content-digest) are the same request in 3.2, so both map to `profile-3.2/positive/001-post-with-content-digest.json`. `profile-3.2/negative/001` and `002-multiple-trailing-dots` are 3.2-only wire-format vectors that predate this scheme; `002-multiple-trailing-dots` shares its number with the `002-wrong-tag` counterpart, and file names stay unique.
 
 Each counterpart keeps its original's request shape but:
 
@@ -275,12 +281,12 @@ A reference harness is in progress at https://github.com/adcontextprotocol/adcp-
 
 Run vectors in this order when validating a new implementation — it isolates failure categories so a bug surfaces cleanly instead of as a pile of unrelated red tests. The numbers below refer to the root 3.1 corpus; a 3.2 verifier applies the same order to the `profile-3.2/` counterparts (see the mapping in [File layout](#file-layout)):
 
-1. **Positive vectors first** (`positive/001`, `/002`, `/003`). These exercise the happy path. If `001` fails, your signer or verifier's canonicalization, key loading, or crypto is wrong — fix before touching anything else. The `expected_signature_base` field in each positive vector lets you diff YOUR canonical base against the spec's, independent of whether your crypto works.
-2. **Parse-level negatives next** (`001`, `002`, `011`, `012`, `014`, `019`). These fail at the pre-check or early checklist steps without invoking crypto. Passing these means your header parsing and presence checks are correct.
+1. **Positive vectors first** (`positive/001`, `/002`, `/003`, then the false-positive guards `positive/013`, `/014`, `/015` before the negatives they pair with: `negative/029`, `/030`, `/031`). These exercise the happy path. If `001` fails, your signer or verifier's canonicalization, key loading, or crypto is wrong — fix before touching anything else. The `expected_signature_base` field in each positive vector lets you diff YOUR canonical base against the spec's, independent of whether your crypto works.
+2. **Parse-level negatives next** (`001`, `002`, `011`, `012`, `014`, `019`, `021`, `023`, `029`, `030`). These fail at the pre-check or early checklist steps without invoking crypto. Passing these means your header parsing and presence checks are correct.
 3. **Semantic negatives** (`003`, `004`, `005`, `006`, `007`, `013`, `018`). These exercise specific rules (window, alg allowlist, covered components, content-digest policy) without requiring valid signatures.
 4. **Key-path negatives** (`008`, `009`). JWKS resolution + `adcp_use` enforcement.
 5. **Stateful pre-crypto negatives** (`017`, `020`). These require preloaded harness state and reject before crypto verify — `017` on revocation (step 9), `020` on the per-keyid cap (step 9a). The committed `Signature` on these vectors is a placeholder and is NOT expected to verify cryptographically; the rejection MUST land on the pre-crypto cheap check.
-6. **Crypto / stateful-post negatives last** (`015`, `010`, `016`). These require the verifier to have run most of the checklist before reaching the failure point. `015` specifically catches canonicalization bugs where your implementation computes a different signature base than the spec — if you pass `positive/001` but fail `015`, your canonicalization is still off somewhere and `015` is picking it up.
+6. **Crypto / stateful-post negatives last** (`015`, `010`, `016`, `031`). These require the verifier to have run most of the checklist before reaching the failure point. `031` is a real-signature negative: the signature verifies over the URL authority, so only a verifier that also judges the `Host` header rejects it with `request_target_uri_malformed`. `015` specifically catches canonicalization bugs where your implementation computes a different signature base than the spec — if you pass `positive/001` but fail `015`, your canonicalization is still off somewhere and `015` is picking it up.
 
 ## Adding vectors
 
