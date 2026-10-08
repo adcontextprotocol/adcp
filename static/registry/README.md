@@ -5,6 +5,7 @@ This directory holds entries published to the shared AdCP registry:
 - `policies/` — governance policies (regulations, standards, platform rules)
 - `policy-categories/` — named categories referenced by policy entries and plans
 - `attributes/` — restricted-attribute definitions used in signal declarations
+- `frameworks/` — **experimental draft** framework-mapping entries (EU AI Act, GDPR) that project audit-log evidence onto regulatory requirements; see [Compliance framework projection](https://github.com/adcontextprotocol/adcp/blob/main/docs/governance/compliance-projection.mdx). Not subject to the `policies/` publication bar below, no CI cross-validation, and no `PolicyEntry` back-references yet (#3959)
 
 Registry entries are intended for aggregation across publishers. Downstream
 consumers (governance agents, plan authors, compliance reporting) rely on each

@@ -1,0 +1,158 @@
+{
+  "framework_id": "gdpr",
+  "x-status": "experimental",
+  "version": "0.1.0",
+  "name": "GDPR (Regulation (EU) 2016/679) — controller evidence for campaign governance",
+  "description": "Draft projection of GDPR controller obligations relevant to ad targeting onto the evidence AdCP campaign governance already produces, with explicit gap rows where the protocol does not yet carry the data. Prototype of the framework-mapping registry entry format (#3959): it is not legal advice and carries no CI enforcement or PolicyEntry back-references yet.",
+  "source_url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj",
+  "source_name": "European Parliament and Council",
+  "jurisdictions": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"],
+  "selector_syntax": "rfc9535_jsonpath",
+  "shared_evidence": [
+    {
+      "evidence_id": "check_entries",
+      "kind": "audit_field",
+      "selector": "$.entries[?@.type == 'check']",
+      "description": "Governance check entries for the plan."
+    },
+    { "evidence_id": "human_reviewed_count", "kind": "audit_field", "selector": "$.summary.statuses.human_reviewed" },
+    {
+      "evidence_id": "brand_contestation",
+      "kind": "brand_field",
+      "selector": "$.data_subject_contestation",
+      "description": "brand.json data_subject_contestation: a discoverable contact point, not the contestation process."
+    },
+    {
+      "evidence_id": "plan_lawful_basis",
+      "kind": "plan_field",
+      "selector": "$.lawful_basis",
+      "field_status": "proposed",
+      "description": "Not in any released schema; resolves to nothing today."
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "art_6_lawful_basis",
+      "framework_section": "Art. 6",
+      "title": "Lawfulness of processing",
+      "requirement_text": "Processing is lawful only if at least one Art. 6(1) basis applies and is identified by the controller.",
+      "protocol_scope": "partial",
+      "evidence_sources": [],
+      "classifier": {
+        "partial_when": [
+          { "evidence": "plan_lawful_basis", "op": "present" }
+        ]
+      },
+      "gap_closure": "Add a lawful_basis enum to sync_plans (Track 2). The selector resolves to nothing in any released schema, so this row is gap by construction until then. Even once declared, a plan declaration states the basis the buyer relies on; it cannot show the basis is valid, so the row stays partial."
+    },
+    {
+      "requirement_id": "art_9_special_category",
+      "framework_section": "Art. 9",
+      "title": "Special categories of personal data",
+      "requirement_text": "Processing special-category data is prohibited unless an Art. 9(2) condition applies.",
+      "protocol_scope": "partial",
+      "evidence_sources": [
+        { "evidence_id": "special_category_policy", "kind": "policy_evaluated", "policy_id": "eu_gdpr_special_category_targeting" }
+      ],
+      "classifier": {
+        "partial_when": [
+          { "evidence": "special_category_policy", "op": "non_empty" }
+        ]
+      },
+      "gap_closure": "Restricted-attribute screening is evidenced; the Art. 9(2) condition (in practice explicit consent) is not. Needs consent_context (TCF / GPP / GPC) on the plan and checks (Track 2, #3959)."
+    },
+    {
+      "requirement_id": "art_12_transparent_modalities",
+      "framework_section": "Art. 12",
+      "title": "Transparent communication and modalities for data subject rights",
+      "requirement_text": "The controller facilitates the exercise of data subject rights and responds without undue delay, within one month.",
+      "protocol_scope": "partial",
+      "evidence_sources": [],
+      "classifier": {
+        "partial_when": [
+          { "evidence": "brand_contestation", "op": "present" }
+        ]
+      },
+      "gap_closure": "A discoverable contact point is evidenced. Request intake, identity verification, and the one-month response clock are deployer workflow with no protocol field."
+    },
+    {
+      "requirement_id": "art_13_information_collected_from_subject",
+      "framework_section": "Art. 13",
+      "title": "Information where data is collected from the data subject",
+      "requirement_text": "The controller provides identity, purposes, legal basis, recipients, transfers, retention, and rights information at collection.",
+      "protocol_scope": "partial",
+      "evidence_sources": [
+        { "evidence_id": "brand_privacy_policy", "kind": "brand_field", "selector": "$.privacy_policy_url" }
+      ],
+      "classifier": {
+        "partial_when": [
+          { "evidence": "brand_privacy_policy", "op": "present" }
+        ]
+      },
+      "gap_closure": "A published privacy policy URL is weak evidence that a notice exists; it says nothing about its content, and brand.data_subject_contestation is a rights contact, not notice content. Once lawful_basis and data_transfers[] (Track 2) exist, the notice's legal-basis and transfer statements can be checked against the plan."
+    },
+    {
+      "requirement_id": "art_14_information_not_from_subject",
+      "framework_section": "Art. 14",
+      "title": "Information where data is not obtained from the data subject",
+      "requirement_text": "As Art. 13, plus the categories of data and the source it originated from, within one month of obtaining it.",
+      "protocol_scope": "partial",
+      "evidence_sources": [
+        { "evidence_id": "brand_privacy_policy", "kind": "brand_field", "selector": "$.privacy_policy_url" }
+      ],
+      "classifier": {
+        "partial_when": [
+          { "evidence": "brand_privacy_policy", "op": "present" }
+        ]
+      },
+      "gap_closure": "As Art. 13. Art. 14(2)(f) also requires the source of the data, which lives in signal declarations rather than the audit log; a per-check signal-source record would be needed to evidence it from get_plan_audit_logs."
+    },
+    {
+      "requirement_id": "art_22_automated_decisions",
+      "framework_section": "Art. 22",
+      "title": "Automated individual decision-making, including profiling",
+      "requirement_text": "A data subject is not subject to a decision based solely on automated processing with legal or similarly significant effects, and safeguards include human intervention and the right to contest.",
+      "protocol_scope": "partial",
+      "evidence_sources": [],
+      "classifier": {
+        "partial_when": [
+          { "evidence": "human_reviewed_count", "op": "gt", "value": 0 },
+          { "evidence": "brand_contestation", "op": "present" }
+        ]
+      },
+      "gap_closure": "Review of governance checks is evidence that humans were in the loop on campaign actions, not that data subjects received meaningful human involvement in decisions about them. The Art. 22(3) right to express a view and contest is a deployer workflow behind brand.data_subject_contestation, and whether a decision is 'solely' automated is a legal determination."
+    },
+    {
+      "requirement_id": "art_30_records_of_processing",
+      "framework_section": "Art. 30",
+      "title": "Records of processing activities",
+      "requirement_text": "The controller maintains a record of processing activities covering purposes, data categories, recipients, transfers, retention, and security measures.",
+      "protocol_scope": "partial",
+      "evidence_sources": [],
+      "classifier": {
+        "partial_when": [
+          { "evidence": "check_entries", "op": "non_empty" },
+          { "evidence": "check_entries", "op": "all_have_fields", "value": ["timestamp", "caller", "policies_evaluated"] }
+        ]
+      },
+      "gap_closure": "The audit log is an input to the record of processing, not the record. Purposes, lawful basis, transfers, and retention are absent from it; lawful_basis and data_transfers[] (Track 2) cover the first and third."
+    },
+    {
+      "requirement_id": "ch_v_international_transfers",
+      "framework_section": "Ch. V (Arts. 44-50)",
+      "title": "Transfers of personal data to third countries",
+      "requirement_text": "Personal data is transferred outside the EEA only under an adequacy decision or appropriate safeguards.",
+      "protocol_scope": "partial",
+      "evidence_sources": [
+        { "evidence_id": "plan_data_transfers", "kind": "plan_field", "selector": "$.data_transfers", "field_status": "proposed" }
+      ],
+      "classifier": {
+        "partial_when": [
+          { "evidence": "plan_data_transfers", "op": "non_empty" }
+        ]
+      },
+      "gap_closure": "Add data_transfers[] to the plan or agent declaration (Track 2, #3959). A buyer's plan declaration states intent but cannot prove residency: a satisfied row needs processing/transfer-location evidence exposed by each seller, signal, or measurement provider. Where a governance vendor stores its own control-plane data is deployment compliance, not protocol."
+    }
+  ],
+  "applies_when_note": "No mechanical applicability test. GDPR scope turns on establishment, target audience, and processing location, which plan.countries does not reliably capture, so every row is evaluated and the deployer decides which apply. The jurisdictions field is informational."
+}
