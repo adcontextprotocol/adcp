@@ -34,8 +34,7 @@
       "description": "The VAST tracking event this URL fires on. Maps 1:1 to the VAST `Tracking event=\"...\"` attribute inside `TrackingEvents`. MUST NOT be `impression` (belongs in the VAST `Impression` element — model as a `url` asset with `url_type: \"tracker_pixel\"`), `clickTracking` / `customClick` (belong in `VideoClicks`), `error` (VAST `Error` element), or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` (children of the VAST `ViewableImpression` element, not `TrackingEvents`)."
     },
     "url": {
-      "type": "string",
-      "format": "uri-template",
+      "$ref": "/schemas/core/macro-bearing-url.json",
       "description": "Tracker URL that fires when `vast_event` occurs. May carry AdCP universal macros (e.g., `{SKU}`, `{MEDIA_BUY_ID}`); the sales agent or ad server URL-encodes substituted values at serve time. See docs/creative/universal-macros.mdx."
     },
     "offset": {
