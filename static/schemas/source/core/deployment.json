@@ -83,6 +83,97 @@
           "type": "string",
           "format": "date-time",
           "description": "Timestamp when activation completed (if is_live=true)"
+        },
+        "delivery_state": {
+          "$ref": "/schemas/enums/signal-delivery-state.json",
+          "description": "Arrival of provider-initiated delivery; separate from is_live and match_status. Experimental (signals.delivery_methods).",
+          "x-status": "experimental"
+        },
+        "delivery": {
+          "type": "object",
+          "description": "What was shipped, shaped like core/audience-source.json; the destination-side join key. Omitted when the rail has no vendor-addressable artifact. Never a credential. Experimental.",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "dataset",
+                "platform_segment"
+              ]
+            },
+            "vendor": {
+              "$ref": "/schemas/core/brand-ref.json",
+              "description": "Vendor whose rails delivered the artifact."
+            },
+            "locator": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "description": "Vendor-native share or table reference (dataset)."
+            },
+            "segment_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Vendor's segment identifier (platform_segment)."
+            }
+          },
+          "required": [
+            "kind",
+            "vendor"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "dataset"
+                }
+              },
+              "required": [
+                "locator"
+              ]
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "platform_segment"
+                }
+              },
+              "required": [
+                "segment_ref"
+              ]
+            }
+          ],
+          "additionalProperties": false,
+          "x-status": "experimental"
+        },
+        "delivery_error": {
+          "$ref": "/schemas/core/error.json",
+          "description": "Why delivery failed; present when delivery_state is failed. UNSUPPORTED_FEATURE when no declared rail intersects or the pin does not match. Experimental.",
+          "x-status": "experimental"
+        },
+        "match_status": {
+          "type": "string",
+          "enum": [
+            "processing",
+            "ready",
+            "too_small",
+            "suspended"
+          ],
+          "description": "Match outcome using the audience-status vocabulary (enums/audience-status.json); optional and rail-independent. too_small implies is_live false. Experimental.",
+          "x-status": "experimental"
+        },
+        "matched_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Members matched; absence is not zero.",
+          "x-status": "experimental"
+        },
+        "effective_match_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Deduplicated match rate; absence is not zero.",
+          "x-status": "experimental"
         }
       },
       "required": [
