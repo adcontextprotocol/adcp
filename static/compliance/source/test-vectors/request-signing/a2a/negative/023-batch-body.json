@@ -37,5 +37,5 @@
     "error_code": "request_body_malformed",
     "failed_step": 0
   },
-  "$comment": "A batch has no top-level method. A verifier that does not support batches rejects it. A verifier that does MUST resolve every element and demand a signature because the second element is in required_for, so request_signature_required is the only other conformant outcome. Batch semantics are tracked in adcp#7565."
+  "$comment": "A batch has no top-level method. A verifier MUST (SHOULD in 3.2.x, per the hardening tier) reject a JSON array body with request_body_malformed (adcp#7565); the 3.2 interim rule that allowed resolving every element and returning request_signature_required is superseded."
 }

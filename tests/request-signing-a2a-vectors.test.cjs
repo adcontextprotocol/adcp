@@ -159,7 +159,7 @@ function resolveOperation(request) {
   const body = strictParse(request.body);
   const pathname = new URL(request.url).pathname;
   if (/\/message:(send|stream)$/.test(pathname)) return resolveMessageSkill(body.message); // A2A HTTP+JSON
-  // A JSON array has no method; a verifier that does not support batches rejects it.
+  // A JSON array has no method; a verifier MUST reject it (adcp#7565).
   if (!isObject(body)) throw new Error('malformed: not one JSON-RPC request object');
   assertExactMemberNames(body);
   if (typeof body.method !== 'string') throw new Error('malformed: method must be a string');
