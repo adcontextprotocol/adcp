@@ -249,6 +249,10 @@
           "$ref": "/schemas/core/definition-pin.json",
           "description": "Seller-authored integrity pin over one third-party-published definition referenced by commercial terms"
         },
+        "audience-size": {
+          "$ref": "/schemas/core/audience-size.json",
+          "description": "Count of people reported as a range with a stated precision (lower_bound, upper_bound, precision, optional as_of)"
+        },
         "audience-evidence-pin": {
           "$ref": "/schemas/core/audience-evidence-pin.json",
           "description": "Buyer commitment pin for an exact immutable audience-evidence snapshot"
@@ -1232,6 +1236,14 @@
         "creative-approval-status": {
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
+        },
+        "audience-size-precision": {
+          "$ref": "/schemas/enums/audience-size-precision.json",
+          "description": "How precisely an audience size range is reported (exact, approximate, bucketed)"
+        },
+        "audience-match-rate-basis": {
+          "$ref": "/schemas/enums/audience-match-rate-basis.json",
+          "description": "Where an audience match rate came from (platform_reported, derived)"
         },
         "audience-status": {
           "$ref": "/schemas/enums/audience-status.json",
