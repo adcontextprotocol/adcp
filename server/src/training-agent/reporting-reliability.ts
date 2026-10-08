@@ -2005,7 +2005,7 @@ export function publishReliableReportingReconciledAdjustments(
   return { adjustments, disputed_observed_adjustment_sha256: '0'.repeat(64) };
 }
 
-function obligationId(accountId: string, config: CoreConfig, periodEnd: string): string {
+export function obligationId(accountId: string, config: Pick<CoreConfig, 'delivery_config_id' | 'delivery_config_version'>, periodEnd: string): string {
   return stableId('reporting-obligation', [accountId, config.delivery_config_id, String(config.delivery_config_version), periodEnd]);
 }
 

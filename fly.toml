@@ -31,6 +31,8 @@ primary_region = 'iad'
   BASE_URL = "https://agenticadvertising.org"
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
+  # Enable only after the private GCS canary gates in the reporting runbook pass.
+  TRAINING_REPORTING_GCS_ENABLED = "false"
   # Global response policy, including existing threads and every delivery channel.
   # Roll back with ADDIE_RESPONSE_PROVIDER=sonnet; fallback is a separate opt-in.
   ADDIE_RESPONSE_PROVIDER = "gemini"

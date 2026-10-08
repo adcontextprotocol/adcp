@@ -179,6 +179,7 @@ import { createJsonValidationRouter } from "./routes/json-validation.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
+import { initializeTrainingGcsReporting, getTrainingGcsReporting, drainTrainingGcsReporting, stopTrainingGcsReporting } from './training-agent/gcs-reporting.js';
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
 import { createHostedGraderHostRouter, HOSTED_GRADER_HOSTNAME } from "./training-agent/hosted-grader.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
@@ -3191,13 +3192,17 @@ export class HTTPServer {
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
       checks.chat = isWebChatReady();
+      try {
+        const reporting = getTrainingGcsReporting();
+        if (reporting) checks.reporting = await reporting.probe();
+      } catch { checks.reporting = false; }
 
       // A listening socket and a reachable database do not mean a new web
       // instance can answer chat. Hold deployment traffic until deferred
       // indexing and tool registration finish. /health remains a DB/liveness
       // probe for workers and operational diagnostics.
       const chatRequired = !!(process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY);
-      const ready = checks.database && (req.path !== '/ready' || !chatRequired || checks.chat);
+      const ready = checks.database && checks.reporting !== false && (req.path !== '/ready' || !chatRequired || checks.chat);
       const status = ready ? "ok" : "unavailable";
       const body: Record<string, unknown> = {
         status,
@@ -10195,6 +10200,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+    await initializeTrainingGcsReporting();
 
     // Escalate pool-level errors to Slack
     onPoolError(() => {
@@ -10263,6 +10269,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.refreshOnlyBackground = this.options.backgroundServices === 'refresh-only';
     this.isWorker = this.refreshOnlyBackground || processRole !== 'web';
     const isWorker = this.isWorker;
+    if (isWorker && !this.refreshOnlyBackground) getTrainingGcsReporting()?.start();
     logger.info({ isWorker }, 'Process role resolved');
 
     if (this.refreshOnlyBackground) {
@@ -10360,6 +10367,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
    */
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
+    // Stop accepting new connections before draining reporting's coordinated scheduler.
+    const httpDrain = this.server ? new Promise<void>((resolve, reject) => {
+      this.server!.close(error => error ? reject(error) : resolve());
+    }) : Promise.resolve();
+    const drains = Promise.all([httpDrain, drainTrainingGcsReporting()]);
+    // Attach a rejection handler immediately while unrelated services drain.
+    void drains.catch(() => {});
 
     // Only stop background services that were started on this machine
     if (this.isWorker) {
@@ -10400,19 +10414,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     }
 
     // Close HTTP server
-    if (this.server) {
-      await new Promise<void>((resolve, reject) => {
-        this.server!.close((err) => {
-          if (err) {
-            logger.error({ err }, "Error closing HTTP server");
-            reject(err);
-          } else {
-            logger.info("HTTP server closed");
-            resolve();
-          }
-        });
-      });
-    }
+    await drains;
+    await stopTrainingGcsReporting();
 
     // Shutdown PostHog client (flush pending events)
     const { shutdownPostHog } = await import('./utils/posthog.js');

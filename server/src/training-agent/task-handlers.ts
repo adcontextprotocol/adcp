@@ -16472,6 +16472,11 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 }
 
 export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+  if ((args as unknown as Record<string, unknown>).reporting_revision_id) {
+    const { dispatchTrainingGcsReporting } = await import('./gcs-reporting-tools.js');
+    const gcs = await dispatchTrainingGcsReporting('get_media_buy_delivery', args as unknown as Record<string, unknown>, ctx.principal);
+    if (gcs) return gcs as unknown as Record<string, unknown>;
+  }
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & {
     media_buy_id?: string;
     reporting_revision_id?: string;

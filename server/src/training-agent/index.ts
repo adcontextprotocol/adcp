@@ -14,6 +14,7 @@
  */
 
 import { Router } from 'express';
+import { trainingGcsReportingRouter } from './gcs-reporting-routes.js';
 import type { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { WorkOS } from '@workos-inc/node';
@@ -341,6 +342,8 @@ export function createTrainingAgentRouter(options: {
       });
     },
   });
+
+  router.use('/sales/reporting', ...(!options.disableRateLimit ? [mcpRateLimiter] : []), requireTokenDefault, trainingGcsReportingRouter());
 
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via
