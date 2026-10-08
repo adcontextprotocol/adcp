@@ -26,6 +26,15 @@ export type BrandJsonCacheOutcome =
   | 'miss'
   | 'error';
 
+/**
+ * Bound on a single live brand.json response body, shared by the registry
+ * validator and Addie's brand tools. 2 MiB leaves room for large brand houses
+ * (visual guidelines, colorways, localized names) while still stopping a
+ * hostile host from streaming unbounded data into the worker. Signing
+ * trust-root fetches apply the tighter 256 KiB budget in security.mdx instead.
+ */
+export const BRAND_JSON_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+
 /** In-process BrandManager TTLs, in seconds. */
 export const BRAND_MANAGER_CACHE_TTL_SECONDS = {
   /** Successfully validated origin evidence and its resolved identity. */

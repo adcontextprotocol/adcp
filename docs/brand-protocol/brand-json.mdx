@@ -1270,6 +1270,8 @@ To resolve a domain to a canonical brand:
 
 Maximum document redirect depth: 3 hops. This budget counts `authoritative_location` and House Redirect variants; it is separate from the initial well-known HTTP redirect limit in [File location](#file-location). Each explicit `authoritative_location` fetch has an HTTP redirect limit of zero. The brand → house lookup is single-hop (no recursive parent walks). See [Mutual-assertion trust model](#mutual-assertion-trust-model) for trust semantics.
 
+**Document size.** A brand.json SHOULD stay under 2 MiB; the AgenticAdvertising.org reference resolver bounds live reads at 2 MiB. Verifiers that fetch brand.json as a [signing trust root](/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url) apply the tighter 256 KiB body cap defined there, and a file over that cap fails verification. Operators whose brand.json carries `agents[]` or signing keys (in whichever file the verifier fetches) SHOULD therefore keep it under 256 KiB.
+
 ## Complete examples
 
 ### Small Business
