@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add two broadcast TV surfaces for linear television. `demographic-system` gains `nmo` (NMO, Netherlands: age bands optionally prefixed with a gender letter, for example `25-67`, `M25-54`, `V25-54`; notation to be confirmed with NMO members), so Dutch `cpp` pricing no longer has to declare `custom`. The `video_hosted` canonical format params gain the `mxf` container, the `mpeg2`, `avc_intra`, and `xavc` broadcast mezzanine video codecs, and an optional experimental `loudness` object (`target_lufs`, `tolerance_db`, `max_true_peak_dbfs`, `standard`: `ebu_r128` | `atsc_a85` | `custom`), listed as `creative.broadcast_loudness` in `experimental_features`. Documented in the broadcast and video channel guides. Closes #8008; partially addresses #8011 (clearinghouse delivery reference is deferred to a WG decision).

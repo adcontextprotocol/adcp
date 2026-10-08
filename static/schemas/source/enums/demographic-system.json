@@ -11,6 +11,7 @@
     "agf",
     "oztam",
     "mediametrie",
+    "nmo",
     "custom"
   ],
   "enumDescriptions": {
@@ -20,6 +21,7 @@
     "agf": "AGF Videoforschung (Germany). Erwachsene notation + age bands. Examples: E 14-49, E 14+",
     "oztam": "OzTAM (Australia). Age/gender bands, 4+ measurement universe",
     "mediametrie": "Mediametrie (France). Named segments + age bands",
+    "nmo": "NMO (Nationaal Media Onderzoek, Netherlands). Age bands, optionally prefixed with a gender letter. Illustrative examples: 25-67, 20-54, M25-54, V25-54 (V = vrouwen, women). Exact notation to be confirmed with NMO members",
     "custom": "Publisher-defined demographic notation"
   }
 }
