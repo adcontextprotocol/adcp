@@ -33,6 +33,8 @@ primary_region = 'iad'
   RUN_MIGRATIONS = "false"
   # Enable only after the private GCS canary gates in the reporting runbook pass.
   TRAINING_REPORTING_GCS_ENABLED = "false"
+  # Enable after WorkOS Connect setup and real buyer sign-in qualification.
+  TRAINING_BUYER_OAUTH_ENABLED = "false"
   # Global response policy, including existing threads and every delivery channel.
   # Roll back with ADDIE_RESPONSE_PROVIDER=sonnet; fallback is a separate opt-in.
   ADDIE_RESPONSE_PROVIDER = "gemini"
