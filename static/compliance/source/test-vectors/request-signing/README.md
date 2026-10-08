@@ -45,7 +45,7 @@ test-vectors/request-signing/
 │   ├── 023-multi-valued-content-digest.json → request_signature_header_malformed (step 1; RFC 9530 dict duplicate algorithm)
 │   ├── 024-unquoted-string-param.json     → request_signature_header_malformed (step 1; RFC 8941 §3.3 string values must be quoted)
 │   ├── 025-jwk-alg-crv-mismatch.json      → request_signature_key_purpose_invalid (step 8; alg=EdDSA with crv=P-256 is impossible per RFC 8037)
-│   ├── 026-non-ascii-host.json            → request_signature_header_malformed (step 1; raw IDN U-label on wire; MUST be A-label)
+│   ├── 026-non-ascii-host.json            → request_target_uri_malformed (step 10; raw IDN U-label on wire; MUST be A-label; real signature over the A-label base)
 │   ├── 027-webhook-registration-authentication-unsigned.json → request_signature_required (webhook-reg with push_notification_config.authentication over bearer on a seller supporting signing; operation NOT in required_for)
 │   ├── 028-unsigned-protocol-method-required.json → request_signature_required (unsigned `tasks/cancel` JSON-RPC POST; method is in `protocol_methods_required_for`)
 │   ├── 029-duplicate-signature-label.json → request_signature_header_malformed (step 1; RFC 9421 §4.2 / RFC 8941 §3.2 duplicate key on the `Signature` header)
@@ -251,7 +251,7 @@ The shipped signatures were generated from those base strings using the correspo
 
 ## Profile 3.2 vectors
 
-A 3.2 signing peer MUST advertise `covers_content_digest: "required"`, and every accepted signature on a body-bearing request covers `content-digest`. Most root vectors sign without `content-digest`, so a `required` verifier cannot grade them. `profile-3.2/` restores that coverage: each root positive vector and each root negative for checklist steps 2–12 has a 3.2 counterpart (except `positive/013`–`015` and `negative/031`, whose mirrors are pending in adcp#7733) **with the same number and slug** (for example, `profile-3.2/negative/003-expired-signature.json` is the 3.2 version of `negative/003-expired-signature.json`). Root vectors that are not mirrored leave gaps in the numbering. Root `positive/001` (basic POST) and `positive/002` (POST with content-digest) are the same request in 3.2, so both map to `profile-3.2/positive/001-post-with-content-digest.json`. `profile-3.2/negative/001` and `002-multiple-trailing-dots` are 3.2-only wire-format vectors that predate this scheme; `002-multiple-trailing-dots` shares its number with the `002-wrong-tag` counterpart, and file names stay unique.
+A 3.2 signing peer MUST advertise `covers_content_digest: "required"`, and every accepted signature on a body-bearing request covers `content-digest`. Most root vectors sign without `content-digest`, so a `required` verifier cannot grade them. `profile-3.2/` restores that coverage: each root positive vector and each root negative for checklist steps 2–12 has a 3.2 counterpart (except `positive/013`–`015` and `negative/026` and `031`, whose mirrors are pending in adcp#7733) **with the same number and slug** (for example, `profile-3.2/negative/003-expired-signature.json` is the 3.2 version of `negative/003-expired-signature.json`). Root vectors that are not mirrored leave gaps in the numbering. Root `positive/001` (basic POST) and `positive/002` (POST with content-digest) are the same request in 3.2, so both map to `profile-3.2/positive/001-post-with-content-digest.json`. `profile-3.2/negative/001` and `002-multiple-trailing-dots` are 3.2-only wire-format vectors that predate this scheme; `002-multiple-trailing-dots` shares its number with the `002-wrong-tag` counterpart, and file names stay unique.
 
 Each counterpart keeps its original's request shape but:
 
@@ -262,7 +262,7 @@ Each counterpart keeps its original's request shape but:
 
 As in the root corpus, pre-crypto negatives (steps 2–9a) carry a 64-zero-byte placeholder `Signature`. That makes them step-ordering canaries: a verifier that verifies the signature before the targeted check returns `request_signature_invalid`. The post-crypto negatives (`profile-3.2/negative/010` and `016`) carry real signatures, so only the targeted check fails.
 
-Root negatives without a 3.2 counterpart: the unsigned pre-check vectors (`001`, `027`, `028`); the step-1 parse vectors (`011`, `019`, `021`–`024`, `026`), which reject before covered components are considered; and `018`, because `forbidden` is a legacy-only posture a 3.2 verifier cannot advertise.
+Root negatives without a 3.2 counterpart: the unsigned pre-check vectors (`001`, `027`, `028`); the step-1 parse vectors (`011`, `019`, `021`–`024`, `029`, `030`), which reject before covered components are considered; and `018`, because `forbidden` is a legacy-only posture a 3.2 verifier cannot advertise.
 
 ## Running vectors against an implementation
 
