@@ -128,6 +128,16 @@
         "additionalProperties": true
       }
     },
+    "signal_pricing_group_rules": {
+      "type": "array",
+      "description": "Experimental (signals.pricing_groups). Signal-agent default rules for how fees of signals sharing a pricing_group combine. Product-scoped signal_targeting_rules.signal_pricing_group_rules override these for the same pricing_group. A group with no rule is charged 'each'.",
+      "items": {
+        "$ref": "/schemas/core/signal-pricing-group-rule.json"
+      },
+      "minItems": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
     "errors": {
       "type": "array",
       "description": "Task-specific errors and warnings (e.g., signal discovery or pricing issues)",

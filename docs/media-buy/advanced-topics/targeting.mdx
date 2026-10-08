@@ -1068,6 +1068,7 @@ create-time substitute for any result above.
 - **Resolution model**: `signal_targeting_rules.resolution_model` tells buyers how the seller applies selected signals to inventory. `direct_targeting` means selected signals behave like package targeting predicates. `seller_planned` means selected signals are inputs to seller-managed planning against product-specific inventory, timing, availability, reach, or pacing constraints; buyers should not attempt to decompose the selected audience into lower-level inventory or schedule decisions.
 - **Selection groups**: When the product declares `signal_targeting_rules.selection_group_rules`, each child group MUST contain signals from exactly one `selection_group` and one targeting mode, and buyers MUST send at most one child group for each `(selection_group, targeting_mode)` pair. Sellers MUST reject duplicate, mixed, or collapsed child groups that combine distinct selection-group rules into the same `any` or `none` group. `selection_group` is a product-defined composability bucket, not a backend identity type: for example, a GAM-backed seller may expose both audience segments and key-values as ordinary `signal_ref` options, using one `selection_group` when they are freely OR-combinable and separate `selection_group`s when they must be trafficked as separate ANDed clauses.
 - **Pricing**: Include `pricing_option_id` when the selected product's `signal_targeting_options` entry has `pricing_options`; omit only when the signal is bundled into the product price or has no incremental cost. Product-scoped pricing in `signal_targeting_options` is authoritative for that product. If the product option has no product-specific price, sellers MAY use the default pricing exposed in `get_signals`.
+- **Pricing groups** (experimental, `signals.pricing_groups`): A signal MAY carry a seller-defined `pricing_group`, and `signal_pricing_group_rules[]` (on `signal_targeting_rules` and the `get_signals` response) declares `pricing_combination: "highest"` or `"each"` for a group. Buyers still send `pricing_option_id` for every priced signal; the seller applies the rule. See [Signal pricing groups](#signal-pricing-groups).
 - **Signal reference**: Use `signal_ref: { "scope": "product", "signal_id": "..." }` for a product-local signal option. Use `signal_ref: { "scope": "data_provider", "data_provider_domain": "...", "signal_id": "..." }` for a signal defined in a data provider's published adagents.json `signals[]`. `signal_ref` identifies the signal definition; `signal_agent_segment_id` identifies a resolved segment or execution handle when the product option exposes one. Echo an exposed `signal_agent_segment_id` verbatim on the package entry, and prefer it over reconstructing identity from categorical values because providers can namespace handles to distinguish definitions such as real-time rain versus forecast high-precipitation. If the product option has `activation_status: "requires_activation"`, it MUST include `signal_agent_segment_id`; activate the signal first, then include `activation_key` if the seller requires it.
 - **Provider-published signals**: For a provider-published signal, `signal_ref.data_provider_domain` identifies the upstream data provider and `signal_ref.signal_id` identifies the public signal definition. Buyers can verify the seller's right to offer the signal by checking the provider's `adagents.json` `authorized_agents` entry for the seller.
 - **Product gating**: Sellers SHOULD reject a signal entry when the product does not advertise that signal inline or through `get_signals`, `signal_targeting_allowed` is false for package-level selection, the signal violates the product's `signal_targeting_rules`, the signal's `allowed_targeting_modes` does not allow the requested child group operator, the signal is not active for the account, or the requested value is outside the signal definition. `allowed_targeting_modes: ["include"]` maps to `any` groups; `["exclude"]` maps to `none` groups. Binary package signal entries use `value: true`; use the parent `none` group for exclusion, not `value: false`. Signal targeting limits are product-scoped, not declared in seller-wide `get_adcp_capabilities`, because products may be backed by different ad servers or platforms. If `selection_mode` is `fixed`, buyers SHOULD omit edits to `signal_targeting_groups`; sellers apply the fixed/default selections and MUST echo them on the resulting package state.
@@ -1121,6 +1122,47 @@ For products where inventory and audience planning are inseparable, such as line
   ]
 }
 ```
+
+#### Signal pricing groups
+
+<Note>Experimental. Sellers and signal agents that implement `pricing_group` or `signal_pricing_group_rules` MUST list `signals.pricing_groups` in `experimental_features`. See [Experimental status](/docs/reference/experimental-status).</Note>
+
+Without a pricing group, every selected signal with a `pricing_option_id` is charged. A seller whose alternative segments price as one audience, such as age bands where each impression reaches one person, declares a `pricing_group` on those signals and a rule for the group:
+
+```json
+{
+  "signal_targeting_options": [
+    {
+      "signal_ref": { "scope": "product", "signal_id": "age_25_34" },
+      "name": "Adults 25-34",
+      "value_type": "binary",
+      "selection_group": "age",
+      "pricing_group": "age",
+      "pricing_options": [{ "pricing_option_id": "age_25_34_cpm", "model": "cpm", "cpm": 1.0, "currency": "EUR" }]
+    },
+    {
+      "signal_ref": { "scope": "product", "signal_id": "age_35_44" },
+      "name": "Adults 35-44",
+      "value_type": "binary",
+      "selection_group": "age",
+      "pricing_group": "age",
+      "pricing_options": [{ "pricing_option_id": "age_35_44_cpm", "model": "cpm", "cpm": 1.0, "currency": "EUR" }]
+    }
+  ],
+  "signal_targeting_rules": {
+    "signal_pricing_group_rules": [{ "pricing_group": "age", "pricing_combination": "highest" }]
+  }
+}
+```
+
+A buyer selecting both ranges pays one 1.00 EUR CPM data fee. Rules:
+
+- **Keys and precedence.** `pricing_group` is a publisher-defined key scoped to the listing surface the buyer selected from: the product's `signal_targeting_options`, or the responding signal agent's `get_signals` feed. Signals from different surfaces never share a group, even with the same key. A product-scoped `pricing_group` overrides the `get_signals` value; an option that omits it inherits the `get_signals` value. Product-scoped `signal_pricing_group_rules` override the `get_signals` rule for the same group, and a group the product does not list keeps the `get_signals` rule. A publisher MUST NOT declare more than one rule for the same `pricing_group`.
+- **Default is `each`.** A group with no rule charges every selected signal's fee, and an ungrouped signal is always charged on its own. A seller MUST publish a rule before any fee is waived, so a forgotten rule over-bills visibly instead of silently under-billing.
+- **`highest`** charges only the highest fee among the `cpm` pricing options the buyer selected (by `pricing_option_id`) for signals in the group, compared per thousand impressions. A signal selected without a `pricing_option_id` contributes no fee. Ties charge one fee, attributed to the first tied signal in package order. A signal is identified by `signal_ref`; selecting it more than once counts once.
+- **Not comparable.** `flat_fee`, `per_unit`, `custom` and `percent_of_media` options are always charged `each`, as are the selected `cpm` options of a group whose selected `cpm` options span more than one currency. In a mixed group the buyer pays the highest `cpm` fee plus each non-comparable fee, and a group with no comparable options bills `each` regardless of its rule. A `percent_of_media` fee has no CPM until the media price is known, so v1 defines no conversion.
+- **Scope.** Grouping applies across all of a package's selected signals, whatever child group (`any` or `none`) each appears in, and per package: the same group on two packages is charged on each. After `update_media_buy` the rule is re-applied to the resulting selection. Putting signals in a shared group is the seller's assertion that they are alternatives. `pricing_group` is independent of `selection_group`: a seller may price a whole B2B family as one group while exposing several selection groups.
+- **Buyer behavior.** Buyers send `pricing_option_id` for every priced signal they select, and the seller applies the rule. The v1 surface has no per-signal charge echo on package state, so buyers reconcile against the published rules. Pricing groups apply to package signal selection, not to direct `activate_signal` / `report_usage` billing.
 
 ### frequency_cap
 - **Description**: Limit ad exposure frequency per entity. Two optional controls can be used independently or together.
