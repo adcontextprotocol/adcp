@@ -28,6 +28,16 @@
         },
         "required": ["buying_mode"]
       }
+    },
+    {
+      "description": "Opportunity context associates proposals with a planning cycle; the wholesale feed read creates none.",
+      "if": {
+        "properties": { "buying_mode": { "const": "wholesale" } },
+        "required": ["buying_mode"]
+      },
+      "then": {
+        "not": { "required": ["opportunity"] }
+      }
     }
   ],
   "x-mutates-state": true,
@@ -251,6 +261,17 @@
         "type": "string"
       },
       "description": "Registry policy IDs that the buyer requires to be enforced for products in this response. Sellers filter products to only those that comply with or already enforce the requested policies."
+    },
+    "opportunity": {
+      "allOf": [
+        { "$ref": "/schemas/core/opportunity-context.json" },
+        {
+          "properties": {
+            "status": { "const": "open" }
+          }
+        }
+      ],
+      "description": "Optional planning-cycle context, the same object and seller-plus-account scope as request_proposals. Valid with buying_mode 'brief' and 'refine'; not valid with 'wholesale', which reads a feed and creates no proposals. A seller that tracks opportunities associates it with every proposal the call creates, and later refine calls preserve each proposal's association when this field is omitted. When a refine call supplies it, its ID and scope MUST match the association of every proposal the call names, and a mismatch or a named proposal with no association is INVALID_REQUEST before any mutation, and the field cannot reassign a proposal to another cycle. Status must be 'open' when supplied: closure is expressed through decline_proposals or proposal execution, not discovery. Sellers that do not track opportunities ignore it. A call without it starts no opportunity. When ext.adcp.opportunity is also present, this field takes precedence."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

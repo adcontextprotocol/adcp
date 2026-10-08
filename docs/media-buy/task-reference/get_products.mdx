@@ -12,29 +12,9 @@ Discover available advertising products based on campaign requirements using nat
 </Warning>
 
 <Info>
-**Opportunity context on AdCP 3.2 (non-normative guidance).** Buyers and sellers that support the AdCP-owned [`ext.adcp.opportunity` binding](https://github.com/adcontextprotocol/adcp/blob/main/docs/building/by-layer/L2/context-sessions.mdx#adcp-opportunity-extension) can carry planning-cycle context through the existing `ext` object. Confirm support for this specific binding through `get_adcp_capabilities.extensions_supported` before relying on seller-side association.
+**Opportunity context.** `get_products` accepts the same optional [`opportunity`](#opportunity-context) object as [`request_proposals`](/docs/media-buy/task-reference/request_proposals), so a brief sent through this compatibility task can join the planning cycle that later proposals, declines, and media buys reference. New integrations should use `request_proposals`; the field exists for callers still on `get_products` during the 3.x transition.
 
-This example uses a seller-issued account ID and the unchanged [published 3.2.1 OpportunityContext](https://adcontextprotocol.org/schemas/3.2.1/core/opportunity-context.json). It validates against the published 3.2.1 request schema, so adopting the binding does not require a protocol upgrade to 3.2.2:
-
-```json
-{
-  "$schema": "https://adcontextprotocol.org/schemas/3.2.1/media-buy/get-products-request.json",
-  "buying_mode": "brief",
-  "brief": "Video inventory for a spring launch.",
-  "account": {
-    "account_id": "acc_spring_launch"
-  },
-  "ext": {
-    "adcp": {
-      "opportunity": {
-        "opportunity_id": "opp_spring_launch"
-      }
-    }
-  }
-}
-```
-
-The base request's open `ext` schema admits the namespace without validating the nested opportunity object. The linked extension agreement covers inner validation, authorized account scope, and proposal association; coordinate buyer and seller adoption of that agreement. This guidance adds no baseline 3.2 conformance requirement. New integrations can already carry core `opportunity` on [`request_proposals`](/docs/media-buy/task-reference/request_proposals).
+Integrations on AdCP 3.2 that cannot use the core field yet can use the [`ext.adcp.opportunity` bridge](/docs/building/by-layer/L2/context-sessions#adcp-opportunity-extension). When both are supplied, the core field takes precedence.
 </Info>
 
 <Info>
@@ -191,6 +171,7 @@ asyncio.run(discover_with_filters())
 | `refine` | [Refine[]](#refine-array) | Conditional | Array of change requests for iterating on products and proposals. Required when `buying_mode` is `"refine"`. Must not be provided when `buying_mode` is `"brief"` or `"wholesale"`. See [Refine array](#refine-array) below. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
 | `account` | AccountRef | No | Account reference for account-specific pricing. Returns products with pricing from this account's rate card. The account must already be provisioned: a reference that doesn't resolve returns [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found), not public products, and `get_products` never provisions an account. A lazy-provisioning seller MAY instead answer for the account it would create. Omit it before [`sync_accounts`](/docs/accounts/tasks/sync_accounts) succeeds. See [Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning). |
+| `opportunity` | [OpportunityContext](#opportunity-context) | No | Optional planning-cycle context, the same object as on [`request_proposals`](/docs/media-buy/task-reference/request_proposals). Valid with `buying_mode` `"brief"` and `"refine"`, not `"wholesale"`. `status`, when supplied, must be `"open"`. |
 | `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
 | `filters` | Filters | No | Offer filters such as channel, format, delivery type, dates, budget, currency, and reporting support. They decide which products may be returned but do not become package delivery targeting. Valid in `brief`, `wholesale`, and `refine`; non-matching products are excluded in every mode. Legacy targeting-like fields remain accepted during migration but are deprecated. |
 | `targeting_overlay` | TargetingOverlay | No | Concrete delivery constraints the buyer expects to carry into [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). Prefer this over equivalent brief prose: it is compact, deterministic, and avoids lossy extraction. Returned products, pricing, and forecasts MUST account for the effective targeting. A product that cannot honor the request exactly is omitted or returned with sparse Product `targeting_resolution.modifications`; absence of Product resolution confirms exact acceptance of the structured overlay for that product. |
@@ -625,6 +606,28 @@ If a product has both USD and EUR media pricing and the buyer sends `pricing_cur
 | `max` | number | No* | Maximum budget amount |
 
 *At least one of `min` or `max` must be specified.
+
+### Opportunity context
+
+`opportunity` reuses the [`OpportunityContext`](https://adcontextprotocol.org/schemas/v3/core/opportunity-context.json) object. Its buyer-assigned `opportunity_id` is scoped to the seller and account, so durable association requires a resolved, authorized account from the `account` field or authenticated context. A seller that tracks opportunities and cannot resolve that scope rejects the request with `INVALID_REQUEST` before persisting an association. Sellers that do not track opportunities ignore the field. There is no per-seller capability flag for it, so a buyer that depends on association confirms the seller supports AdCP 3.3 or later; a 3.2 seller silently drops it.
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-products-request.json",
+  "buying_mode": "brief",
+  "brief": "Video inventory for a spring launch.",
+  "account": { "account_id": "acc_spring_launch" },
+  "opportunity": {
+    "opportunity_id": "opp_spring_launch",
+    "phase": "planning"
+  }
+}
+```
+
+- **Association.** Repeated briefs with the same ID in the same scope belong to the same planning cycle, and every proposal the call creates inherits the association. The ID does not replace proposal identity, idempotency keys, or account authorization. A call without `opportunity` starts no opportunity.
+- **Refinement.** A `buying_mode: "refine"` call preserves each proposal's association when `opportunity` is omitted. When it is supplied, its ID and scope must match the association of every proposal the call names; a mismatch, or a named proposal with no association, is `INVALID_REQUEST` before any mutation. The field cannot reassign a proposal to another cycle or add an association after creation. The compact [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) task inherits the stored association and does not accept the field.
+- **Lifecycle.** As on `request_proposals`, `status` must be `"open"` when supplied, and supplying it never reopens a cycle already closed by decline or acceptance. Closing a cycle uses [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) or proposal execution, not discovery.
+- **Wholesale.** `opportunity` is not valid with `buying_mode: "wholesale"`, which reads a product feed and creates no proposals.
 
 ### Refine array
 
