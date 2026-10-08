@@ -129,6 +129,7 @@
                 }
               },
               "required": [
+                "kind",
                 "locator"
               ]
             },
@@ -139,6 +140,7 @@
                 }
               },
               "required": [
+                "kind",
                 "segment_ref"
               ]
             }

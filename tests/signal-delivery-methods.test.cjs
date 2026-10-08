@@ -60,6 +60,19 @@ describe('signal delivery methods (experimental)', () => {
     assert.deepEqual(inline, readSchema('/schemas/enums/audience-status.json').enum);
   });
 
+  it('keeps the delivery descriptor in step with audience-source', () => {
+    const source = readSchema('/schemas/core/audience-source.json').oneOf;
+    const delivery = readSchema('/schemas/core/deployment.json').oneOf[1].properties.delivery;
+    assert.deepEqual(delivery.properties.kind.enum, source.map(v => v.properties.kind.const));
+    const dataset = source.find(v => v.properties.kind.const === 'dataset').properties;
+    const segment = source.find(v => v.properties.kind.const === 'platform_segment').properties;
+    for (const key of ['minLength', 'maxLength']) {
+      assert.equal(delivery.properties.locator[key], dataset.locator[key]);
+      assert.equal(delivery.properties.segment_ref[key], segment.segment_ref[key]);
+    }
+    assert.equal(delivery.properties.vendor.$ref, dataset.vendor.$ref);
+  });
+
   it('accepts a destination pin and rejects tmp_identity_match as a pin', () => {
     const base = { type: 'agent', agent_url: 'https://seller.example-agent.com' };
     assert.equal(destination({ ...base, delivery_method: { pattern: 'clean_room' } }), true);

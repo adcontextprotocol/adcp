@@ -106,7 +106,7 @@ Three questions are reported separately on each agent deployment:
 |---|---|---|
 | Has membership arrived? | `delivery_state` | `awaiting_read`, `delivered`, `failed` |
 | Can the signal be targeted? | `is_live` (with `activation_key`) | boolean |
-| How well did it match? | `match_status` (optionally `matched_count`, `effective_match_rate`) | the [audience status](https://adcontextprotocol.org/schemas/latest/enums/audience-status.json) values `sync_audiences` reports |
+| How well did it match? | `match_status` (optionally `matched_count`, `effective_match_rate`) | the [audience status](https://adcontextprotocol.org/schemas/v3/enums/audience-status.json) values `sync_audiences` reports |
 
 `delivered` is not an addressability claim, and coverage on the seller's inventory is the match rate against the seller's own identity graph. The signal agent populates all of these from what its rail reports back. For pull rails (`dataset_query`, `platform_distribution`, `clean_room`) `delivered` means the destination has read the membership, as attested by the rail or the seller. For push rails (`sync_audiences`, `file_transfer`) it means the destination accepted the write. State moves `awaiting_read` → `delivered` or `failed`. Agents SHOULD set `is_live: true` only once `delivered`, and include `delivery_error` when, and only when, the state is `failed`. When a delivery window is declared on the destination (`bind_expiry_days` for `platform_distribution`), reaching it moves the deployment to `failed`.
 
