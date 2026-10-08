@@ -1,0 +1,442 @@
+---
+title: Set up your buyer agent with a seller
+sidebarTitle: Buyer agent setup
+description: "Walk a buyer agent from seller-issued credentials to registered webhooks, a proven reporting destination, account feed binding, and the kill switch."
+"og:title": "AdCP — Set up your buyer agent with a seller"
+---
+
+This walkthrough follows one buyer agent through its first standing relationship with a seller: who it authenticates as, what it declares, where reports and webhooks go, and how that delivery is switched off. It is the caller-scoped setup that comes before account provisioning.
+
+<Note>
+**Experimental.** The principal layer ([`sync_principal`](/dist/docs/3.2.3/protocol/sync_principal), [`get_principal`](/dist/docs/3.2.3/protocol/get_principal), the `adcp.principal` capability block, and the `principal.changed` webhook) is an experimental AdCP 3.2 surface. It may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any part of it MUST declare `protocol.principal` in `experimental_features`. See [experimental status](/dist/docs/3.2.3/reference/experimental-status) for the full contract.
+</Note>
+
+## Scenario
+
+Pinnacle Agency's buyer agent will buy from Priya's StreamHaus sales agent. Sam, who runs Pinnacle's buying, wants the relationship set up before any media buy: webhooks registered once, a reusable reporting bucket proven, and a way to stop delivery if a bucket is ever compromised. In the steps below, "the agent" is Pinnacle's buyer agent acting under its own credential, and Sam is the person who reviews and operates it.
+
+Two things are deliberately **not** part of this flow:
+
+- **There is no `register_buyer_agent` task.** AdCP begins after authentication. StreamHaus's authorization system decides who its callers are.
+- **Nothing here grants access to an advertiser account.** The principal layer says where and how the principal receives data. Which advertisers it may act for is established separately through [`sync_accounts`](/dist/docs/3.2.3/accounts/tasks/sync_accounts).
+
+## 1. Get credentials from the seller
+
+Credentials come from StreamHaus, out of band from AdCP: an OAuth client for the agent's workload identity, an API key issued to the agent, or a verified signed-request identity published in Pinnacle's `brand.json`. The agent then authenticates as itself on every call, and StreamHaus resolves that credential to one durable principal record with `principal_kind: buyer_agent`.
+
+Which credential shape StreamHaus offers is its authorization design. The protocol requires only that the credential map to a *stable* principal: rotating a key or renewing a token preserves the configuration only when StreamHaus maps the new credential to the same principal, and a raw key ID, token, or session is never the owner. For a signed caller, the stable subject is the canonical `brand.json` `agents[].url`, so two agent URLs under Pinnacle are two principals.
+
+A person using an interactive client follows the same lifecycle with a different credential:
+
+- Sam, working in Claude or ChatGPT against StreamHaus, authenticates as Sam: their own login at the seller, resolved as `principal_kind: operator`.
+- The client application is the instrument, never the owner. ChatGPT and Claude are not the buyer agent, and nothing registers them.
+- If a client can present only one shared service credential for all its users, StreamHaus must refuse to persist configuration under it until the client completes delegated authorization or account linking.
+
+**Principals do not merge.** A destination registered by Sam as an `operator` principal is invisible to Pinnacle's agent, and Sam's own suspension controls affect only Sam's configuration. Decide which principal owns each destination before registering it. Linking two principals needs an explicit seller-side administrative operation.
+
+Never send identity in a request body. `sync_principal` and `get_principal` reject `buyer_agent_url`, `agent_url`, `principal_id`, and `connection_id`, and a seller never derives identity from them.
+
+## 2. Discover what the seller supports
+
+The agent calls [`get_adcp_capabilities`](/dist/docs/3.2.3/protocol/get_adcp_capabilities) and reads the `adcp.principal` block together with the seller's reporting offerings:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.3/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
+  "adcp": {
+    "major_versions": [3],
+    "supported_versions": ["3.2"],
+    "idempotency": {
+      "supported": true,
+      "replay_ttl_seconds": 86400
+    },
+    "capability_changes": {
+      "capabilities_version": "streamhaus-2026-09-01",
+      "cache_ttl_seconds": 300,
+      "notifications": {
+        "supported": true,
+        "registration_task": "sync_principal",
+        "event_types": ["capabilities.changed"]
+      }
+    },
+    "principal": {
+      "supported": true,
+      "sync_task": "sync_principal",
+      "read_task": "get_principal",
+      "supported_sections": [
+        "notification_configs",
+        "reporting_destinations",
+        "declarations"
+      ],
+      "caller_event_types": ["capabilities.changed", "principal.changed"],
+      "max_reporting_destinations": 16,
+      "reporting_destination_offerings": [
+        {
+          "pattern": "file_transfer",
+          "transports": ["s3", "gcs"],
+          "formats": ["parquet", "csv"],
+          "verification_profiles": ["manifest_checksums", "canonical_digest"]
+        }
+      ],
+      "suspension_interval_seconds": 300,
+      "optimistic_concurrency": true
+    }
+  },
+  "supported_protocols": ["media_buy"],
+  "experimental_features": ["protocol.principal", "media_buy.reporting_delivery"]
+}
+```
+
+The agent reads three things:
+
+- **`supported_sections`** lists the sections StreamHaus accepts. An unsupported section is rejected, not ignored.
+- **`reporting_destination_offerings`** is StreamHaus's objective offering. The agent picks a pattern, transport, format, and verification profile from it *before* submitting, so an out-of-offering destination is never discovered through a rejection. The account-level reporting offerings used in step 5 are advertised separately under `media_buy.reporting_delivery`.
+- **`suspension_interval_seconds`** is the longest StreamHaus may take, after a suspension or deactivation, to stop new deliveries and webhook fires.
+
+## 3. Verify who StreamHaus thinks you are
+
+Before changing anything, the agent calls [`get_principal`](/dist/docs/3.2.3/protocol/get_principal). It carries no parameters and has no side effects; it never creates a principal record or issues an identifier.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.3/protocol/get-principal-response.json",
+  "status": "completed",
+  "result": {
+    "kind": "recognized",
+    "principal_kind": "buyer_agent",
+    "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F"
+  }
+}
+```
+
+`recognized` means the credential maps to a durable principal that already exists and has no standing configuration. `principal_kind` is what StreamHaus resolved, not what the caller claimed; to catch a credential mix-up early, send `expected_principal_kind: "buyer_agent"` on a write, and a mismatch fails with `CONFLICT` before anything changes. A seller that does not pre-create records returns `unconfigured` instead, and the first sync creates the record. A `failed` result carries only errors, never identifiers.
+
+## 4. Sync declarations, webhooks, and a reusable destination
+
+The agent sends one request. Each section is the complete desired state for that section, omitted sections are untouched, and all sections apply together or not at all.
+
+- `declarations` states what the buyer agent can consume: which async payload versions, which webhook signing algorithms it can verify, which experimental features it opts into. The seller returns the accepted intersection.
+- `notification_configs` registers a webhook subscriber. One subscriber can carry capability and principal changes, and `principal.changed` is the doorbell for seller-driven transitions such as a destination becoming `ready`.
+- `reporting_destinations` registers a reusable, non-secret destination. It holds coordinates only: credentials, private keys, and signed URLs never transit AdCP.
+
+**Schema:** [`sync-principal-request.json`](https://adcontextprotocol.org/schemas/3.2.3/protocol/sync-principal-request.json)
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.3/protocol/sync-principal-request.json",
+  "idempotency_key": "5b6a3d1e-0c8f-4e49-9a2f-71c2f0d4b8a3",
+  "expected_principal_kind": "buyer_agent",
+  "configuration": {
+    "declarations": {
+      "async_adcp_versions": ["3.2"],
+      "webhook_signing_algorithms": ["ed25519"],
+      "experimental_features": ["protocol.principal"]
+    },
+    "notification_configs": [
+      {
+        "subscriber_id": "pinnacle-events",
+        "url": "https://agents.pinnacle-agency.example/adcp/webhooks",
+        "event_types": ["capabilities.changed", "principal.changed"],
+        "active": true
+      }
+    ],
+    "reporting_destinations": [
+      {
+        "pattern": "file_transfer",
+        "destination_id": "pinnacle-archive",
+        "active": true,
+        "provider": { "domain": "object-store.example" },
+        "transport": "s3",
+        "location": "s3://pinnacle-reporting/adcp/",
+        "accepted_formats": ["parquet"],
+        "accepted_verification_profiles": ["manifest_checksums"]
+      }
+    ]
+  }
+}
+```
+
+StreamHaus challenges an active webhook URL **during this call**: the endpoint must answer the seller's signed challenge before the subscriber set is replaced, and a failed challenge fails the whole request, so the receiver must be live first. Destination proof is different: it completes *after* the call, and an active destination cannot become `ready` until it succeeds. To rehearse without side effects, add `"dry_run": true`: the seller validates and reports the would-be action (`would_update`, `would_be_unchanged`, or `would_clear`) without persisting, issuing identifiers, or challenging anything.
+
+### The proof flow: `action_required` to `ready`
+
+StreamHaus validates the destination against its offering, issues a `destination_ref`, and returns the applied state. The destination is not usable yet, so its state is `action_required` and the response names the one typed action to take:
+
+**Schema:** [`sync-principal-response.json`](https://adcontextprotocol.org/schemas/3.2.3/protocol/sync-principal-response.json)
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.3/protocol/sync-principal-response.json",
+  "status": "completed",
+  "result": {
+    "kind": "applied",
+    "action": "updated",
+    "dry_run": false,
+    "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+    "principal_kind": "buyer_agent",
+    "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
+    "configuration": {
+      "notification_configs": [
+        {
+          "subscriber_id": "pinnacle-events",
+          "url": "https://agents.pinnacle-agency.example/adcp/webhooks",
+          "event_types": ["capabilities.changed", "principal.changed"],
+          "active": true
+        }
+      ],
+      "reporting_destinations": [
+        {
+          "destination_id": "pinnacle-archive",
+          "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
+          "state": "action_required",
+          "setup": { "action": "prove_control" },
+          "configuration": {
+            "pattern": "file_transfer",
+            "destination_id": "pinnacle-archive",
+            "active": true,
+            "provider": { "domain": "object-store.example" },
+            "transport": "s3",
+            "location": "s3://pinnacle-reporting/adcp/",
+            "accepted_formats": ["parquet"],
+            "accepted_verification_profiles": ["manifest_checksums"]
+          }
+        }
+      ],
+      "declarations": {
+        "declared": {
+          "async_adcp_versions": ["3.2"],
+          "webhook_signing_algorithms": ["ed25519"],
+          "experimental_features": ["protocol.principal"]
+        },
+        "accepted": {
+          "async_adcp_versions": ["3.2"],
+          "webhook_signing_algorithms": ["ed25519"],
+          "experimental_features": ["protocol.principal"]
+        },
+        "selected_async_adcp_version": "3.2"
+      }
+    }
+  }
+}
+```
+
+The loop from here:
+
+1. **Do the typed action.** AdCP carries only the action name (`prove_control`, `grant_access`, `accept_share`, or `contact_support`), an optional `setup_url`, and an optional expiry. The details, such as which proof object to write under the bucket prefix, come from StreamHaus's onboarding material or its `setup_url`. Treat `setup_url` as an untrusted link, surface it to Sam, and never fetch or execute it. Credentials stay in the provider's own control plane.
+2. **Wait for the doorbell, or poll.** StreamHaus fires `principal.changed` when the destination moves. The agent can also call `get_principal` until the state reaches `ready`; if `setup.expires_at` passes first, resubmit the destination to obtain a fresh action. Reading never advances `configuration_version`, and neither does the seller's own transition, so a read-then-write loop stays safe.
+3. **Treat `ready` as the gate.** Only a `ready` destination may be bound to an account feed. `rejected` means StreamHaus cannot use those coordinates and the request needs a different destination.
+
+If the agent later changes the provider, transport, location, accepted formats, or accepted verification profiles, StreamHaus issues a *new* `destination_ref` and requires fresh proof. The old reference stays resolvable for existing bindings and reporting history and is listed under `prior_destination_refs`. Existing feed bindings do not move on their own: to redirect delivery, bind a new `delivery_config_version` to the new reference once it is `ready`. Resubmitting the identical destination is a no-op: `action: "unchanged"` and the same reference.
+
+The declarations section returns the negotiated contract. If the agent had declared a version or algorithm StreamHaus does not support, it would be absent from `accepted` and listed under `exclusions` with a reason, and a declared signing algorithm that shares nothing with the seller's would fail the request with `UNSUPPORTED_FEATURE` while a subscriber is active.
+
+## 5. Authorize accounts and bind the feed
+
+`ready` proves only where the principal can receive data. It says nothing about *which* data. To get Nova Motors' reporting into the bucket, the agent establishes the account relationship with [`sync_accounts`](/dist/docs/3.2.3/accounts/tasks/sync_accounts), as in [Provision a seller-mediated account](/dist/docs/3.2.3/accounts/provisioning-walkthrough), and binds the account's feed to the reusable destination through `reporting_delivery_configs`. The example below is abbreviated: include `timezone`, `payment_terms`, and `billing_entity` as that walkthrough does, and choose `offering_id` and `report_definition_id` from the seller's `media_buy.reporting_delivery` offerings.
+
+**Schema:** [`sync-accounts-request.json`](https://adcontextprotocol.org/schemas/3.2.3/account/sync-accounts-request.json)
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.3/account/sync-accounts-request.json",
+  "idempotency_key": "e7a40a15-2d54-4a4b-8d0b-3f7a1c9b6d52",
+  "accounts": [
+    {
+      "brand": { "domain": "novamotors.example" },
+      "operator": "pinnacle-agency.example",
+      "billing": "advertiser",
+      "reporting_delivery_configs": [
+        {
+          "delivery_config_id": "pinnacle-pacing",
+          "delivery_config_version": 1,
+          "offering_id": "pacing-hourly",
+          "active": true,
+          "feed_purpose": "pacing",
+          "report_definition_id": "streamhaus_delivery_summary_v1",
+          "reporting_profile": "streamhaus_delivery_summary_v1",
+          "scope": { "all_media_buys": true },
+          "coverage_requirement": "full",
+          "required_finality": "snapshot",
+          "reconciliation_mode": "delivery_only",
+          "schedule": {
+            "period_duration": "PT1H",
+            "alignment": "utc",
+            "delivery_sla": "PT1H"
+          },
+          "method": {
+            "pattern": "file_transfer",
+            "transport": "s3",
+            "orchestration": "producer_managed",
+            "format": "parquet",
+            "destination": {
+              "mode": "existing",
+              "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Two independent checks gate this binding:
+
+- **The destination.** StreamHaus resolves `destination_ref` only for the principal that registered it, and a new binding requires it to be `ready`. An unknown, cross-principal, or unauthorized reference fails indistinguishably.
+- **The account.** StreamHaus authorizes the disclosure of Nova Motors' feed to this principal for this scope. Possessing a `ready` reference is never account authority, and the account check is independent of the destination's state.
+
+The same destination can serve several accounts, each bound and authorized separately. A binding can still wait on account setup or provider readiness; observe it through [`get_reporting_status`](/dist/docs/3.2.3/media-buy/task-reference/get_reporting_status). Reliable reporting is its own experimental surface (`media_buy.reporting_delivery`); see [experimental status](/dist/docs/3.2.3/reference/experimental-status).
+
+## 6. Read it back, and know the kill switch
+
+[`get_principal`](/dist/docs/3.2.3/protocol/get_principal) is the durable answer to "what does StreamHaus think my standing configuration is?". The agent uses it to bootstrap `expected_configuration_version` before a guarded replacement, to recover after a restart, and to observe setup transitions.
+
+**Schema:** [`get-principal-response.json`](https://adcontextprotocol.org/schemas/3.2.3/protocol/get-principal-response.json)
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.3/protocol/get-principal-response.json",
+  "status": "completed",
+  "result": {
+    "kind": "current",
+    "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+    "principal_kind": "buyer_agent",
+    "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
+    "configuration": {
+      "notification_configs": [
+        {
+          "subscriber_id": "pinnacle-events",
+          "url": "https://agents.pinnacle-agency.example/adcp/webhooks",
+          "event_types": ["capabilities.changed", "principal.changed"],
+          "active": true
+        }
+      ],
+      "reporting_destinations": [
+        {
+          "destination_id": "pinnacle-archive",
+          "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
+          "state": "ready",
+          "configuration": {
+            "pattern": "file_transfer",
+            "destination_id": "pinnacle-archive",
+            "active": true,
+            "provider": { "domain": "object-store.example" },
+            "transport": "s3",
+            "location": "s3://pinnacle-reporting/adcp/",
+            "accepted_formats": ["parquet"],
+            "accepted_verification_profiles": ["manifest_checksums"]
+          }
+        }
+      ],
+      "declarations": {
+        "declared": {
+          "async_adcp_versions": ["3.2"],
+          "webhook_signing_algorithms": ["ed25519"],
+          "experimental_features": ["protocol.principal"]
+        },
+        "accepted": {
+          "async_adcp_versions": ["3.2"],
+          "webhook_signing_algorithms": ["ed25519"],
+          "experimental_features": ["protocol.principal"]
+        },
+        "selected_async_adcp_version": "3.2"
+      }
+    }
+  }
+}
+```
+
+Pass `configuration_version` back as `expected_configuration_version` on a guarded `sync_principal`. If two services share one principal and one is stale, StreamHaus rejects the stale write with `CONFLICT` and changes nothing; read again, reconcile, and resubmit under a **new** `idempotency_key`. Retries of one logical request reuse both the key and the body.
+
+### The kill switch
+
+These controls stop delivery on the caller's own principal. They are only as trustworthy as the credential that drives them: if a credential is compromised, revoke it in the seller's authorization system, because anyone holding it can reverse these settings.
+
+- **Pause a webhook.** Resubmit the subscriber with `active: false`. Fires to that endpoint, across every account, halt within `suspension_interval_seconds`.
+- **Suspend a destination.** Resubmit the destination with `active: false`. New deliveries to *every generation* of that `destination_id` halt within the same bound, and every bound account is marked with a typed `destination_suspended` issue. Resubmitting with `active: true` lifts it without new proof when nothing else changed.
+- **Revoke a destination.** Omit it from `reporting_destinations`, or send `[]` for all. Revocation has every suspension effect, removes the destination from current state, and keeps its generations under `retired_destinations` for audit. Reusing the `destination_id` later needs fresh registration and proof.
+
+New deliveries may continue until the advertised interval elapses, and none of these delete data already delivered or revoke grants managed in the provider's control plane. Narrower controls exist per account (deactivating a `reporting_delivery_configs` entry, or changing account authority through `sync_accounts`), and per-buy `reporting_webhook` and account-level subscribers are independent of the principal-level subscriber.
+
+### The `principal.changed` webhook
+
+StreamHaus tells the agent's subscriber when its own transitions change the principal state. The payload is an invalidation signal, not state: identifiers and a repair pointer only. The receiver verifies the webhook signature, dedupes on `idempotency_key`, and repairs by calling `get_principal`.
+
+**Schema:** [`principal-changed-webhook.json`](https://adcontextprotocol.org/schemas/3.2.3/core/principal-changed-webhook.json)
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.3/core/principal-changed-webhook.json",
+  "idempotency_key": "9f2c1e57-3f6a-4f4e-9f0d-2a45b7c6e881",
+  "notification_id": "conn_txn_01K4D0Z3M8Q0V5T2C9XWJ7R4BA",
+  "notification_type": "principal.changed",
+  "fired_at": "2026-09-01T12:00:05Z",
+  "subscriber_id": "pinnacle-events",
+  "agent_url": "https://sales.streamhaus.example/adcp",
+  "changed_at": "2026-09-01T12:00:03Z",
+  "reason": "destination_state_changed",
+  "destination_id": "pinnacle-archive"
+}
+```
+
+The `$schema` key above is documentation metadata, not part of the payload. The webhook is not fired for the agent's own `sync_principal` mutations, since the sync response already reports those. Webhooks can be dropped, so a receiver also polls `get_principal` on a bounded schedule rather than relying on the doorbell alone.
+
+## Run it against the training agent
+
+The public training agent implements `sync_principal` and `get_principal` on its sales endpoint, `https://test-agent.adcontextprotocol.org/sales/mcp` (see [Build a caller](/dist/docs/3.2.3/building/by-layer/L4/build-a-caller) for connecting). Calls need a credential: anonymous calls get `AUTH_REQUIRED`. It is a reference seller, so it differs from StreamHaus:
+
+- It advertises the `reporting_destinations` and `declarations` sections. Webhook subscribers are still registered through [`sync_agent_notification_configs`](/dist/docs/3.2.3/protocol/sync_agent_notification_configs), so drop `notification_configs` from the step 4 request.
+- Destination proof is simulated. An active destination reads back `action_required` with `setup.action: prove_control` (also for warehouse patterns, where a real seller would ask for `grant_access`), then `ready` a few seconds later. No bucket is contacted and no `principal.changed` webhook fires.
+- It offers `file_transfer` (`s3`, `gcs`) and `warehouse_materialization` (`bigquery`, `snowflake`). Read its `adcp.principal` block for the exact offering.
+- State is keyed to the credential you authenticate with, and everyone using the shared public test token is the same principal. Treat anything you register there as public, and expect `current` rather than `recognized` if someone else has already configured it.
+
+The runnable subset of step 4. Use your own `destination_id` so the sequence is reproducible on a shared token:
+
+**Schema:** [`sync-principal-request.json`](https://adcontextprotocol.org/schemas/3.2.3/protocol/sync-principal-request.json)
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.3/protocol/sync-principal-request.json",
+  "idempotency_key": "1d0b7c44-6b0e-4f0b-8a43-9d3c5a2f7e10",
+  "configuration": {
+    "declarations": {
+      "async_adcp_versions": ["3.2"],
+      "webhook_signing_algorithms": ["ed25519"]
+    },
+    "reporting_destinations": [
+      {
+        "pattern": "file_transfer",
+        "destination_id": "pinnacle-archive-demo",
+        "active": true,
+        "provider": { "domain": "object-store.example" },
+        "transport": "s3",
+        "location": "s3://pinnacle-reporting/adcp/",
+        "accepted_formats": ["parquet"],
+        "accepted_verification_profiles": ["manifest_checksums"]
+      }
+    ]
+  }
+}
+```
+
+Call `get_principal` first, send this request (expect `applied` with `action_required`), then poll `get_principal` until the destination is `ready`. Send the same body under a fresh `idempotency_key` to see `action: "unchanged"` with the same `destination_ref`. Clear your destination by resubmitting the section without it; avoid `[]` on a shared token unless you registered everything there. The [`principal` storyboard](/dist/docs/3.2.3/building/verification/conformance) covers the recognized read, apply and readback, idempotent replay, and section clearing; it applies a suspended destination, so it does not exercise the proof transition.
+
+## Failure branches
+
+The full error table is in the [`sync_principal` reference](/dist/docs/3.2.3/protocol/sync_principal#errors). The ones a buyer agent meets first:
+
+- **`AUTH_REQUIRED`.** The call carried no stable principal. Authenticate with a credential the seller maps to one.
+- **`UNSUPPORTED_FEATURE`.** A section, destination, or event type is outside what the seller advertised. Re-read capabilities and choose from the offering.
+- **`CONFLICT`.** `expected_configuration_version` or `expected_principal_kind` did not match. Nothing changed; read with `get_principal`, reconcile, and resubmit under a new key.
+- **A destination stays `action_required`.** The typed action is incomplete or unverified. Complete it in the provider and poll; resubmit only if `setup.expires_at` has passed.
+- **A destination is `rejected`.** Those coordinates cannot be used. Register a different destination rather than retrying.
+- **The feed binding is refused.** The destination is not `ready`, or the account relationship does not authorize the feed. Fix whichever side failed; one does not substitute for the other.
+
+## Related reference
+
+- [`sync_principal`](/dist/docs/3.2.3/protocol/sync_principal) and [`get_principal`](/dist/docs/3.2.3/protocol/get_principal) — request, response, and error reference
+- [`get_adcp_capabilities`](/dist/docs/3.2.3/protocol/get_adcp_capabilities) — the `adcp.principal` block
+- [`sync_accounts`](/dist/docs/3.2.3/accounts/tasks/sync_accounts) — account authorization and `reporting_delivery_configs`
+- [Provision a seller-mediated account](/dist/docs/3.2.3/accounts/provisioning-walkthrough) — the related account walkthrough
+- [`sync_agent_notification_configs`](/dist/docs/3.2.3/protocol/sync_agent_notification_configs) — the specialized webhook registration task
