@@ -199,6 +199,10 @@
             "required": ["errors", "retryable"],
             "additionalProperties": true
           },
+          "provenance": {
+            "$ref": "/schemas/core/provenance.json",
+            "description": "Read-only echo of the creative-level provenance accepted on sync_creatives for the returned revision. Default for assets in this creative; an asset's own provenance replaces it entirely. Omitted when none was declared."
+          },
           "tags": {
             "type": "array",
             "description": "User-defined tags for organization and searchability",

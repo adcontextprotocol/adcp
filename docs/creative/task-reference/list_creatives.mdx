@@ -218,6 +218,10 @@ is the current buyer-authored input revision for that creative. It is exact
 readback of the value accepted by [`sync_creatives`](/docs/creative/task-reference/sync_creatives), not a seller processing or
 transcode version. Older creatives without revision identity may omit it.
 
+### Provenance readback
+
+`provenance` echoes the creative-level [provenance](/docs/creative/provenance) the seller accepted on [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for the returned revision, so a reviewer can see AI-disclosure metadata without a separate lookup. It is a read-only echo of the buyer's claim, not seller verification, and not a second source of truth. It is the creative-level default only: an asset's own `provenance` inside `assets` still replaces it entirely (no field-level merging). This adds no new revision rule. Provenance is not among the fields excluded from [canonical revision content](/docs/creative/task-reference/sync_creatives#creative-revisions), so it stays part of revision identity as it is today, and a change to it needs a new `revision_id`. The seller returns the buyer-submitted object unaltered and MUST NOT add or change members; seller-side verification is not part of this echo. Sellers that persist creative-level provenance SHOULD echo it; sellers that do not persist it omit the field, but the revision fingerprint still covers submitted provenance, so a same-`revision_id` resync with changed provenance is a [`CREATIVE_REVISION_CONTENT_MISMATCH`](/docs/building/verification/compliance-catalog#error-code-creative-revision-content-mismatch) either way. Buyers should select it through `fields` only against sellers on a release that defines it. Select it with `fields: ["provenance"]`. [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) does not carry provenance.
+
 ### Per-creative fields
 
 | Field | Type | Description |
@@ -234,6 +238,7 @@ transcode version. Older creatives without revision identity may omit it.
 | `assets` | object | Creative assets (images, text, URLs, etc.) |
 | `localization` | object | Exact materialized locale assets, buyer-assigned variant identities, and default/unmatched policy for localized creatives. |
 | `localization_unavailable` | object | Fail-closed per-item errors and retryability when exact localization readback cannot be constructed. Mutually exclusive with `localization`. |
+| `provenance` | object | Read-only echo of the creative-level [provenance](/docs/creative/provenance) accepted on `sync_creatives` for the returned revision. Omitted when none was declared. |
 | `tags` | string[] | Tags for categorization |
 | `rights` | array | Exact retained rights constraints and portable references. Presentation only; not proof of seller verification. |
 | `rights_attestation_evaluations` | array | Seller-produced, freshness-bounded grant evaluations. Each reference must exactly match one reference in the returned `rights` array. |
