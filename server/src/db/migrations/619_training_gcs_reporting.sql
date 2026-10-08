@@ -1,6 +1,18 @@
 -- SDK 15.2.0 production composer SQL, plus Core writer fence and GCS authority.
 -- An isolated schema on the SAME primary; never attach a writable clone to live objects.
-CREATE SCHEMA IF NOT EXISTS training_reporting_gcs;
+-- A DBA provisions this schema for the ordinary application role before deployment.
+-- Do not require database-wide CREATE or an operator credential in the runtime.
+DO $schema_precondition$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'training_reporting_gcs') THEN
+    RAISE EXCEPTION 'Provision training_reporting_gcs for the application role before migration 619';
+  END IF;
+  IF NOT has_schema_privilege(current_user, 'training_reporting_gcs', 'USAGE')
+    OR NOT has_schema_privilege(current_user, 'training_reporting_gcs', 'CREATE') THEN
+    RAISE EXCEPTION 'Application role requires USAGE and CREATE on training_reporting_gcs';
+  END IF;
+END;
+$schema_precondition$;
 SET LOCAL search_path = training_reporting_gcs, pg_catalog;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '60s';

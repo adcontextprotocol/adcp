@@ -82,6 +82,7 @@ describe.skipIf(!testUrl)('training GCS reporting against disposable PostgreSQL'
     try {
       await client.query('BEGIN');
       await client.query(`DROP SCHEMA IF EXISTS ${TRAINING_REPORTING_SCHEMA} CASCADE`);
+      await client.query(`CREATE SCHEMA ${TRAINING_REPORTING_SCHEMA}`);
       await client.query(await readFile(new URL('../../src/db/migrations/619_training_gcs_reporting.sql', import.meta.url), 'utf8'));
       const legacy = await readFile(new URL('../../src/db/migrations/575_reporting_reliability_curriculum.sql', import.meta.url), 'utf8');
       await client.query('SET LOCAL search_path=public,pg_catalog');

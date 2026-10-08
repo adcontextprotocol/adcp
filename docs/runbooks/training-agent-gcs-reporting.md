@@ -1,3 +1,9 @@
+---
+title: Private training-agent GCS reporting canary
+description: "Configure private GCS reporting for the training agent, verify durable buyer receipts, and qualify the Fly canary before rollout."
+"og:title": "AdCP — Private training-agent GCS reporting canary"
+---
+
 # Private training-agent GCS reporting canary
 
 This change prepares an opt-in adoption of the published `@adcp/sdk@15.2.0`
@@ -69,6 +75,26 @@ Do not attach an independently writable database clone to these live objects.
 A new installation needs a new authority and fresh dedicated bucket. Retain
 the old installation's grants, tombstones and inventory until its cleanup has
 finished. Do not clear the reporting schema to repair a failed deployment.
+
+Before merging or staging the image, a DBA must provision the isolated schema
+on the application primary, owned by the actual application database role.
+Migration 619 checks that prerequisite and creates its tables using the ordinary
+application credential. The runtime needs no database-wide `CREATE` privilege
+or DBA credential. Use a separate operator connection for this one-time setup;
+replace the role placeholder with the verified application login:
+
+```bash
+psql "$REPORTING_DBA_DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 \
+  -v application_principal="<actual application database role>" <<'SQL'
+CREATE SCHEMA training_reporting_gcs AUTHORIZATION :"application_principal";
+REVOKE ALL ON SCHEMA training_reporting_gcs FROM PUBLIC;
+SQL
+```
+
+If the schema already exists, inspect its owner and installation authority
+instead of recreating it. Repository CI provisions the same scoped schema
+outside the application boundary, then applies and replays migrations with
+the application role's database-wide `CREATE` permission absent.
 
 ## Dedicated GCP identity and bucket
 
