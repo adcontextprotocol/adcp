@@ -2,8 +2,16 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/buy-products-async-response-submitted.json",
   "title": "Buy Products - Submitted",
-  "description": "Bounded submitted task envelope for buy_products.",
+  "description": "Bounded submitted task envelope for buy_products. Adds the optional expected_confirmation_at estimate for confirmations tied to a scheduled event.",
   "allOf": [
     { "$ref": "/schemas/core/compact-task-submitted.json" }
-  ]
+  ],
+  "properties": {
+    "expected_confirmation_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-added-in": "3.3.0",
+      "description": "Optional estimate of when the seller expects to confirm this request, used when confirmation depends on a scheduled event such as a booking round or a manual review window. A seller SHOULD set it when it knows that event; omit it when it does not. Buyers SHOULD schedule a status check (get_task_status, or reconciling against the webhook) for this time rather than polling tightly before it. This is an estimate, not a commitment: the seller MAY confirm earlier or later, the task status remains authoritative, and buyers MUST NOT treat a passed timestamp as a failure or auto-cancel on it. Sellers SHOULD NOT send a timestamp in the past. Not an expiry or SLA."
+    }
+  }
 }
