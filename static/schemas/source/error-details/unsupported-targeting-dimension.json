@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/unsupported-targeting-dimension.json",
+  "title": "Unsupported Targeting Dimension Details",
+  "description": "Recommended details shape for UNSUPPORTED_FEATURE errors rejecting a targeting dimension that the product or seller does not support, or that was previously accepted and has been removed. Sellers MUST NOT silently drop the dimension. `error.field` SHOULD point at the targeting path (for example `packages[0].targeting_overlay.geo_countries`). Sellers echo only what the caller could already read from capabilities or Product `overlay_support`.",
+  "type": "object",
+  "properties": {
+    "unsupported_dimension": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The targeting field name that was rejected, for example `geo_countries`."
+    },
+    "supported_dimensions": {
+      "type": "array",
+      "description": "Targeting dimensions the caller could already read from `get_adcp_capabilities` or the product's `overlay_support`. Sellers MAY omit it; absence means consult those surfaces, not that any dimension is supported.",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "deprecated": {
+      "type": "boolean",
+      "description": "`true` when the dimension was previously accepted and has been removed. Omitted or `false` for a dimension that was never supported."
+    },
+    "replacement_dimension": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Targeting dimension that replaces the rejected one. Typically set with `deprecated: true`."
+    },
+    "product_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Product the dimension was rejected for, when support is product-scoped.",
+      "x-entity": "product"
+    },
+    "package_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based index of the offending package in the request's `packages` (or `new_packages`) array."
+    }
+  },
+  "required": ["unsupported_dimension"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "unsupported_dimension": "geo_countries",
+      "supported_dimensions": ["geo_metros", "geo_postal_areas"],
+      "product_id": "display_run_of_site",
+      "package_index": 0
+    },
+    {
+      "unsupported_dimension": "age_range_strict",
+      "deprecated": true,
+      "replacement_dimension": "age_range"
+    }
+  ]
+}
