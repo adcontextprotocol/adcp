@@ -1493,6 +1493,10 @@
           "$ref": "/schemas/enums/sort-metric.json",
           "description": "Numeric delivery metrics available for sorting breakdown rows"
         },
+        "spot-status": {
+          "$ref": "/schemas/enums/spot-status.json",
+          "description": "Lifecycle status of a by_spot row (scheduled, aired, preempted, makegood). Experimental."
+        },
         "history-entry-type": {
           "$ref": "/schemas/enums/history-entry-type.json",
           "description": "Type of task history entry (request, response)"
