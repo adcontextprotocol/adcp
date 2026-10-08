@@ -9707,7 +9707,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       try {
         const caps = await testCapabilityDiscovery(
           agentUrl,
-          withSdkSafeTransport({ ...(probeAuth && { auth: probeAuth }) }),
+          withSdkSafeTransport({ ...(probeAuth && { auth: probeAuth }), versionEnvelope: 'major-only' }),
         );
         profile = caps.profile;
 

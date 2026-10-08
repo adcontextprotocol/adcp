@@ -45,6 +45,31 @@ MediaBuy constraints: non-whitespace and no longer than 255 characters. The
 seller must not silently truncate or rewrite a proposal name to make it fit. A
 seeded name is then persisted and reported like any other name.
 
+To receive scheduled reports, a `reporting_webhook` registered on this task needs a buyer-supplied `operation_id` (see [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks)); sellers MUST NOT send `media_buy_delivery` reports to a registration that omits it.
+
 A completed acceptance MAY include `warnings[]` for non-blocking observations at the commitment boundary. Each warning identifies its package through the returned `media_buy_id` and `purchase_bindings[].package_id`; a continuing condition is also readable as an indicator through [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). The seller may instead return `input-required` before consuming the proposal. Warnings never appear on failed or submitted arms.
 
 An unexpired committed proposal cannot be rejected merely because its reserved inventory was sold elsewhere. Once `expires_at` passes, the hold lapses and the seller returns [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired); the buyer must request and finalize a fresh proposal.
+
+### Definition pins
+
+Before mutating any state, the seller re-resolves every entry in the proposal's `commercial_terms.definition_pins[]` and compares its current digest with the pin's `content_digest` (see [Definition pins](/docs/media-buy/specification#definition-pins)). The proposal ID and `proposal_terms_digest` can verify while a published definition has changed, because `terms_digest` covers the pin and not the definition it names. A failing pin returns [`REFERENCE_DEFINITION_CHANGED`](/docs/building/verification/compliance-catalog#error-code-reference-definition-changed) with no MediaBuy created or amended, one error per drifted pin in `errors[]`. Each error looks like this:
+
+```json
+{
+  "$schema": "/schemas/core/error.json",
+  "code": "REFERENCE_DEFINITION_CHANGED",
+  "message": "A pinned definition changed after the proposal was committed.",
+  "field": "commercial_terms.definition_pins[0]",
+  "recovery": "correctable",
+  "details": {
+    "ref_kind": "publisher_collection",
+    "reference": { "publisher_domain": "sports-network.example", "collection_id": "evening_news" },
+    "pin_index": 0,
+    "pinned_content_digest": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5",
+    "current_content_digest": "fae2a9a11574c1a9a20e8c379e4a194ca47bf6d0a886de980b8de64f046ac24d"
+  }
+}
+```
+
+The buyer calls [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) to obtain fresh pins, reviews the changed definition, and finalizes again. A definition withdrawn from a successfully fetched document is changed and omits `current_content_digest`; a document that cannot be fetched or parsed is transient, so the seller returns [`SERVICE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-service-unavailable) without mutating state. An idempotent replay of an acceptance that already completed returns the stored result without re-verifying pins.

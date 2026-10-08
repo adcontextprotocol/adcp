@@ -53,7 +53,8 @@ import {
 import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
-import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
+import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -2173,6 +2174,8 @@ interface ReportingCapabilitiesView {
   vendor_metrics?: VendorMetricRefView[];
   available_metrics?: string[];
   supports_format_breakdown?: boolean;
+  supports_property_breakdown?: boolean;
+  supports_installment_property_breakdown?: boolean;
 }
 
 function deterministicTimeBasedViews(impressions: number): Array<Record<string, unknown>> {
@@ -2248,6 +2251,52 @@ function formatDeliveryBreakdown(
     by_format_truncated: rows.length > limit,
     by_format_sorted_by: appliedSort,
     by_format_sort_direction: appliedDirection,
+  };
+}
+
+/**
+ * Property-grain breakdowns echo only rows injected through
+ * comply_test_controller simulate_delivery. They are never derived from
+ * catalog eligibility or publisher_properties: absent injected rows, the
+ * array is empty.
+ */
+function injectedRowsBreakdown(
+  field: 'by_property' | 'by_installment_property',
+  injectedRows: Array<Record<string, unknown>> | undefined,
+  dimension: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!dimension) return {};
+  const rows = injectedRows ?? [];
+  const requestedSort = typeof dimension.sort_by === 'string' ? dimension.sort_by : 'spend';
+  const requestedDirection = dimension.sort_direction === 'asc' ? 'asc' : 'desc';
+  // The reference seller sorts on flat row metrics only; a metric it does not
+  // carry at this grain (for example nested viewability) falls back to spend,
+  // which delivery-breakdown-controls.json permits.
+  const hasMetric = (row: Record<string, unknown>, metric: string) => (
+    typeof row[metric] === 'number' && Number.isFinite(row[metric])
+  );
+  // Fall back to spend only when no row reports the requested metric; rows
+  // lacking it order last regardless of direction.
+  const appliedSort = rows.some(row => hasMetric(row, requestedSort)) ? requestedSort : 'spend';
+  const appliedDirection = appliedSort === requestedSort ? requestedDirection : 'desc';
+  const ordered = structuredClone(rows).sort((left, right) => {
+    const leftHas = hasMetric(left, appliedSort);
+    const rightHas = hasMetric(right, appliedSort);
+    if (!leftHas || !rightHas) return Number(rightHas) - Number(leftHas);
+    const a = left[appliedSort] as number;
+    const b = right[appliedSort] as number;
+    return appliedDirection === 'asc' ? a - b : b - a;
+  });
+  const limit = typeof dimension.limit === 'number' && Number.isInteger(dimension.limit) && dimension.limit >= 1
+    ? dimension.limit
+    : 25;
+  return {
+    [field]: ordered.slice(0, limit),
+    [`${field}_truncated`]: ordered.length > limit,
+    // Injected rows are exempt from threshold suppression.
+    [`${field}_suppressed`]: false,
+    [`${field}_sorted_by`]: appliedSort,
+    [`${field}_sort_direction`]: appliedDirection,
   };
 }
 
@@ -3205,6 +3254,14 @@ function supportsLifecycleSplitCompatibility(version: string | undefined): boole
 
 function lifecycleSplitVersionForContext(ctx: TrainingContext): string | undefined {
   return isThreeZeroStoryboardCompat(ctx) ? '3.0' : ctx.servedAdcpVersion;
+}
+
+/** The seller-optimized capabilities this request's served release line declares. */
+function sellerOptimizedDeclarationForContext(ctx: TrainingContext) {
+  // In-process callers may carry no served version; they speak the current line.
+  return sellerOptimizedDeclarationForVersion(
+    lifecycleSplitVersionForContext(ctx) ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
 }
 
 function compareAdcpPrerelease(left: string, right: string): number {
@@ -7420,6 +7477,10 @@ function buildCanonicalCommercialTerms(
     };
   });
   const changeTerms = proposalChangeTermsForPurchases(purchases, products);
+  // A vendor_metric goal is optimized only against committed reporting of the
+  // same (vendor, metric_id), so each purchase commits to report it.
+  const outcomeGoal = internal.__outcome_target_optimization_goal;
+  const vendorOutcomeGoal = isRecord(outcomeGoal) && outcomeGoal.kind === 'vendor_metric' ? outcomeGoal : undefined;
   return {
     brand,
     purchases,
@@ -7433,6 +7494,16 @@ function buildCanonicalCommercialTerms(
     }),
     ...(isRecord(internal.__outcome_target_bidding) && {
       bidding: structuredClone(internal.__outcome_target_bidding),
+    }),
+    ...(vendorOutcomeGoal && {
+      reporting_commitments: purchases.map((_purchase, purchaseIndex) => ({
+        purchase_index: purchaseIndex,
+        metrics: [{
+          scope: 'vendor',
+          vendor: structuredClone(vendorOutcomeGoal.vendor),
+          metric_id: vendorOutcomeGoal.metric_id,
+        }],
+      })),
     }),
     ...(changeTerms.length > 0 && { change_terms: changeTerms }),
   };
@@ -8588,6 +8659,135 @@ const OUTCOME_TARGET_EVENT_RESPONSE_RATE = 0.0002;
 const OUTCOME_TARGET_DEFAULT_CPM = 10;
 const OUTCOME_TARGET_FORECAST_RATIOS = [0.5, 1, 1.5] as const;
 
+// vendor_metric goals. volume is a total of the metric's declared unit across
+// the flight, so only cumulative count metrics are plannable. This table is the
+// reference seller's deterministic model of those metrics, keyed by metric_id:
+// store_visits_14d_exposed models 1 attributed visit per 2,000 impressions.
+// Training-fixture constants, not vendor measurements or market claims. A
+// metric a product declares that is absent here (such as attention_score, a
+// score) is rejected rather than planned as a total.
+const OUTCOME_TARGET_VENDOR_CUMULATIVE_METRICS: ReadonlyMap<string, { unit: string; responseRate: number }> = new Map([
+  ['store_visits_14d_exposed', { unit: 'visits', responseRate: 0.0005 }],
+]);
+
+type OutcomeTargetVendorGoal = { vendor: { domain: string; brand_id?: string }; metric_id: string };
+
+function outcomeTargetVendorGoal(goal: Record<string, unknown>): OutcomeTargetVendorGoal | undefined {
+  if (goal.kind !== 'vendor_metric' || !isRecord(goal.vendor) || typeof goal.vendor.domain !== 'string'
+    || typeof goal.metric_id !== 'string') return undefined;
+  return {
+    vendor: {
+      domain: goal.vendor.domain,
+      ...(typeof goal.vendor.brand_id === 'string' && { brand_id: goal.vendor.brand_id }),
+    },
+    metric_id: goal.metric_id,
+  };
+}
+
+/** The product's vendor_metric_optimization.supported_metrics[] entry for the
+ * goal's vendor (domain and brand_id) and metric_id, if it declares one and
+ * also lists the pair in reporting_capabilities.vendor_metrics: the proposal
+ * commits to reporting the metric, and accepting a commitment the product
+ * cannot report fails TERMS_REJECTED. */
+function productVendorMetricEntry(product: Product | undefined, goal: OutcomeTargetVendorGoal): VendorMetricRefView | undefined {
+  const key = vendorMetricKey(goal);
+  const supported = (product as (Product & { vendor_metric_optimization?: VendorMetricOptimizationView }) | undefined)
+    ?.vendor_metric_optimization?.supported_metrics;
+  const reportable = (product?.reporting_capabilities as ReportingCapabilitiesView | undefined)?.vendor_metrics;
+  if (!Array.isArray(reportable) || !reportable.some(entry => vendorMetricKey(entry) === key)) return undefined;
+  return Array.isArray(supported) ? supported.find(entry => vendorMetricKey(entry) === key) : undefined;
+}
+
+function vendorEntrySupportsCostPer(entry: VendorMetricRefView | undefined): boolean {
+  return Array.isArray(entry?.supported_targets) && entry.supported_targets.includes('cost_per');
+}
+
+/** Validate a vendor_metric goal against the products in scope before any
+ * cost target: INVALID_REQUEST naming criteria.outcome_target.goal when no
+ * product declares the (vendor, metric_id), or when it is a score or rate the
+ * seller cannot plan as a cumulative total. */
+function outcomeTargetVendorGoalRejection(
+  goal: Record<string, unknown>,
+  scopeProducts: readonly Product[],
+): string | undefined {
+  const vendorGoal = outcomeTargetVendorGoal(goal);
+  if (!vendorGoal) return 'A vendor_metric goal requires vendor.domain and metric_id.';
+  const label = `${vendorGoal.vendor.domain} ${vendorGoal.metric_id}`;
+  if (!scopeProducts.some(product => productVendorMetricEntry(product, vendorGoal))) {
+    return `No product in scope declares ${label} in both vendor_metric_optimization.supported_metrics and reporting_capabilities.vendor_metrics, and the seller cannot substitute another vendor or metric.`;
+  }
+  if (!OUTCOME_TARGET_VENDOR_CUMULATIVE_METRICS.has(vendorGoal.metric_id)) {
+    return `${label} cannot be planned as a cumulative total: volume is a total of the metric's declared unit across the flight, and this metric is a score or rate.`;
+  }
+  return undefined;
+}
+
+/** Keep only the allocations whose product declares the goal's pair (with
+ * cost_per in its supported_targets when planning a cost target), scaling the
+ * remaining allocation_percentage values proportionally to whole-cent
+ * percentages that sum to exactly 100 (the last absorbs the rounding
+ * remainder; equal split when none carries a percentage). undefined when none
+ * remain. */
+function outcomeTargetVendorEligibleProposal(
+  proposal: Proposal,
+  goal: Record<string, unknown>,
+  requireCostPer: boolean,
+  productsById: ReadonlyMap<string, Product>,
+): Proposal | undefined {
+  const vendorGoal = outcomeTargetVendorGoal(goal);
+  if (!vendorGoal) return undefined;
+  const kept = proposal.allocations.filter(allocation => {
+    const entry = productVendorMetricEntry(productsById.get(allocation.product_id), vendorGoal);
+    return entry !== undefined && (!requireCostPer || vendorEntrySupportsCostPer(entry));
+  });
+  if (kept.length === 0) return undefined;
+  if (kept.length === proposal.allocations.length) return proposal;
+  const weights = kept.map(allocation => allocation.allocation_percentage ?? 0);
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+  const shares = weightTotal > 0 ? weights.map(weight => weight / weightTotal) : kept.map(() => 1 / kept.length);
+  let assignedCents = 0;
+  const allocations = kept.map((allocation, index) => {
+    const cents = index === kept.length - 1 ? 10000 - assignedCents : Math.round(shares[index]! * 10000);
+    assignedCents += cents;
+    return { ...allocation, allocation_percentage: cents / 100 };
+  });
+  return { ...proposal, allocations: allocations as Proposal['allocations'] };
+}
+
+/** One forecast point for a plan. A metric or event goal carries its key in
+ * metrics. A vendor_metric goal carries the flight total in
+ * vendor_metric_values[] under the goal's (vendor, metric_id) and the
+ * planned spend in metrics.spend, never a metrics key for the vendor metric.
+ * The forecast_range_unit 'spend' names the budget-curve axis while
+ * metrics.spend is the planned spend at a point; both are intended. */
+function outcomeTargetForecastPoint(
+  goal: Record<string, unknown>,
+  budget: number,
+  volume: number,
+  spend: number | undefined,
+): Record<string, unknown> {
+  const vendorGoal = outcomeTargetVendorGoal(goal);
+  if (vendorGoal) {
+    return {
+      budget,
+      metrics: { spend: { mid: spend ?? budget } },
+      vendor_metric_values: [{
+        vendor: structuredClone(vendorGoal.vendor),
+        metric_id: vendorGoal.metric_id,
+        value: { mid: volume },
+        unit: OUTCOME_TARGET_VENDOR_CUMULATIVE_METRICS.get(vendorGoal.metric_id)?.unit ?? 'count',
+      }],
+    };
+  }
+  return {
+    budget,
+    metrics: {
+      [outcomeTargetGoalKey(goal)]: { mid: volume },
+      ...(spend !== undefined && { spend: { mid: spend } }),
+    },
+  };
+}
+
 /** The metrics{} key a goal's forecast points carry: the metric name for a
  * metric goal, or the event type (custom_event_name when custom) for an
  * event goal — the same key the buyer will later use on optimization_goals. */
@@ -8595,6 +8795,7 @@ function outcomeTargetGoalKey(goal: Record<string, unknown>): string {
   if (goal.kind === 'event') {
     return goal.event_type === 'custom' ? String(goal.custom_event_name) : String(goal.event_type);
   }
+  if (goal.kind === 'vendor_metric') return String(goal.metric_id);
   return String(goal.metric);
 }
 
@@ -8607,6 +8808,7 @@ function outcomeTargetIsUnplannable(goal: Record<string, unknown>): boolean {
 
 function outcomeTargetForecastRangeUnit(goal: Record<string, unknown>): string {
   if (goal.kind === 'event') return 'conversions';
+  if (goal.kind === 'vendor_metric') return 'spend';
   return goal.metric === 'clicks' ? 'clicks' : 'spend';
 }
 
@@ -8619,6 +8821,10 @@ function outcomeTargetCpm(pricing: PricingOptionView | undefined): number {
 }
 
 function outcomeTargetResponseRate(goal: Record<string, unknown>): number {
+  if (goal.kind === 'vendor_metric') {
+    return OUTCOME_TARGET_VENDOR_CUMULATIVE_METRICS.get(String(goal.metric_id))?.responseRate
+      ?? OUTCOME_TARGET_METRIC_RESPONSE_RATE;
+  }
   return goal.kind === 'event'
     ? OUTCOME_TARGET_EVENT_RESPONSE_RATE
     : OUTCOME_TARGET_METRIC_RESPONSE_RATE;
@@ -8635,17 +8841,15 @@ function computeOutcomeTargetPlan(
   proposal: Proposal,
   productsById: Map<string, Product>,
 ): { totalBudgetGuidance: Record<string, unknown>; forecast: Record<string, unknown> } {
-  const goalKey = outcomeTargetGoalKey(goal);
   const impressions = volume / outcomeTargetResponseRate(goal);
   const firstAllocation = proposal.allocations[0];
   const product = firstAllocation ? productsById.get(firstAllocation.product_id) : undefined;
   const cpm = outcomeTargetCpm(product?.pricing_options?.[0] as PricingOptionView | undefined);
   const budget = Math.round((impressions / 1000) * cpm);
   const now = Date.now();
-  const points = OUTCOME_TARGET_FORECAST_RATIOS.map(ratio => ({
-    budget: Math.round(ratio * budget),
-    metrics: { [goalKey]: { mid: Math.round(ratio * volume) } },
-  }));
+  const points = OUTCOME_TARGET_FORECAST_RATIOS.map(ratio => (
+    outcomeTargetForecastPoint(goal, Math.round(ratio * budget), Math.round(ratio * volume), undefined)
+  ));
   return {
     totalBudgetGuidance: {
       min: Math.round(0.8 * budget),
@@ -8736,6 +8940,10 @@ export function outcomeTargetOptimizationGoal(
     if (typeof goal.metric !== 'string' || !OUTCOME_TARGET_COST_BINDABLE_METRICS.has(goal.metric)) return undefined;
     return { kind: 'metric', metric: goal.metric, priority: 1 };
   }
+  const vendorGoal = outcomeTargetVendorGoal(goal);
+  if (vendorGoal) {
+    return { kind: 'vendor_metric', vendor: structuredClone(vendorGoal.vendor), metric_id: vendorGoal.metric_id, priority: 1 };
+  }
   if (goal.kind === 'event' && typeof goal.event_type === 'string') {
     const eventType = goal.event_type;
     const sources = availableEventSources.filter(source => source.event_types.includes(eventType)).slice(0, 1);
@@ -8792,6 +9000,12 @@ function outcomeTargetCostPerRejection(
 ): string | undefined {
   if (!trainingMediaBuyCostPerStrengthSupported(costPer.strength)) {
     return `The seller does not advertise media-buy cost_per strength '${costPer.strength}' in features.bidding_policy.`;
+  }
+  const vendorGoal = outcomeTargetVendorGoal(goal);
+  if (vendorGoal && !requestedProducts.some(product => (
+    vendorEntrySupportsCostPer(productVendorMetricEntry(product, vendorGoal))
+  ))) {
+    return `No product in scope lists cost_per in the supported_targets of its ${vendorGoal.vendor.domain} ${vendorGoal.metric_id} vendor_metric_optimization entry, so the seller cannot plan a cost target on the goal. Plan it by volume instead.`;
   }
   if (!optimizationGoal) {
     return goal.kind === 'event'
@@ -8872,7 +9086,6 @@ export function computeOutcomeTargetCostPlan(
     : budgetRange
       ? budgetRange.max ?? budgetRange.min!
       : OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS * responseRate * planningCost);
-  const goalKey = outcomeTargetGoalKey(goal);
   const now = Date.now();
   return {
     totalBudgetGuidance: {
@@ -8889,13 +9102,12 @@ export function computeOutcomeTargetCostPlan(
         .filter(ratio => ratio <= 1 || ratio * budget <= rangeCeiling)
         .map(ratio => {
           const pointVolume = Math.floor((ratio * budget) / planningCost);
-          return {
-            budget: roundMoney(ratio * budget),
-            metrics: {
-              [goalKey]: { mid: pointVolume },
-              spend: { mid: roundMoney(pointVolume * planningCost) },
-            },
-          };
+          return outcomeTargetForecastPoint(
+            goal,
+            roundMoney(ratio * budget),
+            pointVolume,
+            roundMoney(pointVolume * planningCost),
+          );
         }),
       forecast_range_unit: outcomeTargetForecastRangeUnit(goal),
       method: 'modeled',
@@ -11376,9 +11588,46 @@ async function handleGetProductsUnlocked(
   // In refine mode, use session proposals (which may include finalized
   // versions). In other discovery modes, replace registry drafts with the
   // exact committed object already held by this session.
-  const contextualProposals = (buyingMode === 'refine' && session.lastGetProductsContext?.proposals)
-    ? session.lastGetProductsContext.proposals
-    : getProposals().map(proposal => committedProposals.get(proposal.proposal_id) ?? proposal);
+  // A brief asking for a shared budget over buyer-seeded fixture products is
+  // answered with a seller-optimized proposal, when the seller declares it.
+  const sellerOptimizedProposal = buyingMode === 'brief'
+    ? sellerOptimizedProposalForBrief(
+        typeof brief === 'string' ? brief : undefined,
+        products.filter(product => session.complyExtensions.seededProducts.has(product.product_id)),
+        sellerOptimizedDeclarationForContext(ctx),
+      ) as unknown as Proposal | undefined
+    : undefined;
+  // The draft must stay resolvable by finalize and execution. Persist it
+  // insert-only: an existing entry (including a committed one) is never replaced.
+  if (
+    sellerOptimizedProposal
+    && !session.lastGetProductsContext?.proposals?.some(proposal => proposal.proposal_id === sellerOptimizedProposal.proposal_id)
+  ) {
+    session.lastGetProductsContext = {
+      ...session.lastGetProductsContext,
+      proposals: [
+        ...(session.lastGetProductsContext?.proposals ?? []),
+        sellerOptimizedProposal,
+      ],
+    };
+  }
+  // Session context holding only synthesized drafts (identified by ID prefix) is not a refine history:
+  // the registry proposals stay part of the refine view.
+  const sessionProposals = session.lastGetProductsContext?.proposals;
+  const onlySynthesizedDrafts = sessionProposals?.every(
+    proposal => isSellerOptimizedProposalId(proposal.proposal_id),
+  ) ?? false;
+  const contextualProposals = (buyingMode === 'refine' && sessionProposals)
+    ? onlySynthesizedDrafts
+      ? [...sessionProposals, ...getProposals()]
+      : sessionProposals
+    : [
+        // The brief asked for a shared budget, so that plan leads.
+        ...(sellerOptimizedProposal
+          ? [committedProposals.get(sellerOptimizedProposal.proposal_id) ?? sellerOptimizedProposal]
+          : []),
+        ...getProposals().map(proposal => committedProposals.get(proposal.proposal_id) ?? proposal),
+      ];
   const sourceProposals = [
     ...contextualProposals,
     ...Array.from(explicitlySelectedProposals.values()).filter(selected =>
@@ -11451,6 +11700,29 @@ async function handleGetProductsUnlocked(
       }] as TaskError[],
     };
   }
+  const outcomeTargetRequestRecord = req as unknown as Record<string, unknown>;
+  const outcomeTargetRequestedIds = Array.isArray(outcomeTargetRequestRecord.product_ids)
+    ? new Set((outcomeTargetRequestRecord.product_ids as unknown[]).filter((id): id is string => typeof id === 'string'))
+    : undefined;
+  const outcomeTargetScopeProducts = !outcomeTargetGoal
+    ? []
+    : outcomeTargetRequestedIds
+    ? products.filter(product => outcomeTargetRequestedIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id))
+    : products;
+  // A vendor_metric goal is validated before any cost target, so a bad goal
+  // is reported first.
+  const outcomeTargetGoalError = (message: string) => ({
+    errors: [{
+      code: 'INVALID_REQUEST',
+      message,
+      field: 'criteria.outcome_target.goal',
+      recovery: 'correctable',
+    }] as TaskError[],
+  });
+  if (outcomeTargetGoal?.kind === 'vendor_metric') {
+    const rejection = outcomeTargetVendorGoalRejection(outcomeTargetGoal, outcomeTargetScopeProducts);
+    if (rejection) return outcomeTargetGoalError(rejection);
+  }
   const outcomeTargetCostPer = outcomeTargetGoal ? readOutcomeTargetCostPer(outcomeTarget?.cost_per) : undefined;
   const outcomeTargetCostPerError = (message: string) => ({
     errors: [{
@@ -11460,7 +11732,7 @@ async function handleGetProductsUnlocked(
       recovery: 'correctable',
     }] as TaskError[],
   });
-  const outcomeTargetOptimization = outcomeTargetGoal && outcomeTargetCostPer
+  const outcomeTargetOptimization = outcomeTargetGoal && (outcomeTargetCostPer || outcomeTargetGoal.kind === 'vendor_metric')
     ? outcomeTargetOptimizationGoal(
         outcomeTargetGoal,
         outcomeTargetGoal.kind === 'event'
@@ -11469,19 +11741,12 @@ async function handleGetProductsUnlocked(
       )
     : undefined;
   if (outcomeTargetGoal && outcomeTargetCostPer) {
-    const requestRecord = req as unknown as Record<string, unknown>;
-    const requestedIds = Array.isArray(requestRecord.product_ids)
-      ? new Set((requestRecord.product_ids as unknown[]).filter((id): id is string => typeof id === 'string'))
-      : undefined;
-    const requestedProducts = requestedIds
-      ? products.filter(product => requestedIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id))
-      : products;
     const rejection = outcomeTargetCostPerRejection(
       outcomeTargetGoal,
       outcomeTargetCostPer,
       outcomeTargetOptimization,
-      { filters: requestRecord.filters, account: requestRecord.account },
-      requestedProducts,
+      { filters: outcomeTargetRequestRecord.filters, account: outcomeTargetRequestRecord.account },
+      outcomeTargetScopeProducts,
     );
     if (rejection) return outcomeTargetCostPerError(rejection);
   }
@@ -11516,6 +11781,55 @@ async function handleGetProductsUnlocked(
             allocation_percentage: allocationPercentage,
             rationale: 'Selected explicitly by the compact lifecycle request.',
             pricing_option_id: product.pricing_options[0].pricing_option_id,
+          })) as Proposal['allocations'],
+        } as Proposal];
+      }
+    } else if (
+      proposals.length === 0
+      && !exactProductIds?.size
+      && seededProductIds(session).size > 0
+      && products.length > 0
+    ) {
+      // Brief/criteria-only request_proposals (no explicit product_ids) in a
+      // controller-seeded session. `products` is only guaranteed to be
+      // seeded-only when required_media_buy_support/media_buy_frequency_cap
+      // scoping ran in applyDiscoveryTargeting; a plain brief can still pull
+      // in real catalog products that scored well against keyword matching.
+      // Filter explicitly to seeded fixtures before building the proposal —
+      // mirrors the exactProductIds branch above, but for the criteria-driven
+      // path the typed-negotiation storyboards exercise (adcp#7796).
+      const seededIds = seededProductIds(session);
+      const fixtureProducts = products.filter(product => (
+        seededIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
+      ));
+      // One proposal carries one budget currency, so fixtures priced in
+      // different currencies cannot share it; leave proposals empty and let
+      // the existing rejection path answer.
+      const fixtureCurrencies = new Set(
+        fixtureProducts.map(product => product.pricing_options[0]?.currency ?? 'USD'),
+      );
+      if (fixtureProducts.length > 0 && fixtureCurrencies.size === 1) {
+        const allocationPercentage = 100 / fixtureProducts.length;
+        const sortedProductIds = fixtureProducts.map(product => product.product_id).sort();
+        proposals = [{
+          proposal_id: `fixture_match_${createHash('sha256').update(sortedProductIds.join('\0')).digest('hex').slice(0, 16)}`,
+          name: 'Fixture-matched product proposal',
+          description: 'Deterministic proposal generated from controller-seeded fixtures matching the requested criteria.',
+          brief_alignment: typeof brief === 'string'
+            ? brief
+            : 'Matches seeded fixtures satisfying the requested campaign criteria.',
+          total_budget_guidance: {
+            min: 1_000,
+            recommended: 1_000,
+            currency: fixtureProducts[0].pricing_options[0]?.currency ?? 'USD',
+          },
+          allocations: fixtureProducts.map(product => ({
+            product_id: product.product_id,
+            allocation_percentage: allocationPercentage,
+            rationale: 'Seeded fixture product matching the requested campaign criteria.',
+            ...(product.pricing_options[0] && {
+              pricing_option_id: product.pricing_options[0].pricing_option_id,
+            }),
           })) as Proposal['allocations'],
         } as Proposal];
       }
@@ -11594,6 +11908,27 @@ async function handleGetProductsUnlocked(
     // budget buys less than one result is a valid target without viable
     // inventory (outcome "rejected" when none remain).
     let costPlanCurrencyDrops = 0;
+    // A vendor_metric goal is planned only on allocations whose product
+    // declares the pair (with cost_per for a cost target); a proposal left
+    // without one is dropped.
+    if (outcomeTargetGoal?.kind === 'vendor_metric' && proposals.length > 0) {
+      const declaring = proposals.flatMap(proposal => (
+        outcomeTargetVendorEligibleProposal(proposal, outcomeTargetGoal, false, productsById) ?? []
+      ));
+      if (declaring.length === 0) {
+        return outcomeTargetGoalError(
+          'No proposal can be planned entirely on products that declare the vendor_metric goal in vendor_metric_optimization.supported_metrics.',
+        );
+      }
+      proposals = outcomeTargetCostPer
+        ? declaring.flatMap(proposal => outcomeTargetVendorEligibleProposal(proposal, outcomeTargetGoal, true, productsById) ?? [])
+        : declaring;
+      if (proposals.length === 0) {
+        return outcomeTargetCostPerError(
+          'No proposal can be planned on products that list cost_per in the goal\'s vendor_metric_optimization supported_targets.',
+        );
+      }
+    }
     const proposalsBeforeCostPlan = proposals.length;
     proposals = proposals.flatMap((proposal, index) => {
       const digest = createHash('sha256')
@@ -11632,6 +11967,11 @@ async function handleGetProductsUnlocked(
           total_budget_guidance: costPlan.totalBudgetGuidance,
           __outcome_target_bidding: costPlan.bidding,
           __outcome_target_optimization_goal: costPlan.optimizationGoal,
+        }),
+        // A vendor goal planned by volume alone still binds as the purchase's
+        // primary goal, with its reporting commitment.
+        ...(!costPlan && outcomeTargetGoal?.kind === 'vendor_metric' && outcomeTargetOptimization && {
+          __outcome_target_optimization_goal: structuredClone(outcomeTargetOptimization),
         }),
         proposal_id: proposalId,
         ...(typeof requestBrand?.domain === 'string' && { __brand_domain: requestBrand.domain.toLowerCase() }),
@@ -15066,9 +15406,33 @@ async function handleCreateMediaBuyUnlocked(
     // Compact 3.2 proposals commit complete per-purchase terms. Preserve that
     // immutable envelope in operational package state; legacy proposals still
     // expand their percentage allocations as before.
+    const proposalAllocationMode = (proposal as unknown as { budget_allocation?: { mode?: string } }).budget_allocation?.mode;
     (req as { packages?: unknown[] }).packages = compactProposal && committedPurchases?.length
       ? legacyPackagesFromPurchases(committedPurchases, totalBudget, productMap)
-      : proposal.allocations.map(alloc => {
+      : proposalAllocationMode === 'seller_optimized'
+        // A seller-optimized proposal carries no allocation_percentage: the
+        // seller allocates the shared total, so packages carry only the
+        // controls the proposal committed (percentages become targets/caps,
+        // allocation pacing becomes package pacing).
+        ? proposal.allocations.map(alloc => {
+            const controls = alloc as unknown as {
+              min_spend_target_percentage?: number;
+              max_spend_percentage?: number;
+              pacing?: string;
+            };
+            return {
+              product_id: alloc.product_id,
+              pricing_option_id: alloc.pricing_option_id
+                || productMap.get(alloc.product_id)?.pricing_options[0]?.pricing_option_id
+                || '',
+              ...(controls.max_spend_percentage !== undefined
+                && { budget: Math.round(totalBudget * controls.max_spend_percentage / 100) }),
+              ...(controls.min_spend_target_percentage !== undefined
+                && { min_spend_target: Math.floor(totalBudget * controls.min_spend_target_percentage / 100) }),
+              ...(controls.pacing !== undefined && { pacing: controls.pacing }),
+            };
+          })
+        : proposal.allocations.map(alloc => {
           const product = productMap.get(alloc.product_id);
           const pricingOptionId = alloc.pricing_option_id || product?.pricing_options[0]?.pricing_option_id || '';
           const pricing = product?.pricing_options.find(po => po.pricing_option_id === pricingOptionId);
@@ -15086,7 +15450,55 @@ async function handleCreateMediaBuyUnlocked(
             ...(bidPrice !== undefined && { bid_price: bidPrice }),
           };
         });
+    // The proposal's vendor-scope reporting_commitments are the packages'
+    // committed metrics: accepting a vendor_metric goal needs no separate
+    // committed_metrics, because the commitment is part of the accepted terms.
+    // Standard-scope commitments are not copied.
+    if (compactProposal && committedPurchases?.length && Array.isArray(committedTerms?.reporting_commitments)) {
+      const packages = (req as { packages?: Array<Record<string, unknown>> }).packages ?? [];
+      for (const commitment of committedTerms.reporting_commitments.filter(isRecord)) {
+        const pkg = typeof commitment.purchase_index === 'number' ? packages[commitment.purchase_index] : undefined;
+        if (!pkg || !Array.isArray(commitment.metrics)) continue;
+        const vendorMetrics = commitment.metrics.filter(isRecord).filter(metric => metric.scope === 'vendor');
+        if (vendorMetrics.length === 0) continue;
+        pkg.committed_metrics = vendorMetrics.map(({ effective_at: _effectiveAt, ...metric }) => structuredClone(metric));
+      }
+    }
     const proposalRecord = proposal as unknown as Record<string, unknown>;
+    if (proposalAllocationMode === 'seller_optimized') {
+      // The committed proposal supplies the allocation and aggregate pacing.
+      // A buyer-authored value may repeat them but never contradict them.
+      const sellerOptimizedReq = req as unknown as Record<string, unknown>;
+      if (
+        sellerOptimizedReq.budget_allocation !== undefined
+        && !isDeepStrictEqual(sellerOptimizedReq.budget_allocation, proposalRecord.budget_allocation)
+      ) {
+        return {
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: 'budget_allocation must be omitted or match the committed proposal when executing a proposal.',
+            field: 'budget_allocation',
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
+      if (
+        sellerOptimizedReq.pacing !== undefined
+        && typeof proposalRecord.pacing === 'string'
+        && sellerOptimizedReq.pacing !== proposalRecord.pacing
+      ) {
+        return {
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: 'pacing must be omitted or match the committed proposal when executing a proposal.',
+            field: 'pacing',
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
+      sellerOptimizedReq.budget_allocation = structuredClone(proposalRecord.budget_allocation);
+      if (typeof proposalRecord.pacing === 'string') sellerOptimizedReq.pacing = proposalRecord.pacing;
+    }
     const proposalFrequencyCap = isRecord(committedTerms?.frequency_cap)
       ? committedTerms.frequency_cap
       : isRecord(proposalRecord.frequency_cap)
@@ -15134,6 +15546,26 @@ async function handleCreateMediaBuyUnlocked(
   if (buyStart !== 'asap' && new Date(buyStart) < new Date()) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must not be in the past' }] as TaskError[] };
   }
+
+  // Seller-optimized controls the seller does not declare are rejected before
+  // any other package validation or mutation; they are never dropped or coerced.
+  const sellerOptimizedDeclaration = sellerOptimizedDeclarationForContext(ctx);
+  const createSellerOptimizedState: SellerOptimizedState = {
+    allocationMode: (req as unknown as { budget_allocation?: { mode?: string } }).budget_allocation?.mode,
+    totalBudget: req.total_budget?.amount,
+    pacing: (req as unknown as { pacing?: string }).pacing,
+    packages: req.packages.map((pkg, index) => {
+      const controls = pkg as unknown as Partial<PackageInput>;
+      return {
+        ref: `packages[${index}]`,
+        budget: controls.budget,
+        min_spend_target: controls.min_spend_target,
+        pacing: controls.pacing,
+      };
+    }),
+  };
+  const sellerOptimizedUnsupported = sellerOptimizedUnsupportedError(createSellerOptimizedState, sellerOptimizedDeclaration);
+  if (sellerOptimizedUnsupported) return { errors: [sellerOptimizedUnsupported] as TaskError[] };
 
   // Validate all packages and collect errors before returning
   const confirmedAt = new Date().toISOString();
@@ -15264,7 +15696,9 @@ async function handleCreateMediaBuyUnlocked(
     const pricingStructure = pricingStructureForOption(pricing);
     if (pricingView.currency !== mediaBuyCurrency) {
       errors.push({
-        code: 'INVALID_REQUEST',
+        // A shared seller-optimized buy rejects a pricing option outside the
+        // media-buy currency as a terms conflict; fixed buys keep the legacy code.
+        code: createSellerOptimizedState.allocationMode === 'seller_optimized' ? 'TERMS_REJECTED' : 'INVALID_REQUEST',
         message: `${pkgLabel}: pricing option ${pkg.pricing_option_id} is denominated in ${pricingView.currency}, but the media buy uses ${mediaBuyCurrency}.`,
         field: `packages[${i}].pricing_option_id`,
         recovery: 'correctable',
@@ -15283,7 +15717,10 @@ async function handleCreateMediaBuyUnlocked(
     );
     const storedBidPrice = allowSeededMetricFloorCoercion ? floorPrice : pkg.bid_price;
 
-    if (isAuction && pkg.bid_price === undefined) {
+    // A seller-optimized buy delegates allocation and bidding to the seller.
+    // package-request.json makes bid_price optional (and deprecated in 3.2), so
+    // an omitted bid on a delegated buy is not an error.
+    if (isAuction && pkg.bid_price === undefined && createSellerOptimizedState.allocationMode !== 'seller_optimized') {
       errors.push({
         code: 'INVALID_REQUEST',
         message: `${pkgLabel}: bid_price is required for auction pricing (pricing option ${pkg.pricing_option_id})`,
@@ -15557,6 +15994,13 @@ async function handleCreateMediaBuyUnlocked(
     createdPackages.push(candidatePackage);
   }
 
+  // Over-subscription applies only to declared controls, so it runs after the
+  // undeclared-control gate and the per-package checks, and before mutation.
+  if (errors.length === 0) {
+    const oversubscription = sellerOptimizedOversubscriptionError(createSellerOptimizedState, sellerOptimizedDeclaration);
+    if (oversubscription) errors.push(oversubscription as TaskError);
+  }
+
   // Root frequency cap: one counter shared across every package. Accepted
   // proposal terms are authoritative when a proposal is executed; otherwise
   // the request value must be executable seller-wide and by every selected
@@ -15805,8 +16249,10 @@ async function handleCreateMediaBuyUnlocked(
       product_id: pkg.productId,
       budget: pkg.budget,
       pricing_option_id: pkg.pricingOptionId,
+      ...(pkg.minSpendTarget !== undefined && { min_spend_target: pkg.minSpendTarget }),
       ...(pkg.bidPrice !== undefined && { bid_price: pkg.bidPrice }),
       ...(pkg.impressions !== undefined && { impressions: pkg.impressions }),
+      ...(pkg.pacing !== undefined && { pacing: pkg.pacing }),
       paused: pkg.paused,
       start_time: pkg.startTime,
       end_time: pkg.endTime,
@@ -16255,6 +16701,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const formatDimension = isRecord(req.reporting_dimensions?.format)
     ? req.reporting_dimensions.format
     : undefined;
+  const propertyDimension = isRecord(req.reporting_dimensions?.property)
+    ? req.reporting_dimensions.property
+    : undefined;
+  const installmentPropertyDimension = isRecord(req.reporting_dimensions?.installment_property)
+    ? req.reporting_dimensions.installment_property
+    : undefined;
 
   const mediaBuyPaused = mb.status === 'paused';
   const simulatedPackages = mb.packages.filter(pkg => (
@@ -16591,9 +17043,21 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     }
 
     const formatBreakdown = formatDeliveryBreakdown(product, packageDeliveryMetrics, formatDimension);
+    // Injected rows are single-package scoped; a multi-package buy has none,
+    // so a requested breakdown is an empty array rather than a guess.
+    const injectedRows = mb.packages.length === 1 ? simDelivery : undefined;
+    const injectedPropertyBreakdown = {
+      ...(reporting?.supports_property_breakdown === true
+        ? injectedRowsBreakdown('by_property', injectedRows?.propertyDelivery, propertyDimension)
+        : {}),
+      ...(reporting?.supports_installment_property_breakdown === true
+        ? injectedRowsBreakdown('by_installment_property', injectedRows?.installmentPropertyDelivery, installmentPropertyDimension)
+        : {}),
+    };
     const packageMetricsWithBreakdown = {
       ...packageDeliveryMetrics,
       ...formatBreakdown,
+      ...injectedPropertyBreakdown,
     };
     return {
       package_id: pkg.packageId,
@@ -18608,6 +19072,18 @@ async function handleUpdateMediaBuyUnlocked(
       if (!product) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Product not found for new package: ${productId}` }] };
       }
+      const addedPricing = product.pricing_options?.find(option => option.pricing_option_id === npkg.pricing_option_id) as
+        { currency?: string } | undefined;
+      if (sellerOptimized && addedPricing?.currency !== undefined && addedPricing.currency !== mb.currency) {
+        return {
+          errors: [{
+            code: 'TERMS_REJECTED',
+            message: `new_packages[${i}]: pricing option ${npkg.pricing_option_id} is denominated in ${addedPricing.currency}, but the media buy uses ${mb.currency}.`,
+            field: `new_packages[${i}].pricing_option_id`,
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
       const selectorCompatibilityError = validatePackageSelectorCompatibility(
         npkg,
         product,
@@ -18811,6 +19287,23 @@ async function handleUpdateMediaBuyUnlocked(
   if (aggregateUpdate.bidding === null) delete mb.aggregateBidding;
   else if (aggregateUpdate.bidding !== undefined) {
     mb.aggregateBidding = structuredClone(aggregateUpdate.bidding);
+  }
+  // The detached copy now carries the update's resulting state. A resulting
+  // seller-optimized buy must stay inside the declared package controls and
+  // must not over-subscribe them; a rejection discards the copy untouched.
+  {
+    const resultingSellerOptimizedError = sellerOptimizedStateError({
+      allocationMode: mb.budgetAllocation?.mode as string | undefined,
+      totalBudget: mb.totalBudget,
+      pacing: mb.aggregatePacing,
+      packages: mb.packages.filter(pkg => !pkg.canceled).map(pkg => ({
+        ref: `packages[${pkg.packageId}]`,
+        budget: pkg.budgetCapRemoved ? undefined : pkg.budget,
+        min_spend_target: pkg.minSpendTarget,
+        pacing: pkg.pacing,
+      })),
+    }, sellerOptimizedDeclarationForContext(ctx));
+    if (resultingSellerOptimizedError) return { errors: [resultingSellerOptimizedError] };
   }
   const reportingWebhook = (req as unknown as Record<string, unknown>).reporting_webhook;
   if (isRecord(reportingWebhook)) mb.reportingWebhook = structuredClone(reportingWebhook);
@@ -19183,6 +19676,13 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       features: {
         inline_creative_management: true,
         catalog_management: true,
+        // Rollups for the per-product flags. The training agent honors them
+        // by echoing property rows injected via comply_test_controller; it
+        // never derives property delivery from catalog eligibility.
+        ...(!isThreeZeroResponse && {
+          supports_property_breakdown: true,
+          supports_installment_property_breakdown: true,
+        }),
         // Canonical bidding the agent preserves: fixed media-buy cost_per.
         // The outcome_target planner answers cost targets inside this
         // profile; create_media_buy rejects canonical policies outside it.
@@ -19191,6 +19691,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         ...(!isThreeZeroResponse && supportsBiddingPolicyCapability(servedAdcpVersion) && {
           bidding_policy: structuredClone(TRAINING_BIDDING_POLICY_CAPABILITY),
         }),
+        // Declared only when create/update enforce the contract: undeclared
+        // package controls are rejected with UNSUPPORTED_FEATURE and declared
+        // ones are checked for over-subscription before mutation.
+        ...(!isThreeZeroResponse && sellerOptimizedFeatureFlags(sellerOptimizedDeclarationForVersion(servedAdcpVersion))),
       },
       portfolio: {
         publisher_domains: publisherDomains,
@@ -19212,6 +19716,12 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         supported_event_types: ['purchase', 'add_to_cart', 'lead', 'page_view'],
         supported_hashed_identifiers: ['hashed_email'],
         supported_action_sources: ['website', 'app'],
+        // Event-goal cost targets the outcome_target planner binds to a
+        // source. supported_targets is a 3.1+ field; frozen 3.0 projections
+        // omit it.
+        ...(!isThreeZeroResponse && {
+          supported_targets: [...TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS],
+        }),
         // The single window the outcome_target planner states on event goals.
         attribution_windows: structuredClone(TRAINING_ATTRIBUTION_WINDOWS),
       },

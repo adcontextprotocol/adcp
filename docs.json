@@ -2272,6 +2272,26 @@
       "permanent": false
     },
     {
+      "source": "/3.3",
+      "destination": "/docs/reference/whats-new-in-3-3",
+      "permanent": false
+    },
+    {
+      "source": "/3.3/try",
+      "destination": "/docs/reference/3-3-beta",
+      "permanent": false
+    },
+    {
+      "source": "/3.3/migrate",
+      "destination": "/docs/reference/migration/3-2-to-3-3",
+      "permanent": false
+    },
+    {
+      "source": "/3.3/sdk",
+      "destination": "/dist/docs/3.2.2/building/by-layer/L4/choose-your-sdk",
+      "permanent": false
+    },
+    {
       "source": "/docs/intro",
       "destination": "/dist/docs/3.2.2/intro",
       "permanent": false

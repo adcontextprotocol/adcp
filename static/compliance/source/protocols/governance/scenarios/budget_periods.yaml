@@ -1,0 +1,311 @@
+id: governance/budget_periods
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Governance enforces budget periods on a campaign plan"
+category: campaign_governance
+summary: "Verifies that a plan's budget.periods partition the budget by time: a buy inside a period is approved and names its period, a buy that straddles a boundary or exceeds its period is denied while the plan total has room, and a re-sync cannot cut a period below what is already committed."
+track: campaign_governance
+default_agent: governance
+
+required_tools:
+  - sync_plans
+  - check_governance
+  - report_plan_outcome
+
+requires_capability:
+  path: governance.supports_budget_periods
+  equals: true
+
+narrative: |
+  A buyer splits a $100,000 campaign into two quarters: $60,000 for Q1 and
+  $40,000 for Q2. Each period runs from its start up to but not including its
+  end, so Q1 ends exactly where Q2 begins. The buyer never names the period for
+  a buy; the governance agent finds the one that contains the buy's whole flight
+  and returns it as budget_period_id.
+
+  The scenario commits $50,000 to Q1 and then probes the rules that only a
+  time partition can enforce. A buy whose flight crosses the Q1/Q2 boundary is
+  denied: it has to be two buys. A $20,000 Q1 buy is denied because Q1 has only
+  $10,000 left, even though the plan total has $50,000 of room; the same $20,000
+  in Q2 is approved, which shows the denial came from the period and not the
+  total. Finally, a re-sync that cuts Q1 below the $50,000 already committed is
+  rejected with VALIDATION_ERROR.
+
+agent:
+  interaction_model: governance_agent
+  capabilities:
+    - campaign_governance
+  examples:
+    - "Buyer governance agent that enforces quarterly or monthly budget windows"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The caller can synchronize a plan with budget.periods, check and settle its own governed intents, and re-sync the same plan."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: register_plan
+    title: "Register a plan with two budget periods"
+    steps:
+      - id: sync_period_plan
+        title: "Create the plan with Q1 and Q2 periods"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#budget_periods_plan"
+          plans:
+            - plan_id: "budget-periods-plan"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Verify that a time-partitioned budget is enforced per period."
+              budget:
+                total: 100000
+                currency: "USD"
+                reallocation_unlimited: true
+                periods:
+                  - budget_period_id: "q1"
+                    start: "2099-01-01T00:00:00Z"
+                    end: "2099-04-01T00:00:00Z"
+                    amount: 60000
+                  - budget_period_id: "q2"
+                    start: "2099-04-01T00:00:00Z"
+                    end: "2099-07-01T00:00:00Z"
+                    amount: 40000
+              flight:
+                start: "2099-01-01T00:00:00Z"
+                end: "2099-07-01T00:00:00Z"
+              countries: ["US"]
+        context_outputs:
+          - name: budget_periods_plan_id
+            path: "plans[0].plan_id"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json"
+          - check: field_value
+            path: "plans[0].plan_id"
+            value: "budget-periods-plan"
+            description: "The plan with periods is accepted"
+
+  - id: buy_inside_period
+    title: "A buy inside a period is approved and names its period"
+    steps:
+      - id: check_inside_q1
+        title: "Check a $50,000 buy that sits inside Q1"
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        sample_request:
+          plan_id: "$context.budget_periods_plan_id"
+          caller: "https://pinnacle-agency.example"
+          target_agent: "https://seller.example/mcp"
+          tool: "create_media_buy"
+          purchase_type: "media_buy"
+          proposed_commitment:
+            amount: 50000
+            currency: "USD"
+          payload:
+            total_budget:
+              amount: 50000
+              currency: "USD"
+            start_time: "2099-01-15T00:00:00Z"
+            end_time: "2099-03-15T00:00:00Z"
+        context_outputs:
+          - name: budget_periods_q1_check_id
+            path: "check_id"
+          - name: budget_periods_q1_governance_context
+            path: "governance_context"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json"
+          - check: field_value
+            path: "verdict"
+            value: "approved"
+            description: "A buy inside Q1 that fits Q1's amount is approved"
+          - check: field_value
+            path: "budget_period_id"
+            value: "q1"
+            description: "The response names the period that contains the whole flight, which the buyer never supplied"
+
+      - id: settle_q1_buy
+        title: "Commit the Q1 buy to the ledger"
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        sample_request:
+          plan_id: "$context.budget_periods_plan_id"
+          check_id: "$context.budget_periods_q1_check_id"
+          governance_context: "$context.budget_periods_q1_governance_context"
+          purchase_type: "media_buy"
+          outcome: "completed"
+          seller_response:
+            seller_reference: "mb_budget_periods_q1"
+            committed_budget: 50000
+          idempotency_key: "$generate:uuid_v4#budget_periods_settle_q1"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json"
+          - check: field_value
+            path: "outcome_state"
+            value: "accepted"
+            description: "The $50,000 now counts against Q1"
+
+  - id: period_denials
+    title: "Straddling a boundary and exceeding a period are denied"
+    steps:
+      - id: check_straddles_boundary
+        title: "Check a buy whose flight crosses the Q1/Q2 boundary"
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        sample_request:
+          plan_id: "$context.budget_periods_plan_id"
+          caller: "https://pinnacle-agency.example"
+          target_agent: "https://seller.example/mcp"
+          tool: "create_media_buy"
+          purchase_type: "media_buy"
+          proposed_commitment:
+            amount: 5000
+            currency: "USD"
+          payload:
+            total_budget:
+              amount: 5000
+              currency: "USD"
+            start_time: "2099-03-15T00:00:00Z"
+            end_time: "2099-04-15T00:00:00Z"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json"
+          - check: field_value
+            path: "verdict"
+            value: "denied"
+            description: "A flight that straddles two periods is denied; it has to be two buys"
+          - check: field_absent
+            path: "governance_context"
+            description: "A denial carries no authorization"
+          - check: field_absent
+            path: "budget_period_id"
+            description: "No single period contains the flight, so none is reported"
+
+      - id: check_exceeds_period
+        title: "Check a $20,000 Q1 buy when Q1 has $10,000 left"
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        sample_request:
+          plan_id: "$context.budget_periods_plan_id"
+          caller: "https://pinnacle-agency.example"
+          target_agent: "https://seller.example/mcp"
+          tool: "create_media_buy"
+          purchase_type: "media_buy"
+          proposed_commitment:
+            amount: 20000
+            currency: "USD"
+          payload:
+            total_budget:
+              amount: 20000
+              currency: "USD"
+            start_time: "2099-02-01T00:00:00Z"
+            end_time: "2099-03-01T00:00:00Z"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json"
+          - check: field_value
+            path: "verdict"
+            value: "denied"
+            description: "The commitment would take Q1 over its amount, though the plan total has $50,000 of room"
+          - check: field_absent
+            path: "governance_context"
+            description: "A denial carries no authorization"
+          - check: field_value
+            path: "budget_period_id"
+            value: "q1"
+            description: "The denied response still names the period that was exceeded"
+
+      - id: check_same_amount_in_q2
+        title: "Check the same $20,000 in Q2"
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        sample_request:
+          plan_id: "$context.budget_periods_plan_id"
+          caller: "https://pinnacle-agency.example"
+          target_agent: "https://seller.example/mcp"
+          tool: "create_media_buy"
+          purchase_type: "media_buy"
+          proposed_commitment:
+            amount: 20000
+            currency: "USD"
+          payload:
+            total_budget:
+              amount: 20000
+              currency: "USD"
+            start_time: "2099-05-01T00:00:00Z"
+            end_time: "2099-06-01T00:00:00Z"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json"
+          - check: field_value
+            path: "verdict"
+            value: "approved"
+            description: "The same amount fits Q2, so the Q1 denial came from the period and not the plan total"
+          - check: field_value
+            path: "budget_period_id"
+            value: "q2"
+            description: "The flight is derived into Q2"
+
+  - id: resync_below_committed
+    title: "A re-sync cannot cut a period below what is committed"
+    steps:
+      - id: resync_cuts_q1
+        title: "Re-sync Q1 down to $40,000 with $50,000 committed"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#budget_periods_resync"
+          plans:
+            - plan_id: "budget-periods-plan"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Verify that a time-partitioned budget is enforced per period."
+              budget:
+                total: 100000
+                currency: "USD"
+                reallocation_unlimited: true
+                periods:
+                  - budget_period_id: "q1"
+                    start: "2099-01-01T00:00:00Z"
+                    end: "2099-04-01T00:00:00Z"
+                    amount: 40000
+                  - budget_period_id: "q2"
+                    start: "2099-04-01T00:00:00Z"
+                    end: "2099-07-01T00:00:00Z"
+                    amount: 60000
+              flight:
+                start: "2099-01-01T00:00:00Z"
+                end: "2099-07-01T00:00:00Z"
+              countries: ["US"]
+        validations:
+          - check: error_code
+            value: "VALIDATION_ERROR"
+            description: "Setting a period's amount below what is already committed to it is rejected, the same VALIDATION_ERROR as a budget.total that drops below committed spend"

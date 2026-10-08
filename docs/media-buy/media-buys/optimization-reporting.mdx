@@ -242,7 +242,7 @@ Publishers can proactively push reporting data to buyers through webhook notific
 
 #### Webhook Configuration
 
-For AdCP 3.2 scheduled delivery, coordinate support for the interim `reporting_webhook.operation_id` field with your seller and ensure your SDK preserves it. See [AdCP 3.2 interim reporting correlation](/docs/building/by-layer/L3/webhooks#adcp-3-2-interim-reporting-correlation), including the steps for updating existing registrations. This additional field is opt-in until the proposed 3.3 core addition is released.
+For AdCP 3.2 scheduled delivery, coordinate support for the interim `reporting_webhook.operation_id` field with your seller and ensure your SDK preserves it. See [AdCP 3.2 interim reporting correlation](/docs/building/by-layer/L3/webhooks#adcp-3-2-interim-reporting-correlation), including the steps for updating existing registrations. The field is standardized as an optional field in 3.3; the 3.2 interim wire shape is identical, and on 3.2 it is opt-in.
 
 Configure reporting webhooks when creating a media buy using the `reporting_webhook` parameter:
 
@@ -251,6 +251,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
   "packages": [...],
   "reporting_webhook": {
     "url": "https://buyer.example.com/webhooks/reporting",
+    "operation_id": "op_reporting_001",
     "authentication": {
       "schemes": ["Bearer"],
       "credentials": "secret_token_min_32_chars"
@@ -266,6 +267,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
   "packages": [...],
   "reporting_webhook": {
     "url": "https://buyer.example.com/webhooks/reporting",
+    "operation_id": "op_reporting_001",
     "authentication": {
       "schemes": ["HMAC-SHA256"],
       "credentials": "shared_secret_min_32_chars"
@@ -334,6 +336,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`time_based_views`**: Time-threshold view counts, one entry per (threshold_seconds, basis). `play_time` (platform-counted playback time, no independent viewability qualification) and `in_view` (IAB/MRC viewable-video clock, 50% of pixels) are not comparable and must not be summed. 2s and 6s are RECOMMENDED cross-platform reporting points; sellers may report other thresholds. Primarily an autoplay/skippable-video metric (social, olv, in-feed video) — completion (`quartile_data`) remains the currency for lean-back CTV/cinema inventory. Disclosure-grade: a `committed_metrics` entry for `time_based_views` contracts the array's presence, not specific thresholds.
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
 - **`ooh_metrics`**: Classic (static) OOH metrics — panels, posting period, posting records with photo evidence, and modeled `estimated_impressions` with a declared `estimation_basis`; the channel has no play events
+- **`print_metrics`**: Print-specific metrics (experimental) — per-issue proof of insertion (tearsheet evidence, page, position) and circulation, reported on `by_installment` rows; see [Print creative](/docs/creative/channels/print#delivery-evidence-and-circulation)
 - **`cost_per_click`**: Cost per click (`spend / clicks`)
 - **`cost_per_completed_view`**: Cost per completed view (`spend / completed_views`); CPCV pricing scalar for video/audio inventory
 - **`cpm`**: Cost per thousand impressions (`(spend / impressions) × 1000`); universal pricing scalar across CTV, display, mobile/web video, native, audio, and DOOH

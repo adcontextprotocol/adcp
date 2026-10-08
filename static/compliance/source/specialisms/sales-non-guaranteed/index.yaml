@@ -5,6 +5,9 @@ protocol: media-buy
 category: sales_non_guaranteed
 summary: "Seller agent for auction-based, non-guaranteed buying where the buyer sets bid prices and budgets."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy

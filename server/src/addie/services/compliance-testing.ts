@@ -364,7 +364,8 @@ export async function selectComplianceTargetForAgentSelection(
       agentUrl,
       compatibleSeededTarget
         ? withHostedTestOptions(options, compatibleSeededTarget)
-        : options,
+        // No target to pin yet: send only the major, not the SDK's prerelease default.
+        : { ...options, versionEnvelope: 'major-only' },
     );
     const target = mode === 'canonical'
       ? selectCanonicalHostedComplianceTargetForProfile(discovery.profile, fallback)

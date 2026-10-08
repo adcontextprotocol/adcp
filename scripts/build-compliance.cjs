@@ -809,6 +809,20 @@ function main() {
     process.exit(1);
   }
 
+  // Controller-requires lint: storyboards that seed through
+  // comply_test_controller (prerequisites.controller_seeding: true) MUST
+  // declare requires: [controller] so a seller without a controller gets one
+  // storyboard-level requirement_unmet skip, not per-step
+  // missing_test_controller grades. adcontextprotocol/adcp#7858.
+  try {
+    execSync('node scripts/lint-storyboard-controller-requires.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Upstream-traffic path lint: identifier_paths use a small portable
   // request-payload-relative grammar so runners don't diverge on JSONPath
   // variants, numeric indexes, or explicit roots. adcontextprotocol/adcp#5073.
