@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const { docsNavigationVersions } = require('./docs-navigation.cjs');
 
 const APP_ROOT = process.env.DOCS_SMOKE_APP_ROOT || '/app';
 const DOCS_CONFIG_PATH = path.join(APP_ROOT, 'docs.json');
@@ -61,7 +65,7 @@ function findIndexedSchema(getDocById, expected) {
 assert.ok(fs.existsSync(DOCS_CONFIG_PATH), 'The runtime image must contain /app/docs.json');
 
 const config = JSON.parse(fs.readFileSync(DOCS_CONFIG_PATH, 'utf8'));
-const configuredVersions = config.navigation?.versions;
+const configuredVersions = docsNavigationVersions(config);
 assert.ok(
   Array.isArray(configuredVersions) && configuredVersions.length > 0,
   'docs.json must configure navigation versions',

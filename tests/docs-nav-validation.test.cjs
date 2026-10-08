@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { execFileSync } = require('child_process');
+const { docsNavigationVersions } = require('../scripts/docs-navigation.cjs');
 
 const DOCS_JSON = path.join(__dirname, '../docs.json');
 
@@ -124,6 +125,7 @@ function snapshotMatchesVersionLabel(label, snapshotVersion) {
  */
 const NAV_COVERAGE_ALLOWLIST = new Map([
   ['contributing/', 'Contributor and repository-maintenance guides, not protocol documentation'],
+  ['zh/', 'Simplified Chinese translations. They are published from navigation.languages, not the English version picker.'],
   ['runbooks/', 'Internal AgenticAdvertising.org operations runbooks'],
   ['snippets/', 'Mintlify snippet sources imported into other pages, not standalone pages'],
   ['aao/aao-admins', 'Internal staff reference; the page sets noindex: true'],
@@ -235,11 +237,16 @@ log('====================================\n');
 
 const docsConfig = JSON.parse(fs.readFileSync(DOCS_JSON, 'utf8'));
 const { navigation } = docsConfig;
+const resolvedVersions = docsNavigationVersions(docsConfig);
 
-if (!navigation || !navigation.versions) {
+if (!navigation || !resolvedVersions) {
   log('No navigation.versions found in docs.json', 'error');
   process.exit(1);
 }
+
+// The version picker may live under the English language entry. Expose it
+// here so the rest of this file keeps validating the English snapshots.
+navigation.versions = resolvedVersions;
 
 const rootDir = path.join(__dirname, '..');
 const defaultVersion = (navigation.versions.find(v => v.default) || navigation.versions[0]).version;
@@ -582,6 +589,36 @@ for (const versionEntry of navigation.versions) {
 
   log('');
 }
+
+test('simplified chinese navigation publishes translated pages without reusing english paths', () => {
+  const languages = navigation.languages;
+  if (!Array.isArray(languages)) {
+    throw new Error('docs.json navigation.languages is required');
+  }
+  const english = languages.find((entry) => entry.language === 'en');
+  const chinese = languages.find((entry) => entry.language === 'zh');
+  if (!english || english.default !== true || languages[0] !== english) {
+    throw new Error('English must stay the default language and the first language entry');
+  }
+  if (!chinese) throw new Error('Missing zh language');
+  const zhPages = collectPages(chinese.groups || []);
+  for (const page of ['docs/zh/intro', 'docs/zh/quickstart']) {
+    if (!zhPages.includes(page)) throw new Error(`zh navigation missing ${page}`);
+  }
+  const englishPages = new Set(collectPages(navigation.versions));
+  const overlap = zhPages.filter((page) => englishPages.has(page));
+  if (overlap.length > 0) {
+    throw new Error(`page paths reused across languages: ${overlap.join(', ')}`);
+  }
+  const missing = zhPages.filter((page) => {
+    const mdx = path.join(rootDir, `${page}.mdx`);
+    const md = path.join(rootDir, `${page}.md`);
+    return !fs.existsSync(mdx) && !fs.existsSync(md);
+  });
+  if (missing.length > 0) {
+    throw new Error(`Missing zh files:\n      ${missing.join('\n      ')}`);
+  }
+});
 
 log('Nav coverage');
 

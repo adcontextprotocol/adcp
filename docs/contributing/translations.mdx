@@ -1,0 +1,23 @@
+---
+title: Translating the docs
+sidebarTitle: Translations
+"og:title": "AdCP — Translating the docs"
+description: "How to add a translated AdCP documentation page and wire it into the Mintlify language switcher without moving the English version picker."
+---
+
+English is the normative text of AdCP. A translation is a reading aid. When the two differ, the English specification, task reference, and migration guides win.
+
+## Add a page
+
+1. Copy the English page to `docs/<language>/`, keeping the same path after the language directory. Simplified Chinese lives in `docs/zh/`.
+2. Translate the prose, navigation labels, image `alt` text, and frontmatter. Leave protocol identifiers, JSON examples, URLs, and task names unchanged.
+3. Give the page its own `description` and `"og:title"`. The SEO check requires both, requires `"og:title"` to start with `AdCP`, and rejects a description or title copied from another page.
+4. Add the page path to that language's navigation in `docs.json`. Chinese pages use paths like `docs/zh/intro`. Do not reuse an English page path in another language. Mintlify treats duplicate paths as undefined.
+
+`docs/zh/` is outside the English version picker on purpose. The coverage allowlist in `tests/docs-nav-validation.test.cjs` records that. A translated page still has to appear in its own language navigation.
+
+## What not to translate into a second spec
+
+Do not translate a normative page and present it as a second source of truth. Link to the English page for schemas, task reference, and migration guides until that page has a reviewed translation.
+
+The release script in `scripts/update-release-docs-nav.mjs` updates only the English `versions` array, including when it is nested under `navigation.languages`. It does not retarget `docs/zh/` pages.

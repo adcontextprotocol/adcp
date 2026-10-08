@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { docsNavigationVersions } = require('../scripts/docs-navigation.cjs');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
@@ -234,7 +235,7 @@ test('radio guide is present in every 3.2 documentation navigation', () => {
   // Selectors come from docs.json: 3.2-beta/3.2-rc before GA, 3.2 after the
   // release-docs snapshot retires the preview channels.
   const docsConfig = readJson(path.join(ROOT, 'docs.json'));
-  const line32Navigations = docsConfig.navigation.versions.filter(
+  const line32Navigations = docsNavigationVersions(docsConfig).filter(
     version => /^3\.2(?:-|$)/.test(version.version)
   );
 

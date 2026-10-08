@@ -22,7 +22,11 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const { docsNavigationVersions, setDocsNavigationVersions } = require('./docs-navigation.cjs');
 
 const DIST_DOCS_PREFIX_RE = /^dist\/docs\/[^/]+\//;
 const DIST_DOCS_ABSOLUTE_PREFIX_RE = /^\/dist\/docs\/[^/]+\//;
@@ -182,7 +186,7 @@ function removeObsoleteCurrentLlmsRedirects(config) {
 }
 
 export function renderCurrentLlmsIndex(config) {
-  const versions = config?.navigation?.versions;
+  const versions = docsNavigationVersions(config);
   if (!Array.isArray(versions) || versions.length === 0) {
     throw new Error('docs.json must contain at least one navigation version');
   }
@@ -382,7 +386,7 @@ function snapshotPageExists(page) {
 }
 
 function defaultVersionLine(config) {
-  const versions = config?.navigation?.versions;
+  const versions = docsNavigationVersions(config);
   const entry = Array.isArray(versions) ? versions.find((item) => item.default) ?? versions[0] : undefined;
   return versionLine(entry?.version);
 }
@@ -563,7 +567,7 @@ function shouldPromoteStableLine(versions, releaseVersion, majorMinor) {
 }
 
 function promoteStableLine(config, releaseVersion, majorMinor, snapshotHasPage) {
-  const versions = config.navigation.versions;
+  const versions = docsNavigationVersions(config);
   const previousDefaultIndex = versions.findIndex((entry) => entry.default);
   const previousDefault = versions[previousDefaultIndex >= 0 ? previousDefaultIndex : 0];
   const sameLinePrereleases = versions.filter((entry) => {
@@ -630,7 +634,7 @@ function promoteStableLine(config, releaseVersion, majorMinor, snapshotHasPage) 
     });
 
   // Mintlify requires the default version first.
-  config.navigation.versions = [promoted, ...remaining];
+  setDocsNavigationVersions(config, [promoted, ...remaining]);
 
   // Point clean /docs/* routes at the new default. Aliases for pages that only
   // exist in the old default keep pointing at its immutable snapshot.
@@ -654,7 +658,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor, options = {
     throw new Error('releaseVersion and majorMinor are required');
   }
 
-  const versions = config?.navigation?.versions;
+  const versions = docsNavigationVersions(config);
   if (!Array.isArray(versions)) {
     throw new Error('docs.json must contain navigation.versions');
   }
@@ -768,7 +772,7 @@ export function updateDockerignore(content, releaseVersion) {
  * entry is the docs default, and retired selectors disappear from both.
  */
 export function docsSchemaReleases(config) {
-  const versions = config?.navigation?.versions;
+  const versions = docsNavigationVersions(config);
   if (!Array.isArray(versions) || versions.length === 0) {
     throw new Error('docs.json must contain at least one navigation version');
   }

@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from 'fs';
+import { createRequire } from 'node:module';
 import { join, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { globSync } from 'glob';
+
+const require = createRequire(import.meta.url);
+const { docsNavigationVersions } = require('./docs-navigation.cjs');
 
 const LINK_HOSTS = new Set(['agenticadvertising.org', 'docs.adcontextprotocol.org']);
 const SKIPPED_PATH_PREFIXES = ['/api/'];
@@ -614,7 +618,7 @@ export async function checkCurrentLlmsIndexAlias(
 
 function currentLlmsIndexDestination(root) {
   const docsConfig = JSON.parse(readFileSync(join(root, 'docs.json'), 'utf8'));
-  const versions = docsConfig?.navigation?.versions;
+  const versions = docsNavigationVersions(docsConfig);
   const currentVersion = versions?.find((entry) => entry.default)?.version
     ?? versions?.[0]?.version;
   if (typeof currentVersion !== 'string') {

@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { docsNavigationVersions } = require('../scripts/docs-navigation.cjs');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -644,7 +645,7 @@ function versionEntry(version, build, extra = {}) {
   ].join('\n');
 
   function assertSingleDefaultAndLatest(config, expectedVersion) {
-    const versions = config.navigation.versions;
+    const versions = docsNavigationVersions(config);
     assert.deepEqual(
       versions.filter((entry) => entry.default).map((entry) => entry.version),
       [expectedVersion]
@@ -657,7 +658,7 @@ function versionEntry(version, build, extra = {}) {
   }
 
   function assertCleanRouteAliases(config) {
-    const defaultEntry = config.navigation.versions.find((entry) => entry.default);
+    const defaultEntry = docsNavigationVersions(config).find((entry) => entry.default);
     const bySource = new Map(config.redirects.map((redirect) => [redirect.source, redirect]));
     for (const page of collectStrings(defaultEntry.groups).filter((value) => value.startsWith('dist/docs/'))) {
       const cleanPath = `/docs/${page.split('/').slice(3).join('/')}`;
@@ -793,7 +794,7 @@ function versionEntry(version, build, extra = {}) {
   test('CLI flips temp copies of the repository docs.json and schema-tools.ts for 3.2.1 GA', (t) => {
     const repoRoot = path.join(__dirname, '..');
     const repoConfig = JSON.parse(fs.readFileSync(path.join(repoRoot, 'docs.json'), 'utf8'));
-    const repoDefault = repoConfig.navigation.versions.find((entry) => entry.default);
+    const repoDefault = docsNavigationVersions(repoConfig).find((entry) => entry.default);
     const [major, minor] = repoDefault.version.split('.').map(Number);
     if (major > 3 || (major === 3 && minor > 2)) {
       t.skip(`docs default ${repoDefault.version} is newer than the 3.2 GA flip`);
@@ -831,11 +832,11 @@ function versionEntry(version, build, extra = {}) {
       }
       assertSingleDefaultAndLatest(config, '3.2');
       assert.equal(
-        config.navigation.versions.some((entry) => /^3\.2-/.test(entry.version)),
+        docsNavigationVersions(config).some((entry) => /^3\.2-/.test(entry.version)),
         false,
         '3.2 prerelease selectors must leave the version picker'
       );
-      assert.ok(config.navigation.versions.some((entry) => entry.version === '3.1'));
+      assert.ok(docsNavigationVersions(config).some((entry) => entry.version === '3.1'));
       assertCleanRouteAliases(config);
       const bySource = new Map(config.redirects.map((redirect) => [redirect.source, redirect.destination]));
       assert.equal(bySource.get('/3.2'), '/dist/docs/3.2.1/reference/whats-new-in-3-2');
@@ -1222,15 +1223,17 @@ function versionEntry(version, build, extra = {}) {
   test('CLI adds the 3.3 beta from a copy of the repository docs.json', (t) => {
     const repoRoot = path.join(__dirname, '..');
     const repoConfig = JSON.parse(fs.readFileSync(path.join(repoRoot, 'docs.json'), 'utf8'));
-    const repoDefault = repoConfig.navigation.versions.find((entry) => entry.default);
+    const repoVersions = docsNavigationVersions(repoConfig);
+    const repoDefault = repoVersions.find((entry) => entry.default);
     if (repoDefault.version !== '3.2') {
       t.skip(`docs default ${repoDefault.version} is not the 3.2 line this scenario starts from`);
       return;
     }
     // Start from the state before the first 3.3 snapshot, whatever main has since added.
-    repoConfig.navigation.versions = repoConfig.navigation.versions.filter(
+    const keptVersions = repoVersions.filter(
       (entry) => !/^3\.3(?:-|$)/.test(entry.version)
     );
+    repoVersions.splice(0, repoVersions.length, ...keptVersions);
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-docs-33-'));
     try {
@@ -1260,16 +1263,57 @@ function versionEntry(version, build, extra = {}) {
       ], { cwd: root, encoding: 'utf8' });
 
       const config = JSON.parse(fs.readFileSync(files.docsJson, 'utf8'));
-      const entry = config.navigation.versions.find((item) => item.version === '3.3-beta');
+      const versions = docsNavigationVersions(config);
+      const entry = versions.find((item) => item.version === '3.3-beta');
       const strings = collectStrings(entry.groups);
       for (const page of STORY_33_PAGES) {
         assert.ok(strings.includes(page), `${page} is in the 3.3-beta navigation`);
       }
-      assert.equal(config.navigation.versions[0].version, '3.2');
+      assert.equal(versions[0].version, '3.2');
       assert.match(fs.readFileSync(files.schemaTools, 'utf8'), /'3\.3-beta': '3\.3\.0-beta\.0',/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test('updates english versions nested under navigation.languages and leaves translations alone', () => {
+    const config = {
+      banner: { content: 'stable' },
+      navigation: {
+        languages: [
+          {
+            language: 'en',
+            default: true,
+            versions: [
+              {
+                version: '3.2',
+                tag: 'Latest',
+                default: true,
+                groups: [{ group: 'Getting Started', pages: ['dist/docs/3.2.1/intro'] }],
+              },
+            ],
+          },
+          {
+            language: 'zh',
+            groups: [{ group: '入门', pages: ['docs/zh/intro'] }],
+          },
+        ],
+      },
+    };
+
+    const result = updateDocsConfig(config, '3.2.2', '3.2', {
+      snapshotHasPage: () => true,
+    });
+
+    assert.equal(result.action, 'updated');
+    const english = config.navigation.languages.find((entry) => entry.language === 'en');
+    const chinese = config.navigation.languages.find((entry) => entry.language === 'zh');
+    assert.deepEqual(english.versions[0].groups, [
+      { group: 'Getting Started', pages: ['dist/docs/3.2.2/intro'] },
+    ]);
+    assert.deepEqual(chinese.groups, [{ group: '入门', pages: ['docs/zh/intro'] }]);
+    assert.equal(config.navigation.versions, undefined);
+    assert.match(renderCurrentLlmsIndex(config), /AdCP Current Documentation: 3\.2/);
   });
 
   test('throws a clear error when navigation.versions is empty', () => {

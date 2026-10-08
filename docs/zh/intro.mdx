@@ -1,0 +1,741 @@
+---
+title: AdCP 简介
+sidebarTitle: 简介
+"og:image": /images/walkthrough/adcp-01-fragmentation.png
+"og:title": "AdCP — 协议简介"
+description: "AdCP 是开放的智能体广告标准。跟随 Alex 的团队，看协议如何把分散渠道收成一套跨领域工作流。"
+---
+
+<img src="/images/walkthrough/adcp-01-fragmentation.png" alt="Alex 抱臂站在作战室里，面前是互不匹配的屏幕和缠在一起的线缆，她打量着这片混乱，团队在背景里伏在笔记本电脑上" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+<Info>
+这是入门文档的简体中文译本，目前包括本页和[快速开始](/docs/zh/quickstart)。协议规范仍以英文为准，文中的深入链接会打开英文页面。
+</Info>
+
+<Info>
+AdCP 3.2 已正式发布（发行版 `3.2.1`，线路版本标识 `"3.2"`）。它增加了买方和卖方都可以审计的「从提案到执行」生命周期、共享的 MediaBuy 级频次上限，以及实验性的可靠报告（Reliable Reporting）和已认证主体。现有的 3.1 集成可以继续工作。参见
+[3.2 的新变化](/docs/reference/whats-new-in-3-2)和
+[3.1 到 3.2 迁移指南](/docs/reference/migration/3-1-to-3-2)。
+</Info>
+
+Alex 在 Pinnacle Agency 负责媒体运营。她的团队在六个渠道买量：互联电视（CTV）、展示、音频、社交、零售媒体和数字户外。每个渠道都有自己的购买方式、自己的术语，以及自己处理创意、定向和报告的办法。有的走 IO，有的走 API，程序化走 DSP，所有东西都有一块仪表盘。
+
+现在客户还想试 AI 生成的创意、达人投放和本地电台。每多一个渠道，就多一套工具、一次集成、一条要重新学习的流程。客户每想试一样新东西，她都没法靠加人来跟上。
+
+问题不在人。问题是每个渠道说的都不是同一种语言，而这个行业没有统一标准，告诉代理如何发现库存、执行购买、分发创意、激活数据或汇报结果。
+
+AdCP 就是这个标准。一套协议。每个平台。投放的每一步。
+
+AdCP 的目标，是成为万亿规模全球广告经济的企业协调协议。这需要的不只是一个小型演示 API：身份、授权、不可变的商业状态、安全重试、可审计的决策、版本协商，以及分布式系统失败后的恢复。协议把这些保证保持为开放且可移植的，同时由持续维护的 [SDK](/docs/building/by-layer/L4/choose-your-sdk) 承担生产团队的大部分实现负担。
+
+## 不止是激活
+
+AdCP 协调的是完整的投放生命周期，从接收简报到效果衡量，而不只是激活。它覆盖每一种交易模式：直接交易、赞助、广播和户外，不只是程序化交易所。全球大部分广告支出流经非程序化渠道，AdCP 是为所有这些渠道设计的。
+
+一套架构并不意味着今天每个渠道或每项商业职能的实现深度都一样。AdCP 标准化的是参与方实际对外声明的能力。支付通道、法律协议、结算、争议、抵免和补量，除非明确存在对应的 AdCP 契约，否则仍属于账户或平台集成。公开的[路线图](/docs/reference/roadmap)标出了仍在积极寻找实现和领域贡献者的缺口。
+
+本页跟随 Alex 的团队走完整个工作流，从寻找新合作方到衡量结果。每一节都给出人的问题、协议的解法，以及让它运转的任务。读完之后，你会知道 AdCP 覆盖哪些领域，以及它们如何连在一起。
+
+---
+
+## 寻找新的合作方
+
+<img src="/images/walkthrough/intro-01-find-partners.png" alt="Alex 伸手指向墙上显示器里发光的网络地图，准备从一群相连的合作方中选中一个新的媒体方节点" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Alex 想和从未谈过的媒体方合作。在旧世界里，这意味着销售电话、合同，以及数周的集成工作，然后她才能看到对方有什么库存。
+
+有了 AdCP，发现能力写在协议里。每个启用 AdCP 的媒体方都托管一份 `adagents.json`：一份机器可读的声明，说明他们的资产和已授权代理。销售运营方发布 `brand.json`，用于公司身份、销售代理端点和签名密钥发现。Alex 的买方代理解析这两个文件的方式，和浏览器读取 `robots.txt` 一样。
+
+```
+https://streamhaus.tv/.well-known/adagents.json
+```
+
+```json
+{
+  "version": "1.0",
+  "publisher": {
+    "name": "StreamHaus",
+    "domain": "streamhaus.tv"
+  },
+  "agents": [
+    {
+      "url": "https://ads.streamhaus.tv/mcp",
+      "protocol": "mcp",
+      "capabilities": ["get_products", "create_media_buy", "sync_creatives"]
+    }
+  ]
+}
+```
+
+如果要更广地发现，比如「帮我找有体育库存的 CTV 媒体方」，[AgenticAdvertising.org 注册表](/docs/registry)提供实体解析和代理搜索。Alex 的代理可以按类别、地域或能力查询注册表，拿回一份可以连接的媒体方列表。
+
+<Accordion title="注册表返回什么">
+
+注册表 API 把品牌解析到它们的 AdCP 代理：
+
+```
+GET /api/registry/agents?capability=get_products&channel=ctv
+```
+
+```json
+{
+  "agents": [
+    {
+      "domain": "streamhaus.tv",
+      "agent_url": "https://ads.streamhaus.tv/mcp",
+      "capabilities": ["get_products", "create_media_buy"],
+      "channels": ["ctv", "olv"]
+    }
+  ]
+}
+```
+
+</Accordion>
+
+<Card title="进一步了解：adagents.json" icon="file-code" href="/docs/governance/property">
+  媒体方如何声明自己的资产和已授权代理。
+</Card>
+
+---
+
+## 建立账户
+
+<img src="/images/walkthrough/intro-02-set-up-accounts.png" alt="Sam 隔着桌子与人握手，两人之间的笔记本电脑上显示着一个青色对勾，表示正在建立新的商业关系" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Alex 的团队在买媒体之前，需要先有商业关系。在旧世界里，每个平台的开通都不一样：门户、表单、销售代表，来回几周。
+
+AdCP 用账户协议把这件事标准化。Alex 团队里的媒介买家 Sam，一次调用就建立起 Pinnacle 和 StreamHaus 的关系：
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
+  "idempotency_key": "f6c0a3d4-2345-48b1-2345-6789012345ab",
+  "accounts": [
+    {
+      "brand": { "domain": "acmeoutdoor.com" },
+      "operator": "pinnacle-agency.com",
+      "billing": "operator"
+    }
+  ]
+}
+```
+
+卖方返回账户状态：已激活、待审核，或者还需要哪些补充信息。一旦激活，Sam 就可以购买媒体。
+
+`list_accounts` 列出所有平台上的活跃关系，Alex 一眼就能看到团队已经和哪些媒体方完成了开通。
+
+<Card title="深入：账户" icon="id-card" href="/docs/accounts/overview">
+  商业身份、计费模式，以及多广告主管理。
+</Card>
+
+---
+
+## 发现有什么可买
+
+<img src="/images/walkthrough/intro-03-discover-products.png" alt="Sam 对着墙上屏幕里的三张产品卡片比划，CTV、展示和音频库存都由同一份投放简报生成" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+真正有力量的是这一步。Sam 想为 Acme Outdoor 的二季度投放寻找优质体育库存。在旧世界里，他要登录四块仪表盘，拿无法对比的东西做比较。
+
+有了 AdCP，`get_products` 把同一份结构化请求和简报发给每一个已连接的卖方。语义意图留在散文里，精确约束放进每个卖方都能确定性处理的字段：
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442003",
+  "buying_mode": "brief",
+  "brief": "Premium sports and outdoor-recreation contexts for Acme Outdoor's Q2 launch. Budget $50K.",
+  "filters": {
+    "channels": ["ctv", "display"],
+    "pricing_currencies": ["USD"]
+  },
+  "targeting_overlay": {
+    "geo_countries": ["US"],
+    "demographics": {
+      "age": { "min": 25, "max": 45, "include_unknown": false }
+    }
+  },
+  "brand": { "domain": "acmeoutdoor.com" }
+}
+```
+
+每个卖方都用同一种格式回应：带有定价、预测、定向支持、分辨率和创意要求的产品。Sam 可以核对精确约束，而不必让每个卖方从散文里推断。
+
+<Accordion title="产品响应长什么样">
+
+```json
+{
+  "products": [
+    {
+      "product_id": "streamhaus_sports_ctv_q2",
+      "name": "StreamHaus Sports Premium",
+      "channels": ["ctv"],
+      "pricing_options": [
+        {
+          "model": "cpm",
+          "price": 28.50,
+          "currency": "USD"
+        }
+      ],
+      "forecast": {
+        "impressions": { "min": 500000, "max": 750000 }
+      },
+      "format_option_refs": [{ "scope": "product", "format_option_id": "video_16x9_30s" }]
+    }
+  ]
+}
+```
+
+</Accordion>
+
+Sam 还没结束。他喜欢 StreamHaus 的体育套装，但想把预算更多地拨向 CTV，并去掉展示分配。他不必从头再来，而是使用**细化模式**：和卖方进行一轮迭代对话。
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442004",
+  "buying_mode": "refine",
+  "refine": [
+    {
+      "scope": "product",
+      "product_id": "streamhaus_sports_ctv_q2",
+      "action": "more_like_this",
+      "ask": "More CTV inventory like this, willing to go up to $35 CPM"
+    },
+    {
+      "scope": "request",
+      "ask": "Drop display entirely, reallocate budget to CTV and OLV"
+    }
+  ]
+}
+```
+
+卖方调整后返回细化过的选项。没有新的 RFP，也不必从零开始。Sam 一直迭代，直到拿到正好想要的东西。
+
+<Card title="跟随 Sam 的完整过程" icon="cart-shopping" href="/docs/media-buy">
+  完整的媒体购买演练：从简报到交付，横跨三个卖方。
+</Card>
+
+---
+
+## 制作创意
+
+<img src="/images/walkthrough/intro-04-build-creative.png" alt="Maya 坐在创意工作室里，手里拿着 iPad，周围的墙面屏幕展示着由同一份简报生成的不同尺寸广告格式" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Pinnacle 的创意策略 Maya 需要为 Sam 的投放制作广告。一次投放、三个卖方、六种格式：CTV 视频、OLV 贴片、展示横幅、伴随广告。在旧世界里，这是六条分开的制作流程。
+
+Maya 先弄清每个卖方接受什么：
+
+```json
+const products = await seller.get_products({
+  buying_mode: "brief",
+  brief: "Summer video and display campaign",
+  brand: { domain: "acmeoutdoor.com" }
+});
+```
+
+每个产品都返回规范的 `format_options[]`，带有精确约束：尺寸、编码、文件大小、时长上限和版位。不用猜。
+
+然后 Maya 向创意代理下达简报。一份简报产出全部格式：
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/build-creative-request.json",
+  "idempotency_key": "c1d2e3f4-a5b6-4789-c012-789012345678",
+  "message": "Adventurous, aspirational summer campaign — gear for people who live outside",
+  "brand": { "domain": "acmeoutdoor.com" },
+  "target_capability_ids": ["video_16x9_30s", "display_300x250"]
+}
+```
+
+创意代理直接从品牌的 `brand.json` 拉取 Acme Outdoor 的品牌识别：颜色、标志、语气规范（下面会讲到）。没有品牌指南 PDF，也没有人工交接素材。
+
+如果 Maya 不满意第一稿，她用自然语言细化：「把开场镜头做得更有动感，并把产品镜头换成登山靴。」`build_creative` 任务支持迭代细化：同一个任务，用对话来引导。
+
+确认之后，`sync_creatives` 把完成的素材同时分发给每一个卖方：
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "idempotency_key": "d2e3f4a5-b6c7-4890-d123-890123456789",
+  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
+  "creatives": [
+    {
+      "creative_id": "acme_summer_ctv_30s",
+      "name": "Acme Summer CTV 30s",
+      "format_kind": "video_hosted",
+      "assets": {
+        "video": { "asset_type": "video", "url": "https://cdn.pinnacle.com/acme_summer_30s.mp4", "width": 1920, "height": 1080, "duration_ms": 30000 }
+      }
+    }
+  ]
+}
+```
+
+<Card title="跟随 Maya 的完整过程" icon="paintbrush" href="/docs/creative/index">
+  创意生成、格式发现，以及向多个卖方分发。
+</Card>
+
+---
+
+## 执行购买
+
+<img src="/images/walkthrough/intro-05-execute-buy.png" alt="Sam 在笔记本电脑上按下启动按钮，屏幕向外发出青色脉冲；Alex 抱臂站在他身后，带着满意的微笑" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam 已经有了产品、创意和账户。可以买了。一次 `create_media_buy` 调用就在所有卖方上执行这次投放：
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json",
+  "idempotency_key": "e3f4a5b6-c7d8-4901-e234-901234567890",
+  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
+  "brand": { "domain": "acmeoutdoor.com" },
+  "start_time": "2026-04-01T00:00:00Z",
+  "end_time": "2026-06-30T23:59:59Z",
+  "packages": [
+    {
+      "product_id": "streamhaus_sports_ctv_q2",
+      "budget": 35000,
+      "pricing_option_id": "cpm_standard"
+    }
+  ]
+}
+```
+
+对那些自己生成创意的卖方（AI 助手、对话式广告平台），媒体购买可以带一份简报，而不是预先做好的素材。卖方的创意代理即时生成，并从品牌识别和投放上下文中取材。提供成稿和生成创意这两种模式，用的是同一个 `create_media_buy` 任务。
+
+`update_media_buy` 处理投放中途的变更：在套餐之间挪预算、调整投放日期、更换创意分配。不必取消再重建。
+
+<Card title="底下的信任面" icon="shield-check">
+Sam 请求上的那个 `idempotency_key` 不是装饰。Pinnacle 的买方代理在请求离开网络之前，用 RFC 9421 HTTP Message Signatures 给 POST 签名。StreamHaus 对照 Pinnacle 运营方公布的 JWKS 验证签名，然后接受这笔购买。投放从 `pending_start` 变为 `active` 时，StreamHaus 向 Pinnacle 的编排器回传一个带签名的 webhook：同一套签名配置，StreamHaus 的请求签名密钥通过它的 `brand.json` `agents[]` 条目公布，也可以由媒体方的 `adagents.json` 钉扎。如果 Sam 的笔记本丢掉了响应、代理发起重试，`idempotency_key` 让第二次调用是安全的：StreamHaus 返回原来的购买并带上 `replayed: true`，而不是扣两次费。治理审批以签名的 JWS 令牌附在 `check_governance` 上，链路中的任何代理都不能伪造 Jordan 的签字。参见[安全指南](/docs/building/by-layer/L1/security)。
+</Card>
+
+---
+
+## 在投放时匹配
+
+投放已经上线。当用户打开 StreamHaus 的页面、打开 OutdoorNet 的移动应用，或向 AI 助手询问登山装备时，媒体方需要知道 Sam 的哪些套餐应该激活：就在此刻，针对这段内容，针对这个用户。
+
+[可信匹配协议（TMP）](/docs/trusted-match)用两个结构上分开的操作处理这件事。**上下文匹配（Context Match）**根据内容信号评估可用套餐，用户身份不越过这条边界。**身份匹配（Identity Match）**用一个不透明令牌检查用户是否符合条件，页面上下文不越过这条边界。媒体方在本地把两份响应拼在一起。买方永远不会同时看到身份和内容。
+
+一套协议，每一种表面：网页、移动端、CTV、AI 助手、零售媒体。
+
+---
+
+## 加入你的数据
+
+<img src="/images/walkthrough/intro-06-add-data.png" alt="Sam 和 Kai 并排坐着，笔记本电脑之间有半透明的青色数据流连成弧线，把投放数据和信号数据合在一起" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam 的投放需要卖方本身提供不了的定向。客户有 CRM 数据（要排除的现有顾客），Pinnacle 有来自自己 DMP 的受众细分，他还想叠上来自 Kai 的数据公司 Meridian Geo 的第三方信号。
+
+**受众**通过 `sync_audiences` 跟投放一起走：
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json",
+  "idempotency_key": "a7d1b4e5-3456-48c2-3456-789012345abc",
+  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
+  "audiences": [
+    {
+      "audience_id": "acme_existing_customers",
+      "name": "Acme Outdoor — existing customers",
+      "audience_type": "suppression"
+    }
+  ]
+}
+```
+
+**信号**，也就是第三方定向数据，通过信号协议来发现和激活。Sam 搜索他需要的东西：
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json",
+  "signal_spec": "Outdoor recreation enthusiasts near sporting goods retailers, 25-45"
+}
+```
+
+Kai 的 Meridian Geo 返回匹配的信号细分，带有定价、覆盖和激活选项。Sam 激活他想要的那些：
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
+  "idempotency_key": "f4a5b6c7-d8e9-4012-f345-012345678901",
+  "signal_agent_segment_id": "meridian_outdoor_rec_25_45",
+  "destinations": [
+    { "type": "platform", "platform": "streamhaus" }
+  ]
+}
+```
+
+信号在 StreamHaus 的平台上激活。Kai 的数据到达 Sam 的投放，双方都不需要做定制集成。
+
+<Card title="信号深入讲解" icon="signal" href="/docs/signals/overview">
+  Sam 如何跨平台发现并激活 Kai 的定向数据。
+</Card>
+
+---
+
+## 治理
+
+<img src="/images/walkthrough/intro-07-govern-it.png" alt="Jordan 在平板上研究一条治理审批链，银色圆环耳环映着灯光，表情专注而审慎" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam 的任何投放上线之前，都要经过治理。Pinnacle 的投放运营经理 Jordan 在 Alex 允许任何代理花钱之前，就先把治理框架搭好了。
+
+`check_governance` 在执行前自动运行：预算上限、品牌安全、定向合规。
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-request.json",
+  "plan_id": "acme_outdoor_q2_plan",
+  "caller": "https://buyer.pinnacle-agency.com/a2a",
+  "target_agent": "https://seller.streamhaus.example/a2a",
+  "tool": "create_media_buy",
+  "payload": {
+    "brand": { "domain": "acmeoutdoor.com" },
+    "start_time": "2026-04-01T00:00:00Z",
+    "end_time": "2026-06-30T23:59:59Z"
+  }
+}
+```
+
+如果一切通过，投放继续。如果某件事超出了代理的权限，比如预算高于 Jordan 的 \$20K 自动审批线，治理代理会升级给一个人。Jordan 审核，必要时加上条件，然后批准。代理不能跳过这一步。这是架构，不是流程。
+
+投放跑完之后，`get_plan_audit_logs` 提供完整的决策轨迹：谁提议了什么、谁批准了、附了什么条件、实际跑了什么。每个决策都有记录，也能归因。
+
+<Accordion title="审计日志长什么样">
+
+```json
+{
+  "entries": [
+    {
+      "timestamp": "2026-03-15T14:30:00Z",
+      "actor": "buyer_agent",
+      "action": "submit_plan",
+      "details": { "budget": 50000, "channels": ["ctv", "olv"] }
+    },
+    {
+      "timestamp": "2026-03-15T14:30:01Z",
+      "actor": "governance_agent",
+      "action": "escalate",
+      "reason": "Budget exceeds auto-approval threshold ($20,000)"
+    },
+    {
+      "timestamp": "2026-03-15T15:12:00Z",
+      "actor": "jordan@pinnacleagency.com",
+      "action": "approve_with_conditions",
+      "conditions": ["Weekly spend cap of $15,000", "CTV only — no OLV until brand safety review"]
+    }
+  ]
+}
+```
+
+</Accordion>
+
+<Card title="跟随 Jordan 的完整过程" icon="shield-halved" href="/docs/governance/overview">
+  治理演练：从噩梦到审计轨迹。
+</Card>
+
+---
+
+## 跟踪效果
+
+<img src="/images/walkthrough/intro-08-track-performance.png" alt="Sam 站在一块很大的效果仪表盘前，上面是趋势图，他手里拿着咖啡，回头时表情自信，一切都在轨道上" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam 的投放已经上线。在旧世界里，他要看四块仪表盘。现在，`get_media_buy_delivery` 把每个卖方的效果汇总进一份响应：
+
+```json
+{
+  "impressions": 1250000,
+  "clicks": 18750,
+  "spend": { "amount": 34200, "currency": "USD" },
+  "by_package": [
+    {
+      "product_id": "streamhaus_sports_ctv_q2",
+      "impressions": 750000,
+      "completion_rate": 0.87
+    }
+  ]
+}
+```
+
+如果要更深入地跟踪效果，AdCP 还提供两个工具：
+
+**`log_event`** 记录营销事件（购买、线索、注册），并回传给卖方，用于归因和优化：
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/log-event-request.json",
+  "idempotency_key": "a5b6c7d8-e9f0-4123-a456-123456789012",
+  "event_source_id": "acme_website_pixel",
+  "events": [
+    {
+      "event_id": "evt_abc123",
+      "event_type": "purchase",
+      "event_time": "2026-05-15T10:30:00Z",
+      "action_source": "website",
+      "custom_data": { "value": 149.99, "currency": "USD" }
+    }
+  ]
+}
+```
+
+**`provide_performance_feedback`** 把优化环闭合：告诉卖方什么有效、什么无效，让他们的算法可以调整。
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json",
+  "idempotency_key": "b6c7d8e9-f0a1-4234-b567-234567890123",
+  "media_buy_id": "mb_acme_q2_001",
+  "measurement_period": {
+    "start": "2026-04-01T00:00:00Z",
+    "end": "2026-04-30T23:59:59Z"
+  },
+  "performance_index": 1.35
+}
+```
+
+---
+
+## 连接你的商店
+
+<img src="/images/walkthrough/intro-09-connect-store.png" alt="俯视一部手机，上面是产品目录，一条发光的青色线把它和笔记本电脑上的投放界面连起来，目录数据在两者之间流动" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Acme Outdoor 有一家 Shopify 商店，里面有 200 个产品。他们希望目录能被 AI 平台使用：推荐产品的 AI 助手、呈现产品的 AI 搜索引擎，以及需要信息流数据的零售媒体网络。
+
+`sync_catalogs` 把产品信息流推到每一个已连接的平台：
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
+  "idempotency_key": "b8e2c5f6-4567-48d3-4567-89012345abcd",
+  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
+  "catalogs": [
+    {
+      "catalog_id": "acme_outdoor_products",
+      "name": "Acme Outdoor Product Feed",
+      "type": "product",
+      "url": "https://acmeoutdoor.com/feeds/products.json",
+      "feed_format": "shopify",
+      "update_frequency": "daily"
+    }
+  ]
+}
+```
+
+卖方接收目录，并把它用于产品级定向、动态创意和对话式推荐。产品缺货或价格变化时，信息流更新，卖方自动同步。
+
+---
+
+## 保护品牌
+
+<img src="/images/walkthrough/intro-10-protect-brand.png" alt="Tomoko 站在公司大堂里，面前是一块磨砂玻璃，上面陈列着品牌识别元素；她沉着而有把握，控制着对外发出的内容" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Tomoko 在 Acme Outdoor 的母公司 Nova Motors 负责品牌运营。她发布了 Nova 的 `brand.json`：一份机器可读的品牌识别，AI 代理直接消费它。
+
+```
+https://novamotors.com/.well-known/brand.json
+```
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "house": {
+    "domain": "novamotors.com",
+    "name": "Nova Motors"
+  },
+  "brands": [
+    {
+      "id": "acme_outdoor",
+      "names": [{ "en": "Acme Outdoor" }],
+      "identity_agent": {
+        "url": "https://brand.novamotors.com/mcp",
+        "id": "nova_brand_agent"
+      }
+    }
+  ]
+}
+```
+
+Maya 的创意代理生成广告时，直接从 `brand.json` 和 `get_brand_identity` 任务拉取品牌规范：颜色、标志、语气、视觉规范。没有品牌指南 PDF，也没有人工交接素材。品牌控制 AI 代理能看到什么，协议负责强制执行。
+
+对使用授权人才或第三方知识产权的投放，品牌协议处理[权利许可](/docs/brand-protocol/walkthrough-rights-licensing)：发现、获取、创意审批和生命周期管理，都走同一套协议。
+
+<Card title="品牌协议" icon="palette" href="/docs/brand-protocol">
+  品牌识别、权利许可，以及品牌如何控制 AI 使用他们的资产。
+</Card>
+
+---
+
+## 全貌
+
+Alex 一开始面对的是十二个平台、十二次集成，以及一个被平台机制淹没的团队。现在她的团队通过一套协议工作：
+
+| 他们需要什么 | AdCP 如何处理 | 关键任务 |
+|---|---|---|
+| 寻找新合作方 | 媒体方发现 + 注册表 | `adagents.json`、注册表 API |
+| 建立关系 | 标准化开通 | `sync_accounts`、`list_accounts` |
+| 发现库存 | 一份简报，每一个卖方 | `get_products`（简报模式 + 细化模式） |
+| 制作创意 | 一份简报，每一种格式 | `get_adcp_capabilities`、`build_creative`、`sync_creatives` |
+| 执行投放 | 一次购买，多个卖方 | `create_media_buy`、`update_media_buy` |
+| 加入定向数据 | 受众 + 第三方信号 | `sync_audiences`、`get_signals`、`activate_signal` |
+| 治理一切 | 内建的人工监督 | `check_governance`、`get_plan_audit_logs` |
+| 跟踪效果 | 统一报告 + 事件 | `get_media_buy_delivery`、`log_event` |
+| 连接商业 | 产品目录同步 | `sync_catalogs` |
+| 保护品牌 | 机器可读的身份 | `brand.json`、`get_brand_identity` |
+
+Sam 买媒体。Maya 做创意。Jordan 做治理。Kai 提供数据。Tomoko 保护品牌。他们说的是同一套协议。
+
+---
+
+## 底下如何运转
+
+AdCP 不假设由一个 AI 包办一切。专门的代理各自做自己最擅长的事：
+
+- **媒介购买代理**发现库存并执行投放
+- **创意代理**跨格式生成和改编广告
+- **信号代理**寻找并激活受众
+- **治理代理**执行品牌安全和合规
+- **编排器**协调工作流，并确保重要的事有人批准
+
+这些代理通过两种传输协议通信：**MCP**（供 AI 助手调用工具）和 **A2A**（供代理之间协作）。任务相同，模式相同，传输不同。
+
+**你如何知道代理真的能做它声称的事：** 每个代理告诉网络它负责哪些大的领域、支持哪些具体流程，而这些声明是可以测试的。协议附带合规故事板，由运行器对着代理执行。通过了，声明就可验证。参见[合规目录](/docs/building/verification/compliance-catalog)。
+
+## 从简报到上线广告
+
+Alex 的团队现在是这样做的：
+
+1. **写一份简报**：「为二季度在体育媒体方上寻找优质视频库存，预算 \$50K」
+2. **代理发现选项**：`get_products` 同时发给每一个已连接的卖方
+3. **比较提案**：产品以标准格式返回，定价、预测、定向都可以比较
+4. **代理制作创意**：`build_creative` 把素材适配到每个卖方的格式
+5. **批准并上线**：`create_media_buy` 一次调用就跨平台执行
+6. **在投放时匹配**：TMP 的上下文匹配和身份匹配在每次曝光时激活套餐，并在结构上把隐私隔开
+7. **监控交付**：`get_media_buy_delivery` 把每个卖方的效果汇总成一个视图
+
+每一步都使用标准的 AdCP 任务，请求和响应由 JSON Schema 定义。没有平台专用代码，也不需要在系统之间人工翻译。
+
+## 靠治理建立信任
+
+当 AI 代理自主花钱时，信任需要结构。AdCP 的治理层提供这种结构：
+
+- **投放上线之前**：`check_governance` 校验预算上限、品牌安全和监管合规
+- **如果超出权限**：治理代理升级给一个人。批准的是你的团队，不是 AI
+- **投放进行中**：治理代理对照已批准的参数监控交付
+- **交付之后**：`get_plan_audit_logs` 提供完整的决策轨迹：谁提议了什么、谁批准了、实际跑了什么
+
+治理不是拖慢事情的闸门。它是安全网，让你可以随时间把更多自主权交给代理。
+
+## 你想从哪里开始？
+
+<CardGroup cols={2}>
+  <Card title="我想在 AI 平台上投放" icon="cart-shopping" href="/docs/sponsored-intelligence/monetizing-ai">
+    面向想在 AI 表面上投放广告的品牌、代理商和企业
+  </Card>
+  <Card title="我想用 AdCP 来构建" icon="code" href="/docs/building">
+    面向实现协议的平台、媒体方和开发者
+  </Card>
+</CardGroup>
+
+## 开始使用
+
+<CardGroup cols={2}>
+  <Card title="问问 Addie" icon="message-bot" href="https://adcontextprotocol.org/chat">
+    询问 AdCP、探索协议、测试任务，不需要写代码
+  </Card>
+  <Card title="客户端 SDK" icon="rocket" href="/docs/building/schemas-and-sdks">
+    JavaScript、Python 和 Go 库，以及用于测试的命令行工具
+  </Card>
+  <Card title="Brand.json 构建器" icon="palette" href="https://agenticadvertising.org/brand/builder">
+    创建并校验你的品牌的 brand.json 文件
+  </Card>
+  <Card title="AdAgents.json 构建器" icon="hammer" href="https://agenticadvertising.org/adagents/builder">
+    校验或创建你的媒体方的 adagents.json 文件
+  </Card>
+  <Card title="注册表" icon="magnifying-glass" href="https://agenticadvertising.org/registry">
+    浏览已注册的代理、品牌和媒体方
+  </Card>
+  <Card title="用 AdCP 构建" icon="code" href="/docs/building">
+    在 MCP 和 A2A 之间选择，并学习实现模式
+  </Card>
+</CardGroup>
+
+## 看它如何运转
+
+<CardGroup cols={4}>
+  <Card title="媒体购买" icon="cart-shopping" href="/docs/media-buy">
+    跟随 Sam 走完一次投放：从简报到交付
+  </Card>
+  <Card title="可信匹配" icon="link" href="/docs/trusted-match">
+    带有结构性隐私隔离的实时套餐激活
+  </Card>
+  <Card title="创意" icon="paintbrush" href="/docs/creative/index">
+    跟随 Maya 完成创意生成和分发
+  </Card>
+  <Card title="治理" icon="shield-halved" href="/docs/governance/overview">
+    跟随 Jordan 了解保护支出的信任模型
+  </Card>
+</CardGroup>
+
+## 给平台提供方
+
+AI 正在买广告。确保它能买到你的。
+
+如果你运营 DSP、SSP、媒体方、数据平台、创意平台、治理服务，或任何广告技术产品，AdCP 让 AI 代理发现你的平台并与之交易。开始的方式：
+
+1. **实现一个 AdCP 代理**。把平台能力以 AdCP 任务的形式暴露在 MCP 或 A2A 上。从 `get_adcp_capabilities` 开始。
+2. **发布发现和授权记录**。用 `brand.json` 表达运营方身份、代理端点和签名密钥发现；用媒体方的 `adagents.json` 表达资产和已授权代理。
+3. **测试你的实现**。用 [Addie](https://adcontextprotocol.org/chat) 或[客户端 SDK](/docs/building/schemas-and-sdks) 校验。
+
+实现与你的业务相关的协议领域：
+
+- **媒体方和 SSP**：[媒体购买](/docs/media-buy)和 [adagents.json](/docs/governance/property)
+- **数据提供方**：[信号](/docs/signals/overview)和[数据提供方指南](/docs/signals/data-providers)
+- **创意平台**：[创意](/docs/creative)
+- **治理供应商**：[治理协议](/docs/governance/overview)
+- **品牌**：[品牌协议](/docs/brand-protocol)和 [brand.json](/docs/brand-protocol/brand-json)
+
+## 给广告主和代理商
+
+在更多平台上跑投放，而不必按比例扩大团队。
+
+启用 AdCP 的代理通过一个界面覆盖你的全部媒体合作方。同样的任务可以购买 CTV 库存、激活受众数据、管理创意，与你正在对接的平台无关。
+
+1. **阅读买方指南**。[AI 变现指南](/docs/sponsored-intelligence/monetizing-ai)说明这件事对品牌、代理商和中小企业如何运作。
+2. **查看平台支持**。看你的媒体合作方中谁支持 AdCP，或浏览[注册表](/docs/registry)。
+3. **用 Addie 试一次**。[问问 Addie](https://adcontextprotocol.org/chat)，让它带你走一遍协议，不需要写代码。
+4. **搭建你自己的代理**。不需要工程团队。[认证计划](/docs/learning/overview)教任何人用氛围编程（vibe coding）做出一个能工作的广告代理：描述你想要什么，AI 编程助手来写代码。
+5. **和你的团队衔接**。把[构建指南](/docs/building)和[客户端 SDK](/docs/building/schemas-and-sdks)分享给技术团队，开始集成。
+
+### 客户端库
+
+<CodeGroup>
+```bash JavaScript/TypeScript
+npm install @adcp/sdk
+```
+```bash Python
+pip install adcp
+```
+```bash Go
+go get github.com/adcontextprotocol/adcp-go/adcp
+```
+</CodeGroup>
+
+- **NPM**：[@adcp/sdk](https://www.npmjs.com/package/@adcp/sdk) | [GitHub](https://github.com/adcontextprotocol/adcp-client)
+- **PyPI**：[adcp](https://pypi.org/project/adcp/) | [GitHub](https://github.com/adcontextprotocol/adcp-client-python)
+- **Go**：[adcp-go](https://github.com/adcontextprotocol/adcp-go)
+
+## 开源示例
+
+[Prebid Sales Agent](https://github.com/prebid/salesagent) 是一个全栈卖方代理（Python 后端、TypeScript 协议层），带有 GAM 集成，由一个 Prebid 工作组构建。它是社区示例，不是受维护的参考实现。要搭建自己的代理，从[官方 SDK](/docs/building/schemas-and-sdks)和[技能文件](/docs/building/by-layer/L4/build-an-agent)开始。
+
+## 组织
+
+AdCP 是 [AgenticAdvertising.org](https://agenticadvertising.org) 的项目。这是一个由媒体方、平台、代理商和技术提供方组成的行业组织，推动 AI 广告的开放标准。成员加入 AgenticAdvertising.org，以开发和采用该协议。
+
+基金会治理（结构、投票类别、董事会组成、规范生命周期和行为规则）概述于仓库的 [CHARTER](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md)，并发布在 [agenticadvertising.org/governance](https://agenticadvertising.org/governance)。
+
+## 需要帮助？
+
+- 浏览文档
+- 在 [Slack 社区](/docs/community/joining-slack)提问
+- 邮件：support@adcontextprotocol.org
