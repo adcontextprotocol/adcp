@@ -92,7 +92,7 @@ An organization that owns and publishes audience or contextual data (e.g., Polk,
 The domain where a data provider publishes adagents.json `signals[]` definitions (e.g., `polk.com`). Used in `signal_ref` objects to reference provider-published signals: `{ "scope": "data_provider", "data_provider_domain": "polk.com", "signal_id": "likely_tesla_buyers" }`.
 
 **Daypart**
-Specific time-of-day segment for time-based advertising, commonly used in DOOH (e.g., morning_commute, evening_prime, overnight).
+Specific time-of-day segment for time-based advertising, commonly used in DOOH (e.g., morning_commute, evening_prime, overnight). In targeting, a `daypart_targets` entry names days of week and a whole-hour or (experimental) `HH:MM` window; see [Targeting](/docs/media-buy/advanced-topics/targeting#minute-resolution-dayparts-experimental).
 
 **Delegation Type** (`delegation_type`)
 Field in adagents.json that describes the commercial relationship between a publisher and an authorized agent: `direct` (publisher treats this as their direct sales path), `delegated` (agent manages monetization on the publisher's behalf), or `ad_network` (inventory sold through a network/package). Corresponds to `relationship` in brand.json for bilateral verification.

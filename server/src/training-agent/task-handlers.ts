@@ -2031,6 +2031,76 @@ function canonicalReportingTimezone(value: unknown): string | undefined {
   }
 }
 
+const DAYPART_CLOCK_TIME = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;
+const DAYPART_GRANULARITY_RANK = { hour: 0, quarter_hour: 1, minute: 2 } as const;
+type DaypartTimeGranularity = keyof typeof DAYPART_GRANULARITY_RANK;
+
+/** Shape errors for an entry's whole-hour vs HH:MM window fields, relative to
+ * the entry path. These are INVALID_REQUEST; capability matching never sees
+ * them. */
+function daypartWindowErrors(entry: Record<string, unknown>): Array<{ field: string; message: string }> {
+  const hasHour = entry.start_hour !== undefined || entry.end_hour !== undefined;
+  const hasTime = entry.start_time !== undefined || entry.end_time !== undefined;
+  if (hasHour && hasTime) {
+    return [{ field: '', message: 'start_hour/end_hour and start_time/end_time are mutually exclusive' }];
+  }
+  if (hasTime) {
+    const errors: Array<{ field: string; message: string }> = [];
+    for (const key of ['start_time', 'end_time'] as const) {
+      const clock = entry[key];
+      if (typeof clock !== 'string' || !DAYPART_CLOCK_TIME.test(clock)) {
+        errors.push({ field: `.${key}`, message: `${key}: must be a 24-hour HH:MM clock time` });
+      }
+    }
+    if (errors.length === 0 && entry.start_time === entry.end_time) {
+      errors.push({ field: '.end_time', message: 'end_time: must differ from start_time' });
+    }
+    return errors;
+  }
+  if (!hasHour) {
+    return [{ field: '', message: 'a window requires start_hour/end_hour or start_time/end_time' }];
+  }
+  const errors: Array<{ field: string; message: string }> = [];
+  for (const key of ['start_hour', 'end_hour'] as const) {
+    if (!Number.isInteger(entry[key])) {
+      errors.push({ field: `.${key}`, message: `${key}: required with its pair and must be an integer` });
+    }
+  }
+  return errors;
+}
+
+/** Finest granularity a validated entry needs. Whole-hour windows and HH:00
+ * clock times need hour; :15/:30/:45 need quarter_hour; anything else minute. */
+function daypartEntryGranularity(entry: Record<string, unknown>): DaypartTimeGranularity {
+  let needed: DaypartTimeGranularity = 'hour';
+  for (const key of ['start_time', 'end_time'] as const) {
+    const clock = entry[key];
+    if (typeof clock !== 'string') continue;
+    const minutes = Number(clock.slice(3));
+    if (minutes % 15 !== 0) return 'minute';
+    if (minutes !== 0) needed = 'quarter_hour';
+  }
+  return needed;
+}
+
+/** Granularity a support or requirement object names. Omission means hour; an
+ * unrecognized value is undefined so matching fails closed. */
+function daypartDeclaredGranularity(source: unknown): DaypartTimeGranularity | undefined {
+  if (!isRecord(source) || source.time_granularity === undefined) return 'hour';
+  return typeof source.time_granularity === 'string'
+    && Object.hasOwn(DAYPART_GRANULARITY_RANK, source.time_granularity)
+    ? source.time_granularity as DaypartTimeGranularity
+    : undefined;
+}
+
+/** True when the support object honors at least the required granularity. */
+function daypartGranularityAtLeast(support: unknown, requirement: unknown): boolean {
+  const supported = daypartDeclaredGranularity(support);
+  const required = daypartDeclaredGranularity(requirement);
+  return supported !== undefined && required !== undefined
+    && DAYPART_GRANULARITY_RANK[supported] >= DAYPART_GRANULARITY_RANK[required];
+}
+
 function validateDaypartTargets(value: unknown, pathLabel: string): TaskError[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length === 0) {
@@ -2056,6 +2126,13 @@ function validateDaypartTargets(value: unknown, pathLabel: string): TaskError[] 
         code: 'INVALID_REQUEST',
         message: `${entryPath}.timezone: must be inventory_local, UTC, or a valid IANA timezone identifier`,
         field: `${entryPath}.timezone`,
+      });
+    }
+    for (const windowError of daypartWindowErrors(entry)) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${entryPath}${windowError.field}: ${windowError.message}`,
+        field: `${entryPath}${windowError.field}`,
       });
     }
   }
@@ -7634,7 +7711,11 @@ function overlaySupportContains(
   if (support === true) {
     if (capabilityField === 'daypart_targets' && isRecord(requirement)) {
       const modes = requirement.timezone_modes;
-      return Array.isArray(modes) && modes.every(mode => mode === 'inventory_local');
+      return (
+        Array.isArray(modes)
+          ? modes.every(mode => mode === 'inventory_local')
+          : modes === undefined && requirement.time_granularity !== undefined
+      ) && daypartDeclaredGranularity(requirement) === 'hour';
     }
     return true;
   }
@@ -7651,6 +7732,11 @@ function overlaySupportContains(
     // or a containing frequency_cap_support after seller-wide inheritance.
     if (field === 'frequency_cap_support') {
       return packageFrequencyCapRequirementMatches({ overlay_support: support }, requiredValue);
+    }
+    // Time granularity is ordered, not a subset: finer support satisfies a
+    // coarser requirement, and an omitted support value means hour.
+    if (capabilityField === 'daypart_targets' && field === 'time_granularity') {
+      return daypartGranularityAtLeast(support, requirement);
     }
     return support[field] !== undefined
       && overlaySupportContains(support[field], requiredValue, field);
@@ -7679,17 +7765,23 @@ function concreteTargetingSupported(field: string, support: unknown, value: unkn
     && (
       !Array.isArray(value)
       || value.length === 0
-      || value.some(entry => !isRecord(entry) || !isValidDaypartTimezone(entry.timezone))
+      || value.some(entry => (
+        !isRecord(entry)
+        || !isValidDaypartTimezone(entry.timezone)
+        || daypartWindowErrors(entry).length > 0
+      ))
     )
   ) {
-    // Input validation owns malformed and unknown-zone errors; capability
+    // Input validation owns malformed, mixed-form, and unknown-zone errors; capability
     // matching must not turn them into UNSUPPORTED_FEATURE.
     return true;
   }
   if (support === true) {
     if (field !== 'daypart_targets') return true;
     return Array.isArray(value) && value.every(entry => (
-      isRecord(entry) && (entry.timezone === undefined || entry.timezone === 'inventory_local')
+      isRecord(entry)
+      && (entry.timezone === undefined || entry.timezone === 'inventory_local')
+      && daypartEntryGranularity(entry) === 'hour'
     ));
   }
   if (!isRecord(support)) return false;
@@ -7760,8 +7852,14 @@ function concreteTargetingSupported(field: string, support: unknown, value: unkn
     }
     if (field === 'daypart_targets') {
       const timezoneModes = support.timezone_modes;
+      const supportedGranularity = daypartDeclaredGranularity(support);
       return Array.isArray(timezoneModes) && value.every(entry => {
         if (!isRecord(entry)) return false;
+        // Never round a clock time to a coarser boundary: reject instead.
+        if (
+          supportedGranularity === undefined
+          || DAYPART_GRANULARITY_RANK[daypartEntryGranularity(entry)] > DAYPART_GRANULARITY_RANK[supportedGranularity]
+        ) return false;
         const timezone = entry.timezone ?? 'inventory_local';
         if (typeof timezone !== 'string') return false;
         const mode = timezone === 'inventory_local' ? 'inventory_local' : 'iana';
@@ -19594,7 +19692,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       : []),
     ...((ctx.tenantId === 'sales' || ctx.tenantId == null) ? ['measurement.core'] : []),
     ...(!isThreeZeroResponse && (ctx.tenantId === 'sales' || ctx.tenantId == null)
-      ? ['media_buy.audience_activation', 'media_buy.product_identity']
+      ? ['media_buy.audience_activation', 'media_buy.product_identity', 'media_buy.daypart_granularity']
       : []),
   ];
   const supportedCreativeFormats = includeThreeOneFields(ctx)
