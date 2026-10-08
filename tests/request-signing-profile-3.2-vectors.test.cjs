@@ -304,6 +304,12 @@ describe('AdCP 3.2 request-signing corpus covers content-digest (adcp#7733)', ()
     }
   });
 
+  it('carries the Host header that the 031 fault and the 015 guard depend on', () => {
+    const host = id => profileAll.find(e => e.id === id).vector.request.headers.Host;
+    assert.equal(host('profile-3.2/negative/031-malformed-host-authority'), '::1');
+    assert.equal(host('profile-3.2/positive/015-bracketed-ipv6-host-with-port'), '[2001:db8::1]:8443');
+  });
+
   it('gives every step-0/1 and header/authority mirror a single fault: real signature over the base as sent, digest covered', () => {
     const step01 = generated.filter(e => e.id.includes('/negative/') && MIRRORED_PRECHECK.has(slugKey(e.id)));
     assert.deepEqual(

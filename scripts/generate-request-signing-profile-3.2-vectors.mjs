@@ -40,7 +40,7 @@
  *   is not a second fault; 019 is a real Signature whose Signature-Input was
  *   stripped. 011 (unparseable Signature-Input, so no base exists) keeps the
  *   placeholder. Unsigned vectors (001, 027, 028) stay unsigned and carry only
- *   a correct Content-Digest. Duplicated members (023, 029, 030) repeat the
+ *   a correct Content-Digest. Duplicated members (021, 023, 029, 030) repeat the
  *   same correct value so that keeping either member finds no second fault.
  * - Per-definition overrides: `paramsFrom` reads sig-params from another
  *   legacy vector (019 has no Signature-Input of its own), `keepHeaders`
@@ -296,11 +296,8 @@ const DEFINITIONS = [
   {
     from: 'negative/021-duplicate-signature-input-label.json',
     name: 'AdCP 3.2 Signature-Input header declares label \'sig1\' twice (malformed structured dictionary, content-digest covered)',
-    dupLabel: {
-      components: ['@method', '@target-uri'],
-      nonce: 'AAAAAAAAAAAAAAAAAAAAAA',
-    },
-    comment: 'The first sig1 member covers content-digest and its Signature is a valid Ed25519 signature over expected_signature_base, so the duplicate label is the only fault. The second sig1 member keeps the root vector\'s weaker component set, so a verifier that silently keeps one member accepts or rejects depending on which one it keeps; the only conformant outcome is rejecting the duplicate at step 1.',
+    dupLabel: true,
+    comment: 'The Signature-Input header repeats the same sig1 member twice, byte for byte; it covers content-digest and its Signature is a valid Ed25519 signature over expected_signature_base. A verifier that keeps either member therefore verifies the request, so the duplicate label is the only fault. (The root vector\'s second member is weaker; the 3.2 mirror repeats the first so that no second fault is reachable by keeping the last one.)',
   },
   {
     from: 'negative/022-multi-valued-content-type.json',
@@ -558,10 +555,8 @@ function buildVector(def) {
     }
     if (def.duplicateSignature) request.headers.Signature += `, sig1=:${signature}:`;
     if (def.dupLabel) {
-      // A second member under the SAME label; the Signature header still carries one member.
-      const dupParams = new Map(params);
-      dupParams.set('nonce', def.dupLabel.nonce);
-      request.headers['Signature-Input'] += `, sig1=${serializeParams(def.dupLabel.components, dupParams)}`;
+      // A second member under the SAME label, identical to the first; the Signature header carries one member.
+      request.headers['Signature-Input'] += `, sig1=${serialized}`;
     }
     if (kind === 'signature-only') delete request.headers['Signature-Input'];
   }
