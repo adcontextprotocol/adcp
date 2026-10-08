@@ -98,6 +98,20 @@
             "$ref": "/schemas/core/signal-coverage-forecast.json",
             "description": "Optional forecast-shaped signal availability guidance. When present, this is authoritative for signal-level discovery coverage. Use this to disclose the denominator, bucket semantics, not-present bucket, aggregate present bucket, and per-value coverage distribution for the signal."
           },
+          "signal_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ready",
+              "failed"
+            ],
+            "description": "Construction readiness of this signal. 'pending': the signal agent is still building the segment (for example, a custom or lookalike segment derived from a seed audience). 'ready': the segment is built and can be activated or targeted. 'failed': construction failed and this signal will not become ready. Absent means 'ready', so agents that do not build segments on demand are unchanged. Agents MUST NOT report is_live: true or return an activation_key for a signal that is not 'ready'. Buyers SHOULD NOT call activate_signal for, or target in create_media_buy, a signal whose signal_status is 'pending' or 'failed'. Distinct from the response's top-level status discriminator. See docs/signals/tasks/get_signals for the re-read and Submitted-arm rules."
+          },
+          "source_audience_id": {
+            "type": "string",
+            "description": "Seed audience this signal was derived from, for example a lookalike or custom segment built from a first-party seed. When present, this is the audience_id the buyer synced with sync_audiences (typically audience_type 'lookalike_seed') on the same account, at the agent that holds the seed. Lineage only: AdCP does not transport seed membership through get_signals, and the audience remains governed by its sync_audiences consent and residency terms. Agents MUST NOT return it to a caller that did not supply an account, or in a response with cache_scope 'public', because the value is buyer-scoped.",
+            "x-entity": "audience"
+          },
           "deployments": {
             "type": "array",
             "description": "Array of deployment targets",

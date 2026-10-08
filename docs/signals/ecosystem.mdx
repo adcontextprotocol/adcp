@@ -402,6 +402,8 @@ The CDP operates a signal agent that serves brand-specific custom segments. Each
 
 The signal agent returns only segments authorized for that brand's account. This maps naturally to how CDPs already work — brand-scoped audience management.
 
+When the segment is built from a buyer's seed audience, each returned signal can carry `signal_status` (`pending` while it is being built) and `source_audience_id` (the seed synced via `sync_audiences`). See [Custom segments built from a seed audience](/docs/signals/tasks/get_signals#custom-segments-built-from-a-seed-audience).
+
 ### Approach 2: Brand publishes definitions, CDP hosts agent
 
 The brand lists their custom signals in their own `adagents.json` (at `acme-brand.example/.well-known/adagents.json`) with the CDP's signal agent as an authorized agent. This gives the brand transparency and control over what's published.
