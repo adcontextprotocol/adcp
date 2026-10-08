@@ -435,9 +435,9 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
           query: async (sql: string, values?: unknown[]) => {
             // This test proves concurrent recovery ordering, including deferred
             // COMMIT checks. The separate lock-failure test keeps production
-            // bounds; these transactions need time for DB-visible barriers.
-            if (sql.startsWith('SET LOCAL lock_timeout =')) return connection.query("SET LOCAL lock_timeout = '5s'");
-            if (sql.startsWith('SET LOCAL statement_timeout =')) return connection.query("SET LOCAL statement_timeout = '5s'");
+            // bounds; leave headroom beyond the 5s DB observation window.
+            if (sql.startsWith('SET LOCAL lock_timeout =')) return connection.query("SET LOCAL lock_timeout = '15s'");
+            if (sql.startsWith('SET LOCAL statement_timeout =')) return connection.query("SET LOCAL statement_timeout = '15s'");
             if (sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN SHARE ROW EXCLUSIVE MODE') {
               if (!standalone) {
                 intentRecoveryPid = pid;
