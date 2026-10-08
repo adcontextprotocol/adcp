@@ -1403,7 +1403,7 @@
         },
         "demographic-system": {
           "$ref": "/schemas/enums/demographic-system.json",
-          "description": "Audience measurement systems for demographic notation (nielsen, barb, agf, oztam, mediametrie, custom)"
+          "description": "Audience measurement systems for demographic notation (nielsen, nielsen_audio, barb, agf, oztam, mediametrie, nmo, videoamp, custom)"
         },
         "reach-unit": {
           "$ref": "/schemas/enums/reach-unit.json",

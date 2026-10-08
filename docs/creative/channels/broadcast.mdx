@@ -15,6 +15,14 @@ Linear television uses `video_hosted`; radio uses `audio_hosted`. Spot duration,
     "width": 1920,
     "height": 1080,
     "containers": ["mxf"],
+    "video_codecs": ["mpeg2", "avc_intra", "xavc"],
+    "audio_codecs": ["pcm"],
+    "loudness": {
+      "standard": "ebu_r128",
+      "target_lufs": -23,
+      "tolerance_db": 0.5,
+      "max_true_peak_dbfs": -1
+    },
     "slots": [{ "asset_group_id": "video_main", "asset_type": "video", "required": true }]
   }
 }
@@ -39,5 +47,34 @@ Linear television uses `video_hosted`; radio uses `audio_hosted`. Spot duration,
 ```
 
 Broadcast systems generally do not fire web trackers. Reconciliation uses traffic logs, affidavits, and audience currencies declared on the product/package. Each cut should carry its own traffic identifier.
+
+## Delivery files
+
+Broadcast traffic systems ingest a mezzanine file, not a web-playable MP4. A `video_hosted` option narrows to that file with `containers`, `video_codecs`, and `audio_codecs`.
+
+| Field | Broadcast values |
+|-------|------------------|
+| `containers` | `mxf` (SMPTE Material Exchange Format) |
+| `video_codecs` | `mpeg2` (MPEG-2 video, typically 4:2:2 in broadcast delivery, the video essence of XDCAM HD422), `avc_intra` (AVC-Intra), `xavc` (XAVC) |
+| `audio_codecs` | `pcm` |
+
+The codec slugs name codec families, not recording formats or profiles. `avc_intra` and `xavc` are H.264-based but distinct from `h264`: a product that accepts `h264` does not thereby accept them. Wrapper (`containers`) and bitrate bounds are declared separately; chroma subsampling, profile, and scan type are not machine-declarable on `video_hosted` yet, so a seller states them in the product description. Other mezzanine codecs (for example DNxHD) are not yet in the enum.
+
+### Loudness (experimental)
+
+`loudness` states the audio loudness a delivered spot MUST meet. It is optional and [experimental](/docs/reference/experimental-status) in AdCP 3.3, so sellers that populate it list `creative.broadcast_loudness` in `experimental_features`.
+
+| Field | Meaning |
+|-------|---------|
+| `standard` | `ebu_r128` (EBU R 128, Europe), `atsc_a85` (ATSC A/85, US), or `custom` |
+| `target_lufs` | Target integrated loudness measured per ITU-R BS.1770, negative LUFS/LKFS (typical: -23 for R 128, -24 for A/85) |
+| `tolerance_db` | Permitted deviation from `target_lufs` in LU (typical: 0.5 for R 128, 2 for A/85) |
+| `max_true_peak_dbfs` | Maximum true-peak level in dBTP (typical: -1 for R 128, -2 for A/85) |
+
+The three numeric fields carry the same semantics as `loudness_lufs`, `loudness_tolerance_db`, and `true_peak_dbfs` on [`audio_hosted`](/docs/creative/channels/audio) and on the legacy video asset requirements, grouped under one object because video declarations also name the `standard`. `standard` labels the requirement; the numeric fields are what the receiver checks, and `standard` alone does not imply numeric values. Declare all three numeric fields when the requirement is to be checked.
+
+## Audience currency
+
+Linear television sells on a measured audience currency, declared on the product's pricing and forecast as `demographic_system` plus a `demographic` string. `demographic_system` says how the demographic is written; the measurement provider is `measurement_source`. The Netherlands uses `nmo` (NMO, Nationaal Media Onderzoek): age bands, optionally prefixed with a gender letter, for example `25-67`, `20-54`, `M25-54`, or `V25-54` (V is vrouwen, women). The exact NMO notation is still to be confirmed with NMO members, so treat the strings above as provisional.
 
 See [Video](/docs/creative/channels/video), [Audio](/docs/creative/channels/audio), and [Creative manifests](/docs/creative/creative-manifests).
