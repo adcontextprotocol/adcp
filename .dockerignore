@@ -49,6 +49,8 @@ dist/docs/*
 !dist/docs/3.2.1/**
 !dist/docs/3.2.2
 !dist/docs/3.2.2/**
+!dist/docs/3.2.3
+!dist/docs/3.2.3/**
 !dist/schemas
 dist/schemas/latest
 dist/schemas/v*

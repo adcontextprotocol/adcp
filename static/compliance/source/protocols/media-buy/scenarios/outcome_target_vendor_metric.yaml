@@ -5,6 +5,9 @@ title: "Seller plans a vendor-measured outcome target"
 category: media_buy_seller
 summary: "Verifies criteria.outcome_target with a vendor_metric goal: the seller answers a volume with a forecast whose points carry the goal's (vendor, metric_id) in vendor_metric_values[] and metrics.spend, binds the goal and its reporting commitment on every purchase, and answers a cost target through commercial_terms.bidding.cost_per."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - request_proposals
 

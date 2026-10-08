@@ -55,7 +55,7 @@ test('evaluator capability contract grades individual experimental feature decla
       })),
     }],
   };
-  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
 
   for (const features of [[], ['other.feature'], ['creative.evaluator'], ['other.feature', 'creative.evaluator']]) {
     const capabilities = {
@@ -230,7 +230,7 @@ test('inventory-list storyboards skip sellers that declare property-list support
       equals: true,
     });
 
-    const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
     const result = await runStoryboard('https://agent.example/mcp', storyboard, {
       _profile: {
         tools,
@@ -274,7 +274,7 @@ test('inventory-list no-match requires canonical rejection and fails accepted bu
       })),
     })),
   };
-  const tools = ['get_adcp_capabilities', 'create_media_buy'];
+  const tools = ['get_adcp_capabilities', 'create_media_buy', 'comply_test_controller'];
   const baseOptions = {
     agentTools: tools,
     context: {
@@ -533,7 +533,7 @@ test('billing gate skips phases when account capabilities are absent', async () 
   );
 
   const dispatchedTasks = [];
-  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
   const result = await runStoryboard('https://agent.example/mcp', storyboard, {
     _profile: {
       tools,
@@ -732,7 +732,7 @@ test('creative-library storyboards fail closed before tool execution', async () 
       assert.deepEqual(storyboard.requires_all_capabilities, item.gates);
     }
 
-    const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
     const librarylessCapabilities = structuredClone(item.capabilities);
     librarylessCapabilities.creative = { has_creative_library: false };
     const libraryless = await runStoryboard('https://agent.example/mcp', storyboard, {
@@ -854,7 +854,7 @@ test('product refinement requires the advertised refine buying mode', async () =
     contains: 'refine',
   });
 
-  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
   const unsupported = await runStoryboard('https://agent.example/mcp', storyboard, {
     _profile: {
       tools,
@@ -893,7 +893,7 @@ test('advanced delivery reporting dispatches wholesale discovery only to opted-i
       steps: [{ ...discovery, context_outputs: [], validations: [] }],
     }],
   };
-  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
 
   for (const buyingModes of [undefined, ['brief'], ['brief', 'wholesale']]) {
     const requests = [];
@@ -944,7 +944,7 @@ test('proposal finalize skips unsupported replay while still executing the commi
         })),
       })),
   };
-  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
 
   for (const [supported, brokenReplay] of [[false, false], [true, false], [true, true]]) {
     const finalizedRequests = [];
@@ -1068,7 +1068,7 @@ test('measurement acceptance is split from the universal rejection scenario', as
   assert.equal(capability['x-added-in'], '3.2.0');
   assert.match(capability.description, /TERMS_REJECTED/);
 
-  const tools = ['get_adcp_capabilities', ...accepted.required_tools];
+  const tools = ['get_adcp_capabilities', ...accepted.required_tools, 'comply_test_controller'];
   const unsupported = await runStoryboard('https://agent.example/mcp', accepted, {
     _profile: {
       tools,
