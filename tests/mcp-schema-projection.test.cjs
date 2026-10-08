@@ -101,9 +101,11 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // comply_test_controller request, which already sat at 1_249_930 bytes.
 // Experimental Product.execution_requirements (#7763) reaches it through the
 // seeded Product and brings it to ~1_260_400 bytes. DOOH placement location and
-// inventory summary fields (#7416) bring it to ~1_267_800 bytes; the headroom
-// covers the additive 3.3 Product fields still in review.
-const PARITY_COMPILE_LIMIT = 1_280_000;
+// inventory summary fields (#7416) bring it to ~1_267_800 bytes. Adding
+// operator_unit.id join keys to the advanced_delivery_reporting storyboard
+// (#8018) brings it to ~1_282_291 bytes; the headroom covers additive
+// 3.3 Product fields and future controller-seeded storyboard expansions.
+const PARITY_COMPILE_LIMIT = 1_295_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
