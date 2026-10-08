@@ -1199,6 +1199,10 @@ Seller-level conversion tracking capabilities. Declares what the seller supports
 | `supported_action_sources`     | string[] | Action sources this seller accepts events from.                                                                                                                                                                                             |
 | `attribution_windows`          | object[] | Available attribution windows. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via `attribution_window` on optimization goals.                                   |
 
+#### event_source_archive
+
+`media_buy.event_source_archive: true` declares that the seller supports the per-item `archived` field on [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources#archiving-an-event-source). A seller without it MUST reject a request that sends `archived` with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) rather than ignore it. When `false` or absent, buyers fall back to `delete_missing` or seller-side tooling.
+
 #### portfolio
 
 Inventory portfolio information. Media-buy sellers SHOULD declare both routing

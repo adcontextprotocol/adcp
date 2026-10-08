@@ -20,7 +20,7 @@
       "properties": {
         "event_sources": {
           "type": "array",
-          "description": "Results for each event source, including both synced and seller-managed sources on the account",
+          "description": "Results for each event source, including both synced and seller-managed sources on the account. Archived sources are included, flagged `archived: true`.",
           "items": {
             "type": "object",
             "properties": {
@@ -102,9 +102,14 @@
                   "updated",
                   "unchanged",
                   "deleted",
+                  "archived",
                   "failed"
                 ],
-                "description": "Action taken for this event source"
+                "description": "Action taken for this event source. `archived` reports a source newly archived by an `archived: true` request item. Undoing an archive reports `updated`. Archiving an already archived source, or undoing an archive on an active one, reports `unchanged`. Sellers return `archived` only to callers that sent `archived`. An archived source that this call did not change, such as in a discovery-only call, reports `unchanged`."
+              },
+              "archived": {
+                "type": "boolean",
+                "description": "Whether the source is archived. Archived sources keep their configuration but stop accepting events and stop resolving for new optimization goals. Sellers MAY omit it for sources that are not archived."
               },
               "health": {
                 "$ref": "/schemas/core/event-source-health.json",

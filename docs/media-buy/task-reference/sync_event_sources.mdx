@@ -105,6 +105,7 @@ asyncio.run(main())
 | `action_source` | [ActionSource](/docs/media-buy/conversion-tracking/#action-sources) | No | Flat source category for compatibility (`website`, `app`, `system_generated`, etc.). Pair with `surface` when the flat value is too coarse. |
 | `allowed_domains` | string[] | No | Domains authorized to send events for this source |
 | `surface` | [EventSurface](/docs/media-buy/conversion-tracking/#event-surfaces) | No | Structured surface this source represents, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store |
+| `archived` | boolean | No | `true` archives the source, `false` undoes the archive. When present it is the item's only change: every field except `event_source_id` is ignored. Requires `media_buy.event_source_archive`. See [Archiving an event source](#archiving-an-event-source). |
 
 ## Response
 
@@ -122,7 +123,8 @@ asyncio.run(main())
 
 - All request fields
 - `seller_id` - Seller-assigned identifier for this event source
-- `action` - What happened: `created`, `updated`, `unchanged`, `deleted`, `failed`
+- `action` - What happened: `created`, `updated`, `unchanged`, `deleted`, `archived`, `failed`
+- `archived` - `true` when the source is archived. Archived sources are included in every response, discovery-only calls included
 - `action_source` - Type of event source (website pixel, app SDK, etc.)
 - `surface` - Structured surface this source represents, when the flat `action_source` is too coarse
 - `managed_by` - Who manages this source: `buyer` or `seller`
@@ -446,6 +448,37 @@ asyncio.run(main())
 
 </CodeGroup>
 
+### Archiving an event source
+
+`delete_missing` is the only way to remove sources in bulk, and it cannot be undone. To take one source out of use and keep its configuration, send `archived: true` on that item. To bring it back, send `archived: false`.
+
+```json test=false
+{
+  "account": { "account_id": "acct_12345" },
+  "event_sources": [
+    { "event_source_id": "web_pixel", "archived": true }
+  ]
+}
+```
+
+The response reports `action: "archived"` and echoes `archived: true`. This and the request above are illustrative fragments, so both fences are `test=false`:
+
+```json test=false
+{
+  "event_sources": [
+    { "event_source_id": "web_pixel", "action": "archived", "archived": true, "managed_by": "buyer" }
+  ]
+}
+```
+
+- **Only change.** When `archived` is present on an item, every other field except `event_source_id` is ignored, the same way [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) treats `delete: true`. To change both, make two separate calls. Buyers SHOULD omit `archived` unless changing archive state, because a seller ignores the rest of an item that carries it, `archived: false` included.
+- **While archived.** The source keeps its configuration and seller-side identity. It stops accepting events from [`log_event`](/docs/media-buy/task-reference/log_event) and stops resolving for new optimization goals.
+- **Reversal.** Undoing an archive reports `updated`, since it changes one field of the source.
+- **Idempotent.** Archiving an archived source, or undoing an archive on an active one, reports `unchanged`.
+- **Discovery.** Archived sources stay in every response, flagged `archived: true`, so buyers auditing an account can find and restore them and pagination stays stable. A source this call did not change reports `unchanged`. Filter on `archived` client-side.
+- **`delete_missing`.** Archived sources are not removed by `delete_missing`, so a buyer that leaves an archived source out of its desired set does not lose the configuration it can restore.
+- **Capability gate.** Sellers declare `media_buy.event_source_archive: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). A seller without it MUST reject the whole request with an operation-level [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) error and apply none of its items, so a buyer never mistakes an ignored field for an archive. Sellers return `action: "archived"` only to callers that sent `archived`, which keeps clients that validate `action` strictly against the older enum working. A seller that predates this field may ignore it and report `updated` or `unchanged`, so buyers check the capability first and confirm the echoed `archived: true`.
+
 ## Setup Instructions
 
 The response includes setup details for each event source. The `setup` object tells you how to activate the source:
@@ -462,7 +495,7 @@ The response includes setup details for each event source. The `setup` object te
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found) | Account does not exist | Verify `account_id` from account setup |
-| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | An event type is not included in the seller's `supported_event_types` | Choose a supported event type or another seller |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | An event type is not included in the seller's `supported_event_types`, or the request sends `archived` to a seller without `media_buy.event_source_archive` | Choose a supported event type or another seller; check [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) before archiving |
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | An `event_source_id` is duplicated in the request | Use unique source IDs |
 | [`RATE_LIMITED`](/docs/building/verification/compliance-catalog#error-code-rate-limited) | Too many sync requests | Wait and retry with exponential backoff |
 
