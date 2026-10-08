@@ -49,7 +49,7 @@ Webhook v1 retains this legacy unpadded Base64URL encoding throughout AdCP 3.x; 
 If you're using the `@adcp/sdk` library, this entire flow is handled automatically. As a **buyer**, configure `webhookUrlTemplate` and your agent URL on the client; `push_notification_config` is injected into every outgoing task call, and incoming webhooks are verified against the seller's JWKS automatically. As a **seller emitting webhooks**, publish a signing JWK at your brand.json `agents[]` entry. New signers use `adcp_use: "request-signing"`; if you want webhook-only key material, publish a second `request-signing` JWK with a distinct `kid`.
 
 :::warning Legacy HMAC fallback (deprecated)
-Buyers integrating with receivers that have not yet adopted the RFC 9421 webhook profile MAY opt into the legacy HMAC-SHA256 scheme by populating `push_notification_config.authentication.credentials`. That path is deprecated and removed in AdCP 4.0 — see [Legacy HMAC-SHA256 fallback](#legacy-hmac-sha256-fallback-deprecated) below. Because the inbound request that registers the webhook is typically not 9421-signed in 3.0, the `authentication` block is susceptible to on-path strip/inject — see [Downgrade and injection resistance](/docs/building/by-layer/L1/security#webhook-callbacks) for the operational mitigations.
+Buyers integrating with receivers that have not yet adopted the RFC 9421 webhook profile MAY ask the seller's operator to enable the legacy HMAC-SHA256 scheme for them. The seller's `legacy_hmac_fallback` capability and onboarding record select the mode, and `push_notification_config.authentication.credentials` only delivers the secret. A seller with `legacy_hmac_fallback: false` rejects a registration carrying it with `webhook_hmac_not_supported`. That path is deprecated and removed in AdCP 4.0 — see [Legacy HMAC-SHA256 fallback](#legacy-hmac-sha256-fallback-deprecated) below. Because the inbound request that registers the webhook is typically not 9421-signed in 3.0, the `authentication` block is susceptible to on-path strip/inject — see [Downgrade and injection resistance](/docs/building/by-layer/L1/security#webhook-callbacks) for the operational mitigations.
 :::
 
 ## Naming: snake_case vs camelCase
@@ -416,7 +416,7 @@ The `created`/`expires`/`nonce` sig-params enforce a 5-minute max validity windo
 The HMAC-SHA256 scheme below is a compatibility affordance for 3.x only. New integrations SHOULD omit `push_notification_config.authentication` and use the [9421 webhook profile](#signature-verification) above. Sellers MAY decline to support the legacy scheme.
 :::
 
-Buyers can opt into HMAC-SHA256 by populating `push_notification_config.authentication.credentials`. When present, the seller signs with HMAC-SHA256 using a shared secret and includes a timestamp for replay protection.
+Buyers whose seller has legacy HMAC enabled for them supply the secret in `push_notification_config.authentication.credentials`. In that mode the seller signs with HMAC-SHA256 using a shared secret and includes a timestamp for replay protection.
 
 **Configuration (legacy):**
 ```json

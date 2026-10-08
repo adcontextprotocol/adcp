@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/request-signing-error-code.json",
   "title": "Request Signing Error Code",
-  "description": "Stable request-signing transport error vocabulary returned in WWW-Authenticate: Signature error=\"<code>\" and surfaced by SDK verifiers as typed errors. These lowercase transport-profile codes are separate from the uppercase task error vocabulary in error-code.json. SDKs MUST consume enumMetadata for recovery classification instead of deriving behavior from code spelling or parsing prose.",
+  "description": "Stable request-signing transport error vocabulary returned in WWW-Authenticate: Signature error=\"<code>\" (webhook_hmac_not_supported is the exception: an HTTP 400 answer to a webhook registration) and surfaced by SDK verifiers as typed errors. These lowercase transport-profile codes are separate from the uppercase task error vocabulary in error-code.json. SDKs MUST consume enumMetadata for recovery classification instead of deriving behavior from code spelling or parsing prose.",
   "type": "string",
   "enum": [
     "request_signature_brand_json_url_missing",
@@ -33,7 +33,8 @@
     "request_signature_replayed",
     "request_signature_rate_abuse",
     "request_signature_jwks_unavailable",
-    "request_signature_jwks_untrusted"
+    "request_signature_jwks_untrusted",
+    "webhook_hmac_not_supported"
   ],
   "enumDescriptions": {
     "request_signature_brand_json_url_missing": "The signer capabilities did not provide a usable HTTPS identity.brand_json_url. Recovery: terminal (the signer operator must publish a valid trust-root URL; do not auto-retry).",
@@ -60,11 +61,12 @@
     "request_signature_revocation_stale": "The verifier could not establish sufficiently fresh revocation state and therefore blocked new signed requests. Recovery: terminal (surface to the verifier operator; callers must not loop until the verifier refreshes its trust state).",
     "request_signature_invalid": "Cryptographic verification of the signature failed. Recovery: correctable (recompute the canonical signature base and sign with the private key matching the published JWK).",
     "request_signature_digest_mismatch": "The signed content-digest did not match the received request body bytes. Recovery: correctable (recompute the digest over the exact transmitted bytes and re-sign).",
-    "request_body_malformed": "The body contained duplicate object keys, failed the strict body-integrity parse, or (for an A2A invocation-carrying request) did not resolve to exactly one AdCP operation. Recovery: correctable (emit an unambiguous JSON body with exactly one invocation DataPart, then sign it again if the request is signed).",
+    "request_body_malformed": "The body contained duplicate object keys, failed the strict body-integrity parse, was a JSON array (batch), or (for an A2A invocation-carrying request) did not resolve to exactly one AdCP operation. Recovery: correctable (emit an unambiguous JSON body with exactly one invocation DataPart, then sign it again if the request is signed).",
     "request_signature_replayed": "The verifier had already seen the keyid and nonce within the replay window. Recovery: correctable (reconcile the prior attempt, then use a fresh nonce when a new request is actually required).",
     "request_signature_rate_abuse": "The per-keyid replay-cache entry cap was reached. Recovery: terminal (stop automated requests and alert both operators; this can indicate a compromised key or abusive signer).",
     "request_signature_jwks_unavailable": "The verifier could not fetch the signer JWKS because of a transient network or service failure. Recovery: transient (retry with bounded exponential backoff).",
-    "request_signature_jwks_untrusted": "The JWKS URL or resolved network destination failed SSRF and trust-boundary validation. Recovery: terminal (the signer operator must publish a trusted HTTPS JWKS location)."
+    "request_signature_jwks_untrusted": "The JWKS URL or resolved network destination failed SSRF and trust-boundary validation. Recovery: terminal (the signer operator must publish a trusted HTTPS JWKS location).",
+    "webhook_hmac_not_supported": "A webhook registration carried authentication.credentials, but the seller's legacy_hmac_fallback is false or its onboarding record selects 9421 for the counterparty. Returned as HTTP 400 without a WWW-Authenticate challenge. Recovery: correctable (omit authentication and register for 9421 webhook signing, or have the seller operator enable legacy HMAC for the counterparty)."
   },
   "enumMetadata": {
     "$comment": "Normative recovery classification for request-signing transport errors. SDKs MUST consume this block instead of parsing enumDescriptions or inferring from code names. correctable means the signer can change the request or credential before retrying; transient means bounded automatic retry with backoff; terminal means stop autonomous retries and surface to an operator.",
@@ -96,6 +98,7 @@
     "request_signature_replayed": { "recovery": "correctable", "suggestion": "reconcile the prior attempt and use a fresh nonce only when a new request is required" },
     "request_signature_rate_abuse": { "recovery": "terminal", "suggestion": "stop automated requests and alert operators; investigate a compromised key or abusive signer" },
     "request_signature_jwks_unavailable": { "recovery": "transient", "suggestion": "retry with bounded exponential backoff" },
-    "request_signature_jwks_untrusted": { "recovery": "terminal", "suggestion": "surface to the signer operator to publish a trusted HTTPS JWKS location that passes SSRF validation" }
+    "request_signature_jwks_untrusted": { "recovery": "terminal", "suggestion": "surface to the signer operator to publish a trusted HTTPS JWKS location that passes SSRF validation" },
+    "webhook_hmac_not_supported": { "recovery": "correctable", "suggestion": "omit authentication from the registration and verify RFC 9421 webhook signatures, or ask the seller operator to enable legacy HMAC for this counterparty" }
   }
 }

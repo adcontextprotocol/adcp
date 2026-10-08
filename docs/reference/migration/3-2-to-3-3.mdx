@@ -1,7 +1,7 @@
 ---
 title: Migrating from 3.2 to 3.3
 sidebarTitle: 3.2 to 3.3
-description: "Role-based migration checklist for adopting the AdCP 3.3 beta while preserving 3.2 compatibility: two behavior tightenings, optional new declarations, and no deprecations."
+description: "Role-based migration checklist for adopting the AdCP 3.3 beta while preserving 3.2 compatibility: behavior tightenings, optional new declarations, and one narrowed deprecated trigger."
 "og:title": "AdCP — Migrating from 3.2 to 3.3"
 ---
 
@@ -13,7 +13,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 
 3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
-Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). Everything else is an optional declaration or a clarification.
+Three changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account), [signature verification tightens](#signature-verification-tightens), and [webhook mode selection and batch bodies](#webhook-signing-mode-and-batch-bodies). Everything else is an optional declaration or a clarification.
 
 For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3). For prerelease artifacts and SDK timing, use the [3.3 beta program](/docs/reference/3-3-beta).
 
@@ -60,6 +60,15 @@ Request signing, webhook signing, governance JWS `iss`, designated-task response
 
 TMP keeps its own publisher-key model. Verifiers take the publishers that apply from their own record of the media buy, never from the payload.
 
+### Webhook signing mode and batch bodies
+
+Webhook-signing mode is selected by the seller's `legacy_hmac_fallback` capability and its per-counterparty onboarding record, not by a field in the registering request's body. This finishes the removal of the `authentication` block, already deprecated for removal in 4.0, as a mode trigger.
+
+- **Sellers with `legacy_hmac_fallback: false`.** A registration carrying an `authentication` block is rejected with the new `webhook_hmac_not_supported` (HTTP 400, no `WWW-Authenticate` challenge) instead of `request_signature_required`. Return it only to an authenticated caller.
+- **Sellers with `legacy_hmac_fallback: true`.** Without an onboarding record, 3.2 behavior stays valid through 3.x, including the signature requirement on a registration that carries `authentication` (condition (b)). Record the mode per counterparty at onboarding; a record always wins over the block. Condition (b) is removed in 4.0.
+- **Buyers.** Omit `authentication` unless the seller's operator has enabled legacy HMAC for you. Compare a received webhook's signing mode with the mode you recorded at onboarding.
+- **Batch bodies.** A JSON array body, signed or unsigned, is rejected with `request_body_malformed` (SHOULD in 3.2.x, MUST from 3.3). A client that batches JSON-RPC messages, which older MCP protocol versions allowed, sends one message per request.
+
 ## Clarifications
 
 These restate existing rules and need no wire change.
@@ -86,7 +95,7 @@ Optional. Cooperating `get_products` integrations can carry an opportunity bindi
 
 ## Deprecations
 
-None. 3.3 deprecates no stable field, task, or enum value. Existing 3.2 deprecations keep their published removal windows.
+3.3 deprecates no stable field, task, or enum value. It narrows one already-deprecated item: the per-request `authentication` block as a webhook-signing mode trigger, and condition (b) of `request_signature_required` that depends on it, are removed in 4.0 with the block itself. A deprecation window does not reset when a deprecated feature is modified, so the published removal window for `authentication` applies. Other existing 3.2 deprecations keep their published removal windows.
 
 ## Compliance and grading
 

@@ -213,7 +213,7 @@ Differences from the root vector format:
 - **Bindings.** `negative/022` uses the A2A HTTP+JSON binding (`POST …/message:send`), which has no JSON-RPC `method`; the other vectors use the JSON-RPC binding.
 - **Deriving the operation.** For these vectors the harness resolves the operation from the body per the resolution rule, not from the URL (step 5 of "Running vectors against an implementation" describes the root vectors).
 
-`warn_for` and `supported_for` use the same resolved operation and lookup as `required_for` and have no separate vectors. Not covered by static vectors, and therefore by the checklist text alone: the `message.taskId` continuation binding and the gate-to-dispatcher hand-off, which need a stateful agent harness, and JSON-RPC batch bodies, which wait on [#7565](https://github.com/adcontextprotocol/adcp/issues/7565).
+`warn_for` and `supported_for` use the same resolved operation and lookup as `required_for` and have no separate vectors. Not covered by static vectors, and therefore by the checklist text alone: the `message.taskId` continuation binding and the gate-to-dispatcher hand-off, which need a stateful agent harness. Vector `023` covers JSON-RPC batch bodies, which are rejected with `request_body_malformed` ([#7565](https://github.com/adcontextprotocol/adcp/issues/7565)).
 
 ## Test keypairs
 
