@@ -1025,7 +1025,7 @@
         },
         "daypart-target": {
           "$ref": "/schemas/core/daypart-target.json",
-          "description": "A time window for daypart targeting with days of week and hour range"
+          "description": "A time window for daypart targeting with days of week and a whole-hour or (experimental) HH:MM time-of-day range"
         },
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
@@ -1597,6 +1597,10 @@
         "daypart-timezone-mode": {
           "$ref": "/schemas/enums/daypart-timezone-mode.json",
           "description": "Supported clock mode for daypart targeting"
+        },
+        "daypart-time-granularity": {
+          "$ref": "/schemas/enums/daypart-time-granularity.json",
+          "description": "Finest time-of-day resolution a product honors for daypart targeting (experimental)"
         },
         "distance-unit": {
           "$ref": "/schemas/enums/distance-unit.json",

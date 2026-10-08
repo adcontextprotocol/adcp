@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/daypart-target.json",
   "title": "Daypart Target",
-  "description": "A time window for daypart targeting. Specifies days of week, an hour range, and the civil-time clock used to evaluate it. start_hour is inclusive, end_hour is exclusive (e.g., 6-10 = 6:00am to 10:00am). Follows the Google Ads AdScheduleInfo / DV360 DayPartTargeting pattern.",
+  "description": "A time window for daypart targeting. Specifies days of week, a time-of-day range, and the civil-time clock used to evaluate it. The range is either whole hours (start_hour inclusive, end_hour exclusive; e.g., 6-10 = 6:00am to 10:00am) or, experimentally, minute-resolution clock times (start_time inclusive, end_time exclusive; e.g., 19:30-23:00); an entry carries exactly one form. Follows the Google Ads AdScheduleInfo / DV360 DayPartTargeting pattern.",
   "type": "object",
   "properties": {
     "days": {
       "type": "array",
-      "description": "Days of week this window applies to. Use multiple days for compact targeting (e.g., monday-friday in one object).",
+      "description": "Days of week this window applies to. Use multiple days for compact targeting (e.g., monday-friday in one object). For an overnight start_time/end_time window, each day names the day the window starts on.",
       "items": {
         "$ref": "/schemas/enums/day-of-week.json"
       },
@@ -15,18 +15,32 @@
     },
     "start_hour": {
       "type": "integer",
-      "description": "Start hour (inclusive), 0-23 in 24-hour format. 0 = midnight, 6 = 6:00am, 18 = 6:00pm.",
+      "description": "Start hour (inclusive), 0-23 in 24-hour format. 0 = midnight, 6 = 6:00am, 18 = 6:00pm. Whole-hour form: pair with end_hour; mutually exclusive with start_time and end_time.",
       "minimum": 0,
       "maximum": 23
     },
     "end_hour": {
       "type": "integer",
-      "description": "End hour (exclusive), 1-24 in 24-hour format. 10 = 10:00am, 24 = midnight. Must be greater than start_hour.",
+      "description": "End hour (exclusive), 1-24 in 24-hour format. 10 = 10:00am, 24 = midnight. Must be greater than start_hour; whole-hour windows never cross midnight. Whole-hour form: pair with start_hour; mutually exclusive with start_time and end_time.",
       "minimum": 1,
       "maximum": 24
     },
+    "start_time": {
+      "type": "string",
+      "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental in AdCP 3.3. Start of the window (inclusive) as a 24-hour HH:MM civil clock time on the entry's timezone clock, such as '19:30'. Use for windows that do not fall on whole hours (linear TV programme junctions, quarter-hour schedules). Pair with end_time; mutually exclusive with start_hour and end_hour. A window whose end_time is earlier than its start_time crosses midnight and belongs to the day it starts on. A product accepts only the finest time granularity it declares in overlay_support.daypart_targets.time_granularity; sellers MUST reject, never round, a clock time the product does not honor."
+    },
+    "end_time": {
+      "type": "string",
+      "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental in AdCP 3.3. End of the window (exclusive) as a 24-hour HH:MM civil clock time, such as '23:00'. Pair with start_time; mutually exclusive with start_hour and end_hour. end_time earlier than start_time means the window crosses midnight and ends at end_time on the following civil day (for example, 22:00 to 02:00 runs from 22:00 on a listed day until 02:00 the next morning); '00:00' therefore ends the window at the midnight closing the start day. end_time MUST NOT equal start_time: a zero-length or full-day window is invalid, and a full day uses start_hour 0 with end_hour 24. Sellers MUST reject an equal pair with INVALID_REQUEST."
+    },
     "timezone": {
-      "description": "Civil-time clock used to evaluate this window. 'inventory_local' evaluates the hours in the seller-assigned local timezone of each inventory unit that can deliver the impression, such as a screen, venue, station, or publisher property; it never means the buyer, account, or server timezone. A concrete IANA timezone identifier (for example, 'America/New_York', 'CET', or 'UTC') evaluates one shared civil-time clock across the targeted inventory. Omission defaults to 'inventory_local'. Buyers that begin with a user or account preference MUST resolve it to a concrete IANA identifier before sending the daypart; 'user_timezone' and 'account_timezone' are not wire values. For each candidate delivery instant, convert the instant into this clock and compare its resulting local day and hour with the half-open window: a skipped DST hour has no matching instants, while both occurrences of a repeated hour match. This delivery clock is independent of reporting_capabilities.timezone.",
+      "description": "Civil-time clock used to evaluate this window. 'inventory_local' evaluates the hours in the seller-assigned local timezone of each inventory unit that can deliver the impression, such as a screen, venue, station, or publisher property; it never means the buyer, account, or server timezone. A concrete IANA timezone identifier (for example, 'America/New_York', 'CET', or 'UTC') evaluates one shared civil-time clock across the targeted inventory. Omission defaults to 'inventory_local'. Buyers that begin with a user or account preference MUST resolve it to a concrete IANA identifier before sending the daypart; 'user_timezone' and 'account_timezone' are not wire values. For each candidate delivery instant, convert the instant into this clock and compare its resulting local day and time of day with the half-open window: a skipped DST hour or interval has no matching instants, while both occurrences of a repeated hour or interval match. For an overnight start_time/end_time window, an instant matches when its local day is a listed day and its local time is at or after start_time, or when the local day before it is a listed day and its local time is before end_time. This delivery clock is independent of reporting_capabilities.timezone.",
       "default": "inventory_local",
       "x-added-in": "3.2.0",
       "anyOf": [
@@ -44,6 +58,26 @@
       "description": "Optional human-readable name for this time window (e.g., 'Morning Drive', 'Prime Time')"
     }
   },
-  "required": ["days", "start_hour", "end_hour"],
+  "required": ["days"],
+  "oneOf": [
+    {
+      "required": ["start_hour", "end_hour"],
+      "not": {
+        "anyOf": [
+          { "required": ["start_time"] },
+          { "required": ["end_time"] }
+        ]
+      }
+    },
+    {
+      "required": ["start_time", "end_time"],
+      "not": {
+        "anyOf": [
+          { "required": ["start_hour"] },
+          { "required": ["end_hour"] }
+        ]
+      }
+    }
+  ],
   "additionalProperties": false
 }
