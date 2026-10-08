@@ -1,5 +1,27 @@
 # Changelog
 
+## 3.2.3
+
+### Patch Changes
+
+- 1e5a85c: Security errata for GHSA-2pm6-6mc8-8xcm (adcp#7820): `request_signing.required_for` / `supported_for` / `warn_for` now match the AdCP operation resolved from the request, so they apply over A2A. This resolves a contradiction in favor of the fail-closed reading. The A2A profile extension already requires the signing rules used for the equivalent task over MCP, while `security.mdx` said a `required_for` match could not be satisfied by any JSON-RPC `method` other than `tools/call`, which made `required_for` unenforceable for A2A messages and let an unsigned A2A `create_media_buy` through a seller that listed it. The `tools/call`-only sentence is superseded. This is a behavior change for sellers that followed that sentence literally: once their verifier adopts the rule, unsigned A2A calls to an operation in `required_for` are rejected. Stage the change through `warn_for` first. `required_for` still yields to a configured fallback authenticator, and 3.0/3.1 digest postures do not bind the body.
+  
+  Core rules (MUST): MCP `tools/call` resolves to `params.name`; A2A `SendMessage`, `SendStreamingMessage`, `message/send`, `message/stream`, and the A2A HTTP+JSON and gRPC equivalents resolve to the `skill` of the Message's sole DataPart; `protocol_methods_*` keep matching the JSON-RPC `method` only. A request that does not resolve to exactly one operation fails closed with the existing `request_body_malformed` code (the code's description is widened; no new code), and the resolved operation is the only input to the signature gate, handler dispatch, and schema selection. A2A 0.3 and the non-JSON-RPC bindings are covered by analogy; the A2A profile defines only 1.0 over JSON-RPC.
+  
+  Hardening, additions beyond the contradiction (SHOULD in 3.2.x, MUST from 3.3): strict parsing of unsigned bodies including batches, duplicate and case-variant member names; A2A Part shape (one content member, no FilePart, `kind` agreement); and task-continuation binding. Adds 33 A2A conformance vectors under `test-vectors/request-signing/a2a/`, tagged `contradiction-resolution` or `hardening`, with a generator and an independent test. This relies on the maintainer-approved security-errata exception to the signing-profile patch rule.
+- 4a2da37: Make the acceptance-policy discovery compliance scenario provision and explicitly select its sandbox account, so account-scoped product fixtures remain visible when SDK discovery no longer synthesizes an account. Preserve the catalog and product-profile assertions and require the additional account-seeding check to pass.
+- 4a2da37: Clarify that `authorized_agents[].url` in `adagents.json` is the agent's full protocol endpoint URL, including the path (for example `https://agent.example.com/mcp`), not the agent's origin. A new "Agent URL matching" section says which URL differences canonicalization ignores and which it keeps (trailing slash, path case, scheme, query). It also says to list one entry for each agent URL when MCP and A2A are served at different paths.
+- 4a2da37: Correct the creative evaluator authentication storyboard's experimental feature membership check to inspect individual declared feature IDs, so agents advertising `creative.evaluator` pass the capability contract while agents omitting it still fail.
+- 4a2da37: Gate advanced delivery reporting on advertised wholesale discovery support and
+  proposal-finalization replay on advertised idempotency support. Sellers that
+  opt out skip the unsupported checks while proposal finalization and acceptance
+  remain graded.
+- 4a2da37: Make the sales-guaranteed compliance storyboard exercise its documented polling path without requiring an optional task webhook.
+- 4a2da37: Gate the 3.2 CTV experience and premium display validation storyboards on
+  validate_input so controller-only agents are not selected. Retain the controller
+  workflow requirement for fixture setup. This is a narrow part of #7404; it does
+  not complete the hosted compliance landing, deployment, or public-card checks.
+
 ## 3.2.2
 
 ### Patch Changes
@@ -852,6 +874,25 @@ This is the first stable 3.2 release. `3.2.0` is a permanently withdrawn version
 - 0547bde: Seed fixture accounts in package_correlation_legacy_fallback storyboard so account-scoped requests resolve before attribution is checked.
 - 7b5472f: Stop the universal `read_tool_idempotency` storyboard from sending the creative-agent-only `type` filter to `list_creative_formats`, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
 - e82f055: Tighten the unreleased `viewable_rate` optimization goal before 3.2.0-rc.7. The legacy goal shape now accepts only `threshold_rate` targets for `viewable_rate`, so a meaningless `cost_per` target is rejected rather than silently capped at 1. Viewability `standard` and `vendor` are now allowed on `viewed_seconds` goals too, which were already governed by the viewability standard, and both goal shapes reject those fields on other metrics. The migration guide documents the `BrandRef`-to-`BrandKey` vendor mapping when converting legacy goals to the canonical shape.
+
+## 3.1.26
+
+### Patch Changes
+
+- 83e02b0: Fix `field_contains` path in `creative/evaluator_auth` storyboard to use `experimental_features[*]` so the array-membership check fans out over elements instead of comparing the whole array to the scalar value. Every conformant agent that declares `creative.evaluator` was incorrectly failing this step.
+- bdd9d99: Backport the hosted-grader buyer brand from #7803 to the four 3.1 media-buy governance scenarios. The scenarios and their new sandbox test kit consistently use `hosted-grader.adcontextprotocol.org`, whose brand.json lists the sandbox governance agent and its governance-only JWKS. This allows hosted multi-agent routing to register the same buyer account and governance relationship that it authenticates.
+
+  Only buyer/test-kit identities change; the existing 3.1 steps, schemas, validations, and grading behavior remain unchanged. Published release artifacts are preserved. Refs #7758.
+
+- ba2f0dd: Restrict maintained 3.1 release publication to the approved committed version and original release merge. Require current-branch, final-head maintainer permission and provenance checks; stage and verify the exact four signed GitHub assets before publication; preserve immutable R2 bytes with conditional creation. Remove publisher re-signing, direct Changesets tagging and unfiltered historical uploads. Existing released artifacts and protocol semantics remain unchanged.
+- 356df06: Recheck final-head human approval after all four signed release assets are staged, before making a maintained release public. Bind verification to the original producer commit, maintained branch, repository and push event while preserving the committed archive and signature bytes during same-version recovery. CDN verification refuses failed tuple downloads or checksums before signature verification.
+
+## 3.1.25
+
+### Patch Changes
+
+- 7e25a62: compliance(media-buy): `delivery_reporting` (1.0.1) seeds `non_guaranteed` fixture products. Sellers that declare only `sales-non-guaranteed` no longer fail `create_media_buy` with `DELIVERY_MODE_NOT_SUPPORTED`. This is the same fix as #5703 and #5731, backported from #7770. Pricing stays `fixed_price` because the create steps send no bid. Test fixtures only.
+- c3b0b64: compliance(media-buy): `canonical_formats`, `billing_finality_delivery`, `measurement_accountability`, and `vendor_metric_accountability` (1.0.1) seed `non_guaranteed` fixture products. Sellers that declare only `sales-non-guaranteed` no longer fail `create_media_buy` with `DELIVERY_MODE_NOT_SUPPORTED`. This is the same fix as #5703 and #5731, backported from #7756. Pricing stays `fixed_price` because the create steps send no bid. `is_guarantee_basis` is not conditioned on `delivery_type`. `measurement_accountability`'s fixture now declares `completed_views` so it matches its own discovery filter. Test fixtures only.
 
 ## 3.1.24
 

@@ -110,7 +110,7 @@ function gitStub() {
     console.log(`${target}\t${ref}`);
     return;
   }
-  if (!['diff', 'ls-files', 'cat-file'].includes(args[0])) throw Error(`Unexpected git command: ${args}`);
+  if (!['diff', 'ls-files', 'cat-file', 'rev-parse', 'rev-list', 'merge-base', 'ls-tree', 'show'].includes(args[0])) throw Error(`Unexpected git command: ${args}`);
   const result = require('node:child_process').spawnSync(process.env.TEST_REAL_GIT, args, { stdio: 'inherit' });
   process.exit(result.status ?? 1);
 }
@@ -119,6 +119,20 @@ function ghStub() {
   const fs = require('node:fs');
   const path = require('node:path');
   const args = process.argv.slice(2);
+  if (args[0] === 'api') {
+    const url = args.find(arg => arg.startsWith('/repos/'));
+    let response;
+    if (url.includes('/commits/')) response = [{ number: 1, merged_at: '2026-09-14', base: { ref: 'main' } }];
+    else if (url.endsWith('/reviews')) response = [{ id: 1, submitted_at: '2026-09-14', state: 'APPROVED',
+      commit_id: process.env.RELEASE_SHA, user: { id: 123, login: 'reviewer', type: 'User' } }];
+    else if (url.includes('/collaborators/')) response = { permission: 'write', role_name: 'write',
+      user: { id: 123, login: 'reviewer', type: 'User' } };
+    else response = { number: 1, merged: true, merge_commit_sha: process.env.RELEASE_SHA,
+      head: { sha: process.env.RELEASE_SHA }, base: { ref: 'main', repo: { full_name: 'adcontextprotocol/adcp' } },
+      user: { id: 456, login: 'author', type: 'User' } };
+    console.log(JSON.stringify(args.includes('--slurp') ? [response] : response));
+    return;
+  }
   const version = JSON.parse(process.env.TEST_VERSIONS).find(v => `v${v}` === args[2]);
   if (args[0] !== 'release' || !version) throw Error(`Unexpected gh command: ${args}`);
   const names = ['tgz', 'tgz.sha256', 'tgz.sig', 'tgz.crt'].map(suffix => `${version}.${suffix}`);
@@ -134,7 +148,7 @@ function ghStub() {
   fs.appendFileSync(process.env.GH_TEST_LOG, JSON.stringify(args) + '\n');
 }
 
-function fixture(t, publication = false) {
+function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-cdn-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const write = (name, bytes) => {
@@ -173,6 +187,7 @@ function fixture(t, publication = false) {
     const commit = message => git(['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
       '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgSign=false', 'commit', '-qm', message]);
     git(['init', '-q']);
+    git(['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty', '-qm', 'Prior source']);
     const targets = {};
     // Historical tag targets are real, distinct commits. Later main retains
     // their exact versioned trees while adding subsequent releases and latest.
@@ -189,8 +204,7 @@ function fixture(t, publication = false) {
     write('authority.json', JSON.stringify(authority));
     executable('git', gitStub);
     executable('gh', ghStub);
-    // A version-scoped publisher must use tracked assets, not every local file.
-    if (publication) for (const version of VERSIONS) write(`dist/compliance/${version}/untracked.jsonl`, 'untracked');
+    // Untracked files are now tested as a refusal, separately from valid writes.
   }
   return { dir, write, authority };
 }
@@ -201,26 +215,35 @@ function publish(dir, flags = [], extraEnv = {}) {
   const release = FENCED_PUBLICATION ? JSON.parse(fs.readFileSync(path.join(dir, 'authority.json'), 'utf8')) : undefined;
   const version = flags.includes('--version') ? flags[flags.indexOf('--version') + 1] : undefined;
   const authority = FENCED_PUBLICATION ? {
-    TESTED_SHA: release.testedSha,
+    TESTED_SHA: version ? release.targets[version] : release.testedSha,
     ...(version ? { RELEASE_SHA: release.targets[version] } : {}),
     TEST_RELEASE_TARGETS: JSON.stringify(release.targets),
     PUBLICATION_BRANCH: 'main', TEST_VERSIONS: JSON.stringify(VERSIONS), TEST_REAL_GIT: REAL_GIT,
+    GITHUB_REPOSITORY: 'adcontextprotocol/adcp',
     GH_TEST_LOG: path.join(dir, 'gh.jsonl'), RUNNER_TEMP: dir,
   } : {};
-  const stdout = execFileSync('bash', [path.join(ROOT, 'scripts/backfill-cdn-artifacts.sh'),
+  // Each positive publication runs at that release's current tested commit.
+  // Publishing an older version from a newer package is a separate refusal.
+  if (version) execFileSync(REAL_GIT, ['checkout', '--detach', release.targets[version]], { cwd: dir, stdio: 'pipe' });
+  let stdout;
+  try {
+    stdout = execFileSync('bash', [path.join(ROOT, 'scripts/backfill-cdn-artifacts.sh'),
     '--bucket', 'test-bucket', '--endpoint', 'https://r2.invalid', ...flags], {
     cwd: dir,
     env: { PATH: `${dir}/bin:${process.env.PATH}`, AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test',
       AWS_TEST_LOG: log, AWS_TEST_OBJECTS: path.join(dir, 'objects.json'), ...authority, ...extraEnv },
     encoding: 'utf8',
-  });
+    });
+  } finally {
+    if (version) execFileSync(REAL_GIT, ['checkout', '--detach', release.testedSha], { cwd: dir, stdio: 'pipe' });
+  }
   const calls = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map(JSON.parse);
   return { stdout, calls, uploads: calls.flatMap(call => call.uploads) };
 }
 
 for (const skipLatest of [false, true]) {
   test(`publishes every compliance extension with exact bytes and cache policy (skip latest: ${skipLatest})`, t => {
-    const { dir } = fixture(t, true);
+    const { dir } = fixture(t);
     const results = FENCED_PUBLICATION
       ? [...VERSIONS.map(version => publish(dir, ['--version', version, '--skip-latest'])),
         ...(skipLatest ? [] : [publish(dir, ['--latest-only'])])]
@@ -275,12 +298,12 @@ for (const skipLatest of [false, true]) {
 }
 
 for (const version of VERSIONS) {
-  test(`fenced ${version} recovery creates only the missing JSONL and preserves existing bytes`, { skip: !FENCED_PUBLICATION }, t => {
-    const { dir, authority } = fixture(t, true);
+  test(`current tested ${version} retry creates only the missing JSONL and preserves existing bytes`, { skip: !FENCED_PUBLICATION }, t => {
+    const { dir, authority } = fixture(t);
     const flags = ['--version', version, '--skip-latest'];
     assert.equal(new Set(Object.values(authority.targets)).size, VERSIONS.length);
     assert.ok(Object.values(authority.targets).every(target => target !== authority.testedSha));
-    assert.throws(() => publish(dir, flags, { RELEASE_SHA: authority.testedSha }), /does not identify the approved release commit/);
+    assert.throws(() => publish(dir, flags, { RELEASE_SHA: authority.testedSha }), /merge-base|Publication version/);
     assert.equal(fs.readFileSync(path.join(dir, 'aws.jsonl'), 'utf8'), '', 'wrong historical target must stop before AWS');
     publish(dir, flags);
     const objectsFile = path.join(dir, 'objects.json');
@@ -418,4 +441,13 @@ test('scoped verification refuses missing local versions and path traversal', as
     assert.equal(result.code, 1, result.output);
     assert.equal(result.requested.length, 0);
   }
+});
+
+
+test('version-scoped publication refuses an untracked compliance file before AWS writes', { skip: !FENCED_PUBLICATION }, t => {
+  const { dir, write } = fixture(t);
+  const version = VERSIONS.at(-1);
+  write(`dist/compliance/${version}/untracked.jsonl`, 'untracked');
+  assert.throws(() => publish(dir, ['--version', version, '--skip-latest']), /Uncommitted publication file/);
+  assert.equal(fs.readFileSync(path.join(dir, 'aws.jsonl'), 'utf8'), '');
 });
