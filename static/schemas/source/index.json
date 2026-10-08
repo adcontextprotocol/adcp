@@ -1029,7 +1029,7 @@
         },
         "daypart-target": {
           "$ref": "/schemas/core/daypart-target.json",
-          "description": "A time window for daypart targeting with days of week and hour range"
+          "description": "A time window for daypart targeting with days of week and a whole-hour or (experimental) HH:MM time-of-day range"
         },
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
@@ -1497,6 +1497,10 @@
           "$ref": "/schemas/enums/sort-metric.json",
           "description": "Numeric delivery metrics available for sorting breakdown rows"
         },
+        "spot-status": {
+          "$ref": "/schemas/enums/spot-status.json",
+          "description": "Lifecycle status of a by_spot row (scheduled, aired, preempted, makegood). Experimental."
+        },
         "history-entry-type": {
           "$ref": "/schemas/enums/history-entry-type.json",
           "description": "Type of task history entry (request, response)"
@@ -1613,6 +1617,10 @@
         "daypart-timezone-mode": {
           "$ref": "/schemas/enums/daypart-timezone-mode.json",
           "description": "Supported clock mode for daypart targeting"
+        },
+        "daypart-time-granularity": {
+          "$ref": "/schemas/enums/daypart-time-granularity.json",
+          "description": "Finest time-of-day resolution a product honors for daypart targeting (experimental)"
         },
         "distance-unit": {
           "$ref": "/schemas/enums/distance-unit.json",

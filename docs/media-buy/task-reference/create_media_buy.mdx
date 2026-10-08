@@ -400,7 +400,20 @@ There is no proposal-specific acceptance webhook. Proposal execution that needs 
 | `status` | Literal `"submitted"` — discriminates this shape from the sync success branch, which uses `media_buy_status` for lifecycle state. |
 | `task_id` | Handle the buyer polls with `get_task_status` on the A2A profile (or the advertised AdCP polling task on MCP), or receives on webhook callbacks. |
 | `message` | Optional human-readable explanation (e.g., "Awaiting IO signature from sales team"). |
+| `expected_confirmation_at` | Optional ISO 8601 date-time estimate of when the seller expects to confirm (added in 3.3). See [Expected confirmation time](#expected-confirmation-time). |
 | `errors` | Optional advisory warnings (non-blocking). Terminal failures belong in the Error Response. |
+
+#### Expected confirmation time
+
+Some confirmations are tied to a scheduled event rather than to processing time: a published booking round that closes and then confirms on a fixed date, a weekly review window, or a monthly IO cycle. A buyer polling `get_task_status` cannot tell a task that will resolve in minutes from one that will not resolve for two weeks.
+
+- A seller SHOULD set `expected_confirmation_at` when confirmation depends on a scheduled event such as a booking round or a manual review window, and omit it when it has no basis for an estimate.
+- A buyer SHOULD schedule a status check for that time instead of polling tightly. It MAY still poll or accept the completion webhook earlier, since the seller can confirm sooner.
+- It is an estimate, not a commitment. The task status is authoritative: a buyer MUST NOT treat a passed `expected_confirmation_at` as a failure or cancel the request because of it.
+- The value is a point-in-time estimate from the response that carried it. A seller whose schedule slips MAY re-emit a revised `expected_confirmation_at` on a later `submitted` webhook. A seller SHOULD NOT send a timestamp in the past, and a buyer MUST NOT read one as meaningful.
+- It is not an expiry. Deadlines that close a request window (for example the booking deadline on an installment) are separate fields on the product or installment.
+
+For [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), the estimate MAY fall after the proposal's `expires_at`: acceptance consumes the hold, so the estimate describes confirmation, not the hold. [`buy_products`](/docs/media-buy/task-reference/buy_products) and `accept_proposal` carry the same optional field on their submitted arms. The shared compact envelope used by [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals), [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy), [`request_proposals`](/docs/media-buy/task-reference/request_proposals), and [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) does not, because those tasks do not confirm a purchase. [`get_products`](/docs/media-buy/task-reference/get_products) and [`get_signals`](/docs/signals/tasks/get_signals) submitted envelopes carry a separate `estimated_completion`, which estimates when a search finishes processing; `expected_confirmation_at` instead names the scheduled event that confirms a purchase.
 
 **Note**: Responses are mutually exclusive across these three shapes. Dispatch on `status` first: `"submitted"` → async envelope, otherwise check `errors` before accessing success fields.
 
@@ -1590,6 +1603,18 @@ const response = await session.call('create_media_buy',
       }
     ]
   }
+}
+```
+
+**Submitted response with a scheduled confirmation:** a seller whose confirmation follows a scheduled event also returns `expected_confirmation_at`, so the buyer can check at that time instead of polling:
+
+```json
+{
+  "$schema": "/schemas/media-buy/create-media-buy-response.json",
+  "status": "submitted",
+  "task_id": "task_abc124",
+  "message": "Pinnacle Media confirms orders for the November airing month on 20 October.",
+  "expected_confirmation_at": "2026-10-20T12:00:00Z"
 }
 ```
 
