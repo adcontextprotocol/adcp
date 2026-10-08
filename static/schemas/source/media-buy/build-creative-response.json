@@ -150,6 +150,11 @@
           "$ref": "/schemas/core/creative-consumption.json",
           "description": "Structured consumption details for this build. Informational — lets the buyer verify that vendor_cost is consistent with the rate card. vendor_cost is the billing source of truth."
         },
+        "errors": {
+          "type": "array",
+          "description": "Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `RIGHTS_CHANNEL_VIOLATION` notice when a requested output targets a channel outside a rights entry's `channels` restriction. Terminal failures use the BuildCreativeError shape, not this field. Presence of `errors` alongside a manifest does not mean the build failed.",
+          "items": { "$ref": "/schemas/core/error.json" }
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -288,6 +293,11 @@
         "consumption": {
           "$ref": "/schemas/core/creative-consumption.json",
           "description": "Structured consumption details for this build. Informational — lets the buyer verify that vendor_cost is consistent with the rate card."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `RIGHTS_CHANNEL_VIOLATION` notice when a requested output targets a channel outside a rights entry's `channels` restriction. Terminal failures use the BuildCreativeError shape, not this field. Presence of `errors` alongside a manifest does not mean the build failed.",
+          "items": { "$ref": "/schemas/core/error.json" }
         },
         "context": {
           "$ref": "/schemas/core/context.json"

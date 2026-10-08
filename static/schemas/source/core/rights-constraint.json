@@ -63,6 +63,25 @@
         "pattern": "^[A-Z]{2}$"
       }
     },
+    "channels": {
+      "type": "object",
+      "x-status": "experimental",
+      "description": "Advisory media-channel restrictions on where this creative may run under these rights, using the standard media channel vocabulary (the same enums/channels.json values as sync_plans). If omitted, no channel restriction. Effective set: with only `denied`, every channel except those denied; with `allowed`, only those channels (an empty `allowed` array grants no channel); with both, `allowed` minus `denied` (deny wins). Advisory, like the other constraint fields on the wire: orchestrators and serving parties SHOULD NOT place the creative on a channel outside the effective set, and creative agents SHOULD NOT build for one (see build_creative). While approval_status is `pending` the entry grants no placement on any channel (the existing rule that a pending grant never authorizes serving); that rule applies to placement and serving, not to building, so creative agents do not raise a channel advisory for pending status alone. Verifying an attestation proves the term was granted; it does not turn this advisory check into a mandatory one in 3.3, and terms the holder needs enforced belong in `restrictions`. This is a channel-level restriction only; finer platform or placement scope (for example a single social network) is carried in ext until a platform axis is specified. When the constraint is attested, channels is covered by content_digest like every other serving-relevant field.",
+      "properties": {
+        "allowed": {
+          "type": "array",
+          "description": "Channels where the creative may run. When present, only these channels are granted, less any in `denied`. An empty array grants no channel.",
+          "items": { "$ref": "/schemas/enums/channels.json" },
+          "uniqueItems": true
+        },
+        "denied": {
+          "type": "array",
+          "description": "Channels excluded under these rights; the creative SHOULD NOT be placed there. Wins over `allowed` when a channel appears in both. When `allowed` is absent, every channel not listed here remains permitted.",
+          "items": { "$ref": "/schemas/enums/channels.json" },
+          "uniqueItems": true
+        }
+      }
+    },
     "impression_cap": {
       "type": "integer",
       "minimum": 1,

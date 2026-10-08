@@ -112,6 +112,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `REFERENCE_DEFINITION_CHANGED` | correctable | refine the proposal so the seller re-resolves the pinned definitions and issues fresh pins, review the changed definition, then finalize and accept the new proposal |
 | `REFERENCE_NOT_FOUND` | correctable | verify the referenced identifier exists and is accessible to the caller |
 | `REQUOTE_REQUIRED` | correctable | use error.details.decline_reason when present to inform recovery, then refine accepted_proposal_id and apply the amendment through accept_proposal, or keep control_media_buy inside the accepted envelope; some policies require a free-text ask or human negotiation, and 3.1 compatibility callers must adjust or rediscover |
+| `RIGHTS_CHANNEL_VIOLATION` | correctable | advisory — inspect error.details.rights_id and the requested channel against rights[].channels; target a capability on a permitted channel, confirm the rights entry applies to this output, or have the holder grant the channel (a human or holder action) |
 | `SCOPE_INSUFFICIENT` | correctable | the agent cannot broaden its own scope - surface to the operator rather than auto-retry |
 | `SERVICE_UNAVAILABLE` | transient | retry with exponential backoff |
 | `SESSION_NOT_FOUND` | correctable | initiate a new session via si_initiate_session |
@@ -1098,6 +1099,15 @@ Generic fallback for a referenced identifier, grant, session, or other resource 
 **Suggested action:** use error.details.decline_reason when present to inform recovery, then refine accepted_proposal_id and apply the amendment through accept_proposal, or keep control_media_buy inside the accepted envelope; some policies require a free-text ask or human negotiation, and 3.1 compatibility callers must adjust or rediscover
 
 A control_media_buy request, or the 3.x update_media_buy facade, would exceed the accepted commercial envelope. The seller is declining the requested shape at the current terms. Distinct from TERMS_REJECTED (measurement) and POLICY_VIOLATION (content). Error details SHOULD conform to error-details/requote-required.json: populate envelope_field with the field path(s) that breached the envelope, change_term_id when an accepted change term governed the request, and decline_reason when a structured seller-policy reason is available and safe to disclose. All producer-authored explanatory text, including message, suggestion, and extension detail values, MUST remain buyer-safe and MUST NOT contain vendor identifiers, internal object names, internal IDs, stack traces, or other producer-private implementation details. AdCP 3.2 callers refine the MediaBuy's accepted_proposal_id to obtain a typed amendment; legacy 3.1 callers adjust the update, rediscover terms, or create a separate buy.
+
+</Accordion>
+<a id="error-code-rights-channel-violation"></a>
+
+<Accordion title="RIGHTS_CHANNEL_VIOLATION — correctable">
+
+**Suggested action:** advisory — inspect error.details.rights_id and the requested channel against rights[].channels; target a capability on a permitted channel, confirm the rights entry applies to this output, or have the holder grant the channel (a human or holder action)
+
+Advisory. A creative's rights[].channels restriction (core/rights-constraint.json) does not permit the media channel of the requested output, so building it would produce a derivative the rights grant does not allow to run there. Creative agents SHOULD check rights[].channels against the channel each requested target capability serves (for example its applies_to_channels, where declared) before generating, and SHOULD surface this code rather than silently building; the restriction is advisory in 3.3, so a creative agent MAY proceed and attach this code as a non-terminal entry in errors[] on an otherwise-successful build, or MAY decline the affected output with a terminal error. error.field SHOULD point at the offending rights entry (e.g. creative_manifest.rights[0].channels, or creative_manifests[N].rights[i].channels for a multi-capability build) and error.details SHOULD include rights_id, the requested channel, and capability_id when the build named one. Distinct from CREATIVE_REJECTED (content-policy or brand-safety review) and from the governance plan channel check, which is a hard check by the governance agent. Recovery: correctable (target a capability whose channel the grant permits, confirm the rights entry applies to this output, or have the holder grant the channel; the last is a human or holder action, not an autonomous retry). Advisory in 3.3 and may tighten while the surface is experimental.
 
 </Accordion>
 <a id="error-code-scope-insufficient"></a>
