@@ -141,6 +141,7 @@
           "created_date",
           "updated_date",
           "tags",
+          "provenance",
           "rights",
           "rights_attestation_evaluations",
           "localization",
