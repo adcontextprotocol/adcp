@@ -80,24 +80,26 @@ Products can also expose `included_signals` for signals already bundled into or 
 
 ## Rejected targeting dimensions
 
+{/* Links use /schemas/latest/ because this schema is not yet in any released version; update to the v3 alias after the next release. */}
+
 A seller MUST NOT silently drop a targeting dimension it does not support for the selected product, or one it previously accepted and has since removed. The create or update fails before any mutation with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), `error.recovery: "correctable"`, and `error.field` pointing at the targeting path. Details SHOULD follow [`error-details/unsupported-targeting-dimension.json`](https://adcontextprotocol.org/schemas/latest/error-details/unsupported-targeting-dimension.json):
 
 ```json
 {
   "code": "UNSUPPORTED_FEATURE",
-  "message": "age_range_strict is no longer supported; use age_range",
+  "message": "signal_targeting is no longer supported; use signal_targeting_groups",
   "recovery": "correctable",
-  "field": "packages[0].targeting_overlay.age_range_strict",
+  "field": "packages[0].targeting_overlay.signal_targeting",
   "details": {
-    "unsupported_dimension": "age_range_strict",
+    "unsupported_dimension": "signal_targeting",
     "deprecated": true,
-    "replacement_dimension": "age_range",
-    "supported_dimensions": ["age_range", "geo_metros"]
+    "replacement_dimension": "signal_targeting_groups",
+    "supported_dimensions": ["signal_targeting_groups", "geo_metros"]
   }
 }
 ```
 
-`unsupported_dimension` is the only required detail. `deprecated: true` marks a dimension that was accepted before and has been removed, and `replacement_dimension` names its successor. `supported_dimensions` echoes only what the caller could already read from `get_adcp_capabilities` or the product's `overlay_support`. `product_id` and `package_index` locate the rejection in multi-package requests. A buyer that sees `replacement_dimension` translates the value and resubmits; the seller never remaps it on the buyer's behalf. Adapters that mint `UNSUPPORTED_TARGETING_DIMENSION` or `DEPRECATED_TARGETING_DIMENSION` should migrate to `UNSUPPORTED_FEATURE` plus these details.
+`unsupported_dimension` is the only required detail. `deprecated: true` marks a dimension that was accepted before and has since been removed (it is now rejected, not merely discouraged), and `replacement_dimension` names its successor. `supported_dimensions` echoes only what the caller could already read from `get_adcp_capabilities` or the product's `overlay_support`. `product_id` and `package_index` locate the rejection in multi-package requests. A buyer that sees `replacement_dimension` translates the value and resubmits; the seller never remaps it on the buyer's behalf.
 
 ## Daypart timezone semantics
 

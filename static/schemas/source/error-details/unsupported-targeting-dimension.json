@@ -8,7 +8,7 @@
     "unsupported_dimension": {
       "type": "string",
       "minLength": 1,
-      "description": "The targeting field name that was rejected, for example `geo_countries`."
+      "description": "The targeting field name that was rejected, for example `geo_countries`. Names the dimension, not an individual value; value-level problems inside a supported dimension follow that dimension's own rules."
     },
     "supported_dimensions": {
       "type": "array",
@@ -18,7 +18,7 @@
     },
     "deprecated": {
       "type": "boolean",
-      "description": "`true` when the dimension was previously accepted and has been removed. Omitted or `false` for a dimension that was never supported."
+      "description": "`true` when the dimension was previously accepted and has been removed; the seller now rejects it, unlike a `deprecated` schema field that is still accepted. Omitted or `false` for a dimension that was never supported."
     },
     "replacement_dimension": {
       "type": "string",
@@ -34,7 +34,7 @@
     "package_index": {
       "type": "integer",
       "minimum": 0,
-      "description": "Zero-based index of the offending package in the request's `packages` (or `new_packages`) array."
+      "description": "Zero-based index of the offending package in the request's package array. Convenience only; `error.field` is authoritative."
     }
   },
   "required": ["unsupported_dimension"],
@@ -47,9 +47,9 @@
       "package_index": 0
     },
     {
-      "unsupported_dimension": "age_range_strict",
+      "unsupported_dimension": "signal_targeting",
       "deprecated": true,
-      "replacement_dimension": "age_range"
+      "replacement_dimension": "signal_targeting_groups"
     }
   ]
 }
