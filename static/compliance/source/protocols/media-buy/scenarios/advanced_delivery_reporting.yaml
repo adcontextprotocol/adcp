@@ -23,7 +23,9 @@ narrative: |
   requested_metrics and negotiate a canonical format breakdown on the GET
   path. Narrowing never removes impressions or spend, and it never changes the
   metric used to sort breakdown rows. A seller returning by_format must say
-  whether rows were truncated and echo the sort it actually applied.
+  whether rows were truncated and echo the sort it actually applied. When
+  requested_metrics excludes the sort metric, graders MUST NOT verify row
+  ordering from response bodies; the applied-sort echo is the contract surface.
 
   Time-based video views are an array because the threshold and clock basis are
   part of each measurement. They are not interchangeable with completion
