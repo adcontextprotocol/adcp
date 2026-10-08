@@ -389,6 +389,8 @@ Daypart definitions use either `inventory_local` or a concrete IANA timezone ide
 
 Sellers MUST validate concrete identifiers against their supported IANA timezone database and MUST NOT silently reinterpret a requested clock. They evaluate each candidate instant after conversion to the selected civil clock, so skipped DST hours match nothing and repeated hours match both occurrences. An unknown identifier is `INVALID_REQUEST`; a valid timezone outside the product's declared support is `UNSUPPORTED_FEATURE` at create or update time. The product-scoped capability rules are defined in [Targeting](/docs/media-buy/advanced-topics/targeting#daypart-timezone-semantics).
 
+Experimental `start_time`/`end_time` windows use the same clock and half-open rule at `HH:MM` resolution. An `end_time` earlier than `start_time` crosses midnight and belongs to the day it starts on, and a seller MUST NOT round a clock time finer than the product's declared `time_granularity`; it rejects the entry with `UNSUPPORTED_FEATURE`. See [Minute-resolution dayparts](/docs/media-buy/advanced-topics/targeting#minute-resolution-dayparts-experimental).
+
 ## Request Safety
 
 ### Idempotency
