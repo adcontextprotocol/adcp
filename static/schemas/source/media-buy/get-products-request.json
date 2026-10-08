@@ -30,7 +30,6 @@
       }
     },
     {
-      "description": "Opportunity context associates proposals with a planning cycle; the wholesale feed read creates none.",
       "if": {
         "properties": { "buying_mode": { "const": "wholesale" } },
         "required": ["buying_mode"]
@@ -271,7 +270,7 @@
           }
         }
       ],
-      "description": "Optional planning-cycle context, the same object and seller-plus-account scope as request_proposals. Valid with buying_mode 'brief' and 'refine'; not valid with 'wholesale', which reads a feed and creates no proposals. A seller that tracks opportunities associates it with every proposal the call creates, and later refine calls preserve each proposal's association when this field is omitted. When a refine call supplies it, its ID and scope MUST match the association of every proposal the call names, and a mismatch or a named proposal with no association is INVALID_REQUEST before any mutation, and the field cannot reassign a proposal to another cycle. Status must be 'open' when supplied: closure is expressed through decline_proposals or proposal execution, not discovery. Sellers that do not track opportunities ignore it. A call without it starts no opportunity. When ext.adcp.opportunity is also present, this field takes precedence."
+      "description": "Optional planning-cycle context, as on request_proposals. Valid with brief and refine, not wholesale. Status must be open. A refine call cannot reassign a proposal to another cycle; a mismatch is INVALID_REQUEST. Takes precedence over ext.adcp.opportunity."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
