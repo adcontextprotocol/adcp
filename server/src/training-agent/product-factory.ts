@@ -54,6 +54,7 @@ type TrainingProduct = Omit<Product,
   };
 };
 import { PUBLISHERS } from './publishers.js';
+import { productSellsSelectableProperties } from './property-list-targeting.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
 import { createLogger } from '../logger.js';
@@ -861,6 +862,19 @@ function buildProduct(
   // SDK product type predates media_buy_support, so assign through the record
   // view; the wire value is schema-tested against the source product schema.
   (product as unknown as Record<string, unknown>).media_buy_support = { frequency_cap: true };
+
+  // Property-list targeting: the seller applies an exclusion list to every
+  // product, but only publishers that let a buyer subdivide a multi-property
+  // product honour an inclusion list. Product.overlay_support is authoritative,
+  // and `overlay_support.property_list` requires `property_targeting_allowed`.
+  const propertyListSelectable = pub.propertyListTargeting === true
+    && productSellsSelectableProperties(product);
+  product.overlay_support = {
+    ...product.overlay_support,
+    property_list_exclude: true,
+    ...(propertyListSelectable && { property_list: true }),
+  } as typeof product.overlay_support;
+  if (propertyListSelectable) product.property_targeting_allowed = true;
 
   // Populate inline product cards from the product's own data.
   const primaryPricing = effectivePricing[0];
