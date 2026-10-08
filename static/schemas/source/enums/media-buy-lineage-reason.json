@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/media-buy-lineage-reason.json",
+  "title": "Media Buy Lineage Reason",
+  "description": "Why a media buy succeeds an earlier buy of the same seller. Set once, at creation, alongside predecessor_media_buy_id. The enum is closed so buyers can branch on it; reasons outside it travel in `ext`.",
+  "type": "string",
+  "enum": [
+    "renewal",
+    "terms_change",
+    "migration",
+    "sunset"
+  ],
+  "enumDescriptions": {
+    "renewal": "The new buy continues the predecessor's commitment onto a new flight, typically on the same or similar terms.",
+    "terms_change": "The new buy carries the predecessor's commitment under changed commercial or delivery terms that the seller cannot apply to the predecessor in place.",
+    "migration": "The new buy moves the predecessor's commitment to a different product, platform, or seller-side configuration without a change in commercial intent.",
+    "sunset": "The predecessor's product or program is being retired, and the new buy is its designated successor."
+  }
+}

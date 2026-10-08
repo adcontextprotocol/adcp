@@ -27,7 +27,8 @@ Sellers that need to partition inventory away from a caller MUST do so at the **
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. When omitted, returns data across all accessible accounts. |
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
-| `status_filter` | string \| string[] | No | Status filter: `"pending_creatives"`, `"pending_start"`, `"active"`, `"paused"`, `"completed"`, `"rejected"`, `"canceled"`. Defaults to `["active"]` only when `media_buy_ids` is omitted. |
+| `status_filter` | string \| string[] | No | Status filter: `"pending_creatives"`, `"pending_start"`, `"active"`, `"paused"`, `"completed"`, `"rejected"`, `"canceled"`. Defaults to `["active"]` only when both `media_buy_ids` and `predecessor_media_buy_id` are omitted. |
+| `predecessor_media_buy_id` | string | No | Return only the direct successors of this buy (buys created with this `predecessor_media_buy_id`). Composes with the other filters using AND logic and, like `media_buy_ids`, suppresses the implicit `["active"]` status default. An unknown or inaccessible ID returns an empty page. See [Media Buy Lineage](/docs/media-buy/specification#media-buy-lineage). |
 | `indicator_types` | string[] | No | Return buys with at least one requested current indicator on the buy, a package, or a package–creative assignment. Buyers MUST request only advertised types; sellers MAY reject unsupported filtering with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). |
 | `include_snapshot` | boolean | No | When true, include near-real-time delivery snapshots for each package. Defaults to `false`. |
 | `include_history` | integer | No | Include the last N revision history entries per media buy (returns min(N, available)). 0 or omit to exclude. Max 1000. |
@@ -37,7 +38,7 @@ Sellers that need to partition inventory away from a caller MUST do so at the **
 
 *`media_buy_ids` filters results to specific media buys. If neither is provided, the query is scope-based and uses `status_filter` + `pagination`.
 
-When `media_buy_ids` are provided, no implicit status filtering is applied. Pass `status_filter` explicitly if you want to filter identified buys by status.
+When `media_buy_ids` or `predecessor_media_buy_id` is provided, no implicit status filtering is applied. Pass `status_filter` explicitly if you want to filter identified buys by status.
 
 ### Deterministic filter contract
 
@@ -76,6 +77,8 @@ Returns an array of media buys with current status, creative approval state, and
 | `accepted_proposal_terms_digest` | Digest binding the current accepted proposal terms for recovery and governance verification. |
 | `accepted_proposal` | Complete accepted canonical proposal for compact-lifecycle buys. Together with the ID and digest, this lets a restarted client refine the current commercial envelope without reconstructing historical offers. |
 | `invoice_recipient` | Per-buy invoice recipient when provided at creation. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
+| `predecessor_media_buy_id` | The buy this one succeeds, as set at creation. Same seller and account. Present only when the buy was created with it; the predecessor carries no reverse pointer, so use the `predecessor_media_buy_id` filter to find successors. The predecessor may no longer be retrievable. |
+| `lineage_reason` | `renewal`, `terms_change`, `migration`, or `sunset`. Present whenever `predecessor_media_buy_id` is. |
 | `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
 | `status_as_of` | ISO 8601 timestamp when the seller last refreshed the returned media-buy-level `status` from its source of truth. For rolled-up statuses, this MUST NOT be later than the oldest upstream status observation that could affect the returned roll-up. Optional; omitted or `null` makes no freshness assertion, and buyers MUST NOT infer live status from absence. Use this to interpret cached or rolled-up statuses separately from `updated_at`, which means the media buy's last modification time. |
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
@@ -398,6 +401,66 @@ Sellers MAY omit actions based on business rules (e.g., omit `cancel` when the m
 For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-change action label, not proof that the `sync_creatives` task exists. Use the creative path the seller advertises: `sync_creatives` and `creative_assignments` for sellers with `creative.has_creative_library: true`, or `packages[].creatives` on [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) for inline-only sellers.
 
 ## Common Scenarios
+
+### Follow a renewal chain
+
+A buyer renews `mb_pinnacle_q3` by creating a new buy with `predecessor_media_buy_id` and `lineage_reason`. The seller does not touch `mb_pinnacle_q3`; the link lives only on the successor. Creating the successor:
+
+```json
+{
+  "$schema": "/schemas/media-buy/create-media-buy-request.json",
+  "idempotency_key": "6f1d0a52-7c3e-4b1a-9e0d-2a5b8c4d7e91",
+  "account": { "account_id": "acct_nova_brands" },
+  "brand": { "domain": "novabrands.example" },
+  "start_time": "2026-10-01T00:00:00Z",
+  "end_time": "2026-12-31T23:59:59Z",
+  "predecessor_media_buy_id": "mb_pinnacle_q3",
+  "lineage_reason": "renewal",
+  "total_budget": { "amount": 40000, "currency": "USD" },
+  "packages": [
+    {
+      "product_id": "prod_d979b543",
+      "pricing_option_id": "cpm_usd_auction",
+      "budget": 40000
+    }
+  ]
+}
+```
+
+Reverse lookup finds the direct successors of the old buy in every status, since the filter suppresses the implicit `["active"]` default:
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-media-buys-request.json",
+  "predecessor_media_buy_id": "mb_pinnacle_q3"
+}
+```
+
+Each returned buy echoes the link. A buy that has not been renewed yields an empty page, not an error:
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-media-buys-response.json",
+  "status": "completed",
+  "media_buys": [
+    {
+      "media_buy_id": "mb_pinnacle_q4",
+      "predecessor_media_buy_id": "mb_pinnacle_q3",
+      "lineage_reason": "renewal",
+      "status": "active",
+      "confirmed_at": "2026-09-28T15:00:00Z",
+      "currency": "USD",
+      "total_budget": 40000,
+      "revision": 1,
+      "created_at": "2026-09-28T15:00:00Z",
+      "updated_at": "2026-09-28T15:00:00Z",
+      "packages": []
+    }
+  ]
+}
+```
+
+To walk further back or forward, repeat the lookup one hop at a time. See [Media Buy Lineage](/docs/media-buy/specification#media-buy-lineage).
 
 ### Check creative approval status
 

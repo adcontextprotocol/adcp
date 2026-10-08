@@ -420,7 +420,7 @@ AdCP is a protocol onto the seller's ad operations, not a shadow ledger beside t
 
 Concretely:
 
-- `get_media_buys` MUST return every media buy owned by the authenticated account — whether created via `create_media_buy`, via the seller's native APIs or UI, via manual trafficking, or via legacy/third-party systems — subject only to the declared `status_filter` and pagination.
+- `get_media_buys` MUST return every media buy owned by the authenticated account — whether created via `create_media_buy`, via the seller's native APIs or UI, via manual trafficking, or via legacy/third-party systems — subject only to the declared filters (`status_filter`, `predecessor_media_buy_id`, and the like) and pagination.
 - Any `media_buy_id` returned by `get_media_buys` MUST be a valid argument to `get_media_buy_delivery` and to `update_media_buy` for every action listed in its `valid_actions`.
 - A sales agent MUST NOT mark a buy read-only, hide it, or return `MEDIA_BUY_NOT_FOUND` on the basis that it was not originally booked through AdCP.
 - When a specific action is unavailable for business reasons (contractual obligations, platform constraints, policy), the sales agent expresses that by omitting the action from `valid_actions`, not by refusing the buy from account-scoped listings.
@@ -434,6 +434,21 @@ When a seller has a legitimate reason to keep a set of buys outside a caller's o
 - Within any account the caller *is* authorized on, return the full set of buys that account owns per the rules above.
 
 The account boundary is the AdCP primitive for access partitioning; `get_agent_capabilities` is the introspection surface for the scope granted on a given account. Callers can see what they can see; what they cannot see lives behind an account reference they do not hold. Within-account filtering — returning only a subset of an account's buys to a caller who is authorized on that account — reintroduces the shadow-ledger problem this rule forbids.
+
+### Media Buy Lineage
+
+A media buy MAY declare the earlier buy it succeeds — a renewal onto a new flight, a migration, or a sunset into a successor — so buyers do not rebuild spend continuity, pacing baselines, and dispute context out of band. `history[]` records one buy's own revisions; lineage links two different buys.
+
+- **Forward-only.** The successor carries `predecessor_media_buy_id` and `lineage_reason`, set once at creation on [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), [`buy_products`](/docs/media-buy/task-reference/buy_products), or [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) (when acceptance creates a new MediaBuy). There is no field on the predecessor and no update action: the fields are not part of `update_media_buy`, and a seller MUST NOT apply them if sent there. Creating a successor MUST NOT change the predecessor's AdCP-visible state, including `status`, `revision`, `updated_at`, and `history[]`, and MUST NOT add a reverse pointer to it. Canceled and completed buys are never mutated. Creating the successor does not cancel or complete a live predecessor; the buyer does that separately, and this section does not limit how many buys name the same predecessor.
+- **Same seller, same account.** The value MUST be the `media_buy_id` of an existing buy owned by the same seller and the same account as the request. `media_buy_id` is seller-namespaced, so cross-seller lineage is not expressible. The predecessor MAY be in any status; it need not be terminal.
+- **Invalid links are rejected.** The seller MUST reject the request with [`MEDIA_BUY_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-media-buy-not-found) when no such buy is accessible to the caller in the request's account, and MUST NOT reveal whether the ID exists under another account. It MUST reject with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) when `predecessor_media_buy_id` and `lineage_reason` are not supplied together, or when an `accept_proposal` request carries them for a proposal whose `proposal_kind` is `media_buy_update` or `media_buy_cancellation`. A rejected request creates no media buy. Because the link is set once and must name an already-existing buy, a cycle cannot form; there is no depth limit and no lineage-specific error code.
+- **No silent drop.** A seller that receives a schema-valid link it cannot record MUST reject the request with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) and MUST NOT create an unlinked buy. Because these schemas allow additional properties, a seller that predates lineage may ignore the fields; a buyer therefore reads the echo on [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) after creation and treats its absence as "link not recorded".
+- **Closed reason.** `lineage_reason` is `renewal`, `terms_change`, `migration`, or `sunset`. Reasons outside the enum travel in `ext`; buyers branch only on the enum.
+- **Async and replay.** A seller SHOULD validate the link before returning a `submitted` envelope, and the link MUST appear on the completed buy. The fields are part of the request the idempotency key protects: an exact replay returns the stored outcome without re-validating the predecessor, and a changed link under the same key is an idempotency conflict.
+- **Read and reverse lookup.** `get_media_buys` echoes both fields on every buy created with them and accepts a `predecessor_media_buy_id` filter that returns the direct successors of a buy in every status. Chains are walked one hop at a time, and the predecessor of a returned buy MAY no longer be retrievable.
+- **No commercial effect.** Lineage is a record, not a contract: it carries no pricing, budget, delivery, or creative inheritance, the seller applies none of the predecessor's terms to the successor, and the fields are outside any proposal terms digest.
+
+Seller-initiated replacement offers are a separate flow; lineage is the persistent link recorded once a replacement buy exists, whatever initiated it. Decision record: DR-XXXX.
 
 ### Asynchronous Operations
 
@@ -829,6 +844,7 @@ Create a media buy from selected packages or execute a proposal.
 **Requirements:**
 - Orchestrators MUST include either `packages` array or `proposal_id`
 - Orchestrators MUST include `start_time` and `end_time` for the campaign
+- Orchestrators MAY include `predecessor_media_buy_id` with `lineage_reason` to link the new buy to an earlier buy of the same seller and account; see [Media Buy Lineage](#media-buy-lineage)
 - Sales agents MUST return `media_buy_id` on successful creation
 - Sales agents MUST return `confirmed_at` on successful creation. The value is the seller commitment timestamp, or `null` when the response creates a provisional buy that is not yet committed.
 - Sales agents MUST return `revision` on successful creation
@@ -910,7 +926,8 @@ Synchronize catalogs (products, inventory, stores, and vertical feeds) on a sell
 Retrieve operational media buy state, including package status, creative approvals, missing formats, and optional delivery snapshots.
 
 **Requirements:**
-- Orchestrators MAY filter by `account_id`, `media_buy_ids`, and `status_filter`
+- Orchestrators MAY filter by `account_id`, `media_buy_ids`, `status_filter`, and `predecessor_media_buy_id` (direct successors of a buy; see [Media Buy Lineage](#media-buy-lineage))
+- Sales agents MUST echo `predecessor_media_buy_id` and `lineage_reason` on every media buy created with them
 - Orchestrators SHOULD use cursor pagination (`pagination.max_results` / `pagination.cursor`) for broad scope queries
 - Sales agents MUST return every media buy owned by the authenticated account that matches the declared filter set, regardless of how the buy was created (AdCP, seller's native APIs/UI, manual trafficking, legacy systems). See [Account Ownership vs. Creation Surface](#account-ownership-vs-creation-surface).
 - Sales agents MUST return current media buy status and package-level operational state for each matched media buy
@@ -938,7 +955,7 @@ For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-c
 - Sales agents SHOULD include creative approval outcomes and pending format requirements when available
 - If `include_snapshot` is true and snapshot data is omitted for a package, sales agents MUST return `snapshot_unavailable_reason`
 - When `include_snapshot` is true and snapshots are returned, each snapshot MUST include `as_of` and `staleness_seconds`
-- Default `status_filter: ["active"]` applies only when `media_buy_ids` is omitted
+- Default `status_filter: ["active"]` applies only when both `media_buy_ids` and `predecessor_media_buy_id` are omitted
 
 ### get_media_buy_delivery
 

@@ -24,6 +24,13 @@
       },
       "minItems": 1
     },
+    "predecessor_media_buy_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "media_buy",
+      "description": "Return only the direct successors of this buy: media buys created with this `predecessor_media_buy_id`. Composes with other filters (AND) and, like `media_buy_ids`, suppresses the implicit `[\"active\"]` status default. An unknown or inaccessible ID returns an empty page, not an error."
+    },
     "status_filter": {
       "oneOf": [
         {
@@ -37,7 +44,7 @@
           "minItems": 1
         }
       ],
-      "description": "Filter by status. Can be a single status or array of statuses. Defaults to [\"active\"] when media_buy_ids is omitted. When media_buy_ids is provided, no implicit status filter is applied."
+      "description": "Filter by status. Can be a single status or array of statuses. Defaults to [\"active\"] when both media_buy_ids and predecessor_media_buy_id are omitted. When either is provided, no implicit status filter is applied."
     },
     "indicator_types": {
       "type": "array",

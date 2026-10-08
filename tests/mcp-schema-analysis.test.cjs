@@ -44,11 +44,13 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // MediaBuy frequency capping adds a root value, product support, and
   // requirements closure to the representative media-buy graph. The
   // viewable_rate goal references the shared viewability standard enum.
+  // Media-buy lineage adds the shared lineage reason enum, reached from
+  // create_media_buy and buy_products.
   // outcome_target.cost_per adds its object and strength enum schemas, each
   // reached from list_products, request_proposals, and refine_proposals.
-  assert.equal(report.definition_instances, 678);
-  assert.equal(report.unique_definitions, 184);
-  assert.equal(report.repeated_definitions, 132);
+  assert.equal(report.definition_instances, 680);
+  assert.equal(report.unique_definitions, 185);
+  assert.equal(report.repeated_definitions, 133);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -172,7 +174,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 184);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 185);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

@@ -61,6 +61,8 @@ commitment and subsequent [`get_media_buys`](/docs/media-buy/task-reference/get_
 reads. It is operational display metadata outside `accepted_proposal` and is
 not covered by `terms_digest`.
 
+A buy that renews, migrates, or replaces an earlier buy of the same seller and account MAY carry `predecessor_media_buy_id` with `lineage_reason` (`renewal`, `terms_change`, `migration`, or `sunset`). The link is forward-only and is set once here; the seller does not modify the predecessor. A predecessor that is not an accessible buy of the request's account is rejected with `MEDIA_BUY_NOT_FOUND`, and either field without the other is rejected with `INVALID_REQUEST`. The fields sit outside `accepted_proposal` and `terms_digest`. See [Media Buy Lineage](/docs/media-buy/specification#media-buy-lineage).
+
 To receive scheduled reports, a `reporting_webhook` registered on this task needs a buyer-supplied `operation_id` (see [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks)); sellers MUST NOT send `media_buy_delivery` reports to a registration that omits it.
 
 Each purchase uses request-only `ProductPurchaseInput`. Its

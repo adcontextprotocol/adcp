@@ -60,6 +60,15 @@
             "$ref": "/schemas/core/account.json",
             "description": "Account billed for this media buy"
           },
+          "predecessor_media_buy_id": {
+            "type": "string",
+            "x-entity": "media_buy",
+            "description": "Media buy this one succeeds, as set at creation. Same seller and account; the predecessor carries no reverse link and may no longer be retrievable. Sellers MUST echo it for buys created with it."
+          },
+          "lineage_reason": {
+            "$ref": "/schemas/enums/media-buy-lineage-reason.json",
+            "description": "Why this buy succeeds its predecessor. Present whenever `predecessor_media_buy_id` is."
+          },
           "invoice_recipient": {
             "$ref": "/schemas/core/business-entity.json",
             "description": "Per-buy invoice recipient when provided at creation. Confirms the seller accepted the billing override. Bank details are omitted (write-only)."
@@ -797,6 +806,8 @@
           }
         },
         "dependencies": {
+          "predecessor_media_buy_id": ["lineage_reason"],
+          "lineage_reason": ["predecessor_media_buy_id"],
           "accepted_proposal_id": ["accepted_proposal_terms_digest", "accepted_proposal"],
           "accepted_proposal_terms_digest": ["accepted_proposal_id", "accepted_proposal"],
           "accepted_proposal": ["accepted_proposal_id", "accepted_proposal_terms_digest"]
