@@ -657,7 +657,7 @@ Invoke [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get
 
 ## Hashing Requirements
 
-Hash emails and phone numbers with SHA-256 before sending, normalizing first. `uids[]` values are not hashed; send the form noted below:
+Hash emails and phone numbers with SHA-256 before sending, normalizing first. `uids[]` values are not hashed, except a `hashed_email` entry, which carries the same SHA-256 form as the top-level field; send the forms noted below:
 
 | Identifier | Normalization | Example |
 |------------|--------------|---------|
