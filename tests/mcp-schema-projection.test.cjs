@@ -106,8 +106,11 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // Experimental Product.execution_requirements (#7763) reaches it through the
 // seeded Product and brings it to ~1_260_400 bytes. DOOH placement location and
 // inventory summary fields (#7416) bring it to ~1_267_800 bytes; the headroom
-// covers the additive 3.3 Product fields still in review.
-const PARITY_COMPILE_LIMIT = 1_280_000;
+// covers the additive 3.3 Product fields still in review. The 3.3 broadcast
+// TV, daypart and execution-readiness additions bring it to ~1_282_300 bytes.
+// Further growth should be met by hoisting shared definitions out of the
+// seeded Product (#8041), not by another bump.
+const PARITY_COMPILE_LIMIT = 1_300_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
