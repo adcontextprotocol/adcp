@@ -145,6 +145,12 @@ export function createBuyerOAuthSession(file, agentUrl, { trustedFetchFn } = {})
     || file.state.agent.oauth_resource !== `${base}/mcp`) throw new Error('Sign in to this buyer resource first.');
   const provider = createNonInteractiveOAuthProvider(file.state.agent, { storage: file.storage, resourceOverride: `${base}/mcp` });
   const fetchFn = buyerFetch(trustedFetchFn);
+  // WorkOS tokens last five minutes; the SDK's five-minute buffer would refresh every operation.
+  const hasUsableTokens = () => {
+    const tokens = file.state.agent.oauth_tokens;
+    return Boolean(tokens?.access_token) && (tokens.expires_at === undefined
+      || new Date(tokens.expires_at).getTime() - Date.now() > 30_000);
+  };
   let queue = Promise.resolve();
   const serial = operation => {
     const result = queue.then(operation);
@@ -158,7 +164,7 @@ export function createBuyerOAuthSession(file, agentUrl, { trustedFetchFn } = {})
   };
   return {
     call: (tool, params, options) => serial(async () => {
-      if (!provider.hasValidTokens()) await refresh();
+      if (!hasUsableTokens()) await refresh();
       const response = await callMCPToolWithOAuth({ agentUrl: `${base}/mcp`, toolName: tool,
         args: { ...params, adcp_version: '3.2' }, authProvider: provider,
         signal: options?.signal ?? AbortSignal.timeout(30_000), requestTimeoutMs: 30_000,
@@ -172,7 +178,7 @@ export function createBuyerOAuthSession(file, agentUrl, { trustedFetchFn } = {})
       const target = new URL(url);
       if (target.origin !== new URL(base).origin || !target.pathname.startsWith(`${new URL(base).pathname}/reporting/`)
         || target.username || target.password || target.search || target.hash) throw new Error('Buyer REST request is outside the reporting resource.');
-      if (!provider.hasValidTokens()) await refresh();
+      if (!hasUsableTokens()) await refresh();
       const request = async () => {
         const tokens = await provider.tokens();
         if (!tokens?.access_token) throw new Error('Buyer reauthorization required.');

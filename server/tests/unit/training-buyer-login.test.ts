@@ -13,6 +13,7 @@ const resource = `${DEFAULT_BUYER_AGENT}/mcp`;
 let requests: { url: string; body?: string; authorization: string | null }[];
 let challenge: string;
 let tokenExchanges: number;
+let tokenLifetime: number;
 function response(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }); }
 const providerPort: typeof fetch = async (input, init) => {
   const url = input instanceof Request ? input.url : input.toString();
@@ -35,7 +36,7 @@ const providerPort: typeof fetch = async (input, init) => {
       expect(params.get('refresh_token')).toBe(`refresh-${tokenExchanges}`);
     }
     tokenExchanges++;
-    return response({ access_token: `access-${tokenExchanges}`, refresh_token: `refresh-${tokenExchanges}`, token_type: 'Bearer', expires_in: 3600 });
+    return response({ access_token: `access-${tokenExchanges}`, refresh_token: `refresh-${tokenExchanges}`, token_type: 'Bearer', expires_in: tokenLifetime });
   }
   if (url.includes('/reporting/destinations/')) return response({ grant: { account_id: 'account-a' } });
   if (url === resource) {
@@ -55,10 +56,27 @@ async function start() {
   expect(url.searchParams.get('resource')).toBe(resource); expect(url.searchParams.get('code_challenge_method')).toBe('S256');
   return `http://127.0.0.1:8765/callback?code=controlled-code&state=${result.state}`;
 }
-beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), 'training-buyer-login-')); requests = []; challenge = ''; tokenExchanges = 0; });
+beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), 'training-buyer-login-')); requests = []; challenge = ''; tokenExchanges = 0; tokenLifetime = 3600; });
 afterEach(async () => { await closeMCPConnections(); await file?.close(); file = undefined; await rm(directory, { recursive: true, force: true }); });
 
 describe('buyer login through official OAuth and MCP clients', () => {
+  it('reuses five-minute WorkOS tokens and refreshes when the request budget reaches expiry', async () => {
+    tokenLifetime = 300;
+    const callback = await start();
+    await finishBuyerLogin(file!, callback, { trustedFetchFn: providerPort });
+    const session = createBuyerOAuthSession(file!, DEFAULT_BUYER_AGENT, { trustedFetchFn: providerPort });
+    await session.fetch(`${DEFAULT_BUYER_AGENT}/reporting/destinations/a/b`);
+    await session.call('get_reporting_status', {});
+    expect(tokenExchanges).toBe(1);
+    expect(requests.filter(r => r.url.includes('/reporting/') || r.url === resource)
+      .every(r => r.authorization === 'Bearer access-1')).toBe(true);
+    file!.state.agent.oauth_tokens.expires_at = new Date(Date.now() + 20_000).toISOString(); await file!.save();
+    await session.fetch(`${DEFAULT_BUYER_AGENT}/reporting/destinations/a/b`);
+    await session.fetch(`${DEFAULT_BUYER_AGENT}/reporting/destinations/a/b`);
+    expect(tokenExchanges).toBe(2);
+    expect(requests.filter(r => r.url.includes('/reporting/')).slice(-2)
+      .every(r => r.authorization === 'Bearer access-2')).toBe(true);
+  });
   it('completes PKCE once, rotates refresh, and shares the current token with REST and MCP', async () => {
     const callback = await start();
     await finishBuyerLogin(file!, callback, { trustedFetchFn: providerPort });
