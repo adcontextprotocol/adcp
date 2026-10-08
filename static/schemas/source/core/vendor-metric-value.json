@@ -65,18 +65,18 @@
     },
     "measurement_provenance": {
       "type": "object",
-      "description": "Optional structured provenance for this row: which collection mechanisms the value was built from and whether the vendor deduplicated across them. Row-level rather than vendor-level because a vendor's metrics are built from different sources (e.g., a reach metric from STB plus panel, a tune-in metric from STB alone). `source_types` is the union across the row's aggregation scope; variance finer than the row (STB-only in dense metros, panel in thin DMAs) is visible only on geo or other breakdown rows that carry their own provenance. Orthogonal to `qualifier.attribution_methodology` (how exposure was tied to an outcome) and `qualifier.completion_source` (who attested). Keys defined here are protocol-defined, so buyers MAY filter or group rows on them; readers MUST ignore unknown keys and MUST NOT compare unknown keys across vendors. When absent, provenance is unspecified — buyers resolve it from the vendor's measurement-agent `methodology_url`; absence is never an implicit `server_logs` or any other source. Deliberately not a `qualifier` key: provenance describes how a value was produced and does not partition rows, so it stays out of the `(vendor, metric_id, qualifier)` reconciliation join. Open per DR-0009 (not a join-key object under DR-0019); vendor-specific detail belongs in `breakdown`.",
+      "description": "Optional source provenance for this row: which collection mechanisms built the value and whether the vendor deduplicated across them. Row-level because a vendor's metrics draw on different sources; `source_types` is the union across the row's aggregation scope. Not a `qualifier` key: it does not partition rows in the `(vendor, metric_id, qualifier)` join. Buyers MAY filter or group on its keys; readers MUST ignore unknown keys. When absent, provenance is unspecified, never an implicit source; see the vendor's `methodology_url`. Open per DR-0009; vendor-specific detail belongs in `breakdown`.",
       "properties": {
         "source_types": {
           "type": "array",
-          "description": "Collection mechanisms that contributed to this row. A set: order carries no meaning (consumers MUST NOT infer weight or primacy from position) and values MUST NOT repeat. List only mechanisms that contributed to this row's value, not every mechanism the vendor operates.",
+          "description": "Mechanisms whose events enter this row's value; not every mechanism the vendor operates, and not cross-check sources. A set: order carries no meaning and values MUST NOT repeat.",
           "items": { "$ref": "/schemas/enums/measurement-source-type.json" },
           "minItems": 1,
           "uniqueItems": true
         },
         "deduplicated": {
           "type": "boolean",
-          "description": "Whether the vendor deduplicated across the feeds that contributed to this row. `true` — a cross-feed dedup methodology was applied across all of the feeds behind the listed `source_types` (if only some were deduplicated, omit the field and describe it in the vendor's methodology); `false` — feeds were combined without dedup (a simple union, so overlapping audiences may be double-counted); absent — unspecified, never implicitly `false`. Senders MUST serialize an explicit `false` and MUST NOT drop it (many generated clients omit zero-value booleans), and receivers MUST NOT coalesce null or absent to `false`. The field does not say at what level dedup occurred (household, person, device); that stays in the vendor's methodology documentation. SHOULD be omitted when the row derives from a single feed. MAY be set when `source_types` has one entry if several feeds of that type were combined (e.g., return-path data from multiple MVPDs)."
+          "description": "Whether the vendor deduplicated across all feeds behind the listed `source_types` (if only some, omit and describe in the methodology). `false` means a simple union, so overlap may be double-counted; senders MUST serialize an explicit `false`. Absent means unspecified, never `false`. SHOULD be omitted for a single feed. Says nothing about dedup level (household, person, device)."
         }
       },
       "required": ["source_types"],

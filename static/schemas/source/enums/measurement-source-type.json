@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/measurement-source-type.json",
   "title": "Measurement Source Type",
-  "description": "Collection mechanism a count is built from — what was observed and how, not *who* observed it (the party is carried by a BrandRef: `billing_measurement.vendor`, `vendor_metric_values[].vendor`, `vendor_relationship`), not how an outcome was attributed (`attribution_methodology`), and not the maturation or IVT stage (`measurement_window`). Neutral vocabulary, not a quality ranking: the same value from two vendors is not thereby comparable. One vocabulary serves two surfaces: discovery-time `measurement_terms.billing_measurement.counting_sources[]` (what the billing count is counted from) and report-time `vendor_metric_values[].measurement_provenance.source_types[]` (what a reported vendor value was built from). Scoped to video, CTV, audio, and broadcast-style counting; sensor-based place measurement (camera, Wi-Fi, beam) has no value yet and is an additive minor when an adopter needs it. Broadcast as-run logs and station affidavits are airing evidence (proof that a spot ran), not a counting source for audience measurement, so they are not values here; delivery reports carry as-run data in `by_spot[]`, separately from audience rows. Ownership-flavored labels are deliberately not values: an ad server's logs and a publisher's logs are both `server_logs`; whether the log owner is the seller or an independent vendor is the BrandRef's job. Values cannot be renamed or removed once released; new values are additive (minor).",
+  "description": "Collection mechanism a count is built from — what was observed and how. Not who observed it (a BrandRef carries the party), how an outcome was attributed (`attribution_methodology`), or the maturation or IVT stage (`measurement_window`). Neutral, not a quality ranking. Shared by `billing_measurement.counting_sources[]` and `measurement_provenance.source_types[]`. Broadcast as-run logs and station affidavits are airing evidence (proof that a spot ran), not a counting source for audience measurement, so they are not values; delivery reports carry as-run data in `by_spot[]`, separately from audience rows. Ownership labels are not values: ad-server and publisher logs are both `server_logs`. Released values cannot be renamed or removed.",
   "type": "string",
   "enum": [
     "set_top_box",
@@ -13,11 +13,11 @@
     "sdk"
   ],
   "enumDescriptions": {
-    "set_top_box": "Set-top-box return-path data — tuning events from cable, satellite, or IPTV devices.",
-    "acr": "Automatic content recognition — audio/video fingerprint matching from smart TVs or companion devices.",
-    "panel": "Recruited respondent panel (meter- or diary-based) projected to a population.",
-    "server_logs": "Events observed server-side in the decision or delivery path: ad-server, SSAI stitcher, or publisher/player-backend logs, including tracking URLs fired by a server on the player's behalf. Not a render confirmation. Log ownership is carried by the BrandRef, not by this value.",
-    "client_tracker": "Declarative tracking URLs (pixels, beacons, VAST/DAAST tracking URLs) requested by the player or browser itself; no measurement code executes. Server-fired URLs are `server_logs`; executing code is `sdk`.",
-    "sdk": "Measurement code executing in the player, app, or page — OM SDK verification, vendor JavaScript tags, mobile and CTV measurement SDKs."
+    "set_top_box": "Set-top-box return-path tuning events from cable, satellite, or IPTV devices.",
+    "acr": "Automatic content recognition from smart TVs or companion devices.",
+    "panel": "Recruited respondent panel (meter or diary) projected to a population.",
+    "server_logs": "Events observed server-side in the decision or delivery path (ad server, SSAI stitcher, publisher backend), including tracking URLs a server fires on the player's behalf. Not a render confirmation.",
+    "client_tracker": "Declarative tracking URLs (pixels, beacons, VAST/DAAST tracking URLs) requested by the player or browser; no measurement code executes. Server-fired URLs are `server_logs`; executing code is `sdk`.",
+    "sdk": "Measurement code executing in the player, app, or page (OM SDK, vendor JavaScript tags, mobile and CTV SDKs)."
   }
 }
