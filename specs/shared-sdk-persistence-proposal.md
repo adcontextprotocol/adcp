@@ -245,7 +245,7 @@ table fixes the semantics it must encode.
 | Write safety | Obligation lease with generation fencing | Account lock, content-derived IDs, replay compare | **Database invariants are the safety contract.** Under the account lock, the rules in the next row serialize writers, and an unfenced stale writer loses cleanly with a numbering or supersession conflict. Obligation-lease fencing remains an optional scheduling optimization. |
 | Revision ordering | Gapless `revision_number`; `NOT EXISTS official` predicate | Supersession chain; `_one_official`, `_one_successor` | **Both, database-enforced:** `UNIQUE(obligation, revision_number)` with number 1 as the root, which closes Python's two-root gap; `supersedes` is the number − 1 revision; one official per obligation; one successor per revision. |
 | Configuration identity | Surrogate `configuration_id`; unique `(account, cfg, version)` | Natural key `(account, consumer, cfg, version)` | Natural key including `consumer_id`. JS writes its resolved account boundary as the consumer, preserving today's isolation. |
-| Current revision | Derived by scanning revisions | Derived from the supersession leaf | The obligation row carries `current_reporting_revision_id` and `current_revision_number`, updated in the revision's commit transaction. That makes the host current-revision read (§3.7) an index lookup. |
+| Current revision | Derived by scanning revisions | Derived from the supersession leaf | The current revision is the obligation's highest `revision_number`. An official revision is terminal, so it is always the highest. With gapless numbering, the `UNIQUE (obligation, revision_number)` index makes the host current-revision read (§3.7) one index lookup, and no pointer column is needed. |
 | Revision `kind` column | Always equals `finality` | Absent | Drop it. |
 | Account on child rows | Revisions and adjustments lack `account_id` | Present, with account-qualified composite FKs | Present everywhere, with account-qualified composite FKs, including the chunk tables. |
 | Content binding | `content_sha256` (= binding) plus JSON | `revision_content_sha256`, `row_count`, `control_totals` (pairs) | Explicit columns: `binding_algorithm`, `revision_content_sha256`, `canonical_byte_count`, `row_count`, `control_totals` in protocol shape (§2.4), and `row_manifest_sha256`. The name `content_sha256` is not reused. |
@@ -646,17 +646,28 @@ it cannot break a hash, everything about it is adopter-defined:
 - retention.
 
 **BigQuery sink (first implementation).**
-- Each tick, one load job lists the exact objects of revisions committed in that tick.
-  Its job ID is deterministic, derived from the sink, the change-feed cursor range and
-  the batch, so retries are idempotent.
+- Each tick, the sink reads the next range of committed revisions from the change feed
+  (§3.7) and reads their rows through the verified row reader. It applies the
+  adopter's column map plus standard revision columns, and loads them as newline-
+  delimited JSON. It runs one load job per table: rows first, then revision metadata.
+  - The batch (change-feed range and revision list) is recorded in PostgreSQL before
+    any load. Job IDs derive from the sink and that range.
+  - A crash between a load and the cursor commit replays the same batch under the same
+    job IDs, which BigQuery refuses to run twice.
+  - A job that finished with an error is retried under a new attempt suffix for that
+    table only.
   - Only committed revisions are loaded; orphans and losing attempts never reach the
     warehouse.
-  - Ingestion uses the free shared slot pool.
-  - Ninety-six ticks a day sit far below per-table load quotas.
-- Rows land with the adopter's column map applied. Optional columns: `row_jcs STRING`
+  - Ingestion uses the free shared slot pool, and ninety-six ticks a day sit far
+    below per-table load quotas.
+  - The sink registers as a change-feed consumer, so the feed keeps changes it has
+    not loaded yet.
+- Loading mapped rows, rather than the stored objects directly, lets the warehouse
+  carry adopter-chosen typed columns and revision metadata that a raw object load
+  cannot. It also works for PostgreSQL-stored rows. Optional columns: `row_jcs STRING`
   for exact bytes, and `row JSON` for cheap field access.
-- The sink also writes commit metadata: revision ID, obligation, finality, supersession
-  and period.
+- The sink also writes commit metadata: revision ID, obligation, finality, supersession,
+  period, binding digest, row count and control totals.
 - The sink ships a reference **`current_rows` view** that keeps only each obligation's
   leaf revision: the official revision, otherwise the latest snapshot. Cumulative
   snapshots double-count spend when summed across revisions, which is the most likely
@@ -735,7 +746,8 @@ serving-grade reads from the ledger, not from the warehouse.
   - A cursor older than the change-table retention horizon (§4.2) fails with
     `CURSOR_EXPIRED`. The consumer then resynchronizes from `listCurrentRevisions` and
     resumes from the cursor returned with that read.
-- **Durable consumers.** A host may register a named consumer in
+- **Durable consumers.** A host may register a named consumer, with its position in
+  its own feed order, in
   `adcp_reporting_feed_consumers(name, cursor, updated_at)`. A registered consumer
   holds back change-table pruning, up to a cap (`max_feed_hold_days`), so a dead
   consumer cannot block retention indefinitely. The warehouse sink is a registered
@@ -887,7 +899,24 @@ without doing the work twice.
 | 4. Idempotency | Shared state machine, PostgreSQL operations, Redis format and scripts | Mixed-language replay, contention, stale-owner and crash-recovery cases pass for each backend. |
 | 5. Operational extensions | Managed delivery, receipts, notifications and outboxes, replay protection, scheduling | Each qualifies separately behind installed-feature checks. |
 
-**Stage 1 PR sequence (JS).** Each PR is small and carries a changeset.
+**Stage 1 PR sequence (JS).** Each PR is small and carries a changeset. Implemented in
+adcontextprotocol/adcp-client #3145, #3146, #3152, #3155, #3157, #3159, #3160, #3163,
+#3165, #3167, #3161, #3164, #3166, #3168 and #3169. Two implementation decisions
+differ from the sketches above:
+
+- Until Stage 3, the JS SDK keeps row location in an `adcp_reporting_row_sets` side
+  table keyed by revision or adjustment ID, the same pattern as Python's Stage 2. A
+  revision without a row set carries its rows inline.
+- The change table is a separate opt-in migration
+  (`REPORTING_LEDGER_CHANGES_MIGRATION`, PostgreSQL 13+ for `xid8`), so the Core
+  migration keeps its lower PostgreSQL floor. It records obligation, revision,
+  adjustment and retirement changes.
+
+Registered consumers store their position in their own feed order: `(xid, seq)` for
+deployment-wide consumers, and account plus `seq` for account consumers. Pruning
+deletes a change only once every live consumer has passed it in that order. The
+retention tombstone table is part of the Core migration, so retention also works
+without row storage.
 1. Canonical JSONL encoder, segmenter, chunker and streaming verifiers, with golden
    fixtures. No database.
 2. Metadata-only read paths (`listRevisionMetadata` and siblings), switching the
