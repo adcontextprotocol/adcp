@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { startWebOAuthFlow, completeWebOAuthFlow, createNonInteractiveOAuthProvider } from '@adcp/sdk/auth';
 import { auth } from '@modelcontextprotocol/sdk/client/auth.js';
 import { callMCPToolWithOAuth } from '@adcp/sdk/advanced';
+import { ssrfSafeFetch } from '@adcp/sdk';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const agentId = 'training-gcs-buyer';
@@ -15,6 +16,30 @@ function httpsUrl(value) {
   const url = new URL(value);
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('Trusted HTTPS URL required.');
   return url;
+}
+
+// Manual REST/refresh requests need the same bounded, DNS-pinned transport as SDK OAuth flows.
+function buyerFetch(trustedFetchFn) {
+  return async (input, init = {}) => {
+    const request = input instanceof Request ? input : undefined;
+    const headers = new Headers(request?.headers);
+    new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+    const rawBody = init.body;
+    let body;
+    if (typeof rawBody === 'string' || rawBody instanceof Uint8Array) body = rawBody;
+    else if (rawBody instanceof URLSearchParams) body = rawBody.toString();
+    else if (rawBody instanceof ArrayBuffer) body = new Uint8Array(rawBody);
+    else if (rawBody != null) throw new Error('Unsupported buyer request body.');
+    else if (request?.body) body = new Uint8Array(await request.arrayBuffer());
+    const result = await ssrfSafeFetch(request?.url ?? input.toString(), {
+      method: init.method ?? request?.method ?? 'GET', headers: Object.fromEntries(headers), body,
+      timeoutMs: 10_000, maxBodyBytes: 1024 * 1024, signal: init.signal ?? request?.signal,
+      ...(trustedFetchFn && { trustedFetchFn }),
+    });
+    if (result.status >= 300 && result.status < 400) throw new Error('Buyer requests cannot redirect.');
+    return new Response([204, 205, 304].includes(result.status) ? null : Buffer.from(result.body),
+      { status: result.status, headers: result.headers });
+  };
 }
 
 /** OAuth state is outside the synced repository, owner-only, and single-process. */
@@ -30,10 +55,12 @@ export async function openBuyerAuthFile(filename, { create = false } = {}) {
   let state;
   const save = async () => {
     const temporary = `${path}.${randomUUID()}.tmp`;
-    const handle = await open(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
-    try { await handle.writeFile(JSON.stringify(state) + '\n'); await handle.sync(); }
-    finally { await handle.close(); }
-    try { await rename(temporary, path); }
+    try {
+      const handle = await open(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
+      try { await handle.writeFile(JSON.stringify(state) + '\n'); await handle.sync(); }
+      finally { await handle.close(); }
+      await rename(temporary, path);
+    }
     finally { await unlink(temporary).catch(() => {}); }
   };
   const close = async () => { await lock.close(); await unlink(lockPath); };
@@ -117,6 +144,7 @@ export function createBuyerOAuthSession(file, agentUrl, { trustedFetchFn } = {})
     || file.state.agent.oauth_client?.issuer !== file.state.issuer
     || file.state.agent.oauth_resource !== `${base}/mcp`) throw new Error('Sign in to this buyer resource first.');
   const provider = createNonInteractiveOAuthProvider(file.state.agent, { storage: file.storage, resourceOverride: `${base}/mcp` });
+  const fetchFn = buyerFetch(trustedFetchFn);
   let queue = Promise.resolve();
   const serial = operation => {
     const result = queue.then(operation);
@@ -126,7 +154,7 @@ export function createBuyerOAuthSession(file, agentUrl, { trustedFetchFn } = {})
   const refresh = async () => {
     const metadata = new URL('/.well-known/oauth-protected-resource/sales/mcp', base);
     if (await auth(provider, { serverUrl: `${base}/mcp`, resourceMetadataUrl: metadata,
-      ...(trustedFetchFn && { fetchFn: trustedFetchFn }) }) !== 'AUTHORIZED') throw new Error('Buyer reauthorization required.');
+      fetchFn }) !== 'AUTHORIZED') throw new Error('Buyer reauthorization required.');
   };
   return {
     call: (tool, params, options) => serial(async () => {
@@ -150,7 +178,7 @@ export function createBuyerOAuthSession(file, agentUrl, { trustedFetchFn } = {})
         if (!tokens?.access_token) throw new Error('Buyer reauthorization required.');
         const headers = new Headers(options.headers);
         headers.set('Authorization', `Bearer ${tokens.access_token}`);
-        return (trustedFetchFn ?? fetch)(target, { ...options, headers, cache: 'no-store', redirect: 'error', signal: options.signal ?? AbortSignal.timeout(10_000) });
+        return fetchFn(target, { ...options, headers, cache: 'no-store', redirect: 'error', signal: options.signal ?? AbortSignal.timeout(10_000) });
       };
       let response = await request();
       if (response.status === 401) { await response.body?.cancel(); await refresh(); response = await request(); }

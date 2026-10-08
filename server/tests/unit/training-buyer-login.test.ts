@@ -83,6 +83,22 @@ describe('buyer login through official OAuth and MCP clients', () => {
     await expect(finishBuyerLogin(file!, callback.href, { trustedFetchFn: providerPort })).rejects.toThrow();
     expect(tokenExchanges).toBe(0); expect(file!.state.pending).toBeDefined();
   });
+  it.each(['refresh-response-size', 'rest-response-size', 'rest-redirect'])('bounds %s without spending another refresh token', async failure => {
+    const callback = await start();
+    await finishBuyerLogin(file!, callback, { trustedFetchFn: providerPort });
+    if (failure === 'refresh-response-size') { file!.state.agent.oauth_tokens.expires_at = '2000-01-01T00:00:00Z'; await file!.save(); }
+    const boundedPort: typeof fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      if ((failure === 'refresh-response-size' && url.includes('oauth-protected-resource'))
+        || (failure === 'rest-response-size' && url.includes('/reporting/'))) return new Response('x'.repeat(1024 * 1024 + 1));
+      if (failure === 'rest-redirect' && url.includes('/reporting/')) return new Response(null, { status: 302, headers: { Location: 'https://foreign.example.com' } });
+      return providerPort(input, init);
+    };
+    const session = createBuyerOAuthSession(file!, DEFAULT_BUYER_AGENT, { trustedFetchFn: boundedPort });
+    await expect(session.fetch(`${DEFAULT_BUYER_AGENT}/reporting/destinations/a/b`)).rejects.toThrow();
+    expect(tokenExchanges).toBe(1);
+    expect(requests.some(request => request.url.startsWith('https://foreign.example.com'))).toBe(false);
+  });
   it('consumes expired state and cannot resume it', async () => {
     const callback = await start(); file!.state.pending.expiresAt = new Date(0).toISOString(); await file!.save();
     await expect(finishBuyerLogin(file!, callback, { trustedFetchFn: providerPort })).rejects.toThrow();
