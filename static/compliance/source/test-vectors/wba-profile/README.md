@@ -114,7 +114,7 @@ Each vector under `governance/` carries a compact JWS instead of a request:
 - **`role_listing`**: the origins listed in each role by a record the verifier already trusts. In deployment, that record is the governance-typed `agents[]` entry in the buyer's `brand.json`, or the `adcp:governance` role in `trust.json` once #7809 lands.
 - **`expected_outcome`**: `issuer` for the positive vector; for a negative vector, the `error_code` from the governance error table in `security.mdx`.
 
-The vectors grade only the key-purpose rule: `alg`, `typ`, `jku` equal to the `iss` origin's directory, the key in that directory, the signature, `exp` and `iat`, and the governance role. The other checklist steps (`aud`, `phase`, `sub`, action binding, revocation, replay) are out of scope.
+The vectors grade only the key-purpose rule. The two negative vectors each fail one check: `002` the key lookup in the `iss` origin's directory, and `003` the governance role. The positive vector passes the remaining checks a verifier runs on the way (`alg`, `typ`, `jku` equal to the `iss` origin's directory, the signature, `exp` and `iat`), but no vector here fails them. The other checklist steps (`aud`, `phase`, `sub`, action binding, revocation, replay) are out of scope.
 
 ## Conformance expectations
 
