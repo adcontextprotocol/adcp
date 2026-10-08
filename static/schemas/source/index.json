@@ -378,6 +378,10 @@
           "$ref": "/schemas/core/attestation-evaluation.json",
           "description": "Evaluator-of-record result bound to an exact attestation presentation"
         },
+        "production-evidence-receipt": {
+          "$ref": "/schemas/core/production-evidence-receipt.json",
+          "description": "Experimental claims payload for dated, scoped, issuer-signed production evidence about an AdCP implementation, with mechanical issuer-independence rules"
+        },
         "rights-attestation-evaluation": {
           "$ref": "/schemas/core/rights-attestation-evaluation.json",
           "description": "Seller-produced rights-grant presentation and evaluation readback"
