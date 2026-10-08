@@ -193,8 +193,8 @@
     },
     "core/evaluator-spec.json##/oneOf": {
       "kind": "narrowable",
-      "variants": 3,
-      "note": "0:[exemplars] | 1:[evaluator_id] | 2:[agent_url]"
+      "variants": 2,
+      "note": "0:[exemplars] | 1:[agent_url]"
     },
     "core/format.json##/properties/renders/items/oneOf": {
       "kind": "narrowable",

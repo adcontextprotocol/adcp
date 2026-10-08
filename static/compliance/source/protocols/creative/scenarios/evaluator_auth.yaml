@@ -1,5 +1,5 @@
 id: creative/evaluator_auth
-version: "1.0.3"
+version: "1.0.4"
 title: "Creative evaluator authentication boundary"
 category: creative
 summary: "Verifies that build_creative evaluator pointers use the verifier allowlist, keep credentials out of payloads, and invoke accepted evaluator agents through get_creative_features."
@@ -261,9 +261,9 @@ phases:
     skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
     narrative: |
       The buyer supplies a well-formed `feature_agent.agent_url` alongside an
-      account-arranged evaluator id. The nested feature agent uses the same
+      on-list evaluator `agent_url`. The nested feature agent uses the same
       accepted-verifier allowlist and must be rejected before any outbound call
-      when it is off-list.
+      when it is off-list, including the call to the on-list evaluator.
 
     steps:
       - id: reject_unaccepted_feature_agent
@@ -289,7 +289,7 @@ phases:
             dimension: "best_of_n"
           keep_mode: "keep_one"
           evaluator:
-            evaluator_id: "quality-default"
+            agent_url: "https://quality-evaluator.example/adcp"
             feature_agent:
               agent_url: "https://unaccepted-evaluator.example/adcp"
               feature_id: "$context.creative_feature_id"
@@ -316,6 +316,10 @@ phases:
             description: "Off-list nested feature_agent URL is never called"
             min_count: 0
             endpoint_pattern: "POST https://unaccepted-evaluator.example/adcp*"
+          - check: upstream_traffic
+            description: "The request is rejected before any outbound call, so the on-list evaluator is not called either"
+            min_count: 0
+            endpoint_pattern: "POST https://quality-evaluator.example/adcp*"
 
   - id: payload_credentials_advisory
     title: "Keep evaluator credentials out of the payload"
