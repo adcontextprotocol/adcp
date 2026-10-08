@@ -109,7 +109,7 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // covers the additive 3.3 Product fields still in review. The 3.3 broadcast
 // TV, daypart and execution-readiness additions bring it to ~1_282_300 bytes.
 // Further growth should be met by hoisting shared definitions out of the
-// seeded Product (8041 → #8041), not by another bump.
+// seeded Product (#8041), not by another bump.
 const PARITY_COMPILE_LIMIT = 1_300_000;
 
 function readJson(filename) {
