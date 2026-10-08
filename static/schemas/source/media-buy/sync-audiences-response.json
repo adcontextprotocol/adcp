@@ -64,14 +64,26 @@
               },
               "matched_count": {
                 "type": "integer",
-                "description": "Total members matched to platform users across all syncs (cumulative, not just this call). Populated when status is 'ready'.",
+                "description": "Total members matched to platform users across all syncs (cumulative, not just this call). Populated when status is 'ready' and the seller can report it. MAY be absent when the seller's platform reports an audience size but no matched count. Buyers MUST NOT read an absent matched_count as zero; use audience_size when present.",
                 "minimum": 0
               },
               "effective_match_rate": {
                 "type": "number",
-                "description": "Deduplicated match rate across all identifier types (matched_count / total_uploaded_count after deduplication). A single number for reach estimation. Populated when status is 'ready'.",
+                "description": "Deduplicated match rate across all identifier types (matched_count / total_uploaded_count after deduplication). A single number for reach estimation. Populated when status is 'ready' and the seller can report it. MAY be absent when the seller cannot report a match rate. Buyers MUST NOT read an absent effective_match_rate as zero. match_rate_basis says whether the platform reported the value or the seller derived it.",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "match_rate_basis": {
+                "$ref": "/schemas/enums/audience-match-rate-basis.json",
+                "description": "Where effective_match_rate came from: 'platform_reported' when the destination platform supplied it, 'derived' when the seller computed it, for example from approximate counts. Describes effective_match_rate, so it is only meaningful when that field is present. When absent, the basis is unspecified."
+              },
+              "audience_size": {
+                "$ref": "/schemas/core/audience-size.json",
+                "description": "People matched on the platform, as a range with a stated precision. Use this when the platform reports an interval, approximation, or bucket rather than an exact count. May accompany or replace matched_count: a seller that reports a size but no matched count omits matched_count. Populated when status is 'ready' and the seller can report it. A seller MUST NOT disclose a size below its minimum audience size, so this field MUST be omitted when status is 'too_small'; the existing too_small status and minimum_size govern that case."
+              },
+              "targetable_size": {
+                "$ref": "/schemas/core/audience-size.json",
+                "description": "People the platform can serve to now, as a range with a stated precision. Differs from audience_size when only part of the matched audience is eligible to be served, for example because of surface, consent, or recency limits. Reported as one value: how a platform with several serving surfaces combines them is left to the seller. Populated when status is 'ready' and the seller can report it. A seller MUST NOT disclose a size below its minimum audience size, so this field MUST be omitted when status is 'too_small'."
               },
               "match_breakdown": {
                 "type": "array",

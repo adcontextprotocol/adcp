@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/audience-size-precision.json",
+  "title": "Audience Size Precision",
+  "description": "How precisely a seller reports an audience size range. Describes the lower_bound and upper_bound of an audience-size object, not the quality of the underlying match.",
+  "type": "string",
+  "enum": [
+    "exact",
+    "approximate",
+    "bucketed"
+  ],
+  "enumDescriptions": {
+    "exact": "The seller reports a single exact value. lower_bound MUST equal upper_bound.",
+    "approximate": "The seller reports an approximation, or an interval it computed or was given for privacy or freshness reasons. The true size is expected to fall within lower_bound and upper_bound, but the seller does not commit to exact values.",
+    "bucketed": "The seller reports a coarse size bucket. lower_bound and upper_bound are the bucket edges and carry no information beyond the bucket the audience falls in."
+  }
+}
