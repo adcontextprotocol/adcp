@@ -31,7 +31,8 @@ export type BrandJsonCacheOutcome =
  * validator and Addie's brand tools. 2 MiB leaves room for large brand houses
  * (visual guidelines, colorways, localized names) while still stopping a
  * hostile host from streaming unbounded data into the worker. Signing
- * trust-root fetches apply the tighter 256 KiB budget in security.mdx instead.
+ * trust-root fetches in security.mdx use the same 2 MiB budget. The cap is
+ * enforced while streaming; JWKS and capabilities caps stay smaller.
  */
 export const BRAND_JSON_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 

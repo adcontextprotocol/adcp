@@ -76,4 +76,24 @@ describe('brand.json live-read response cap', () => {
     expect(result.valid).toBe(false);
     expect(JSON.stringify(result.errors)).toMatch(/exceeded/i);
   });
+
+  it('aborts the read once the cap is exceeded instead of buffering the whole body', async () => {
+    const chunk = new Uint8Array(64 * 1024).fill(0x78);
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        // Endless body: only a streaming cap can terminate this read.
+        controller.enqueue(chunk);
+      },
+    });
+    fetchMock.mockResolvedValueOnce(new Response(stream, { status: 200 }));
+
+    const result = await manager.validateDomain('acme.com', { skipCache: true });
+
+    expect(result.valid).toBe(false);
+    expect(JSON.stringify(result.errors)).toMatch(/exceeded/i);
+    // 2 MiB / 64 KiB = 32 chunks; allow stream read-ahead slack.
+    expect(pulls).toBeLessThan(32 + 8);
+  });
 });
