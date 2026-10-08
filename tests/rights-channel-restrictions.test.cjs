@@ -22,7 +22,6 @@ const rights = (channels) => ({
 
 describe("rights-constraint channels restriction (#5542)", () => {
   let validate;
-  const channelEnum = readSchema("/schemas/enums/channels.json").enum;
 
   before(async () => {
     const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: async (ref) => readSchema(ref) });
