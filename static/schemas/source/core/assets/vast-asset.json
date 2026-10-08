@@ -59,8 +59,7 @@
           "description": "Discriminator indicating VAST is delivered via URL endpoint"
         },
         "url": {
-          "type": "string",
-          "format": "uri-template",
+          "$ref": "/schemas/core/macro-bearing-url.json",
           "description": "URL endpoint that returns VAST XML. May carry unsubstituted ad-server macros — VAST-style `[MACRO]` and `${MACRO}` placeholders are accepted as-is (RFC 6570 syntax); buyers MUST NOT pre-encode macro delimiters, since players match the literal token at substitution time."
         }
       },

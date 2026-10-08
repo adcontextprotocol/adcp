@@ -1682,16 +1682,21 @@ async function runTests() {
   });
 
   // Test 12B: VAST/DAAST tag URLs accept unsubstituted ad-server macros
-  await test('VAST and DAAST tag URLs accept [MACRO] and ${MACRO} placeholders', async () => {
+  await test('VAST and DAAST tag URLs accept [MACRO], ${MACRO}, and %%MACRO%% placeholders', async () => {
     // Real-world IAS-wrapped CTV tag: [OMIDPARTNER]-style VAST macros and
     // ${GDPR_CONSENT}-style privacy macros are illegal in strict RFC 3986 URIs
     // but valid RFC 6570 templates. format: "uri" rejected these; the tag
     // asset URLs must use format: "uri-template" (same convention as url-asset).
     const macroUrl = 'https://unified.adsafeprotected.com/v2/2816045/94180721?mon=94180722&omidPartner=[OMIDPARTNER]&apiframeworks=[APIFRAMEWORKS]&bundleId=[BUNDLEID]&blockedAdTracking=${DC_BLOCKED_AD}&ias_dts=atw&ias_xappb=[ctv_appid]&originalVast=https://vast.extremereach.io/v/16115077?us_privacy=${US_PRIVACY}&gdpr=${GDPR}&gdpr_consent=${GDPR_CONSENT_1002}&gpp=${GPP_STRING_1002}&gpp_sid=${GPP_SID}&er_did=[INSERT_DEVICE_ID_HERE]&ba_cb=[INSERT_CACHEBREAKER_HERE]';
+    // GAM-style %%MACRO%% tags (#7993): uri-template rejects a bare % unless it
+    // starts a valid percent-encoded octet, so these need macro-bearing-url.
+    const gamMacroUrl = 'https://ads.example-ssp.com/vast?iu=/1234/example&cb=%%CACHEBUSTER%%&url=%%PATTERN:url%%&click=%%CLICK_URL_UNESC%%';
 
     const cases = [
       ['core/assets/vast-asset.json', { asset_type: 'vast', delivery_type: 'url', url: macroUrl }],
-      ['core/assets/daast-asset.json', { asset_type: 'daast', delivery_type: 'url', url: macroUrl }]
+      ['core/assets/daast-asset.json', { asset_type: 'daast', delivery_type: 'url', url: macroUrl }],
+      ['core/assets/vast-asset.json', { asset_type: 'vast', delivery_type: 'url', url: gamMacroUrl }],
+      ['core/assets/daast-asset.json', { asset_type: 'daast', delivery_type: 'url', url: gamMacroUrl }]
     ];
 
     for (const [schemaFile, asset] of cases) {

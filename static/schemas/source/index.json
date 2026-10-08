@@ -145,6 +145,10 @@
           "$ref": "/schemas/core/installment-deadlines.json",
           "description": "Booking, cancellation, and material submission deadlines for an installment"
         },
+        "macro-bearing-url": {
+          "$ref": "/schemas/core/macro-bearing-url.json",
+          "description": "HTTP(S) URL or legacy URI template that may contain declared or opaque macro tokens"
+        },
         "material-deadline": {
           "$ref": "/schemas/core/material-deadline.json",
           "description": "A deadline for creative material submission at a specific stage"
