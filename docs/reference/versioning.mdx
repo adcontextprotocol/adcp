@@ -45,7 +45,7 @@ Buyers and sellers negotiate at **release precision** (VERSION.RELEASE, e.g. `"3
    - Same major, no server release ≤ buyer's pin (sub-min: every supported release is strictly greater) → return `VERSION_UNSUPPORTED` with `supported_versions` in `error.data`.
    - Different major → return `VERSION_UNSUPPORTED` with `supported_versions` in `error.data`.
    - Omitted → server uses its default release (or, if only `adcp_major_version` was sent, the highest supported release in that major).
-4. **Server echoes**: `adcp_version` on every response tells the buyer which release the seller actually served. The echoed value is the **release served**, never the seller's own latest release — a 3.1 seller serving a 3.0 buyer at 3.0 echoes `"3.0"`. Buyers SHOULD validate the response against that release's schema, not against their pin.
+4. **Server echoes**: `adcp_version` on every response tells the buyer which release the seller actually served. The echoed value is the **release served**, never the seller's own latest release — a 3.1 seller serving a 3.0 buyer at 3.0 echoes `"3.0"`. Buyers SHOULD validate the response against that release's schema, not against their pin. The seller MUST shape the response to that release; see [Serving an older pin](#serving-an-older-pin).
 
 When the response omits `adcp_version` (a legacy 3.0 seller that doesn't read the field — `additionalProperties: true` makes it invisible there), buyers SHOULD validate against their own pin and treat the seller as 3.0-only for capability inference. The buyer's SDK falls back to its constructor pin in this case.
 
@@ -55,16 +55,22 @@ This lets buyers and sellers upgrade independently — sellers can declare multi
 
 #### Serving an older pin
 
-**What the spec defines.** A seller echoes the release it served, and buyers SHOULD validate the response against that release's schema (step 4 above). Release-precision pinning exists so sellers can return responses shaped to the contract the buyer expects.
+**Server shapes to the served release.** A response to a request negotiated at release R MUST validate against R's published schema, where R is the release the response echoes in `adcp_version` (the downshifted release, or the seller's default when the pin is omitted). Shapes introduced after R (new `oneOf`/`anyOf` arms, widened types, alternative required fields) MUST be projected to R's shape or omitted. A seller that cannot project for a release MUST NOT list it in `supported_versions`. New enum values remain governed by the unknown-value tolerance rule.
 
-**What the spec does not yet define.** No normative rule says a response served at release R must validate against R's published schema, and no rule covers shapes introduced after R. It is also undefined whether `get_adcp_capabilities`, which runs before negotiation completes, should vary with the request's `adcp_version`. [#7718](https://github.com/adcontextprotocol/adcp/issues/7718) tracks a normative rule for a future release.
+`get_adcp_capabilities` is the one exception to the MUST, and it is a SHOULD instead. When that request carries an `adcp_version` below the seller's maximum, the seller SHOULD emit capability shapes valid at that release. The call runs before the buyer has read `supported_versions`, so a strictly typed older client can otherwise fail before negotiation finishes.
 
-**Recommended practice (non-normative).** The guidance below follows the intent stated above. It adds no requirement.
+Examples when serving `"3.1"` from a 3.2 seller:
 
-- **Sellers** serving an older release should project or omit shapes that release does not define. That covers new `oneOf`/`anyOf` arms, types widened from a scalar to an object, and new required-field alternatives. Examples: legacy booleans for `media_buy.execution.targeting.geo_regions` / `.language` when serving `"3.1"`, no `revenue_share` pricing options, and a failure response valid under 3.1 in place of the `get_products` `status: "rejected"` arm. New enum values stay governed by the unknown-value tolerance rule.
-- **Buyers** should parse capabilities and responses tolerantly. Accept unknown enum values and unknown union arms, and accept object forms of fields that were booleans in their pinned release. A strict older-release validator can then report drift without failing the integration.
+- Legacy booleans for `media_buy.execution.targeting.geo_regions` and `.language`, not the 3.2 object form.
+- No `revenue_share` pricing options.
+- A failure response valid under 3.1 in place of the `get_products` `status: "rejected"` arm.
+- `brand` and `operator` on every `sync_accounts` row, including rows that carry `account`.
 
-The [3.1 to 3.2 migration guide](/docs/reference/migration/3-1-to-3-2#version-negotiation-across-3-1-and-3-2) lists the 3.2 shapes this affects.
+The [3.1 to 3.2 migration guide](/docs/reference/migration/3-1-to-3-2#version-negotiation-across-3-1-and-3-2) lists all six known divergences.
+
+**Buyers** SHOULD still parse capabilities and responses tolerantly: accept unknown enum values and unknown union arms, and accept object forms of fields that were booleans in the pinned release. A seller that predates this rule can emit unprojected shapes, and a tolerant parser keeps those integrations working.
+
+The rule applies from 3.3. Sellers serving a 3.2 or earlier pin from a 3.3 build follow it. Releases that predate it did not require projection, so a 3.2 seller is not retroactively non-conformant. The `version_negotiation` storyboard carries a [pending scenario](/compliance/latest/universal/version-negotiation.yaml) for it; grading waits on runner support for validating against the served release's schema bundle.
 
 #### Pre-release pins
 
