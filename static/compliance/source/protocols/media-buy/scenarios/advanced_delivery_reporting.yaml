@@ -114,6 +114,10 @@ phases:
           - check: field_present
             path: "accounts[0].account_id"
             description: "The seller assigns an account identity"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            allowed_values: ["compliance-media_buy_seller_advanced_delivery_r-a37f01cb"]
+            description: "The seller echoes operator_unit.id; later steps depend on this for pool isolation"
 
       - id: discover_product
         title: "Discover the reporting-capable product"
