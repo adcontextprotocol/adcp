@@ -3096,7 +3096,10 @@ function productForServedAdcpVersion(product: Product, servedAdcpVersion: string
  * Windowed delivery is counted by the billing measurement vendor the buyer
  * agreed on the buy, so the row names it as `measurement_source`. The vendor is
  * a brand reference; its first domain label is the lowercase slug the schema
- * expects (`videoamp.example` -> `videoamp`).
+ * expects (`summit-measurement.example` -> `summit_measurement`). This is a
+ * sandbox heuristic for the reference seller: the spec does not map the billing
+ * vendor to `measurement_source`, and real sellers report whichever provider
+ * counted the audience.
  */
 function billingMeasurementSource(terms: Record<string, unknown> | undefined): { measurement_source?: string } {
   const billing = isRecord(terms?.billing_measurement) ? terms.billing_measurement : undefined;

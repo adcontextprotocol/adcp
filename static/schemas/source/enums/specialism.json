@@ -61,7 +61,7 @@
     "governance-delivery-monitor": "Campaign delivery monitoring with drift detection",
     "governance-spend-authority": "Conditional spend approval and human-in-the-loop governance",
     "property-lists": "Property list governance — curated inclusion and exclusion lists for targeting and delivery compliance",
-    "sales-broadcast-tv": "Broadcast linear TV seller with guaranteed inventory and FCC cancellation rules",
+    "sales-broadcast-tv": "Broadcast linear TV seller: a CPM-on-demo guarantee on :15/:30 spots under agreed measurement terms, reconciled on the C7 window",
     "sales-catalog-driven": "Catalog-driven commerce with conversion tracking",
     "sales-dooh": "Digital out-of-home seller with non-guaranteed venue and screen inventory, canonical screen formats, and play plus DOOH measurement reporting",
     "sales-exchange": "PREVIEW — Programmatic exchange or SSP seller with multi-publisher auction inventory, floor prices with bid guidance, audience targeting, and auction-level delivery transparency (win rates, clearing prices). Agents claiming this specialism today pass the media-buy baseline plus exchange-specific phases (auction product discovery, bid-priced buy, in-flight bid adjustment, auction delivery reporting). See https://github.com/adcontextprotocol/adcp/issues/2511.",

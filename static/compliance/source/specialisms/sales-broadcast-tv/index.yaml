@@ -46,11 +46,13 @@ narrative: |
      window the guarantee is reconciled against, and a variance tolerance. A seller that
      cannot honor the proposal answers TERMS_REJECTED, and the buyer corrects and
      resubmits. Terms are agreed before any money is committed.
-  3. Authorized buy. The buyer places create_media_buy with the agreed terms. When the
-     seller declares request_signing.required_for (or supported_for) including
-     create_media_buy, the runner signs the request under the shared functional-signing
-     contract, so a conformant seller proves it accepts the signed path. Governance
-     posture is graded by the governance_aware_seller scenario listed above.
+  3. Authorized buy. The buyer places create_media_buy with the agreed terms. Where
+     the seller declares request signing for an operation (request_signing.required_for
+     or supported_for), the runner signs that request under the shared functional-signing
+     contract, so a signing seller proves it accepts the signed path. Nothing in this
+     storyboard asserts that a signature was sent; signature verification itself is
+     graded by the signed_requests storyboard. Governance posture is graded separately
+     by the governance_aware_seller scenario listed above.
   4. Plan to as-run. Where the seller declares the experimental media_buy.spot_lifecycle
      feature, a buyer reads one spot_id from a scheduled row through aired, preempted,
      and makegood rows, with break position where the product declares it. Sellers
@@ -121,7 +123,7 @@ fixtures:
         currency: "USD"
         demographic_system: "nielsen"
         demographic: "A25-54"
-        measurement_source: "videoamp"
+        measurement_source: "summit_measurement"
         points:
           - budget: 280000
             metrics:
@@ -163,7 +165,7 @@ fixtures:
         currency: "USD"
         demographic_system: "nielsen"
         demographic: "A25-54"
-        measurement_source: "videoamp"
+        measurement_source: "summit_measurement"
         points:
           - budget: 120000
             metrics:
@@ -359,14 +361,21 @@ phases:
             path: "products[*].forecast.method"
             value: "guaranteed"
             description: "The seller states what it is prepared to guarantee"
-          - check: field_present
-            path: "products[0].forecast.demographic"
+          - check: field_contains
+            path: "products[*].forecast.demographic"
+            value: "A25-54"
             description: "The guaranteed forecast names the demographic it is measured on"
-          - check: field_present
-            path: "products[0].forecast.demographic_system"
+          - check: field_contains
+            path: "products[*].forecast.demographic_system"
+            value: "nielsen"
             description: "The forecast names the demographic notation, so buyer and seller read the demo the same way"
-          - check: field_present
-            path: "products[0].forecast.measurement_source"
+          - id: forecast_measurement_source
+            check: field_contains
+            path: "products[*].forecast.measurement_source"
+            value: "summit_measurement"
+            severity: advisory
+            permanent_advisory:
+              reason: "The forecast schema says measurement_source should be present when measured_impressions is used, not must, so sellers that omit it are not failed."
             description: "The forecast names the measurement source whose currency produced it"
           - check: field_contains
             path: "products[*].reporting_capabilities.measurement_windows[*].window_id"
@@ -393,7 +402,8 @@ phases:
           window the seller does not guarantee. No seller can promise a zero variance
           between two audience counts, so the seller must reject the proposal with
           TERMS_REJECTED rather than accept it silently or fail with a generic error.
-          The rejection must be correctable, so the buyer can resubmit with workable terms.
+          The rejection should be correctable, so the buyer can resubmit with workable terms.
+          Either unworkable term (the undeclared window or the zero variance) is a valid cause.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -426,7 +436,7 @@ phases:
               measurement_terms:
                 billing_measurement:
                   vendor:
-                    domain: "videoamp.example"
+                    domain: "summit-measurement.example"
                   measurement_window: "c28"
                   max_variance_percent: 0
 
@@ -452,17 +462,18 @@ phases:
       reference that links the order to the agency's media plan and billing system.
       This number travels with the order through traffic, delivery, and invoicing.
 
-      The buy names VideoAmp as the billing currency and C7 as the guarantee window:
-      "bill me against the currency's C7 count, not live." Each package is priced
+      The buy names a measurement vendor (Summit Measurement) as the billing currency
+      and C7 as the guarantee window: "bill me against the currency's C7 count, not live." Each package is priced
       per thousand impressions and the guarantee is on the demographic discovered above.
 
-      Authorization is part of the transaction. When the seller declares
-      create_media_buy in request_signing.required_for or supported_for, the runner
-      signs this request under the shared functional-signing contract
-      (test-kits/signed-requests-runner.yaml) and the seller must accept it through
+      Authorization is part of the transaction. Where the seller declares request
+      signing for an operation in request_signing.required_for or supported_for, the
+      runner signs that request under the shared functional-signing contract
+      (test-kits/signed-requests-runner.yaml), and the seller must accept it through
       its normal RFC 9421 verification path; the step needs no signing logic of its
       own. A seller that declares no signing posture is graded on the same step
-      without signatures.
+      without signatures. This step proves the seller accepts the buy it is sent, not
+      that a signature was sent: the signed_requests storyboard grades verification.
 
     steps:
       - id: create_media_buy
@@ -521,7 +532,7 @@ phases:
               measurement_terms:
                 billing_measurement:
                   vendor:
-                    domain: "videoamp.example"
+                    domain: "summit-measurement.example"
                   measurement_window: "c7"
                   max_variance_percent: 10
             - product_id: "late_fringe_15s_mf"
@@ -530,7 +541,7 @@ phases:
               measurement_terms:
                 billing_measurement:
                   vendor:
-                    domain: "videoamp.example"
+                    domain: "summit-measurement.example"
                   measurement_window: "c7"
                   max_variance_percent: 10
           push_notification_config:
@@ -547,9 +558,24 @@ phases:
         context_outputs:
           - name: media_buy_id
             path: "media_buy_id"
+          - name: primetime_package_id
+            path: "packages[0].package_id"
+          - name: fringe_package_id
+            path: "packages[1].package_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id"
+          - id: agreed_guarantee_window
+            check: field_value_or_absent
+            path: "packages[0].measurement_terms.billing_measurement.measurement_window"
+            value: "c7"
+            severity: advisory
+            permanent_advisory:
+              reason: "A seller may adjust proposed measurement terms instead of accepting them, so a different echoed window is surfaced for the buyer to accept or reject rather than failed."
+            description: "The confirmed package echoes the C7 guarantee window the buyer proposed"
 
           - check: field_present
             path: "context"
@@ -683,6 +709,14 @@ phases:
                   container_format: "mp4"
                   video_codec: "h264"
 
+          assignment_operations:
+            - operation: "assign"
+              creative_id: "volta_ev_launch_30s"
+              package_id: "$context.primetime_package_id"
+            - operation: "assign"
+              creative_id: "volta_ev_launch_15s"
+              package_id: "$context.fringe_package_id"
+
           idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_creative_sync_sync_creatives"
           context:
             correlation_id: "sales_broadcast_tv--sync_creatives"
@@ -701,7 +735,8 @@ phases:
             value: "sales_broadcast_tv--sync_creatives"
             description: "Context correlation_id returned unchanged"
   - id: spot_as_run
-    title: "Plan to as-run spot evidence"
+    title: "Plan to as-run spot reporting"
+    depends_on: []
     requires_capability:
       path: experimental_features
       contains: "media_buy.spot_lifecycle"
@@ -709,31 +744,35 @@ phases:
       Linear buyers want to see where their spots will run before they air, and to
       check afterward that what aired is what was planned. Where the seller declares
       the experimental media_buy.spot_lifecycle feature in get_adcp_capabilities, one
-      by_spot row follows a spot from plan to as-run: it is first reported as
-      scheduled, with a scheduled_at and no aired_at, and the same spot_id is later
-      reported as aired (or preempted, with a makegood row carrying replaces_spot_id
-      pointing back at it). Where the product declares break position, each row also
-      places the spot inside its commercial break.
+      by_spot row can follow a spot from plan to as-run: it is reported as scheduled,
+      with a scheduled_at and no aired_at, and the same spot_id is later reported as
+      aired (or preempted, with a makegood row carrying replaces_spot_id pointing back
+      at it). Where the product declares break position, each row also places the
+      spot inside its commercial break.
 
       This phase is optional. Sellers that do not list media_buy.spot_lifecycle skip
-      it, and the storyboard result is unaffected: spot lifecycle and break position
-      are experimental, and per-product declarations cannot gate a runner step. The
-      phase therefore seeds its own product whose reporting_capabilities declare what
-      a participating seller must report, and buys it separately from the transaction
-      above so the certified buy never depends on an optional capability.
+      it, and the storyboard result is unaffected. Spot lifecycle and break position
+      are experimental, and per-product declarations cannot gate a runner step, so
+      the phase seeds its own product whose reporting_capabilities declare what a
+      participating seller reports, and buys it separately from the transaction above
+      so the certified buy never depends on an optional capability.
 
-      The seeded product declares the scheduled, preempted and makegood statuses and
-      break position. A seller that lists the feature and honors the seeded product
-      must report a scheduled row before delivery and keep that spot_id once the spot
-      airs. Preemption cannot be provoked from the buyer side, so preempted and
-      makegood rows are not required here; any row the seller does return is checked
-      against the response schema, which enforces replaces_spot_id on makegood rows
-      and forbids aired_at on scheduled and preempted rows.
+      What the phase can grade is bounded by what a buyer can cause. No controller
+      scenario defines how simulated delivery maps to spot rows, a seller that lists
+      the scheduled status does not promise a planning horizon, and preemption cannot
+      be provoked from the buyer side. The phase therefore requires every row a seller
+      returns to be schema-valid, which enforces aired_at on aired and makegood rows,
+      scheduled_at on scheduled and preempted rows, and replaces_spot_id on makegood
+      rows, and requires the package's airing count to agree with the plays the
+      controller injected. Whether the seller reports a scheduled row, a stable
+      spot_id and a break position for the seeded product is surfaced as advisory
+      observations rather than failures.
 
     steps:
       - id: seed_spot_product
         title: "Seed a linear_tv product that declares spot reporting"
         task: comply_test_controller
+        requires_tool: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
         doc_ref: "/building/implementation/comply-test-controller"
@@ -788,6 +827,7 @@ phases:
       - id: seed_spot_pricing
         title: "Seed the CPM pricing option"
         task: comply_test_controller
+        requires_tool: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
         doc_ref: "/building/implementation/comply-test-controller"
@@ -843,7 +883,7 @@ phases:
               measurement_terms:
                 billing_measurement:
                   vendor:
-                    domain: "videoamp.example"
+                    domain: "summit-measurement.example"
                   measurement_window: "c7"
                   max_variance_percent: 10
           idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_spot_as_run_create_spot_buy"
@@ -860,11 +900,12 @@ phases:
       - id: get_planned_spot_log
         title: "Read the planned schedule before anything airs"
         narrative: |
-          The buyer asks for the spot log before any delivery. The product declares
-          the scheduled status, so the seller reports the planned spots it has placed:
-          each is a scheduled row with its own spot_id and a scheduled_at, no aired_at,
-          and a planned break position. Any metrics on a scheduled row are expectations,
-          not delivery.
+          The buyer asks for the spot log before any delivery. A seller that has
+          already placed the spots reports them as scheduled rows, each with its own
+          spot_id, a scheduled_at, no aired_at, and a planned break position. Any
+          metrics on a scheduled row are expectations, not delivery. A seller that has
+          not placed spots yet may return an empty log, which is not evidence that
+          nothing will be placed.
         task: get_media_buy_delivery
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
@@ -872,9 +913,10 @@ phases:
         comply_scenario: reporting_flow
         stateful: true
         expected: |
-          Return by_package[0].by_spot with at least one row:
+          Return the delivery response with the requested spot dimension. When the
+          seller has placed spots, by_package[0].by_spot carries rows with:
           - spot_status: scheduled
-          - spot_id: stable identity that survives airing
+          - spot_id: identity that survives airing
           - scheduled_at: planned airing time; aired_at absent
           - break_position: planned position inside the commercial break
         sample_request:
@@ -887,24 +929,30 @@ phases:
             - "$context.spot_media_buy_id"
           reporting_dimensions:
             spot: {}
-        context_outputs:
-          - name: planned_spot_id
-            path: "media_buy_deliveries[0].by_package[0].by_spot[0].spot_id"
         validations:
           - check: response_schema
             description: "Delivery response matches the schema, including the per-status field rules on every spot row"
-          - check: field_present
-            path: "media_buy_deliveries[0].by_package[0].by_spot"
-            description: "The seller returns the requested spot log"
-          - check: field_value
+          - id: planned_spot_scheduled
+            check: field_value
             path: "media_buy_deliveries[0].by_package[0].by_spot[0].spot_status"
             value: "scheduled"
+            severity: advisory
+            permanent_advisory:
+              reason: "A seller that lists the scheduled status does not promise a planning horizon, so an empty or already-aired plan this early is not a failure."
             description: "Before airing, the first row is a scheduled spot"
-          - check: field_present
+          - id: planned_spot_scheduled_at
+            check: field_present
             path: "media_buy_deliveries[0].by_package[0].by_spot[0].scheduled_at"
+            severity: advisory
+            permanent_advisory:
+              reason: "Observed only when the seller has placed spots; see planned_spot_scheduled."
             description: "A scheduled row carries its planned airing time"
-          - check: field_present
+          - id: planned_break_position
+            check: field_present
             path: "media_buy_deliveries[0].by_package[0].by_spot[0].break_position.position_in_break"
+            severity: advisory
+            permanent_advisory:
+              reason: "Observed only when the seller has placed spots; see planned_spot_scheduled."
             description: "The product declares break position, so the planned row places the spot in its break"
 
       - id: simulate_spot_delivery
@@ -943,11 +991,11 @@ phases:
       - id: get_as_run_spot_log
         title: "Read the as-run log"
         narrative: |
-          After airing, the same spot the buyer saw as scheduled is reported by the
-          same spot_id. Airing evidence is a row per spot with when it aired and where
-          it sat in its break. The audience estimate for those spots is read from the
-          package totals under its own measurement_window, never inferred from the
-          existence of an as-run row.
+          After airing, the buyer reads the same log again. Airing evidence is a row
+          per spot with when it aired and where it sat in its break. The audience
+          estimate for those spots is read from the package under its own
+          measurement_window, never inferred from the existence of an as-run row. The
+          controller injected four plays, so the package's airing count must agree.
         task: get_media_buy_delivery
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
@@ -956,11 +1004,10 @@ phases:
         stateful: true
         expected: |
           Return by_package[0].by_spot for the same buy:
-          - the spot_id seen as scheduled is still present, now aired, preempted or moved
           - aired and makegood rows carry aired_at; preempted rows carry scheduled_at
           - any makegood row carries replaces_spot_id naming the preempted spot
-          - by_package[0] carries the audience estimate with its own measurement_window
-            and is_final, separate from the spot rows
+          - by_package[0] carries the injected plays and the audience estimate with
+            its own measurement_window and is_final, separate from the spot rows
         sample_request:
           account:
             brand:
@@ -974,13 +1021,24 @@ phases:
         validations:
           - check: response_schema
             description: "Delivery response matches the schema, including replaces_spot_id on makegood rows and aired_at rules on every row"
-          - check: field_present
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].plays"
+            value: 4
+            description: "The package reports the plays the controller injected, as the controller contract requires"
+          - id: as_run_spot_rows
+            check: field_present
             path: "media_buy_deliveries[0].by_package[0].by_spot[0].spot_id"
-            description: "The as-run log reports spots"
-          - check: field_contains
-            path: "media_buy_deliveries[0].by_package[0].by_spot[*].spot_id"
-            value: "$context.planned_spot_id"
-            description: "The spot seen as scheduled keeps its spot_id through airing or preemption"
+            severity: advisory
+            permanent_advisory:
+              reason: "No controller scenario defines how simulated delivery maps to spot rows, so the as-run rows a seller reports for the injected plays are observed, not required."
+            description: "The as-run log reports spots with stable identities"
+          - id: as_run_break_position
+            check: field_present
+            path: "media_buy_deliveries[0].by_package[0].by_spot[0].break_position.position_in_break"
+            severity: advisory
+            permanent_advisory:
+              reason: "Break position is declared per product and observed only when the seller reports rows; see as_run_spot_rows."
+            description: "The product declares break position, so the as-run row places the spot in its break"
           - check: field_value
             path: "media_buy_deliveries[0].by_package[0].measurement_window"
             value: "live"
@@ -999,15 +1057,13 @@ phases:
       checking delivery mid-flight will see data at different maturation stages: recent
       airings show only live numbers, while airings from two weeks ago have full C7.
 
-      The seller sends delivery data with measurement window context so the buyer
-      understands which numbers are preliminary and which are final. As windows mature,
-      the seller sends window_update notifications with supersedes_window indicating
-      which prior data is being replaced. The buyer should not make pacing decisions
-      based on live-only data for a C7-guaranteed buy.
+      The seller reports delivery with measurement window context so the buyer
+      understands which numbers are preliminary and which are final. The buyer should
+      not make pacing decisions based on live-only data for a C7-guaranteed buy.
 
     steps:
       - id: simulate_provisional_delivery
-        title: "Air the first spots and mature the Live window"
+        title: "Air the first spots and report the Live window"
         task: comply_test_controller
         requires_tool: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
@@ -1015,7 +1071,7 @@ phases:
         doc_ref: "/building/implementation/comply-test-controller"
         stateful: true
         expected: |
-          The controller records Live-window delivery for the buy, as a sandbox
+          The controller adds Live-window delivery to the buy, as a sandbox
           seller's traffic and measurement systems would after the first airings.
         sample_request:
           account:
@@ -1067,11 +1123,6 @@ phases:
           - measurement_window on each package (live, c3, or c7)
           - is_final: false for packages with data still maturing
           - Pacing information relative to the guaranteed audience
-
-          For webhook delivery, use notification_type: window_update when
-          sending updated data for a period with a wider window. Include
-          supersedes_window to indicate which prior data is being replaced
-          (e.g., supersedes_window: "live" when sending C3 data).
 
           The buyer uses this to understand:
           - How the preliminary (live) and final (C7) audience delivery compare
@@ -1133,7 +1184,7 @@ phases:
 
     steps:
       - id: simulate_final_delivery
-        title: "Mature the C7 window and finalize"
+        title: "Deliver the remainder and finalize on C7"
         task: comply_test_controller
         requires_tool: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
@@ -1141,9 +1192,10 @@ phases:
         doc_ref: "/building/implementation/comply-test-controller"
         stateful: true
         expected: |
-          The controller replaces the provisional Live numbers with the final C7
-          count, marked final with a finalization time, as the measurement vendor's
-          C7 data would after the window closes.
+          The controller adds the remaining delivery (the controller accumulates
+          impressions and spend across calls) and marks the buy final on the C7
+          window with a finalization time, as the measurement vendor's C7 data would
+          after the window closes.
         sample_request:
           account:
             brand:
@@ -1153,12 +1205,12 @@ phases:
           scenario: "simulate_delivery"
           params:
             media_buy_id: "$context.media_buy_id"
-            impressions: 20000000
+            impressions: 16000000
             reported_spend:
-              amount: 400000.00
+              amount: 288000.00
               currency: "USD"
             is_final: true
-            finalized_at: "2099-12-31T12:00:00Z"
+            finalized_at: "2100-01-08T12:00:00Z"
             measurement_window: "c7"
         validations:
           - check: field_value
@@ -1213,6 +1265,10 @@ phases:
           - check: field_present
             path: "media_buy_deliveries"
             description: "Response contains final delivery data"
+          - check: field_greater_than
+            path: "media_buy_deliveries[0].totals.impressions"
+            value: 0
+            description: "The reconciled totals carry the delivery the controller injected"
           - check: field_value
             path: "media_buy_deliveries[0].by_package[0].measurement_window"
             value: "c7"
@@ -1229,7 +1285,7 @@ phases:
             path: "media_buy_deliveries[0].by_package[0].measurement_source"
             severity: advisory
             permanent_advisory:
-              reason: "measurement_source is optional on delivery rows, so sellers conformant before 3.3 are not failed for omitting it. A buyer reconciling against a named currency needs it to tie the count to the vendor in measurement_terms."
+              reason: "measurement_source is optional on delivery rows in the schema, so sellers that omit it are not failed. A buyer reconciling against a named currency needs it to tie the count to the vendor in measurement_terms."
             description: "The audience row names the measurement source that counted it"
 
           - check: field_present

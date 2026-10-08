@@ -164,12 +164,12 @@ Four specialisms apply to specific delivery channels and have their own storyboa
 
 `sales-dooh` is the non-guaranteed DOOH profile. Guaranteed-only DOOH sellers still route `dooh` briefs through their portfolio declaration, but claim `sales-guaranteed` until a dedicated guaranteed DOOH profile exists.
 
-`sales-broadcast-tv` is graded on one intentional, authorized TV transaction under agreed terms, so a passing run is portable onboarding evidence a buyer platform can check instead of rerunning its own tests. The storyboard walks the transaction in five parts:
+`sales-broadcast-tv` is graded on one intentional, authorized TV transaction under agreed terms, so a passing run is intended to serve as portable onboarding evidence for buyer platforms. The storyboard walks the transaction in five parts:
 
 1. **Discovery.** `linear_tv` products with `video_hosted` :15 and :30 formats, `cpm` pricing, a `guaranteed` forecast that names its demographic, demographic system and `measurement_source`, and Live, C3 and C7 measurement windows.
 2. **Agreed terms.** The buyer proposes `measurement_terms.billing_measurement` (the currency vendor, the guarantee window, a variance tolerance). A seller that cannot honor the proposal returns [`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected).
-3. **Authorized buy.** [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) under the agreed terms. When the seller declares `create_media_buy` in `request_signing.required_for` or `supported_for`, the runner signs the request and the seller must accept it.
-4. **Plan to as-run (optional).** Sellers that declare the experimental `media_buy.spot_lifecycle` feature are graded on `by_spot` rows that keep one `spot_id` from `scheduled` to `aired`, with break position where the product declares it. Sellers that do not declare it skip this phase and are not failed.
+3. **Authorized buy.** [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) under the agreed terms. When the seller declares signing for the operation in `request_signing.required_for` or `supported_for`, the runner signs the request and the seller must accept it.
+4. **Plan to as-run (optional).** Sellers that declare the experimental `media_buy.spot_lifecycle` feature are graded on schema-valid `by_spot` rows (`scheduled`, `aired`, `preempted`, `makegood` with `replaces_spot_id`) and on observations of stable `spot_id`s and break position. Sellers that do not declare it skip this phase and are not failed.
 5. **Reconciliation.** Audience rows carry `measurement_window` and `is_final`, and `measurement_source` where the seller reports it. A Live read is provisional. The guarantee-basis window, marked final, is what a buyer reconciles against, and it is read separately from as-run airing evidence.
 
 </Step>
