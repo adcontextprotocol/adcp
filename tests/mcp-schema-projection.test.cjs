@@ -88,9 +88,13 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // list_products, request_proposals, and refine_proposals (~0.5 KiB each),
 // measured at 452,953 bytes (442.3 KiB) and bounded at 443 KiB. The
 // outcome_target vendor_metric goal branch (vendor BrandKey plus metric_id,
-// ~0.3 KiB) reaches the same three tasks, bounded at 444 KiB.
+// ~0.3 KiB) reaches the same three tasks, bounded at 444 KiB. Experimental
+// minute-resolution dayparts add the start_time/end_time pair, its one-of-two
+// exclusion, and the time_granularity requirement to the shared daypart
+// graph carried by every targeting-bearing task (+2,087 bytes measured,
+// 443.3 → 445.4 KiB), bounded at 446 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 444,
+  'media-buy': 446,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -101,11 +105,12 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // comply_test_controller request, which already sat at 1_249_930 bytes.
 // Experimental Product.execution_requirements (#7763) reaches it through the
 // seeded Product and brings it to ~1_260_400 bytes. DOOH placement location and
-// inventory summary fields (#7416) bring it to ~1_267_800 bytes. Adding
-// operator_unit.id join keys to the advanced_delivery_reporting storyboard
-// (#8018) brings it to ~1_282_291 bytes; the headroom covers additive
-// 3.3 Product fields and future controller-seeded storyboard expansions.
-const PARITY_COMPILE_LIMIT = 1_295_000;
+// inventory summary fields (#7416) bring it to ~1_267_800 bytes; the headroom
+// covers the additive 3.3 Product fields still in review. The 3.3 broadcast
+// TV, daypart and execution-readiness additions bring it to ~1_282_300 bytes.
+// Further growth should be met by hoisting shared definitions out of the
+// seeded Product (#8041), not by another bump.
+const PARITY_COMPILE_LIMIT = 1_300_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
