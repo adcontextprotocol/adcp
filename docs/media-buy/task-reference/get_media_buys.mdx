@@ -43,14 +43,15 @@ When `media_buy_ids` or `predecessor_media_buy_id` is provided, no implicit stat
 ### Deterministic filter contract
 
 Every returned `media_buys[]` row MUST have a `media_buy_id` in
-`media_buy_ids` when that filter is present and a `status` in `status_filter`
-when that filter is present. When both are supplied, both predicates apply to
-every row, across every page. A seller MUST NOT accept a schema-valid filter and
+`media_buy_ids` when that filter is present, a `status` in `status_filter`
+when that filter is present, and a `predecessor_media_buy_id` equal to the
+`predecessor_media_buy_id` filter when that filter is present. When several are
+supplied, every predicate applies to every row, across every page. A seller MUST NOT accept a schema-valid filter and
 return unfiltered account results.
 
 A filter can validly leave the result unchanged when every accessible buy
-already matches. Conformance is established from the returned rows' ID and
-status membership—not by requiring filtered and unfiltered response payloads to
+already matches. Conformance is established from the returned rows' ID,
+status membership, and predecessor link—not by requiring filtered and unfiltered response payloads to
 differ.
 
 ## Response
