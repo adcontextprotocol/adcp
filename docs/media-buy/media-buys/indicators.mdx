@@ -41,7 +41,7 @@ When `media_buy.relationship_notifications.projection_tasks` includes `list_crea
 
 Do not put assignment-specific fatigue or approval on the creative root. One creative can be fatigued or rejected on one publisher while remaining effective and approved elsewhere. When a multi-publisher assignment has mixed eligibility, the scalar is `partially_approved` and complete `approval_scopes[]` carries a disjoint partition: one row per normalized scope, using either publisher-wide or placement-specific rows for a publisher, never both. Uniform assignments omit the array.
 
-## Standard 3.2 catalog
+## Standard indicator catalog
 
 | Type | Valid placement | Broad meaning |
 |---|---|---|
@@ -52,6 +52,18 @@ Do not put assignment-specific fatigue or approval on the creative root. One cre
 | `inventory_shortfall_forecast` | Package | Current forecast is materially below the requested delivery goal |
 | `pacing_risk` | Package | Material over- or under-delivery is projected by flight end absent intervention |
 | `budget_constrained` | Media buy or package | Budget or a spend cap materially limits otherwise eligible delivery |
+| `flight_extension_opportunity` | Media buy | The buy is outperforming its objective or plan such that extending the flight would likely capture further value |
+| `scale_budget_opportunity` | Media buy or package | The buy or package is outperforming its objective or plan and additional budget would likely compound that performance |
+
+`flight_extension_opportunity` and `scale_budget_opportunity` (added in 3.3) are affirmative advisories. They stay distinct from neighboring types: "Outperforming" means performance against objective or plan, not delivery volume alone: projected over- or under-delivery is `pacing_risk`. `scale_budget_opportunity` is distinct from `budget_constrained` (a budget or spend cap limits otherwise eligible delivery), but the two are not mutually exclusive: a cap-limited, outperforming buy MAY carry both. A buy MAY likewise carry `flight_extension_opportunity` and `scale_budget_opportunity` together. Rationale and any suggested end date or budget change belong in `ext`; there is no typed action payload. Example indicator item: An opportunity indicator never pre-authorizes anything: the buyer applies it, if at all, through `update_media_buy` and the normal governance path. A seller MUST NOT emit either type unless it advertises it in `supported_indicator_types`.
+
+```json
+{
+  "type": "flight_extension_opportunity",
+  "detected_at": "2026-10-01T00:00:00Z",
+  "ext": { "seller_example": { "rationale": "Pacing 22% above plan; extending captures momentum." } }
+}
+```
 
 The negotiated AdCP release defines these broad meanings, not a universal algorithm. Provider scores, thresholds, evaluation windows, native labels, suggested actions, deep links, and upstream attribution remain in namespaced `ext`. A generic action dispatcher is intentionally absent; applying a recommendation still uses normal AdCP authorization, governance, idempotency, and readback.
 

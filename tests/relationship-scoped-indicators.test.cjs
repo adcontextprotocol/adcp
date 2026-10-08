@@ -202,7 +202,9 @@ describe('relationship-scoped indicators', () => {
           'audience_saturation',
           'inventory_shortfall_forecast',
           'pacing_risk',
-          'budget_constrained'
+          'budget_constrained',
+          'flight_extension_opportunity',
+          'scale_budget_opportunity'
         ],
         relationship_notifications: {
           supported: true,
@@ -730,6 +732,97 @@ describe('relationship-scoped indicators', () => {
       }],
       pagination: { has_more: false }
     });
+  });
+
+  it('places opportunity indicators at their declared levels', () => {
+    const buy = (overrides, packages = []) => ({
+      status: 'completed',
+      media_buys: [{
+        media_buy_id: 'mb_1',
+        status: 'active',
+        currency: 'USD',
+        total_budget: 1000,
+        confirmed_at: '2026-08-01T00:00:00Z',
+        revision: 1,
+        indicator_types_evaluated: ['budget_constrained'],
+        indicators_as_of: '2026-08-04T12:00:00Z',
+        indicators: [],
+        packages,
+        ...overrides
+      }],
+      pagination: { has_more: false }
+    });
+    assertValid(validateGetMediaBuys, buy({
+      indicator_types_evaluated: ['flight_extension_opportunity', 'scale_budget_opportunity'],
+      indicators: [
+        {
+          type: 'flight_extension_opportunity',
+          detected_at: '2026-10-01T00:00:00Z',
+          ext: { seller_example: { rationale: 'Pacing 22% above plan; extending captures momentum.' } }
+        },
+        { type: 'scale_budget_opportunity' }
+      ]
+    }, [{
+      package_id: 'pkg_1',
+      indicator_types_evaluated: ['scale_budget_opportunity'],
+      indicators_as_of: '2026-08-04T12:00:00Z',
+      indicators: [{ type: 'scale_budget_opportunity' }]
+    }]));
+    // control: the same package shape with a package-level type is valid, so the
+    // negative cases below fail only because of the indicator type
+    assertValid(validateGetMediaBuys, buy({}, [{
+      package_id: 'pkg_1',
+      indicator_types_evaluated: ['scale_budget_opportunity'],
+      indicators_as_of: '2026-08-04T12:00:00Z',
+      indicators: []
+    }]));
+    // flight_extension_opportunity is media-buy only
+    assert.equal(validateGetMediaBuys(buy({}, [{
+      package_id: 'pkg_1',
+      indicator_types_evaluated: ['flight_extension_opportunity'],
+      indicators_as_of: '2026-08-04T12:00:00Z',
+      indicators: [{ type: 'flight_extension_opportunity' }]
+    }])), false);
+    assert.equal(validateGetMediaBuys(buy({}, [{
+      package_id: 'pkg_1',
+      indicator_types_evaluated: ['flight_extension_opportunity'],
+      indicators_as_of: '2026-08-04T12:00:00Z'
+    }])), false);
+    // neither opportunity type is valid on a package-creative assignment
+    assert.equal(validateListCreatives({
+      creatives: [{
+        creative_id: 'cr_1',
+        assignments: {
+          assignment_count: 1,
+          returned_assignment_count: 1,
+          assignments_truncated: false,
+          assigned_packages: [{
+            media_buy_id: 'mb_1',
+            package_id: 'pkg_1',
+            assigned_date: '2026-08-01T00:00:00Z',
+            approval_status: 'approved',
+            indicator_types_evaluated: ['scale_budget_opportunity'],
+            indicators_as_of: '2026-08-04T12:00:00Z',
+            indicators: [{ type: 'scale_budget_opportunity' }]
+          }]
+        }
+      }]
+    }), false);
+  });
+
+  it('requires opportunity indicators to be named in indicator_types_evaluated', () => {
+    for (const type of ['flight_extension_opportunity', 'scale_budget_opportunity']) {
+      assert.equal(validateIndicatorBearing({
+        indicator_types_evaluated: ['budget_constrained'],
+        indicators_as_of: '2026-08-04T12:00:00Z',
+        indicators: [{ type }]
+      }), false, type);
+      assertValid(validateIndicatorBearing, {
+        indicator_types_evaluated: [type],
+        indicators_as_of: '2026-08-04T12:00:00Z',
+        indicators: [{ type }]
+      });
+    }
   });
 
   it('rejects indicator types placed at the wrong resource level', () => {
