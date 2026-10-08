@@ -1,6 +1,6 @@
 {
   "name": "Governance token issued by the governance identity https://governance-7k3q.com with its own key",
-  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#key-purposes",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#one-agent-per-purpose",
   "signing_profile": "web-bot-auth",
   "document_type": "governance_context",
   "reference_now": 1790841610,

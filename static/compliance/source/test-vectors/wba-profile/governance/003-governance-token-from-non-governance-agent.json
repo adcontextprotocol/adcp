@@ -1,6 +1,6 @@
 {
-  "name": "Governance token issued by the transport identity https://buyer-7k3q.com, with its own key and directory",
-  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#key-purposes",
+  "name": "Governance token issued by the buyer agent https://buyer-7k3q.com, which is not the buyer's governance agent, with its own key and directory",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#one-agent-per-purpose",
   "signing_profile": "web-bot-auth",
   "document_type": "governance_context",
   "reference_now": 1790841610,
@@ -41,7 +41,7 @@
   "expected_outcome": {
     "success": false,
     "error_code": "governance_issuer_not_authorized",
-    "reason": "The iss origin is not listed in the governance role. The key, jku, and signature are all consistent, so this check alone binds the purpose."
+    "reason": "The iss origin is not the buyer's governance agent. The key, jku, and signature are all consistent, so this is the check that rejects the token."
   },
-  "$comment": "Every check up to the role check passes: jku is the iss origin's directory, the kid is in it, and the signature verifies. This vector proves that purpose is bound by who the issuer is. A verifier that checks only that the key sits in the iss directory accepts it. role_listing stands in for the record the verifier already trusts: in deployment, the governance-typed agents[] entry in the buyer's brand.json, or the adcp:governance role in trust.json once #7809 lands. The token's other claims (aud, phase, sub, action binding, revocation, replay) follow the existing governance checklist and are not graded here."
+  "$comment": "Every check up to the governance-agent check passes: jku is the iss origin's directory, the kid is in it, and the signature verifies. A token is accepted for who issued it, not for which key signed it. A verifier that checks only that the key sits in the iss directory accepts this token. role_listing stands in for the record the verifier already trusts: in deployment, the governance-typed agents[] entry in the buyer's brand.json, or the adcp:governance role in trust.json once #7809 lands. The token's other claims (aud, phase, sub, action binding, revocation, replay) follow the existing governance checklist and are not graded here."
 }

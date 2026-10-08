@@ -16,7 +16,7 @@ The domains in the vectors (`buyer-7k3q.com`, `agent.brand-7k3q.com`, `relay.age
 
 ## Scope
 
-The vectors exercise the profile rules: the covered `Signature-Agent` member, key selection by thumbprint from the directory the member names, the required `nonce`, replay rejection, several signatures on one request with each later signature covering the earlier ones, the signed directory response, the `400` and `403` responses, and the key-purpose rule for governance tokens. They do not exercise live directory fetches, revocation-list polling, or onboarding state, which need live endpoints and belong in integration suites.
+The vectors exercise the profile rules: the covered `Signature-Agent` member, key selection by thumbprint from the directory the member names, the required `nonce`, replay rejection, several signatures on one request with each later signature covering the earlier ones, the signed directory response, the `400` and `403` responses, and the two checks on a governance token: its key is in the issuer's directory, and its issuer is the buyer's governance agent. They do not exercise live directory fetches, revocation-list polling, or onboarding state, which need live endpoints and belong in integration suites.
 
 ## File layout
 
@@ -36,10 +36,10 @@ test-vectors/wba-profile/
 │   ├── 005-relay-inner-signature-altered.json     → 403 (brand signature changed after the relay signed over it)
 │   ├── 006-key-not-in-named-directory.json        → 403 (key is published by an origin other than the one named)
 │   └── 007-malformed-signature-agent.json         → 400 (Signature-Agent does not parse)
-└── governance/                                    governance tokens that grade the key-purpose rule
-    ├── 001-governance-token.json                  governance identity, its own key → verifies
-    ├── 002-governance-token-signed-with-transport-key.json     → governance_key_unknown
-    └── 003-governance-token-issued-as-transport-identity.json  → governance_issuer_not_authorized
+└── governance/                                    governance tokens: one agent per purpose
+    ├── 001-governance-token.json                  governance agent, its own key → verifies
+    ├── 002-governance-token-key-not-in-issuer-directory.json  → governance_key_unknown
+    └── 003-governance-token-from-non-governance-agent.json    → governance_issuer_not_authorized
 ```
 
 ## Vector format
@@ -114,7 +114,7 @@ Each vector under `governance/` carries a compact JWS instead of a request:
 - **`role_listing`**: the origins listed in each role by a record the verifier already trusts. In deployment, that record is the governance-typed `agents[]` entry in the buyer's `brand.json`, or the `adcp:governance` role in `trust.json` once #7809 lands.
 - **`expected_outcome`**: `issuer` for the positive vector; for a negative vector, the `error_code` from the governance error table in `security.mdx`.
 
-The vectors grade only the key-purpose rule. The two negative vectors each fail one check: `002` the key lookup in the `iss` origin's directory, and `003` the governance role. The positive vector passes the remaining checks a verifier runs on the way (`alg`, `typ`, `jku` equal to the `iss` origin's directory, the signature, `exp` and `iat`), but no vector here fails them. The other checklist steps (`aud`, `phase`, `sub`, action binding, revocation, replay) are out of scope.
+The vectors grade the two governance checks. The two negative vectors each fail one check: `002` the key lookup in the `iss` origin's directory, and `003` the check that the issuer is the buyer's governance agent. The positive vector passes the remaining checks a verifier runs on the way (`alg`, `typ`, `jku` equal to the `iss` origin's directory, the signature, `exp` and `iat`), but no vector here fails them. The other checklist steps (`aud`, `phase`, `sub`, action binding, revocation, replay) are out of scope.
 
 ## Conformance expectations
 
@@ -126,7 +126,7 @@ An implementation is conformant when, for every vector:
 4. **Governance vectors** verify `001` and attribute it to `expected_outcome.issuer`, and reject `002` and `003` with `expected_outcome.error_code`.
 5. **Signature bytes on positive vectors** match the committed `Signature` values byte for byte when the implementation signs the committed `expected_signature_base` with the corresponding private seed. Ed25519 is deterministic.
 
-Several negative vectors carry cryptographically valid signatures on purpose. `001-missing-nonce`, `003-signature-agent-not-covered`, and `004-relay-omits-inner-signature` verify once the targeted check is removed, and `006-key-not-in-named-directory` verifies under a verifier that looks keys up by thumbprint alone. Both governance negatives carry valid signatures too: `002` verifies under a thumbprint-only lookup, and `003` verifies when the role check is skipped. A verifier that accepts any of them has skipped a profile rule, not failed at cryptography.
+Several negative vectors carry cryptographically valid signatures on purpose. `001-missing-nonce`, `003-signature-agent-not-covered`, and `004-relay-omits-inner-signature` verify once the targeted check is removed, and `006-key-not-in-named-directory` verifies under a verifier that looks keys up by thumbprint alone. Both governance negatives carry valid signatures too: `002` verifies under a thumbprint-only lookup, and `003` verifies when the governance-agent check is skipped. A verifier that accepts any of them has skipped a profile rule, not failed at cryptography.
 
 ## Running vectors against an implementation
 
@@ -136,7 +136,7 @@ Several negative vectors carry cryptographically valid signatures on purpose. `0
 4. Build the request from `request`, and invoke verification with `reference_now` as the wall clock.
 5. Assert on `expected_outcome`: identities for positive vectors, status for negative vectors.
 
-Run the positive vectors first. If `positive/001` fails, the signature base, key loading, or thumbprint computation is wrong; the `expected_signature_base` field isolates the first of those. Then run `007` (parse), `001` and `003` (profile rules without state), `006` (key lookup), `004` and `005` (relay chain), and `002` (replay state). Run the governance vectors last; `003` is the one that proves the key-purpose binding.
+Run the positive vectors first. If `positive/001` fails, the signature base, key loading, or thumbprint computation is wrong; the `expected_signature_base` field isolates the first of those. Then run `007` (parse), `001` and `003` (profile rules without state), `006` (key lookup), `004` and `005` (relay chain), and `002` (replay state). Run the governance vectors last; `003` is the one that shows a token is accepted for its issuer, not for its key.
 
 ## Generating the vectors
 
