@@ -18,7 +18,12 @@
       },
       "minItems": 1
     },
-    "channels": { "type": "array", "items": { "$ref": "/schemas/enums/channels.json" }, "uniqueItems": true },
+    "channels": {
+      "type": "array",
+      "description": "Advertising channels this product is sold as. Optional in AdCP 3.x; sellers SHOULD declare at least one MediaChannel value on every product. Product channels SHOULD be a subset of the union of the product's properties' supported_channels. Buyers should request channels when using a fields projection. If channels are requested or a full product is returned, an absent or empty array means undeclared, never all channels. An omitted projected field leaves channel scope unknown; buyers should not infer it from property support, seller-wide capabilities, or creative formats. Declared channels describe buying context, not independent evidence of actual delivery in each channel. A video format can serve both olv and ctv, so the seller declares the buying context on the product. Format-option applies_to_channels may narrow declared product channels but does not replace this declaration.",
+      "items": { "$ref": "/schemas/enums/channels.json" },
+      "uniqueItems": true
+    },
     "video_placement_types": { "type": "array", "items": { "$ref": "/schemas/enums/video-placement-type.json" }, "minItems": 1, "uniqueItems": true },
     "audio_distribution_types": { "type": "array", "items": { "$ref": "/schemas/enums/audio-distribution-type.json" }, "minItems": 1, "uniqueItems": true },
     "sponsored_placement_types": { "type": "array", "items": { "$ref": "/schemas/enums/sponsored-placement-type.json" }, "minItems": 1, "uniqueItems": true },

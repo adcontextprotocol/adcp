@@ -702,6 +702,7 @@ result set. Otherwise confirmation remains a best practice.
 | `name` | string | Human-readable product name |
 | `description` | string | Detailed product description |
 | `publisher_properties` | PublisherProperty[] | Array of publisher entries, each with `publisher_domain` and either `property_ids` or `property_tags` |
+| `channels` | MediaChannel[] | (Optional in 3.x) Buying contexts this product is sold as. Sellers SHOULD declare at least one channel on every product. Buyers should include `channels` in a `fields` projection before classification. If requested or returned as part of a full product, missing or empty arrays mean undeclared, never all channels; buyers should not infer product channels from formats, properties, or seller-wide capabilities. See [Product channel declarations](/docs/media-buy/product-discovery/media-products#product-channel-declarations). |
 | `format_options` | ProductFormatDeclaration[] | Closed canonical creative contracts this product can deliver, including optional seller-enforced `locale_policy.accepted_language_ranges` that buyers use to preflight planned creative languages before purchase. |
 | `format_ids` | FormatID[] | Deprecated 3.x compatibility projection, when emitted. Locale-constrained options cannot be represented on this path. |
 | `delivery_type` | string | `"guaranteed"` or `"non_guaranteed"` |

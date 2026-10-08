@@ -49,7 +49,7 @@
       "type": "array",
       "items": { "$ref": "/schemas/enums/channels.json" },
       "uniqueItems": true,
-      "description": "Optional subset of the parent product's `channels` to which this declaration applies. When omitted, the declaration applies to ALL channels declared on the product. Lets a multi-channel product (e.g., `channels: ['display', 'video']`) carry distinct format_options per channel — `format_options: [{format_kind: 'image', applies_to_channels: ['display']}, {format_kind: 'video_hosted', applies_to_channels: ['video']}]`. Buyers ship channel-appropriate manifests per `applies_to_channels`."
+      "description": "Optional subset of the parent product's declared `channels` to which this declaration applies. When omitted, the declaration applies to all channels declared on the product. This is a narrowing, not an independent product channel declaration: if the product's channels are absent or empty, buyers should not infer its channel scope from the option. Request channels when using a fields projection before classifying the product. Lets a multi-channel product (e.g., `channels: ['display', 'olv']`) carry distinct format_options per channel — `format_options: [{format_kind: 'image', applies_to_channels: ['display']}, {format_kind: 'video_hosted', applies_to_channels: ['olv']}]`. Buyers ship channel-appropriate manifests per `applies_to_channels`."
     },
     "seller_preference": {
       "type": "string",
