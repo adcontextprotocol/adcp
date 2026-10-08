@@ -1948,7 +1948,9 @@ describe('tenant routing smoke', () => {
       };
       const capabilities = response.result?.structuredContent;
       expect(capabilities?.specialisms).toContain('sales-dooh');
+      expect(capabilities?.specialisms).toContain('sales-broadcast-tv');
       expect(capabilities?.media_buy?.portfolio?.primary_channels).toContain('dooh');
+      expect(capabilities?.media_buy?.portfolio?.primary_channels).toContain('linear_tv');
     } finally {
       await close();
     }
@@ -3843,6 +3845,7 @@ describe('tenant routing smoke', () => {
       expect(scenarios).not.toContain('seed_product');
       expect(scenarios).not.toContain('seed_measurement_catalog');
       expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-dooh');
+      expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-broadcast-tv');
       expect(scenarios).not.toContain('query_provenance_audit_observations');
 
       const list = await fetch(url, {

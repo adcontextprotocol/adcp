@@ -3092,6 +3092,20 @@ function productForServedAdcpVersion(product: Product, servedAdcpVersion: string
   return rest as Product;
 }
 
+/**
+ * Windowed delivery is counted by the billing measurement vendor the buyer
+ * agreed on the buy, so the row names it as `measurement_source`. The vendor is
+ * a brand reference; its first domain label is the lowercase slug the schema
+ * expects (`videoamp.example` -> `videoamp`).
+ */
+function billingMeasurementSource(terms: Record<string, unknown> | undefined): { measurement_source?: string } {
+  const billing = isRecord(terms?.billing_measurement) ? terms.billing_measurement : undefined;
+  const vendor = isRecord(billing?.vendor) ? billing.vendor : undefined;
+  const domain = typeof vendor?.domain === 'string' ? vendor.domain : undefined;
+  const slug = domain?.split('.')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  return slug ? { measurement_source: slug.slice(0, 64) } : {};
+}
+
 function includeThreeOneFields(ctx: TrainingContext): boolean {
   return !isThreeZeroStoryboardCompat(ctx);
 }
@@ -17200,6 +17214,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.measurementWindow ? { measurement_window: simDelivery.measurementWindow } : {}),
+      ...(includeThreeOneFields(ctx) && simDelivery?.measurementWindow
+        ? billingMeasurementSource(pkg.measurementTerms)
+        : {}),
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
       ...(auditMetrics.length > 0 ? { missing_metrics: missingMetrics } : {}),

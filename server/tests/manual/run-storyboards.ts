@@ -272,6 +272,10 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([]);
  */
 const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
   [
+    'sales_broadcast_tv/expect_window_update_webhook',
+    'The training seller emits no delivery window_update webhooks: on AdCP 3.2 its synchronous create_media_buy completion is silent and it does not push delivery reports on simulated delivery. Every other step of the broadcast transaction is graded. Remove when the training agent emits C3 and C7 window_update webhooks to the registered push_notification_config.',
+  ],
+  [
     'media_buy_seller/inline_creatives_without_sync/get_products_legacy_format',
     'The optional legacy-format branch has no capability gate and therefore executes against the current training seller even though it publishes canonical format_options only. The canonical inline-creative branch remains graded. Remove when the runner gates this branch on an observed format_ids representation.',
   ],
