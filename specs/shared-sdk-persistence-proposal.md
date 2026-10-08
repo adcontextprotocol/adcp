@@ -25,11 +25,16 @@
    multi-statement transactions. BigQuery and object stores hold bytes; they never run
    the ledger.
 5. **Retention is explicit and protocol-aligned.** Superseded snapshots stay readable
-   for the advertised `status_retention_days`, as the protocol requires. Volume is
-   controlled three ways:
+   for the advertised `status_retention_days`, as the protocol requires. Every other
+   record (headers, change feed, replay rows) has a stated bound. Volume is controlled
+   three ways:
    - moving bytes out of PostgreSQL;
-   - not minting revisions for unchanged pulses;
+   - storing unchanged pulses as header-only revisions that reuse the previous rows, so
+     freshness still advances without storing rows again;
    - advertising a retention window that matches what the adopter actually needs.
+6. **Hosts get serving-grade reads.** A one-lookup current-revision read per obligation
+   and a durable, gap-free change cursor serve pacing, alerts and the warehouse sink.
+   None of them read from the warehouse.
 
 ## Problem and evidence
 
@@ -148,6 +153,50 @@ persistence/
   reference persistence, not a mandatory technology for AdCP implementations. Custom
   stores may implement the semantic contracts on other substrates.
 
+### 1.1 Contract format
+
+Contracts are written in the same toolchain the protocol already uses: JSON Schema plus
+normative prose. Both SDKs already generate types from JSON Schema, so no new IDL is
+introduced. Each component directory contains:
+
+```text
+contracts/<component>/
+  contract.json        # machine-readable contract, validated by contracts/contract.schema.json
+  CONTRACT.md          # normative prose (MUST/SHOULD), operation semantics
+  schemas/*.schema.json
+```
+
+- **`contract.json`** declares:
+  - the component, its contract version and its dependencies on other components;
+  - constants, such as segment and chunk limits and digest profiles;
+  - the tables the component owns;
+  - the lock-key registry: key template, lock mode and acquisition order;
+  - state machines, with every state and allowed transition (for example `rows_state`
+    and intent `state`);
+  - operator error codes;
+  - retention parameters, with their defaults and minimums.
+
+  SDK tests assert that their constants, transitions and error codes match it.
+- **`schemas/`** contains a JSON Schema (draft 2020-12) for every JSONB payload and every
+  value that crosses a store port. Examples include chunk and segment manifests,
+  per-provider binding `identity_config` and `operational_config`, locators, intent
+  `created_objects`, `evidence`, and host cursors.
+  - Schemas are closed (`additionalProperties: false`) unless a field is explicitly
+    extensible.
+  - `$id`s live under
+    `https://adcontextprotocol.org/schemas/persistence/<component>/<version>/`.
+  - SDK types are generated from these schemas (the existing TS pipeline; pydantic
+    models in Python). They are never hand-edited, and CI fails on drift.
+- **`CONTRACT.md`** specifies each operation's preconditions, postconditions,
+  idempotency and failure semantics, and refers to schemas by `$id`.
+- **Fixtures** (`fixtures/<component>/`) are golden vectors. Each is validated against
+  the component's schemas.
+- **Conformance** (`conformance/<component>/*.yaml`) holds declarative cases: setup
+  state, an operation, and the expected resulting state, outcome or error. Each SDK runs
+  them through a thin harness. Concurrency and crash cases that cannot be expressed
+  declaratively are named in the contract and implemented per SDK against the same
+  database.
+
 ## 2. Canonical reporting layout
 
 ### 2.1 Conventions
@@ -177,9 +226,10 @@ persistence/
     legacy-key writer remains, so old and new workers of one SDK keep excluding each
     other.
 - **Change feed.** A sequence-based change table is written in the same transaction as
-  each record. `nextval` is taken only after the account lock, so per-account sequence
-  order equals commit order and `changes_after` cursors never skip a lower number that
-  commits later.
+  each record. Each row records `seq` and `xid xid8 DEFAULT pg_current_xact_id()`.
+  `nextval` is taken only after the account lock, so per-account sequence order equals
+  commit order and `changes_after` cursors never skip a lower number that commits
+  later. Deployment-wide readers use `xid` (§3.7).
 - **Payload JSONB.** Extensible evidence goes in an `evidence JSONB` column with a
   declared schema per contract version. When a payload field is also projected into a
   column, the contract states which side is authoritative.
@@ -195,6 +245,7 @@ table fixes the semantics it must encode.
 | Write safety | Obligation lease with generation fencing | Account lock, content-derived IDs, replay compare | **Database invariants are the safety contract.** Under the account lock, the rules in the next row serialize writers, and an unfenced stale writer loses cleanly with a numbering or supersession conflict. Obligation-lease fencing remains an optional scheduling optimization. |
 | Revision ordering | Gapless `revision_number`; `NOT EXISTS official` predicate | Supersession chain; `_one_official`, `_one_successor` | **Both, database-enforced:** `UNIQUE(obligation, revision_number)` with number 1 as the root, which closes Python's two-root gap; `supersedes` is the number − 1 revision; one official per obligation; one successor per revision. |
 | Configuration identity | Surrogate `configuration_id`; unique `(account, cfg, version)` | Natural key `(account, consumer, cfg, version)` | Natural key including `consumer_id`. JS writes its resolved account boundary as the consumer, preserving today's isolation. |
+| Current revision | Derived by scanning revisions | Derived from the supersession leaf | The obligation row carries `current_reporting_revision_id` and `current_revision_number`, updated in the revision's commit transaction. That makes the host current-revision read (§3.7) an index lookup. |
 | Revision `kind` column | Always equals `finality` | Absent | Drop it. |
 | Account on child rows | Revisions and adjustments lack `account_id` | Present, with account-qualified composite FKs | Present everywhere, with account-qualified composite FKs, including the chunk tables. |
 | Content binding | `content_sha256` (= binding) plus JSON | `revision_content_sha256`, `row_count`, `control_totals` (pairs) | Explicit columns: `binding_algorithm`, `revision_content_sha256`, `canonical_byte_count`, `row_count`, `control_totals` in protocol shape (§2.4), and `row_manifest_sha256`. The name `content_sha256` is not reused. |
@@ -224,6 +275,7 @@ CREATE TABLE adcp_reporting_revisions (
   row_count                    BIGINT NOT NULL CHECK (row_count >= 0),
   control_totals               JSONB NOT NULL,            -- protocol shape, §2.4
   row_manifest_sha256          TEXT COLLATE "C" NOT NULL, -- §3.1; immutable
+  rows_shared_from_reporting_revision_id TEXT COLLATE "C", -- header-only revision (§4.2); immutable
   -- protocol metadata (immutable)
   observed_at TIMESTAMPTZ NOT NULL, data_through TIMESTAMPTZ, finalized_at TIMESTAMPTZ,
   finality_basis TEXT, finality_policy_id TEXT,
@@ -362,6 +414,7 @@ CREATE TABLE adcp_reporting_row_bindings (
 
 CREATE TABLE adcp_reporting_revision_chunks (
   account_id       TEXT COLLATE "C" NOT NULL,
+  reporting_obligation_id TEXT COLLATE "C" NOT NULL,
   reporting_revision_id TEXT COLLATE "C" NOT NULL,
   chunk_index      INTEGER NOT NULL CHECK (chunk_index >= 0),
   first_ordinal    BIGINT NOT NULL,
@@ -377,17 +430,17 @@ CREATE TABLE adcp_reporting_revision_chunks (
   PRIMARY KEY (reporting_revision_id, chunk_index),
   FOREIGN KEY (account_id, reporting_revision_id)
     REFERENCES adcp_reporting_revisions (account_id, reporting_revision_id)
+  -- index (object_key) and (account_id, reporting_obligation_id, sha256) for sharing checks
 );
 
-CREATE TABLE adcp_reporting_revision_chunk_bodies (   -- postgres kind only
+-- postgres kind only. Content-addressed within one obligation, so header-only
+-- revisions (§4.2) share bodies with the revision they repeat.
+CREATE TABLE adcp_reporting_chunk_bodies (
   account_id       TEXT COLLATE "C" NOT NULL,
-  reporting_revision_id TEXT COLLATE "C" NOT NULL,
-  chunk_index      INTEGER NOT NULL,
+  reporting_obligation_id TEXT COLLATE "C" NOT NULL,
+  sha256           TEXT COLLATE "C" NOT NULL CHECK (sha256 = encode(sha256(body), 'hex')),
   body             BYTEA NOT NULL,
-  body_sha256      TEXT COLLATE "C" NOT NULL CHECK (body_sha256 = encode(sha256(body), 'hex')),
-  PRIMARY KEY (reporting_revision_id, chunk_index),
-  FOREIGN KEY (reporting_revision_id, chunk_index)
-    REFERENCES adcp_reporting_revision_chunks (reporting_revision_id, chunk_index)
+  PRIMARY KEY (account_id, reporting_obligation_id, sha256)
 );
 
 CREATE TABLE adcp_reporting_row_write_intents (
@@ -407,6 +460,14 @@ CREATE TABLE adcp_reporting_row_write_intents (
   bodies as `BYTEA`, and the database checks each body's digest. That gives byte-exact
   cross-SDK verification and about a thousand times fewer tuples than one JSONB value
   per row. Rows never return to the header.
+- **Shared chunks.** A header-only revision (§4.2) copies the chunk manifests and
+  locations of the revision it repeats, and names it in the immutable header column
+  `rows_shared_from_reporting_revision_id`.
+  - Sharing is limited to one obligation, which means one account and one
+    configuration generation, never across consumers.
+  - Bytes are removed only when no non-pruned chunk row in the same binding still
+    references them. Pruning and moves check that under the account lock, using the
+    `object_key` and body-digest indexes.
 - **`rows_state`.**
   - `live`: rows are readable.
   - `pruning` / `pruned`: rows were deliberately removed by retention (§4).
@@ -646,6 +707,42 @@ ad hoc use only: pulse volume produces hundreds of thousands of small objects a 
   through the pinned adapter transform, as a documented, verified exception to "never
   re-serialize". It is out of scope until an adopter needs it (§9).
 
+### 3.7 Host reads: current revisions and change cursors
+
+In-process consumers such as pacing, alerts and the warehouse sink itself need
+serving-grade reads from the ledger, not from the warehouse.
+
+- **Current revision.** The current revision is the obligation's official revision if
+  one exists, otherwise its highest-numbered snapshot.
+  - `getCurrentRevision({account_id, reporting_obligation_id})` returns that header in
+    one index lookup on the obligation's `current_reporting_revision_id`.
+  - `listCurrentRevisions({account_id, delivery_config_id?, period_start_from,
+    period_start_to, limit, cursor})` pages current revisions for a period range, using
+    the obligations' `(account_id, period_start)` index.
+  - Both return headers. Rows are read separately through the verified paged reader.
+- **Change cursor.** `changesAfter({cursor, account_id?, kinds?, limit})` reads the
+  sequence change table (§2.1). It returns `{records, cursor}`, where each record
+  carries kind, record ID, obligation, account and `recorded_at`. Cursors are opaque,
+  versioned and stable across restarts, processes and SDKs, because both SDKs read the
+  same table.
+  - **Account-scoped feeds** order by sequence number. They are gap-free because
+    `nextval` is taken under the account lock, which is held until commit.
+  - **Deployment-wide feeds** order by `(xid, seq)`, where `xid` is the writing
+    transaction's `pg_current_xact_id()`. They return only rows whose `xid` is below the
+    reading snapshot's `pg_snapshot_xmin`. Any row not yet visible therefore sorts after
+    every row already returned, and a slow commit can never be skipped. A long-running
+    transaction delays the deployment-wide feed; it never makes it lose a record.
+  - A cursor older than the change-table retention horizon (§4.2) fails with
+    `CURSOR_EXPIRED`. The consumer then resynchronizes from `listCurrentRevisions` and
+    resumes from the cursor returned with that read.
+- **Durable consumers.** A host may register a named consumer in
+  `adcp_reporting_feed_consumers(name, cursor, updated_at)`. A registered consumer
+  holds back change-table pruning, up to a cap (`max_feed_hold_days`), so a dead
+  consumer cannot block retention indefinitely. The warehouse sink is a registered
+  consumer.
+- These are host APIs, not buyer surfaces. Buyers keep the protocol's
+  `changes_checkpoint` and `changes_after`, which project from the same table.
+
 ## 4. Retention
 
 ### 4.1 Protocol constraints
@@ -675,31 +772,57 @@ ad hoc use only: pulse volume produces hundreds of thousands of small objects a 
   receipt, consumer status, adjustment or live materialization still names the
   revision.
 - **After expiry.** The period's records leave the protocol projection together, and
-  `ledger_retained_from` advances. Headers may persist longer for internal audit, but
-  they are not served.
+  `ledger_retained_from` advances. Every retained record has an explicit bound:
+
+  | Record | Retained | Then |
+  | --- | --- | --- |
+  | Row bytes | The protocol window, plus holds | Pruned (§4.3) |
+  | Headers, chunk manifests, consumer statuses, receipts, issues, transitions and lifecycle state for a period | `ledger_record_retention_days` after the period expires. Default `status_retention_days`; never less | Deleted together, in one period-aligned transaction under the account lock |
+  | Per-obligation tombstone: obligation ID, configuration generation, period, final current revision ID, `revision_content_sha256`, `row_manifest_sha256`, revision count, `pruned_at` | Indefinitely, about 200 bytes per obligation | Refuses replays that would resurrect pruned IDs, and preserves the audit conclusion |
+  | Change-table rows | `change_retention_days` (default 30; never less than the protocol checkpoint TTL), extended by registered consumers up to `max_feed_hold_days` | Deleted. Older cursors get `CURSOR_EXPIRED` |
+  | Idempotency replay rows (consumer-status and receipt batches) | Their 30-day replay window | Deleted. Today's lifetime per-consumer caps become active-window caps |
+
 - **Configuring a shorter window.** A deployment that needs less pulse history
   advertises a shorter `status_retention_days`. A row retention shorter than the
   advertised window is non-conformant, and the SDK refuses it.
-- **Unchanged pulses.** When a pulse's canonical rows are byte-identical to the current
-  leaf's, the producer MAY skip minting a revision. Identity is judged by comparing
-  chunk manifests, not `revision_content_sha256`, which binds the revision ID.
-  - Instead it records an internal observation. Observations never change a wire field:
-    `observed_at` and `data_through` stay those of the leaf, which the protocol permits
-    as a conservative value. Health is unaffected because the leaf still satisfies the
-    obligation.
-  - Observations are retained as `stabilized` finality evidence until the slice's
-    official revision is finalized.
+- **Unchanged pulses become header-only revisions.** When a pulse's canonical rows are
+  byte-identical to the current revision's, the producer mints a normal snapshot
+  revision. It has a new ID, `revision_number`, `observed_at` and `data_through`, and a
+  newly computed `revision_content_sha256`, which binds the new ID. It shares the
+  previous revision's chunks instead of storing them again (§3.2).
+  - **Detecting identical rows.** Rows are identical when `row_manifest_sha256` matches.
+    The producer still holds the rows it just pulled, so it computes the new envelope
+    digest normally and skips only the upload.
+  - **Why not skip the pulse.** Skipping would freeze freshness. A buy that has stopped
+    delivering returns identical rows every pulse, and pacing and delivery-health
+    consumers must be able to tell "stopped delivering" from "nobody checked". The
+    protocol has no way to advance `observed_at` or `data_through` without a revision.
+  - **Scope.** Sharing never crosses obligations, so it never crosses consumers.
+  - **Cost.** Header-only revisions cost a header, a few manifest rows and a change-feed
+    record. Repeated identical revisions are themselves the retained evidence that
+    `stabilized` finality requires.
 
 ### 4.3 Pruning and intent sweeps
 
 - **Pruning.**
   1. In one transaction under the account lock, mark an expired period's revisions
      `pruning`, after re-checking holds.
-  2. Delete the recorded object versions. Deletion is idempotent and resumable.
+  2. Delete the recorded object versions that no non-pruned chunk row still
+     references. Deletion is idempotent and resumable.
   3. Mark the revisions `pruned`.
 
-  External bytes are never deleted first. The `postgres` backend deletes bodies in
-  step 1's transaction.
+  External bytes are never deleted first. The `postgres` backend deletes unreferenced
+  bodies in step 1's transaction.
+- **Record deletion.** When `ledger_record_retention_days` elapses, one period-aligned
+  transaction under the account lock does three things:
+  1. writes the obligation tombstone;
+  2. deletes the period's headers, manifests, statuses, receipts, issues, transitions
+     and lifecycle rows;
+  3. records the deletion in the change table so mirrors can follow.
+
+  Batches stay small enough to fit the account-lock timeout.
+- **Change-table pruning.** Deletes rows older than `change_retention_days` that every
+  registered consumer has passed, or whose consumer has exceeded `max_feed_hold_days`.
 - **Intent sweeps.** Under the account lock, move an expired `open` intent with no
   committed header to `sweeping`. Then delete only its `created_objects`, at their
   recorded versions, and drop the intent.
@@ -780,12 +903,16 @@ without doing the work twice.
    timeout, and the guide notes that `VACUUM FULL` or a repack reclaims space.
 8. `ReportingRowStoreV1`, the external write path (replay check, lease budget, fenced
    intents), the filesystem provider and the conformance suite.
-9. Retention and intent sweeps, scheduled by the production service.
-10. GCS provider.
-11. S3 provider.
-12. Azure Blob provider.
-13. BigQuery load-job warehouse sink with the `current_rows` view.
-14. Guides and migration notes.
+9. Retention: row pruning, record deletion with tombstones, change-table pruning and
+   intent sweeps, scheduled by the production service.
+10. Host reads: the current-revision pointer, `getCurrentRevision`,
+    `listCurrentRevisions`, `changesAfter` and registered feed consumers.
+11. Header-only revisions for unchanged pulses, with reference-checked chunk sharing.
+12. GCS provider.
+13. S3 provider.
+14. Azure Blob provider.
+15. BigQuery load-job warehouse sink with the `current_rows` view.
+16. Guides and migration notes.
 
 The existing `ReportingLedgerStore` stays source-compatible. New capabilities are
 optional methods that callers feature-detect. `commitRevision` still receives full
@@ -823,6 +950,8 @@ reconciling them.
   - a deleted object (`ROWS_UNAVAILABLE`);
   - pruning racing a reader (expiry, never integrity failure);
   - pruning racing a hold-creating write;
+  - header-only revisions sharing chunks, where pruning one revision keeps bytes still
+    referenced by another;
   - moves with colliding keys;
   - decompression limits;
   - key-template and allowlist refusal;
@@ -832,6 +961,16 @@ reconciling them.
   - idempotent load-job retry;
   - orphan exclusion;
   - `current_rows` leaf selection across restatements.
+- **Host-read cases:**
+  - the current-revision pointer after restatement and after an official revision;
+  - account-scoped and deployment-wide `changesAfter` under interleaved commits,
+    including a long-running transaction holding a lower `seq`;
+  - `CURSOR_EXPIRED` and resynchronization;
+  - a registered consumer holding back pruning, up to its cap.
+- **Retention cases:**
+  - period-aligned record deletion;
+  - a tombstone refusing a resurrected replay;
+  - replay-row expiry.
 - **Compatibility matrix.** Published per component and artifact version, distinguishing
   export/import, sequential handoff and concurrent participation.
 
