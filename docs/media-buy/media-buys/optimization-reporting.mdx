@@ -62,6 +62,7 @@ Same lifecycle, with the `(vendor, metric_id)` tuple replacing the plain `metric
 | Does the vendor define this metric? | Vendor's capabilities | `get_adcp_capabilities.measurement.metrics[]` |
 | Can the product report this vendor metric? | Product capability | `reporting_capabilities.vendor_metrics[]` |
 | Who produced the number, relative to the seller? | Product capability | `reporting_capabilities.vendor_metrics[].vendor_relationship` (`first_party` / `affiliated` / `third_party`) |
+| Which vendor metrics can this seller optimize, across its catalog? | Seller capability | `get_adcp_capabilities.media_buy.vendor_metric_optimization.supported_metrics[]` (rollup; product level stays authoritative) |
 | Can the product optimize for this vendor metric? | Product capability | `vendor_metric_optimization.supported_metrics[]` |
 | Will the seller commit to reporting it? | Package | `committed_metrics[]` (scope: `vendor`) |
 | Which methodology version is contracted? | Package | `committed_metrics[].methodology_version` (pins the vendor catalog's `methodology_version`) |
