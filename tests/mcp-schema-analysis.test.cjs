@@ -35,7 +35,7 @@ test("input-field weight report attributes the largest transitive schema graphs"
   const { schemas } = loadRepresentativeMediaBuyRuntime();
   const report = analyzeInputSchemaWeights(schemas);
 
-  assert.equal(report.tool_count, 19);
+  assert.equal(report.tool_count, 20);
   // Exact Reliable Reporting reads include the shared pagination closure;
   // consumer-status sync adds one compact tool and its status definition;
   // targeting reuses four named codegen-safe item and cross-field schemas.
@@ -233,7 +233,7 @@ test("experiment report keeps all alternatives smaller than standalone model con
   const variants = report.variants;
   assert.equal(report.status, "non-normative");
   assert.equal(report.prompt_cleanup_adapter.required, true);
-  assert.equal(report.selection.tools.length, 19);
+  assert.equal(report.selection.tools.length, 20);
   // Tolerance band, not an exact pin: every schema-touching PR shifts this
   // number, and an exact equality forced each one to re-pin the constant —
   // guaranteeing merge conflicts between any two in-flight schema PRs (#6571).

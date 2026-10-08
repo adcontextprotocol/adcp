@@ -281,6 +281,11 @@
       "variants": 3,
       "note": "0:[media_buy_id,confirmed_at,revision,packages] | 1:[errors] | 2:[status,task_id]"
     },
+    "media-buy/get-audience-overlap-response.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 3,
+      "note": "0:[audience_id,comparisons] | 1:[errors] | 2:[status,task_id]"
+    },
     "media-buy/get-media-buy-delivery-request.json##/properties/status_filter/oneOf": {
       "kind": "dangerous",
       "variants": 2,

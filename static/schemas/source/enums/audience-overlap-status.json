@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/audience-overlap-status.json",
+  "title": "Audience Overlap Status",
+  "x-status": "experimental",
+  "description": "Whether a seller disclosed the overlap for one compared audience. suppressed mirrors the too_small status of sync_audiences for overlap reads. Experimental (x-status: experimental): sellers implementing audience overlap MUST list media_buy.audience_overlap in experimental_features. A buyer MUST treat an unknown value as suppressed.",
+  "type": "string",
+  "enum": [
+    "ready",
+    "suppressed",
+    "not_ready"
+  ],
+  "enumDescriptions": {
+    "ready": "The overlap is disclosed in the comparison's overlap object.",
+    "suppressed": "The seller withheld the overlap and the comparison carries no overlap object. A seller MUST NOT say which rule withheld it (compared audience below the seller minimum, overlap below minimum_overlap_size, or a near-duplicate audience), because the reason can itself disclose a small count. Buyers MUST NOT read suppressed as zero overlap and MUST NOT retry it without changing an audience.",
+    "not_ready": "A compared audience's matching has not completed, so no overlap can be computed yet. This reflects only the audience status that sync_audiences already reports and carries no count. Buyers retry after sync_audiences reports the audience ready."
+  }
+}

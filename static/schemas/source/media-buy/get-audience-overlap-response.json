@@ -1,0 +1,230 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/get-audience-overlap-response.json",
+  "title": "Get Audience Overlap Response",
+  "x-status": "experimental",
+  "description": "Response from get_audience_overlap. Exactly one of three shapes: success (audience_id and one comparison per compare_to entry), terminal failure (errors, no comparisons), or a submitted task envelope (status 'submitted' with task_id) for a seller whose overlap is computed as a job; final comparisons land on the task completion artifact. Overlap is aggregate-only and privacy-bounded. Overlap counts matched platform users, the same basis as audience_size on sync_audiences and not targetable_size. A seller MUST NOT disclose an overlap below its declared minimum_overlap_size and MUST NOT report overlap as exact. A seller MUST decide whether to suppress, and choose the reported range, from the true overlap plus an offset that is deterministic for the pair of audience memberships and derived from a seller-held secret, applied before the range is chosen, so that one member added or removed does not move the answer predictably; the reported range MUST be at least minimum_overlap_size wide. The answer MUST be stable for the same pair of memberships, with no per-request randomness. A seller MUST count every comparison against its overlap budget before evaluating any suppression rule, scope that budget to the calling principal and not only the account, and return RATE_LIMITED when it is spent. A seller SHOULD also suppress an overlap read when the audience differs, by fewer members than its minimum audience size, from any audience or earlier version on the account it has already computed an overlap for against the same counterpart. A seller SHOULD NOT vary response shape, as_of, or latency by suppression reason, and MUST pin overlap.as_of to the time the cached overlap was computed, not the request time. A buyer MUST treat an unknown comparison status as suppressed. Experimental (x-status: experimental): sellers implementing audience overlap MUST list media_buy.audience_overlap in experimental_features.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "title": "GetAudienceOverlapSuccess",
+      "description": "Success response: one comparison per compare_to entry, in request order.",
+      "type": "object",
+      "properties": {
+        "audience_id": {
+          "type": "string",
+          "description": "The audience compared from, echoed from the request.",
+          "x-entity": "audience"
+        },
+        "comparisons": {
+          "type": "array",
+          "description": "One entry per compare_to entry, in request order. Overlap is symmetric in count, so each entry reports a single overlap. Buyers compute shares from the overlap range and each audience's audience_size from sync_audiences; the result is an interval, not a point.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "audience_id": {
+                "type": "string",
+                "description": "The compared audience, echoed from compare_to.",
+                "x-entity": "audience"
+              },
+              "status": {
+                "$ref": "/schemas/enums/audience-overlap-status.json",
+                "description": "ready when the overlap is disclosed; suppressed when the seller withheld it."
+              },
+              "overlap": {
+                "allOf": [
+                  {
+                    "$ref": "/schemas/core/audience-size.json"
+                  },
+                  {
+                    "properties": {
+                      "precision": {
+                        "enum": [
+                          "approximate",
+                          "bucketed"
+                        ]
+                      }
+                    }
+                  }
+                ],
+                "description": "People matched on the platform who are present in both audiences, as a range with a stated precision (the same basis as audience_size, not targetable_size). precision MUST be approximate or bucketed, never exact. lower_bound MUST be at least the seller's minimum_overlap_size, so a disclosed overlap never reveals a count below the minimum. as_of is when the seller computed the overlap, which can differ from audience_size.as_of. Present only when status is ready."
+              }
+            },
+            "required": [
+              "audience_id",
+              "status"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "ready"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "overlap"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "enum": [
+                        "suppressed",
+                        "not_ready"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "overlap"
+                    ]
+                  }
+                }
+              }
+            ],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "audience_id",
+        "comparisons"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "errors"
+            ]
+          },
+          {
+            "required": [
+              "task_id"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "GetAudienceOverlapError",
+      "description": "Error response: the read failed and no comparisons were computed. An audience_id or compare_to entry that is unknown or inaccessible to the caller returns REFERENCE_NOT_FOUND, evaluated before any other check and identical in every observable channel under the uniform-response rule; one such entry fails the whole request. The caller MUST be authorized to read every compared audience; account membership alone is not enough. An audience_id below the seller's minimum audience size returns AUDIENCE_TOO_SMALL, and its details MUST NOT carry current_size. An audience_id whose matching has not completed returns INVALID_STATE. A spent overlap budget returns RATE_LIMITED. A seller that does not advertise the capability returns UNSUPPORTED_FEATURE.",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "comparisons"
+            ]
+          },
+          {
+            "required": [
+              "audience_id"
+            ]
+          },
+          {
+            "required": [
+              "task_id"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "GetAudienceOverlapSubmitted",
+      "description": "Async task envelope for a seller that computes overlap as a job (for example through a clean-room flow). The buyer invokes get_task_status with task_id or receives a webhook when the task completes; the comparisons land in the terminal result, not this envelope.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape."
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Task handle the buyer uses with get_task_status. The comparisons are issued on the completion artifact, not here.",
+          "x-entity": "task"
+        },
+        "errors": {
+          "type": "array",
+          "description": "Optional advisory errors. Terminal failures belong in the error branch.",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "comparisons"
+            ]
+          },
+          {
+            "required": [
+              "audience_id"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

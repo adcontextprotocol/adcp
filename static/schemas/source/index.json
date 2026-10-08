@@ -1245,6 +1245,10 @@
           "$ref": "/schemas/enums/audience-match-rate-basis.json",
           "description": "Where an audience match rate came from (platform_reported, derived)"
         },
+        "audience-overlap-status": {
+          "$ref": "/schemas/enums/audience-overlap-status.json",
+          "description": "Whether a seller disclosed the overlap for one compared audience (ready, suppressed) (experimental)"
+        },
         "audience-status": {
           "$ref": "/schemas/enums/audience-status.json",
           "description": "Matching status of a synced audience on a seller platform"
@@ -2063,6 +2067,16 @@
           "response": {
             "$ref": "/schemas/media-buy/log-event-response.json",
             "description": "Response payload for log_event task"
+          }
+        },
+        "get-audience-overlap": {
+          "request": {
+            "$ref": "/schemas/media-buy/get-audience-overlap-request.json",
+            "description": "Request parameters for reading the overlap between one synced audience and others on the same account (experimental)"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/get-audience-overlap-response.json",
+            "description": "Response payload for get_audience_overlap task (experimental)"
           }
         },
         "sync-audiences": {

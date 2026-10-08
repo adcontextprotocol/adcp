@@ -71,6 +71,7 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'decline_proposals',
     'get_account_financials',
     'get_adcp_capabilities',
+    'get_audience_overlap',
     'get_media_buy_delivery',
     'get_media_buys',
     'get_principal',
