@@ -127,6 +127,30 @@ Collection lists are referenced in targeting overlays alongside property lists:
 
 A media buy can reference both simultaneously — "run in these approved shows, but never in these specific programs even if they appear on the approved list." The exclude list always wins on overlap.
 
+### Combining several collection lists (experimental)
+
+Brand-wide and campaign-level lists have different owners and lifecycles, so a package can reference several of them with the plural fields `collection_lists` and `collection_lists_exclude` (experimental in AdCP 3.3, feature id `media_buy.collection_lists`):
+
+```json
+{
+  "targeting_overlay": {
+    "collection_lists_exclude": [
+      { "agent_url": "https://governance.pinnacleagency.com", "list_id": "cl_novamotors_news_2026" },
+      { "agent_url": "https://governance.pinnacleagency.com", "list_id": "cl_novamotors_campaign_tvma" }
+    ]
+  }
+}
+```
+
+| Field | Combination rule |
+|---|---|
+| `collection_lists` | Intersection: the package runs only on collections matched by every list |
+| `collection_lists_exclude` | Union: the package excludes collections matched by any list |
+
+A package MUST NOT set both `collection_list` and `collection_lists`, or both `collection_list_exclude` and `collection_lists_exclude`; the singular fields are unchanged. In a request, set the old field to `null` when switching to the plural one. Exclude still wins on overlap. If a stored singular field is set, an update that sets the plural field for that direction MUST also null the singular one, otherwise the merged state is rejected with `INVALID_REQUEST` before any mutation.
+
+A seller that does not list `media_buy.collection_lists` in `experimental_features` MUST reject these fields with `UNSUPPORTED_FEATURE`, and a buyer MUST NOT rely on exclusion being applied unless the seller lists it and the product declares matching `overlay_support`; an older seller may silently ignore unknown fields. List identity is `(agent_url, list_id)`: a repeated identity in one array is invalid. A seller declares support per product in `overlay_support.collection_lists` / `collection_lists_exclude` as `true` or `{ "max_references": N }`, and a buyer filters with `required_overlay_support`. Singular support does not imply plural support. A create or update with more references than `max_references` MUST be rejected with `UNSUPPORTED_FEATURE`, identifying the field, and MUST NOT be truncated. A seller that cannot resolve every list MUST NOT apply a subset.
+
 Property and collection lists use the same product-response receipt. Matching is a seller claim about one returned product at one point in time, not a report written back to the governance agent.
 
 ## Jordan's three-layer configuration
