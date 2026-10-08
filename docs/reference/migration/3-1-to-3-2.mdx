@@ -269,26 +269,29 @@ match exactly, and a release pin never resolves onto a prerelease.
 `update_media_buy` compatibility facades. A seller that exposes only the
 compact tools cannot serve an unchanged 3.1 buyer.
 
-**Response shapes when serving `"3.1"`.** The spec requires the echo, and it
-tells buyers to validate against the echoed release. It does not yet state
-normatively that a seller serving `"3.1"` must produce a response valid under
-the 3.1 schema. [#7718](https://github.com/adcontextprotocol/adcp/issues/7718)
-tracks that gap. Until then, follow the
-[non-normative guidance](/docs/reference/versioning#serving-an-older-pin). These
-3.2 shapes fail a strict 3.1 validator if a seller emits them under a 3.1 pin:
+**Response shapes when serving `"3.1"`.** From 3.3, a seller serving `"3.1"`
+MUST emit a response valid under the 3.1 schema, and MUST NOT list `"3.1"` in
+`supported_versions` if it cannot ([Serving an older
+pin](/docs/reference/versioning#serving-an-older-pin)). 3.2 itself did not
+require this, so a 3.2 seller can still emit the shapes below under a 3.1 pin,
+and a strict 3.1 validator rejects them. Buyers should keep parsing
+tolerantly. The six known divergences:
 
-- `get_adcp_capabilities`: `media_buy.execution.targeting.geo_regions` and
-  `.language` can be objects instead of booleans. This is the discovery call
-  itself, so parse it tolerantly.
-- `core/pricing-option.json`: new `revenue_share` arm.
-- `get_products`: terminal `status: "rejected"` response without `products`.
-- `sync_accounts` rows that carry `account` without `brand` / `operator`.
-- `get_media_buys` `available_actions[]` canonical action objects.
-- `get_media_buy_delivery` without root `currency` or `totals.spend`.
+1. `sync_accounts` response rows: `brand` and `operator` are forbidden when
+   `account` is present. In 3.1 both are required, so a row that carries
+   `account` without them fails a 3.1 validator. This is the sharpest
+   failure, a required-field flip. 3.2 also makes `status` optional on
+   `action: "failed"` rows.
+2. `get_adcp_capabilities` (a SHOULD, not a MUST, for this call): `media_buy.execution.targeting.geo_regions` and
+   `.language` can be objects instead of booleans. This is the discovery call
+   itself, so parse it tolerantly.
+3. `core/pricing-option.json`: new `revenue_share` arm.
+4. `get_products`: terminal `status: "rejected"` response without `products`.
+5. `get_media_buys` `available_actions[]` canonical action objects.
+6. `get_media_buy_delivery` without root `currency` or `totals.spend`.
 
-Sellers should project these shapes, or omit them, when serving 3.1. Buyers
-should accept unknown enum values, unknown union arms, and the object forms
-above.
+Sellers project these shapes, or omit them, when serving 3.1. Buyers should
+accept unknown enum values, unknown union arms, and the object forms above.
 
 ## Adopt by capability
 

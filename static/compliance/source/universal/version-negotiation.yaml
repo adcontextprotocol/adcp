@@ -126,3 +126,57 @@ phases:
             path: "context.correlation_id"
             value: "version_negotiation--get_capabilities_with_version"
             description: "Context correlation_id returned unchanged"
+
+  - id: served_release_shape
+    title: "Responses validate against the negotiated release (pending runner support)"
+    optional: true
+    requires_capability:
+      path: "adcp.supported_versions"
+      contains: "3.1"
+    narrative: |
+      Stub for the rule that a response to a request negotiated at release R
+      MUST validate against R's published schema (docs/reference/versioning.mdx,
+      "Serving an older pin"). The runner pins "3.1" against a
+      seller that advertises 3.1 and validates each response against the
+      released 3.1 schema bundle, not the bundle the storyboard ships in.
+
+      The bundle-per-version validation is not yet available in the runner
+      (tracked in the adcp-client repository), so the checks declared here
+      (the echo and the 3.1 capability boolean shape) are graded advisory. When the runner ships the capability, add
+      a response-schema check pinned to the served release's bundle and the
+      3.1-pinned get_products, sync_accounts, get_media_buys, and
+      get_media_buy_delivery steps, then drop the advisory marker.
+    steps:
+      - id: get_capabilities_at_3_1
+        title: "Request capabilities pinned to 3.1 and expect the 3.1 shape"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request:
+          adcp_version: "3.1"
+          adcp_major_version: 3
+          context:
+            correlation_id: "version_negotiation--served_release_shape"
+        expected: |
+          The seller serves 3.1 and echoes `adcp_version: "3.1"`. The response
+          validates against the 3.1 schema: `media_buy.execution.targeting.geo_regions`
+          and `.language` are booleans, not objects. A seller that cannot project
+          to 3.1 does not list "3.1" in `adcp.supported_versions`, so this phase
+          does not apply to it.
+        validations:
+          - check: field_value_or_absent
+            path: "media_buy.execution.targeting.geo_regions"
+            allowed_values: [true, false]
+            description: "3.1 capability shape: geo_regions is a boolean, not the 3.2 object form"
+            severity: advisory
+            permanent_advisory:
+              reason: "Runner cannot yet validate responses against the served release's schema bundle; stays advisory until that runner capability ships."
+          - check: envelope_field_pattern
+            path: "adcp_version"
+            pattern: "^3\\.1$"
+            description: "Seller echoes the release it served, which the response must then conform to"
+            severity: advisory
+            permanent_advisory:
+              reason: "Runner cannot yet validate responses against the served release's schema bundle; stays advisory until that runner capability ships."
