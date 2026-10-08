@@ -657,13 +657,14 @@ Invoke [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get
 
 ## Hashing Requirements
 
-Hash all identifiers with SHA-256 before sending. Normalize first:
+Hash emails and phone numbers with SHA-256 before sending, normalizing first. `uids[]` values are not hashed; send the form noted below:
 
 | Identifier | Normalization | Example |
 |------------|--------------|---------|
 | Email | Lowercase, trim whitespace | `alice@example.com` → hash |
 | Phone | E.164 format | `+12065551234` → hash |
-| MAID | No normalization needed | As-is |
+| MAID | Lowercase, hyphenated UUID (senders SHOULD; receivers SHOULD normalize case and hyphenation before matching) | `6d3c2f1a-8b4e-4c7d-9a1f-2e5b7c9d0f13` |
+| UID2 / EUID | Raw UID2/EUID, never the encrypted token. Case-sensitive; do not case-fold or re-encode | As issued |
 
 ```javascript test=false
 import { createHash } from "crypto";
