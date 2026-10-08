@@ -17,9 +17,9 @@
  * valid signature verify once the targeted check is skipped; the test suite
  * (tests/wba-profile-vectors.test.cjs) proves that for each of them.
  *
- * Governance vectors are compact JWS tokens (RFC 7515) that grade the
- * key-purpose rule: the key must be in the iss origin's directory, and the
- * iss origin must be listed in the governance role.
+ * Governance vectors are compact JWS tokens (RFC 7515) that grade the two
+ * governance checks: the key must be in the iss origin's directory, and the
+ * iss origin must be the buyer's governance agent.
  *
  * Usage:
  *   node scripts/generate-wba-profile-vectors.mjs          # write
@@ -390,11 +390,10 @@ write('negative/007-malformed-signature-agent.json', {
     "Signature is a 64-zero-byte placeholder: parsing fails before any key is resolved or any signature is checked, so a verifier that reaches cryptographic verification has skipped the parse step. No Accept-Signature is sent, because the signer's headers, not its signature, need fixing.",
 });
 
-// ── Governance tokens: key purpose ────────────────────────────────────────
-// A key's purpose follows from the identity that publishes it. The verifier
-// accepts a governance token only when the key is in the iss origin's
-// directory AND the iss origin is listed in the governance role of a record it
-// already trusts. Each negative token breaks one of the two.
+// ── Governance tokens: one agent per purpose ──────────────────────────────
+// Purpose belongs to the agent, not the key. The verifier accepts a governance
+// token when the key is in the iss origin's directory AND the iss origin is the
+// buyer's governance agent. Each negative token breaks one of the two.
 const GOVERNANCE_DIRECTORY = `${GOVERNANCE}/.well-known/http-message-signatures-directory`;
 const BUYER_DIRECTORY = `${BUYER}/.well-known/http-message-signatures-directory`;
 const ROLE_LISTING = { 'adcp:governance': [GOVERNANCE] };
@@ -411,7 +410,7 @@ const governancePayload = (iss, jti) => ({ iss, aud: TARGET, phase: 'intent', jt
 function governanceVector(rel, { name, header, payload, signer, expected, comment }) {
   write(rel, {
     name,
-    spec_reference: `${SPEC}#key-purposes`,
+    spec_reference: `${SPEC}#one-agent-per-purpose`,
     signing_profile: 'web-bot-auth',
     document_type: 'governance_context',
     reference_now: NOW,
@@ -434,32 +433,32 @@ governanceVector('governance/001-governance-token.json', {
     "The token in RFC #7878's illustrations. jku is the WBA directory of the iss origin, the kid is in that directory, the signature verifies, and the iss origin is listed in the governance role.",
 });
 
-governanceVector('governance/002-governance-token-signed-with-transport-key.json', {
-  name: 'Governance token naming the governance identity, signed with a key that only the transport identity publishes',
+governanceVector('governance/002-governance-token-key-not-in-issuer-directory.json', {
+  name: 'Governance token naming the governance agent as issuer, signed with a key that only the buyer agent publishes',
   header: governanceHeader(buyer.jwk.kid, GOVERNANCE_DIRECTORY),
   payload: governancePayload(GOVERNANCE, '01J9ZQ4M8T6W3R5Y2K7N1P0B9D'),
   signer: buyer.privateKey,
   expected: {
     success: false,
     error_code: 'governance_key_unknown',
-    reason: "The kid is not in the key directory of the iss origin. Key lookup is keyed on the pair of origin and key, so a key the transport identity publishes cannot sign as the governance identity.",
+    reason: "The kid is not in the key directory of the iss origin. Key lookup is keyed on the pair of origin and key, so a key another agent publishes cannot sign as the governance agent.",
   },
   comment:
-    'The signature is valid under the buyer agent\'s transport key, which the directories object lists under its own origin. A verifier that looks keys up by thumbprint alone finds the key and accepts the token.',
+    'The signature is valid under the buyer agent\'s key, which the directories object lists under the buyer agent\'s origin. A verifier that looks keys up by thumbprint alone finds the key and accepts the token.',
 });
 
-governanceVector('governance/003-governance-token-issued-as-transport-identity.json', {
-  name: 'Governance token issued by the transport identity https://buyer-7k3q.com, with its own key and directory',
+governanceVector('governance/003-governance-token-from-non-governance-agent.json', {
+  name: 'Governance token issued by the buyer agent https://buyer-7k3q.com, which is not the buyer\'s governance agent, with its own key and directory',
   header: governanceHeader(buyer.jwk.kid, BUYER_DIRECTORY),
   payload: governancePayload(BUYER, '01J9ZQ4M8T6W3R5Y2K7N1P0B9E'),
   signer: buyer.privateKey,
   expected: {
     success: false,
     error_code: 'governance_issuer_not_authorized',
-    reason: 'The iss origin is not listed in the governance role. The key, jku, and signature are all consistent, so this check alone binds the purpose.',
+    reason: "The iss origin is not the buyer's governance agent. The key, jku, and signature are all consistent, so this is the check that rejects the token.",
   },
   comment:
-    'Every check up to the role check passes: jku is the iss origin\'s directory, the kid is in it, and the signature verifies. This vector proves that purpose is bound by who the issuer is. A verifier that checks only that the key sits in the iss directory accepts it.',
+    'Every check up to the governance-agent check passes: jku is the iss origin\'s directory, the kid is in it, and the signature verifies. A token is accepted for who issued it, not for which key signed it. A verifier that checks only that the key sits in the iss directory accepts this token.',
 });
 
 // ── Write or check ────────────────────────────────────────────────────────

@@ -33,7 +33,7 @@ Section 5.5 explains why the well-known path matters: "TLS authenticates the hos
 
 Under the profile, an identity is an origin, for example `https://buyer-7k3q.com`. The identity has one key directory, and every key it signs with is published there. The verifier attributes a verified request to that origin and to nothing else.
 
-Two agents cannot share an origin. An operator that runs several agents gives each its own origin, for example one subdomain per agent. Section 6.5 recommends this for agents that need to be told apart: "these should use distinct signing keys and signing key directories". The same rule separates signing purposes. A signer whose keys must stay isolated from transport keys is its own identity on its own origin.
+Two agents cannot share an origin. An operator that runs several agents gives each its own origin, for example one subdomain per agent. Section 6.5 recommends this for agents that need to be told apart: "these should use distinct signing keys and signing key directories". The same rule covers purposes: a governance agent is an agent like any other, on its own origin (see [One agent per purpose](#one-agent-per-purpose)).
 
 `brand.json`, `adagents.json`, and a seller's onboarding records refer to an identity by its origin. So does `trust.json` ([#7809](https://github.com/adcontextprotocol/adcp/issues/7809), [proposal](https://github.com/adcontextprotocol/adcp/blob/main/specs/brand-identity-trust-split.md)): it lists agent origins with their roles and carries no keys. A multi-tenant vendor gives each tenant its own subdomain, for example `https://7f3a9c.sentinel-governance.example`, which serves that tenant's key directory.
 
@@ -41,14 +41,14 @@ An agent that shares a host with other agents under the AdCP RFC 9421 profile ke
 
 Key lookup is keyed on the pair of origin and key, never on the key alone (section 5.4). A verifier that indexes keys by thumbprint alone attributes a request to whatever origin the signer claims. Negative vector `006-key-not-in-named-directory` grades this rule.
 
-## Key purposes
+## One agent per purpose
 
-A key's purpose follows from the identity that publishes it. A governance agent signs from its own identity, on its own origin, and never from a transport identity. A verifier accepts a governance token only when both of the following hold:
+Purpose belongs to the agent, not to the key. A governance agent is its own identity on its own origin, with its own key directory, so no key and no directory states a purpose. A verifier accepts a governance token when both of the following hold:
 
 1. The token's `kid` is in the key directory of the `iss` origin, and `jku` is that directory's URL.
-2. The `iss` origin is listed in the governance role of a record the verifier already trusts: the governance-typed `agents[]` entry in the buyer's `brand.json`, or the `adcp:governance` role in `trust.json` once [#7809](https://github.com/adcontextprotocol/adcp/issues/7809) lands.
+2. The `iss` origin is the buyer's governance agent: the governance-typed `agents[]` entry in the buyer's `brand.json`, or the `adcp:governance` role in `trust.json` once [#7809](https://github.com/adcontextprotocol/adcp/issues/7809) lands.
 
-The second check binds the purpose. A transport identity that names itself in `iss` passes the first check with its own key and fails the second. How documents are signed is a separate decision (RFC #7878, D11). The vectors under `governance/` grade only this rule, and the rest of the token follows the existing [governance verification checklist](/docs/building/by-layer/L1/security#signed-governance-context).
+Neither check is new. The first is this profile's key lookup, and the second is the governance-agent check AdCP already makes. How documents are signed is a separate decision (RFC #7878, D11). The vectors under `governance/` grade these two checks, and the rest of the token follows the existing [governance verification checklist](/docs/building/by-layer/L1/security#signed-governance-context).
 
 ## Profile rules
 
@@ -283,7 +283,7 @@ The two profiles share the signature base, the covered request components, the p
 | Operator-chosen `kid` | JWK thumbprint |
 | Keys at `brand.json` `agents[].jwks_uri`, found through [Agent resolution](/docs/building/by-layer/L1/security#agent-resolution) | Key directory at the identity's origin, found from `Signature-Agent` |
 | eTLD+1 binding and the `identity.key_origins` consistency check | Not needed: the identity is the origin, and the directory path is reserved |
-| `adcp_use` key purposes | A separate identity, on its own origin, for each signing purpose |
+| `adcp_use` key purposes | One agent per purpose, each on its own origin |
 | "Exactly one `Signature-Input` label" | Every `web-bot-auth` signature must verify |
 | AdCP nonce rules and replay codes | RFC 9421 `nonce` on every signed request, enforced by the seller's verifier |
 | `request_signature_*` and `webhook_signature_*` codes in `WWW-Authenticate` | `400`, `403` with `Accept-Signature`, `429`, and AdCP authorization errors |
@@ -306,8 +306,8 @@ The vectors live at `static/compliance/source/test-vectors/wba-profile/` and are
 - `negative/006-key-not-in-named-directory`: `403`; the signing key is published by a different origin than the one `Signature-Agent` names.
 - `negative/007-malformed-signature-agent`: `400`; the header does not parse.
 - `governance/001-governance-token`: a governance token from the governance identity, with its own key; it verifies.
-- `governance/002-governance-token-signed-with-transport-key`: `governance_key_unknown`; the key is published only by the transport identity.
-- `governance/003-governance-token-issued-as-transport-identity`: `governance_issuer_not_authorized`; the key and signature are consistent, and the issuer is not in the governance role.
+- `governance/002-governance-token-key-not-in-issuer-directory`: `governance_key_unknown`; the key is published by another agent, not by the issuer.
+- `governance/003-governance-token-from-non-governance-agent`: `governance_issuer_not_authorized`; the key and signature are consistent, and the issuer is not the buyer's governance agent.
 
 The keys in `keys.json` are public test keys with published private seeds. Section 6.8 says test keys "MUST NOT be used in production", and verifiers SHOULD reject them when detected. The README in the vector directory describes the file format and the harness state each vector needs.
 

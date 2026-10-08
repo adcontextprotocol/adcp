@@ -341,7 +341,7 @@ describe('Web Bot Auth profile negative vectors', () => {
   });
 });
 
-// ── Governance tokens: key purpose ────────────────────────────────────────
+// ── Governance tokens: one agent per purpose ──────────────────────────────
 
 const GOVERNANCE_ALGORITHMS = ['Ed25519', 'EdDSA'];
 const DIRECTORY_PATH = '/.well-known/http-message-signatures-directory';
@@ -355,7 +355,7 @@ class DocumentError extends Error {
 }
 
 /**
- * Verifies a governance token's key purpose and returns the issuer origin.
+ * Verifies a governance token's key and issuer, and returns the issuer origin.
  * Each option skips one check, so a test can show a vector fails on that check alone.
  */
 function verifyGovernanceToken(vector, { skipDirectory = false, skipRole = false } = {}) {
@@ -393,11 +393,11 @@ const governance = loadDir('governance');
 
 // The check each negative governance vector targets, and the option that skips only that check.
 const GOVERNANCE_TARGETS = {
-  '002-governance-token-signed-with-transport-key.json': { stage: 'directory', skip: { skipDirectory: true } },
-  '003-governance-token-issued-as-transport-identity.json': { stage: 'role', skip: { skipRole: true } },
+  '002-governance-token-key-not-in-issuer-directory.json': { stage: 'directory', skip: { skipDirectory: true } },
+  '003-governance-token-from-non-governance-agent.json': { stage: 'role', skip: { skipRole: true } },
 };
 
-describe('Web Bot Auth profile governance vectors (key purpose)', () => {
+describe('Web Bot Auth profile governance vectors (one agent per purpose)', () => {
   it('names a targeted check for every negative governance vector', () => {
     const negatives = governance.filter(e => !e.vector.expected_outcome.success).map(e => e.file);
     assert.deepEqual(negatives, Object.keys(GOVERNANCE_TARGETS).sort());
