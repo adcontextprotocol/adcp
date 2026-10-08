@@ -140,7 +140,7 @@ Streaming and connected-TV inventory is a separate execution context. It may use
 Where a spot runs is described outside the creative, in three places:
 
 - **Inventory** — a product's `publisher_properties` select properties from the seller's `adagents.json`. Linear properties carry `station_id` (a call sign), `facility_id` (a regulator-prefixed license such as `fcc:73953`), or `network_id` identifiers. Model the product by who commits the order: a network or rep-firm package is one product even when it fulfills across affiliates, while station-direct inventory is a product per selling station or group. See [Broadcast TV package forecast](/docs/media-buy/product-discovery/media-products#broadcast-tv-package-forecast).
-- **Daypart on the buy** — `daypart_targets` on the package's targeting overlay (days, `start_hour`, `end_hour`, and a `timezone`, where `inventory_local` evaluates each station's own clock) when the product supports it. It is hour-grain, so a boundary such as 7:30 pm is not expressible.
+- **Daypart on the buy** — `daypart_targets` on the package's targeting overlay (days, a `timezone` where `inventory_local` evaluates each station's own clock, and whole-hour `start_hour`/`end_hour`) when the product supports it. **Experimental in AdCP 3.3** (`media_buy.daypart_granularity`): an entry may instead carry `start_time` and `end_time` as `HH:MM`, so a window such as 19:30–23:00 or a break at a programme junction is expressible. A product declares the finest clock it honors in `overlay_support.daypart_targets.time_granularity` (`hour`, `quarter_hour`, or `minute`), and a seller rejects a finer time than it declares with `UNSUPPORTED_FEATURE` rather than rounding. See [Minute-resolution dayparts](/docs/media-buy/advanced-topics/targeting#minute-resolution-dayparts-experimental).
 - **Daypart on the report** — `daypart` on a [`by_spot`](#reconciliation-contract) row is a seller-defined label such as `prime_time` or `prime_access`. There is no daypart enum, so a buyer reconciling across sellers compares the as-run `aired_at` against the daypart it bought rather than matching labels.
 
 ## Delivery measurement and reconciliation
@@ -169,7 +169,8 @@ The rules:
 
 - **Airing evidence is not a counting source.** Station logs, affidavits, and playout records prove that a spot aired. The audience currency turns airings into the audience-size number. Never infer audience from airings, and never infer an airing from audience: `aired_at` is what proves an airing.
 - **As-run is reported apart from audience.** A product that declares `supports_spot_breakdown` with `available_metrics: []` provides airing evidence only; `by_spot` rows then carry no audience numbers. A product may instead declare metrics at spot grain, which appear when a later window supersedes an earlier one. A guarantee and its invoice reconcile against package rows (and the `by_demographic` row for the contracted demo), and the buyer does not rebuild package totals from spot rows.
-- **`spot_id` is stable.** The same `spot_id` is reported under Live, C3, and C7, so a buyer joins as-run evidence to later audience rows on it. Audience rows join on `(media_buy_id, package_id, reporting_period, measurement_window)`.
+- **Spot lifecycle is experimental and declared.** In AdCP 3.3 a seller may also report `scheduled`, `preempted`, and `makegood` rows through `by_spot[].spot_status`, and says which it reports in `supports_spot_breakdown.available_statuses` (experimental, `media_buy.spot_lifecycle`). Only `aired` and `makegood` rows carry `aired_at` and prove an airing; a `scheduled` or `preempted` row carries `scheduled_at` instead and is not airing evidence. A status the seller does not list proves nothing: the absence of `preempted` rows is not evidence that nothing was preempted. See [Optimization and reporting](/docs/media-buy/media-buys/optimization-reporting).
+- **`spot_id` is stable.** The same `spot_id` is reported under Live, C3, and C7 (and, where the seller reports lifecycle, from `scheduled` through `aired` or `preempted`), so a buyer joins as-run evidence to later audience rows on it. Audience rows join on `(media_buy_id, package_id, reporting_period, measurement_window)`.
 - **Completeness is explicit.** `by_spot_truncated: false` means the as-run log is complete for the period. A buyer reconciling airings requests the spot dimension without a `limit`. A seller that cannot attribute a creative to an airing omits `creative_id` rather than guessing.
 - **Who attests the airing is not declared.** A buyer cannot tell a station traffic log from a third-party airing verification from the rows alone, and affidavit references are not carried on the wire today. Take both from the seller's product description and the contract.
 
@@ -184,13 +185,13 @@ This works today with four gaps. Read them before building on it:
 - **The demo is bound on the forecast, not on the price.** A CPM pricing option has no demographic parameters, unlike a CPP option (`parameters.demographic_system`, `demographic`). `measurement_terms.billing_measurement` binds the vendor, the window, and the variance, but has no demographic field.
 - **The guaranteed volume has no typed definition.** `purchases[].impressions` is the contracted volume, and a buyer can require a floor on it with `refine_proposals` `constraints.impressions` (a hard minimum summed across purchases). The schema does not say that number counts measured audience, in which demo, from which vendor, or on which window. Those facts sit on the forecast and `billing_measurement`, and the forecast is outside `commercial_terms`, so it is not covered by `terms_digest`. Treat the demo as a term agreed in the human contract outside AdCP, not one a protocol agent can verify.
 - **:30 equivalization is not expressible.** Nothing declares whether a :15 impression counts as half a :30 unit or the factor to apply. A CPM prices impressions regardless of unit length, so on a buy that mixes :15 and :30 spots the equivalization rule is a term to settle outside the protocol.
-- **No schedule, no under-delivery trigger.** AdCP carries no list of scheduled spots, and `makegood_policy` does not name a volume shortfall as a trigger. See [Makegoods](#makegoods).
+- **No under-delivery trigger, and the schedule on the wire is experimental.** `makegood_policy` does not name a volume shortfall as a trigger. A seller may report the planned schedule as `scheduled` rows in `by_spot`, but that field is experimental and seller-declared, so a buyer cannot assume one. See [Makegoods](#makegoods).
 
 Demo-bound CPM and :30 equivalization are tracked for 3.4 in [#8001](https://github.com/adcontextprotocol/adcp/issues/8001).
 
 ### 1. The seller publishes the product
 
-The product is a `linear_tv` package with two `video_hosted` format options, one CPM price, and the measurement it will stand behind. VideoAmp is the billing vendor and C7 is the guarantee window. The final C7 record is due within 360 hours of the window closing, and the seller publishes it on `get_media_buy_delivery`. `supports_spot_breakdown.available_metrics` is empty, so spot rows are airing evidence only.
+The product is a `linear_tv` package with two `video_hosted` format options, one CPM price, and the measurement it will stand behind. VideoAmp is the billing vendor and C7 is the guarantee window. The final C7 record is due within 360 hours of the window closing, and the seller publishes it on `get_media_buy_delivery`. `supports_spot_breakdown.available_metrics` is empty, so spot rows are airing evidence only. The seller also declares the experimental spot lifecycle (`available_statuses`) and break position (`supports_break_position`), and lists `media_buy.spot_lifecycle` in `experimental_features` on `get_adcp_capabilities`.
 
 ```json
 {
@@ -313,7 +314,11 @@ The product is a `linear_tv` package with two `video_hosted` format options, one
       "demographic_systems": ["nielsen"],
       "may_suppress_small_cells": false
     },
-    "supports_spot_breakdown": { "available_metrics": [] }
+    "supports_spot_breakdown": {
+      "available_metrics": [],
+      "available_statuses": ["scheduled", "preempted", "makegood"],
+      "supports_break_position": true
+    }
   }
 }
 ```
@@ -413,11 +418,11 @@ The forecast's `measured_impressions` is the same count that delivery reports as
 
 To change a measurement term (a different vendor or window, a different variance), the buyer states the change in `refine_proposals` `ask` and reads the revised `commercial_terms` and `terms_digest`; there is no typed measurement-terms input on refinement. The deprecated `create_media_buy` path instead returns `TERMS_REJECTED` for a term the seller cannot support; see [Accountability](/docs/media-buy/advanced-topics/accountability#measurement-terms-for-phased-maturation-channels).
 
-Once `accept_proposal` returns the media buy and its `purchase_bindings[]`, the buyer syncs each cut with [`sync_creatives`](/docs/creative/task-reference/sync_creatives), carrying its own identifier as in [Creative identifiers](#creative-identifiers), and assigns it to the package. Station clearance and delivery deadlines are outside the protocol.
+If the seller confirms through a booking round or sales-desk review, `accept_proposal` returns a `submitted` arm that may carry `expected_confirmation_at` (added in 3.3), an estimate of when to check back. It is not a commitment, so schedule a status check for that time rather than polling tightly. Once `accept_proposal` returns the media buy and its `purchase_bindings[]`, the buyer syncs each cut with [`sync_creatives`](/docs/creative/task-reference/sync_creatives), carrying its own identifier as in [Creative identifiers](#creative-identifiers), and assigns it to the package. Station clearance and delivery deadlines are outside the protocol.
 
 ### 4. Delivery: as-run first, audience later
 
-The buyer reads delivery with the demographic breakdown for the contracted demo and the spot breakdown. A reconciliation pull omits the spot `limit` so the log is complete; this example caps it at three rows to stay short.
+The buyer reads delivery with the demographic breakdown for the contracted demo and the spot breakdown. A reconciliation pull omits the spot `limit` so the log is complete; this example caps it at four rows to stay short.
 
 ```json
 {
@@ -433,7 +438,7 @@ The buyer reads delivery with the demographic breakdown for the contracted demo 
     "demographic": {
       "age_ranges": [{ "min": 25, "max": 54, "include_unknown": false }]
     },
-    "spot": { "limit": 3 }
+    "spot": { "limit": 4 }
   }
 }
 ```
@@ -485,12 +490,22 @@ During the flight, rows are provisional: Live and C3 numbers with `is_final: fal
           "by_demographic_suppressed": false,
           "by_spot": [
             {
+              "spot_id": "spot_0408",
+              "spot_status": "preempted",
+              "scheduled_at": "2026-08-04T19:46:30-04:00",
+              "network": "Harbor Network",
+              "station": "WTST-TV",
+              "daypart": "prime_access",
+              "creative_id": "nova_summer_30"
+            },
+            {
               "spot_id": "spot_0412",
               "aired_at": "2026-08-04T20:14:30-04:00",
               "network": "Harbor Network",
               "station": "WTST-TV",
               "daypart": "prime_time",
-              "creative_id": "nova_summer_30"
+              "creative_id": "nova_summer_30",
+              "break_position": { "position_in_break": 2, "spots_in_break": 5 }
             },
             {
               "spot_id": "spot_0413",
@@ -498,11 +513,14 @@ During the flight, rows are provisional: Live and C3 numbers with `is_final: fal
               "network": "Harbor Network",
               "station": "WTST-TV",
               "daypart": "prime_time",
-              "creative_id": "nova_summer_15"
+              "creative_id": "nova_summer_15",
+              "break_position": { "position_in_break": 1, "spots_in_break": 4 }
             },
             {
-              "spot_id": "spot_0420",
-              "aired_at": "2026-08-05T19:46:30-04:00",
+              "spot_id": "spot_0431",
+              "spot_status": "makegood",
+              "replaces_spot_id": "spot_0408",
+              "aired_at": "2026-08-06T19:46:30-04:00",
               "network": "Harbor Network",
               "station": "WTST-TV",
               "daypart": "prime_access",
@@ -521,7 +539,7 @@ During the flight, rows are provisional: Live and C3 numbers with `is_final: fal
 
 The buyer reconciles two streams, each against its own evidence:
 
-1. **Did it air?** The schedule comes from outside the protocol: the buyer's traffic confirmation or the contract. AdCP carries no list of scheduled spots. Compare that schedule against the complete `by_spot` log (`by_spot_truncated: false`). A scheduled spot with no as-run record in a complete log is unevidenced, and it is the basis for a makegood claim. `creative_id` and `daypart` on each row confirm that the right cut ran in the daypart the buyer bought. None of this involves an audience number.
+1. **Did it air?** Start from the schedule. This seller reports `scheduled` rows (experimental, declared in `available_statuses`), so the planned spots arrive on the wire and each `spot_id` later resolves to an `aired` row or a `preempted` row. A seller that does not declare `scheduled` leaves the schedule outside the protocol, in the buyer's traffic confirmation or the contract. Compare it against the complete `by_spot` log (`by_spot_truncated: false`). A scheduled spot that resolves to a row with `aired_at` is evidenced. A `preempted` row did not air, and the log here shows the replacement: `spot_0431` is a `makegood` row whose `replaces_spot_id` is `spot_0408`. A scheduled spot with no row at all is unevidenced, and it is the basis for a makegood claim. `creative_id` and `daypart` on each aired row confirm that the right cut ran in the daypart the buyer bought, and `break_position` (experimental, `supports_break_position`) places the spot in its break. None of this involves an audience number.
 2. **How many people?** Read the `by_demographic` row for the contracted demo (`A25-54` in `nielsen` notation, with the `age` interval echoed) and confirm `by_demographic_suppressed` is false. The package row must match the agreed `billing_measurement`: `measurement_window: "c7"` with `is_final: true` and `measurement_source: "videoamp"`. The package row carries no demographic of its own, so the `by_demographic` row is how the buyer confirms the number is for the demo. 4,870,000 against the 5,000,000 guarantee is a shortfall of 130,000 impressions.
 3. **What is billed?** This example bills delivered impressions at the CPM, capped at the purchase `budget`: 4,870,000 ÷ 1,000 × $32 = $155,840, the `spend` on the final row. Over-delivery is not billed beyond the cap. That convention is a term of the deal. `max_variance_percent` is not a tolerance on the shortfall against the guarantee; it bounds how far two counts of the same thing may diverge before resolution is triggered. A buyer that holds its own VideoAmp or iSpot subscription reports its count with `report_usage`, as described in [Billing authority](/docs/media-buy/advanced-topics/billing-authority).
 4. **Is the shortfall remedied?** The invoice above already prices out the 130,000 impressions, so an `invoice_adjustment` would be redundant here. Whether a volume shortfall triggers a remedy at all is a term of the deal (see [Makegoods](#makegoods)); `additional_delivery` would fill toward the guarantee and `credit` would carry the value forward.
@@ -530,10 +548,16 @@ If the C7 row has not arrived by the deadline (`finalization_deadline_hours`, co
 
 ## Makegoods
 
-`measurement_terms.makegood_policy.available_remedies` is a menu the seller commits to, ordered by seller preference: `additional_delivery` (extra airings), `credit` (a credit toward future buys on the account), and `invoice_adjustment` (a reduced invoice). A buyer proposing a remedy the seller does not support is rejected with `TERMS_REJECTED` at negotiation.
+`measurement_terms.makegood_policy.available_remedies` is a menu the seller commits to, ordered by seller preference: `additional_delivery` (extra airings), `credit` (a credit toward future buys on the account), and `invoice_adjustment` (a reduced invoice). A buyer proposing a remedy the seller does not support is rejected with `TERMS_REJECTED` at negotiation. The schema names performance-standard breaches, billing-variance breaches, and missed finalization deadlines as triggers. A volume shortfall against a guarantee is not among them, so whether and how it triggers a remedy is a term of the deal outside the protocol. Proposing, accepting, and disputing a remedy also happen out of band.
 
-That menu is the whole of makegoods on the wire today. The schema names performance-standard breaches, billing-variance breaches, and missed finalization deadlines as triggers. A volume shortfall against a guarantee, and a preempted spot, are not among them, so whether and how they trigger a remedy is a term of the deal outside the protocol. Proposing, accepting, and disputing a remedy also happen out of band. There is no preemption notice, and the criteria for an acceptable replacement airing (same or better daypart, same network or station, same unit length, a rating floor, inside the flight) are not machine-readable. A replacement airing appears in `by_spot` like any other airing, with nothing linking it to the spot it replaces. A preempted spot never aired, and `aired_at` is required on a spot row, so it cannot be reported. `spot_id` is stable and reserved for later preemption and makegood workflows. Makegood airings can also land after the flight and after C7 closes, and they mature on their own windows.
+**Report-time spot lifecycle (experimental in AdCP 3.3).** A seller that declares `media_buy.spot_lifecycle` in `experimental_features` can report a preemption and its replacement in `by_spot`:
 
-Pre-approved replacement rules agreed at contract time, and the report-time link from a makegood airing to the preempted spot, are planned for 3.4 in [#5683](https://github.com/adcontextprotocol/adcp/issues/5683).
+- A spot keeps one `spot_id` as it moves from `scheduled` to `aired` or to `preempted`. `scheduled_at` carries the planned slot (for a preempted row, the slot that was lost), and a preempted row has no `aired_at`.
+- A `makegood` row is a separate airing with its own `spot_id`, an `aired_at`, and a `replaces_spot_id` naming the preempted spot. A planned replacement is a `scheduled` row that already carries `replaces_spot_id`, so the buyer sees the link before it airs.
+- The seller lists the statuses it reports in `supports_spot_breakdown.available_statuses`. A status that is not listed proves nothing, so a buyer must not read missing `preempted` or `makegood` rows as "nothing was preempted". A preemption surfaces as a `preempted` row on the next report; there is no separate notification, and a seller does not send these rows to callers pinned below 3.3.
+
+These fields can change within 3.x; see [experimental status](/docs/reference/experimental-status) and the [spot breakdown](/docs/media-buy/media-buys/optimization-reporting) reference.
+
+**Not in 3.3.** The criteria for an acceptable replacement airing (same or better daypart, same network or station, same unit length, a rating floor, inside the flight) are not machine-readable, and neither is an interactive replacement offer. Those are agreed in the human contract outside AdCP. Makegood airings can also land after the flight and after C7 closes, and they mature on their own windows. Contract-time pre-approval criteria for replacements are planned for 3.4 in [#5683](https://github.com/adcontextprotocol/adcp/issues/5683).
 
 See [Video](/docs/creative/channels/video), [Radio](/docs/creative/channels/radio), [Billing authority](/docs/media-buy/advanced-topics/billing-authority), [Accountability](/docs/media-buy/advanced-topics/accountability), [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery), and [Creative manifests](/docs/creative/creative-manifests).
