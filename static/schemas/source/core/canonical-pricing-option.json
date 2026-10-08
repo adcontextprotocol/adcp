@@ -42,9 +42,9 @@
   "allOf": [
     { "not": { "required": ["fixed_price", "floor_price"] } },
     {
-      "description": "price_adjustments is defined for per-unit and flat fixed prices only; cpa, cpp, time, and revenue_share options do not carry it.",
+      "description": "price_adjustments is defined for per-unit and flat fixed prices only; cpa, time, and revenue_share options do not carry it.",
       "if": { "required": ["price_adjustments"] },
-      "then": { "properties": { "pricing_model": { "enum": ["cpm", "vcpm", "cpc", "cpcv", "cpv", "flat_rate"] } } }
+      "then": { "properties": { "pricing_model": { "not": { "enum": ["cpa", "time", "revenue_share"] } } } }
     },
     {
       "if": { "properties": { "pricing_model": { "const": "cpa" } }, "required": ["pricing_model"] },

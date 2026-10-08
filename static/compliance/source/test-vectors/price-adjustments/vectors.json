@@ -1,8 +1,9 @@
 {
-  "description": "Deterministic resolution vectors for selection-dependent price_adjustments on binding fixed-price pricing options. Each resolution case names a declared option and the buyer's concrete selections, and asserts the resolved fixed_price, the ordered rows that fire, and each fired row's currency amount. Rules under test: matching is full-identity equality across encodings; per dimension at most one row fires (the first matching row in declared order); stacking is additive against the base rate (each delta is computed from fixed_price, never from another row, so cross-dimension order does not change the price); each rate delta is rounded half away from zero to the option's price precision (greatest of the currency minor-unit exponent, 4 for cpm/vcpm/cpc/cpcv/cpv, and the fewest decimal places that exactly represent fixed_price and each amount, by numeric value); the resolved price is the exact sum and never below zero. Arithmetic MUST be exact decimal or integer.",
+  "description": "Deterministic resolution vectors for price_adjustments on binding fixed-price pricing options. Two row kinds: index rows (kind index, a multiplicative factor compounded in declared order) and premium rows (kind fee or discount, a rate of the indexed price or a fixed amount, added). Indexed price = base x product of firing factors; resolved price = indexed price + premium deltas. Selection rows fire at most once per dimension (the first valid matching row in declared order); always rows fire independently; valid_from/valid_until bound a row to a half-open window evaluated at the purchase start_time, and a flight that crosses a window boundary of a row that would otherwise apply is rejected. Each index step applies its delta (running +/- round half away from zero of running x |factor-1|) at price precision (greatest of the currency minor-unit exponent, 4 for cpm/vcpm/cpc/cpcv/cpv/cpp, and the fewest decimals that exactly represent fixed_price and each amount, by numeric value); each premium rate delta is rounded the same way against the indexed price; the resolved price is the exact sum and never below zero. Arithmetic MUST be exact decimal or integer. Each fired row is recorded in price_breakdown: an index as a fee or discount rate, a premium as its currency amount.",
   "currency_minor_unit_exponent": {
     "USD": 2,
-    "JPY": 0
+    "JPY": 0,
+    "EUR": 2
   },
   "options": {
     "cpm_rate_card": {
@@ -259,6 +260,177 @@
           "kind": "fee",
           "name": "video_30s_format",
           "rate": 0.1
+        }
+      ]
+    },
+    "tv_grp_rate_card": {
+      "pricing_option_id": "oranje_grp_eur_2026",
+      "pricing_model": "cpp",
+      "currency": "EUR",
+      "fixed_price": 1000,
+      "parameters": {
+        "demographic": "A25-54"
+      },
+      "price_adjustments": [
+        {
+          "dimension": "always",
+          "kind": "index",
+          "name": "month_index_nov",
+          "factor": 1.1,
+          "valid_from": "2026-11-01T00:00:00+01:00",
+          "valid_until": "2026-12-01T00:00:00+01:00"
+        },
+        {
+          "dimension": "always",
+          "kind": "index",
+          "name": "market_index_nov",
+          "factor": 0.95,
+          "valid_from": "2026-11-01T00:00:00+01:00",
+          "valid_until": "2026-12-01T00:00:00+01:00"
+        },
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "spot_20s"
+          },
+          "kind": "index",
+          "name": "spot_length_20s",
+          "factor": 0.8
+        },
+        {
+          "dimension": "always",
+          "kind": "index",
+          "name": "target_audience_a25_54",
+          "factor": 1.25
+        },
+        {
+          "dimension": "placement_selection",
+          "placement_ref": {
+            "publisher_domain": "oranjetv.example",
+            "placement_id": "first_in_break"
+          },
+          "kind": "fee",
+          "name": "first_in_break_premium",
+          "rate": 0.2
+        }
+      ]
+    },
+    "cpm_index_then_premium": {
+      "pricing_option_id": "cpm_usd_index_premium",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 20.0,
+      "price_adjustments": [
+        {
+          "dimension": "always",
+          "kind": "index",
+          "name": "season_index",
+          "factor": 1.1
+        },
+        {
+          "dimension": "placement_selection",
+          "placement_ref": {
+            "publisher_domain": "streamhaus.example",
+            "placement_id": "premium_home"
+          },
+          "kind": "fee",
+          "name": "premium_home_placement",
+          "rate": 0.15
+        },
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "fee",
+          "name": "video_30s_format",
+          "amount": 2.0
+        }
+      ]
+    },
+    "cpm_two_indices": {
+      "pricing_option_id": "cpm_usd_two_indices",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 20.0,
+      "price_adjustments": [
+        {
+          "dimension": "always",
+          "kind": "index",
+          "name": "season_index",
+          "factor": 1.1
+        },
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "index",
+          "name": "length_index",
+          "factor": 1.2
+        }
+      ]
+    },
+    "cpm_index_rounding": {
+      "pricing_option_id": "cpm_usd_index_rounding",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 1.2345,
+      "price_adjustments": [
+        {
+          "dimension": "always",
+          "kind": "index",
+          "name": "season_index",
+          "factor": 1.1
+        }
+      ]
+    },
+    "cpm_index_below_one": {
+      "pricing_option_id": "cpm_usd_index_below_one",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 20.0,
+      "price_adjustments": [
+        {
+          "dimension": "always",
+          "kind": "index",
+          "name": "off_peak_index",
+          "factor": 0.85
+        }
+      ]
+    },
+    "cpm_windowed_alternates": {
+      "pricing_option_id": "cpm_usd_windowed_alternates",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 20.0,
+      "price_adjustments": [
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "index",
+          "name": "length_index_nov",
+          "factor": 1.1,
+          "valid_from": "2026-11-01T00:00:00+01:00",
+          "valid_until": "2026-12-01T00:00:00+01:00"
+        },
+        {
+          "dimension": "format_option",
+          "format_option_ref": {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          },
+          "kind": "index",
+          "name": "length_index_dec",
+          "factor": 1.2,
+          "valid_from": "2026-12-01T00:00:00+01:00",
+          "valid_until": "2027-01-01T00:00:00+01:00"
         }
       ]
     }
@@ -669,6 +841,364 @@
           "publisher_video_30s"
         ]
       }
+    },
+    {
+      "id": "dutch_tv_index_stack_then_first_in_break_premium",
+      "option": "tv_grp_rate_card",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "spot_20s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "selected",
+          "placement_refs": [
+            {
+              "publisher_domain": "oranjetv.example",
+              "placement_id": "first_in_break"
+            }
+          ]
+        },
+        "flight": {
+          "start_time": "2026-11-09T00:00:00+01:00",
+          "end_time": "2026-11-22T00:00:00+01:00"
+        }
+      },
+      "expect": {
+        "fixed_price": 1254.0,
+        "applied": [
+          "month_index_nov",
+          "market_index_nov",
+          "spot_length_20s",
+          "target_audience_a25_54",
+          "first_in_break_premium"
+        ],
+        "breakdown": [
+          {
+            "kind": "fee",
+            "name": "month_index_nov",
+            "rate": 0.1
+          },
+          {
+            "kind": "discount",
+            "name": "market_index_nov",
+            "rate": 0.05
+          },
+          {
+            "kind": "discount",
+            "name": "spot_length_20s",
+            "rate": 0.2
+          },
+          {
+            "kind": "fee",
+            "name": "target_audience_a25_54",
+            "rate": 0.25
+          },
+          {
+            "kind": "fee",
+            "name": "first_in_break_premium",
+            "amount": 209.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "dutch_tv_month_windows_do_not_apply_in_december",
+      "option": "tv_grp_rate_card",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "spot_20s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        },
+        "flight": {
+          "start_time": "2026-12-07T00:00:00+01:00",
+          "end_time": "2026-12-20T00:00:00+01:00"
+        }
+      },
+      "expect": {
+        "fixed_price": 1000.0,
+        "applied": [
+          "spot_length_20s",
+          "target_audience_a25_54"
+        ],
+        "breakdown": [
+          {
+            "kind": "discount",
+            "name": "spot_length_20s",
+            "rate": 0.2
+          },
+          {
+            "kind": "fee",
+            "name": "target_audience_a25_54",
+            "rate": 0.25
+          }
+        ]
+      }
+    },
+    {
+      "id": "window_end_is_exclusive_and_flight_may_end_on_it",
+      "option": "tv_grp_rate_card",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "spot_20s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        },
+        "flight": {
+          "start_time": "2026-11-23T00:00:00+01:00",
+          "end_time": "2026-12-01T00:00:00+01:00"
+        }
+      },
+      "expect": {
+        "fixed_price": 1045.0,
+        "applied": [
+          "month_index_nov",
+          "market_index_nov",
+          "spot_length_20s",
+          "target_audience_a25_54"
+        ],
+        "breakdown": [
+          {
+            "kind": "fee",
+            "name": "month_index_nov",
+            "rate": 0.1
+          },
+          {
+            "kind": "discount",
+            "name": "market_index_nov",
+            "rate": 0.05
+          },
+          {
+            "kind": "discount",
+            "name": "spot_length_20s",
+            "rate": 0.2
+          },
+          {
+            "kind": "fee",
+            "name": "target_audience_a25_54",
+            "rate": 0.25
+          }
+        ]
+      }
+    },
+    {
+      "id": "window_start_at_valid_until_does_not_fire",
+      "option": "tv_grp_rate_card",
+      "selection": {
+        "format_option_refs": [],
+        "placement_selection": {
+          "mode": "default"
+        },
+        "flight": {
+          "start_time": "2026-12-01T00:00:00+01:00",
+          "end_time": "2026-12-14T00:00:00+01:00"
+        }
+      },
+      "expect": {
+        "fixed_price": 1250.0,
+        "applied": [
+          "target_audience_a25_54"
+        ],
+        "breakdown": [
+          {
+            "kind": "fee",
+            "name": "target_audience_a25_54",
+            "rate": 0.25
+          }
+        ]
+      }
+    },
+    {
+      "id": "premium_rate_applies_to_indexed_price_not_base",
+      "option": "cpm_index_then_premium",
+      "selection": {
+        "format_option_refs": [],
+        "placement_selection": {
+          "mode": "selected",
+          "placement_refs": [
+            {
+              "publisher_domain": "streamhaus.example",
+              "placement_id": "premium_home"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "fixed_price": 25.3,
+        "applied": [
+          "season_index",
+          "premium_home_placement"
+        ],
+        "breakdown": [
+          {
+            "kind": "fee",
+            "name": "season_index",
+            "rate": 0.1
+          },
+          {
+            "kind": "fee",
+            "name": "premium_home_placement",
+            "amount": 3.3
+          }
+        ]
+      }
+    },
+    {
+      "id": "fixed_amount_is_not_indexed",
+      "option": "cpm_index_then_premium",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 24.0,
+        "applied": [
+          "season_index",
+          "video_30s_format"
+        ],
+        "breakdown": [
+          {
+            "kind": "fee",
+            "name": "season_index",
+            "rate": 0.1
+          },
+          {
+            "kind": "fee",
+            "name": "video_30s_format",
+            "amount": 2.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "indices_compound_in_declared_order",
+      "option": "cpm_two_indices",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 26.4,
+        "applied": [
+          "season_index",
+          "length_index"
+        ],
+        "breakdown": [
+          {
+            "kind": "fee",
+            "name": "season_index",
+            "rate": 0.1
+          },
+          {
+            "kind": "fee",
+            "name": "length_index",
+            "rate": 0.2
+          }
+        ]
+      }
+    },
+    {
+      "id": "index_delta_rounds_half_away_from_zero_at_price_precision",
+      "option": "cpm_index_rounding",
+      "selection": {
+        "format_option_refs": [],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 1.358,
+        "applied": [
+          "season_index"
+        ],
+        "breakdown": [
+          {
+            "kind": "fee",
+            "name": "season_index",
+            "rate": 0.1
+          }
+        ]
+      }
+    },
+    {
+      "id": "index_below_one_is_a_discount_step",
+      "option": "cpm_index_below_one",
+      "selection": {
+        "format_option_refs": [],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 17.0,
+        "applied": [
+          "off_peak_index"
+        ],
+        "breakdown": [
+          {
+            "kind": "discount",
+            "name": "off_peak_index",
+            "rate": 0.15
+          }
+        ]
+      }
+    },
+    {
+      "id": "first_valid_row_per_dimension_picks_the_window",
+      "option": "cpm_windowed_alternates",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "video_30s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        },
+        "flight": {
+          "start_time": "2026-12-07T00:00:00+01:00",
+          "end_time": "2026-12-20T00:00:00+01:00"
+        }
+      },
+      "expect": {
+        "fixed_price": 24.0,
+        "applied": [
+          "length_index_dec"
+        ],
+        "breakdown": [
+          {
+            "kind": "fee",
+            "name": "length_index_dec",
+            "rate": 0.2
+          }
+        ]
+      }
     }
   ],
   "invalid_resolution_cases": [
@@ -687,6 +1217,43 @@
         }
       },
       "expect_error": "below_zero",
+      "expect_outcome": "INVALID_REQUEST"
+    },
+    {
+      "id": "flight_crossing_a_window_boundary_is_rejected",
+      "option": "tv_grp_rate_card",
+      "selection": {
+        "format_option_refs": [
+          {
+            "scope": "product",
+            "format_option_id": "spot_20s"
+          }
+        ],
+        "placement_selection": {
+          "mode": "default"
+        },
+        "flight": {
+          "start_time": "2026-11-25T00:00:00+01:00",
+          "end_time": "2026-12-05T00:00:00+01:00"
+        }
+      },
+      "expect_error": "flight_spans_validity_boundary",
+      "expect_outcome": "INVALID_REQUEST"
+    },
+    {
+      "id": "flight_starting_before_a_window_and_ending_inside_it_is_rejected",
+      "option": "tv_grp_rate_card",
+      "selection": {
+        "format_option_refs": [],
+        "placement_selection": {
+          "mode": "default"
+        },
+        "flight": {
+          "start_time": "2026-10-28T00:00:00+01:00",
+          "end_time": "2026-11-05T00:00:00+01:00"
+        }
+      },
+      "expect_error": "flight_spans_validity_boundary",
       "expect_outcome": "INVALID_REQUEST"
     }
   ],
@@ -813,6 +1380,50 @@
       "mutate": {
         "price_adjustments": null,
         "base_fixed_price": 20.0
+      }
+    },
+    {
+      "id": "factor_and_rate_together",
+      "applies_to": "both",
+      "mutate": {
+        "price_adjustments": [
+          {
+            "dimension": "always",
+            "kind": "index",
+            "name": "x",
+            "factor": 1.1,
+            "rate": 0.1
+          }
+        ]
+      }
+    },
+    {
+      "id": "factor_must_stay_below_two",
+      "applies_to": "both",
+      "mutate": {
+        "price_adjustments": [
+          {
+            "dimension": "always",
+            "kind": "index",
+            "name": "x",
+            "factor": 2.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "validity_window_must_be_a_date_time",
+      "applies_to": "both",
+      "mutate": {
+        "price_adjustments": [
+          {
+            "dimension": "always",
+            "kind": "index",
+            "name": "x",
+            "factor": 1.1,
+            "valid_from": "November"
+          }
+        ]
       }
     }
   ]

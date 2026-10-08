@@ -45,7 +45,7 @@ async function compile(uri) {
 
 // --- Reference resolver (the normative rule, in exact integer arithmetic) -----
 
-const PER_UNIT_MODELS = new Set(['cpm', 'vcpm', 'cpc', 'cpcv', 'cpv']);
+const PER_UNIT_MODELS = new Set(['cpm', 'vcpm', 'cpc', 'cpcv', 'cpv', 'cpp']);
 
 // Exact decimal parse of a JSON number by value, never by lexical form:
 // trailing zeros and exponent notation do not change the result.
@@ -105,6 +105,13 @@ function divRoundHalfAwayFromZero(n, d) {
   return negative ? -q : q;
 }
 
+// round half away from zero of running x proportion, where the proportion is
+// the exact decimal num/10^scale.
+function proportionOf(running, proportion) {
+  const { int, scale } = parseDecimal(proportion);
+  return divRoundHalfAwayFromZero(running * int, 10n ** BigInt(scale));
+}
+
 // Full-identity keys, so different encodings of one value compare equal and the
 // same ID under a different scope does not.
 function formatKey(ref) {
@@ -131,56 +138,94 @@ function rowKey(row) {
   return row.dimension === 'format_option' ? formatKey(row.format_option_ref) : placementKey(row.placement_ref);
 }
 
+function rowMatches(row, selected) {
+  return row.dimension === 'always' || selected[row.dimension].has(rowKey(row));
+}
+
+function inWindow(row, at) {
+  if (row.valid_from === undefined && row.valid_until === undefined) return true;
+  assert.ok(at !== undefined, `row ${row.name} has a window but the case has no flight`);
+  return (
+    (row.valid_from === undefined || at >= Date.parse(row.valid_from)) &&
+    (row.valid_until === undefined || at < Date.parse(row.valid_until))
+  );
+}
+
+// A flight [start, end) that crosses a window boundary of a row that would
+// otherwise apply is rejected; the buyer splits it.
+function crossesBoundary(option, selection) {
+  if (!selection.flight) return false;
+  const start = Date.parse(selection.flight.start_time);
+  const end = Date.parse(selection.flight.end_time);
+  const selected = selectedKeys(selection);
+  return (option.price_adjustments || []).some(row => {
+    if (!rowMatches(row, selected)) return false;
+    return [row.valid_from, row.valid_until].some(edge => {
+      if (edge === undefined) return false;
+      const t = Date.parse(edge);
+      return t > start && t < end;
+    });
+  });
+}
+
+// Declared order; first valid matching row per selection dimension, every valid
+// always row.
 function firingRows(option, selection) {
+  const at = selection.flight ? Date.parse(selection.flight.start_time) : undefined;
   const selected = selectedKeys(selection);
   const fired = new Set();
   const winners = [];
   for (const row of option.price_adjustments || []) {
-    if (fired.has(row.dimension)) continue;
-    if (selected[row.dimension] && selected[row.dimension].has(rowKey(row))) {
+    if (!inWindow(row, at) || !rowMatches(row, selected)) continue;
+    if (row.dimension !== 'always') {
+      if (fired.has(row.dimension)) continue;
       fired.add(row.dimension);
-      winners.push(row);
     }
+    winners.push(row);
   }
   return winners;
 }
 
-// Each delta is computed from the base fixed_price, never from another row.
-function rowDelta(row, baseScaled, precision) {
-  if (row.amount !== undefined) return toScaled(row.amount, precision);
-  const { int, scale } = parseDecimal(row.rate);
-  return divRoundHalfAwayFromZero(baseScaled * int, 10n ** BigInt(scale));
-}
-
 function resolve(option, selection) {
+  if (crossesBoundary(option, selection)) return { error: 'flight_spans_validity_boundary' };
   const precision = pricePrecision(option);
   const base = toScaled(option.fixed_price, precision);
   const rows = firingRows(option, selection);
-  const deltas = rows.map(row => rowDelta(row, base, precision));
-  const total = rows.reduce((sum, row, k) => sum + (row.kind === 'fee' ? deltas[k] : -deltas[k]), base);
-  if (total < 0n) return null;
-  return {
-    rows,
-    precision,
-    fixed_price: toNumber(total, precision),
-    amounts: deltas.map(delta => toNumber(delta, precision)),
-  };
+  const entries = [];
+
+  // Indices compound in declared order; each step applies its delta.
+  let indexed = base;
+  for (const row of rows.filter(r => r.kind === 'index')) {
+    if (parseDecimal(row.factor).int === 10n ** BigInt(parseDecimal(row.factor).scale)) continue; // factor 1
+    const up = Number(row.factor) > 1;
+    const { int, scale } = parseDecimal(row.factor);
+    const proportionNum = (up ? int - 10n ** BigInt(scale) : 10n ** BigInt(scale) - int);
+    const delta = divRoundHalfAwayFromZero(indexed * proportionNum, 10n ** BigInt(scale));
+    indexed += up ? delta : -delta;
+    entries.push({ kind: up ? 'fee' : 'discount', name: row.name, rate: toNumber(proportionNum, scale) });
+  }
+
+  // Premiums are computed from the indexed price; fixed amounts are not indexed.
+  let total = indexed;
+  for (const row of rows.filter(r => r.kind !== 'index')) {
+    const delta = row.amount !== undefined ? toScaled(row.amount, precision) : proportionOf(indexed, row.rate);
+    total += row.kind === 'fee' ? delta : -delta;
+    if (delta > 0n) entries.push({ kind: row.kind, name: row.name, amount: toNumber(delta, precision) });
+  }
+  if (total < 0n) return { error: 'below_zero' };
+  return { rows, entries, precision, fixed_price: toNumber(total, precision) };
 }
 
-// The accepted snapshot records each fired row as its currency amount; a row
-// whose delta rounds to zero contributes nothing and is omitted.
+// The accepted snapshot records each fired row as its own price_breakdown entry
+// after the declared adjustments.
 function resolvedSnapshot(option, result) {
   const snapshot = { ...option, fixed_price: result.fixed_price };
-  const fired = result.rows.map((row, k) => ({ row, amount: result.amounts[k] })).filter(entry => entry.amount > 0);
-  if (!fired.length) return snapshot;
+  if (!result.entries.length) return snapshot;
   snapshot.base_fixed_price = option.fixed_price;
   const declared = option.price_breakdown;
   snapshot.price_breakdown = {
     list_price: declared ? declared.list_price : option.fixed_price,
-    adjustments: [
-      ...(declared ? declared.adjustments : []),
-      ...fired.map(({ row, amount }) => ({ kind: row.kind, name: row.name, amount })),
-    ],
+    adjustments: [...(declared ? declared.adjustments : []), ...result.entries],
   };
   return snapshot;
 }
@@ -190,12 +235,9 @@ function foldBreakdown(breakdown, precision) {
   let running = toScaled(breakdown.list_price, precision);
   for (const adjustment of breakdown.adjustments) {
     const sign = adjustment.kind === 'fee' ? 1n : -1n;
-    if (adjustment.amount !== undefined) {
-      running += sign * toScaled(adjustment.amount, precision);
-    } else {
-      const { int, scale } = parseDecimal(adjustment.rate);
-      running += sign * divRoundHalfAwayFromZero(running * int, 10n ** BigInt(scale));
-    }
+    running +=
+      sign *
+      (adjustment.amount !== undefined ? toScaled(adjustment.amount, precision) : proportionOf(running, adjustment.rate));
   }
   return running;
 }
@@ -218,16 +260,16 @@ test('resolution cases reproduce the resolved price and ordered application', as
   for (const c of vectors.resolution_cases) {
     const option = vectors.options[c.option];
     const result = resolve(option, c.selection);
-    assert.ok(result, `${c.id}: resolved to a negative price`);
+    assert.equal(result.error, undefined, `${c.id}: ${result.error}`);
     assert.equal(result.fixed_price, c.expect.fixed_price, `${c.id}: fixed_price`);
     assert.deepEqual(
       result.rows.map(row => row.name),
       c.expect.applied,
       `${c.id}: applied rows`,
     );
-    if (c.expect.adjustment_amounts) {
-      assert.deepEqual(result.amounts, c.expect.adjustment_amounts, `${c.id}: fired-row amounts`);
-    }
+    const amounts = result.entries.filter(entry => entry.amount !== undefined).map(entry => entry.amount);
+    if (c.expect.adjustment_amounts) assert.deepEqual(amounts, c.expect.adjustment_amounts, `${c.id}: fired-row amounts`);
+    if (c.expect.breakdown) assert.deepEqual(result.entries, c.expect.breakdown, `${c.id}: price_breakdown rows`);
 
     const snapshot = resolvedSnapshot(option, result);
     assert.ok(validateCanonical(snapshot), `${c.id}: snapshot ${JSON.stringify(validateCanonical.errors)}`);
@@ -241,9 +283,10 @@ test('resolution cases reproduce the resolved price and ordered application', as
   }
 });
 
-test('cross-dimension order never changes the resolved price', () => {
+test('premium-only tables: cross-dimension order never changes the resolved price', () => {
   for (const c of vectors.resolution_cases) {
     const option = vectors.options[c.option];
+    if ((option.price_adjustments || []).some(row => row.kind === 'index' || row.valid_from)) continue;
     const reversed = { ...option, price_adjustments: [...(option.price_adjustments || [])].reverse() };
     const flipped = resolve(reversed, c.selection);
     // Reversing rows also reverses first-match precedence within a dimension, so
@@ -263,10 +306,9 @@ test('precision is defined by numeric value, not lexical form', () => {
   assert.equal(decimalPlaces(1000), 0);
 });
 
-test('a discount that would drive the running total below zero has no valid resolution', () => {
+test('purchases with no valid resolution are rejected, never clamped', () => {
   for (const c of vectors.invalid_resolution_cases) {
-    assert.equal(resolve(vectors.options[c.option], c.selection), null, c.id);
-    assert.equal(c.expect_error, 'below_zero');
+    assert.equal(resolve(vectors.options[c.option], c.selection).error, c.expect_error, c.id);
     assert.equal(c.expect_outcome, 'INVALID_REQUEST');
   }
 });
@@ -279,7 +321,7 @@ test('buyer-supplied pricing must equal the resolved result', () => {
     if (c.error_field) {
       assert.match(c.error_field, /^pricing\./);
       assert.equal(result.fixed_price, c.resolved_fixed_price, `${c.id}: resolved value carried in error details`);
-      assert.deepEqual(result.amounts, c.resolved_adjustment_amounts, `${c.id}: resolved breakdown carried in error details`);
+      assert.deepEqual(result.entries.map(entry => entry.amount), c.resolved_adjustment_amounts, `${c.id}: resolved breakdown carried in error details`);
     }
   }
 });

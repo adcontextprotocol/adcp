@@ -328,13 +328,18 @@
     },
     "pricing-options/price-adjustments.json##/items/oneOf/0/oneOf": {
       "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[rate] | 1:[amount]"
+      "variants": 3,
+      "note": "0:[rate] | 1:[amount] | 2:[factor]"
     },
     "pricing-options/price-adjustments.json##/items/oneOf/1/oneOf": {
       "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[rate] | 1:[amount]"
+      "variants": 3,
+      "note": "0:[rate] | 1:[amount] | 2:[factor]"
+    },
+    "pricing-options/price-adjustments.json##/items/oneOf/2/oneOf": {
+      "kind": "narrowable",
+      "variants": 3,
+      "note": "0:[rate] | 1:[amount] | 2:[factor]"
     },
     "pricing-options/price-breakdown.json##/properties/adjustments/items/oneOf": {
       "kind": "narrowable",
