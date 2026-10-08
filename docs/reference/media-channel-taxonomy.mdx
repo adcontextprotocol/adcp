@@ -656,7 +656,9 @@ Properties in `adagents.json` declare which channels they support:
 
 ### Usage in Product Definitions
 
-Products declare which channels they are sold as. Sellers SHOULD declare at least one channel on every product. Product channels SHOULD be a subset of the union of their properties' `supported_channels`, but are not inherited when omitted. Buyers should request `channels` when using a `fields` projection. In 3.x, missing or empty product channels mean undeclared when requested or returned as part of a full product, never all channels. Omission from a projection that did not request the field leaves the channel scope unknown. Buyers should not infer the product's buying context from its properties, seller-wide capabilities, or creative formats. For example, a VAST format can serve both `olv` and `ctv`.
+Products declare which channels they are sold as. This typically inherits from properties but may be more specific. Sellers SHOULD explicitly declare at least one channel on every product, with product channels a subset of the union of their properties' `supported_channels`. The existing 3.x inheritance behavior remains unchanged; an explicit declaration distinguishes the product's buying context from broader property support. Omission is not a wildcard for every channel in the taxonomy.
+
+Buyers should request `channels` when using a `fields` projection; omission from a projection that did not request the field does not establish that the seller omitted its declaration. Creative formats and seller-wide capabilities do not independently declare the product's buying context. For example, a VAST format can serve both `olv` and `ctv`.
 
 A product can narrow the channels its properties support:
 
