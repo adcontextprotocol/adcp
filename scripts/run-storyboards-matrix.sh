@@ -272,7 +272,7 @@ else
     # validator checks previously skipped. Only subtract those 32 false-coverage
     # steps (115 -> 83, 160 -> 128); retain every clean/other/3.0-compat floor.
     "signals:45:80"
-    "sales:135:646"
+    "sales:136:661"
     "governance:47:128"
     "creative:49:209"
     "creative-builder:50:184"
