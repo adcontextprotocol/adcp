@@ -1681,17 +1681,44 @@ async function runTests() {
     return true;
   });
 
-  // Test 12B: VAST/DAAST tag URLs accept unsubstituted ad-server macros
-  await test('VAST and DAAST tag URLs accept [MACRO] and ${MACRO} placeholders', async () => {
-    // Real-world IAS-wrapped CTV tag: [OMIDPARTNER]-style VAST macros and
-    // ${GDPR_CONSENT}-style privacy macros are illegal in strict RFC 3986 URIs
-    // but valid RFC 6570 templates. format: "uri" rejected these; the tag
-    // asset URLs must use format: "uri-template" (same convention as url-asset).
-    const macroUrl = 'https://unified.adsafeprotected.com/v2/2816045/94180721?mon=94180722&omidPartner=[OMIDPARTNER]&apiframeworks=[APIFRAMEWORKS]&bundleId=[BUNDLEID]&blockedAdTracking=${DC_BLOCKED_AD}&ias_dts=atw&ias_xappb=[ctv_appid]&originalVast=https://vast.extremereach.io/v/16115077?us_privacy=${US_PRIVACY}&gdpr=${GDPR}&gdpr_consent=${GDPR_CONSENT_1002}&gpp=${GPP_STRING_1002}&gpp_sid=${GPP_SID}&er_did=[INSERT_DEVICE_ID_HERE]&ba_cb=[INSERT_CACHEBREAKER_HERE]';
-
+  // Test 12B: Preserve ad-server macro bytes with real AJV format validation.
+  await test('Creative and tracker URLs accept ad-server macros and preserve URI-template compatibility', async () => {
+    const validUrls = [
+      'https://ads.acme.example/vast?cb=%%CACHEBUSTER%%',
+      'https://ads.acme.example/vast?u=%%PATTERN:url%%',
+      'https://ads.acme.example/vast?click=%%CLICK_URL_UNESC%%',
+      'https://ads.acme.example/vast?omid=[OMIDPARTNER]&gdpr=${GDPR}&cb=%%CACHEBUSTER%%',
+      'https://ads.acme.example/vast?omid=[OMIDPARTNER]&gdpr=${GDPR}',
+      'https://ads.acme.example/vast?cb={CACHEBUSTER}',
+      'https://ads.acme.example/vast?url=https%3A%2F%2Fexample.test&cb=%%CACHEBUSTER%%',
+      'http://ads.acme.example:8080/vast?cb=%%CACHEBUSTER%%#tracking',
+      'https://[::1]:8080/vast?cb=%%CACHEBUSTER%%',
+      "https://ads.acme.example/o'clock",
+      'myapp://creative/launch',
+      '//cdn.acme.example/creative.js',
+      'https://{PUB}.ads.acme.example/vast',
+      'https://ads.acme.example/vast'
+    ];
+    const invalidUrls = [
+      'not a valid uri template',
+      'https://ads.acme.example/vast?cb=%%CACHEBUSTER%%&bad=%zz',
+      'https://ads.acme.example/vast?cb=%%CACHEBUSTER%%&bad=%2',
+      'https://ads.acme.example/vast?cb=%%CACHE BUSTER%%',
+      'https://ads.acme.example/vast?cb=%%CACHEBUSTER%',
+      'https://ads.acme.example/vast?cb=%%%%',
+      'https://ads.acme.example/vast?cb=%%CACHEBUSTER%%\n',
+      'https://ads.acme.example/vast?cb=%%CACHEBUSTER%%&bad=\\path',
+      'https:///vast?cb=%%CACHEBUSTER%%',
+      'https://?cb=%%CACHEBUSTER%%',
+      'ftp://ads.acme.example/vast?cb=%%CACHEBUSTER%%'
+    ];
     const cases = [
-      ['core/assets/vast-asset.json', { asset_type: 'vast', delivery_type: 'url', url: macroUrl }],
-      ['core/assets/daast-asset.json', { asset_type: 'daast', delivery_type: 'url', url: macroUrl }]
+      ['core/assets/vast-asset.json', { asset_type: 'vast', delivery_type: 'url' }],
+      ['core/assets/daast-asset.json', { asset_type: 'daast', delivery_type: 'url' }],
+      ['core/assets/url-asset.json', { asset_type: 'url', url_type: 'clickthrough' }],
+      ['core/assets/vast-tracker-asset.json', { asset_type: 'vast_tracker', vast_event: 'start' }],
+      ['core/assets/daast-tracker-asset.json', { asset_type: 'daast_tracker', daast_event: 'start' }],
+      ['core/assets/pixel-tracker-asset.json', { asset_type: 'pixel_tracker', event: 'impression' }]
     ];
 
     for (const [schemaFile, asset] of cases) {
@@ -1706,14 +1733,53 @@ async function runTests() {
       addFormats(testAjv);
 
       const validate = await testAjv.compileAsync(assetSchema);
-      if (!validate(asset)) {
-        const errors = validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
-        return `${schemaFile}: macro-laden tag URL must validate: ${errors}`;
+      for (const url of validUrls) {
+        const candidate = { ...asset, url };
+        if (!validate(candidate)) {
+          return `${schemaFile}: URL ${url} must validate: ${testAjv.errorsText(validate.errors)}`;
+        }
+        if (candidate.url !== url) return `${schemaFile}: validation must preserve macro bytes`;
       }
+      for (const url of invalidUrls) {
+        if (validate({ ...asset, url })) return `${schemaFile}: malformed URL ${JSON.stringify(url)} must be rejected`;
+      }
+    }
+    return true;
+  });
 
-      const malformed = { ...asset, url: 'not a valid uri template' };
-      if (validate(malformed)) {
-        return `${schemaFile}: url with raw spaces must still be rejected`;
+  await test('sync_creatives and create_media_buy accept inline VAST/DAAST percent macros', async () => {
+    const testAjv = new Ajv({ allErrors: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validateSync = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/sync-creatives-request.json')));
+    const validateBuy = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json')));
+    for (const [assetType, formatKind] of [['vast', 'video_vast'], ['daast', 'audio_daast']]) {
+      for (const url of [
+        'https://ads.acme.example/tag?cb=%%CACHEBUSTER%%',
+        'https://ads.acme.example/tag?u=%%PATTERN:url%%&click=%%CLICK_URL_UNESC%%'
+      ]) {
+        const creative = {
+          creative_id: 'creative_macro_test',
+          name: 'Acme macro tag',
+          format_kind: formatKind,
+          assets: { tag: { asset_type: assetType, delivery_type: 'url', url } }
+        };
+        const common = { idempotency_key: 'macro-backport-test-7993', account: { account_id: 'account_acme' } };
+        const requests = [
+          [validateSync, { ...common, creatives: [creative] }],
+          [validateBuy, {
+            ...common,
+            brand: { domain: 'acme.example' },
+            start_time: '2026-10-10T00:00:00Z',
+            end_time: '2026-10-11T00:00:00Z',
+            packages: [{ product_id: 'product_acme', pricing_option_id: 'cpm_acme', budget: 100, creatives: [creative] }]
+          }]
+        ];
+        for (const [validate, request] of requests) {
+          if (!validate(request)) return `${assetType}: ${testAjv.errorsText(validate.errors)}`;
+          creative.assets.tag.url = 'https://ads.acme.example/tag?cb=%%CACHE BUSTER%%';
+          if (validate(request)) return `${assetType}: malformed inline macro must fail request validation`;
+          creative.assets.tag.url = url;
+        }
       }
     }
     return true;

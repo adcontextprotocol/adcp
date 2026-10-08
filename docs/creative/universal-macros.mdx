@@ -690,7 +690,9 @@ The ad server will URL-encode the actual value when replacing the macro.
 
 ### Template Syntax
 
-AdCP macro-bearing URLs validate as [RFC 6570 URI templates (Level 1)](https://datatracker.ietf.org/doc/html/rfc6570#section-1.2) — simple `{var}` substitution only. Level 2–4 operators (`{+SKU}`, `{#SKU}`, `{.SKU}`, `{/SKU}`, `{;SKU}`, `{?SKU}`, `{&SKU}`) are **not** used by AdCP and must not appear in manifests. The ad server performs literal string replacement, not RFC 6570 expansion.
+Creative URL assets and their trackers also accept unsubstituted ad-server placeholders such as `[CACHEBUSTER]`, `${GDPR}`, `%%CACHEBUSTER%%`, `%%PATTERN:url%%`, and `%%CLICK_URL_UNESC%%`. The percent-delimited forms are accepted in absolute HTTP(S) URLs alongside the existing URI-template syntax. Preserve these tokens byte for byte; percent-encoding their delimiters prevents the downstream ad server or player from recognizing them. Accepting a placeholder's spelling does not define its meaning or change which component substitutes it.
+
+AdCP universal `{var}` macros use [RFC 6570 URI template syntax (Level 1)](https://datatracker.ietf.org/doc/html/rfc6570#section-1.2) — simple substitution only. Level 2–4 operators (`{+SKU}`, `{#SKU}`, `{.SKU}`, `{/SKU}`, `{;SKU}`, `{?SKU}`, `{&SKU}`) are **not** used by AdCP and must not appear in manifests. The ad server performs literal string replacement, not RFC 6570 expansion.
 
 ## Implementation Notes for Sales Agents
 
