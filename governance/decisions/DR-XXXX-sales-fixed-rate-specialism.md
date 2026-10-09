@@ -58,7 +58,10 @@ accepted" the buy. `pending_creatives` is not redefined and `pending_start` is
 not mandated for held buys. The normative text records that confirmation
 increments `revision`; that an idempotency replay of the original create
 returns the historical `confirmed_at: null` snapshot; that a held buy whose
-flight start passes stays `pending_start` until confirmed or rejected; that
+flight start passes stays `pending_start` until confirmed or rejected, which
+narrows the existing rule that a seller MUST move `pending_start` to `active`
+at flight start so that it applies only to committed buys (`confirmed_at`
+non-null); that
 rejection and buyer cancellation leave `confirmed_at` null; and that a seller
 that does not accept buyer `pause` on a buy it is reviewing SHOULD omit it from
 `valid_actions`.
@@ -69,6 +72,9 @@ that does not accept buyer `pause` on a buy it is reviewing SHOULD omit it from
 caller's sandbox account a held buy. `confirm` commits a named held buy: it sets
 `confirmed_at` once and increments `revision`, and is idempotent. Rejection of a
 held buy reuses `force_media_buy_status` with `status: rejected`.
+
+The specialism ships with status `preview`, like `sales-exchange`, until the WG
+ratifies the name and the hold gating.
 
 ## Rationale
 

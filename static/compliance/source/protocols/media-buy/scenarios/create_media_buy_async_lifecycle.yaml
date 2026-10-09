@@ -5,6 +5,8 @@ title: "Seller exposes create_media_buy tasks through read and list lifecycle to
 category: media_buy_seller
 summary: "Forces create_media_buy into the submitted arm, reconciles the task through get_task_status and list_tasks, completes it deterministically, and verifies the terminal media-buy result."
 track: media_buy
+requires:
+  - controller
 
 # The async arm is optional. Sellers that cannot deterministically exercise it
 # skip this scenario before any state is created.

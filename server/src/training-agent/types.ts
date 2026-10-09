@@ -462,6 +462,10 @@ export interface ComplyDeliveryAccumulator {
   plays?: number;
   /** Latest DOOH delivery detail block injected by simulate_delivery. */
   doohMetrics?: Record<string, unknown>;
+  /** Property-grain rows injected by simulate_delivery; echoed verbatim as by_property. */
+  propertyDelivery?: Array<Record<string, unknown>>;
+  /** Installment x property rows injected by simulate_delivery; echoed verbatim as by_installment_property. */
+  installmentPropertyDelivery?: Array<Record<string, unknown>>;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
   conversionValue?: number;

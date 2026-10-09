@@ -5,6 +5,9 @@ title: "Seller plans an event-goal cost target"
 category: media_buy_seller
 summary: "Verifies a cost_per cap on a purchase event goal: the seller binds one event source available on the buyer's account and states an attribution window on every purchase's primary goal, and answers in commercial_terms.bidding.cost_per with the buyer's strength."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - request_proposals
   - sync_event_sources

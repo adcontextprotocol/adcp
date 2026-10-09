@@ -1,10 +1,14 @@
 id: sales_fixed_rate
-version: "1.0.0"
+version: "0.1.0"
 title: "Non-guaranteed fixed-price sales"
 protocol: media-buy
 category: sales_fixed_rate
 summary: "Seller of non-guaranteed inventory at a published fixed price: no reserved inventory, no delivery commitment, no auction or bid. The seller MAY hold a buy for review before committing to it."
 track: media_buy
+status: preview
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy

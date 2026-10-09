@@ -4,6 +4,9 @@ title: "Seller rejects unworkable measurement_terms"
 category: media_buy_seller
 summary: "Buyer proposes measurement_terms the seller will not accept; seller returns TERMS_REJECTED without being required to accept a different configuration."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy

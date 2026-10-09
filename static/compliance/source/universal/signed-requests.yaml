@@ -188,6 +188,9 @@ phases:
         019 Signature without Signature-Input → request_signature_header_malformed
         020 per-keyid replay cache cap        → request_signature_rate_abuse
         028 unsigned tasks/cancel + protocol_methods_required_for → request_signature_required
+        029 duplicate label on Signature      → request_signature_header_malformed
+        030 Content-Digest SHA-256 + sha-256  → request_signature_header_malformed
+        031 unbracketed IPv6 in Host header   → request_target_uri_malformed
 
       Vector 028 is gated on `request_signing.protocol_methods_required_for`
       being non-empty: the runner skips when the agent does not declare the

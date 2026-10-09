@@ -4,6 +4,9 @@ title: "Seller handles a property_list reference that matches zero inventory"
 category: media_buy_seller
 summary: "Verifies a seller returns a clear unavailable-product error — not a crash — when a buyer references a property list that resolves to nothing in the seller's catalog."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy

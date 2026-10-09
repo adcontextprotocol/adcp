@@ -4,6 +4,8 @@ title: "Seller preserves explicit package automatic bidding"
 category: media_buy_seller
 summary: "Verifies package-scoped automatic bidding independently of media-buy bidding support."
 track: media_buy
+requires:
+  - controller
 
 requires_capability:
   path: media_buy.features.bidding_policy.package.fixed.modes

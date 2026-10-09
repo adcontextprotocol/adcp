@@ -4,6 +4,9 @@ title: "Revenue-share pricing and settlement"
 category: media_buy_seller
 summary: "Verifies contingent revenue-share discovery, commitment without a bid, commissionable-value delivery, and formula-checked usage reconciliation."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.1"
 required_tools:
   - sync_accounts

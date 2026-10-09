@@ -1192,6 +1192,14 @@ function projectTenantCapabilities(
           // Shared seller-optimized budgets: only the controls create/update
           // enforce (undeclared ones answer UNSUPPORTED_FEATURE).
           ...(storyboardCompat?.version !== '3.0' && sellerOptimizedFeatureFlags(sellerOptimizedDeclarationForVersion(servedVersion))),
+          // Rollups for the per-product property breakdown flags. The
+          // reference seller echoes property rows injected through
+          // comply_test_controller and never derives them from catalog
+          // eligibility.
+          ...(storyboardCompat?.version !== '3.0' && {
+            supports_property_breakdown: true,
+            supports_installment_property_breakdown: true,
+          }),
         },
         ...(supportsGetProductsRejected(servedVersion) && {
           audience_targeting: {
