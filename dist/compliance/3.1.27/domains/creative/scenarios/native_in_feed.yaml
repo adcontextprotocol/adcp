@@ -1,0 +1,544 @@
+id: creative/native_in_feed
+version: "1.0.0"
+title: "Native in-feed creative lifecycle"
+category: creative
+summary: "End-to-end native_in_feed conformance: format discovery, full 12-slot asset bundle submission with pixel trackers, per-constraint validation rejection paths, and feed-rendered preview."
+track: creative
+required_tools:
+  - sync_creatives
+
+narrative: |
+  You run a native ad platform or content-recommendation network that accepts buyer-supplied
+  native asset bundles. A buyer agent discovers your native format, submits a full asset bundle
+  (title, body text, image, CTA, advertiser name, trackers), tests how you reject assets that
+  violate declared format constraints, and previews the assembled feed unit.
+
+  This storyboard exercises the native_in_feed canonical end-to-end, referencing format
+  constraints typical of a content-recommendation product (title_max_chars, main_image_sizes,
+  cta_values closed enum). Phase 3 isolates each validation failure case to a separate
+  sync_creatives call so that per-constraint error codes can be asserted cleanly.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Content recommendation networks"
+    - "Native ad platforms"
+    - "In-feed publisher ad servers"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller platform supports at least one native_in_feed creative format with declared
+    constraints: title_max_chars, body_text_max_chars, main_image_sizes, and a cta_values
+    closed enum. The test kit provides sample native assets at standard native dimensions.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Confirm the platform supports creative operations before pushing assets.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify the agent declares creative support before format discovery.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities including creative in supported_protocols.
+        sample_request:
+          context:
+            correlation_id: "creative_native_in_feed--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_native_in_feed--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: discover_native_formats
+    title: "Discover native creative formats"
+    narrative: |
+      The buyer queries for formats that accept text and image assets — the combination
+      that characterises native in-feed units. The seller returns its native_in_feed
+      format declaration including declared slot constraints.
+
+    steps:
+      - id: list_native_formats
+        title: "List formats accepting text and image assets"
+        narrative: |
+          The buyer calls list_creative_formats filtered to asset_types ["text", "image"].
+          There is no format_kind filter in the protocol; the buyer identifies the
+          native_in_feed format from the returned format metadata (name, slots, params).
+          The test validates that at least one format is returned and that the response
+          is schema-valid — sellers surface their native format here so buyers can
+          discover slot requirements before submitting creatives.
+
+          Note: the `format_id` used in later phases (`id: "native_in_feed"`,
+          `agent_url: "https://your-platform.example.com"`) is a placeholder the
+          implementer substitutes with an actual format_id from this response.
+          This follows the established pattern for storyboard format references.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          Return at least one format that accepts text and image assets, with declared
+          slot constraints (title_max_chars, main_image_sizes, cta_values) visible in
+          the format's parameter block so the buyer can prepare a compliant asset bundle.
+        sample_request:
+          asset_types:
+            - "text"
+            - "image"
+          context:
+            correlation_id: "creative_native_in_feed--list_native_formats"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains formats array"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_native_in_feed--list_native_formats"
+            description: "Context correlation_id returned unchanged"
+
+  - id: sync_native_creative
+    title: "Sync a full native asset bundle"
+    narrative: |
+      The buyer submits a native creative with all 12 slots populated: title, body_text,
+      main_image (1200×627), CTA from the declared cta_values enum, advertiser_name,
+      sponsored_label, landing_page_url, display_url, rating, and three pixel_tracker
+      entries for impression, viewability (MRC 50%), and click. The seller validates the
+      bundle against canonical slot requirements and any product narrowing parameters.
+
+    steps:
+      - id: sync_full_bundle
+        title: "Submit native creative with all 12 slots and pixel trackers"
+        narrative: |
+          Full native asset bundle using values compliant with a typical content-recommendation
+          format: title within 80 chars, main_image at 1200×627, CTA from a closed enum,
+          and pixel_tracker entries for all three standard measurement events. The seller
+          must accept all required slots (title, main_image, advertiser_name, landing_page_url)
+          and return action: created with a non-rejected status.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Accept the full 12-slot native bundle:
+          - action: created
+          - status: accepted or pending_review (not rejected)
+          - All pixel_tracker assets stored with correct event bindings
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "native_trail_pro_full_bundle"
+              name: "Trail Pro 3000 — Native Content Recommendation"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_in_feed"
+              assets:
+                title:
+                  asset_type: "text"
+                  content: "Trail Pro 3000 — Built for the Summit"
+                body_text:
+                  asset_type: "text"
+                  content: "Tested at altitude. Trusted by expedition teams. Built for the summit."
+                main_image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-1200x627.jpg"
+                  width: 1200
+                  height: 627
+                  mime_type: "image/jpeg"
+                cta:
+                  asset_type: "text"
+                  content: "LEARN_MORE"
+                advertiser_name:
+                  asset_type: "text"
+                  content: "Acme Outdoor"
+                sponsored_label:
+                  asset_type: "text"
+                  content: "Sponsored"
+                landing_page_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/trail-pro-3000"
+                display_url:
+                  asset_type: "text"
+                  content: "acmeoutdoor.example"
+                rating:
+                  asset_type: "text"
+                  content: "4.8"
+                impression_tracker:
+                  asset_type: "pixel_tracker"
+                  event: "impression"
+                  method: "img"
+                  url: "https://measurement.example.com/imp?cb={CACHEBUSTER}&cid={CREATIVE_ID}"
+                viewability_tracker:
+                  asset_type: "pixel_tracker"
+                  event: "viewable_mrc_50"
+                  method: "img"
+                  url: "https://measurement.example.com/mrc50?cid={CREATIVE_ID}"
+                click_tracker:
+                  asset_type: "pixel_tracker"
+                  event: "click"
+                  method: "img"
+                  url: "https://measurement.example.com/click?cb={CACHEBUSTER}&cid={CREATIVE_ID}"
+          idempotency_key: "$generate:uuid_v4#creative_native_in_feed_sync_native_creative_sync_full_bundle"
+          context:
+            correlation_id: "creative_native_in_feed--sync_full_bundle"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives"
+            description: "Response contains per-creative results"
+          - check: field_present
+            path: "creatives[0].action"
+            description: "Each creative result has an action"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_native_in_feed--sync_full_bundle"
+            description: "Context correlation_id returned unchanged"
+
+  - id: validation_failures
+    title: "Validation rejection paths"
+    narrative: |
+      Each step submits a single invalid native creative and asserts the seller returns
+      the correct error code. Steps are isolated (separate sync_creatives calls, separate
+      idempotency keys) so that per-constraint error codes can be checked independently.
+      The validation_mode is strict (default); the seller stops on the first violation.
+
+      Constraint map for a typical content-recommendation format:
+      - title must not exceed title_max_chars (e.g., 80)
+      - main_image width×height must be a declared pair (e.g., 1200×627 or 1080×1080)
+      - cta content must be a value from the declared cta_values closed enum
+      - pixel_tracker with event=custom MUST also carry custom_event_name (schema constraint)
+
+    steps:
+      - id: reject_title_too_long
+        title: "Reject: title exceeds title_max_chars"
+        narrative: |
+          Title is 200 characters, far exceeding the typical title_max_chars constraint
+          (80 for a content-recommendation format). Seller MUST reject with a validation error.
+          Because no dedicated error code exists for char-count overflow, either
+          VALIDATION_ERROR or INVALID_REQUEST is conformant.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expect_error: true
+        expected: |
+          Seller MUST reject because the title exceeds title_max_chars.
+          Error code: VALIDATION_ERROR or INVALID_REQUEST.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "native_reject_title_long"
+              name: "Reject — title too long"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_in_feed"
+              assets:
+                title:
+                  asset_type: "text"
+                  content: "Trail Pro 3000 — The Ultimate Summit Companion for Serious Mountaineers Who Demand Peak Performance in Every Altitude — Built for the Summit and Beyond by Acme Outdoor"
+                main_image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-1200x627.jpg"
+                  width: 1200
+                  height: 627
+                  mime_type: "image/jpeg"
+                advertiser_name:
+                  asset_type: "text"
+                  content: "Acme Outdoor"
+                landing_page_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/trail-pro-3000"
+          idempotency_key: "$generate:uuid_v4#creative_native_in_feed_validation_failures_reject_title_too_long"
+          context:
+            correlation_id: "creative_native_in_feed--reject_title_long"
+        validations:
+          - check: error_code
+            allowed_values:
+              - "VALIDATION_ERROR"
+              - "INVALID_REQUEST"
+            description: "Seller rejects title exceeding title_max_chars"
+
+      - id: reject_image_wrong_size
+        title: "Reject: main_image not in declared main_image_sizes"
+        narrative: |
+          main_image is 640×480, a size not declared in main_image_sizes for a
+          content-recommendation format (typical: 1200×627 and 1080×1080). Seller
+          MUST reject. Either VALIDATION_ERROR or INVALID_REQUEST is conformant.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expect_error: true
+        expected: |
+          Seller MUST reject because 640×480 is not in the declared main_image_sizes.
+          Error code: VALIDATION_ERROR or INVALID_REQUEST.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "native_reject_image_size"
+              name: "Reject — image wrong size"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_in_feed"
+              assets:
+                title:
+                  asset_type: "text"
+                  content: "Trail Pro 3000 — Built for the Summit"
+                main_image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-640x480.jpg"
+                  width: 640
+                  height: 480
+                  mime_type: "image/jpeg"
+                advertiser_name:
+                  asset_type: "text"
+                  content: "Acme Outdoor"
+                landing_page_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/trail-pro-3000"
+          idempotency_key: "$generate:uuid_v4#creative_native_in_feed_validation_failures_reject_image_wrong_size"
+          context:
+            correlation_id: "creative_native_in_feed--reject_image_size"
+        validations:
+          - check: error_code
+            allowed_values:
+              - "VALIDATION_ERROR"
+              - "INVALID_REQUEST"
+            description: "Seller rejects main_image not in declared main_image_sizes"
+
+      - id: reject_cta_not_in_enum
+        title: "Reject: CTA value not in declared cta_values"
+        narrative: |
+          The cta slot carries a value not present in the product's declared cta_values
+          closed enum. This is a closed-set constraint violation — the seller has published
+          the complete list of acceptable CTA values and any value outside that list MUST
+          be rejected with CREATIVE_VALUE_NOT_ALLOWED. This code is distinct from
+          CREATIVE_REJECTED (generic content-policy failure) because the buyer can resolve
+          mechanically by selecting a value from the published list.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expect_error: true
+        expected: |
+          Seller MUST reject with CREATIVE_VALUE_NOT_ALLOWED because "EXPLORE_MORE" is
+          not in the declared cta_values list. The error SHOULD include the field path
+          and the list of allowed values so the buyer can re-prompt with constrained sampling.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "native_reject_cta_enum"
+              name: "Reject — CTA not in enum"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_in_feed"
+              assets:
+                title:
+                  asset_type: "text"
+                  content: "Trail Pro 3000 — Built for the Summit"
+                main_image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-1200x627.jpg"
+                  width: 1200
+                  height: 627
+                  mime_type: "image/jpeg"
+                cta:
+                  asset_type: "text"
+                  content: "EXPLORE_MORE"
+                advertiser_name:
+                  asset_type: "text"
+                  content: "Acme Outdoor"
+                landing_page_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/trail-pro-3000"
+          idempotency_key: "$generate:uuid_v4#creative_native_in_feed_validation_failures_reject_cta_not_in_enum"
+          context:
+            correlation_id: "creative_native_in_feed--reject_cta_enum"
+        validations:
+          - check: error_code
+            value: "CREATIVE_VALUE_NOT_ALLOWED"
+            description: "Seller returns CREATIVE_VALUE_NOT_ALLOWED for CTA outside the declared cta_values closed enum"
+
+      - id: reject_pixel_tracker_custom_missing_name
+        title: "Reject: pixel_tracker event=custom without custom_event_name"
+        narrative: |
+          pixel-tracker-asset.json requires custom_event_name when event is "custom"
+          (allOf conditional — MUST be present). Sending event=custom without
+          custom_event_name is a schema constraint violation that sellers MUST reject
+          at sync_creatives time.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expect_error: true
+        expected: |
+          Seller MUST reject because pixel_tracker event=custom requires custom_event_name
+          (schema constraint). Error code: INVALID_REQUEST or VALIDATION_ERROR.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "native_reject_custom_tracker"
+              name: "Reject — pixel_tracker custom without name"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_in_feed"
+              assets:
+                title:
+                  asset_type: "text"
+                  content: "Trail Pro 3000 — Built for the Summit"
+                main_image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-1200x627.jpg"
+                  width: 1200
+                  height: 627
+                  mime_type: "image/jpeg"
+                advertiser_name:
+                  asset_type: "text"
+                  content: "Acme Outdoor"
+                landing_page_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/trail-pro-3000"
+                impression_tracker:
+                  asset_type: "pixel_tracker"
+                  event: "custom"
+                  method: "img"
+                  url: "https://measurement.example.com/custom?cid={CREATIVE_ID}"
+          idempotency_key: "$generate:uuid_v4#creative_native_in_feed_validation_failures_reject_pixel_tracker_custom_missing_name"
+          context:
+            correlation_id: "creative_native_in_feed--reject_custom_tracker"
+        validations:
+          - check: error_code
+            allowed_values:
+              - "INVALID_REQUEST"
+              - "VALIDATION_ERROR"
+            description: "Seller rejects pixel_tracker with event=custom and no custom_event_name"
+
+  - id: preview_native
+    title: "Preview the native creative"
+    narrative: |
+      The buyer calls preview_creative for the accepted native bundle. The seller's
+      renderer composes the native unit — assembling title, image, body, CTA, and
+      advertiser attribution into the publisher's feed look-and-feel — and returns a
+      preview URL. The buyer can inspect the assembled render before activating.
+
+    steps:
+      - id: preview_native_creative
+        title: "Preview assembled native feed unit"
+        narrative: |
+          The buyer previews the native_trail_pro_full_bundle creative synced in Phase 3.
+          The seller composes the full asset bundle into its feed rendering and returns
+          a preview URL showing the assembled unit with the publisher's native chrome applied.
+        task: preview_creative
+        schema_ref: "creative/preview-creative-request.json"
+        response_schema_ref: "creative/preview-creative-response.json"
+        doc_ref: "/creative/task-reference/preview_creative"
+        comply_scenario: creative_flow
+        requires_tool: preview_creative
+        stateful: true
+        expected: |
+          Return a preview of the assembled native unit:
+          - preview_url showing the feed render with native chrome applied
+          - The assembled unit uses the synced assets (title, image, CTA, trackers)
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          request_type: "single"
+          creative_manifest:
+            creative_id: "native_trail_pro_full_bundle"
+            format_id:
+              agent_url: "https://your-platform.example.com"
+              id: "native_in_feed"
+            assets:
+              title:
+                asset_type: "text"
+                content: "Trail Pro 3000 — Built for the Summit"
+              body_text:
+                asset_type: "text"
+                content: "Tested at altitude. Trusted by expedition teams."
+              main_image:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-1200x627.jpg"
+                width: 1200
+                height: 627
+                mime_type: "image/jpeg"
+              cta:
+                asset_type: "text"
+                content: "LEARN_MORE"
+              advertiser_name:
+                asset_type: "text"
+                content: "Acme Outdoor"
+              landing_page_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/trail-pro-3000"
+          context:
+            correlation_id: "creative_native_in_feed--preview_native"
+        validations:
+          - check: response_schema
+            description: "Response matches preview-creative-response.json schema"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_native_in_feed--preview_native"
+            description: "Context correlation_id returned unchanged"

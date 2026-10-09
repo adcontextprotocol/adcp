@@ -48,6 +48,29 @@ test('all 37 routed fixtures have a validated operation', () => {
   assert.equal(routed.length, 37);
 });
 
+// RFC 9421 section 4.2 makes the Signature member an RFC 8941 Byte Sequence
+// (sections 3.3.5, 4.1.7, 4.2.7): standard base64 alphabet (+ and /), padded.
+// Buffer.from(..., 'base64') also accepts base64url and missing padding, so the
+// grammar and canonical encoding are checked before decoding.
+const STANDARD_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const decodeStandardBase64 = text => {
+  if (!STANDARD_BASE64.test(text)) return null;
+  const bytes = Buffer.from(text, 'base64');
+  return bytes.toString('base64') === text ? bytes : null;
+};
+
+test('strict standard base64 decoding rejects base64url and unpadded forms', () => {
+  const bytes = Buffer.from([0xfb, 0xff, 0xbf, 0x01, 0x02]);
+  const standard = bytes.toString('base64');
+  assert.match(standard, /[+/]/);
+  assert.deepEqual(decodeStandardBase64(standard), bytes);
+  const urlSafe = standard.replaceAll('+', '-').replaceAll('/', '_');
+  assert.deepEqual(Buffer.from(urlSafe, 'base64'), bytes, 'Node tolerates base64url, so the strict check must reject it');
+  assert.equal(decodeStandardBase64(urlSafe), null);
+  assert.equal(decodeStandardBase64(standard.replace(/=+$/, '')), null);
+  assert.equal(decodeStandardBase64('AB=='), null, 'non-canonical trailing bits');
+});
+
 for (const file of ['positive/002-post-with-content-digest.json', 'negative/018-digest-covered-when-forbidden.json']) {
   test(`${file} retains a truthful digest and valid test signature`, () => {
     const vector = JSON.parse(fs.readFileSync(path.join(vectorsRoot, file), 'utf8'));
@@ -67,8 +90,19 @@ for (const file of ['positive/002-post-with-content-digest.json', 'negative/018-
       `"@signature-params": ${headers['Signature-Input'].slice('sig1='.length)}`,
     ].join('\n');
     if (vector.expected_signature_base !== undefined) assert.equal(vector.expected_signature_base, base);
-    const signature = Buffer.from(headers.Signature.match(/^sig1=:([^:]+):$/)[1], 'base64');
+    const encodedSignature = headers.Signature.match(/^sig1=:([^:]+):$/)[1];
+    const signature = decodeStandardBase64(encodedSignature);
+    assert.ok(signature, `${file}: Signature must be padded standard base64 (RFC 8941 Byte Sequence)`);
+    assert.equal(signature.length, 64);
+    const urlSafe = encodedSignature.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+    assert.notEqual(urlSafe, encodedSignature);
+    assert.equal(decodeStandardBase64(urlSafe), null);
     assert.equal(crypto.verify(null, Buffer.from(base), publicKey, signature), true);
+    if (file.startsWith('positive/')) {
+      // Ed25519 is deterministic: re-signing with the public test-only key reproduces the fixture.
+      const privateKey = crypto.createPrivateKey({ key: { kty: key.kty, crv: key.crv, x: key.x, d: key._private_d_for_test_only }, format: 'jwk' });
+      assert.equal(crypto.sign(null, Buffer.from(base), privateKey).toString('base64'), encodedSignature);
+    }
     assert.equal(crypto.verify(null, Buffer.from(base + ' '), publicKey, signature), false);
     assert.equal(vector.expected_outcome.success, file.startsWith('positive/'));
     if (file.startsWith('negative/')) {
