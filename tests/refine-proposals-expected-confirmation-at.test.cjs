@@ -47,6 +47,10 @@ test("refine_proposals completed response must not carry expected_confirmation_a
   };
   assert.equal(validate(completed), true, JSON.stringify(validate.errors));
   assert.equal(validate({ ...completed, expected_confirmation_at: ESTIMATE }), false);
+  assert.equal(
+    validate({ ...completed, task_id: "task_1", expected_confirmation_at: ESTIMATE }),
+    false
+  );
 });
 
 test("refine_proposals submitted async wrapper accepts expected_confirmation_at", async () => {
