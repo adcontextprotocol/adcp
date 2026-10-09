@@ -19,7 +19,7 @@ No stable field, enum value, or task is removed, renamed, or deprecated, and 3.3
 
 ### SDK identity and integration depth
 
-Agents can optionally report `adcp.implementation.sdks[]`: package identifiers, exact resolved versions, and the server components they actually use. This distinguishes build-time types or runtime validation from SDK transport, authentication, signing, lifecycle, idempotency, and webhook handling. Missing metadata means unknown SDK use; an empty SDK list explicitly reports none. The report helps buyers target checks and investigate known SDK behavior. It is self-reported, does not establish approval or change conformance obligations, and cannot justify certification shortcuts without independently trusted evidence covering the endpoint and integration. See [implementation metadata](/docs/protocol/get_adcp_capabilities#implementation).
+Agents can optionally report `adcp.implementation.sdks[]`: package identifiers, exact resolved versions, and the server components they actually use. This distinguishes build-time types or runtime validation from SDK transport, authentication, signing, lifecycle, idempotency, and webhook handling. Missing metadata means unknown SDK use; an empty SDK list explicitly reports none. An SDK entry with `components: []` reports package use without claiming agent-wide coverage. The report helps buyers target checks and investigate known SDK behavior. It is self-reported, does not establish approval or change conformance obligations, and cannot justify certification shortcuts without independently trusted evidence covering the endpoint and integration. See [implementation metadata](/docs/protocol/get_adcp_capabilities#implementation).
 
 ### Discovery never provisions an account
 

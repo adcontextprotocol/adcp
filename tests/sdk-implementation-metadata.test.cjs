@@ -52,6 +52,11 @@ test('type-only, partial, and mixed SDK integrations validate without implying a
   }
 });
 
+test('SDK use can be reported without any agent-wide component coverage', () => {
+  const response = capabilities({ sdks: [sdk({ components: [] })] });
+  assert.equal(validate(response), true, JSON.stringify(validate.errors));
+});
+
 test('SDK metadata does not replace required AdCP capability declarations', () => {
   const response = capabilities({ sdks: [sdk()] });
   delete response.adcp.idempotency;
@@ -71,7 +76,7 @@ test('package identities and versions support other SDKs, prereleases, and modif
   }
 });
 
-test('SDK reports require package identity, version, and nonempty component coverage', () => {
+test('SDK reports require package identity, version, and an explicit valid component list', () => {
   for (const field of ['name', 'version', 'components']) {
     const incomplete = sdk();
     delete incomplete[field];
@@ -82,7 +87,7 @@ test('SDK reports require package identity, version, and nonempty component cove
       assert.equal(validate(capabilities({ sdks: [sdk({ [field]: value })] })), false, `${field}: ${value}`);
     }
   }
-  for (const components of [[], ['types', 'types'], ['full'], 'types', null]) {
+  for (const components of [['types', 'types'], ['full'], 'types', null]) {
     assert.equal(validate(capabilities({ sdks: [sdk({ components })] })), false, JSON.stringify(components));
   }
 });

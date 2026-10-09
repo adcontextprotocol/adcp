@@ -512,7 +512,7 @@
                   },
                   "components": {
                     "type": "array",
-                    "description": "Server-side components supplied by this SDK across the advertised task paths where each component applies. types covers build-time AdCP type imports; schema_validation covers runtime AdCP payload validation; transport covers inbound protocol framing, dispatch, and response serialization; authentication covers caller authentication; signing covers message signing and signature verification; lifecycle covers domain state-transition enforcement and asynchronous task lifecycle handling; idempotency covers mutating-request replay protection; webhooks covers notification envelopes, delivery, and retries. List only components actually integrated, not everything the SDK package offers. Omitted components have no claimed SDK coverage; omission does not mean the feature is unsupported or necessarily custom. If a component uses different implementations on different task paths, omit it from this agent-wide declaration.",
+                    "description": "Server-side components supplied by this SDK across the advertised task paths where each component applies. types covers build-time AdCP type imports; schema_validation covers enforced runtime validation of requests and final serialized responses against the SDK's unmodified AdCP schema constraints; request-only, warning-only, or logging-only validation does not qualify; transport covers inbound protocol framing, dispatch, and response serialization; authentication covers caller authentication; signing covers message signing and signature verification; lifecycle covers domain state-transition enforcement and asynchronous task lifecycle handling; idempotency covers mutating-request replay protection; webhooks covers notification envelopes, delivery, and retries. List only components actually integrated, not everything the SDK package offers. Omitted components have no claimed SDK coverage; omission does not mean the feature is unsupported or necessarily custom. Each listed component requires all of its applicable responsibilities across those task paths; inapplicable responsibilities do not require implementation. If SDK coverage varies across task paths, omit the component from this agent-wide declaration. An empty components array reports SDK use without claiming agent-wide coverage, for example when SDK signing is used on only some routes. Wrappers and model subclasses may claim schema_validation only when the SDK's unmodified protocol checks remain enforced on requests and final serialized responses after any transformations.",
                     "items": {
                       "type": "string",
                       "enum": [
@@ -526,7 +526,6 @@
                         "webhooks"
                       ]
                     },
-                    "minItems": 1,
                     "uniqueItems": true
                   }
                 },

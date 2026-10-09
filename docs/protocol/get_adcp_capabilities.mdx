@@ -119,24 +119,28 @@ Optional since AdCP 3.3. Reports which AdCP SDKs the deployed agent uses and whi
 | `sdks` | object[] | Required when `implementation` is present. An empty array explicitly reports no AdCP SDK use; an omitted `implementation` means SDK use is unknown. Multiple entries support mixed SDK integrations. |
 | `sdks[].name` | string | Required. Package identifier in its ecosystem, including publisher or module scope where applicable, such as `@adcp/sdk`. |
 | `sdks[].version` | string | Required. Exact resolved package version, including any prerelease or build identifier. Use the ecosystem's version syntax, rather than a range or moving tag such as `latest`. Forks and modified builds should identify their own package or build version. |
-| `sdks[].components` | string[] | Required, nonempty, unique list of components actually supplied by this SDK on the server. Installing a package or using its outbound client does not establish server-side coverage. |
+| `sdks[].components` | string[] | Required, unique list of components actually supplied by this SDK on the server. `components: []` reports SDK use without claiming any agent-wide component coverage. Installing a package or using its outbound client does not establish server-side coverage. |
 
 Components are independent; lifecycle handling does not imply SDK authentication or transport:
 
 | Component | What the deployed agent uses from the SDK |
 |---|---|
 | `types` | Build-time AdCP type imports. These may be erased before runtime. |
-| `schema_validation` | Runtime validation of AdCP payloads. Claim only when the SDK enforces rejection of invalid payloads, not when validation is advisory or warning-only. |
+| `schema_validation` | Enforced runtime validation of requests and final serialized responses against the SDK's unmodified AdCP schema constraints. Request-only, warning-only, or logging-only validation does not qualify. |
 | `transport` | Inbound protocol framing, dispatch, and response serialization. |
 | `authentication` | Caller authentication. Account authorization remains a separate obligation. |
-| `signing` | Message signing and signature verification. Claim only when the SDK supplies both behaviors across the applicable advertised task paths. |
-| `lifecycle` | Domain state-transition enforcement and asynchronous task lifecycle handling. Claim only when the SDK supplies both behaviors across the applicable advertised task paths. |
+| `signing` | Message signing and signature verification. Claim both when both apply to the advertised task paths. |
+| `lifecycle` | Domain state-transition enforcement and asynchronous task lifecycle handling. Claim both when both apply to the advertised task paths. |
 | `idempotency` | Mutating-request replay protection. |
 | `webhooks` | Notification envelopes, delivery, and retries. |
 
-Only list components actually integrated across the advertised task paths where each component applies. If an SDK handles a component for only some task paths, omit that component from this agent-wide declaration. An unlisted component has no claimed SDK coverage; it does not imply unsupported behavior or establish that the component is custom.
+Only list components actually integrated across the advertised task paths where each component applies. A listed component requires every responsibility in its definition that applies to those paths. For example, `signing` requires both outbound signing and inbound signature verification when both apply; `lifecycle` requires both domain transitions and async task handling when the agent exposes both. An agent with no async tasks need not add them to claim SDK lifecycle coverage for its domain transitions. If an SDK handles a component for only some task paths or only some applicable responsibilities, omit that component from this agent-wide declaration. An unlisted component has no claimed SDK coverage; it does not imply unsupported behavior or establish that the component is custom.
 
-The following example uses a hypothetical SDK version to show a types-and-validation integration. It makes no SDK coverage claim for authentication, transport, or lifecycle handling.
+An SDK used solely for signing on selected routes can still report its package and version with `components: []`. This differs from `sdks: []`, which reports no SDK use. Task-scoped component reporting is a possible follow-up; this declaration makes only agent-wide claims.
+
+**Wrappers and model subclasses.** A custom wrapper or SDK model subclass can report `types` when it reuses SDK types. To also report `schema_validation`, it must retain the SDK's unmodified protocol checks on requests and final serialized responses after any transformations. Subclassing a model, running inherited validators, or validating before custom serialization does not establish that coverage on its own. Additional constraints can coexist with the claim if the original checks remain enforced, but rejecting protocol-valid inputs may still fail conformance. Relaxing or replacing the original constraints without a separate enforcing SDK validation step does not qualify.
+
+The following custom-wrapper example uses a hypothetical SDK version. Pinnacle Media uses SDK types and enforced validation for every applicable request and final response, while its wrapper supplies transport, authentication, lifecycle, and replay handling. It makes no SDK coverage claim for those wrapper behaviors.
 
 ```json
 {
@@ -144,7 +148,7 @@ The following example uses a hypothetical SDK version to show a types-and-valida
   "status": "completed",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "supported": false },
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 },
     "implementation": {
       "sdks": [
         {
@@ -159,19 +163,35 @@ The following example uses a hypothetical SDK version to show a types-and-valida
 }
 ```
 
-**Reporting accurately.** SDK server frameworks should generate package identity, resolved version, and integrated components from their own build and active runtime configuration. Build-time type-only imports need a build-time declaration. A framework should not infer coverage merely from a package's presence or from the features that package offers. SDK or integration changes should refresh the capability document and its [freshness metadata](#capability_changes).
+**Reporting accurately.** SDK server frameworks should generate package identity, resolved version, and integrated components from their own build and active runtime configuration. Build-time type-only imports need a build-time declaration. Runtime validation must be enabled and enforcing in the deployed configuration; framework use does not establish `schema_validation` when production validation is disabled or advisory. A framework should not infer coverage merely from a package's presence or from the features that package offers. SDK or integration changes should refresh the capability document and its [freshness metadata](#capability_changes).
 
 **Using the report.** This metadata is self-reported and advisory. Buyers MUST NOT use it for version negotiation. Recognizing an approved package and version in a trusted catalog is useful for triage, but does not prove the deployed server executes that code. Signing this response authenticates the reporting agent; it does not attest code execution. The metadata does not change any [conformance obligations](/docs/building/verification/conformance).
 
-Buyers should reduce check depth only when independently trusted evidence covers the relevant endpoint, SDK version, and integrated components. Such evidence can support reusing results for covered components while deeper checks focus on custom or uncovered behavior; basic endpoint checks still apply. SDK version or integration changes should trigger reassessment of reused evidence. This field does not introduce an SDK approval catalog, certification inheritance policy, or new attestation format.
+Buyers should reduce check depth only when independently trusted evidence covers the relevant endpoint, AdCP version, SDK version, and integrated components. Such evidence can support reusing results for covered components while deeper checks focus on custom or uncovered behavior; basic endpoint checks still apply. SDK version or integration changes should trigger reassessment of reused evidence. This field does not introduce an SDK approval catalog, certification inheritance policy, or new attestation format.
 
-When evaluating a seller's SDK report:
+A buyer can apply the following policy to components relevant to the seller's advertised behavior. Full applicable coverage means those components are covered, rather than mechanically requiring all eight labels.
 
-- **Unknown, absent, or partial component coverage with no applicable verification** — identify the uncovered components and recommend an AgenticAdvertising.org compliance assessment before relying on the seller. Example: "Additional verification recommended. This seller reports SDK types and validation, but does not report SDK coverage for lifecycle or idempotency. Check current compliance status before purchasing."
-- **Full applicable coverage with no verification** — surface the reported integration and note that it is self-reported and unverified. Example: "SDK integration reported; compliance verification pending."
-- **Current, applicable AgenticAdvertising.org verification** — show the verified scope and grading profile, regardless of whether the implementation uses an SDK.
+| Report and independent evidence | Buyer guidance |
+|---|---|
+| Absent, unknown, or partial SDK coverage without applicable verification | Identify components that lack reported SDK coverage and recommend an AgenticAdvertising.org compliance assessment before relying on the seller. |
+| Full applicable SDK coverage reported without applicable verification | Show “SDK integration reported; compliance verification pending.” The self-reported list cannot independently clear the need for verification. |
+| Current, applicable AgenticAdvertising.org verification | Show the verified scope, evidence modes, and grading profile, regardless of SDK use. |
 
-"Full applicable" means every component relevant to the seller's advertised task paths is covered — not mechanically all eight. Omitted components mean no claimed coverage; buyer messaging should say "does not report SDK coverage for X," not "uses a custom implementation for X." A self-reported full component list cannot independently clear the partial-coverage path; reducing scrutiny requires independently trusted evidence covering the endpoint, AdCP version, and the specific components.
+For the wrapper above, buyer messaging could say: “Additional verification recommended. This seller reports SDK types and validation, but does not report SDK coverage for lifecycle or idempotency. Check current compliance status before purchasing.”
+
+For [AAO Verified](/docs/building/verification/aao-verified), match the exact agent URL, role, AdCP version, and relevant specialisms, and check current registry status. For protocol conformance, look for Spec evidence under Strict Spec grading: the evidence mode and grading profile are separate facts. A badge or report for another endpoint, version, or scope does not cover this integration.
+
+**Separate conformance evidence.** An external verifier could display the following illustrative assessment alongside the wrapper's declaration. This table is a human-readable report, not a new protocol response format. Its scope is `https://seller.example/mcp`, media-buy role, AdCP 3.3, and the seller's advertised media-buy behavior. The assessed deployment is `pinnacle-wrapper-2026.10.09.1`, observed at `2026-10-09T09:00:00Z`; these identifiers let a buyer judge applicability and freshness.
+
+| Obligation exercised | External result | Observed evidence |
+|---|---|---|
+| Reject an invalid request payload | Passed | The endpoint rejected the invalid request before execution. |
+| Reject a mutated replay under an existing idempotency key | Failed | The endpoint accepted the changed payload despite declaring replay support. |
+| Enforce domain state transitions | Untested | The assessment did not exercise the transition paths. |
+
+The SDK declaration remains `components: ["types", "schema_validation"]` even with the failed replay and untested lifecycle results. Neither a coverage claim nor one passed schema check establishes overall conformance. The failed obligation needs remediation, and the untested obligation remains a coverage gap. Store these results and any verification status in the external assessment, separately from `adcp.implementation`.
+
+Automatic SDK population and a buyer readiness check combining reported coverage with current verification are follow-ups; this addition defines the metadata contract.
 
 #### idempotency
 
