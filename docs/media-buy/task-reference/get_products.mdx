@@ -731,6 +731,11 @@ result set. Otherwise confirmation remains a best practice.
 | `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | (Optional) Seller's default performance standards (viewability, IVT, completion rate, brand safety, attention score). Buyers may propose different standards at `create_media_buy`. |
 | `cancellation_policy` | [CancellationPolicy](/docs/media-buy/advanced-topics/pricing-models#cancellation-policy) | (Optional) Cancellation notice period and penalties for guaranteed products. Buyers accept these terms by creating a media buy against the product. |
 
+### Advertise only what you accept
+
+A seller MUST NOT advertise, in a product's `measurement_terms`, a `measurement_window` (or other term value) that it would reject with [`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected) when a buyer replays those terms unchanged on [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). The window MUST reference a `window_id` declared in the product's `reporting_capabilities.measurement_windows`. The rule applies to an otherwise valid request for the product: failures unrelated to terms (budget, flight dates, account) use their own error codes. It does not limit rejecting buyer-modified terms. Sellers that declare `media_buy.measurement_terms_acceptance: true` are additionally graded on replaying advertised terms by the `measurement_terms_accepted` storyboard.
+
+
 ### Publisher properties for non-URL inventory
 
 `publisher_properties[].publisher_domain` is the domain that anchors the publisher's `adagents.json` namespace. It is not required to be the URL where an ad is displayed, and it is not a placeholder for a physical venue, publication, station, screen network, or print title.
