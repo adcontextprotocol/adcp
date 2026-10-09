@@ -262,6 +262,7 @@
       "description": "Registry policy IDs that the buyer requires to be enforced for products in this response. Sellers filter products to only those that comply with or already enforce the requested policies."
     },
     "opportunity": {
+      "x-added-in": "3.3.0",
       "allOf": [
         { "$ref": "/schemas/core/opportunity-context.json" },
         {
