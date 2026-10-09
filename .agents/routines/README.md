@@ -17,6 +17,35 @@ points back at these files, so iteration happens in the repo.
 | `environment-setup.sh` | Setup script to paste into the routine's cloud environment |
 | `../current-context.md` | Roadmap/priorities snapshot, regenerated weekly |
 
+## Status — launchers manually disabled; triage is routing-only
+
+The live GitHub launchers (`.github/workflows/claude-issue-triage.yml` and
+`.github/workflows/triage-webhook-miss-sweep.yml`) have been **manually
+disabled** outside this repository's source. The external Claude routine
+can have an independent scheduled trigger; this workspace cannot verify or
+pause that trigger. Pause any such schedule in the routine's Claude UI
+until this policy has merged and the saved launcher has been verified.
+Disabling is a manual operational state; nothing
+in this repo re-enables it automatically, and this README does not claim
+the routing-only policy is live until the policy PR is merged.
+
+Policy in `triage-prompt.md`: triage provides routing, clarification,
+duplicate/owner detection, and implementation briefs **only**. It never
+creates branches, edits implementation code, opens or updates PRs, or
+pushes commits. `/triage execute` remains as backward-compatible intake and
+yields a Ready-to-implement brief (or the relevant defer/flag outcome);
+PR-feedback mode is read/respond only. Because the launcher reads the
+current prompt on every run, the repository policy covers scheduled,
+manual, and event runs after merge. The saved launcher is separate
+configuration: replace it with the routing-only launcher below in the
+routine's Claude UI and verify it contains no stale execution instructions
+before considering the rollout complete.
+
+**Re-enable the launchers only after** (1) this policy has merged,
+(2) the saved Claude launcher has been replaced and verified as above, and
+(3) an accountable implementation / review / CI / human-merge path exists
+for acting on briefs. Re-enabling is a deliberate manual step.
+
 ## Identity — read this first
 
 Routines are owned by whichever claude.ai account **created** them. That
@@ -51,8 +80,8 @@ Do these in order. Steps marked *(web)* require the claude.ai UI.
      `triage-prompt.md`. The launcher points at the file in the repo so
      edits to `triage-prompt.md` flow to the live routine on the next
      fire without any re-paste.
-   - **Repository:** `adcontextprotocol/adcp`; leave branch pushes
-     restricted to `claude/*`
+   - **Repository:** `adcontextprotocol/adcp`; triage does not push
+     branches, so leave branch pushes restricted (or disabled)
    - **Environment:** new env, paste `environment-setup.sh` into the setup
      script field; Trusted network access
    - **Schedule trigger:** daily or every 6h (up to you)
@@ -81,9 +110,10 @@ Do these in order. Steps marked *(web)* require the claude.ai UI.
      `claude-triaged` label, skipping bot authors and issues with no
      activity in 90+ days. Cap at 10 per run.
 
-   You commit as brian@agenticadvertising.org's linked GitHub
-   identity. Token budget burns the same account. Output a run
-   summary at the end.
+   You are routing-only: never create branches, edit code, open or
+   update PRs, or push commits. Token budget burns
+   brian@agenticadvertising.org's account. Output a run summary at
+   the end.
    ```
 
 2. **Add an API trigger** *(web only)* — on the routine's edit page,
@@ -102,17 +132,13 @@ Do these in order. Steps marked *(web)* require the claude.ai UI.
    the issue body to the routine's `/fire` endpoint so the routine reacts
    within minutes instead of waiting for the next scheduled run.
 
-5. *(Optional)* **GitHub trigger** *(web only)* — add a `pull_request`
-   trigger filtered to `head branch starts-with claude/` so the routine
-   also responds to its own PRs' CI/review events. Or skip this and use
-   auto-fix (toggle per-PR) instead.
+5. Do **not** add a GitHub `pull_request` trigger or any other path that
+   would have the routine push to PRs; triage is read/respond only there.
 
 ## Auto-fix
 
-Separate feature, not a routine. On any PR Claude opens, hit **Auto-fix**
-in the CI status bar or run `/autofix-pr` locally while on the branch.
-Claude then watches that PR for CI failures and review comments and
-pushes fixes. Requires the Claude GitHub App (already installed above).
+Auto-fix is a separate Claude Code feature, not part of this routine, and
+is outside the triage policy. Triage never pushes fixes to a PR.
 
 ## Usage and cost
 

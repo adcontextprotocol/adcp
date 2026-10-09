@@ -889,15 +889,23 @@ Before creating or updating a PR, always:
 
 ## Triage Routine — Manual Nudge
 
-The `Claude Issue Triage` routine fires automatically when an issue
+The GitHub triage launchers were manually disabled on 2026-10-09. See
+`.agents/routines/README.md` for the pause scope and re-enable conditions.
+When enabled, the `Claude Issue Triage` routine fires when an issue
 opens or reopens, when a member comments `/triage` (slash-command), or
 when a non-bot, non-self, non-`/triage`, non-PR-conversation comment
-lands on an open issue. To poke the routine yourself:
+lands on an open issue. Triage is routing-only: it classifies, asks
+clarifying questions, detects duplicates and existing owners, flags human
+decisions, and writes implementation briefs. It never creates branches,
+edits implementation code, opens or updates PRs, or pushes commits.
+`/triage execute` is kept for backward compatibility and yields a
+Ready-to-implement brief (or the relevant defer/flag outcome); it does not
+authorize code or PR work. To poke the routine yourself:
 
 | What you want | How |
 |---|---|
 | Re-trigger triage on a missed issue | Comment `/triage` |
-| Authorize first draft PR when safe | Comment `/triage execute` |
+| Get a ready-to-implement brief (compatibility alias; grants no code or PR execution) | Comment `/triage execute` |
 | Force a clarifying-question comment | Comment `/triage clarify` |
 | Force defer | Comment `/triage defer` |
 | Add new info / refine a stuck Clarify | Plain comment with the new info — fires the routine in `comment.created` mode |
@@ -910,9 +918,10 @@ lands on an open issue. To poke the routine yourself:
   the routine via the `issue_comment.created` path, but only if the
   comment is substantive (the routine itself filters "+1", emoji,
   "thanks!", and bare pings as non-substantive).
-- Comments on **PR conversations** (review threads or general PR
-  comments) — those route to the **auto-fix** feature, not triage.
-  PR feedback handling is a different role.
+- Fix pushes on **PR conversations**. PR comments may reach the routine in
+  read/respond `MODE: PR-feedback`, where it answers questions or links a
+  scoped handoff brief to the existing PR; it never pushes commits to it.
+  Fixes are made by the PR author or another accountable implementer.
 - Comments by bots, the routine itself (anything containing the
   `Triaged by Claude Code` footer), or anyone with `[bot]` suffix —
   filtered at the workflow level to prevent loops.
@@ -920,9 +929,10 @@ lands on an open issue. To poke the routine yourself:
 **How to know if triage is on it:**
 
 - Label `claude-triaging` on the issue → routine is actively working
-  on it right now (1–3 minutes typical). Do not start a parallel PR.
+  on it right now (1–3 minutes typical). It is routing the issue, not
+  implementing it.
 - Label `claude-triaged` (without `claude-triaging`) → routine has
-  finished. The triage comment, implementation brief, draft PR link,
+  finished. The triage comment, implementation brief, existing-PR link,
   or silent-defer state is the outcome.
 - Neither label, no `## Triage` comment, **and** the issue is more
   than a few minutes old → triage didn't fire. Webhook miss is the
