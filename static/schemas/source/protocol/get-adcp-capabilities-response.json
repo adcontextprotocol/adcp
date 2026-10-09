@@ -1888,6 +1888,7 @@
             "audience_overlap": {
               "type": "object",
               "x-status": "experimental",
+              "x-added-in": "3.3.0",
               "description": "Presence indicates the seller supports get_audience_overlap between audiences the buyer synced on the same account. Absence means the seller does not support overlap reads; buyers MUST NOT call get_audience_overlap and MUST NOT read absence as zero overlap. Experimental (x-status: experimental): sellers declaring this object MUST list media_buy.audience_overlap in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice.",
               "properties": {
                 "max_comparisons": {

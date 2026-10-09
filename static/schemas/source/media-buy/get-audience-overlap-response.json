@@ -3,7 +3,8 @@
   "$id": "/schemas/media-buy/get-audience-overlap-response.json",
   "title": "Get Audience Overlap Response",
   "x-status": "experimental",
-  "description": "Response from get_audience_overlap. Exactly one of three shapes: success (audience_id and one comparison per compare_to entry), terminal failure (errors, no comparisons), or a submitted task envelope (status 'submitted' with task_id) for a seller whose overlap is computed as a job; final comparisons land on the task completion artifact. Overlap is aggregate-only and privacy-bounded. Overlap counts matched platform users, the same basis as audience_size on sync_audiences and not targetable_size. A seller MUST NOT disclose an overlap below its declared minimum_overlap_size and MUST NOT report overlap as exact. A seller MUST decide whether to suppress, and choose the reported range, from the true overlap plus an offset that is deterministic for the pair of audience memberships and derived from a seller-held secret, applied before the range is chosen, so that one member added or removed does not move the answer predictably; the reported range MUST be at least minimum_overlap_size wide. The answer MUST be stable for the same pair of memberships, with no per-request randomness. A seller MUST count every comparison against its overlap budget before evaluating any suppression rule, scope that budget to the calling principal and not only the account, and return RATE_LIMITED when it is spent. A seller SHOULD also suppress an overlap read when the audience differs, by fewer members than its minimum audience size, from any audience or earlier version on the account it has already computed an overlap for against the same counterpart. A seller SHOULD NOT vary response shape, as_of, or latency by suppression reason, and MUST pin overlap.as_of to the time the cached overlap was computed, not the request time. A buyer MUST treat an unknown comparison status as suppressed. Experimental (x-status: experimental): sellers implementing audience overlap MUST list media_buy.audience_overlap in experimental_features.",
+  "x-added-in": "3.3.0",
+  "description": "Response from get_audience_overlap. Exactly one of three shapes: success (audience_id and one comparison per compare_to entry), terminal failure (errors, no comparisons), or a submitted task envelope (status 'submitted' with task_id) for a seller whose overlap is computed as a job; final comparisons land on the task completion artifact. Overlap is aggregate-only and privacy-bounded. Overlap counts matched platform users, the same basis as audience_size on sync_audiences and not targetable_size. A seller MUST NOT disclose an overlap below its declared minimum_overlap_size and MUST NOT report overlap as exact. A seller MUST decide whether to suppress, and choose the reported range, from the true overlap plus an offset that is deterministic for the pair of audience memberships and derived from a seller-held secret, applied before the range is chosen, so that one member added or removed does not move the answer predictably; the reported range MUST be at least minimum_overlap_size wide. The answer MUST be stable for the same pair of memberships, with no per-request randomness. A seller MUST count every comparison against its overlap budget before evaluating any suppression rule, scope that budget to the calling principal and not only the account, and return RATE_LIMITED when it is spent. A seller SHOULD also suppress an overlap read when the audience differs, by fewer members than its minimum audience size, from any audience or earlier version on the account it has already computed an overlap for against the same counterpart. A seller SHOULD NOT vary response shape, as_of, or latency by suppression reason, and MUST pin overlap.as_of to the time the cached overlap was computed, not the request time. A buyer MUST treat an unknown overlap_status as suppressed. Experimental (x-status: experimental): sellers implementing audience overlap MUST list media_buy.audience_overlap in experimental_features.",
   "type": "object",
   "allOf": [
     {
@@ -26,6 +27,7 @@
         },
         "comparisons": {
           "type": "array",
+          "x-added-in": "3.3.0",
           "description": "One entry per compare_to entry, in request order. Overlap is symmetric in count, so each entry reports a single overlap. Buyers compute shares from the overlap range and each audience's audience_size from sync_audiences; the result is an interval, not a point.",
           "items": {
             "type": "object",
@@ -35,11 +37,13 @@
                 "description": "The compared audience, echoed from compare_to.",
                 "x-entity": "audience"
               },
-              "status": {
+              "overlap_status": {
+                "x-added-in": "3.3.0",
                 "$ref": "/schemas/enums/audience-overlap-status.json",
-                "description": "ready when the overlap is disclosed; suppressed when the seller withheld it."
+                "description": "ready when the overlap is disclosed; suppressed when the seller withheld it; not_ready while a compared audience is still matching."
               },
               "overlap": {
+                "x-added-in": "3.3.0",
                 "allOf": [
                   {
                     "$ref": "/schemas/core/audience-size.json"
@@ -55,23 +59,23 @@
                     }
                   }
                 ],
-                "description": "People matched on the platform who are present in both audiences, as a range with a stated precision (the same basis as audience_size, not targetable_size). precision MUST be approximate or bucketed, never exact. lower_bound MUST be at least the seller's minimum_overlap_size, so a disclosed overlap never reveals a count below the minimum. as_of is when the seller computed the overlap, which can differ from audience_size.as_of. Present only when status is ready."
+                "description": "People matched on the platform who are present in both audiences, as a range with a stated precision (the same basis as audience_size, not targetable_size). precision MUST be approximate or bucketed, never exact. lower_bound MUST be at least the seller's minimum_overlap_size, so a disclosed overlap never reveals a count below the minimum. as_of is when the seller computed the overlap, which can differ from audience_size.as_of. Present only when overlap_status is ready."
               }
             },
             "required": [
               "audience_id",
-              "status"
+              "overlap_status"
             ],
             "allOf": [
               {
                 "if": {
                   "properties": {
-                    "status": {
+                    "overlap_status": {
                       "const": "ready"
                     }
                   },
                   "required": [
-                    "status"
+                    "overlap_status"
                   ]
                 },
                 "then": {
@@ -83,7 +87,7 @@
               {
                 "if": {
                   "properties": {
-                    "status": {
+                    "overlap_status": {
                       "enum": [
                         "suppressed",
                         "not_ready"
@@ -91,7 +95,7 @@
                     }
                   },
                   "required": [
-                    "status"
+                    "overlap_status"
                   ]
                 },
                 "then": {

@@ -1247,7 +1247,7 @@
         },
         "audience-overlap-status": {
           "$ref": "/schemas/enums/audience-overlap-status.json",
-          "description": "Whether a seller disclosed the overlap for one compared audience (ready, suppressed) (experimental)"
+          "description": "Whether a seller disclosed the overlap for one compared audience (ready, suppressed, not_ready) (experimental)"
         },
         "audience-status": {
           "$ref": "/schemas/enums/audience-status.json",

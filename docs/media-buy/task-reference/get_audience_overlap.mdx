@@ -57,8 +57,8 @@ One comparison per `compare_to` entry, in request order.
 | Field | Description |
 |-------|-------------|
 | `comparisons[].audience_id` | The compared audience. |
-| `comparisons[].status` | `ready`, `suppressed`, or `not_ready`. |
-| `comparisons[].overlap` | An [audience size](/docs/media-buy/task-reference/sync_audiences#audience-size) range. Present only when `status` is `ready`. `precision` is `approximate` or `bucketed`, never `exact`. |
+| `comparisons[].overlap_status` | `ready`, `suppressed`, or `not_ready`. |
+| `comparisons[].overlap` | An [audience size](/docs/media-buy/task-reference/sync_audiences#audience-size) range. Present only when `overlap_status` is `ready`. `precision` is `approximate` or `bucketed`, never `exact`. |
 
 ```json
 {
@@ -68,7 +68,7 @@ One comparison per `compare_to` entry, in request order.
   "comparisons": [
     {
       "audience_id": "site_visitors_30d",
-      "status": "ready",
+      "overlap_status": "ready",
       "overlap": {
         "lower_bound": 2100000,
         "upper_bound": 2400000,
@@ -76,15 +76,15 @@ One comparison per `compare_to` entry, in request order.
         "as_of": "2026-10-08T12:00:00Z"
       }
     },
-    { "audience_id": "lapsed_buyers", "status": "suppressed" },
-    { "audience_id": "newsletter_signups", "status": "not_ready" }
+    { "audience_id": "lapsed_buyers", "overlap_status": "suppressed" },
+    { "audience_id": "newsletter_signups", "overlap_status": "not_ready" }
   ]
 }
 ```
 
 - **`suppressed` is not zero.** The seller withheld the overlap and does not say why: the compared audience may be below the seller's minimum, the overlap may be below `minimum_overlap_size`, or the audience may be a near-duplicate of one already compared. Do not retry without changing an audience, and do not read it as no overlap.
 - **`not_ready` is transient.** A compared audience is still matching. It reflects only the status [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) already reports. Retry once that status is `ready`.
-- **Treat an unknown `status` as `suppressed`.**
+- **Treat an unknown `overlap_status` as `suppressed`.**
 
 ### Computing shares
 

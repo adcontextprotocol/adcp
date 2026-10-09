@@ -18,11 +18,13 @@
     },
     "audience_id": {
       "type": "string",
+      "x-added-in": "3.3.0",
       "description": "The audience to compare from, as the buyer identified it in sync_audiences.",
       "x-entity": "audience"
     },
     "compare_to": {
       "type": "array",
+      "x-added-in": "3.3.0",
       "description": "Audiences to compare against audience_id, as the buyer identified them in sync_audiences. At most media_buy.audience_targeting.audience_overlap.max_comparisons entries; a longer list is rejected with INVALID_REQUEST. MUST NOT contain audience_id or repeat an entry.",
       "items": {
         "type": "string",

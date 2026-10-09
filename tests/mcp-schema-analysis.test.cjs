@@ -48,7 +48,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // reached from list_products, request_proposals, and refine_proposals.
   // Daypart time granularity adds one shared enum reached through the
   // daypart requirement in the targeting-bearing tools.
-  assert.equal(report.definition_instances, 681);
+  // The experimental get_audience_overlap read reuses already-counted shared
+  // definitions (account reference, context, ext) and adds 13 instances.
+  assert.equal(report.definition_instances, 694);
   assert.equal(report.unique_definitions, 185);
   assert.equal(report.repeated_definitions, 133);
   assert.ok(report.repeated_definition_bytes > 180_000);

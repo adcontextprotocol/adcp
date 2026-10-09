@@ -60,31 +60,31 @@ test('overlap reuses the shared audience-size object and forbids exact precision
   const item = readSchema(RESPONSE).oneOf[0].properties.comparisons.items;
   assert.equal(item.properties.overlap.allOf[0].$ref, '/schemas/core/audience-size.json');
   const validate = await compile(RESPONSE);
-  const ready = (o) => success([{ audience_id: 'site_visitors_30d', status: 'ready', overlap: o }]);
+  const ready = (o) => success([{ audience_id: 'site_visitors_30d', overlap_status: 'ready', overlap: o }]);
   assert.equal(validate(ready(overlap())), true, JSON.stringify(validate.errors));
   assert.equal(validate(ready(overlap({ precision: 'bucketed' }))), true);
   assert.equal(validate(ready(overlap({ precision: 'exact', upper_bound: 2100000 }))), false);
   assert.equal(validate(ready({ lower_bound: 1, precision: 'approximate' })), false, 'bounds are required');
 });
 
-test('comparison status governs whether overlap is present', async () => {
+test('comparison overlap_status governs whether overlap is present', async () => {
   const validate = await compile(RESPONSE);
   const one = (c) => success([{ audience_id: 'lapsed_buyers', ...c }]);
-  assert.equal(validate(one({ status: 'ready' })), false, 'ready needs overlap');
-  assert.equal(validate(one({ status: 'suppressed' })), true, JSON.stringify(validate.errors));
-  assert.equal(validate(one({ status: 'not_ready' })), true);
-  assert.equal(validate(one({ status: 'suppressed', overlap: overlap() })), false, 'suppressed carries no overlap');
-  assert.equal(validate(one({ status: 'not_ready', overlap: overlap() })), false, 'not_ready carries no overlap');
+  assert.equal(validate(one({ overlap_status: 'ready' })), false, 'ready needs overlap');
+  assert.equal(validate(one({ overlap_status: 'suppressed' })), true, JSON.stringify(validate.errors));
+  assert.equal(validate(one({ overlap_status: 'not_ready' })), true);
+  assert.equal(validate(one({ overlap_status: 'suppressed', overlap: overlap() })), false, 'suppressed carries no overlap');
+  assert.equal(validate(one({ overlap_status: 'not_ready', overlap: overlap() })), false, 'not_ready carries no overlap');
 });
 
 test('response has no share fields and exactly one of success, error or submitted', async () => {
   const schema = readSchema(RESPONSE);
   const props = schema.oneOf[0].properties.comparisons.items.properties;
-  assert.deepEqual(Object.keys(props).sort(), ['audience_id', 'overlap', 'status']);
+  assert.deepEqual(Object.keys(props).sort(), ['audience_id', 'overlap', 'overlap_status']);
   const validate = await compile(RESPONSE);
   const err = { errors: [{ code: 'RATE_LIMITED', message: 'Overlap budget spent.' }] };
   assert.equal(validate({ status: 'failed', ...err }), true, JSON.stringify(validate.errors));
-  assert.equal(validate({ ...success([{ audience_id: 'a', status: 'suppressed' }]), ...err }), false);
+  assert.equal(validate({ ...success([{ audience_id: 'a', overlap_status: 'suppressed' }]), ...err }), false);
   assert.equal(validate({ status: 'submitted', task_id: 'task_overlap_1' }), true, JSON.stringify(validate.errors));
   assert.equal(validate({ status: 'submitted', task_id: 'task_overlap_1', comparisons: [] }), false);
 });
@@ -103,7 +103,7 @@ test('privacy MUSTs are stated in the response schema', () => {
     'before evaluating any suppression rule',
     'calling principal and not only the account',
     'SHOULD also suppress',
-    'treat an unknown comparison status as suppressed',
+    'treat an unknown overlap_status as suppressed',
   ]) {
     assert.ok(text.includes(phrase), `missing: ${phrase}`);
   }
@@ -149,6 +149,19 @@ test('schemas are marked experimental and registered, and docs list the feature 
   for (const uri of [REQUEST, RESPONSE, '/schemas/enums/audience-overlap-status.json']) {
     assert.equal(readSchema(uri)['x-status'], 'experimental', `${uri} must be x-status: experimental`);
   }
+  // A root x-added-in on a task request raises the MCP surface_version, so the
+  // request carries the marker on its properties; response and enum carry it at the root.
+  assert.equal(readSchema(REQUEST)['x-added-in'], undefined);
+  assert.equal(readSchema(REQUEST).properties.compare_to['x-added-in'], '3.3.0');
+  assert.equal(readSchema(REQUEST).properties.audience_id['x-added-in'], '3.3.0');
+  assert.equal(readSchema(RESPONSE)['x-added-in'], '3.3.0');
+  assert.equal(readSchema('/schemas/enums/audience-overlap-status.json')['x-added-in'], '3.3.0');
+  const block = readSchema(CAPABILITIES).properties.media_buy.properties.audience_targeting.properties.audience_overlap;
+  assert.equal(block['x-added-in'], '3.3.0');
+  const comparison = readSchema(RESPONSE).oneOf[0].properties.comparisons.items;
+  assert.equal(comparison.properties.overlap_status.$ref, '/schemas/enums/audience-overlap-status.json');
+  assert.deepEqual(comparison.required, ['audience_id', 'overlap_status']);
+  assert.equal(readSchema('/schemas/enums/audience-overlap-status.json').enumDescriptions.not_ready.length > 0, true);
   const index = readSchema('/schemas/index.json');
   assert.equal(index.schemas['media-buy'].tasks['get-audience-overlap'].request.$ref, REQUEST);
   assert.equal(index.schemas['media-buy'].tasks['get-audience-overlap'].response.$ref, RESPONSE);

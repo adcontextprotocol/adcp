@@ -3,7 +3,8 @@
   "$id": "/schemas/enums/audience-overlap-status.json",
   "title": "Audience Overlap Status",
   "x-status": "experimental",
-  "description": "Whether a seller disclosed the overlap for one compared audience. suppressed mirrors the too_small status of sync_audiences for overlap reads. Experimental (x-status: experimental): sellers implementing audience overlap MUST list media_buy.audience_overlap in experimental_features. A buyer MUST treat an unknown value as suppressed.",
+  "x-added-in": "3.3.0",
+  "description": "Whether a seller disclosed the overlap for one compared audience, carried as overlap_status on each comparison. suppressed mirrors the too_small status of sync_audiences for overlap reads. Experimental (x-status: experimental): sellers implementing audience overlap MUST list media_buy.audience_overlap in experimental_features. A buyer MUST treat an unknown value as suppressed.",
   "type": "string",
   "enum": [
     "ready",
