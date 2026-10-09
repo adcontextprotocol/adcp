@@ -4,6 +4,7 @@
   "title": "Acceptance Policy Profile IDs",
   "description": "Acceptance-policy profiles from the seller catalog that apply to this product in addition to seller defaults. Profiles compose restrictively; the most restrictive matching disposition wins.",
   "type": "array",
+  "$comment": "TEMP: CI verification only, do not merge.",
   "items": {
     "type": "string",
     "minLength": 1,
