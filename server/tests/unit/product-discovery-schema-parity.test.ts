@@ -130,8 +130,10 @@ describe('product discovery MCP schema parity', () => {
     // 152 KiB. Experimental minute-resolution dayparts add the clock-time
     // pair, its exclusion, and the time_granularity requirement to the shared
     // daypart graph (~0.45 KiB per tool; 152.93 KiB measured), bounded at
-    // 154 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(154 * 1024);
+    // 154 KiB. Core gender adds its shared predicate and overlay support;
+    // merged compact discovery measures 158,094 bytes (154.39 KiB), bounded
+    // at the next KiB without relaxing standalone-schema parity.
+    expect(totalBytes).toBeLessThanOrEqual(155 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

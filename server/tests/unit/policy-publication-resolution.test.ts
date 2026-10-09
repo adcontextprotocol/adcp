@@ -6,7 +6,7 @@ vi.mock('../../src/db/client.js', () => ({
 }));
 
 import { query } from '../../src/db/client.js';
-import { resolvePolicy } from '../../src/db/policies-db.js';
+import { AcceptancePolicyProfileSchema, resolvePolicy } from '../../src/db/policies-db.js';
 
 const queryMock = vi.mocked(query);
 
@@ -47,6 +47,23 @@ const validAcceptanceProfile = {
 
 describe('immutable policy publication resolution', () => {
   beforeEach(() => queryMock.mockReset());
+
+  it('preserves a gender targeting restriction in the registry response schema', () => {
+    const profile = {
+      ...validAcceptanceProfile,
+      rules: [{
+        ...validAcceptanceProfile.rules[0],
+        applies_to: ['targeting'],
+        disposition: 'conditional',
+        requirements: [{ kind: 'targeting_restriction', restricted_attributes: ['sex_life_sexual_orientation', 'sex_gender'] }],
+      }],
+    };
+
+    expect(AcceptancePolicyProfileSchema.parse(profile)).toEqual(profile);
+    const unsupported = structuredClone(profile);
+    unsupported.rules[0].requirements[0].restricted_attributes = ['unknown_attribute'];
+    expect(AcceptancePolicyProfileSchema.safeParse(unsupported).success).toBe(false);
+  });
 
   it('resolves an exact retired version from its canonical publication snapshot', async () => {
     queryMock.mockResolvedValueOnce({

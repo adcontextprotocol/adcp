@@ -62,7 +62,7 @@
     },
     "restricted_attributes": {
       "type": "array",
-      "description": "Restricted attribute categories this listing touches. Required with demographic_predicate and must include age. For referenced provider/source signals, any projected values must match the authoritative definition.",
+      "description": "Restricted attribute categories this listing touches. Required with demographic_predicate and must include age for age predicates and sex_gender for gender predicates. For referenced provider/source signals, any projected values must match the authoritative definition.",
       "items": {
         "$ref": "/schemas/enums/restricted-attribute.json"
       },
@@ -99,7 +99,16 @@
       }
     },
     {
-      "if": { "required": ["demographic_predicate"] },
+      "if": {
+        "properties": {
+          "demographic_predicate": {
+            "required": [
+              "age"
+            ]
+          }
+        },
+        "required": ["demographic_predicate"]
+      },
       "then": {
         "properties": {
           "restricted_attributes": {
@@ -108,6 +117,33 @@
           }
         },
         "required": ["restricted_attributes"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "demographic_predicate": {
+            "required": [
+              "gender"
+            ]
+          }
+        },
+        "required": [
+          "demographic_predicate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "restricted_attributes": {
+            "type": "array",
+            "contains": {
+              "const": "sex_gender"
+            }
+          }
+        },
+        "required": [
+          "restricted_attributes"
+        ]
       }
     }
   ],

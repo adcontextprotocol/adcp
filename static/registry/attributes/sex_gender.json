@@ -1,0 +1,20 @@
+{
+  "attribute_id": "sex_gender",
+  "name": "Sex or gender",
+  "description": "Sex- or gender-based audience classifications. The new AdCP 3.3 core demographic gender predicates map to this attribute, including female, male, and non_binary. Existing provider-declared attributes retain their meaning. Experimental in AdCP 3.3 as part of media_buy.gender_targeting; the 3.2 registry is unchanged.",
+  "includes": [
+    "Core demographic gender audience predicates",
+    "Signals with authoritative gender demographic predicates",
+    "Sex- or gender-based audience classifications"
+  ],
+  "excludes": [
+    "Sex-life or sexual-orientation meaning is not implied by the new core gender predicate; existing provider declarations remain authoritative",
+    "Age or familial status alone"
+  ],
+  "signal_patterns": [
+    "gender_*",
+    "*_gender",
+    "gender_identity_*"
+  ],
+  "guidance": "Available in AdCP 3.3. Applies to the new core gender predicate and signals carrying demographic_predicate.gender, regardless of the selected values or unknown membership. All core gender values receive the same attribute classification; the predicate alone does not imply sexual orientation. Adding the predicate MUST NOT remove or rewrite existing provider-declared restricted_attributes, including sex_life_sexual_orientation. The attribute does not by itself prohibit targeting or establish a legal classification. Evaluate applicable plan and seller policy restrictions against effective targeting, including inherited product defaults and preserved package constraints. Existing policy-category restriction lists and the sex_life_sexual_orientation definition are unchanged."
+}

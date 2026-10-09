@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/demographic-gender.json",
+  "title": "Demographic Gender",
+  "description": "Canonical gender audience predicate. Values use OR; gender and age use AND. These AdCP categories are distinct from sex recorded at birth and sexual orientation, and are not an exhaustive identity vocabulary. Sellers MUST reject unsupported values rather than map Other Gender to non_binary. Known unselected categories are never unknown. Equality compares unordered value sets and explicit unknown membership; it describes declared targeting semantics, not person-level certainty. Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only.",
+  "type": "object",
+  "properties": {
+    "values": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "female",
+          "male",
+          "non_binary"
+        ],
+        "enumDescriptions": {
+          "female": "Female gender category; distinct from sex recorded at birth.",
+          "male": "Male gender category; distinct from sex recorded at birth.",
+          "non_binary": "Non-binary gender category; a known category, not unknown or a mapping from Other Gender."
+        }
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Nonempty set of selected gender categories. Sellers MUST execute every selected category exactly or reject the request.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
+    "include_unknown": {
+      "type": "boolean",
+      "description": "Whether people without a usable gender classification are included. Required with no default. Unknown gender is independent of unknown age; a known category outside values is excluded.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    }
+  },
+  "required": [
+    "values",
+    "include_unknown"
+  ],
+  "additionalProperties": true,
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}

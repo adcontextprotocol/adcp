@@ -136,8 +136,75 @@
         }
       ],
       "additionalProperties": true
+    },
+    "gender": {
+      "type": "object",
+      "description": "Product-scoped exact gender targeting. Missing capability makes no gender execution commitment. Every nonempty subset of values is executable with compatible unknown handling, subject to policy and commercial checks. Native age and gender modes MUST compose as AND when both dimensions are advertised; signal-backed combinations require authoritative predicates proving the complete intersection. Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only.",
+      "properties": {
+        "execution_modes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "native",
+              "signals"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "native compiles gender values into seller controls; signals uses authoritative demographic_predicate metadata, never labels or approximate mappings.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "female",
+              "male",
+              "non_binary"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Nonempty set of selected gender categories. Sellers MUST execute every selected category exactly or reject the request.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "unknown_handling": {
+          "type": "string",
+          "enum": [
+            "selectable",
+            "always_excluded",
+            "always_included"
+          ],
+          "description": "selectable supports either include_unknown value; always_excluded supports only false; always_included supports only true. Sellers MUST reject incompatible requests.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        }
+      },
+      "required": [
+        "execution_modes",
+        "values",
+        "unknown_handling"
+      ],
+      "additionalProperties": true,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
     }
   },
-  "required": ["age"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "anyOf": [
+    {
+      "required": [
+        "age"
+      ]
+    },
+    {
+      "required": [
+        "gender"
+      ]
+    }
+  ]
 }

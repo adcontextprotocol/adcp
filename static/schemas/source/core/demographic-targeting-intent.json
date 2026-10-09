@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/demographic-targeting-intent.json",
   "title": "Demographic Targeting Intent",
-  "description": "Portable demographic targeting intent plus buyer constraints on how the seller may determine user eligibility. The age predicate retains its canonical interval meaning; accepted_bases narrows execution provenance without changing which ages are requested.",
+  "description": "Portable age and gender audience targeting. At least one named dimension is required; dimensions compose with AND. Age retains inclusive integer bounds and independent unknown-age membership. Gender uses an unordered set of selected values and independent unknown-gender membership. Optional age determination constraints remain age-specific and do not establish gender.",
   "type": "object",
   "properties": {
     "age": {
@@ -50,8 +50,25 @@
           "additionalProperties": true
         }
       ]
+    },
+    "gender": {
+      "$ref": "/schemas/core/demographic-gender.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
     }
   },
-  "required": ["age"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "anyOf": [
+    {
+      "required": [
+        "age"
+      ]
+    },
+    {
+      "required": [
+        "gender"
+      ]
+    }
+  ]
 }

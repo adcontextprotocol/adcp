@@ -64,6 +64,7 @@ const AcceptancePolicyRequirementSchema = z.discriminatedUnion('kind', [
       'biometric_data',
       'age',
       'familial_status',
+      'sex_gender',
     ])).min(1).optional(),
     description: RequirementDescriptionSchema.optional(),
   }).strict(),

@@ -219,7 +219,7 @@
         },
         "demographic-predicate": {
           "$ref": "/schemas/core/demographic-predicate.json",
-          "description": "Portable demographic audience intent, beginning with age in AdCP 3.2"
+          "description": "Portable age and gender audience predicates with independent unknown membership"
         },
         "demographic-targeting-capability": {
           "$ref": "/schemas/core/demographic-targeting-capability.json",
@@ -1114,6 +1114,12 @@
         "webhook-challenge-response": {
           "$ref": "/schemas/core/webhook-challenge-response.json",
           "description": "Receiver response body for account-level notification_configs[] endpoint proof-of-control challenges"
+        },
+        "demographic-gender": {
+          "$ref": "/schemas/core/demographic-gender.json",
+          "description": "Canonical gender value set with explicit unknown-gender membership Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
         }
       },
       "requirements": {

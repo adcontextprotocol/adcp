@@ -51,7 +51,7 @@
     },
     "demographic_predicate": {
       "$ref": "/schemas/core/demographic-predicate.json",
-      "description": "Authoritative machine-readable demographic meaning for this signal. Signal names and taxonomy labels alone never establish exact demographic equivalence. Signals carrying this field MUST also declare restricted_attributes including age."
+      "description": "Authoritative machine-readable age and/or gender meaning for this signal. Signal names and taxonomy labels alone never establish exact demographic equivalence. Signals MUST declare restricted_attributes containing age for age predicates and sex_gender for gender predicates; joint predicates require both."
     },
     "policy_categories": {
       "type": "array",
@@ -499,14 +499,51 @@
       "then": { "required": ["onboarder"] }
     },
     {
-      "if": { "required": ["demographic_predicate"] },
+      "if": {
+        "properties": {
+          "demographic_predicate": {
+            "required": [
+              "age"
+            ]
+          }
+        },
+        "required": ["demographic_predicate"]
+      },
       "then": {
         "properties": {
           "restricted_attributes": {
+            "type": "array",
             "contains": { "const": "age" }
           }
         },
         "required": ["restricted_attributes"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "demographic_predicate": {
+            "required": [
+              "gender"
+            ]
+          }
+        },
+        "required": [
+          "demographic_predicate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "restricted_attributes": {
+            "type": "array",
+            "contains": {
+              "const": "sex_gender"
+            }
+          }
+        },
+        "required": [
+          "restricted_attributes"
+        ]
       }
     }
   ],

@@ -3235,6 +3235,7 @@ import {
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const SUPPORTED_RELEASE_VERSIONS = TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS;
 const DEFAULT_ADCP_VERSION = TRAINING_AGENT_DEFAULT_ADCP_VERSION;
+const CORE_GENDER_CANDIDATE_VERSION = '3.3-beta.0';
 export const TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH = '/registry/acceptance-policy-catalog.json';
 export const TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST = 'sha256:3afb3865dbd69025b4f925c5c018c7659fa0a744efcb0b12b87e1b3a119b3d2a';
 export const TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE = 'meta_political_advertising_acceptance';
@@ -3391,7 +3392,9 @@ function signingCompatibleReleaseVersions(ctx: TrainingContext): readonly string
   // parser. Legacy-profile routes (either/forbidden digest policy, or the
   // required-digest legacy route) advertise 3.0/3.1 only.
   if (!signingCap.supported || requestSigningProfileVersion(ctx) === CURRENT_REQUEST_SIGNING_PROFILE_VERSION) {
-    return SUPPORTED_RELEASE_VERSIONS;
+    return ctx.developmentCoreGender
+      ? [...SUPPORTED_RELEASE_VERSIONS, CORE_GENDER_CANDIDATE_VERSION]
+      : SUPPORTED_RELEASE_VERSIONS;
   }
   return SUPPORTED_RELEASE_VERSIONS.filter(version => {
     const parsed = parseAdcpReleaseVersion(version);
@@ -5834,9 +5837,91 @@ let cachedCatalog: CatalogProduct[] | null = null;
 let cachedFormats: ReturnType<typeof buildFormats> | null = null;
 let cachedProposals: import('@adcp/sdk').Proposal[] | null = null;
 
-function getCatalog(): CatalogProduct[] {
+function getCatalog(ctx?: TrainingContext): CatalogProduct[] {
   if (!cachedCatalog) cachedCatalog = buildCatalog();
-  return cachedCatalog;
+  if (!ctx?.developmentCoreGender || !coreGenderVersionSupported(ctx)) return cachedCatalog;
+  const demonstrationProduct = cachedCatalog.find(entry => (
+    entry.product.channels?.includes('display') && entry.product.delivery_type === 'non_guaranteed'
+  ));
+  return cachedCatalog.map(entry => {
+    if (entry !== demonstrationProduct) return entry;
+    const product = entry.product as unknown as Record<string, unknown>;
+    return { ...entry, product: {
+      ...product,
+      demographic_targeting: {
+        ...(isRecord(product.demographic_targeting) ? product.demographic_targeting : {}),
+        gender: { execution_modes: ['native'], values: ['female', 'male', 'non_binary'], unknown_handling: 'selectable' },
+      },
+      overlay_support: { ...(isRecord(product.overlay_support) ? product.overlay_support : {}), demographics: { gender: true } },
+    } as unknown as Product };
+  });
+}
+
+function coreGenderVersionSupported(ctx: TrainingContext): boolean {
+  const version = parseAdcpReleaseVersion(ctx.servedAdcpVersion
+    ?? (ctx.developmentCoreGender ? CORE_GENDER_CANDIDATE_VERSION : DEFAULT_ADCP_VERSION));
+  return version !== undefined && version.major === 3 && version.minor >= 3;
+}
+
+const CORE_GENDER_TYPED_CONTAINERS = new Set([
+  'targeting_overlay', 'targeting', 'targeting_resolution', 'overlay_support', 'required_overlay_support',
+  'criteria', 'updates', 'packages', 'new_packages', 'purchases', 'products', 'product', 'affected_packages',
+  'media_buys', 'proposal', 'proposals', 'accepted_proposal', 'commercial_terms', '__canonical_commercial_terms',
+  'allocations', 'plans', 'plan', 'signals', 'signal', 'definitions', 'definition', 'enrichment',
+  'signal_definition', 'signal_definition_enrichment', 'signal_targeting_options',
+  'media_buy', 'execution', 'features', 'acceptance_policy', 'acceptance_policy_requirements',
+  'requirements', 'policies', 'policy', 'conditions', 'alternatives',
+]);
+
+function coreGenderSurfacePath(value: unknown, path = ''): string | undefined {
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      const found = coreGenderSurfacePath(item, `${path}[${index}]`);
+      if (found) return found;
+    }
+  } else if (isRecord(value)) {
+    if (Array.isArray(value.restricted_attributes) && value.restricted_attributes.includes('sex_gender')) {
+      return `${path}${path ? '.' : ''}restricted_attributes`;
+    }
+    for (const field of ['demographics', 'demographic_targeting', 'demographic_predicate']) {
+      const object = value[field];
+      if (isRecord(object) && object.gender !== undefined) return `${path}${path ? '.' : ''}${field}.gender`;
+      if (field === 'demographics' && isRecord(object)) {
+        for (const predicate of ['requested', 'applied']) {
+          if (isRecord(object[predicate]) && object[predicate].gender !== undefined) return `${path}${path ? '.' : ''}${field}.${predicate}.gender`;
+        }
+      }
+    }
+    for (const [field, item] of Object.entries(value)) {
+      // Only typed protocol containers have demographic semantics. Vendor
+      // breakdowns, creative params, context, ext and raw attestations remain
+      // opaque even when their keys resemble core fields.
+      if (field === 'params' && typeof value.scenario === 'string' && isRecord(item) && isRecord(item.fixture)) {
+        const found = coreGenderSurfacePath(item.fixture, `${path}${path ? '.' : ''}params.fixture`);
+        if (found) return found;
+        continue;
+      }
+      // A governance intent carries the exact downstream tool arguments.
+      if (field === 'payload' && typeof value.tool === 'string') {
+        const found = coreGenderSurfacePath(item, `${path}${path ? '.' : ''}payload`);
+        if (found) return found;
+        continue;
+      }
+      if (!CORE_GENDER_TYPED_CONTAINERS.has(field)) continue;
+      const found = coreGenderSurfacePath(item, `${path}${path ? '.' : ''}${field}`);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+function coreGenderVersionError(ctx: TrainingContext, value: unknown): TaskError | undefined {
+  if (coreGenderVersionSupported(ctx)) return undefined;
+  const field = coreGenderSurfacePath(value);
+  return field ? {
+    code: 'UNSUPPORTED_FEATURE', field, recovery: 'correctable',
+    message: 'Experimental core gender requires a negotiated 3.3 contract; AdCP 3.2 core remains age-only.',
+  } : undefined;
 }
 
 function getProposals(): import('@adcp/sdk').Proposal[] {
@@ -8074,7 +8159,16 @@ function resolveConfiguredPurchaseTargeting(
   requested: Record<string, unknown> | undefined,
   support: unknown,
   path: string,
-): { targeting?: Record<string, unknown>; errorPath?: string } {
+): { targeting?: Record<string, unknown>; errorPath?: string; requiresRequote?: boolean } {
+  const boundDemographics = isRecord(bound?.demographics) ? bound.demographics : undefined;
+  const requestedDemographics = isRecord(requested?.demographics) ? requested.demographics : undefined;
+  if (boundDemographics && (boundDemographics.gender !== undefined || requestedDemographics?.gender !== undefined)
+    && requested && Object.hasOwn(requested, 'demographics')
+    && (!requestedDemographics || ['age', 'gender'].some(dimension => (
+      boundDemographics[dimension] !== undefined && requestedDemographics[dimension] === undefined
+    )))) {
+    return { errorPath: `${path}.demographics`, requiresRequote: true };
+  }
   if (!bound && requested) {
     const supportRecord = isRecord(support) ? support : {};
     for (const [field, requestedValue] of Object.entries(requested)) {
@@ -8322,10 +8416,13 @@ function concreteTargetingError(
   targeting: Record<string, unknown>,
   path: string,
 ): TaskError | undefined {
+  const demographicError = compileGenderDemographics(product, targeting, path).error;
+  if (demographicError) return demographicError;
   const productRecord = product as unknown as Record<string, unknown>;
   const support = isRecord(productRecord.overlay_support) ? productRecord.overlay_support : {};
   const inherentPlacementMatch = matchesInherentPlacementSelection(product, targeting);
   for (const [field, value] of Object.entries(targeting)) {
+    if (field === 'demographics' && isRecord(value) && value.gender !== undefined) continue;
     if (field === 'placement_selection' && inherentPlacementMatch === true) continue;
     if (!concreteTargetingSupportedForProduct(support, field, value)) {
       return {
@@ -8518,11 +8615,281 @@ function configuredProductOwner(
     : undefined;
 }
 
+/** Compile gender only from a declared product capability and authoritative
+ * predicates. Labels and an open overlay_support object are not execution
+ * evidence. Keep legacy age-only execution unchanged. */
+function compileGenderDemographics(
+  product: Product,
+  targeting: Record<string, unknown> | undefined,
+  path: string,
+): { resolution?: Record<string, unknown>; error?: TaskError } {
+  const demographics = isRecord(targeting?.demographics) ? targeting.demographics : undefined;
+  if (!demographics || demographics.gender === undefined) return {};
+  const fail = (dimension: string, message: string, code = 'UNSUPPORTED_FEATURE') => ({
+    error: { code, message, field: `${path}.demographics.${dimension}`, recovery: 'correctable' } as TaskError,
+  });
+  const unsupportedDimension = Object.keys(demographics).find(dimension => !['age', 'gender', 'ext'].includes(dimension));
+  if (unsupportedDimension) return fail(unsupportedDimension, 'The training seller cannot execute this additional demographic dimension.');
+  const gender = demographics.gender;
+  const strictTargeting = Object.fromEntries(Object.entries(targeting ?? {}).filter(([, value]) => value !== null));
+  const schemaValidation = validateSourceSchema('core/targeting.json', strictTargeting);
+  if (!schemaValidation.valid) {
+    const issue = schemaValidation.errors[0];
+    return fail('gender', `Invalid effective gender targeting${issue?.instancePath ?? ''}: ${issue?.message ?? 'schema validation failed'}`, 'INVALID_REQUEST');
+  }
+  if (!isRecord(gender)
+    || !Array.isArray(gender.values) || gender.values.length === 0
+    || gender.values.some(value => typeof value !== 'string' || !['female', 'male', 'non_binary'].includes(value))
+    || new Set(gender.values).size !== gender.values.length
+    || typeof gender.include_unknown !== 'boolean') {
+    return fail('gender', 'Gender targeting requires unique supported values and explicit include_unknown.', 'INVALID_REQUEST');
+  }
+  const productRecord = product as unknown as Record<string, unknown>;
+  const capability = isRecord(productRecord.demographic_targeting) ? productRecord.demographic_targeting : {};
+  const genderSupport = isRecord(capability.gender) ? capability.gender : undefined;
+  const supportedGenderValues = Array.isArray(genderSupport?.values) ? genderSupport.values : [];
+  const unknownMatches = (support: Record<string, unknown>, predicate: Record<string, unknown>) => (
+    support.unknown_handling === 'selectable'
+    || (support.unknown_handling === 'always_excluded' && predicate.include_unknown === false)
+    || (support.unknown_handling === 'always_included' && predicate.include_unknown === true)
+  );
+  if (!genderSupport || !Array.isArray(genderSupport.values)
+    || gender.values.some(value => !supportedGenderValues.includes(value))
+    || !unknownMatches(genderSupport, gender)) {
+    return fail('gender', 'The selected product cannot execute the requested gender values and unknown handling exactly.');
+  }
+  const requested: Record<string, unknown> = { gender: structuredClone(gender) };
+  const applied: Record<string, unknown> = {
+    gender: { values: structuredClone(gender.values), include_unknown: gender.include_unknown },
+  };
+  const age = isRecord(demographics.age) ? demographics.age : undefined;
+  if (age) {
+    if (typeof age.min === 'number' && typeof age.max === 'number' && age.min > age.max) {
+      return fail('age', 'Minimum age must not exceed maximum age.', 'INVALID_REQUEST');
+    }
+    if (isRecord(targeting?.age_restriction)) {
+      if (age.include_unknown === true || (typeof age.max === 'number'
+        && typeof targeting.age_restriction.min === 'number' && age.max < targeting.age_restriction.min)) {
+        return fail('age', 'The age predicate and legal minimum-age eligibility have an empty or unknown-age intersection.', 'INVALID_REQUEST');
+      }
+      if (targeting.age_restriction.verification_required === true) {
+        return fail('age', 'The training seller cannot attest the requested legal age verification basis.');
+      }
+    }
+    if (age.accepted_bases !== undefined || age.accepted_verification_methods !== undefined) {
+      return fail('age', 'The training seller cannot attest the requested age determination or verification basis.');
+    }
+    requested.age = structuredClone(age);
+    applied.age = {
+      ...(age.min !== undefined && { min: age.min }),
+      ...(age.max !== undefined && { max: age.max }),
+      include_unknown: age.include_unknown,
+    };
+  }
+  const options = Array.isArray(productRecord.signal_targeting_options)
+    ? productRecord.signal_targeting_options.filter(isRecord).filter(option => (
+        isRecord(option.signal_ref) && isRecord(option.demographic_predicate)
+        && Array.isArray(option.restricted_attributes)
+      ))
+    : [];
+  const sameAge = (left: Record<string, unknown>, right: Record<string, unknown>) => (
+    left.min === right.min && left.max === right.max && left.include_unknown === right.include_unknown
+  );
+  const sameGender = (left: Record<string, unknown>, right: Record<string, unknown>) => (
+    left.include_unknown === right.include_unknown
+    && isDeepStrictEqual(canonicalStringSet(left.values), canonicalStringSet(right.values))
+  );
+  const genderModes = Array.isArray(genderSupport.execution_modes) ? genderSupport.execution_modes : [];
+  const ageSupport = isRecord(capability.age) ? capability.age : undefined;
+  const ageModes = Array.isArray(ageSupport?.execution_modes) ? ageSupport.execution_modes : [];
+  // A joint signal proves the entire conjunction. Never describe a correlated
+  // age+gender segment as an independent dimension-local gender signal.
+  if (age && ageSupport && unknownMatches(ageSupport, age)
+    && ageModes.includes('signals') && genderModes.includes('signals')
+    && productRecord.signal_targeting_allowed === true) {
+    const joint = options.find(option => {
+      const predicate = option.demographic_predicate as Record<string, unknown>;
+      return Object.keys(predicate).length === 2
+        && isRecord(predicate.age) && sameAge(predicate.age, age)
+        && isRecord(predicate.gender) && sameGender(predicate.gender, gender)
+        && (option.restricted_attributes as unknown[]).includes('age')
+        && (option.restricted_attributes as unknown[]).includes('sex_gender');
+    });
+    if (joint) return { resolution: {
+      requested, applied, equivalent: true,
+      execution: { type: 'signals', signal_refs: [structuredClone(joint.signal_ref)] },
+    } };
+  }
+  let genderExecution: Record<string, unknown> | undefined;
+  if (genderModes.includes('native')) genderExecution = { type: 'gender_values' };
+  else if (genderModes.includes('signals') && productRecord.signal_targeting_allowed === true) {
+    const requestedValues = new Set(gender.values);
+    const candidates = options.filter(option => {
+      const predicate = option.demographic_predicate as Record<string, unknown>;
+      const signalGender = isRecord(predicate.gender) ? predicate.gender : undefined;
+      return Object.keys(predicate).length === 1 && signalGender
+        && Array.isArray(signalGender.values) && signalGender.values.length > 0
+        && signalGender.values.every(value => requestedValues.has(value))
+        && typeof signalGender.include_unknown === 'boolean'
+        && (!signalGender.include_unknown || gender.include_unknown)
+        && (option.restricted_attributes as unknown[]).includes('sex_gender');
+    });
+    const covered = new Set(candidates.flatMap(option => (
+      (option.demographic_predicate as { gender: { values: unknown[] } }).gender.values
+    )));
+    const unknownCovered = candidates.some(option => (
+      (option.demographic_predicate as { gender: { include_unknown: boolean } }).gender.include_unknown
+    ));
+    if (gender.values.every(value => covered.has(value)) && unknownCovered === gender.include_unknown) {
+      genderExecution = { type: 'signals', signal_refs: candidates.map(option => structuredClone(option.signal_ref)) };
+    }
+  }
+  if (!genderExecution) return fail('gender', 'No declared native execution or authoritative signal union exactly matches the gender predicate.');
+  if (!age) return { resolution: { requested, applied, equivalent: true, execution: genderExecution } };
+  if (!ageSupport || !unknownMatches(ageSupport, age)) return fail('age', 'The selected product cannot execute the accompanying age predicate exactly.');
+  const low = typeof age.min === 'number' ? age.min : Number.NEGATIVE_INFINITY;
+  const high = typeof age.max === 'number' ? age.max : Number.POSITIVE_INFINITY;
+  if (low > high) return fail('age', 'Minimum age must not exceed maximum age.', 'INVALID_REQUEST');
+  let ageExecution: Record<string, unknown> | undefined;
+  if (ageModes.includes('continuous_bounds')
+    && [age.min, age.max].every(bound => bound === undefined || (
+      typeof bound === 'number' && typeof ageSupport.min_supported_age === 'number'
+      && typeof ageSupport.max_supported_age === 'number'
+      && bound >= ageSupport.min_supported_age && bound <= ageSupport.max_supported_age
+    ))
+    && (age.min !== undefined || ageSupport.supports_unbounded_min === true)
+    && (age.max !== undefined || ageSupport.supports_unbounded_max === true)) {
+    ageExecution = { type: 'continuous_bounds' };
+  }
+  if (!ageExecution && ageModes.includes('enumerated_intervals') && Array.isArray(ageSupport.intervals)) {
+    const intervals = ageSupport.intervals.filter(isRecord).filter(interval => (
+      isRecord(interval.age) && typeof interval.interval_id === 'string'
+      && (typeof interval.age.min === 'number' ? interval.age.min : Number.NEGATIVE_INFINITY) >= low
+      && (typeof interval.age.max === 'number' ? interval.age.max : Number.POSITIVE_INFINITY) <= high
+      && (!interval.age.include_unknown || age.include_unknown)
+    )).sort((left, right) => (
+      ((left.age as { min?: number }).min ?? Number.NEGATIVE_INFINITY)
+      - ((right.age as { min?: number }).min ?? Number.NEGATIVE_INFINITY)
+    ));
+    let end = low;
+    let startsAtLow = false;
+    let hasGap = false;
+    for (const [index, interval] of intervals.entries()) {
+      const bounds = interval.age as { min?: number; max?: number };
+      const start = bounds.min ?? Number.NEGATIVE_INFINITY;
+      if (index === 0) startsAtLow = start === low;
+      else if (start > end + 1) hasGap = true;
+      end = Math.max(end, bounds.max ?? Number.POSITIVE_INFINITY);
+    }
+    const unknownCovered = intervals.some(interval => (interval.age as { include_unknown: boolean }).include_unknown);
+    if (intervals.length > 0 && startsAtLow && !hasGap && end === high && unknownCovered === age.include_unknown) {
+      ageExecution = { type: 'enumerated_intervals', interval_ids: intervals.map(interval => interval.interval_id) };
+    }
+  }
+  if (!ageExecution && ageModes.includes('signals') && productRecord.signal_targeting_allowed === true) {
+    const signal = options.find(option => {
+      const predicate = option.demographic_predicate as Record<string, unknown>;
+      return Object.keys(predicate).length === 1 && isRecord(predicate.age)
+        && sameAge(predicate.age, age) && (option.restricted_attributes as unknown[]).includes('age');
+    });
+    if (signal) ageExecution = { type: 'signals', signal_refs: [structuredClone(signal.signal_ref)] };
+  }
+  if (!ageExecution) return fail('age', 'No declared execution exactly matches the accompanying age predicate.');
+  return { resolution: {
+    requested, applied, equivalent: true,
+    execution: { type: 'per_dimension', age: ageExecution, gender: genderExecution },
+  } };
+}
+
+/** Top-level targeting dimensions are replacement patches. A demographics
+ * value replaces that entire dimension; null clears both age and gender. */
+function genderTargetingMutation(
+  base: PackageTargeting | undefined,
+  input: unknown,
+): Record<string, unknown> | undefined {
+  const currentDemographics = isRecord(base?.demographics) ? base.demographics : undefined;
+  const inputDemographics = isRecord(input) && isRecord(input.demographics) ? input.demographics : undefined;
+  if (currentDemographics?.gender === undefined && inputDemographics?.gender === undefined
+    && !(isRecord(input) && input.demographics === null)) {
+    return isRecord(input) ? input : undefined;
+  }
+  if (!isRecord(input)) return base ? structuredClone(base) : undefined;
+  const effective: Record<string, unknown> = structuredClone(base ?? {});
+  for (const [dimension, value] of Object.entries(input)) {
+    if (value === null) delete effective[dimension];
+    // Open schema keys are data, including a literal __proto__ key.
+    else Object.defineProperty(effective, dimension, {
+      value: structuredClone(value), enumerable: true, writable: true, configurable: true,
+    });
+  }
+  return Object.keys(effective).length > 0 ? effective : undefined;
+}
+
+function genderTargetingMutationError(base: PackageTargeting | undefined, input: unknown, path: string): TaskError | undefined {
+  const current = isRecord(base?.demographics) ? base.demographics : undefined;
+  const supplied = isRecord(input) && isRecord(input.demographics) ? input.demographics : undefined;
+  if (current?.gender === undefined && supplied?.gender === undefined) return undefined;
+  if (input === undefined) return undefined;
+  const validation = validateSourceSchema('core/targeting-input.json', input);
+  if (validation.valid) {
+    const effective = genderTargetingMutation(base, input);
+    if (!effective || validateSourceSchema('core/targeting.json', effective).valid) return undefined;
+  }
+  return { code: 'INVALID_REQUEST', message: 'The targeting mutation must leave a valid non-null effective targeting state.', field: path, recovery: 'correctable' };
+}
+
+function hasCoreGenderTargeting(value: unknown): boolean {
+  return isRecord(value) && isRecord(value.demographics) && value.demographics.gender !== undefined;
+}
+
+function unsupportedGenderGovernanceError(): TaskError {
+  return { code: 'UNSUPPORTED_FEATURE', field: 'targeting_overlay.demographics.gender', recovery: 'correctable',
+    message: 'The training governance evaluator cannot evaluate effective core gender targeting. This governed operation was not executed.' };
+}
+
+/** Inspect principal-owned configured and proposal defaults before verifying a
+ * governance token; verification itself reserves its local replay identifier. */
+async function createUsesEffectiveCoreGender(req: ToolArgs, ctx: TrainingContext, session: SessionState): Promise<boolean> {
+  const request = req as unknown as Record<string, unknown>;
+  const packages = Array.isArray(request.packages) ? request.packages.filter(isRecord) : [];
+  const proposalId = typeof request.proposal_id === 'string' ? request.proposal_id : undefined;
+  if (proposalId) {
+    const proposalSession = await getSession(productDiscoverySessionKey({ ...req, __compact_proposal_lifecycle: true } as ToolArgs, ctx));
+    for (const candidateSession of [session, proposalSession]) {
+      const record = candidateSession.proposalRefinementRecords.get(proposalId);
+      const proposal = record ? canonicalProposalFromRecord(record) as unknown as Record<string, unknown>
+        : candidateSession.lastGetProductsContext?.proposals?.find(candidate => candidate.proposal_id === proposalId) as unknown as Record<string, unknown> | undefined;
+      const terms = isRecord(proposal?.commercial_terms) ? proposal.commercial_terms
+        : isRecord(proposal?.__canonical_commercial_terms) ? proposal.__canonical_commercial_terms : undefined;
+      if (Array.isArray(terms?.purchases)) packages.push(...terms.purchases.filter(isRecord));
+      if (Array.isArray(proposal?.allocations)) packages.push(...proposal.allocations.filter(isRecord));
+    }
+  }
+  const owner = configuredProductOwner(req, ctx);
+  for (const pkg of packages) {
+    if (hasCoreGenderTargeting(pkg.targeting_overlay ?? pkg.targeting)) return true;
+    if (typeof pkg.product_id !== 'string') continue;
+    const configuredOwner = session.configuredProductOwners.get(pkg.product_id);
+    if ((!configuredOwner || (owner && isDeepStrictEqual(configuredOwner, owner)))
+      && hasCoreGenderTargeting(session.configuredProductTargeting.get(pkg.product_id))) return true;
+    if (!owner) continue;
+    const productId = pkg.product_id;
+    const inherited = await findSessionMatching(candidate => (
+      hasCoreGenderTargeting(candidate.configuredProductTargeting.get(productId))
+      && isDeepStrictEqual(candidate.configuredProductOwners.get(productId), owner)
+    ));
+    if (inherited) return true;
+  }
+  return false;
+}
+
 function packageTargetingResolution(
   product: Product,
   targeting: PackageTargeting | undefined,
 ): Record<string, unknown> | undefined {
   const targetingRecord = targeting as unknown as Record<string, unknown> | undefined;
+  const genderResolution = compileGenderDemographics(product, targetingRecord, 'targeting_overlay').resolution;
+  if (genderResolution) return { demographics: genderResolution };
   const demographics = targetingRecord && isRecord(targetingRecord.demographics)
     ? targetingRecord.demographics
     : undefined;
@@ -8612,11 +8979,14 @@ function applyDiscoveryTargeting(
   if (!targetingOverlay) return { products: targeted, capacityDrops: 0 };
   const inherentlyMatched: Product[] = [];
   targeted = targeted.filter(product => {
+    if (compileGenderDemographics(product, targetingOverlay, 'targeting_overlay').error) return false;
     const inherentMatch = matchesInherentPlacementSelection(product, targetingOverlay);
     if (inherentMatch === undefined) {
       const support = (product as unknown as Record<string, unknown>).overlay_support;
       const supportRecord = isRecord(support) ? support : {};
       return Object.entries(targetingOverlay).every(([field, value]) => (
+        (field === 'demographics' && isRecord(value) && value.gender !== undefined)
+        ||
         concreteTargetingSupportedForProduct(supportRecord, field, value)
       ));
     }
@@ -9552,6 +9922,10 @@ export function projectProductDiscoveryResult(
     }
     if (isRecord(criteria?.targeting_overlay)) {
       requiredProductFields.add('expires_at');
+      if (isRecord(criteria.targeting_overlay.demographics)
+        && criteria.targeting_overlay.demographics.gender !== undefined) {
+        requiredProductFields.add('demographic_targeting');
+      }
       if (products.some(product => isRecord(product.targeting_resolution))) {
         requiredProductFields.add('targeting_resolution');
       }
@@ -10921,7 +11295,7 @@ async function handleGetProductsUnlocked(
     } as GetProductsResponse;
   }
 
-  let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
+  let products: Product[] = getCatalog(ctx).map(cp => ({ ...cp.product }));
   const compactLifecycleRequest = buyingMode === 'refine'
     && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
 
@@ -14845,6 +15219,8 @@ async function handleCreateMediaBuyUnlocked(
   options: MediaBuyExecutionOptions,
 ) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs & { paused?: boolean };
+  const inputVersionError = coreGenderVersionError(ctx, req);
+  if (inputVersionError) return { errors: [inputVersionError] };
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(
     sessionKey,
@@ -14954,6 +15330,10 @@ async function handleCreateMediaBuyUnlocked(
     ctx.principal,
     req.account,
   );
+  const createGovernanceRequired = Boolean(govCtx || session.governancePlans.size > 0 || governanceAgents.length > 0);
+  if (createGovernanceRequired && await createUsesEffectiveCoreGender(req, ctx, session)) {
+    return { errors: [unsupportedGenderGovernanceError()] };
+  }
   let governanceIntentClaims: Record<string, unknown> | undefined;
   if (govCtx) {
     const buyBudget = req.total_budget?.amount
@@ -15053,7 +15433,7 @@ async function handleCreateMediaBuyUnlocked(
     }
   }
 
-  const catalog = getCatalog();
+  const catalog = getCatalog(ctx);
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
   const configuredProductSessions = [session];
@@ -15946,7 +16326,8 @@ async function handleCreateMediaBuyUnlocked(
       )
       : undefined;
     const ordinaryTargetingError = requestedTargeting
-      ? identityAbsenceFrequencyCapError(product, requestedTargeting, targetingPath)
+      ? compileGenderDemographics(product, resolvedTargeting.targeting ?? requestedTargeting, targetingPath).error
+        ?? identityAbsenceFrequencyCapError(product, requestedTargeting, targetingPath)
         ?? packageFrequencyCapError(
           product,
           (resolvedTargeting.targeting ?? requestedTargeting).frequency_cap,
@@ -15958,17 +16339,23 @@ async function handleCreateMediaBuyUnlocked(
       errors.push(ordinaryTargetingError);
     } else if (resolvedTargeting.errorPath) {
       errors.push({
-        code: 'UNSUPPORTED_FEATURE',
-        message: `${pkgLabel}: Targeting is not supported by the selected product.`,
+        code: 'requiresRequote' in resolvedTargeting && resolvedTargeting.requiresRequote ? 'REQUOTE_REQUIRED' : 'UNSUPPORTED_FEATURE',
+        message: 'requiresRequote' in resolvedTargeting && resolvedTargeting.requiresRequote
+          ? `${pkgLabel}: Replacing the configured demographics requires a new quote.`
+          : `${pkgLabel}: Targeting is not supported by the selected product.`,
         field: resolvedTargeting.errorPath,
         recovery: 'correctable',
       });
     }
     const incomingTargeting = materializeDefaultCollectionSelection(
       product,
-      resolvedTargeting.targeting,
+      genderTargetingMutation(undefined, resolvedTargeting.targeting),
     );
     const targetingResult = validateTargeting(incomingTargeting, targetingPath);
+    const effectiveDemographicError = ordinaryTargetingError
+      ? undefined
+      : compileGenderDemographics(product, targetingResult.targeting, targetingPath).error;
+    if (effectiveDemographicError) errors.push(effectiveDemographicError);
     const collectionError = collectionSelectionError(product, targetingResult.targeting, targetingPath);
     if (collectionError) errors.push(collectionError);
     if (targetingResult.errors.length) {
@@ -16124,6 +16511,12 @@ async function handleCreateMediaBuyUnlocked(
 
   if (errors.length > 0) {
     return { errors };
+  }
+
+  const effectiveVersionError = coreGenderVersionError(ctx, createdPackages.map(pkg => ({ targeting_overlay: pkg.targeting })));
+  if (effectiveVersionError) return { errors: [effectiveVersionError] };
+  if (createGovernanceRequired && createdPackages.some(pkg => hasCoreGenderTargeting(pkg.targeting))) {
+    return { errors: [unsupportedGenderGovernanceError()] };
   }
 
   // Accept a buyer-supplied `media_buy_id` when present. Conformance
@@ -16693,7 +17086,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       mb = ownerSession.mediaBuys.get(mediaBuyId);
     }
   }
-  const catalog = getCatalog();
+  const catalog = getCatalog(ctx);
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, { ...cp.product }]));
   overlaySeededProducts(session, productMap);
   overlayConfiguredProducts(session, productMap);
@@ -18326,6 +18719,8 @@ async function handleUpdateMediaBuyUnlocked(
   options: { acceptedProposalExecution?: boolean; operationalControlExecution?: boolean; governance?: TrustedGovernedExecution } = {},
 ): Promise<Record<string, unknown>> {
   const req = args as unknown as UpdateMediaBuyArgs;
+  const inputVersionError = coreGenderVersionError(ctx, req);
+  if (inputVersionError) return { errors: [inputVersionError] };
   let session = await getSession(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(req as unknown as ToolArgs, ctx),
@@ -18352,6 +18747,8 @@ async function handleUpdateMediaBuyUnlocked(
   if (!mb) {
     return { errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }] };
   }
+  const storedVersionError = coreGenderVersionError(ctx, mb.packages.map(pkg => ({ targeting_overlay: pkg.targeting })));
+  if (storedVersionError) return { errors: [storedVersionError] };
 
   // Terminal state check. Double-cancel returns NOT_CANCELLABLE —
   // media_buy_seller/invalid_transitions pins this error code explicitly.
@@ -18365,7 +18762,7 @@ async function handleUpdateMediaBuyUnlocked(
     return { errors: [{ code, message }] };
   }
 
-  const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+  const productMap = new Map(getCatalog(ctx).map(cp => [cp.product.product_id, cp.product]));
   // The owning partition's catalog is authoritative for capability checks;
   // the request partition only fills in fixtures the owner cannot see.
   if (requestSession !== session) overlaySeededProducts(requestSession, productMap);
@@ -18398,6 +18795,13 @@ async function handleUpdateMediaBuyUnlocked(
     if (!packageState || !isRecord(requested)) continue;
     const product = productMap.get(packageState.productId);
     const targetingPath = `packages[${updateIndex}].targeting_overlay`;
+    const targetingMutationError = genderTargetingMutationError(packageState.targeting, requested, targetingPath);
+    if (targetingMutationError) return { errors: [targetingMutationError] };
+    const effectiveGenderTargeting = genderTargetingMutation(packageState.targeting, requested);
+    const demographicError = product
+      ? compileGenderDemographics(product, effectiveGenderTargeting, targetingPath).error
+      : undefined;
+    if (demographicError) return { errors: [demographicError] };
     const inherentPlacementMatch = product
       ? matchesInherentPlacementSelection(product, requested)
       : undefined;
@@ -18670,6 +19074,20 @@ async function handleUpdateMediaBuyUnlocked(
     ctx.principal,
     mb.accountRef,
   );
+  const updateGovernanceRequired = Boolean(updateGovernanceContext
+    || (requiresGovernance && (session.governancePlans.size > 0 || updateGovernanceAgents.length > 0)));
+  if (updateGovernanceRequired) {
+    const retainedGender = mb.packages.some(pkg => {
+      const update = validationReq.packages?.find(candidate => candidate.package_id === pkg.packageId);
+      if (pkg.canceled || update?.canceled) return false;
+      const overlay = update?.targeting_overlay ?? (update as PackageUpdateExt | undefined)?.targeting;
+      return hasCoreGenderTargeting(overlay === undefined ? pkg.targeting : genderTargetingMutation(pkg.targeting, overlay));
+    });
+    const newGender = validationReq.new_packages?.length
+      ? await createUsesEffectiveCoreGender({ ...req, packages: validationReq.new_packages } as ToolArgs, ctx, session)
+      : false;
+    if (retainedGender || newGender) return { errors: [unsupportedGenderGovernanceError()] };
+  }
   if (updateGovernanceContext) {
     const commitmentError = await governedCommitmentError(
       updateGovernanceContext,
@@ -18852,9 +19270,10 @@ async function handleUpdateMediaBuyUnlocked(
           }
         }
       }
-      const incomingTargeting = (update as PackageUpdateExt).targeting_overlay
+      const rawIncomingTargeting = (update as PackageUpdateExt).targeting_overlay
         ?? (update as PackageUpdateExt).targeting
         ?? pkg.targeting;
+      const incomingTargeting = genderTargetingMutation(pkg.targeting, rawIncomingTargeting);
       const targetingResult = validateTargeting(incomingTargeting, `packages[${pkgId}].targeting_overlay`);
       if (targetingResult.errors.length) return { errors: targetingResult.errors };
       if (enforceLifecycleSplit) {
@@ -19091,12 +19510,17 @@ async function handleUpdateMediaBuyUnlocked(
 
       const updateTargeting = update.targeting_overlay ?? update.targeting;
       if (updateTargeting !== undefined) {
-        const targetingResult = validateTargeting(updateTargeting, `packages[${pkgId}].targeting_overlay`);
+        const effectiveTargeting = genderTargetingMutation(pkg.targeting, updateTargeting);
+        const targetingResult = validateTargeting(effectiveTargeting, `packages[${pkgId}].targeting_overlay`);
         if (targetingResult.errors.length) {
           return { errors: targetingResult.errors };
         }
         const before = pkg.targeting;
         pkg.targeting = targetingResult.targeting;
+        const targetingProduct = productMap.get(pkg.productId);
+        pkg.targetingResolution = targetingProduct
+          ? packageTargetingResolution(targetingProduct, pkg.targeting)
+          : undefined;
         const changed = JSON.stringify(before ?? null) !== JSON.stringify(pkg.targeting ?? null);
         // A valid exact restatement is still an accepted package operation and
         // belongs in affected_packages even when it is state-idempotent.
@@ -19199,11 +19623,13 @@ async function handleUpdateMediaBuyUnlocked(
       );
 
       const pkgId = `pkg-${mb.packages.length + i}`;
-      const newTargeting = npkg.targeting_overlay ?? npkg.targeting;
+      const newTargeting = genderTargetingMutation(undefined, npkg.targeting_overlay ?? npkg.targeting);
       const targetingResult = validateTargeting(newTargeting, `new_packages[${i}].targeting_overlay`);
       if (targetingResult.errors.length) {
         return { errors: targetingResult.errors };
       }
+      const demographicError = compileGenderDemographics(product, targetingResult.targeting, `new_packages[${i}].targeting_overlay`).error;
+      if (demographicError) return { errors: [demographicError] };
       const identityAbsenceCapError = identityAbsenceFrequencyCapError(
         product,
         targetingResult.targeting ?? {},
@@ -19296,6 +19722,7 @@ async function handleUpdateMediaBuyUnlocked(
         creativeAssignments: assignmentRows.flatMap(row => typeof row.creative_id === 'string' ? [row.creative_id] : []),
         creativeAssignmentDetails: assignmentRows.map(row => structuredClone(row)),
         targeting: targetingResult.targeting,
+        targetingResolution: packageTargetingResolution(product, targetingResult.targeting),
         frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
         context: npkg.context ? structuredClone(npkg.context) : undefined,
       };
@@ -19600,9 +20027,18 @@ async function handleUpdateMediaBuyUnlocked(
 }
 
 export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
-  const versionResolution = resolveServedAdcpVersion(args as unknown as Record<string, unknown>);
+  const versionResolution = resolveServedAdcpVersion(args as unknown as Record<string, unknown>, signingCompatibleReleaseVersions(ctx));
   const servedAdcpVersion = ctx.servedAdcpVersion
     ?? (versionResolution.ok ? versionResolution.servedVersion : DEFAULT_ADCP_VERSION);
+  const discoverySession = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const discoveryProducts = new Map(getCatalog(ctx).map(entry => [entry.product.product_id, entry.product]));
+  overlaySeededProducts(discoverySession, discoveryProducts);
+  const genderSupported = [...discoveryProducts.values()].some(product => {
+    const declaration = (product as unknown as Record<string, unknown>).demographic_targeting;
+    return isRecord(declaration) && isRecord(declaration.gender)
+      && Array.isArray(declaration.gender.values) && declaration.gender.values.length > 0
+      && Array.isArray(declaration.gender.execution_modes) && declaration.gender.execution_modes.length > 0;
+  });
   const tasks = visibleToolsForContext(ctx)
     .filter(tool => toolAvailableForServedAdcpVersion(tool.name, servedAdcpVersion))
     .map(t => t.name)
@@ -19687,6 +20123,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
           ? [{ task: 'build_creative', modes: ['signed_context'] }]
           : [];
   const experimentalFeatures = [
+    ...(coreGenderVersionSupported(ctx) && genderSupported ? ['media_buy.gender_targeting'] : []),
     ...((governanceEnforcementTasks.length > 0 || ctx.tenantId === 'governance')
       ? ['governance.campaign']
       : []),
@@ -19846,6 +20283,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       }),
       execution: {
         targeting: {
+          ...(coreGenderVersionSupported(ctx) && genderSupported && { demographics: { supported: true, gender: { supported: true } } }),
           geo_countries: true,
           geo_regions: true,
           geo_metros: { nielsen_dma: true },
@@ -22438,7 +22876,7 @@ export async function handleBuyProducts(
     }] };
   }
 
-  const catalog = new Map(getCatalog().map(entry => [entry.product.product_id, entry.product]));
+  const catalog = new Map(getCatalog(ctx).map(entry => [entry.product.product_id, entry.product]));
   overlaySeededProducts(session, catalog);
   overlayConfiguredProducts(session, catalog);
   const purchaseStartedAt = new Date().toISOString();
@@ -22500,9 +22938,12 @@ export async function handleBuyProducts(
     const requestedTargeting = isRecord(purchase.targeting_overlay)
       ? purchase.targeting_overlay
       : undefined;
-    const overlaySupport = isRecord(productTerms.overlay_support)
-      ? productTerms.overlay_support
+    const overlaySupport: Record<string, unknown> = isRecord(productTerms.overlay_support)
+      ? { ...productTerms.overlay_support }
       : {};
+    const requestedGender = compileGenderDemographics(product, requestedTargeting, `purchases[${index}].targeting_overlay`);
+    if (requestedGender.error) return { errors: [requestedGender.error] };
+    if (requestedGender.resolution) overlaySupport.demographics = true;
     if (requestedTargeting) {
       for (const field of [
         'geo_regions', 'geo_regions_exclude',
@@ -22538,14 +22979,18 @@ export async function handleBuyProducts(
     if (resolvedTargeting.errorPath) {
       return {
         errors: [{
-          code: 'UNSUPPORTED_FEATURE',
-          message: 'Purchase targeting must narrow targeting bound to the configured product or use a dimension declared in overlay_support.',
+          code: resolvedTargeting.requiresRequote ? 'REQUOTE_REQUIRED' : 'UNSUPPORTED_FEATURE',
+          message: resolvedTargeting.requiresRequote
+            ? 'Replacing configured demographics requires a new quote.'
+            : 'Purchase targeting must narrow targeting bound to the configured product or use a dimension declared in overlay_support.',
           field: resolvedTargeting.errorPath,
           recovery: 'correctable',
         }],
       };
     }
     const effectiveTargeting = resolvedTargeting.targeting;
+    const demographicError = compileGenderDemographics(product, effectiveTargeting, `purchases[${index}].targeting_overlay`).error;
+    if (demographicError) return { errors: [demographicError] };
     const purchaseStartTime = purchase.start_time ?? args.start_time;
     canonicalPurchases.push({
       ...structuredClone(purchase),
@@ -23197,7 +23642,7 @@ async function handleControlMediaBuyUnlocked(
       return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mediaBuy.revision}, got ${args.revision}` }] };
     }
     const currentStatus = deriveStatus(mediaBuy, session);
-    const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+    const productMap = new Map(getCatalog(ctx).map(cp => [cp.product.product_id, cp.product]));
     if (requestSession !== session) overlaySeededProducts(requestSession, productMap);
     overlaySeededProducts(session, productMap);
     const servedAdcpVersion = lifecycleSplitVersionForContext(ctx);
@@ -23591,7 +24036,7 @@ function validateIdempotencyProtectedInput(
     // source-schema-driven compact projection below.
     const requestedFields = Array.isArray(args.fields) ? args.fields : undefined;
     const legacySchemaFields = requestedFields?.filter(field => field !== 'identity');
-    const schemaArgs = requestedFields?.includes('identity')
+    let schemaArgs = requestedFields?.includes('identity')
       ? {
         ...args,
         fields: legacySchemaFields && legacySchemaFields.length > 0
@@ -23599,6 +24044,20 @@ function validateIdempotencyProtectedInput(
           : ['product_id'],
       }
       : args;
+    const overlay = isRecord(args.targeting_overlay) ? args.targeting_overlay : undefined;
+    const demographics = isRecord(overlay?.demographics) ? overlay.demographics : undefined;
+    if (demographics?.gender !== undefined) {
+      // The pinned SDK still requires age on demographics. Validate the real
+      // request against source, then validate remaining legacy fields through
+      // its parser without inventing an age constraint or dropping wire state.
+      const sourceError = validateProductDiscoverySourceInput('get-products-request', args);
+      if (sourceError) return sourceError;
+      schemaArgs = structuredClone(schemaArgs);
+      const parserOverlay = schemaArgs.targeting_overlay as Record<string, unknown>;
+      const parserDemographics = parserOverlay.demographics as Record<string, unknown>;
+      delete parserDemographics.gender;
+      if (Object.keys(parserDemographics).length === 0) delete parserOverlay.demographics;
+    }
     const parsed = GetProductsRequestSchema.safeParse(schemaArgs);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -23735,10 +24194,12 @@ async function executeTrainingAgentToolInContext(
   // returning the original caller's correlation data.
   const rawArgs = args as unknown as Record<string, unknown>;
   const { context: callerContext, ...initialHandlerArgs } = rawArgs;
-  const versionResolution = resolveServedAdcpVersionForTool(toolName, initialHandlerArgs);
+  const versionResolution = resolveServedAdcpVersionForTool(toolName, initialHandlerArgs, signingCompatibleReleaseVersions(ctx));
   if (!versionResolution.ok) {
     return { success: false, error: versionResolution.message };
   }
+  const inputVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion: versionResolution.servedVersion }, initialHandlerArgs);
+  if (inputVersionError) return { success: false, error: `${inputVersionError.code}: ${inputVersionError.message}` };
   if (
     !trainingToolAvailableForContext(toolName, ctx)
     || !toolAvailableForServedAdcpVersion(toolName, versionResolution.servedVersion)
@@ -23828,6 +24289,8 @@ async function executeTrainingAgentToolInContext(
       ),
     });
     if (outcome.kind === 'replay') {
+      const replayVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion: versionResolution.servedVersion }, outcome.response);
+      if (replayVersionError) return { success: false, error: replayVersionError.message };
       const replayed = projectProductDiscoveryResult(
         toolName,
         outcome.response as Record<string, unknown>,
@@ -23858,10 +24321,12 @@ async function executeTrainingAgentToolInContext(
     claim = { payloadHash: outcome.payloadHash, claimToken: outcome.claimToken };
   }
   try {
-    const result = await Promise.resolve(handler(
+    let result = await Promise.resolve(handler(
       handlerArgs as ToolArgs,
       { ...ctx, servedAdcpVersion: versionResolution.servedVersion },
     ));
+    const responseVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion: versionResolution.servedVersion }, result);
+    if (responseVersionError) result = { errors: [responseVersionError] };
     const cacheResponse = addServedAdcpVersion(result, versionResolution.servedVersion) as Record<string, unknown>;
     const projectedResponse = projectProductDiscoveryResult(
       toolName,
@@ -23978,6 +24443,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       };
     }
     const servedAdcpVersion = versionResolution.servedVersion;
+    const inputVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion }, initialHandlerArgs);
+    if (inputVersionError) return {
+      result: adcpError(inputVersionError.code, { message: inputVersionError.message, field: inputVersionError.field, recovery: 'correctable' }, callerContext, servedAdcpVersion),
+      flushable: false,
+    };
 
     if (
       !handler
@@ -24192,6 +24662,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         };
       }
       if (outcome.kind === 'replay') {
+        const replayVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion }, outcome.response);
+        if (replayVersionError) return {
+          result: adcpError(replayVersionError.code, replayVersionError, callerContext, servedAdcpVersion),
+          flushable: false,
+        };
         // Cached inner response; envelope fields (`replayed`, `context`,
         // `status`) are produced fresh on every response per security.mdx.
         // Replayed responses bypass the handler entirely — no mutations, no
@@ -24328,10 +24803,27 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     if (skipHandler) {
       // toolResult already set from idempotency replay path above
     } else try {
-      const result = await Promise.resolve(handler(
+      let result = await Promise.resolve(handler(
         (handlerArgs as ToolArgs) || {},
         { ...ctx, servedAdcpVersion },
       ));
+      // The local 3.3 preview uses this raw MCP dispatcher rather than the
+      // deployed tenant adapter. Keep legacy lifecycle status out of the
+      // protocol envelope before publishing or caching the candidate result.
+      if (
+        ctx.developmentCoreGender
+        && coreGenderVersionSupported({ ...ctx, servedAdcpVersion })
+        && name === 'update_media_buy'
+        && isRecord(result)
+        && typeof result.media_buy_status === 'string'
+        && result.status === result.media_buy_status
+      ) {
+        const canonicalResult = { ...result };
+        delete canonicalResult.status;
+        result = canonicalResult;
+      }
+      const responseVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion }, result);
+      if (responseVersionError) result = { errors: [responseVersionError] };
       const resultObj = result as Record<string, unknown> & {
         errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }>;
       };
