@@ -41,7 +41,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CAMPAIGN_SUSPENDED` | transient | wait for the escalation to resolve; contact the plan operator if the suspension persists |
 | `CATALOG_LIMIT_EXCEEDED` | correctable | remove unused catalogs, or contact the seller to raise the limit |
 | `COMMITTED_RESOURCE_PURGED` | terminal | do not automatically retry with the same or a fresh idempotency_key; reconcile through the resource read task and seller audit or operator records before deciding whether to initiate a new operation |
-| `COMPLIANCE_UNSATISFIED` | correctable | choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement |
+| `COMPLIANCE_UNSATISFIED` | correctable | choose a format that supports the required disclosure positions and persistence modes, remove the disclosure requirement, or revise the refinement instruction |
 | `CONFIGURATION_ERROR` | terminal | surface to a human at the seller — the buyer cannot resolve a seller-side deployment misconfiguration and MUST NOT auto-retry |
 | `CONFLICT` | transient | re-read the resource and retry with current state |
 | `CONFLICTING_SELECTORS` | correctable | emit one canonical format selector route, or make every required legacy 3.x compatibility projection select the same product format contract under the canonical v2-narrows-v1 comparison |
@@ -402,7 +402,7 @@ The requested mutation committed, but the affected resource was independently de
 
 <Accordion title="COMPLIANCE_UNSATISFIED — correctable">
 
-**Suggested action:** choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement
+**Suggested action:** choose a format that supports the required disclosure positions and persistence modes, remove the disclosure requirement, or revise the refinement instruction
 
 A required disclosure from the brief's compliance section cannot be satisfied — either the target format's disclosure_capabilities do not include the required position or persistence mode, or (on a refinement) the request's message or config instructs removal or contradiction of a required disclosure or the use of a prohibited claim. Recovery: correctable (choose a format that supports the required disclosure positions and persistence modes, remove the disclosure requirement, or revise the refinement instruction).
 

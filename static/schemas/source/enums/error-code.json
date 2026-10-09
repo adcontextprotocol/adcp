@@ -382,7 +382,7 @@
     },
     "COMPLIANCE_UNSATISFIED": {
       "recovery": "correctable",
-      "suggestion": "choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement"
+      "suggestion": "choose a format that supports the required disclosure positions and persistence modes, remove the disclosure requirement, or revise the refinement instruction"
     },
     "GOVERNANCE_DENIED": {
       "recovery": "correctable",
