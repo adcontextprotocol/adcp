@@ -44,12 +44,13 @@ function termsDigest(commercialTerms) {
 
 test('proposal negotiation guide publishes only schema-backed JSON examples', () => {
   const blocks = jsonBlocks(guide);
-  assert.equal(blocks.length, 10);
+  assert.equal(blocks.length, 11);
   assert.ok(blocks.every(block => typeof block.$schema === 'string'));
   assert.ok(blocks.some(block => block.$schema.endsWith('/refine-proposals-request.json')));
   assert.ok(blocks.some(block => block.$schema.endsWith('/refine-proposals-response.json')));
   assert.ok(blocks.some(block => block.$schema.endsWith('/accept-proposal-request.json')));
   assert.ok(blocks.some(block => block.$schema.endsWith('/protocol-envelope.json')));
+  assert.ok(blocks.some(block => block.$schema.endsWith('/request-proposals-request.json')));
 });
 
 test('proposal examples carry recomputable RFC 8785-style terms digests', () => {

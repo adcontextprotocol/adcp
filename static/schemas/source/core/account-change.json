@@ -111,7 +111,7 @@
       "properties": {
         "task": {
           "type": "string",
-          "description": "Allowlisted authoritative read task. This is a repair hint, never an instruction to dispatch dynamically. The buyer constructs and validates the request locally from the authenticated feed account and resource identity.",
+          "description": "Allowlisted authoritative read task. This is a repair hint, never an instruction to dispatch dynamically. The buyer constructs and validates the request locally from the authenticated feed account and resource identity. list_proposals repairs resource.type proposal records (actions created and status_changed, with parent_ids.opportunity_id when the proposal has one); sellers MUST NOT emit proposal records to callers whose negotiated AdCP version is below 3.3. A proposal record older than the 30-day terminal retention repairs with available false and unavailable_reason deleted.",
           "enum": [
             "list_accounts",
             "get_media_buys",
@@ -122,7 +122,8 @@
             "sync_catalogs",
             "get_account_financials",
             "list_products",
-            "get_signals"
+            "get_signals",
+            "list_proposals"
           ]
         },
         "available": {

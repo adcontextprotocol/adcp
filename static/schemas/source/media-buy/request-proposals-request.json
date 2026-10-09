@@ -56,7 +56,7 @@
           }
         }
       ],
-      "description": "Optional planning-cycle context that the seller associates with every proposal created by this request."
+      "description": "Optional planning-cycle context that the seller associates with every proposal created by this request. Experimental: a held opportunity_id updates it; a closed one is rejected."
     }
   },
   "required": ["idempotency_key", "brief"],

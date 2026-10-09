@@ -47,8 +47,10 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // outcome_target.cost_per adds its object and strength enum schemas, each
   // reached from list_products, request_proposals, and refine_proposals.
   // Daypart time granularity adds one shared enum reached through the
-  // daypart requirement in the targeting-bearing tools.
-  assert.equal(report.definition_instances, 681);
+  // daypart requirement in the targeting-bearing tools. Experimental
+  // opportunity.later_proposals adds a Duration reference to the shared
+  // opportunity context reached from the proposal and purchase tools.
+  assert.equal(report.definition_instances, 683);
   assert.equal(report.unique_definitions, 185);
   assert.equal(report.repeated_definitions, 133);
   assert.ok(report.repeated_definition_bytes > 180_000);

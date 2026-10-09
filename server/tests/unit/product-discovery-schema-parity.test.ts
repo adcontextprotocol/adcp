@@ -130,8 +130,11 @@ describe('product discovery MCP schema parity', () => {
     // 152 KiB. Experimental minute-resolution dayparts add the clock-time
     // pair, its exclusion, and the time_granularity requirement to the shared
     // daypart graph (~0.45 KiB per tool; 152.93 KiB measured), bounded at
-    // 154 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(154 * 1024);
+    // 154 KiB. Experimental opportunity.later_proposals consent on the shared
+    // opportunity context reaches request_proposals and decline_proposals,
+    // and decline_proposals gains the empty-declines-with-opportunity rule
+    // (+1,302 bytes measured, 152.93 → 154.2 KiB), bounded at 155 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(155 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);
