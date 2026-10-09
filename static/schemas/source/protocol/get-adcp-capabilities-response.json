@@ -225,6 +225,34 @@
     {
       "if": {
         "properties": {
+          "signals": {
+            "properties": {
+              "features": {
+                "properties": {
+                  "signal_lifecycle": {
+                    "const": true
+                  }
+                },
+                "required": ["signal_lifecycle"]
+              }
+            },
+            "required": ["features"]
+          }
+        },
+        "required": ["signals"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "signals.signal_lifecycle" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "media_buy": {
             "properties": {
               "audience_targeting": {
@@ -2219,6 +2247,12 @@
           "type": "object",
           "description": "Optional signals features supported",
           "properties": {
+            "signal_lifecycle": {
+              "type": "boolean",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "true means this signals agent builds segments on demand and may emit signal_status ('processing' or 'failed') and source_audience_id on get_signals results. Absent or false means every returned signal is ready. Experimental (x-status: experimental): agents declaring this MUST list signals.signal_lifecycle in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice."
+            },
             "catalog_signals": {
               "type": "boolean",
               "description": "DEPRECATED. Legacy wire flag for structured signal_ref references to provider-published signal definitions. New agents SHOULD omit this flag; callers MUST NOT require it before using signal_ref with the Signals protocol.",
