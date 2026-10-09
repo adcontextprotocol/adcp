@@ -234,12 +234,13 @@ Experimental surfaces changed under their own notice contract and are not except
 
 ### 3.3 exceptions to 3.x compatibility (beta)
 
-AdCP 3.3 adds no stable field, removes none, and deprecates none. Two merged changes narrow what a conformant implementation may do, and are recorded here under the rule above for core-security and normative behavior. This list is refreshed at each beta cut.
+AdCP 3.3 adds no stable field, removes none, and deprecates none. Three merged changes narrow what a conformant implementation may do, and are recorded here under the rule above for core-security and normative behavior. This list is refreshed at each beta cut.
 
 | Change | What narrows | Basis |
 |---|---|---|
 | Discovery never provisions an account | A seller that lazily provisions an account on `get_products`, `list_products`, `get_signals`, `request_proposals`, `refine_proposals`, or `decline_proposals`, or on the 3.2 wording "first account-scoped request", is no longer conformant. Request and response schemas are unchanged. | #7848, [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3#discovery-tasks-never-provision-an-account) |
 | One agent-resolution algorithm | A pinned `signing_keys` key missing from the agent's JWKS is rejected, a `kid`-only pin matches nothing, `key_origins` is checked for every webhook signer that publishes `brand_json_url`, and agents are matched by canonical URL, where entries that agree on `type` and resolved JWKS source count once and entries that differ in either are an ambiguous match. | #7882, [Signature verification tightens](/docs/reference/migration/3-2-to-3-3#signature-verification-tightens) |
+| Flight start activates committed buys only | The 3.x rule that a seller MUST move a buy from `pending_start` to `active` when the flight date arrives now applies only to committed buys (`confirmed_at` non-null). A provisional buy (`confirmed_at: null`) never auto-activates and stays `pending_start` until the seller confirms or rejects it. Request and response schemas are unchanged; `active` with `confirmed_at: null` was already invalid. | [Provisional buys](/docs/media-buy/specification#provisional-buys-seller-review-hold) |
 
 ### Experimental surfaces
 

@@ -1954,6 +1954,38 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
+  it('advertises sales-fixed-rate and its hold scenario on 3.2 and withdraws both from 3.1 and 3.0 pins', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      type Capabilities = { result?: { structuredContent?: {
+        specialisms?: string[];
+        compliance_testing?: { scenarios?: string[] };
+      } } };
+      const capabilitiesAt = async (id: number, args: Record<string, unknown>) => {
+        const response = await callTenantTool(url, id, 'get_adcp_capabilities', args) as Capabilities;
+        return response.result?.structuredContent;
+      };
+
+      const current = await capabilitiesAt(41, { adcp_version: '3.2' });
+      expect(current?.specialisms).toContain('sales-fixed-rate');
+      expect(current?.compliance_testing?.scenarios).toContain('force_media_buy_confirmation');
+
+      for (const [id, args] of [
+        [42, { adcp_version: '3.1' }],
+        [43, { adcp_version: '3.0' }],
+      ] as const) {
+        const older = await capabilitiesAt(id, { ...args });
+        expect(older?.specialisms, JSON.stringify(args)).not.toContain('sales-fixed-rate');
+        expect(older?.specialisms, JSON.stringify(args)).toContain('sales-guaranteed');
+        expect(older?.compliance_testing?.scenarios, JSON.stringify(args)).not.toContain('force_media_buy_confirmation');
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('rejects a governed rights acquisition without persisting a grant', async () => {
     const { baseUrl, close } = await bootServer();
     try {
@@ -3843,6 +3875,8 @@ describe('tenant routing smoke', () => {
       expect(scenarios).not.toContain('seed_product');
       expect(scenarios).not.toContain('seed_measurement_catalog');
       expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-dooh');
+      expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-fixed-rate');
+      expect(scenarios).not.toContain('force_media_buy_confirmation');
       expect(scenarios).not.toContain('query_provenance_audit_observations');
 
       const list = await fetch(url, {

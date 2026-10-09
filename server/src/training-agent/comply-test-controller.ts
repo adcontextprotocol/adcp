@@ -40,6 +40,7 @@ import {
   supportsAccountChangeFeed,
   supportsGetProductsRejected,
   supportsReliableReporting,
+  supportsSalesFixedRate,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
 } from './types.js';
 import {
@@ -1024,7 +1025,12 @@ function createStore(
         throw new TestControllerError('NOT_FOUND', `Media buy ${mediaBuyId} not found`, null);
       }
 
-      const prev = mb.status;
+      // A provisional buy (confirmed_at null) is held pending seller review and
+      // is never active, whatever its stored lifecycle flag says. Validate the
+      // transition from its pending state so rejection of a held buy is legal.
+      const prev = mb.confirmedAt === null && (mb.status === 'active' || mb.status === 'paused')
+        ? 'pending_start'
+        : mb.status;
       if (prev === status) {
         return { success: true, previous_state: prev, current_state: status, message: `Media buy ${mediaBuyId} is already ${status}` };
       }
@@ -1509,6 +1515,7 @@ const LOCAL_SCENARIOS = [
   'reset_state',
   'expire_account_change_cursor',
   'force_create_media_buy_arm',
+  'force_media_buy_confirmation',
   'force_get_products_arm',
   'force_get_signals_arm',
   'force_task_completion',
@@ -1954,8 +1961,10 @@ async function handleReliableReportingReconciledBillingProbe(
 
 function localScenariosFor(ctx: TrainingContext): string[] {
   const scenarios = ctx.storyboardCompat?.version === '3.0'
-    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations' && s !== 'query_account_governance_binding')
-    : [...LOCAL_SCENARIOS];
+    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations' && s !== 'query_account_governance_binding' && s !== 'force_media_buy_confirmation')
+    : supportsSalesFixedRate(ctx.servedAdcpVersion)
+      ? [...LOCAL_SCENARIOS]
+      : LOCAL_SCENARIOS.filter(s => s !== 'force_media_buy_confirmation');
   const currentOnly = supportsReliableReporting(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? scenarios
     : scenarios.filter(s => (
@@ -2129,7 +2138,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     );
   const targetsPublicTaskState = scenario === 'seed_media_buy'
     || scenario === 'seed_creative'
-    || scenario === 'force_create_media_buy_arm';
+    || scenario === 'force_create_media_buy_arm'
+    || scenario === 'force_media_buy_confirmation';
   // The frozen 3.0 runner injects a synthetic natural account into controller
   // and fixture calls, sometimes without copying its brand to the top level.
   // Platform methods on that compatibility surface historically key by brand.
@@ -2225,6 +2235,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   if (
     scenario === 'simulate_delivery'
     || scenario === 'force_media_buy_status'
+    || scenario === 'force_media_buy_confirmation'
     || scenario === 'simulate_budget_spend'
   ) {
     const mediaBuyId = isRecord(rawArgs.params) && typeof rawArgs.params.media_buy_id === 'string'
@@ -2276,6 +2287,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   // we delegate. New scenarios from spec PRs land here until adopted upstream.
   if (scenario === 'force_create_media_buy_arm') {
     return handleForceCreateMediaBuyArm(session, rawArgs);
+  }
+  if (scenario === 'force_media_buy_confirmation') {
+    return handleForceMediaBuyConfirmation(session, rawArgs, ctx);
   }
   if (scenario === 'force_get_signals_arm') {
     return handleForceGetSignalsArm(session, rawArgs);
@@ -3214,6 +3228,93 @@ function handleForceCreateMediaBuyArm(session: SessionState, rawArgs: Record<str
     success: true,
     forced: { arm, task_id: taskId },
     message: `Next create_media_buy call from this sandbox account will return the submitted arm with task_id ${taskId}`,
+  };
+}
+
+/**
+ * force_media_buy_confirmation: drive the optional seller-review hold of a
+ * fixed-rate seller. Spec: `force_media_buy_confirmation` in
+ * `comply-test-controller-request.json` and
+ * `docs/building/by-layer/L3/comply-test-controller.mdx`.
+ *
+ * - `hold` registers a single-shot directive; `handleCreateMediaBuy` consumes it
+ *   when it creates a media buy and returns synchronous success with
+ *   `confirmed_at: null`.
+ * - `confirm` commits a held buy: sets `confirmed_at` once and increments
+ *   `revision`. Confirming an already confirmed buy is an idempotent no-op.
+ */
+function handleForceMediaBuyConfirmation(
+  session: SessionState,
+  rawArgs: Record<string, unknown>,
+  ctx: TrainingContext,
+): object {
+  if (ctx.storyboardCompat?.version === '3.0' || !supportsSalesFixedRate(ctx.servedAdcpVersion)) {
+    return {
+      success: false,
+      error: 'UNKNOWN_SCENARIO',
+      error_detail: 'force_media_buy_confirmation requires AdCP 3.2 or later',
+    };
+  }
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || typeof params !== 'object') {
+    return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_media_buy_confirmation requires params' };
+  }
+  const action = params.action;
+  if (action === 'hold') {
+    session.complyExtensions.forcedMediaBuyHold = true;
+    return {
+      success: true,
+      simulated: { action: 'hold' },
+      message: 'Next create_media_buy call from this sandbox account will return synchronous success with confirmed_at null',
+    };
+  }
+  if (action !== 'confirm') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: `Invalid action: ${String(action)}. Must be 'hold' or 'confirm'.`,
+    };
+  }
+  const mediaBuyId = params.media_buy_id;
+  if (typeof mediaBuyId !== 'string' || mediaBuyId.length === 0) {
+    return { success: false, error: 'INVALID_PARAMS', error_detail: "media_buy_id is required when action = 'confirm'" };
+  }
+  const mb = session.mediaBuys.get(mediaBuyId);
+  if (!mb) {
+    return { success: false, error: 'NOT_FOUND', error_detail: `Media buy ${mediaBuyId} not found`, current_state: null };
+  }
+  if (mb.confirmedAt !== null) {
+    return {
+      success: true,
+      previous_state: 'confirmed',
+      current_state: 'confirmed',
+      message: `Media buy ${mediaBuyId} is already confirmed`,
+    };
+  }
+  if (mb.canceledAt || mb.status === 'rejected' || mb.status === 'canceled' || mb.status === 'completed') {
+    return {
+      success: false,
+      error: 'INVALID_TRANSITION',
+      error_detail: `Cannot confirm media buy ${mediaBuyId}: it already reached a terminal state`,
+      current_state: 'unconfirmed',
+    };
+  }
+  const now = new Date().toISOString();
+  mb.confirmedAt = now;
+  mb.revision += 1;
+  mb.updatedAt = now;
+  mb.history.push({
+    revision: mb.revision,
+    timestamp: now,
+    actor: 'seller',
+    action: 'confirmed',
+    summary: 'Seller committed to the media buy (confirmed_at set)',
+  });
+  return {
+    success: true,
+    previous_state: 'unconfirmed',
+    current_state: 'confirmed',
+    message: `Media buy ${mediaBuyId} confirmed; revision incremented to ${mb.revision}`,
   };
 }
 

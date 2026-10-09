@@ -420,6 +420,9 @@ export function restoreRawPackageSelectors(
 // AdCPSpecialism union can include it. Keep the cast at this single boundary;
 // the wire value remains the literal `sales-dooh` and is schema-tested here.
 const SALES_DOOH_SPECIALISM = 'sales-dooh' as never;
+// Same boundary for `sales-fixed-rate`: the in-repo schema carries it before the
+// published SDK's generated AdCPSpecialism union does.
+const SALES_FIXED_RATE_SPECIALISM = 'sales-fixed-rate' as never;
 
 const TRAINING_SALES_CHANNELS = [
   'display',
@@ -441,7 +444,7 @@ const TRAINING_SALES_CHANNELS = [
 ] as const;
 
 export const TRAINING_SALES_CAPABILITIES = {
-  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', SALES_DOOH_SPECIALISM] as const,
+  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', SALES_DOOH_SPECIALISM, SALES_FIXED_RATE_SPECIALISM] as const,
   creative_agents: [],
   channels: TRAINING_SALES_CHANNELS,
   overrides: {

@@ -10,6 +10,14 @@ describe('computeSpecialismStatus', () => {
     expect(result).toEqual({ 'sales-dooh': 'passing' });
   });
 
+  it('maps the sales-fixed-rate claim to the sales_fixed_rate storyboard', () => {
+    const result = computeSpecialismStatus(
+      ['sales-fixed-rate'],
+      [{ storyboard_id: 'sales_fixed_rate', status: 'passing', steps_passed: 6, steps_total: 6 }],
+    );
+    expect(result).toEqual({ 'sales-fixed-rate': 'passing' });
+  });
+
   it('returns passing for specialisms whose storyboard passed', () => {
     const result = computeSpecialismStatus(
       ['sales-broadcast-tv'],

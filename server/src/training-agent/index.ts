@@ -278,7 +278,7 @@ const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-buil
  *  `_training_agent_tenants` discovery extension. Mirrors the per-tenant
  *  config builders in `tenants/<id>.ts`. */
 const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> = {
-  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-dooh'],
+  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-dooh', 'sales-fixed-rate'],
   signals: ['signal-marketplace', 'signal-owned'],
   governance: [
     'governance-spend-authority',

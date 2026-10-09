@@ -1253,6 +1253,7 @@ const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
   'sales-broadcast-tv': { protocol: 'media-buy', storyboard_id: 'sales_broadcast_tv' },
   'sales-catalog-driven': { protocol: 'media-buy', storyboard_id: 'sales_catalog_driven' },
   'sales-dooh': { protocol: 'media-buy', storyboard_id: 'sales_dooh' },
+  'sales-fixed-rate': { protocol: 'media-buy', storyboard_id: 'sales_fixed_rate' },
   'sales-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_guaranteed' },
   'sales-non-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_non_guaranteed' },
   'sales-proposal-mode': { protocol: 'media-buy', storyboard_id: 'sales_proposal_mode' },

@@ -76,7 +76,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `accepted_proposal_terms_digest` | Digest binding the current accepted proposal terms for recovery and governance verification. |
 | `accepted_proposal` | Complete accepted canonical proposal for compact-lifecycle buys. Together with the ID and digest, this lets a restarted client refine the current commercial envelope without reconstructing historical offers. |
 | `invoice_recipient` | Per-buy invoice recipient when provided at creation. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
-| `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
+| `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). A buyer-actionable readiness axis, independent of seller commitment (see `confirmed_at`). Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
 | `status_as_of` | ISO 8601 timestamp when the seller last refreshed the returned media-buy-level `status` from its source of truth. For rolled-up statuses, this MUST NOT be later than the oldest upstream status observation that could affect the returned roll-up. Optional; omitted or `null` makes no freshness assertion, and buyers MUST NOT infer live status from absence. Use this to interpret cached or rolled-up statuses separately from `updated_at`, which means the media buy's last modification time. |
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
 | `total_budget` | Hard aggregate lifetime budget (in `currency`) |
@@ -87,7 +87,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `pacing` | Aggregate media-buy pacing strategy |
 | `bidding` | Media-buy-authored bidding policy. Packages that inherit it omit their own `bidding` block. |
 | `creative_deadline` | Creative upload deadline (ISO 8601) |
-| `confirmed_at` | ISO 8601 timestamp when the seller committed to this media buy. May be `null` until seller commitment occurs in deferred/manual approval flows; stable after it is set. |
+| `confirmed_at` | ISO 8601 timestamp when the seller committed to this media buy. May be `null` until seller commitment occurs in deferred/manual approval flows; stable after it is set. Commitment is keyed off this field, never off `status`: a buy with `confirmed_at: null` is never `active` and reports the `status` it will have on confirmation. |
 | `cancellation` | Cancellation metadata (present only when `status` is `canceled`). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
 | `revision` | Current revision number. Pass in [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) or the 3.x `update_media_buy` facade for optimistic concurrency. |
 | `valid_actions` | Actions the buyer can perform in the current state (e.g., `["pause", "cancel", "update_budget"]`). See [valid actions mapping](#valid-actions-mapping). |
@@ -394,6 +394,8 @@ The `valid_actions` array tells agents what operations are permitted on a media 
 | `canceled` | *(empty array)* |
 
 Sellers MAY omit actions based on business rules (e.g., omit `cancel` when the media buy has contractual obligations that prevent cancellation).
+
+The mapping is by `status` alone. A provisional buy (`confirmed_at: null`) reports `pending_creatives` or `pending_start` and uses those rows; it does not get a separate row. A seller that does not accept buyer `pause` or `resume` on a buy it is still reviewing SHOULD omit them from `valid_actions`. See [provisional buys](/docs/media-buy/specification#provisional-buys-seller-review-hold).
 
 For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-change action label, not proof that the `sync_creatives` task exists. Use the creative path the seller advertises: `sync_creatives` and `creative_assignments` for sellers with `creative.has_creative_library: true`, or `packages[].creatives` on [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) for inline-only sellers.
 
