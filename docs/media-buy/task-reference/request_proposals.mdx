@@ -53,6 +53,27 @@ When refining an accepted proposal, omitted criteria inherit. Set
 `remove_media_buy_frequency_cap: true` on the refinement to negotiate a draft
 that clears the root cap; supplying `criteria.media_buy_frequency_cap` replaces it.
 
+## Binding the product universe with product_ids_exclusive
+
+<Note>
+Experimental (`media_buy.delegated_composition`): sellers that implement this declare the feature id in `experimental_features`, and the shape may change in 3.x with the notice described in [Experimental status](/docs/reference/experimental-status).
+</Note>
+
+By default `criteria.product_ids` is a candidate hint: the seller may compose over other products it deems fit. Setting `criteria.product_ids_exclusive: true` makes the listed products the **complete composable universe** for the request and every refinement of the resulting proposals:
+
+- Every purchase in every returned proposal, and every product echoed alongside the proposals, MUST reference a listed `product_id` that resolves for the calling account. A listed ID the seller cannot resolve is outside the universe; the seller never substitutes another product for it.
+- Signals are fenced the same way. Every signal the seller selects in a purchase's `targeting_overlay` MUST resolve through the `signal_targeting_options` of a listed product; a signal that only exists outside the listed products' offers is outside the universe. A buyer's own later signal selections remain governed by the product's `overlay_support`.
+- A brief the seller cannot satisfy within the universe returns the `rejected` outcome (or `constraint_unsatisfiable` on a later [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) revision). The seller never widens the universe on its own.
+- The universe belongs to the proposal lineage. A revision inherits the source proposal's effective universe, so narrowing is checked against that proposal, not the root request. `criteria` on a refinement may narrow `product_ids` (restating `product_ids_exclusive: true` is allowed) but MUST NOT widen them, set the flag on a lineage that did not set it, or set it `false`. The seller rejects such a refinement at task level with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming the field. A `product_changes` `include` of an off-universe product returns `constraint_unsatisfiable` for that entry. Widening is new intent and requires a new `request_proposals`.
+
+This is the contract for **delegated composition**: a requesting platform that owns the sellable catalog asks an external agent to supply only the composition judgment, and grounding becomes enforceable by construction — the requester verifies returned products and signals are a subset of what it sent. A universe is not an inventory hold: availability stays live and is checked when the proposal is finalized or accepted (see [`hold_semantics`](/docs/media-buy/task-reference/refine_proposals#finalize-and-hold-inventory)). On [`list_products`](/docs/media-buy/task-reference/list_products) the flag is ignorable, since `product_ids` already selects exactly the listed products.
+
+Sellers declaring `media_buy.supports_exclusive_product_ids` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) accept the flag. Buyers MUST NOT send it to a seller that does not declare it, and SHOULD subset-check returned products and signals regardless. A seller that does not declare it MUST NOT silently ignore it on `request_proposals` or `refine_proposals` — it rejects the request at task level with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), so a buyer never mistakes unconstrained composition for a bounded one.
+
+<Note>
+This inline form carries product IDs only. A reference-based universe — a seller-issued, versioned `catalog_ref` with content digest and a `catalog_stale` outcome at acceptance — is deferred to a later minor so composition and execution can bind to one catalog version. The inline flag is shaped to coexist with it, and it is also the reason to keep the inline list small: a catalog of thousands of IDs belongs in the reference form.
+</Note>
+
 ## Reverse forecasting with outcome_target
 
 A proposal request is a solve over three coupled variables — time window, budget, and outcome. The buyer fixes what they know and the seller solves for the rest. Fixing dates and budget yields a delivery forecast; fixing the outcome inverts the question: "I need 10,000 clicks — what does my budget need to be?"
