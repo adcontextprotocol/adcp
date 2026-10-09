@@ -170,6 +170,8 @@ Invoice records name the invoice and point at [`get_account_financials`](/docs/a
 
 **Repair completeness.** An implementation MUST NOT advertise a resource type whose current material state cannot be recovered through its named read (see the [coverage matrix](https://github.com/adcontextprotocol/adcp/blob/main/specs/account-change-feed.md#authoritative-coverage-matrix)). A seller that lists `invoice` in `resource_types` therefore MUST return, in `get_account_financials.invoices[]` (overriding any seller limit on the list), each invoice that has a change record inside the retention window (`account.change_feed.retention_days`) whenever the request's `period` overlaps that invoice's `period`. An invoice without a `period` MUST be returned on a request without `period` until it is `paid` or `void`.
 
+The change record does not carry the invoice `period`, so a buyer repairing an invoice requests a `period` that spans from `available_since` to today; the rule above guarantees the invoice appears on that read.
+
 **Intermediaries.** An intermediary that consolidates billing is the seller of record for the invoices it issues. It records them on its own feed to its buyer and does not relay upstream sellers' invoice records.
 
 Sellers that do not offer the experimental feed have no invoice notification; buyers keep polling `get_account_financials`.
