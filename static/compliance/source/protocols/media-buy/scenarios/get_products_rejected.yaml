@@ -5,6 +5,9 @@ title: "Seller returns a structured business rejection for a declined brief"
 category: media_buy_seller
 summary: "Forces get_products into the rejected arm and verifies its required fields, transport-success semantics, and mutual exclusion from success, partial-result, and error fields."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - comply_test_controller

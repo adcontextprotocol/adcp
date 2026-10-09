@@ -66,7 +66,7 @@ Do not flatten task errors and negotiation outcomes into one exception type.
 |---|---|---|---|
 | Task-level error | Malformed payload, more than 25 refinements, duplicate source IDs, count above 10 or `max_alternatives`, explicitly unsupported dimension, unauthorized source | No sibling may mutate | Correct the whole request and retry with a new key. |
 | Per-proposal outcome | `revised`, `partial`, `unable`, `finalized` | One ordered result per source; revision outcomes are independent | Verify the typed result, then select, revise, finalize, or decline. |
-| Atomic finalize outcome | `finalized`, `hold_unavailable`, `batch_aborted` | Every hold is created or none are | Retry the exact batch only for an exact replay; otherwise form a new request. |
+| Atomic finalize outcome | `finalized`, `hold_unavailable`, `definition_changed`, `batch_aborted` | Every hold is created or none are | Retry the exact batch only for an exact replay; otherwise form a new request. |
 
 `constraint_unsatisfiable` means the seller accepted the dimension but did not satisfy it. `unsupported_dimension` is used per proposal only when capabilities were unknown; an explicitly omitted dimension is a task-level `UNSUPPORTED_FEATURE`. `commercially_declined` applies only to `ask`, never to a typed constraint.
 
@@ -330,6 +330,7 @@ For every returned proposal:
 5. Verify any `targeting_resolution.brief_targeting` against the hard targeting in `ask`, and review every sparse product `targeting_resolution.modifications` departure before selecting that configured product.
 6. On `partial`, enforce the partial invariant: every requirement absent from the unsatisfied sets still passes.
 7. Treat `reason`, `description`, `suggestions`, and `ask` as non-contractual prose.
+8. Keep `commercial_terms.definition_pins[]`. A matching `terms_digest` proves the terms are unchanged, not that the third-party definitions they name are; finalize and acceptance re-verify the pins.
 
 Digest uniqueness alone is not enough for alternatives. Verify that `commercial_terms` are distinct after canonicalization; a seller cannot create fake diversity by changing only IDs, names, descriptions, or digest strings.
 
@@ -356,7 +357,7 @@ Finalization changes no terms:
 }
 ```
 
-A finalize batch contains only finalize entries. The seller preflights every source and creates every hold or none. `hold_unavailable` identifies the source that could not be reserved; otherwise eligible siblings use `batch_aborted`.
+A finalize batch contains only finalize entries. The seller preflights every source and creates every hold or none. `hold_unavailable` identifies the source that could not be reserved and `definition_changed` the source whose pinned definition drifted; otherwise eligible siblings use `batch_aborted`.
 
 The successful result is singular and committed; its commercial terms and digest are unchanged:
 
@@ -415,7 +416,7 @@ Accept the returned committed proposal and its exact digest before `expires_at`:
 }
 ```
 
-The seller atomically verifies the proposal ID, digest, hold expiry, authorization, and any base MediaBuy revision. Expired holds return `PROPOSAL_EXPIRED`; the buyer requests and finalizes fresh terms rather than retrying acceptance against a lapsed hold.
+The seller atomically verifies the proposal ID, digest, hold expiry, authorization, and any base MediaBuy revision. Expired holds return `PROPOSAL_EXPIRED`; the buyer requests and finalizes fresh terms rather than retrying acceptance against a lapsed hold. If a pinned third-party definition changed after the hold was taken, acceptance returns `REFERENCE_DEFINITION_CHANGED` before mutation even though the digest verifies; finalizing a draft over a changed definition returns `unable` with `reason_code: "definition_changed"` and `drifted_pins[]`. In both cases the buyer revises to re-pin, reviews the changed definition, and finalizes again. See [Definition pins](/docs/media-buy/specification#definition-pins).
 
 ### 6. Amend, cancel, or decline
 
@@ -519,7 +520,7 @@ For revision batches:
 2. Build candidate `commercial_terms` without mutating the source.
 3. Evaluate every typed constraint and product action against every candidate.
 4. Classify the ordered result as `revised`, `partial`, or `unable`.
-5. Generate new proposal IDs, set `parent_proposal_id`, compute JCS digests, and validate the full response.
+5. Resolve every covered third-party definition (publisher-catalog format options and placements, `adagents.json` collections, data-provider signals), write `commercial_terms.definition_pins[]` in canonical order, generate new proposal IDs, set `parent_proposal_id`, compute JCS digests, and validate the full response.
 6. Commit staged successors only after response validation succeeds.
 
 For `partial`, include every failed constraint key and failed product action. Every unlisted requirement must pass for every returned draft. `constraint_unsatisfiable` takes precedence when it coexists with an alternatives shortfall or uninterpreted prose.
@@ -690,6 +691,7 @@ Keep the following boundaries in your adapter:
 - [ ] Reuse a key only for the exact same request; use a new key for changed payloads.
 - [ ] Stage successors and validate responses before commit.
 - [ ] Create finalize holds atomically and enforce expiry during acceptance.
+- [ ] Pin covered third-party definitions on every draft and revision, verify the pins before taking a hold, and re-verify them before `accept_proposal` mutates state.
 - [ ] Fork accepted snapshots for amendments and negotiated cancellation.
 - [ ] Fence `ask`, authorize every source, rate-limit probing, and avoid sensitive logs.
 - [ ] Run the typed proposal negotiation storyboard against the implementation.

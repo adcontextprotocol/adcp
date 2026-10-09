@@ -4,6 +4,8 @@ title: "Idempotency enforcement"
 category: core
 summary: "Validates that mutating requests enforce idempotency_key — replays return cached responses even after resource purge, key reuse with a different payload returns IDEMPOTENCY_CONFLICT, fresh keys create new resources, and concurrent retries with the same key produce exactly one resource (first-insert-wins under rule 9)."
 track: core
+requires:
+  - controller
 
 # Cross-step assertions (adcontextprotocol/adcp#2639). These convert two
 # reviewer-only checks from `key_reuse_conflict` and `security` into

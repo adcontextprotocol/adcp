@@ -4,6 +4,9 @@ title: "Sales agent with creative capabilities"
 category: media_buy_seller
 summary: "Stateful sales agent that accepts pushed creative assets and renders them in its environment."
 track: creative
+requires:
+  - controller
+
 required_tools:
   - sync_creatives
 

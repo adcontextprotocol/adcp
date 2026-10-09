@@ -1,0 +1,30 @@
+{
+  "name": "IPv6 literal authority with explicit :443; canonicalization strips port but preserves brackets",
+  "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 2 + step 4: IPv6 brackets preserved AND default ports stripped)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://[2001:db8::1]:443/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:QplWbT2vVnF_TSfY5w5d8zQYkLpD7Bp4rxE9uKHl14UjBmUnF6mwKB8pEgoFTKHF1jVwwL14hx_AM6sFBtT9CA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://[2001:db8::1]/adcp/create_media_buy\n\"@authority\": [2001:db8::1]\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+  "expected_outcome": {
+    "success": true
+  },
+  "$comment": "Intersection of bracket preservation (step 2) and default-port stripping (step 4). As-received URL has '[2001:db8::1]:443'; canonical form is '[2001:db8::1]' — port stripped, brackets retained. A naive regex that strips ':443$' from the authority string will incorrectly produce '[2001:db8::1' (eating the closing bracket) or leave the port in place. Canonical base is identical to 011-ipv6-authority by construction, so the same signature bytes verify both vectors. Signature generated with the test-ed25519-2026 private key from the expected_signature_base."
+}

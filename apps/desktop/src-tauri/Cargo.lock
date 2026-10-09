@@ -8,7 +8,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "keyring",
- "rand 0.10.2",
+ "rand 0.8.8",
  "reqwest",
  "serde",
  "serde_json",

@@ -23,6 +23,7 @@
  * files or any parallel registry-* test.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { Pool } from 'pg';
 import type { WorkOSUser } from '../../src/types.js';
@@ -243,12 +244,20 @@ describe('Registry reader baseline — public endpoints', () => {
 
   describe('with an empty suffix', () => {
     it('GET /api/registry/publisher returns null member + empty arrays for an unseen domain', async () => {
+      const unseenDomain = `publisher-unseen-${randomUUID()}${DOMAIN_SUFFIX}`;
       const res = await request(app).get(
-        `/api/registry/publisher?domain=${encodeURIComponent(PUB_A)}`
+        `/api/registry/publisher?domain=${encodeURIComponent(unseenDomain)}`
       );
       expect(res.status).toBe(200);
+      expect(res.body.domain === unseenDomain).toBe(true);
+      expect(res.body.member === null).toBe(true);
+      expect(Array.isArray(res.body.properties)).toBe(true);
+      expect(Array.isArray(res.body.authorized_agents)).toBe(true);
+      expect(res.body.properties.length).toBe(0);
+      expect(res.body.authorized_agents.length).toBe(0);
+      expect(res.body.adagents_valid === null).toBe(true);
       expect(res.body).toMatchObject({
-        domain: PUB_A,
+        domain: unseenDomain,
         member: null,
         properties: [],
         authorized_agents: [],
