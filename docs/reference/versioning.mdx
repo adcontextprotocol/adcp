@@ -234,12 +234,13 @@ Experimental surfaces changed under their own notice contract and are not except
 
 ### 3.3 exceptions to 3.x compatibility (beta)
 
-AdCP 3.3 adds no stable field, removes none, and deprecates none. Two merged changes narrow what a conformant implementation may do, and are recorded here under the rule above for core-security and normative behavior. This list is refreshed at each beta cut.
+AdCP 3.3 adds no stable field, removes none, and deprecates none. Three merged changes alter what a conformant implementation may do: two narrow it and one loosens a required field. They are recorded here under the rule above for core-security and normative behavior. This list is refreshed at each beta cut.
 
 | Change | What narrows | Basis |
 |---|---|---|
 | Discovery never provisions an account | A seller that lazily provisions an account on `get_products`, `list_products`, `get_signals`, `request_proposals`, `refine_proposals`, or `decline_proposals`, or on the 3.2 wording "first account-scoped request", is no longer conformant. Request and response schemas are unchanged. | #7848, [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3#discovery-tasks-never-provision-an-account) |
 | One agent-resolution algorithm | A pinned `signing_keys` key missing from the agent's JWKS is rejected, a `kid`-only pin matches nothing, `key_origins` is checked for every webhook signer that publishes `brand_json_url`, and agents are matched by canonical URL, where entries that agree on `type` and resolved JWKS source count once and entries that differ in either are an ambiguous match. | #7882, [Signature verification tightens](/docs/reference/migration/3-2-to-3-3#signature-verification-tightens) |
+| Delivery rows may omit `impressions` | `impressions` leaves the `required` arrays of `daily_breakdown` rows and of the `by_format`, `by_device_type`, `by_device_platform`, `by_audience`, `by_demographic`, placement, property, collection, installment, geo, creative, keyword, and catalog-item rows, so SDK-generated row types make it optional. Absence means not measured, never zero, and receivers MUST NOT derive impression-denominated values. A seller MUST NOT omit it toward callers pinned below 3.3, and a caller with no declared pin is treated as pinned below 3.3. `aggregated_totals` still requires it. | #8089, [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3#delivery-rows-may-omit-impressions), [Rows without impressions](/docs/media-buy/media-buys/optimization-reporting#rows-without-impressions) |
 
 ### Experimental surfaces
 

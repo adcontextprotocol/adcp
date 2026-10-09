@@ -369,11 +369,14 @@ if (validated.media_buy_deliveries.length > 0) {
   if (dailyBreakdown && dailyBreakdown.length > 0) {
     console.log(`Daily average: ${Math.round(validated.media_buy_deliveries[0].totals.impressions / dailyBreakdown.length).toLocaleString()} impressions`);
 
-    // Find peak day
-    const peakDay = dailyBreakdown.reduce((max, day) =>
-      day.impressions > max.impressions ? day : max
-    );
-    console.log(`Peak day: ${peakDay.date} with ${peakDay.impressions.toLocaleString()} impressions`);
+    // Find peak day. Rows may omit impressions (not measured, not zero), so skip them.
+    const measuredDays = dailyBreakdown.filter(day => day.impressions !== undefined);
+    if (measuredDays.length > 0) {
+      const peakDay = measuredDays.reduce((max, day) =>
+        day.impressions > max.impressions ? day : max
+      );
+      console.log(`Peak day: ${peakDay.date} with ${peakDay.impressions.toLocaleString()} impressions`);
+    }
   }
 }
 ```
@@ -407,9 +410,11 @@ async def main():
             daily_avg = result.media_buy_deliveries[0].totals.impressions // len(daily_breakdown)
             print(f"Daily average: {daily_avg:,} impressions")
 
-            # Find peak day
-            peak_day = max(daily_breakdown, key=lambda d: d.impressions)
-            print(f"Peak day: {peak_day.date} with {peak_day.impressions:,} impressions")
+            # Find peak day. Rows may omit impressions (not measured, not zero), so skip them.
+            measured_days = [d for d in daily_breakdown if getattr(d, 'impressions', None) is not None]
+            if measured_days:
+                peak_day = max(measured_days, key=lambda d: d.impressions)
+                print(f"Peak day: {peak_day.date} with {peak_day.impressions:,} impressions")
 
 asyncio.run(main())
 ```
@@ -682,7 +687,7 @@ asyncio.run(main())
 
 ### Requesting a metric subset
 
-`requested_metrics` narrows the response to a specific list of metrics — the same field and semantics as `reporting_webhook.requested_metrics`, now also available on the GET path. It applies to every metrics-bearing object in the response: `totals`, `by_package`, daily and window slices, and breakdown rows. `impressions` and `spend` are always included regardless of what the list contains, except that a legacy or externally created mixed-currency buy omits monetary values from media-buy and window totals, omits `daily_breakdown`, and reports monetary values only on currency-qualified package rows. Requesting a leaf metric identity (e.g. `viewable_rate`, `quartile_75`) returns its canonical nested carrier (`viewability`, `quartile_data`) rather than a flat duplicate field. A metric requested but not available for the buy is simply omitted — no error — and `missing_metrics` is unaffected by that omission: it still reconciles solely against `committed_metrics`, and sellers MUST NOT list a metric there just because the buyer excluded it via `requested_metrics`. Values outside the product's `reporting_capabilities.available_metrics` are ignored. Omitting the field preserves current behavior — all available metrics are returned.
+`requested_metrics` narrows the response to a specific list of metrics — the same field and semantics as `reporting_webhook.requested_metrics`, now also available on the GET path. It applies to every metrics-bearing object in the response: `totals`, `by_package`, daily and window slices, and breakdown rows. `impressions` (when the seller measured it for the row) and `spend` are always included regardless of what the list contains, except that a legacy or externally created mixed-currency buy omits monetary values from media-buy and window totals, omits `daily_breakdown`, and reports monetary values only on currency-qualified package rows. Requesting a leaf metric identity (e.g. `viewable_rate`, `quartile_75`) returns its canonical nested carrier (`viewability`, `quartile_data`) rather than a flat duplicate field. A metric requested but not available for the buy is simply omitted — no error — and `missing_metrics` is unaffected by that omission: it still reconciles solely against `committed_metrics`, and sellers MUST NOT list a metric there just because the buyer excluded it via `requested_metrics`. Values outside the product's `reporting_capabilities.available_metrics` are ignored. Omitting the field preserves current behavior — all available metrics are returned.
 
 ## Data Freshness
 
@@ -955,23 +960,23 @@ Geo, device, format, audience, demographic, placement, property, collection, ins
 
 | Dimension | Breakdown field | Required fields | Additional fields | Capability declaration |
 |-----------|----------------|-----------------|-------------------|------------------------|
-| Geography | `by_geo` | `geo_level`, `geo_code`, `impressions`, `spend` | `system`, `country`, `geo_name` | `supports_geo_breakdown` |
-| Device type | `by_device_type` | `device_type`, `impressions`, `spend` | — | `supports_device_type_breakdown` |
-| Device platform | `by_device_platform` | `device_platform`, `impressions`, `spend` | — | `supports_device_platform_breakdown` |
-| Creative format | `by_format` | `format_kind`, `impressions`, `spend` | Other delivery metrics | `supports_format_breakdown` |
-| Audience | `by_audience` | `audience_id`, `audience_source`, `impressions`, `spend` | `audience_name` | `supports_audience_breakdown` |
-| Demographic | `by_demographic` | `demographic`, `demographic_system`, `impressions`, `spend` | `age`, other delivery metrics | `supports_demographic_breakdown` |
-| Placement | `by_placement` | `placement_id`, `impressions`, `spend` | `placement_identity`, `placement_name`, `publisher_domain` | `supports_placement_breakdown` |
-| Property | `by_property` | `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, `property_name` | `supports_property_breakdown` |
-| Collection | `by_collection` | `collection_ref`, `impressions`, `spend` | `collection_name` | `supports_collection_breakdown` |
-| Installment | `by_installment` | `installment_ref`, `impressions`, `spend` | `installment_name`, `scheduled_at` | `supports_installment_breakdown` |
-| Collection × property | `by_collection_property` | `collection_ref`, `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, `collection_name`, `property_name` | `supports_collection_property_breakdown` |
-| Installment × property | `by_installment_property` | `installment_ref`, `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, `installment_name`, `scheduled_at`, `property_name` | `supports_installment_property_breakdown` |
-| Placement × property | `by_placement_property` | `placement_id`, `placement_identity`, `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, convenience names | `supports_placement_property_breakdown` |
+| Geography | `by_geo` | `geo_level`, `geo_code`, `spend` | `system`, `country`, `geo_name` | `supports_geo_breakdown` |
+| Device type | `by_device_type` | `device_type`, `spend` | — | `supports_device_type_breakdown` |
+| Device platform | `by_device_platform` | `device_platform`, `spend` | — | `supports_device_platform_breakdown` |
+| Creative format | `by_format` | `format_kind`, `spend` | Other delivery metrics | `supports_format_breakdown` |
+| Audience | `by_audience` | `audience_id`, `audience_source`, `spend` | `audience_name` | `supports_audience_breakdown` |
+| Demographic | `by_demographic` | `demographic`, `demographic_system`, `spend` | `age`, other delivery metrics | `supports_demographic_breakdown` |
+| Placement | `by_placement` | `placement_id`, `spend` | `placement_identity`, `placement_name`, `publisher_domain` | `supports_placement_breakdown` |
+| Property | `by_property` | `publisher_domain`, `identifier`, `spend` | `property_ref`, `property_name` | `supports_property_breakdown` |
+| Collection | `by_collection` | `collection_ref`, `spend` | `collection_name` | `supports_collection_breakdown` |
+| Installment | `by_installment` | `installment_ref`, `spend` | `installment_name`, `scheduled_at` | `supports_installment_breakdown` |
+| Collection × property | `by_collection_property` | `collection_ref`, `publisher_domain`, `identifier`, `spend` | `property_ref`, `collection_name`, `property_name` | `supports_collection_property_breakdown` |
+| Installment × property | `by_installment_property` | `installment_ref`, `publisher_domain`, `identifier`, `spend` | `property_ref`, `installment_name`, `scheduled_at`, `property_name` | `supports_installment_property_breakdown` |
+| Placement × property | `by_placement_property` | `placement_id`, `placement_identity`, `publisher_domain`, `identifier`, `spend` | `property_ref`, convenience names | `supports_placement_property_breakdown` |
 | Spot/as-run | `by_spot` | `spot_id`; `aired_at` on aired and makegood rows, `scheduled_at` on scheduled and preempted rows | `creative_id`, `impressions`, `network`, `station`, `daypart`, other delivery metrics; experimental `spot_status`, `scheduled_at`, `replaces_spot_id`, `break_position` | `supports_spot_breakdown` |
-| Creative | `by_creative` | `creative_id`, `impressions`, `spend` | `creative_name`, `weight`, other delivery metrics | `supports_creative_breakdown` (automatic; `reporting_dimensions.creative` optionally negotiates limit/sort) |
-| Keyword | `by_keyword` | `keyword`, `match_type`, `impressions`, `spend` | other delivery metrics | Search/retail media capability (automatic; `reporting_dimensions.keyword` optionally negotiates limit/sort) |
-| Catalog item | `by_catalog_item` | `content_id`, `content_id_type`, `impressions`, `spend` | other delivery metrics | Catalog-driven packages only (automatic; `reporting_dimensions.catalog_item` optionally negotiates limit/sort) |
+| Creative | `by_creative` | `creative_id`, `spend` | `creative_name`, `weight`, other delivery metrics | `supports_creative_breakdown` (automatic; `reporting_dimensions.creative` optionally negotiates limit/sort) |
+| Keyword | `by_keyword` | `keyword`, `match_type`, `spend` | other delivery metrics | Search/retail media capability (automatic; `reporting_dimensions.keyword` optionally negotiates limit/sort) |
+| Catalog item | `by_catalog_item` | `content_id`, `spend` | `content_id_type`, other delivery metrics | Catalog-driven packages only (automatic; `reporting_dimensions.catalog_item` optionally negotiates limit/sort) |
 
 Check `reporting_capabilities` on the product to discover which dimensions are available. Product-level capabilities are authoritative since different products from the same seller may support different breakdowns.
 

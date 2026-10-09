@@ -45,7 +45,7 @@
           "description": "Current convenience name for the property."
         }
       },
-      "required": ["placement_id", "placement_identity", "publisher_domain", "identifier", "impressions", "spend"]
+      "required": ["placement_id", "placement_identity", "publisher_domain", "identifier", "spend"]
     }
   ]
 }

@@ -528,7 +528,6 @@
                             },
                             "required": [
                               "format_kind",
-                              "impressions",
                               "spend"
                             ]
                           }
@@ -615,7 +614,6 @@
                             },
                             "required": [
                               "device_type",
-                              "impressions",
                               "spend"
                             ]
                           }
@@ -656,7 +654,6 @@
                             },
                             "required": [
                               "device_platform",
-                              "impressions",
                               "spend"
                             ]
                           }
@@ -707,7 +704,6 @@
                             "required": [
                               "audience_id",
                               "audience_source",
-                              "impressions",
                               "spend"
                             ]
                           }
@@ -759,7 +755,6 @@
                             "required": [
                               "demographic",
                               "demographic_system",
-                              "impressions",
                               "spend"
                             ]
                           }
@@ -1073,7 +1068,7 @@
                     },
                     "daily_breakdown": {
                       "type": "array",
-                      "description": "Day-by-day delivery for this package. Only present when include_package_daily_breakdown is true in the request. Enables per-package pacing analysis and line-item monitoring.",
+                      "description": "Day-by-day delivery for this package. Only present when include_package_daily_breakdown is true in the request. Enables per-package pacing analysis and line-item monitoring. A row may omit impressions from AdCP 3.3 (see core/delivery-metrics.json impressions): absence means not measured, not zero.",
                       "items": {
                         "type": "object",
                         "properties": {
@@ -1121,7 +1116,6 @@
                         },
                         "required": [
                           "date",
-                          "impressions",
                           "spend"
                         ],
                         "additionalProperties": true
@@ -1211,7 +1205,7 @@
           },
           "daily_breakdown": {
             "type": "array",
-            "description": "Day-by-day delivery for a media-buy row with one currency. Sellers MUST omit this aggregate breakdown for a legacy or externally created mixed-currency buy because these rows have no package currency field. Sellers MUST also omit this aggregate breakdown when the media buy's packages span more than one reporting timezone; package-level daily_breakdown remains, each in its own product's reporting timezone.",
+            "description": "Day-by-day delivery for a media-buy row with one currency. Sellers MUST omit this aggregate breakdown for a legacy or externally created mixed-currency buy because these rows have no package currency field. Sellers MUST also omit this aggregate breakdown when the media buy's packages span more than one reporting timezone; package-level daily_breakdown remains, each in its own product's reporting timezone. A row may omit impressions from AdCP 3.3 (see core/delivery-metrics.json impressions): absence means not measured, not zero.",
             "items": {
               "type": "object",
               "properties": {
@@ -1259,7 +1253,6 @@
               },
               "required": [
                 "date",
-                "impressions",
                 "spend"
               ],
               "additionalProperties": true

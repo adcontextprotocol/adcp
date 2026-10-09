@@ -110,6 +110,10 @@ Each window starts at the revision's `created_at`, or at its successor's once
 superseded; an official revision's window restarts at its newest adjustment. See
 [revision retention](/docs/media-buy/task-reference/get_reporting_status#reliability-model).
 
+### Delivery rows may omit `impressions`
+
+- `impressions` is no longer required on `daily_breakdown` rows or on the dimensional breakdown rows, so SDK-generated row types make it optional; handle `undefined` or `None`. Absence means not measured, never zero. Sellers omit it only toward callers pinned to 3.3 or later. See [Rows without impressions](/docs/media-buy/media-buys/optimization-reporting#rows-without-impressions).
+
 ## Clarifications
 
 These restate existing rules and need no wire change.

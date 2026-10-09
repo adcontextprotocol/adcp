@@ -33,7 +33,7 @@
           "description": "Legacy publisher attribution. For publisher_ref identity it MUST equal placement_identity.publisher_domain. For seller_inline it identifies inventory context only and is not identity authority."
         }
       },
-      "required": ["placement_id", "impressions", "spend"]
+      "required": ["placement_id", "spend"]
     }
   ]
 }
