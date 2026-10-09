@@ -13,7 +13,7 @@ description: "Adopter overview of the AdCP 3.3 beta: discovery that never provis
 
 3.2 added the compact lifecycle and portable evidence. 3.3 is a minor release that so far tightens the places where two conformant 3.2 implementations could still disagree: when an account comes into existence, which agent a signature belongs to, and what a seller's catalog intake accepts.
 
-No stable field, enum value, or task is removed, renamed, or deprecated, and 3.3 adds optional fields and one optional capability object. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points; `lon`, not `lng`), and the now-reserved `ext.adcp`. Two merged changes are normative narrowings, not additions: what a lazily provisioning seller may do on discovery tasks, and which signatures verify. Both are recorded in [Versioning and governance](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta) and lead the [migration guide](/docs/reference/migration/3-2-to-3-3).
+No stable field, enum value, or task is removed, renamed, or deprecated, and 3.3 adds optional fields and one optional capability object. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points; `lon`, not `lng`), the now-reserved `ext.adcp`, and the experimental `build_creative.evaluator.evaluator_id`, which is removed (see [below](#experimental-creative-evaluator-drops-evaluator_id)). Two merged changes are normative narrowings, not additions: what a lazily provisioning seller may do on discovery tasks, and which signatures verify. Both are recorded in [Versioning and governance](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta) and lead the [migration guide](/docs/reference/migration/3-2-to-3-3).
 
 ## The 3.3 feature set
 
@@ -40,6 +40,10 @@ Concrete screens can carry `dooh_placement_attributes.location` (`lat`, `lon`, a
 ### The `ext.adcp` namespace
 
 `ext.adcp` is now a registered, AdCP-owned extension namespace. Its first member is an optional `opportunity` binding for cooperating 3.2 `get_products` integrations, declared by listing `adcp` in `extensions_supported`. It reuses the published 3.2 `OpportunityContext` shape and is not the core `opportunity` field. The namespace is reserved for the AdCP working group, so vendors keep their own namespaces. See [AdCP opportunity extension](/docs/building/by-layer/L2/context-sessions#adcp-opportunity-extension).
+
+### Experimental creative evaluator drops `evaluator_id`
+
+The experimental `creative.evaluator` surface on `build_creative` now has two source forms: inline `exemplars` or an external `agent_url`. The account-arranged `evaluator_id` form had no on-wire discovery or resolution path and is removed, and the `list_evaluators` follow-on that would have resolved it is withdrawn. A seller's house evaluator is an evaluator agent listed in `creative_policy.accepted_verifiers[]`. Stable surfaces are unaffected; see the [migration guide](/docs/reference/migration/3-2-to-3-3#experimental-creative-evaluator-drops-evaluator_id).
 
 ### Clarifications and conformance
 

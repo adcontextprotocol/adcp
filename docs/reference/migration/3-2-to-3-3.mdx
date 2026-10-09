@@ -11,7 +11,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 **3.3 is in its beta cycle.** Keep production traffic pinned to `"3.2"` while validating 3.3 in staging. See the [3.3 beta program](/docs/reference/3-3-beta) for artifact and SDK timing.
 </Warning>
 
-3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
+3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), the now-reserved `ext.adcp`, and the experimental `build_creative.evaluator.evaluator_id`, which is [removed](#experimental-creative-evaluator-drops-evaluator_id) (an `evaluator` carrying only `evaluator_id` no longer validates). A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
 Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). One change loosens a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib). Everything else is an optional declaration or a clarification.
 
@@ -29,7 +29,8 @@ For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/w
 | 6 | Signing and verifying implementations | Check agent resolution and pinned keys against the list below. |
 | 7 | Verifiers that fetch brand.json | Raise the brand.json body cap from 256 KiB to 2 MiB; leave JWKS and capabilities caps unchanged. |
 | 8 | Sellers with a catalog intake | Optionally declare `media_buy.features.catalog_ingestion`. |
-| 9 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
+| 9 | Users of the experimental `creative.evaluator` surface | Replace `evaluator_id` with an allowlisted `agent_url` or inline `exemplars`. |
+| 10 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
 
 ## Required to claim 3.3 behavior
 
@@ -81,6 +82,20 @@ These restate existing rules and need no wire change.
 - **Interim `reporting_webhook.operation_id`.** Docs-only guidance lets 3.2.1 integrations carry `operation_id` on `reporting_webhook` as an opt-in field. The core field is a proposal still in working-group review. See [webhooks](/docs/building/by-layer/L3/webhooks#adcp-3-2-interim-reporting-correlation).
 - **Already in 3.2.2.** The account-reference and trust-docs clarifications were published as documentation-only changes in 3.2.2, so 3.2.2 adopters have seen them.
 
+## Experimental surface changes
+
+### Experimental creative evaluator drops `evaluator_id`
+
+Applies only to sellers and buyers that use the experimental `creative.evaluator` surface (`build_creative.evaluator`). The `evaluator_id` source form is removed from `core/evaluator-spec.json`, and the `evaluator` entity is removed from `x-entity-types`. The evaluator object stays the request primitive, with two source forms: inline `exemplars` or an external `agent_url`. A seller's house evaluator is an evaluator agent it lists in `creative_policy.accepted_verifiers[]`. The `list_evaluators` follow-on that existed only to resolve `evaluator_id` is withdrawn.
+
+| Before (3.1 and 3.2) | After (3.3) |
+|---|---|
+| `"evaluator": { "evaluator_id": "quality-default", "rank_by": [...] }` | `"evaluator": { "agent_url": "https://quality-evaluator.example/adcp", "rank_by": [...] }` |
+
+The seller exposes the evaluator behind an agent that implements `get_creative_features`, adds its URL to `creative_policy.accepted_verifiers[]`, and the buyer names that URL. An `evaluator` carrying only `evaluator_id` no longer validates, because no source form matches, so a 3.3 validator rejects the whole `build_creative` request where 3.2 degraded to seller-default ranking. A stale `evaluator_id` sent alongside `exemplars` or `agent_url` still validates (the object stays open) and sellers ignore it. No alias is offered: the id had no on-wire resolution path, and an unknown id already degraded to seller-default ranking.
+
+This is a removal on an experimental surface, which the [experimental status](/docs/reference/experimental-status#contract-for-experimental-surfaces) contract allows with notice; 3.1 and 3.2 keep `evaluator_id`. The 6-week pre-landing notice is waived: beta.0 is the notice vehicle, and 3.3 GA ships no earlier than 6 weeks after the beta.0 tag. A fourth source form for conversion-outcome evaluators stays open, and `supports_evaluator_gate` and hard-gate semantics stay reserved. See [Evaluator source model](/docs/creative/buyer-attached-inputs#evaluator-source-model).
+
 ## Adopt by capability
 
 ### Catalog ingestion declarations
@@ -97,7 +112,7 @@ Optional. Cooperating `get_products` integrations can carry an opportunity bindi
 
 ## Deprecations
 
-None. 3.3 deprecates no stable field, task, or enum value. Existing 3.2 deprecations keep their published removal windows.
+None. 3.3 deprecates no stable field, task, or enum value; the experimental `evaluator_id` form is removed outright, as described above. Existing 3.2 deprecations keep their published removal windows.
 
 ## Compliance and grading
 
