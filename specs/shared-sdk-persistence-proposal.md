@@ -1043,13 +1043,13 @@ Recommended:
 
 Open questions and upstream follow-ups:
 
-1. **Superseded-snapshot readability (protocol).** Confirm that the
+1. **Superseded-snapshot readability (protocol, #8081).** Confirm that the
    `reporting-revision.json` description is normative for content readability. Name the
    instant that anchors `status_retention_days`. Promote both to normative text.
-2. **Unreadable retained revision (protocol).** No issue code currently means "a
+2. **Unreadable retained revision (protocol, #8082).** No issue code currently means "a
    retained revision is unreadable". This proposes adding one rather than overloading
    `PRODUCTION_FAILED`.
-3. **Not-found error code (protocol).** `get_media_buy_delivery` names
+3. **Not-found error code (protocol, #8083).** `get_media_buy_delivery` names
    `REPORTING_REVISION_NOT_FOUND`, which is not in `enums/error-code.json`. That enum
    requires `REFERENCE_NOT_FOUND` for untyped references. SDKs follow the task document
    until the two are reconciled.
