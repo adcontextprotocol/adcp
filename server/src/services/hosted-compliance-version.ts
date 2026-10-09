@@ -10,12 +10,18 @@ import { isComplianceVersionSupported } from '@adcp/sdk/testing';
 import { advertisesStableBadgeLine, SUPPORTED_BADGE_VERSIONS } from './adcp-taxonomy.js';
 
 export const DEFAULT_HOSTED_COMPLIANCE_LINE = '3.0';
-export const HOSTED_COMPLIANCE_TARGET_PREFERENCE = [
-  '3.1',
-  '3.1-rc',
-  '3.1-beta',
+// Lines graded by hosted compliance, newest first. Each line is tried as its
+// stable alias, then its RC and beta aliases (each followed by every bundled
+// checkpoint of that channel), so an agent that advertises a stable line is
+// graded on that line's GA bundle before any of its prereleases. Aliases that
+// do not resolve yet (for example "3.2" before 3.2.1 is registered in
+// published-versions.json) are skipped. The default line is the unpinned
+// fallback.
+export const HOSTED_COMPLIANCE_PREFERRED_LINES = ['3.2', '3.1'] as const;
+export const HOSTED_COMPLIANCE_TARGET_PREFERENCE: readonly string[] = Object.freeze([
+  ...HOSTED_COMPLIANCE_PREFERRED_LINES.flatMap(line => [line, `${line}-rc`, `${line}-beta`]),
   DEFAULT_HOSTED_COMPLIANCE_LINE,
-] as const;
+]);
 // Soft scheduling budget for a full-suite comply() assessment. SDK 14 beta.15
 // stops starting new storyboards when this expires and preserves completed
 // results as a timed-out partial run (adcontextprotocol/adcp-client#2221).
@@ -23,12 +29,21 @@ export const HOSTED_COMPLIANCE_TARGET_PREFERENCE = [
 // per-request network ceilings are configured separately on the transport.
 export const HOSTED_FULL_COMPLIANCE_TIMEOUT_MS = 600_000;
 
+// Capacity-bound extended lane for suites that have exhausted the ordinary
+// heartbeat budget and for owner-requested full refreshes. The heartbeat
+// admits at most three agents per batch, so its worst-case serial execution
+// remains within the two-hour scheduler deadline even with discovery overhead.
+export const HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS = 1_800_000;
+// The SDK soft budget is checked between storyboards. Bound a storyboard that
+// is already in flight, leaving the hourly three-agent batch below two hours.
+export const HOSTED_COMPLIANCE_OVERRUN_MS = 300_000;
+
 // Interactive full-suite runs (evaluate_agent_quality via Addie) need a higher
 // ceiling: 67 storyboards × 17s worst-case step pacing = ~1139s, plus headroom
 // for target discovery and network jitter.  The background callers (heartbeat,
 // registry refresh) keep the shared 600s constant so heartbeat lock TTLs and
 // hung-call risk stay bounded.
-export const HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS = 1_200_000;
+export const HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS = HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS;
 
 export interface HostedComplianceTarget {
   requested: string;
@@ -253,22 +268,28 @@ function latestRcComplianceVersionForLine(line: string): string {
 }
 
 function latestBadgeEligibleComplianceVersionForLine(line: string): string {
+  if (line !== DEFAULT_HOSTED_COMPLIANCE_LINE) {
+    // Only the default line gets a prerelease fallback (below). A bare line
+    // alias like "3.2" with no stable build yet must throw rather than
+    // silently resolve to an RC — callers (badge eligibility, explicit
+    // `compliance_target: "3.2"`) treat the returned version as that line's
+    // stable release, and a silent RC substitution there is indistinguishable
+    // from an actual stable resolution.
+    return latestStableComplianceVersionForLine(line);
+  }
+
   try {
     return latestStableComplianceVersionForLine(line);
   } catch (stableError) {
     try {
       return latestRcComplianceVersionForLine(line);
     } catch {
-      // Fall through to beta/default handling below.
+      // Fall through to beta fallback below.
     }
 
-    if (line === DEFAULT_HOSTED_COMPLIANCE_LINE) {
-      // The default line may temporarily fall back to a beta cache while its
-      // stable compliance bundle is being staged.
-      return latestBetaComplianceVersionForLine(line);
-    }
-
-    throw stableError;
+    // The default line may temporarily fall back to a beta cache while its
+    // stable compliance bundle is being staged.
+    return latestBetaComplianceVersionForLine(line);
   }
 }
 
@@ -386,14 +407,16 @@ function hostedComplianceTargetCandidates(): HostedComplianceTarget[] {
     .filter(isPublishedComplianceVersion)
     .sort(compareVersions)
     .reverse();
-  addRequested('3.1');
-  addRequested('3.1-rc');
-  for (const version of bundledVersions.filter(v => /^3\.1\.0-rc\.\d+$/.test(v))) {
-    add(hostedComplianceTargetForBundledVersion(version));
-  }
-  addRequested('3.1-beta');
-  for (const version of bundledVersions.filter(v => /^3\.1\.0-beta\.\d+$/.test(v))) {
-    add(hostedComplianceTargetForBundledVersion(version));
+  for (const line of HOSTED_COMPLIANCE_PREFERRED_LINES) {
+    const escapedLine = escapeRegex(line);
+    addRequested(line);
+    for (const label of ['rc', 'beta'] as const) {
+      addRequested(`${line}-${label}`);
+      const prereleaseRe = new RegExp(`^${escapedLine}\\.0-${label}\\.\\d+$`);
+      for (const version of bundledVersions.filter(v => prereleaseRe.test(v))) {
+        add(hostedComplianceTargetForBundledVersion(version));
+      }
+    }
   }
   addRequested(DEFAULT_HOSTED_COMPLIANCE_LINE);
 

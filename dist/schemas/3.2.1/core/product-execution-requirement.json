@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.1/core/product-execution-requirement.json",
+  "title": "Product Execution Requirement",
+  "description": "Experimental. One account resource a package on the product needs before it can be created. `kind` determines the binding: `event_source` via `packages[].optimization_goals[].event_sources[]`, `catalog` via `packages[].catalogs[]`, `downstream_connection` by completing the connection. Account-independent: MUST NOT carry account-specific resource IDs or names. Alternatives inside one requirement are any-of.",
+  "discriminator": {
+    "propertyName": "kind"
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "title": "Event Source Execution Requirement",
+      "description": "Each package needs event optimization fed by a conversion event source; declare it only when the product requires event optimization. Satisfied when an `optimization_goals[]` entry of `kind: \"event\"` that the seller will use has a used `event_sources[]` entry referencing an event source available to the account (registered via `sync_event_sources`, or the seller-managed source it returns under `conversion_tracking.platform_managed: true`) with an `event_type` accepted here.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "event_source"
+        },
+        "event_types": {
+          "type": "array",
+          "description": "Event types that satisfy the requirement (any-of): the satisfying `event_sources[]` entry MUST use one of these `event_type` values. Omit when any event type satisfies it.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.1/enums/event-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.1/core/ext.json"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "title": "Catalog Execution Requirement",
+      "description": "Each package needs a catalog. Satisfied by a `packages[].catalogs[]` entry whose `type` is in `catalog_types`. App promotion uses `[\"app\"]`; app items carry `app_id`, `bundle_id`, `apple_id`, and `store_url`. Every listed type MUST also appear in the product's `catalog_types`.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "catalog"
+        },
+        "catalog_types": {
+          "type": "array",
+          "description": "Catalog types that satisfy the requirement (any-of). One catalog of any listed type satisfies it.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.1/enums/catalog-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.1/core/ext.json"
+        }
+      },
+      "required": [
+        "kind",
+        "catalog_types"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "title": "Downstream Connection Execution Requirement",
+      "description": "The product needs a seller-side platform connection or grant, such as the advertiser account or the publisher identity the ads run as. Satisfied by completing the connection, not by a request field; a missing, pending, expired, or revoked connection fails with `AUTHORIZATION_REQUIRED` per `error-details/authorization-required.json`. A connection needed by every package MUST be declared here; one needed only by some formats stays in that format declaration's `required_connections`. With several eligible connected identities, the seller applies its documented default.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "downstream_connection"
+        },
+        "connection": {
+          "description": "The required connection. Account-independent: `status` is omitted or `unknown`; `resource_ref`, `connection_id`, and `expires_at` MUST be omitted; `required_for`, when present, includes `create_media_buy`.",
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.1/core/downstream-connection-requirement.json"
+            },
+            {
+              "properties": {
+                "status": {
+                  "const": "unknown"
+                },
+                "required_for": {
+                  "contains": {
+                    "const": "create_media_buy"
+                  }
+                }
+              },
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "resource_ref"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "connection_id"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "expires_at"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.1/core/ext.json"
+        }
+      },
+      "required": [
+        "kind",
+        "connection"
+      ],
+      "additionalProperties": true
+    }
+  ],
+  "examples": [
+    {
+      "kind": "catalog",
+      "catalog_types": [
+        "app"
+      ]
+    }
+  ]
+}

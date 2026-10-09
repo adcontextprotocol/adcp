@@ -38,6 +38,7 @@ import {
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import {
   authForStoryboard,
+  multiAgentRoutingForStoryboard,
   testKitOptionsFromKit,
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
@@ -65,6 +66,7 @@ const { clearSeededCreativeFormats, clearForcedTaskCompletions } = await import(
 );
 const { clearCatalogEventStores } = await import('../../src/training-agent/catalog-event-handlers.js');
 const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
+const { getCanonicalBase } = await import('../../src/training-agent/canonical-base.js');
 
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose');
@@ -185,6 +187,12 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
   }));
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
+    // Cold schema compilation can leave the loopback connection idle longer
+    // than Node's default keep-alive window. Keep the fixture-owned socket
+    // available for the next MCP request; request/storyboard deadlines remain
+    // unchanged, and close() below destroys every owned connection.
+    srv.keepAliveTimeout = 90_000;
+    srv.headersTimeout = 95_000;
     const connections = new Set<Socket>();
     srv.on('connection', socket => {
       connections.add(socket);
@@ -477,6 +485,8 @@ function patchStoryboardForLocalRunner(sb: Storyboard): Storyboard {
     || sb.id === 'governance_spend_authority/denied'
     || sb.id === 'governance_delivery_monitor'
     || sb.id === 'governance/failed_outcome_audit_persistence'
+    || sb.id === 'governance/budget_periods'
+    || sb.requires?.includes('multi_agent')
   ) {
     patched = structuredClone(patched) as Storyboard;
     const authenticatedCaller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
@@ -954,7 +964,16 @@ async function main() {
     const testKit = testKitOptionsFromKit(kit);
     const auth = authForStoryboard(storyboard.id, kit, AUTH_TOKEN);
     const previousTrainingAgentUrl = process.env.TRAINING_AGENT_URL;
-    if (storyboard.id === 'webhook_emission') {
+    // `requires: [multi_agent]` storyboards route each agent key to its
+    // sibling tenant in this same embedded process; the storyboard's
+    // default_agent stays on the tenant under test. Like webhook_emission,
+    // they run with the embedded agent's canonical base pinned to its actual
+    // local origin, so the governance issuer and the governed tenant's
+    // audience are this deployment's values. Everything else keeps the
+    // single-tenant positional URL and default canonical base.
+    const routesMultiAgent = storyboard.requires?.includes('multi_agent') === true;
+    const swapsCanonicalBase = storyboard.id === 'webhook_emission' || routesMultiAgent;
+    if (swapsCanonicalBase) {
       process.env.TRAINING_AGENT_URL = localAgentBaseUrl;
     }
 
@@ -966,7 +985,10 @@ async function main() {
       //
       // `/mcp-strict` (either): baseline run — skip 007/018 which target
       //   specific digest profiles, skip 025 (SDK-internal JWK test).
-      // `/mcp-strict-required` (required): 007 fires here; skip 018/025.
+      // `/mcp-strict-required` (required, 3.2 signing profile): current
+      //   runs only; the verifier rejects Base64URL sf-binary at step 1.
+      // `/mcp-strict-required-legacy` (required, 3.0/3.1 signing profile):
+      //   frozen 3.0 runs; 007 fires here.
       // `/mcp-strict-forbidden` (forbidden): 018 fires here; skip 007/025.
       const strictVariants: Array<{ routeSuffix: string; skipVectors: string[] }> = isThreeZeroCompatRun
         ? [
@@ -975,7 +997,11 @@ async function main() {
               skipVectors: ['007-missing-content-digest', '018-digest-covered-when-forbidden', '025-jwk-alg-crv-mismatch'],
             },
             {
-              routeSuffix: '/mcp-strict-required',
+              // The frozen 3.0.x vectors are Base64URL-signed, which the
+              // 3.2-pinned `/mcp-strict-required` verifier MUST reject; the
+              // legacy route applies the same required-digest policy under
+              // the 3.0/3.1 signing profile.
+              routeSuffix: '/mcp-strict-required-legacy',
               // The frozen 3.0.x vector set predates per-route digest-profile
               // fixtures. Keep required-profile coverage by running only the
               // digest-bearing positive and digest-policy negatives here.
@@ -1067,7 +1093,20 @@ async function main() {
         // with no request-signing advertisement or enforcement. Every storyboard
         // other than `signed_requests` stays on `/mcp` so bearer-authed unsigned
         // calls keep working.
-        const result = await runStoryboard(agentUrl, storyboard, {
+        const routing = multiAgentRoutingForStoryboard({
+          storyboard,
+          tenantPath: process.env.TENANT_PATH ?? '',
+          tenantAgentUrl: agentUrl,
+          trainingAgentBaseUrl: localAgentBaseUrl,
+          serviceIdentityBase: getCanonicalBase(),
+          auth,
+        });
+        if (routing.kind === 'routed' && verbose) {
+          // eslint-disable-next-line no-console
+          console.log(`    [multi-agent] ${storyboard.id} routes ${Object.entries(routing.agents)
+            .map(([key, entry]) => `${key}=${entry.url}`).join(', ')} (default_agent=${routing.default_agent}; context ${JSON.stringify(routing.context)})`);
+        }
+        const result = await runStoryboard(routing.kind === 'routed' ? '' : agentUrl, storyboard, {
           ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
           ...(wireAdcpVersion && { wireAdcpVersion }),
           ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
@@ -1082,6 +1121,11 @@ async function main() {
           },
           ...(brand && { brand }),
           ...(testKit && { test_kit: testKit }),
+          ...(routing.kind === 'routed' && {
+            agents: routing.agents,
+            default_agent: routing.default_agent,
+            context: routing.context,
+          }),
         });
         applyStepSkipList(storyboard.id, result);
         const summary = summarize(storyboard, result);
@@ -1098,7 +1142,7 @@ async function main() {
         console.log(`  ${storyboard.id.padEnd(40)} ⚠ ${summary.error}`);
       }
     }
-    if (storyboard.id === 'webhook_emission') {
+    if (swapsCanonicalBase) {
       if (previousTrainingAgentUrl === undefined) {
         delete process.env.TRAINING_AGENT_URL;
       } else {

@@ -1,0 +1,245 @@
+---
+title: sync_reporting_status
+description: "Tell a seller whether expected reporting was received, omitted, missing, unreadable, or contradictory."
+"og:title": "AdCP — sync_reporting_status"
+---
+
+<Warning>
+`sync_reporting_status` is an additive, opt-in Reliable Reporting extension
+published in `3.2.0-rc.2`. RC.1 implementations do not expose it. Sellers that
+implement it advertise `consumer_status_task`; the active breaking-change
+notice makes it required Core only in the next eligible minor after October 24,
+2026.
+</Warning>
+
+`sync_reporting_status` closes the operational loop between what a seller says
+it published and what an authenticated buyer could actually consume. The buyer
+calls it on the seller through ordinary AdCP task transport. Buyers do not expose
+a reverse task endpoint, and sellers do not advertise a separate ingestion
+webhook.
+
+This task records **consumer status**, not measurement data. A statement carries
+no delivery metrics, attribution results, prices, invoices, or arbitrary
+observations about a user. It also is not a Reconciled Billing receipt:
+`received` proves only that the buyer consumed the exact Core revision binding,
+not that Managed materialization evidence or billing control totals matched.
+
+{/* The stable /schemas/v3 alias does not expose this RC.2-only task yet. */}
+**Request schema:** [`sync-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/media-buy/sync-reporting-status-request.json)
+
+{/* The stable /schemas/v3 alias does not expose this RC.2-only task yet. */}
+**Response schema:** [`sync-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/media-buy/sync-reporting-status-response.json)
+
+<Note>
+`3.2.0-rc.2` publishes the task itself, not the hardening described on this
+page. The `content_mismatch` status and its `mismatch_code`, the
+stale-`received` grace window, `obligation_counts.consumer_status_pending`,
+issue `opened_at` / `issue_state` / `external_ref`, and the
+`operations_contact` / `consumer_mismatch_escalation_seconds` capability fields
+land in the next prerelease. Until then, validate those against the development
+bundle served from `/schemas/3.2.0-rc.3/` rather than the rc.2 pin above.
+</Note>
+
+## Status values
+
+Each immutable statement addresses one exact `(authenticated consumer, account,
+delivery_config_id, delivery_config_version, report_definition_id, period)`
+chain:
+
+| `consumer_status` | Meaning | Required evidence |
+|---|---|---|
+| `received` | The exact revision content was successfully consumed. | Seller obligation ID, revision ID, and the independently recomputed Core `revision_content_sha256`. |
+| `obligation_missing` | The period is required by the accepted configuration generation but the seller ledger omitted it. | Configuration generation, report definition, and exact period; no seller obligation or revision ID exists. |
+| `revision_missing` | The seller obligation exists, but no required revision was available after `expected_at` and the buyer's bounded retry/give-up window. | Seller obligation ID. |
+| `unreadable` | A revision was advertised, but its exact content could not be consumed. | Seller obligation ID, revision ID, and a closed `failure_code`. |
+| `content_mismatch` | The exact revision content was consumed but contradicts a fact the accepted configuration generation already fixed. | Seller obligation ID, revision ID, the recomputed Core `revision_content_sha256`, and a closed `mismatch_code`. |
+
+`obligation_missing` is deliberately keyed without a seller-issued obligation
+ID. Requiring that ID would make the first missing report invisible again. The
+seller validates the period against the authenticated caller's accepted
+configuration generation instead.
+
+### `content_mismatch` is a contract-fact disagreement, not a measurement dispute
+
+`content_mismatch` is for reporting that arrived and parsed but does not match
+what the buyer and seller already agreed the feed would contain. The closed
+`mismatch_code` names which agreed fact is contradicted:
+
+| `mismatch_code` | The revision contradicts |
+|---|---|
+| `scope_media_buy_missing` | A media buy frozen in the obligation's `media_buy_ids` denominator has neither rows nor an explicit zero. |
+| `coverage_short` | Fewer packages are present than the obligation's frozen `coverage` claims. |
+| `metric_missing` | A metric the pinned `report_definition_id` promises is absent. |
+| `schema_nonconformant` | Rows do not conform to the reporting profile's pinned schema URI and digest. |
+| `currency_mismatch` | A monetary value uses a currency the configuration generation did not select. |
+| `period_mismatch` | Row timestamps fall outside the obligation's half-open period. |
+
+Each of these is checkable against the accepted generation without either side
+consulting its own ad server. "Your impression count is 12% below mine" is not
+one of them: that is a measurement disagreement, settled through
+`measurement_terms` and `makegood_policy` under
+[billing authority](/dist/docs/3.2.0-rc.3/media-buy/advanced-topics/billing-authority), not
+through this operational loop. Because the statement carries
+`observed_revision_content_sha256`, the seller knows exactly which bytes the
+buyer is describing.
+
+Submitting `content_mismatch` requires having read the revision, so it uses the
+same recomputed binding as `received` and — like `received` — asserts nothing
+about billing acceptance.
+
+## Example
+
+```json
+{
+  "account": { "account_id": "acc_123" },
+  "idempotency_key": "019db314-4f2a-7c91-bf38-e0df4020bb0b",
+  "statuses": [
+    {
+      "reporting_status_id": "status_daily_2026_09_01_01",
+      "delivery_config_id": "daily_reporting",
+      "delivery_config_version": 2,
+      "report_definition_id": "daily_delivery_v2",
+      "period": {
+        "start": "2026-09-01T00:00:00Z",
+        "end": "2026-09-02T00:00:00Z",
+        "source_timezone": "UTC"
+      },
+      "consumer_status": "obligation_missing",
+      "status_as_of": "2026-09-02T02:05:00Z",
+      "seller_ledger_snapshot_id": "snapshot_2026_09_02_0205",
+      "seller_ledger_as_of": "2026-09-02T02:05:00Z"
+    }
+  ]
+}
+```
+
+The response returns one `recorded`, `unchanged`, or `failed` result per
+statement. Exact retries reuse both the batch idempotency key and immutable
+`reporting_status_id`. Reusing either identity with changed content is an
+idempotency conflict.
+
+When status changes, the buyer creates a new statement and names the current
+leaf in `supersedes_reporting_status_id`. For example, a later successful read
+supersedes `revision_missing` with `received`. The seller keeps both statements;
+only the new leaf is current. The seller atomically rejects a missing or stale
+supersession pointer, so concurrent updates cannot fork the chain. This
+preserves the outage instead of allowing a successful retry to erase it.
+
+Superseded history remains readable for at least the seller's advertised
+`status_retention_days`; older expired statements may be pruned while identity
+reuse and stale supersession remain rejected. Ordinary authenticated rate and
+per-caller resource limits protect the ledger from pathological update churn.
+
+## Seller behavior
+
+The seller:
+
+1. derives consumer identity from authenticated transport;
+2. validates configuration generation, report definition, and period without
+   requiring an obligation to exist;
+3. verifies any seller snapshot ID and timestamp against the exact
+   caller/account-scoped snapshot it issued;
+4. records the immutable status idempotently with atomic leaf supersession;
+5. exposes the caller's history through
+   [`get_reporting_status`](/dist/docs/3.2.0-rc.3/media-buy/task-reference/get_reporting_status);
+   and
+6. compares its current producer state with the buyer's current status.
+
+If the seller projects `healthy` or `complete` while the buyer's current status
+conflicts, only that caller/account view is degraded, with a stable
+`CONSUMER_STATUS_MISMATCH` issue. The seller assigns
+`responsible_party` from the diagnosed cause: seller production or publication,
+buyer access/configuration, or provider failure. One buyer's statement never
+changes another buyer's view or seller-advertised reliability statistics without
+corroboration.
+
+A conflict is `obligation_missing`, `revision_missing`, `unreadable`,
+`content_mismatch`, or a `received` status naming an older revision after the
+seller publishes a newer required restatement. The last one is the explicit
+signal that reporting changed after the buyer already read it.
+
+### Stale `received` gets a grace window
+
+A buyer whose `received` is made stale *only* by a later seller restatement did
+nothing wrong: it consumed exactly what the seller required at the time, and it
+has not yet had a chance to re-read. That single case is therefore `delayed`,
+not `action_required`, until the grace deadline — the `created_at` of the
+**first** revision that superseded the one the buyer named, plus the
+configuration generation's `schedule.delivery_sla`, as exact elapsed time in
+UTC. When that SLA resolves to a zero duration,
+`automated_recovery_window_seconds` is used instead. At or after the deadline it
+becomes `action_required`.
+
+Every other conflict is `action_required` immediately. The issue keeps one
+`issue_id` and one `opened_at` across the severity change, so a buyer ages one
+work item rather than two. Later restatements do **not** restart the window —
+it is anchored to the first supersession — and an advertised
+`consumer_mismatch_escalation_seconds` boundary takes precedence when the two
+overlap. A seller therefore cannot hold a genuinely unresolved mismatch below
+`action_required` by restating on a timer.
+
+### Escalation and contacts
+
+A seller MAY advertise `consumer_mismatch_escalation_seconds` alongside an
+`operations_contact` in its `media_buy.reporting_delivery` capability block.
+Once an `open` or `acknowledged` issue has been open for that long, the seller
+MUST emit it at
+`action_required` with a `recommended_action` in the `contact_*` family naming
+the diagnosed `responsible_party`; `wait_for_retry` must not survive that
+boundary. `operations_contact` is inert human-facing metadata — an operator
+reads it, and agents never dereference the URL or send protocol traffic to it.
+Its URL is constrained to the same hardened public-origin shape as the offering
+document URIs, so it cannot name a loopback host, an IP literal, or a
+credentialed link.
+
+Issues may also carry `issue_state` (`open`, `acknowledged`, `resolved`,
+`waived`) and an inert `external_ref` so both sides can correlate one AdCP issue
+with their own ticketing systems without inventing a parallel identity.
+`external_ref` uses the same restricted character class as
+`consumer_commit_ref`, so it cannot express a URL or a sentence, and a seller
+must not reuse one value across callers on a caller-scoped issue.
+
+Retiring an issue is not a way to discharge a live disagreement: a seller must
+not take a `CONSUMER_STATUS_MISMATCH` out of a degraded projection while the
+statement that caused it is still your current unsuperseded leaf. Only
+`open` and `acknowledged` issues appear in `issues[]`.
+
+## Buyer behavior
+
+When the seller advertises `consumer_status_task`, a buyer using that Reliable
+Reporting configuration automates this task for that configuration:
+
+- sync a failure promptly after its bounded retry/give-up window expires;
+- sync every later state change with explicit supersession;
+- post a current status for every elapsed expected period no later than that
+  period's `expected_at` plus the seller's advertised
+  `automated_recovery_window_seconds`; and
+- ensure every elapsed expected period still has a current status before closing
+  the reporting scope.
+
+The deadline matters more than the scope close: a buyer that is still retrying
+posts `revision_missing` or `unreadable` by the deadline and supersedes it later
+rather than staying silent until the campaign ends.
+
+Missing buyer feedback remains unknown. It never excuses the seller's obligation
+or changes the seller's production SLA. A seller counts a missed deadline in
+`obligation_counts.consumer_status_pending` on
+[`get_reporting_status`](/dist/docs/3.2.0-rc.3/media-buy/task-reference/get_reporting_status)
+and does nothing else with it: silence raises no issue and changes no health.
+
+## Relationship to billing receipts
+
+[`sync_reporting_receipts`](/dist/docs/3.2.0-rc.3/media-buy/task-reference/sync_reporting_receipts)
+is the stronger, optional Reconciled Billing operation. It requires a Managed
+materialization plus independently observed row counts, control totals, and the
+selected verification evidence. `sync_reporting_status` belongs to Core, can
+report a seller obligation that does not exist, and says nothing about invoice
+approval, payable amount, dispute waiver, or settlement.
+
+Which party's *numbers* govern an invoice is a separate question, answered by
+`measurement_terms.billing_measurement` — see
+[Billing Authority](/dist/docs/3.2.0-rc.3/media-buy/advanced-topics/billing-authority).
+`reporting-delivery-config.json` reserves an `authoritative_party` field for
+unifying the two models; in 3.2 the only accepted value is `seller`, and a
+seller MUST reject `consumer` with [`UNSUPPORTED_FEATURE`](/dist/docs/3.2.0-rc.3/building/verification/compliance-catalog#error-code-unsupported-feature). Tracked in
+[#7440](https://github.com/adcontextprotocol/adcp/issues/7440).

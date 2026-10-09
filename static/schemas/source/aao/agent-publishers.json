@@ -82,7 +82,7 @@
         },
         "signing_keys_pinned": {
           "type": "boolean",
-          "description": "Whether the publisher's adagents.json entry for this agent pins `signing_keys[]`. When true, the agent's signed responses MUST verify against the pinned key set regardless of the agent's own JWKS. Operators should treat true as a signal that their published JWKS must match the publisher's pin."
+          "description": "Whether the publisher's adagents.json entry for this agent pins `signing_keys[]`. When true, the agent's sell-side signatures about this publisher's inventory (such as webhooks) are accepted only with a key that is in both the pin and the agent's own JWKS. Operators should treat true as a signal that their published JWKS and the publisher's pin must stay in step."
         },
         "status": {
           "type": "string",

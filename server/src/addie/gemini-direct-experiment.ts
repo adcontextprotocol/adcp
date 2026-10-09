@@ -9,6 +9,7 @@ import type { WebChatModelPreference } from './web-chat-model-selection.js';
 import { responseClient } from './response-client.js';
 import { getResponseProviderPolicy, responseProviderModel } from './response-provider-policy.js';
 import { anonymousSessionSubjectHmac } from '../routes/helpers/anonymous-session-capability.js';
+import { countContainedToolErrors } from './model-providers/tool-orchestration.js';
 
 const logger = createLogger('addie-gemini-direct');
 export const GEMINI_DIRECT_EXPERIMENT = 'gemini-3.7-direct-v2';
@@ -192,6 +193,9 @@ class ExperimentTurn {
     const totalToolErrors = this.fallbackToolErrors
       + (response?.tool_executions.filter(tool => tool.is_error).length ?? 0);
     const unrecoveredToolErrors = Math.max(0, totalToolErrors - recoveredToolErrors);
+    const containedToolErrors = countContainedToolErrors(response?.tool_executions ?? [], Boolean(
+      response?.text.trim() && !failed && !response.flagged && !response.output_truncation,
+    ));
     logger.info({
       event: 'addie_response_stage',
       stage: 'provider_and_tools',
@@ -216,7 +220,8 @@ class ExperimentTurn {
         member_context_ms = $24, workos_context_ms = $25,
         experiment_routing_ms = $26, pre_provider_ms = $27,
         provider_ms = $28, tool_ms = $29,
-        recovered_tool_errors = $30, unrecovered_tool_errors = $31
+        recovered_tool_errors = $30, unrecovered_tool_errors = $31,
+        contained_tool_errors = $32
         WHERE id = $1`, [
         this.id, this.firstVisibleMs, Date.now() - this.startedAt, this.routerMs,
         this.providerCalls, costMicros, this.usageComplete, this.fallbackReason,
@@ -240,6 +245,7 @@ class ExperimentTurn {
         response?.timing?.total_tool_execution_ms ?? null,
         recoveredToolErrors,
         unrecoveredToolErrors,
+        containedToolErrors,
       ]);
     } catch (error) {
       logger.error({ error, turnId: this.id }, 'Failed to save Gemini Direct outcome');
@@ -457,6 +463,10 @@ async function getResults(experimentId: string) {
     SUM(tool_errors)::int AS tool_errors,
     SUM(recovered_tool_errors)::int AS recovered_tool_errors,
     SUM(unrecovered_tool_errors)::int AS unrecovered_tool_errors,
+    SUM(contained_tool_errors)::int AS contained_tool_errors,
+    SUM(unrecovered_tool_errors - contained_tool_errors)::int AS unresolved_tool_errors,
+    COUNT(*) FILTER (WHERE contained_tool_errors IS NOT NULL)::int AS tool_recovery_classified_turns,
+    SUM(tool_errors - recovered_tool_errors) FILTER (WHERE contained_tool_errors IS NULL)::int AS tool_recovery_unclassified_errors,
     COUNT(m.rating)::int AS rated_turns, ROUND(AVG(m.rating), 2) AS mean_rating,
     COUNT(*) FILTER (WHERE m.outcome = 'resolved')::int AS resolved_turns,
     CASE WHEN bool_and(usage_complete AND completed_at IS NOT NULL)
@@ -478,6 +488,13 @@ async function getResults(experimentId: string) {
       assignment_version: ANONYMOUS_WEB_ASSIGNMENT_VERSION,
     },
     cohorts: result.rows,
+    tool_recovery_definitions: {
+      recovered_tool_errors: 'Later success with the exact operation, agent URL, and idempotency key.',
+      unrecovered_tool_errors: 'Errors without exact recovery, including contained errors; retained for historical comparison.',
+      contained_tool_errors: 'Validation rejection followed by a successful read from the same agent and a complete generated answer. Observed continuation, not original-operation success or fulfillment; delivery is reported separately.',
+      unresolved_tool_errors: 'Classified errors with neither exact recovery nor observed containment. Absence of evidence, not a judgment of answer quality.',
+      tool_recovery_unclassified_errors: 'Errors without exact recovery on historical or incomplete turns without containment classification; excluded from contained and unresolved counts.',
+    },
   };
 }
 

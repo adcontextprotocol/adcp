@@ -31,7 +31,9 @@ interface DomainRow {
   subscription_status: string | null;
 }
 
-const REGISTRY_SETUP_RE = /\b(registry|member:\s*null|domain verification|verify_brand_domain_challenge|save_agent|agent registration|pending sync|propagation)\b/i;
+// A registry mention can describe grading evidence or scheduler telemetry,
+// rather than a request to repair domain ownership or registration state.
+const REGISTRY_SETUP_RE = /\b(member:\s*null|domain verification|verify_brand_domain_challenge|save_agent|agent registration|pending sync|propagation)\b/i;
 const REGISTRY_FILE_OPERATION_RE = /(?:\b(?:adagents(?:\.json)?|brand manifest)\b[^\n]{0,80}\b(?:setup|publish|crawl|sync|propagation|registration|domain|verify|blocked|failure)\b|\b(?:setup|publish|crawl|sync|propagation|registration|domain|verify|blocked|failure)\b[^\n]{0,80}\b(?:adagents(?:\.json)?|brand manifest)\b)/i;
 const DOMAIN_RE = /\b(?:https?:\/\/)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b/gi;
 const URL_RE = /\bhttps?:\/\/[^\s)>'"]+/gi;

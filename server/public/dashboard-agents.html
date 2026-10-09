@@ -75,6 +75,26 @@
     }
     .agent-compliance-card:last-child { margin-bottom: 0; }
 
+    .agent-latest-attempt {
+      margin: var(--space-3) 0;
+      padding: var(--space-3);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+    .agent-latest-attempt--incomplete {
+      border-color: var(--color-warning-border, var(--color-border));
+      background: var(--color-warning-bg);
+    }
+    .agent-latest-attempt-title {
+      color: var(--color-text-heading);
+      font-weight: var(--font-semibold);
+      margin-bottom: var(--space-1);
+    }
+    .agent-latest-attempt a { display: inline-block; margin-top: var(--space-1); }
+
     .agent-compliance-header {
       display: flex;
       align-items: center;
@@ -1291,6 +1311,7 @@
       // (#2804). A second 429 on the same agent freezes the card with
       // "you've refreshed too quickly" guidance instead of looping.
       autoRetriedAgents: new Set(),
+      activeRefreshPolls: new Set(),
     };
 
     // Retry-aware fetch. Retries once on 429 (rate-limited) and transient
@@ -1329,16 +1350,23 @@
     // Fetches compliance + history + auth for a single agent. Always returns
     // an object — on failure, loadError is populated so the renderer can
     // distinguish "server says unknown" from "we couldn't load".
-    async function fetchAgentState(agent, organizationId) {
+    async function fetchAgentState(agent, organizationId, onPartial) {
       const encoded = encodeURIComponent(agent.url);
       const orgQuery = organizationId ? `?org=${encodeURIComponent(organizationId)}` : '';
       const endpoints = [
-        `/api/registry/agents/${encoded}/compliance`,
+        `/api/registry/agents/${encoded}/compliance${orgQuery}`,
         `/api/registry/agents/${encoded}/compliance/history?limit=10`,
         `/api/registry/agents/${encoded}/auth-status${orgQuery}`,
       ];
-      const settled = await Promise.allSettled(
-        endpoints.map(u => fetchWithRetry(u, { credentials: 'include' })),
+      // Start all three requests together, but do not make the fast history
+      // and auth projections wait for the heavier compliance card response.
+      // A partial render keeps owner actions reachable even if compliance is
+      // slow or eventually crosses the page-level request budget.
+      const settledRequests = endpoints.map(u =>
+        fetchWithRetry(u, { credentials: 'include' }).then(
+          value => ({ status: 'fulfilled', value }),
+          reason => ({ status: 'rejected', reason }),
+        )
       );
 
       const parseOrError = async (s, source) => {
@@ -1381,11 +1409,22 @@
         }
       };
 
-      const [statusResult, historyResult, authResult] = await Promise.all([
-        parseOrError(settled[0], 'compliance'),
-        parseOrError(settled[1], 'history'),
-        parseOrError(settled[2], 'auth'),
+      const [historyResult, authResult] = await Promise.all([
+        settledRequests[1].then(s => parseOrError(s, 'history')),
+        settledRequests[2].then(s => parseOrError(s, 'auth')),
       ]);
+
+      if (typeof onPartial === 'function') {
+        onPartial({
+          url: agent.url,
+          status: null,
+          history: historyResult.data,
+          authStatus: authResult.data,
+          loadError: null,
+        });
+      }
+
+      const statusResult = await settledRequests[0].then(s => parseOrError(s, 'compliance'));
 
       // Only the compliance endpoint determines the primary card state.
       // History and auth errors are logged but don't block rendering.
@@ -1469,11 +1508,9 @@
         // 60-agent list over a slow connection that's the difference
         // between "instant" and "dead for 14 seconds."
         //
-        // A shared `cancelled` flag lets workers stop hammering the
-        // network if the user navigates away or the 15s ceiling
-        // fires. Workers always harvest results into the shared
-        // complianceMap, even after cancellation — a late success
-        // that arrived before cancel is still useful.
+        // Stop starting new requests after 15s, while allowing in-flight
+        // requests to update their cards when they finish. A compliance
+        // response can take longer than the page-level wait under load.
         const AGENT_FETCH_CONCURRENCY = 6;
         const FETCH_TIMEOUT_MS = 15_000;
         const agentCompliance = new Map();
@@ -1490,14 +1527,16 @@
 
         if (agents.length > 0) {
           const queue = agents.slice();
-          const cancellation = { cancelled: false };
+          let stopStartingRequests = false;
           async function worker() {
-            while (!cancellation.cancelled && queue.length > 0) {
+            while (!stopStartingRequests && queue.length > 0) {
               const agent = queue.shift();
               if (!agent) break;
               try {
-                const state = await fetchAgentState(agent, currentOrgId);
-                if (cancellation.cancelled) break;
+                const state = await fetchAgentState(agent, currentOrgId, partialState => {
+                  agentCompliance.set(partialState.url, partialState);
+                  swapAgentCard(partialState.url);
+                });
                 agentCompliance.set(state.url, state);
                 swapAgentCard(state.url);
               } catch (err) {
@@ -1508,14 +1547,15 @@
           const workerCount = Math.min(AGENT_FETCH_CONCURRENCY, agents.length);
           const workers = Promise.all(Array.from({ length: workerCount }, worker));
           const timeout = new Promise(resolve => setTimeout(() => {
-            cancellation.cancelled = true;
+            stopStartingRequests = true;
             resolve(null);
           }, FETCH_TIMEOUT_MS));
           const completed = await Promise.race([workers, timeout]);
           if (completed === null) {
-            console.warn('Agent compliance fetch timed out after 15s; in-flight workers cancelled, rendering with partial data');
+            console.warn('Agent compliance fetch exceeded 15s; in-flight workers will continue updating their cards');
           }
         }
+        void resumePendingAgentRefreshes(agents);
 
       } catch (err) {
         console.error('Agents page load error:', err);
@@ -1751,7 +1791,7 @@
       const skipped = finiteCount(statusInfo.skipped_count);
       const parts = [];
       if (failures > 0) parts.push(pluralizeCount(failures, 'failure'));
-      if (skipped > 0) parts.push(pluralizeCount(skipped, 'skipped'));
+      if (skipped > 0) parts.push(pluralizeCount(skipped, 'skipped', 'skipped'));
       return parts.join(', ');
     }
 
@@ -1806,7 +1846,8 @@
       if (!hasFailureDetail && skipped === 0) return '';
 
       const issueSummary = storyboardIssueSummary(statusInfo);
-      const summary = issueSummary ? `Show failure details (${issueSummary})` : 'Show failure details';
+      const summaryLabel = failures > 0 ? 'Show failure details' : 'Show skip details';
+      const summary = issueSummary ? `${summaryLabel} (${issueSummary})` : summaryLabel;
       let html = '<details class="storyboard-map-drilldown">';
       html += '<summary>' + escapeHtml(summary) + '</summary>';
       if (hasFailureDetail) {
@@ -1837,12 +1878,74 @@
         html += '</div>';
       }
       if (skipped > 0) {
-        html += '<div class="storyboard-map-detail-row">';
-        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--skip">Blocked after earlier failure</span>';
-        html += '<span class="storyboard-map-detail-title">' + escapeHtml(pluralizeCount(skipped, 'step')) + ' skipped after an earlier step failed</span>';
-        html += '</div>';
+        html += storyboardSkippedStepsHtml(statusInfo, skipped);
       }
       html += '</details>';
+      return html;
+    }
+
+    const STORYBOARD_SKIP_REASON_LABELS = {
+      prerequisite_failed: 'Prerequisite step did not pass',
+      controller_seeding_failed: 'Test controller seeding failed',
+      missing_tool: 'Required tool not advertised',
+      not_applicable: 'Not applicable',
+      unresolved_substitution: 'Context variable unresolved',
+    };
+
+    function storyboardSkipReasonLabel(reason) {
+      if (!reason) return '';
+      const label = STORYBOARD_SKIP_REASON_LABELS[reason];
+      return label ? `${label} (${reason})` : reason;
+    }
+
+    // Skip evidence comes from runner output and may echo third-party agent
+    // text: every field goes through escapeHtml.
+    function storyboardSkippedStepsHtml(statusInfo, skipped) {
+      const steps = Array.isArray(statusInfo.skipped_steps)
+        ? statusInfo.skipped_steps.filter(step => step && typeof step === 'object')
+        : [];
+      if (steps.length === 0) {
+        // Rows recorded before skip evidence was persisted, or a viewer
+        // without owner diagnostics.
+        let html = '<div class="storyboard-map-detail-row">';
+        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--skip">Skipped</span>';
+        html += '<span class="storyboard-map-detail-title">' + escapeHtml(pluralizeCount(skipped, 'step')) + ' skipped because a prerequisite step did not pass</span>';
+        html += '<div class="storyboard-map-detail-message">Step-level skip details were not recorded for this run. Re-test to capture which step was skipped and why.</div>';
+        html += '</div>';
+        return html;
+      }
+      const shown = steps.slice(0, 3);
+      let html = '';
+      for (const step of shown) {
+        const title = step.title || step.step_id || 'Skipped step';
+        const meta = [step.title ? step.step_id : null, step.task].filter(Boolean).join(' · ');
+        html += '<div class="storyboard-map-detail-row">';
+        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--skip">Skipped</span>';
+        html += '<span class="storyboard-map-detail-title">' + escapeHtml(title) + '</span>';
+        if (meta) html += '<div>' + escapeHtml(meta) + '</div>';
+        if (step.reason) {
+          html += '<div class="storyboard-map-detail-message">Reason: ' + escapeHtml(storyboardSkipReasonLabel(step.reason)) + '</div>';
+        }
+        if (step.blocked_by_step_id || step.blocked_by_step_title) {
+          const blocker = step.blocked_by_step_title && step.blocked_by_step_id && step.blocked_by_step_title !== step.blocked_by_step_id
+            ? `${step.blocked_by_step_title} (${step.blocked_by_step_id})`
+            : step.blocked_by_step_title || step.blocked_by_step_id;
+          const outcome = step.blocked_by_reason === 'failed'
+            ? 'failed'
+            : step.blocked_by_reason ? 'skipped: ' + storyboardSkipReasonLabel(step.blocked_by_reason) : 'did not pass';
+          html += '<div class="storyboard-map-detail-message">Earlier step that did not pass: ' + escapeHtml(blocker) + ' — ' + escapeHtml(outcome) + '</div>';
+        } else {
+          html += '<div class="storyboard-map-detail-message">No earlier failing step was recorded in this storyboard; see the runner detail.</div>';
+        }
+        if (step.detail) {
+          html += '<div class="storyboard-map-detail-message">' + escapeHtml(step.detail) + '</div>';
+        }
+        html += '</div>';
+      }
+      const remaining = Math.max(0, skipped - shown.length);
+      if (remaining > 0) {
+        html += '<div class="storyboard-map-detail-message">Showing ' + escapeHtml(pluralizeCount(shown.length, 'skipped step')) + '; ' + escapeHtml(pluralizeCount(remaining, 'more skipped step')) + ' remain.</div>';
+      }
       return html;
     }
 
@@ -1954,6 +2057,45 @@
       return lines.join('\n');
     }
 
+    // The public verdict and history include only complete authoritative runs.
+    // Show the newest owner-visible attempt separately so a timed-out run does
+    // not leave owners thinking monitoring stopped at the older verdict date.
+    function renderLatestComplianceAttempt(attempt, agentUrl, orgId) {
+      if (!attempt?.id || !attempt?.tested_at) return '';
+
+      const authoritative = attempt.is_authoritative === true && attempt.completeness === 'complete';
+      const label = attempt.completeness === 'timed_out' ? 'Timed out'
+        : attempt.completeness === 'complete' ? (authoritative ? 'Complete' : 'Diagnostic only')
+        : 'Incomplete';
+      const testedDate = new Date(attempt.tested_at);
+      const testedAt = Number.isNaN(testedDate.getTime()) ? 'time unavailable' : testedDate.toLocaleString();
+      const source = attempt.triggered_by === 'owner_test' ? 'your test'
+        : attempt.triggered_by === 'heartbeat' ? 'heartbeat'
+        : attempt.triggered_by === 'manual' ? 'manual'
+        : attempt.triggered_by === 'webhook' ? 'webhook'
+        : 'compliance check';
+      const completed = attempt.storyboards_completed;
+      const total = attempt.storyboards_total;
+      const coverage = Number.isInteger(completed) && Number.isInteger(total) && total > 0
+        ? ` · ${completed}/${total} storyboards completed`
+        : '';
+      const target = attempt.requested_compliance_target
+        ? ` · AdCP ${escapeHtml(String(attempt.requested_compliance_target))}`
+        : '';
+      const blocker = typeof attempt.first_blocker === 'string' && attempt.first_blocker
+        ? `<div>First blocker: ${escapeHtml(attempt.first_blocker)}</div>`
+        : '';
+      const diagnosticsUrl = `/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/diagnostics?run_id=${encodeURIComponent(attempt.id)}${orgId ? `&org=${encodeURIComponent(orgId)}` : ''}`;
+
+      return `<div class="agent-latest-attempt${authoritative ? '' : ' agent-latest-attempt--incomplete'}">
+        <div class="agent-latest-attempt-title">Latest attempt: ${label}</div>
+        <div>${escapeHtml(testedAt)} · ${escapeHtml(source)}${target}${escapeHtml(coverage)}</div>
+        ${blocker}
+        ${authoritative ? '' : '<div>This attempt did not update the public result.</div>'}
+        <a href="${escapeHtml(diagnosticsUrl)}" target="_blank" rel="noopener">View run diagnostics (JSON)</a>
+      </div>`;
+    }
+
     function renderAgentsSection(agents, complianceMap, orgId) {
       if (!agents || agents.length === 0) {
         return `
@@ -1982,6 +2124,7 @@
         const authInfo = data?.authStatus;
         const loadError = data?.loadError;
         const hasData = cs && cs.status && cs.status !== 'unknown';
+        const hasPartialData = Boolean(data && !cs);
         const hasAuth = authInfo?.has_auth;
         const refreshAvailability = cs?.refresh_availability;
         const refreshUnavailable = refreshAvailability?.available === false;
@@ -1990,7 +2133,7 @@
           ? ` disabled data-refresh-paused="true" title="${escapeHtml(refreshAvailability.notice)}"`
           : '';
         const refreshNoticeHtml = refreshUnavailable
-          ? `<div class="agent-refresh-result" style="font-size:var(--text-xs);margin-top:var(--space-2);padding:var(--space-2) var(--space-3);border-radius:6px;background:var(--color-warning-bg);color:var(--color-warning-fg);">${escapeHtml(refreshAvailability.notice)} ${escapeHtml(refreshAvailability.alternative_description)}</div>`
+          ? `<div class="agent-refresh-result" style="font-size:var(--text-xs);margin-top:var(--space-2);padding:var(--space-2) var(--space-3);border-radius:6px;background:var(--color-warning-bg);color:var(--color-warning-fg);">${escapeHtml(refreshAvailability.notice)} ${escapeHtml(refreshAvailability.alternative_description)}${refreshAvailability.tracking_issue ? ` <a href="${escapeHtml(refreshAvailability.tracking_issue)}" target="_blank" rel="noopener">Tracking issue</a>` : ''}</div>`
           : '';
 
         const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
@@ -2097,24 +2240,30 @@
               <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
                 <span class="agent-status-dot agent-status-dot--unknown"></span>
                 <span class="agent-hostname">${escapeHtml(hostname)}</span>
-                <span class="agent-status-label" style="color: var(--color-text-secondary);">not yet checked</span>
+                <span class="agent-status-label" style="color: var(--color-text-secondary);">${hasPartialData ? 'loading compliance…' : 'not yet checked'}</span>
               </div>
             </div>
             ${hasAuth
               ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : authInfo?.auth_type === 'oauth_client_credentials' ? ' via OAuth client credentials' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
               : buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}
+            ${renderLatestComplianceAttempt(cs?.latest_attempt, agent.url, orgId)}
             ${visibilitySelectorHtml}
             ${renderVerificationPanel(null, agent.url, hasAuth)}
             <div class="agent-meta-row">
               <span></span>
               <div class="agent-meta-row-actions">
+                ${hasAuth ? `<button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">Update auth</button>` : ''}
+                ${hasPartialData ? `<button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">History</button>` : ''}
                 <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}"${refreshButtonState || ' title="Re-detect supported AdCP versions, refresh registry status, and run compliance now"'}>${refreshButtonLabel}</button>
+                ${hasPartialData ? `<button class="agent-requeue-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Mark this agent eligible for a future scheduled compliance heartbeat. This is not a human refresh and has no guaranteed start time.">Requeue comply</button>` : ''}
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
                 <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
               </div>
             </div>
             ${refreshNoticeHtml}
+            ${hasAuth ? `<div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">${buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}</div>` : ''}
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
+            ${hasPartialData ? `<div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>` : ''}
           </div>`;
         }
 
@@ -2208,6 +2357,7 @@
             </div>
             ${cs.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
             ${storyboardSummary}
+            ${renderLatestComplianceAttempt(cs.latest_attempt, agent.url, orgId)}
             ${clickableTrackPills ? '<div class="agent-tracks" title="' + escapeHtml(complianceStatusTitle) + '">' + clickableTrackPills + '</div>' : ''}
             <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
             ${sparkline}
@@ -3509,7 +3659,8 @@
         const returnTo = window.location.pathname + window.location.search + window.location.hash;
         window.location.href = '/api/oauth/agent/start'
           + '?agent_context_id=' + encodeURIComponent(agentContextId)
-          + '&return_to=' + encodeURIComponent(returnTo);
+          + '&return_to=' + encodeURIComponent(returnTo)
+          + (btn.dataset.oauthFresh === 'true' ? '&fresh=1' : '');
       } catch (err) {
         btn.disabled = false;
         btn.textContent = originalLabel;
@@ -3638,14 +3789,75 @@
       swapAgentCard(agentUrl);
     }
 
+    function refreshStorageKey(agentUrl) {
+      return `adcp:agent-refresh:${pageState.orgId || ''}:${agentUrl}`;
+    }
+
+    function pendingRefreshUrl(agentUrl) {
+      try {
+        const statusUrl = sessionStorage.getItem(refreshStorageKey(agentUrl));
+        const prefix = `/api/registry/agents/${encodeURIComponent(agentUrl)}/refreshes/`;
+        return statusUrl?.startsWith(prefix) && /^[0-9a-f-]{36}$/.test(statusUrl.slice(prefix.length))
+          ? statusUrl : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function rememberRefresh(agentUrl, statusUrl) {
+      try { sessionStorage.setItem(refreshStorageKey(agentUrl), statusUrl); } catch { /* private storage unavailable */ }
+    }
+
+    function forgetRefresh(agentUrl) {
+      try { sessionStorage.removeItem(refreshStorageKey(agentUrl)); } catch { /* private storage unavailable */ }
+    }
+
+    async function resumePendingAgentRefreshes(agents) {
+      for (const agent of agents) {
+        const statusUrl = pendingRefreshUrl(agent.url);
+        if (!statusUrl || pageState.activeRefreshPolls.has(agent.url)) continue;
+        pageState.activeRefreshPolls.add(agent.url);
+        const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
+        const card = document.getElementById(cardId);
+        const actionsRow = card?.querySelector('.agent-meta-row-actions');
+        const progress = document.createElement('div');
+        progress.className = 'agent-refresh-result';
+        progress.style.cssText = 'font-size: var(--text-xs); margin-top: var(--space-2); color: var(--color-warning-fg);';
+        progress.textContent = 'Refresh queued or running — checking for the result…';
+        actionsRow?.parentElement?.appendChild(progress);
+        void pollAgentRefresh(statusUrl).then(async operation => {
+          progress.remove();
+          if (operation.status === 'succeeded' || operation.status === 'failed') {
+            forgetRefresh(agent.url);
+            await reloadAgentCardAfterRefresh(agent.url);
+          }
+          const refreshed = document.getElementById(cardId)?.querySelector('.agent-meta-row-actions');
+          if (refreshed?.parentElement) {
+            const message = document.createElement('div');
+            message.className = 'agent-refresh-result';
+            message.style.cssText = 'font-size: var(--text-xs); margin-top: var(--space-2); color: var(--color-text-secondary);';
+            message.textContent = operation.status === 'succeeded' ? buildAgentRefreshSummary(operation.result || {})
+              : operation.status === 'failed' ? (operation.error?.message || operation.error || 'Refresh failed')
+              : 'Refresh is still running. Reload this page later to resume tracking.';
+            refreshed.parentElement.appendChild(message);
+          }
+        }).catch(() => { progress.textContent = 'Refresh status unavailable. Reload this page to retry.'; })
+          .finally(() => pageState.activeRefreshPolls.delete(agent.url));
+      }
+    }
+
     async function pollAgentRefresh(statusUrl, retryAfterSeconds = 5) {
-      const deadline = Date.now() + 16 * 60 * 1000;
+      // A full owner assessment can spend 30 minutes in the runner, plus
+      // queue wait and final badge projection. Keep polling while the owner
+      // page is open. A queued request may wait behind two 35-minute suites;
+      // the status URL is stored in the tab so reloads can resume tracking.
+      const deadline = Date.now() + 3 * 60 * 60 * 1000;
       let delaySeconds = Math.max(1, Number(retryAfterSeconds) || 5);
       while (Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
         const response = await fetch(statusUrl, { credentials: 'include' });
         const data = await response.json().catch(() => ({}));
-        if (response.status === 429) {
+        if (response.status === 429 || response.status === 502 || response.status === 503 || response.status === 504) {
           delaySeconds = Math.max(
             1,
             Number(response.headers.get('Retry-After'))
@@ -3655,9 +3867,10 @@
           );
           continue;
         }
-        if (!response.ok) {
-          return { status: 'failed', error: data.error || `Status check failed (HTTP ${response.status})` };
+        if (response.status === 404) {
+          return { status: 'failed', error: data.error || 'Refresh status was not found' };
         }
+        if (!response.ok) return { status: 'unavailable' };
         if (data.status === 'succeeded' || data.status === 'failed') return data;
         delaySeconds = Math.max(1, Number(response.headers.get('Retry-After')) || 5);
       }
@@ -3674,6 +3887,7 @@
       if (!btn) return;
 
       const agentUrl = btn.dataset.agentUrl;
+      if (pageState.activeRefreshPolls.has(agentUrl)) return;
       const cardId = btn.dataset.cardId;
       const originalLabel = btn.textContent;
       let actionsRow = btn.closest('.agent-meta-row-actions');
@@ -3716,6 +3930,8 @@
         let effectiveStatus = res.status;
 
         if (res.status === 202 && data.status_url) {
+          rememberRefresh(agentUrl, data.status_url);
+          pageState.activeRefreshPolls.add(agentUrl);
           const progress = renderFlash({
             severity: 'warning',
             text: 'Refresh accepted — running compliance checks…',
@@ -3725,10 +3941,13 @@
             res.headers.get('Retry-After'),
           );
           progress?.remove();
+          pageState.activeRefreshPolls.delete(agentUrl);
           if (operation.status === 'succeeded') {
+            forgetRefresh(agentUrl);
             effectiveStatus = 200;
             data = operation.result || {};
           } else if (operation.status === 'failed') {
+            forgetRefresh(agentUrl);
             effectiveStatus = 500;
             data = { error: operation.error?.message || operation.error || 'Refresh failed' };
           } else {
@@ -3781,6 +4000,7 @@
           text: `Recheck failed: ${err?.message || err}`,
         });
       } finally {
+        pageState.activeRefreshPolls.delete(agentUrl);
         const refreshPaused = btn.dataset.refreshPaused === 'true';
         btn.disabled = refreshPaused;
         btn.textContent = refreshPaused ? 'Recheck paused' : originalLabel;
@@ -4060,7 +4280,8 @@
 
       // Shared: render a "Connect via OAuth" prompt when an agent 401s with
       // a WWW-Authenticate: Bearer challenge and no refreshable token is stored.
-      function renderOAuthChallenge(agentUrl, agentContextId, reason) {
+      function renderOAuthChallenge(agentUrl, agentContextId, reason, ownerFresh = false) {
+        if (ownerFresh === true) reason = "Saved OAuth credentials need an explicit owner sign-in. If the authorization server changed, confirm trusted client configuration; saved clients are not rebound automatically.";
         const safeReason = reason
           ? '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(String(reason)) + '</div>'
           : '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">This agent requires OAuth authorization before storyboards can run.</div>';
@@ -4069,7 +4290,8 @@
           '<div style="padding:var(--space-3);background:var(--color-warning-bg);border:1px solid var(--color-warning-border, var(--color-border));border-radius:var(--radius-md);">'
           + '<div style="font-weight:var(--font-semibold);margin-bottom:var(--space-2);">Connect via OAuth</div>'
           + safeReason
-          + '<button class="agent-oauth-challenge-btn" data-agent-url="' + escapeHtml(agentUrl) + '"' + ctxAttr + '>Authorize with agent</button>'
+          + '<button class="agent-oauth-challenge-btn" data-agent-url="' + escapeHtml(agentUrl) + '"' + ctxAttr
+          + (ownerFresh === true ? ' data-oauth-fresh="true">Start a new sign-in</button>' : '>Authorize with agent</button>')
           + '</div>'
         );
       }
@@ -4248,7 +4470,7 @@
           }
 
           if (errBody.needs_oauth) {
-            panel.innerHTML = renderOAuthChallenge(agentUrl, errBody.agent_context_id, errBody.error);
+            panel.innerHTML = renderOAuthChallenge(agentUrl, errBody.agent_context_id, errBody.error, errBody.oauth_fresh === true);
             return;
           }
 
@@ -4460,7 +4682,7 @@
           }
 
           if (result.needs_oauth) {
-            panel.innerHTML = renderOAuthChallenge(agentUrl, result.agent_context_id, result.error);
+            panel.innerHTML = renderOAuthChallenge(agentUrl, result.agent_context_id, result.error, result.oauth_fresh === true);
             return;
           }
 
@@ -4556,7 +4778,7 @@
           progressEl.remove();
 
           if (res.status === 422 && data.needs_oauth) {
-            panel.innerHTML = renderOAuthChallenge(agentUrl, data.agent_context_id, data.error);
+            panel.innerHTML = renderOAuthChallenge(agentUrl, data.agent_context_id, data.error, data.oauth_fresh === true);
             return;
           }
 

@@ -1,0 +1,93 @@
+id: media_buy_seller/outcome_target_list_products_inert
+version: "1.0.0"
+title: "list_products ignores criteria.outcome_target for every seller"
+category: media_buy_seller
+summary: "Verifies that a list_products request carrying criteria.outcome_target is answered with a product page rather than rejected, whether or not the seller declares media_buy.outcome_target."
+track: media_buy
+introduced_in: "3.2"
+
+required_tools:
+  - list_products
+
+narrative: |
+  list_products shares product-discovery criteria with request_proposals but
+  returns products and never proposals, so criteria.outcome_target has no
+  answer there. The field is inert on list_products for every seller: it does
+  not filter or rank products and must not cause a rejection beyond schema
+  validation. Sellers that do not declare media_buy.outcome_target still
+  reject it on proposal requests with UNSUPPORTED_FEATURE. The inert rule lets
+  a buyer reuse one criteria object across both tasks.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities: [sells_media]
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+prerequisites:
+  controller_seeding: true
+  description: "Seed the fixture account. No products need to be seeded; an empty product page passes."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_2a9e97d4539f"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_outcome_target_list-9b9f20a4"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+
+phases:
+  - id: list_with_outcome_target
+    title: "List products with an outcome_target in the criteria"
+    steps:
+      - id: list_products_with_cost_target
+        title: "list_products carrying a clicks goal with a cost target"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
+        stateful: false
+        expected: |
+          Return outcome listed. The outcome_target is ignored: no
+          UNSUPPORTED_FEATURE or INVALID_REQUEST error, whether or not the
+          seller declares media_buy.outcome_target.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_outcome_target_list-9b9f20a4"
+            sandbox: true
+          criteria:
+            outcome_target:
+              goal:
+                kind: "metric"
+                metric: "clicks"
+              volume: 10000
+              cost_per:
+                amount: 3
+                currency: "USD"
+                strength: "cap"
+          fields: ["product_id", "name"]
+          max_results: 1
+          context:
+            correlation_id: "outcome_target_list_products_inert--list"
+        validations:
+          - check: response_schema
+            description: "Response matches list-products-response.json schema"
+          - check: field_value
+            path: "outcome"
+            value: "listed"
+            description: "The seller answers with a product page instead of rejecting the outcome_target"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "outcome_target_list_products_inert--list"
+            description: "Context correlation_id returned unchanged"

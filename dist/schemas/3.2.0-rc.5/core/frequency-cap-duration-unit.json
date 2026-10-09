@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/core/frequency-cap-duration-unit.json",
+  "title": "Frequency Cap Duration Unit",
+  "description": "A duration unit supported for a frequency-cap window or suppression period.",
+  "type": "string",
+  "enum": [
+    "seconds",
+    "minutes",
+    "hours",
+    "days",
+    "campaign"
+  ]
+}

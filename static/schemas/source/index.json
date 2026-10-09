@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.2.0-rc.4",
+  "adcp_version": "3.2.1",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
@@ -244,6 +244,14 @@
         "audience-evidence-requirements": {
           "$ref": "/schemas/core/audience-evidence-requirements.json",
           "description": "Buyer-authored audience-evidence admissibility and ranking policy"
+        },
+        "definition-pin": {
+          "$ref": "/schemas/core/definition-pin.json",
+          "description": "Seller-authored integrity pin over one third-party-published definition referenced by commercial terms"
+        },
+        "audience-size": {
+          "$ref": "/schemas/core/audience-size.json",
+          "description": "Count of people reported as a range with a stated precision (lower_bound, upper_bound, precision, optional as_of)"
         },
         "audience-evidence-pin": {
           "$ref": "/schemas/core/audience-evidence-pin.json",
@@ -510,6 +518,10 @@
           "$ref": "/schemas/core/bidding-policy.json",
           "description": "Buyer-authored bidding, average-cost, or return policy at media-buy or package scope"
         },
+        "outcome-target-cost-per": {
+          "$ref": "/schemas/core/outcome-target-cost-per.json",
+          "description": "Cost target on an outcome_target: BiddingPolicy.cost_per plus a currency, answered in commercial_terms.bidding.cost_per"
+        },
         "insertion-order": {
           "$ref": "/schemas/core/insertion-order.json",
           "description": "A formal insertion order attached to a committed proposal for agreement signing"
@@ -665,6 +677,10 @@
         "downstream-connection-requirement": {
           "$ref": "/schemas/core/downstream-connection-requirement.json",
           "description": "Seller/platform-side connection or grant required by a product, format, or request, distinct from the AdCP caller credential."
+        },
+        "product-execution-requirement": {
+          "$ref": "/schemas/core/product-execution-requirement.json",
+          "description": "Experimental account resource (event source, catalog, or downstream connection) a product needs before a package on it can be created."
         },
         "canonical-projection-slot-override": {
           "$ref": "/schemas/core/canonical-projection-slot-override.json",
@@ -1013,7 +1029,7 @@
         },
         "daypart-target": {
           "$ref": "/schemas/core/daypart-target.json",
-          "description": "A time window for daypart targeting with days of week and hour range"
+          "description": "A time window for daypart targeting with days of week and a whole-hour or (experimental) HH:MM time-of-day range"
         },
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
@@ -1193,6 +1209,10 @@
           "$ref": "/schemas/enums/seller-policy-decline-reason.json",
           "description": "Machine-readable seller-policy reason for declining a MediaBuy control shape"
         },
+        "definition-pin-ref-kind": {
+          "$ref": "/schemas/enums/definition-pin-ref-kind.json",
+          "description": "Kinds of third-party-published definition a definition pin can cover"
+        },
         "proposal-refinement-reason": {
           "$ref": "/schemas/enums/proposal-refinement-reason.json",
           "description": "Machine-readable partial or unable proposal-refinement outcome"
@@ -1217,6 +1237,14 @@
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
         },
+        "audience-size-precision": {
+          "$ref": "/schemas/enums/audience-size-precision.json",
+          "description": "How precisely an audience size range is reported (exact, approximate, bucketed)"
+        },
+        "audience-match-rate-basis": {
+          "$ref": "/schemas/enums/audience-match-rate-basis.json",
+          "description": "Where an audience match rate came from (platform_reported, derived)"
+        },
         "audience-status": {
           "$ref": "/schemas/enums/audience-status.json",
           "description": "Matching status of a synced audience on a seller platform"
@@ -1232,6 +1260,10 @@
         "pacing": {
           "$ref": "/schemas/enums/pacing.json",
           "description": "Budget pacing strategy"
+        },
+        "outcome-target-cost-strength": {
+          "$ref": "/schemas/enums/outcome-target-cost-strength.json",
+          "description": "Strength of an outcome_target cost_per (cap or target), identical to BiddingPolicy.cost_per strength"
         },
         "frequency-cap-scope": {
           "$ref": "/schemas/enums/frequency-cap-scope.json",
@@ -1371,7 +1403,7 @@
         },
         "demographic-system": {
           "$ref": "/schemas/enums/demographic-system.json",
-          "description": "Audience measurement systems for demographic notation (nielsen, barb, agf, oztam, mediametrie, custom)"
+          "description": "Audience measurement systems for demographic notation (nielsen, nielsen_audio, barb, agf, oztam, mediametrie, nmo, videoamp, custom)"
         },
         "reach-unit": {
           "$ref": "/schemas/enums/reach-unit.json",
@@ -1460,6 +1492,10 @@
         "sort-metric": {
           "$ref": "/schemas/enums/sort-metric.json",
           "description": "Numeric delivery metrics available for sorting breakdown rows"
+        },
+        "spot-status": {
+          "$ref": "/schemas/enums/spot-status.json",
+          "description": "Lifecycle status of a by_spot row (scheduled, aired, preempted, makegood). Experimental."
         },
         "history-entry-type": {
           "$ref": "/schemas/enums/history-entry-type.json",
@@ -1578,6 +1614,10 @@
           "$ref": "/schemas/enums/daypart-timezone-mode.json",
           "description": "Supported clock mode for daypart targeting"
         },
+        "daypart-time-granularity": {
+          "$ref": "/schemas/enums/daypart-time-granularity.json",
+          "description": "Finest time-of-day resolution a product honors for daypart targeting (experimental)"
+        },
         "distance-unit": {
           "$ref": "/schemas/enums/distance-unit.json",
           "description": "Units of distance measurement for radius-based catchment areas (km, mi, m)"
@@ -1585,6 +1625,10 @@
         "error-code": {
           "$ref": "/schemas/enums/error-code.json",
           "description": "Standard error code vocabulary for agent recovery classification"
+        },
+        "request-signing-error-code": {
+          "$ref": "/schemas/enums/request-signing-error-code.json",
+          "description": "Stable request-signing transport error vocabulary and recovery metadata"
         },
         "consent-basis": {
           "$ref": "/schemas/enums/consent-basis.json",
@@ -1771,7 +1815,7 @@
         },
         "outcome-target": {
           "$ref": "/schemas/media-buy/outcome-target.json",
-          "description": "Reverse-forecast planning input: a compact metric or event goal plus desired volume the seller solves budget for"
+          "description": "Reverse-forecast planning input: a compact metric or event goal plus a desired volume, a cost target, or both"
         },
         "proposal-refinement": {
           "$ref": "/schemas/media-buy/proposal-refinement.json",
@@ -2843,5 +2887,5 @@
       "code": "// Use everit-org/json-schema or similar library"
     }
   ],
-  "published_version": "3.2.0-rc.4"
+  "published_version": "3.2.1"
 }

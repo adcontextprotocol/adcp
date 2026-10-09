@@ -198,42 +198,55 @@ jobs:
           bundle_version="$(node -p "require('./bundle/latest.tgz.provenance.json').published_version")"
           sdk_version="$(cat sdk/src/adcp/ADCP_VERSION)"
           printf '%s\n' "${bundle_version}" > sdk/src/adcp/ADCP_VERSION
-          # The SDK deliberately packages only its current prerelease schema.
-          # Keep that disposable package-data allowlist aligned with the
-          # candidate pin before exercising its version consistency test.
+          # The SDK packages schemas by bundle key: `major.minor` for stable
+          # releases (`3.2.1` -> `3.2`) and the full version for prereleases.
+          # Ask the SDK for both keys, then make sure the disposable
+          # package-data allowlist also covers the candidate's key before
+          # exercising its version consistency test. A stable candidate on an
+          # already-packaged line (the common case) needs no edit.
           SDK_VERSION="${sdk_version}" BUNDLE_VERSION="${bundle_version}" python - <<'PY'
           import os
           from pathlib import Path
 
-          sdk_version = os.environ["SDK_VERSION"]
-          bundle_version = os.environ["BUNDLE_VERSION"]
-          replacements = {
-              "sdk/pyproject.toml": [
-                  (
-                      f"_schemas/{sdk_version}/",
-                      f"_schemas/{bundle_version}/",
-                  ),
-              ],
-              "sdk/MANIFEST.in": [
-                  (
-                      f"_schemas/{sdk_version} ",
-                      f"_schemas/{bundle_version} ",
-                  ),
-                  (
-                      f"schemas/cache/{sdk_version} ",
-                      f"schemas/cache/{bundle_version} ",
-                  ),
-              ],
-          }
-          for filename, file_replacements in replacements.items():
-              path = Path(filename)
-              source = path.read_text()
-              for old, new in file_replacements:
-                  if old not in source:
-                      raise SystemExit(f"{filename} does not package the pinned SDK schema {old}")
-                  source = source.replace(old, new)
-              path.write_text(source)
+          from adcp.validation.version import resolve_bundle_key
+
+          old_key = resolve_bundle_key(os.environ["SDK_VERSION"])
+          new_key = resolve_bundle_key(os.environ["BUNDLE_VERSION"])
+          print(f"SDK bundle key {old_key!r}; candidate bundle key {new_key!r}")
+          if old_key != new_key:
+              entries = {
+                  "sdk/pyproject.toml": [
+                      (f'"_schemas/{old_key}/**/*.json"', f'"_schemas/{new_key}/**/*.json"'),
+                  ],
+                  "sdk/MANIFEST.in": [
+                      (
+                          f"recursive-include src/adcp/_schemas/{old_key} *.json",
+                          f"recursive-include src/adcp/_schemas/{new_key} *.json",
+                      ),
+                      (
+                          f"recursive-include schemas/cache/{old_key} *.json",
+                          f"recursive-include schemas/cache/{new_key} *.json",
+                      ),
+                  ],
+              }
+              for filename, file_entries in entries.items():
+                  path = Path(filename)
+                  lines = path.read_text().splitlines(keepends=True)
+                  for old, new in file_entries:
+                      if any(new in line for line in lines):
+                          continue
+                      index = next((i for i, line in enumerate(lines) if old in line), None)
+                      if index is None:
+                          raise SystemExit(f"{filename} does not package the pinned SDK schema {old}")
+                      lines.insert(index + 1, lines[index].replace(old, new))
+                  path.write_text("".join(lines))
           PY
+          # The SDK pins audited signed releases and refuses to sync a pinned
+          # version from anywhere but the official signed artifact. The PR
+          # bundle reuses the package version but is an unpublished candidate
+          # whose provenance and checksum were verified above, so drop only
+          # that version's pin from this disposable checkout.
+          rm -f "sdk/schemas/releases/${bundle_version}.json"
           mkdir -p "${RUNNER_TEMP}/protocol-host/protocol"
           cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
           cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"

@@ -8,7 +8,7 @@
     "url": {
       "type": "string",
       "format": "uri",
-      "description": "The authorized agent's API endpoint URL. Callers comparing this URL against a registry (sales-agent list, signal-provider registry, TMP provider lookup, etc.) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent. See docs/reference/url-canonicalization."
+      "description": "The authorized agent's protocol endpoint URL: the exact agent URL buyers are given and send AdCP requests to, including the path (e.g., `https://agent.example.com/mcp`). A bare origin matches only an agent served at the root. An agent reachable at more than one agent URL (for example, separate MCP and A2A endpoints) needs one entry per URL. Callers comparing this URL against a registry (sales-agent list, signal-provider registry, TMP provider lookup, etc.) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent. See docs/reference/url-canonicalization."
     },
     "authorized_for": {
       "type": "string",
@@ -18,7 +18,7 @@
     },
     "signing_keys": {
       "type": "array",
-      "description": "Optional publisher-attested public signing keys for this agent. Use these as the trust anchor for verifying signed agent responses instead of relying on key discovery from the agent domain alone.",
+      "description": "Optional publisher-attested public signing keys for this agent. They narrow the keys a verifier accepts for signatures the agent makes in its sell-side role about this publisher's inventory, such as webhooks about a media buy: a key MUST appear both here and in the JWKS of the agent's brand.json `agents[]` entry. A pin never adds a key and does not apply to the agent's other traffic. See docs/building/by-layer/L1/security.mdx#agent-resolution.",
       "items": {
         "$ref": "/schemas/core/agent-signing-key.json"
       },

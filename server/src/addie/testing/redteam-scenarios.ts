@@ -410,6 +410,61 @@ export const RED_TEAM_SCENARIOS: RedTeamScenario[] = [
     shortQuestion: true,
     noSignInDeflect: true,
   },
+
+  // RELEASE — concept: "Protocol Version and Maturity". Markers hold both
+  // before and after 3.2 becomes the stable default, so these need no edit
+  // at GA. "Is 3.2 stable?" is deliberately absent: its correct answer flips
+  // at GA, so it belongs in the GA verification run, not a standing marker.
+  {
+    id: 'rel-signing-1',
+    category: 'release',
+    question: 'Is RFC 9421 request signing required for mutating AdCP calls, or can a buyer still use a bearer token?',
+    concept: 'AgenticAdvertising.org Platform Authentication — AdCP protocol auth between agents',
+    requiredMarkers: ['optional'],
+    bannedMarkers: [
+      'required for mutating operations in 3.1',
+      'bearer is read-only',
+      'bearer tokens are read-only',
+    ],
+    noSignInDeflect: true,
+  },
+  {
+    id: 'rel-newer-name-1',
+    category: 'release',
+    question: 'How does get_reporting_status work?',
+    concept: 'Protocol Version and Maturity — a name missing from one release may exist in another',
+    requiredMarkers: ['obligation', 'revision', 'reliable reporting'],
+    // A correct answer before GA says the task is absent from the stable
+    // release but present in 3.2, so ban only unqualified denials.
+    bannedMarkers: ['is not an adcp task', 'not part of adcp', "couldn't find any information", 'could not find any information'],
+    noSignInDeflect: true,
+  },
+  {
+    id: 'rel-whats-new-1',
+    category: 'release',
+    question: "What's new in AdCP 3.2?",
+    concept: "Protocol Version and Maturity — what's new",
+    requiredMarkers: ['request_proposals', 'buy_products', 'lifecycle_tools', 'get_reporting_status'],
+    noSignInDeflect: true,
+  },
+  {
+    id: 'rel-migrate-1',
+    category: 'release',
+    question: 'How do I migrate my agent from AdCP 3.1 to 3.2?',
+    concept: 'Protocol Version and Maturity — migration',
+    requiredMarkers: ['media_buy_status'],
+    bannedMarkers: ['3.1 is deprecated', 'you must rewrite'],
+    noSignInDeflect: true,
+  },
+  {
+    id: 'rel-sdk-1',
+    category: 'release',
+    question: 'Which SDK version should I use to build against AdCP 3.2?',
+    concept: 'Protocol Version and Maturity — which SDK',
+    requiredMarkers: ['@adcp/sdk'],
+    bannedMarkers: ['@adcp/client'],
+    noSignInDeflect: true,
+  },
 ];
 
 /**

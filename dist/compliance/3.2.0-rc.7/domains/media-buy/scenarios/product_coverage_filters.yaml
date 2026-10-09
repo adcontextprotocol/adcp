@@ -1,0 +1,146 @@
+id: media_buy_seller/product_coverage_filters
+version: "1.0.0"
+title: "Product coverage is preserved across discovery surfaces"
+category: media_buy_seller
+summary: "Checks legacy and compact coverage predicates against independent negative controls without configuring delivery targeting."
+track: media_buy
+introduced_in: "3.2"
+required_tools: [get_products, list_products, comply_test_controller]
+
+narrative: |
+  The fixture's ext.training.coverage records seller inventory facts, not buyer
+  targeting. Seed those facts in the seller's coverage service. The matching
+  product has Canadian inventory and New York DMA inventory. One negative has
+  New York inventory but no Canadian inventory; another has Canadian inventory
+  but no New York inventory. Each accepted predicate must exclude its negative.
+  None of these products needs selectable metro targeting. Both discovery
+  surfaces must return the same unconfigured product and its original price.
+  Each request asks for one row. The matching ID sorts after both negatives,
+  so filtering only after pagination cannot satisfy the expected result.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities: [sells_media, product_filtering]
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+prerequisites:
+  description: "Seed three products with the declared inventory coverage and USD pricing."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_e888c4116618"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_product_coverage_fi-69f0746b"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: coverage_z_matching
+      delivery_type: non_guaranteed
+      channels: [display]
+      overlay_support: {geo_countries: true}
+      ext:
+        training:
+          coverage:
+            countries: [US, CA]
+            metros: [{system: nielsen_dma, code: "501"}]
+    - product_id: coverage_a_country
+      delivery_type: non_guaranteed
+      channels: [display]
+      ext:
+        training:
+          coverage:
+            countries: [US]
+            metros: [{system: nielsen_dma, code: "501"}]
+    - product_id: coverage_b_metro
+      delivery_type: non_guaranteed
+      channels: [display]
+      ext:
+        training:
+          coverage:
+            countries: [US, CA]
+            metros: [{system: nielsen_dma, code: "803"}]
+  pricing_options:
+    - product_id: coverage_z_matching
+      pricing_option_id: coverage_z_matching_cpm
+      pricing_model: cpm
+      currency: USD
+      fixed_price: 10
+    - product_id: coverage_a_country
+      pricing_option_id: coverage_country_cpm
+      pricing_model: cpm
+      currency: USD
+      fixed_price: 10
+    - product_id: coverage_b_metro
+      pricing_option_id: coverage_metro_cpm
+      pricing_model: cpm
+      currency: USD
+      fixed_price: 10
+
+phases:
+  - id: legacy_coverage
+    title: "Preserve coverage on retained get_products"
+    steps:
+      - id: legacy_country_and_metro
+        title: "Apply both coverage predicates before pagination"
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        stateful: false
+        sample_request:
+          buying_mode: wholesale
+          pagination: {max_results: 1}
+          account: &account
+            brand: {domain: acmeoutdoor.example}
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: "compliance-media_buy_seller_product_coverage_fi-69f0746b"
+            sandbox: true
+          filters: &coverage
+            pricing_currencies: [USD]
+            countries: [CA]
+            metros: [{system: nielsen_dma, code: "501"}]
+        validations: &validations
+          - check: response_schema
+            description: "Response validates against the invoked tool's contract"
+          - check: field_value
+            path: products[0].product_id
+            value: coverage_z_matching
+            description: "The original matching product is returned"
+          - check: field_absent
+            path: products[1]
+            description: "Each independently non-matching product is excluded"
+          - check: field_value
+            path: products[0].pricing_options[0].fixed_price
+            value: 10
+            description: "Coverage does not rescope the offer's price"
+          - check: field_absent
+            path: products[0].expires_at
+            description: "Coverage does not turn the durable fixture into an expiring configured offer"
+          - check: field_absent
+            path: products[0].overlay_support.geo_metros
+            description: "Metro coverage does not require selectable metro targeting"
+  - id: compact_coverage
+    title: "Apply identical predicates through offer_filters"
+    steps:
+      - id: compact_country_and_metro
+        title: "Return the same offer through list_products"
+        task: list_products
+        schema_ref: media-buy/list-products-request.json
+        response_schema_ref: media-buy/list-products-response.json
+        doc_ref: /media-buy/task-reference/list_products
+        stateful: false
+        sample_request:
+          account: *account
+          max_results: 1
+          criteria:
+            offer_filters: *coverage
+        validations: *validations

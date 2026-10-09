@@ -1,14 +1,13 @@
 ---
 title: get_reporting_status
-description: "Check Reliable Reporting health, enumerate expected periods and retained revisions, or resolve one exact reporting resource."
+description: "get_reporting_status checks Reliable Reporting health, lists expected periods and retained revisions, or resolves one exact reporting resource."
 "og:title": "AdCP — get_reporting_status"
 ---
 
 <Warning>
-**Reliable Reporting 1.0 is published through `3.2.0-rc.3` and remains
-experimental.** RC.2 publishes the opt-in consumer-status sync and readback and
-RC.3 hardens it. Sellers implementing that extension advertise
-`consumer_status_task`; it stays opt-in until the notice window closes on
+**Reliable Reporting 1.0 ships in AdCP 3.2 and remains experimental.** 3.2
+includes the opt-in consumer-status sync and readback. Sellers implementing
+that extension advertise `consumer_status_task`; it stays opt-in until the notice window closes on
 October 24, 2026, and becomes required Core only in the next eligible minor
 after that date. Sellers declare
 `media_buy.reporting_delivery` in `get_adcp_capabilities.experimental_features`.
@@ -19,15 +18,15 @@ Reliable Reporting. It answers whether every report that should exist is present
 usable. It does not replace [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 as the reporting-data API.
 
-{/* The stable /schemas/v3 alias does not expose this prerelease-only task yet. */}
-**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/get-reporting-status-request.json)
+**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/get-reporting-status-request.json)
 
-**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/get-reporting-status-response.json)
+**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/get-reporting-status-response.json)
 
 <Note>
-**What landed when.** RC.0 supports the `summary`, `periods`, and `revision`
-views, retained revisions, materializations, `receipts[]`, and cursor
-pagination. RC.1 adds incremental `changes_after` repair and its checkpoint,
+**Pinned 3.2 prerelease adopters.** The final 3.2 schemas include everything
+on this page. For integrations still pinned to a 3.2 prerelease: `3.2.0-rc.0`
+supports the `summary`, `periods`, and `revision` views, retained revisions,
+materializations, `receipts[]`, and cursor pagination. `3.2.0-rc.1` adds incremental `changes_after` repair and its checkpoint,
 post-official `adjustments[]` and `adjustment_receipts[]`, and their
 correction/reconciliation semantics. `3.2.0-rc.2` adds `consumer_statuses[]` for
 sellers advertising `consumer_status_task` and includes those immutable records
@@ -161,8 +160,9 @@ This state is reachable after the caller intentionally sends
 
 ### Future expectation on a complete summary
 
-This correction targets the next 3.2 release candidate. The immutable RC.3
-schemas retain the earlier prohibition on this field with complete health.
+Adopters still pinned to the immutable `3.2.0-rc.3` schemas see the earlier
+prohibition on this field with complete health; later 3.2 artifacts carry this
+correction.
 
 For `view: summary` with `health: complete`, a seller MUST populate
 `next_expected_at` when an active committed configuration generation in
@@ -325,17 +325,23 @@ ticketing. Only `open` and `acknowledged` issues appear in `issues[]`; retiring
 an issue removes it rather than publishing it in a terminal state, so a reader
 that treats a non-empty `issues[]` as degradation stays correct.
 
-Retiring is not a way to discharge a live disagreement. A seller MUST NOT take a
-`CONSUMER_STATUS_MISMATCH` out of a degraded projection while the statement that
-caused it is still that consumer's current unsuperseded leaf. `resolved` is
-reachable when the consumer supersedes that statement with one that agrees, or
-when the seller's own projection changes so the two no longer conflict.
-`waived` records an off-protocol agreement to stop acting and does not by itself
-return the period to `healthy` or `complete` — otherwise the seller could
-unilaterally erase a buyer-attributed disagreement, which is exactly what this
-separately attributed loop exists to prevent. A seller may still waive a
-statement it has diagnosed as buyer-side; that is an explicit, readable act
-rather than silence.
+`resolved` means the underlying disagreement ended: the consumer superseded the
+statement with one that agrees, or the seller's projection changed so the two no
+longer conflict. `waived` is different. It records an explicit off-protocol
+agreement by the authenticated consumer and seller to disregard that exact
+caller/account issue; a seller cannot create the agreement unilaterally. The
+waiver is bound to the `issue_id`, causing `reporting_status_id`, and diagnosed
+conflict. It retires the issue and restores the underlying seller health in
+both summary counts and the period projection, even while that immutable
+consumer statement remains the current leaf in `consumer_statuses[]`. It does
+not turn the statement into seller evidence. A later statement or materially
+different conflict is evaluated independently and receives a new issue ID.
+
+If the waiver removes the last impairment, sellers offering
+`reporting.status_changed` emit the recovery transition only after the recovered
+projection is readable; `issue_ids` is empty or absent. If another impairment
+keeps health unchanged, no health-transition notification is required. Polling
+remains authoritative in either case.
 
 `operations_contact` is human-facing metadata: surface it to an
 operator, never dereference it or treat it as an AdCP endpoint. Its URL is

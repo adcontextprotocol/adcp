@@ -1,0 +1,251 @@
+---
+title: request_proposals
+description: "Request one or more seller-authored draft media plans."
+"og:title": "AdCP request_proposals Task"
+testable: true
+---
+
+`request_proposals` creates one or more immutable draft media-plan proposal snapshots from a brief. It can begin a consultative workflow directly or use `product_ids` returned by [`list_products`](/dist/docs/3.2.1/media-buy/task-reference/list_products). Native seller success always contains at least one proposal; returning products without a proposal does not satisfy a native 3.2 implementation. The temporary projection-only exception for older peers is documented below.
+
+`brand` contains only the stable BrandKey (`domain`, optional `brand_id`, and optional ISO country `countries[]`); the seller resolves the canonical brand manifest rather than receiving a full brand file in every call. Countries qualify commercial advertiser identity and do not target delivery. `account` is optional and adds seller-specific commercial terms. A natural-key account can supply the request's sole brand identity and qualify it with an operator-owned unit and fixed account currency.
+
+{/* Using latest because this schema is not yet released in any version.
+    Update to the correct version alias after the next release. */}
+**Request schema:** [`/schemas/3.2.1/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/request-proposals-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441001",
+  "brief": "Reach outdoor enthusiasts with premium video inventory.",
+  "account": {
+    "brand": {
+      "domain": "nova-athletics.example",
+      "countries": ["DE", "NL"]
+    },
+    "operator": "pinnacle-media.example",
+    "operator_unit": {
+      "id": "seat_emea_01",
+      "name": "EMEA"
+    },
+    "currency": "EUR"
+  },
+  "opportunity": {
+    "opportunity_id": "opp_spring_launch_2027",
+    "phase": "active_sourcing",
+    "intent": "live_rfp",
+    "response_deadline": "2027-01-15T17:00:00Z"
+  },
+  "criteria": {
+    "product_ids": ["product_premium_video"],
+    "targeting_overlay": {
+      "geo_countries": ["US"]
+    },
+    "required_overlay_support": {
+      "geo_metros": { "systems": ["nielsen_dma"] }
+    }
+  }
+}
+```
+
+Put machine-representable requirements in `criteria`: `offer_filters` select commercial offers, `targeting_overlay` supplies concrete package delivery constraints, and `required_overlay_support` identifies package dimensions the buyer must be able to choose later. `required_media_buy_support` and `media_buy_frequency_cap` separately request aggregate-counter participation and preflight an exact shared cap. Keep goals and requirements without a structured AdCP field in `brief`.
+
+When refining an accepted proposal, omitted criteria inherit. Set
+`remove_media_buy_frequency_cap: true` on the refinement to negotiate a draft
+that clears the root cap; supplying `criteria.media_buy_frequency_cap` replaces it.
+
+## Reverse forecasting with outcome_target
+
+A proposal request is a solve over three coupled variables — time window, budget, and outcome. The buyer fixes what they know and the seller solves for the rest. Fixing dates and budget yields a delivery forecast; fixing the outcome inverts the question: "I need 10,000 clicks — what does my budget need to be?"
+
+Sellers declaring `media_buy.outcome_target` in [`get_adcp_capabilities`](/dist/docs/3.2.1/protocol/get_adcp_capabilities) accept the structured form in `criteria`:
+
+```json
+{
+  "criteria": {
+    "outcome_target": {
+      "goal": { "kind": "metric", "metric": "clicks" },
+      "volume": 10000
+    }
+  }
+}
+```
+
+The `goal` is a compact planning-time object with two variants: a delivery metric (`kind: "metric"`, using the same `forecastable-metric` vocabulary forecast points report) or a conversion event (`kind: "event"`, using the same `event-type` vocabulary). That construction means every permitted goal has a defined answer: the seller responds with `total_budget_guidance` (`min`/`recommended`/`max`) on each proposal and forecasts whose points carry the goal's metric or event key in `metrics`, with `forecast_range_unit` `clicks` or `conversions` structuring the curve where those units apply. Priorities, event sources, and vendor bindings live on the proposal's optimization goals (purchase `optimization_goals`, or `budget_allocation.optimization_goals` under seller-optimized allocation), which share this vocabulary, so buyers carry the same metric or event name from plan to buy.
+
+An `outcome_target` is a planning input, not a delivery guarantee: pricing and delivery obligations arise only at proposal finalization, and any performance commitment lives in the committed terms, not in the forecast. Sellers that do not declare the capability MUST NOT silently ignore a structured `outcome_target` on `request_proposals` or a proposal refinement — they reject it with [`UNSUPPORTED_FEATURE`](/dist/docs/3.2.1/building/verification/compliance-catalog#error-code-unsupported-feature); buyers fall back to expressing the goal in `brief` prose. Declaring sellers MAY reject a goal they cannot plan against (for example `spend`, which restates budget) with [`INVALID_REQUEST`](/dist/docs/3.2.1/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.goal`.
+
+### Cost targets
+
+A buyer who knows what it will pay per result, rather than how many results it needs, sends `cost_per` instead of, or alongside, `volume`. At least one of the two is required. `cost_per` is the 3.2 [`BiddingPolicy`](/dist/docs/3.2.1/media-buy/task-reference/create_media_buy#biddingpolicy-object) `cost_per` plus a currency:
+
+- `amount`: the average cost per goal result.
+- `strength`: `cap` optimizes for an average at or below the amount and accepts underdelivery when necessary. `target` optimizes around the amount while balancing volume and spend. Neither is a per-result or per-auction guarantee.
+- `currency`: the ISO 4217 currency of `amount`. `BiddingPolicy.cost_per` has no currency because it inherits the media-buy currency, and no media buy exists at request time, so the request states it.
+
+A cost target requires a goal expressible as a canonical optimization goal. A goal without one (for example `impressions`, `grps`, `downloads`, `plays`, `frequency`, `coverage_rate`, `audience_size`, or `measured_impressions`) can still be planned by volume, so the seller rejects the cost target, not the goal: [`INVALID_REQUEST`](/dist/docs/3.2.1/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.cost_per`.
+
+The four request shapes are:
+
+| Request | Seller plans |
+|---------|--------------|
+| `volume` only | The budget that delivers the volume, answered with `total_budget_guidance`. Unchanged from the volume-only form above. |
+| `cost_per` with a buyer budget (`offer_filters.budget_range` or the brief) | The volume it can deliver within that budget at or below (`cap`) or around (`target`) the amount. With `budget_range.max` it plans within `max`; with only `min`, at or above `min`. `total_budget` never exceeds `max` or falls below `min`. |
+| `cost_per` plus `volume` | Toward the volume at the cost. Under a `cap`, the seller SHOULD keep the buyer's amount and forecast the lower volume it can deliver, unless no volume can be planned at that amount. Under a `target`, the ask is plannable when the seller can forecast the volume around it. |
+| `cost_per` with neither volume nor budget | The volume it can deliver at the cost. The seller MUST state the spend for that volume in `total_budget_guidance`. |
+
+**Answer.** Each proposal states the cost the seller can plan to in `commercial_terms.bidding.cost_per`, which the buyer adopts on acceptance. The `amount` MUST be greater than or equal to the ask: the requested amount when it is plannable, otherwise the lowest plannable amount. An amount is plannable when the seller can forecast goal volume at or below (`cap`) or around (`target`) it within the buyer's budget, and, when `budget_range.min` is present, only if the plan spends at least `min`. When the planned spend at the answered amount is below `commercial_terms.total_budget`, each forecast point MUST carry `metrics.spend`. A seller MAY return additional proposals at higher amounts under the same strength, to show what volume a higher cost buys. The seller keeps the buyer's `strength` and states only its own `amount`. A `cap` of 3 that the seller can only meet at 4.50 comes back as `{ "amount": 4.50, "strength": "cap" }`, never as `"target"`, because changing the strength would silently change the execution semantics the buyer asked for. A seller that will not plan under the buyer's strength at any amount rejects the request instead. The forecast's points carry the goal volume planned under that policy.
+
+`bidding.cost_per.amount` is the execution control, not an expected price. Compare sellers on forecast volume and spend at the proposal's budget, not on the cap amount; billing stays on the selected pricing option.
+
+**Goal binding.** The answering proposal MUST NOT carry purchase-level `bidding`, so the media-buy policy binds under the `BiddingPolicy` rules:
+
+- Under fixed or omitted `budget_allocation`, every purchase's primary optimization goal matches `goal`, and all of them resolve to the same result unit as `BiddingPolicy.cost_per` defines it: identical result-defining qualifiers and, for event goals, an identical resolved `attribution_window`.
+- Under `seller_optimized`, the primary goal of `budget_allocation.optimization_goals` matches `goal`.
+
+"Matches" means the same `kind` and `metric` for a metric goal. For an event goal, every `event_sources[]` entry carries the goal's `event_type` (and `custom_event_name`). The seller MAY add result-defining qualifiers such as `view_duration_seconds` or `reach_unit`; they are visible in the proposal.
+
+For an event goal, the seller fills `event_sources[]` from the event sources available on the buyer's account for that event, whether buyer-synced or seller-managed (`managed_by: "seller"`), as listed by [`sync_event_sources`](/dist/docs/3.2.1/media-buy/task-reference/sync_event_sources) discovery. It fills exactly one source unless it advertises `conversion_tracking.multi_source_event_dedup`. It also states `attribution_window`, which SHOULD be one it advertises in `conversion_tracking.attribution_windows` for that event type. The buyer sees both before accepting. With no source available for the event, the seller rejects with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per`.
+
+**Bidding capability.** A seller MUST NOT answer with a bidding policy outside its advertised `features.bidding_policy` profile for the proposal's scope and allocation mode. A seller that declares `media_buy.outcome_target` but advertises no such profile rejects cost targets with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per`. The `media_buy.outcome_target` flag alone cannot distinguish a seller that predates cost targets from one that plans them, so buyers rely on the negotiated `adcp_version` together with `features.bidding_policy`.
+
+**Currency.** `cost_per.currency` is the currency of the answer. Every answering proposal's `purchases[].pricing.currency`, which the bidding amounts are denominated in, and its `forecast.currency` MUST equal it, as MUST `commercial_terms.total_budget.currency` and `total_budget_guidance.currency` when present. When `offer_filters.budget_range` is present, `cost_per.currency` MUST equal `budget_range.currency`. Sellers MUST NOT convert currency. A conflict with `budget_range`, `pricing_currencies`, the account currency, or the currencies the requested products are priced in is rejected with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per`. This deliberately differs from [`get_products`](/dist/docs/3.2.1/media-buy/task-reference/get_products), where a currency filter that matches nothing returns zero products: a cost target states the currency of the answer, so a conflict is a malformed request, not an empty result.
+
+**Rejection.** `INVALID_REQUEST` naming `criteria.outcome_target.cost_per` covers a cost target that cannot be represented or bound: its strength, currency, goal, or the seller's bidding capability. A valid cost target for which the seller has no viable inventory returns `outcome: "rejected"` with a reason, like any other unplannable request. A seller that does not declare `media_buy.outcome_target` rejects the whole field with [`UNSUPPORTED_FEATURE`](/dist/docs/3.2.1/building/verification/compliance-catalog#error-code-unsupported-feature), as for volume.
+
+The cost target is still a planning input. The execution policy is the accepted proposal's `bidding.cost_per`.
+
+[`list_products`](/dist/docs/3.2.1/media-buy/task-reference/list_products) shares these criteria but returns products and never proposals, so `outcome_target` has no answer there, with or without `cost_per`. The field is inert on `list_products` for every seller, whether or not it declares `media_buy.outcome_target`: it does not filter or rank products, produces no guidance or bidding answer, and MUST NOT cause a rejection beyond schema validation. A buyer can therefore reuse one `criteria` object across `list_products` and `request_proposals`. A seller that does not declare the capability still rejects the field on proposal requests, and the capability flag, not a `list_products` error, tells the buyer whether a proposal request will be planned. Send outcome targets through `request_proposals`.
+
+In this worked example, a buyer asks for clicks at €3 or less on a €5,000 budget. The seller advertises fixed media-buy `cost_per` caps in `features.bidding_policy`:
+
+```json
+{
+  "$schema": "/schemas/3.2.1/latest/media-buy/request-proposals-request.json",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441002",
+  "brief": "Drive traffic to the spring running collection page.",
+  "account": {
+    "brand": { "domain": "nova-athletics.example" },
+    "operator": "pinnacle-media.example"
+  },
+  "criteria": {
+    "product_ids": ["product_premium_video"],
+    "offer_filters": {
+      "budget_range": { "max": 5000, "currency": "EUR" }
+    },
+    "outcome_target": {
+      "goal": { "kind": "metric", "metric": "clicks" },
+      "cost_per": { "amount": 3, "currency": "EUR", "strength": "cap" }
+    }
+  }
+}
+```
+
+The seller can't plan clicks at €3 on this inventory. The best it can plan is €4.50, so it answers with a €4.50 cap and the roughly 1,111 clicks that €5,000 buys at that cost:
+
+```json
+{
+  "$schema": "/schemas/3.2.1/latest/core/canonical-proposal.json",
+  "proposal_id": "proposal_spring_clicks_01",
+  "proposal_kind": "new_media_buy",
+  "proposal_status": "draft",
+  "expires_at": "2027-01-16T17:00:00Z",
+  "name": "Spring collection traffic at a click cost cap",
+  "brief_alignment": "€3 per click is below what this inventory can plan to. The plan caps the average at €4.50 and plans about 1,111 clicks within €5,000.",
+  "commercial_terms": {
+    "brand": { "domain": "nova-athletics.example" },
+    "purchases": [
+      {
+        "product_id": "product_premium_video",
+        "pricing_option_id": "cpm_eur_fixed",
+        "pricing": {
+          "pricing_option_id": "cpm_eur_fixed",
+          "pricing_model": "cpm",
+          "currency": "EUR",
+          "fixed_price": 9
+        },
+        "budget": 5000,
+        "optimization_goals": [{ "kind": "metric", "metric": "clicks", "priority": 1 }],
+        "start_time": "2027-03-01T00:00:00Z",
+        "end_time": "2027-03-31T23:59:59Z"
+      }
+    ],
+    "start_time": "2027-03-01T00:00:00Z",
+    "end_time": "2027-03-31T23:59:59Z",
+    "total_budget": { "amount": 5000, "currency": "EUR" },
+    "bidding": {
+      "cost_per": { "amount": 4.5, "strength": "cap" }
+    }
+  },
+  "terms_digest": "sha256:IO3B2jLn52O7-u_xeztyhTFDUJWbV4mQrCcTfCWpAQg",
+  "total_budget_guidance": { "min": 4000, "recommended": 5000, "max": 5000, "currency": "EUR" },
+  "forecast": {
+    "method": "modeled",
+    "currency": "EUR",
+    "forecast_range_unit": "clicks",
+    "points": [
+      { "budget": 2500, "metrics": { "clicks": { "mid": 555 }, "spend": { "mid": 2497.5 } } },
+      { "budget": 5000, "metrics": { "clicks": { "mid": 1111 }, "spend": { "mid": 4999.5 } } }
+    ]
+  }
+}
+```
+
+The purchase's only optimization goal is `clicks`, so the media-buy `cost_per` binds to clicks. €5,000 does not divide into whole clicks at €4.50, so each point carries the planned `spend`. If the buyer had sent `"currency": "USD"` against this EUR-only product, the seller would reject with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per` rather than convert.
+
+Explicit hard requirements in the brief remain binding. When the seller's structured interpretation materially affects product eligibility, pricing, or forecasting, the response includes `targeting_resolution.brief_targeting`. Exact structured overlays are not echoed; any product-specific alternative appears as sparse `Product.targeting_resolution.modifications` for buyer approval. A product carrying `targeting_resolution` also carries `expires_at`, which is how compact products mark request-specific configured offers; they have no `is_custom` flag.
+
+When the effective criteria include property or collection lists, every product returned alongside the proposals carries its own `list_applications` receipts. Proposal objects do not duplicate them. The receipts show how each list snapshot intersected that product at evaluation time, and the proposal uses the resulting price and forecast.
+
+Every returned purchase references the exact `product_id` and `pricing_option_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only proposal linkage needed by [`refine_proposals`](/dist/docs/3.2.1/media-buy/task-reference/refine_proposals) and [`decline_proposals`](/dist/docs/3.2.1/media-buy/task-reference/decline_proposals). Each ID identifies one immutable commercial snapshot; refinement and finalization mint new IDs instead of adding a second version field. A draft is indicative and does not reserve inventory. Finalize it through `refine_proposals` before passing the resulting committed proposal to [`accept_proposal`](/dist/docs/3.2.1/media-buy/task-reference/accept_proposal). The deprecated [`create_media_buy`](/dist/docs/3.2.1/media-buy/task-reference/create_media_buy) proposal mode remains the 3.x compatibility adapter.
+
+`opportunity` is optional shared planning-cycle context and must be open when supplied here. Its buyer-assigned `opportunity_id` can span request, decline, and purchase calls without becoming part of proposal identity. Sellers associate it with every proposal created by the request, and revised proposals inherit the same association.
+
+The native response uses `outcome: "proposed"` for a successful draft set and `outcome: "rejected"` with a reason when the seller cannot construct a viable plan. A compatibility coordinator may also return the projection-only `products_available` outcome defined below.
+
+## Products-only legacy compatibility
+
+A native 3.2 seller never reports products without a proposal as successful
+`request_proposals`; `outcome: "proposed"` continues to require at least one
+seller-authored immutable draft. Compatibility coordinators have one temporary
+exception for older peers: a valid 2.5, 3.0, or 3.1 [`get_products`](/dist/docs/3.2.1/media-buy/task-reference/get_products) brief may
+return useful products and no proposal. The coordinator preserves that result
+as the projection-only `products_available` outcome instead of dropping the
+products or fabricating a proposal.
+
+`products_available` carries one discriminated `purchase_continuation`:
+
+- `listed_purchase` means the coordinator successfully re-read the exact
+  products from a real seller-issued, account-scoped feed and obtained its
+  feed and pricing fences. The buyer continues through ordinary
+  [`buy_products`](/dist/docs/3.2.1/media-buy/task-reference/buy_products) with those
+  seller-issued values.
+- `legacy_create` means no truthful fence is available. The coordinator can
+  continue through explicit-package
+  [`create_media_buy`](/dist/docs/3.2.1/media-buy/task-reference/create_media_buy), but
+  only after the caller accepts every named loss for that logical operation.
+  The response always names `feed_version_not_atomic` and
+  `pricing_version_not_atomic`; an AdCP 2.5 source also names
+  `mutation_idempotency_not_guaranteed` because that release has no mutation
+  replay contract.
+
+The second path fails closed by default. A compatibility token may bind the
+observed products and prices to the caller and account, but it is not a feed or
+pricing fence. The coordinator MUST NOT synthesize a proposal,
+`commercial_terms`, `terms_digest`, `feed_version`, or `pricing_version`.
+Products with incomplete or unconfirmed pricing cannot use `listed_purchase`.
+The legacy seller revalidates price, expiry, and availability at create time,
+and its rejection is terminal for that attempt.
+
+Legacy `incomplete[]` remains a completeness statement. The coordinator
+preserves its compatible product, pricing, forecast, and proposal scopes;
+`scope: "proposals"` explains the absence of a proposal and is not a business
+rejection. Legacy brief pagination limits products, not proposals, and a legacy
+`time_budget` instructs the seller not to begin work it cannot complete in
+time. A 3.2 compatibility facade must preserve those semantics rather than
+silently converting them into an unbounded, apparently complete proposal call.
+
+This bridge is deprecated with the established lifecycle in 3.2 and removed in
+AdCP 4.0. See the [full compatibility and transaction-boundary
+matrix](https://github.com/adcontextprotocol/adcp/blob/main/specs/legacy-compact-lifecycle-compatibility.md).
+
+Sellers MAY respond asynchronously with `status: "submitted"` when consultative planning requires upstream system queries or human sales-desk review. In that case the response contains a `task_id` for polling via [`get_task_status`](https://adcontextprotocol.org/schemas/3.2.1/protocol/get-task-status-request.json); terminal draft proposals are delivered on the completion artifact or via push notification if `push_notification_config` was supplied.

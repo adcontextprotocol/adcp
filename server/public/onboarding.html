@@ -469,14 +469,15 @@
 
       <!-- Claim a sales-touched prospect org by domain -->
       <div id="claimOrgSection" class="invitations-section ds-alert ds-alert-info ds-alert-ring" style="display: none;">
-        <h3>We've been tracking your company</h3>
+        <h3>An existing organization needs verification</h3>
         <p style="color: var(--color-text-secondary); margin-bottom: var(--space-3); font-size: var(--text-sm);">
-          A record exists for <strong id="claimOrgName"></strong> based on your email domain. Claim it to consolidate the work
-          our team's already done, or skip and we'll create a separate workspace.
+          A record exists for <strong id="claimOrgName"></strong> based on your email domain. Self-service adoption is temporarily
+          unavailable while we bind ownership to exact credentials. Contact support to verify ownership; a second company workspace
+          cannot be created for the same domain.
         </p>
         <div style="display: flex; gap: var(--space-3); align-items: center;">
-          <button class="btn" id="claimOrgButton">Claim this organization</button>
-          <a href="#" id="claimOrgSkip" style="color: var(--color-text-secondary); font-size: var(--text-sm);">Skip and continue with a fresh workspace</a>
+          <a class="btn" id="claimOrgButton" href="mailto:addie@agenticadvertising.org?subject=Organization%20ownership%20verification">Contact support</a>
+          <a href="#" id="claimOrgSkip" style="color: var(--color-text-secondary); font-size: var(--text-sm);">Continue without adopting</a>
         </div>
         <div id="claimOrgError" class="error" style="display: none; margin-top: var(--space-3);"></div>
       </div>
@@ -519,7 +520,7 @@
               <div class="option-title">Yes, my company is already a member</div>
             </div>
             <div class="option-description">
-              Join your company's existing membership. You may need an admin to approve your access.
+              Accept an existing invitation, or ask an organization owner to invite your exact signed-in email.
             </div>
           </div>
 
@@ -540,7 +541,7 @@
         <a href="#" class="back-link" onclick="showCompanyOptions(); return false;">&larr; Back</a>
         <h2 style="margin-bottom: var(--space-2);">Find Your Company</h2>
         <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5); font-size: var(--text-sm);">
-          Search for your company or check if we found a match based on your email.
+          Search for your company, then ask an owner to invite your exact signed-in email. Self-service join requests are temporarily unavailable.
         </p>
 
         <!-- Company Search -->
@@ -575,9 +576,9 @@
           <div id="joinInvitationsList"></div>
         </div>
 
-        <!-- Joinable organizations (public profiles) -->
+        <!-- Public organizations shown only for owner-invite/support guidance -->
         <div id="joinableSection" class="joinable-section" style="display: none;">
-          <h3 style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Other Organizations You Can Join</h3>
+          <h3 style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Other Organizations</h3>
           <div id="joinableOrgsList"></div>
         </div>
 
@@ -891,6 +892,8 @@
     let pendingInvitations = [];
     let joinableOrgs = [];
     let userDomain = null;
+    let currentLegalVersions = null;
+    const onboardingIdempotency = {};
     // Set to true right before re-entering init() after the name-capture form
     // succeeds. Prevents the gate from re-firing if /api/me momentarily still
     // returns a null first_name (cache, read-after-write race).
@@ -909,6 +912,7 @@
 
         const data = await response.json();
         currentUser = data.user;
+        await loadLegalVersions();
 
         // Gate: when WorkOS + Slack fallbacks both produced no name, ask the
         // user before letting them proceed. Credentials, member announcements,
@@ -1007,6 +1011,29 @@
       }
     }
 
+    async function loadLegalVersions() {
+      if (currentLegalVersions) return currentLegalVersions;
+      const responses = await Promise.all([
+        fetch('/api/agreement/current?type=terms_of_service'),
+        fetch('/api/agreement/current?type=privacy_policy')
+      ]);
+      if (!responses[0].ok || !responses[1].ok) {
+        throw new Error('Current legal agreements are unavailable. Please refresh and try again.');
+      }
+      const values = await Promise.all(responses.map(function(response) { return response.json(); }));
+      if (!values[0].version || !values[1].version) {
+        throw new Error('Current legal agreement versions are unavailable.');
+      }
+      currentLegalVersions = { terms: values[0].version, privacy: values[1].version };
+      document.querySelectorAll('a[href^="/api/agreement?type=terms_of_service"]').forEach(function(link) {
+        link.href = '/api/agreement?type=terms_of_service&version=' + encodeURIComponent(currentLegalVersions.terms);
+      });
+      document.querySelectorAll('a[href^="/api/agreement?type=privacy_policy"]').forEach(function(link) {
+        link.href = '/api/agreement?type=privacy_policy&version=' + encodeURIComponent(currentLegalVersions.privacy);
+      });
+      return currentLegalVersions;
+    }
+
     function showClaimOrgBannerIfPresent() {
       const params = new URLSearchParams(window.location.search);
       const claimOrg = params.get('claim_org');
@@ -1022,29 +1049,6 @@
 
       nameEl.textContent = claimOrgName || 'your organization';
       section.style.display = 'block';
-
-      button.addEventListener('click', async () => {
-        button.disabled = true;
-        button.textContent = 'Claiming...';
-        errorEl.style.display = 'none';
-        try {
-          const response = await fetch('/api/organizations/' + encodeURIComponent(claimOrg) + '/claim', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(data.message || 'Claim failed');
-          }
-          window.location.href = '/dashboard';
-        } catch (err) {
-          errorEl.textContent = err.message || 'Failed to claim organization. Please contact support.';
-          errorEl.style.display = 'block';
-          button.disabled = false;
-          button.textContent = 'Claim this organization';
-        }
-      });
 
       skip.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1079,7 +1083,10 @@
             '</div>' +
             '<div class="invitation-email">Invited to join as ' + escapeHtml(role) + '</div>' +
           '</div>' +
-          '<button class="btn-accept" onclick="acceptInvitation(\'' + escapeHtml(inv.id) + '\')">Accept</button>' +
+          '<div style="max-width: 220px; text-align: right; font-size: var(--text-xs); color: var(--color-text-secondary);">' +
+            'Acceptance is temporarily unavailable. Ask an owner to complete access.<br>' +
+            '<a href="mailto:support@agenticadvertising.org?subject=Invitation%20acceptance%20help">Contact support</a>' +
+          '</div>' +
         '</div>';
       }).join('');
     }
@@ -1088,24 +1095,6 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    }
-
-    async function acceptInvitation(invitationId) {
-      try {
-        const response = await fetch('/api/invitations/' + invitationId + '/accept', {
-          method: 'POST',
-        });
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.message || 'Failed to accept invitation');
-        }
-
-        // Success - redirect to dashboard
-        window.location.href = '/dashboard';
-      } catch (error) {
-        showError(error.message);
-      }
     }
 
     // Step 1: Individual vs Company option selection
@@ -1192,7 +1181,10 @@
                 '</div>' +
                 '<div class="invitation-email">Invited to join as ' + escapeHtml(role) + '</div>' +
               '</div>' +
-              '<button class="btn-accept" onclick="acceptInvitation(\'' + escapeHtml(inv.id) + '\')">Accept Invitation</button>' +
+              '<div style="max-width: 220px; text-align: right; font-size: var(--text-xs); color: var(--color-text-secondary);">' +
+                'Acceptance is temporarily unavailable. Ask an owner to complete access.<br>' +
+                '<a href="mailto:support@agenticadvertising.org?subject=Invitation%20acceptance%20help">Contact support</a>' +
+              '</div>' +
             '</div>';
           }).join('');
         } else {
@@ -1312,9 +1304,10 @@
         ? '<div style="font-size: var(--text-xs); color: var(--color-text-muted);">Contact: ' + escapeHtml(org.admin_contact) + '</div>'
         : '';
 
-      const buttonHtml = org.request_pending
-        ? '<button class="btn btn-sm" disabled style="background: var(--color-bg-button-secondary); cursor: not-allowed;">Request Pending</button>'
-        : '<button class="btn btn-primary btn-sm" onclick="requestToJoin(\'' + escapeHtml(org.organization_id) + '\', this)">Request to Join</button>';
+      const buttonHtml = '<div style="max-width: 210px; text-align: right; font-size: var(--text-xs); color: var(--color-text-secondary);">' +
+        'Ask an owner to invite your signed-in email.<br>' +
+        '<a href="mailto:support@agenticadvertising.org?subject=Organization%20invitation%20help">Contact support</a>' +
+        '</div>';
 
       return '<div class="org-card" style="display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); margin-bottom: var(--space-2);" data-org-id="' + escapeHtml(org.organization_id) + '">' +
         logoHtml +
@@ -1358,43 +1351,6 @@
       container.innerHTML = orgsToRender.map(org => renderOrgCard(org)).join('');
     }
 
-    async function requestToJoin(orgId, button) {
-      button.disabled = true;
-      button.textContent = 'Requesting...';
-
-      try {
-        const response = await fetch('/api/join-requests', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ organization_id: orgId }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.message || 'Failed to send request');
-        }
-
-        // Update button to show pending state
-        button.textContent = 'Request Pending';
-        button.classList.add('btn-pending');
-
-        // Update local state
-        const org = joinableOrgs.find(o => o.organization_id === orgId);
-        if (org) {
-          org.request_pending = true;
-        }
-
-        // Show success message
-        showInfo('Request sent! An admin will review your request.');
-
-      } catch (error) {
-        showError(error.message);
-        button.disabled = false;
-        button.textContent = 'Request to Join';
-      }
-    }
-
     function showInfo(message) {
       const errorDiv = document.getElementById('error');
       errorDiv.textContent = message;
@@ -1415,6 +1371,42 @@
       var errorDiv = document.getElementById('error');
       errorDiv.textContent = message;
       errorDiv.style.display = 'block';
+    }
+
+    function getOnboardingIdempotencyKey(scope, body) {
+      var fingerprint = JSON.stringify(body);
+      var existing = onboardingIdempotency[scope];
+      if (existing && existing.fingerprint === fingerprint) return existing.key;
+      var storageKey = 'organization-onboarding-idempotency:' + scope;
+      try {
+        var stored = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+        if (stored && stored.fingerprint === fingerprint && typeof stored.key === 'string') {
+          onboardingIdempotency[scope] = stored;
+          return stored.key;
+        }
+      } catch (e) { /* storage disabled or malformed */ }
+      var key = window.crypto && typeof window.crypto.randomUUID === 'function'
+        ? window.crypto.randomUUID()
+        : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2) + '-' + Math.random().toString(36).slice(2);
+      onboardingIdempotency[scope] = { fingerprint: fingerprint, key: key };
+      try { sessionStorage.setItem(storageKey, JSON.stringify(onboardingIdempotency[scope])); } catch (e) { /* storage disabled */ }
+      return key;
+    }
+
+    function clearOnboardingIdempotencyKey(scope) {
+      delete onboardingIdempotency[scope];
+      try { sessionStorage.removeItem('organization-onboarding-idempotency:' + scope); } catch (e) { /* storage disabled */ }
+    }
+
+    function releaseOnboardingIdempotencyKeyAfterTerminalFailure(scope, data) {
+      var preservedErrors = [
+        'organization_onboarding_in_progress',
+        'organization_onboarding_retryable',
+        'organization_onboarding_reconciliation_required'
+      ];
+      if (data && typeof data.error === 'string' && !preservedErrors.includes(data.error)) {
+        clearOnboardingIdempotencyKey(scope);
+      }
     }
 
     // Update company standard pricing based on revenue tier
@@ -1523,7 +1515,10 @@
         organization_name: orgName,
         company_type: companyType.value,
         revenue_tier: revenueTier.value,
-        marketing_opt_in: marketingOptIn
+        marketing_opt_in: marketingOptIn,
+        agreements_accepted: true,
+        terms_version: currentLegalVersions.terms,
+        privacy_version: currentLegalVersions.privacy
       };
       // Stash paid-tier intent in localStorage so the dashboard's
       // /membership page can pre-select it for Stripe checkout. Tier is
@@ -1536,15 +1531,20 @@
       try {
         var response = await fetch('/api/organizations', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': getOnboardingIdempotencyKey('company', body)
+          },
           body: JSON.stringify(body),
         });
 
         var data = await response.json();
 
         if (!response.ok) {
+          releaseOnboardingIdempotencyKeyAfterTerminalFailure('company', data);
           throw new Error(data.message || 'Failed to register company');
         }
+        clearOnboardingIdempotencyKey('company');
 
         // Show brand setup step instead of going directly to dashboard
         showBrandSetup(orgName, corporateDomain, data.organization?.id || data.id);
@@ -1590,7 +1590,10 @@
         var body = {
           organization_name: workspaceName,
           is_personal: true,
-          marketing_opt_in: marketingOptIn
+          marketing_opt_in: marketingOptIn,
+          agreements_accepted: true,
+          terms_version: currentLegalVersions.terms,
+          privacy_version: currentLegalVersions.privacy
         };
         // Stash paid-tier intent in localStorage so the dashboard's
         // /membership page can pre-select it for Stripe checkout. Tier is
@@ -1602,15 +1605,20 @@
 
         var response = await fetch('/api/organizations', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': getOnboardingIdempotencyKey('personal', body)
+          },
           body: JSON.stringify(body),
         });
 
         var data = await response.json();
 
         if (!response.ok) {
+          releaseOnboardingIdempotencyKeyAfterTerminalFailure('personal', data);
           throw new Error(data.message || 'Failed to create workspace');
         }
+        clearOnboardingIdempotencyKey('personal');
 
         // Keep the new personal workspace as the explicit billing context.
         // Without this, a user who arrived from a company workspace lands

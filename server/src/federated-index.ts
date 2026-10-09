@@ -2,6 +2,7 @@ import { FederatedIndexDatabase, type AgentPublisherAuthorization, type AgentPub
 import { MemberDatabase } from './db/member-db.js';
 import { canonicalizeAgentUrl } from './db/publisher-db.js';
 import type { FederatedAgent, FederatedPublisher, DomainLookupResult, AgentType } from './types.js';
+import type { PoolClient } from 'pg';
 
 /**
  * Service layer for the federated agent/publisher registry.
@@ -360,9 +361,10 @@ export class FederatedIndexService {
    */
   async updateAgentMetadata(
     agentUrl: string,
-    metadata: { name?: string; agent_type?: string; protocol?: string }
+    metadata: { name?: string; agent_type?: string; protocol?: string },
+    client?: PoolClient,
   ): Promise<void> {
-    await this.db.updateAgentMetadata(agentUrl, metadata);
+    await this.db.updateAgentMetadata(agentUrl, metadata, client);
   }
 
   /**

@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/core/media-buy-support.json",
+  "title": "Product Media Buy Support",
+  "description": "Product-scoped capabilities that participate in shared MediaBuy-level execution. Every selected product must positively advertise the relevant capability. This is separate from overlay_support because a shared MediaBuy counter is not a package targeting overlay. Extension-only objects do not advertise support.",
+  "type": "object",
+  "properties": {
+    "frequency_cap": {
+      "type": "boolean",
+      "const": true,
+      "description": "This product can participate in the seller's shared counter for a root MediaBuy.frequency_cap. A buy mixing this product with one that lacks this declaration, or whose resolved supported_per_units omits the root cap's per value, is rejected atomically."
+    },
+    "frequency_cap_constraints": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/core/media-buy-frequency-cap-support.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/core/ext.json"
+    }
+  },
+  "dependencies": {
+    "frequency_cap_constraints": [
+      "frequency_cap"
+    ]
+  },
+  "minProperties": 1,
+  "not": {
+    "allOf": [
+      {
+        "required": [
+          "ext"
+        ]
+      },
+      {
+        "maxProperties": 1
+      }
+    ]
+  },
+  "additionalProperties": true
+}

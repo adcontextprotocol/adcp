@@ -115,6 +115,108 @@ function snapshotMatchesVersionLabel(label, snapshotVersion) {
     : snapshotPrerelease === undefined;
 }
 
+/**
+ * Source pages under docs/ that are intentionally left out of the live-source
+ * navigation. Mintlify runs with seo.indexHiddenPages: false, so a page that is
+ * not in the sidebar is also missing from site search, sitemap.xml, and the
+ * llms indexes. Every entry needs a reason. Entries ending in "/" cover a
+ * whole directory.
+ */
+const NAV_COVERAGE_ALLOWLIST = new Map([
+  ['contributing/', 'Contributor and repository-maintenance guides, not protocol documentation'],
+  ['runbooks/', 'Internal AgenticAdvertising.org operations runbooks'],
+  ['snippets/', 'Mintlify snippet sources imported into other pages, not standalone pages'],
+  ['aao/aao-admins', 'Internal staff reference; the page sets noindex: true'],
+  ['curation/coming-soon', 'Placeholder for an unreleased protocol'],
+  ['learning/test-personas', 'Internal personas for evaluating docs, not learner content'],
+  [
+    'media-buy/advanced-topics/index',
+    'Legacy hub page; each child page is listed individually under Media Buy',
+  ],
+]);
+
+function parseSnapshotVersion(snapshot) {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/.exec(snapshot);
+  if (!match) return null;
+  return {
+    core: match.slice(1, 4).map(Number),
+    prerelease: match[4] ? match[4].split('.') : [],
+  };
+}
+
+function compareSnapshotVersions(left, right) {
+  const a = parseSnapshotVersion(left);
+  const b = parseSnapshotVersion(right);
+  if (!a || !b) return 0;
+  for (let i = 0; i < 3; i++) {
+    if (a.core[i] !== b.core[i]) return a.core[i] - b.core[i];
+  }
+  // A stable release sorts after every prerelease of the same core version.
+  if (a.prerelease.length === 0 || b.prerelease.length === 0) {
+    return b.prerelease.length - a.prerelease.length;
+  }
+  for (let i = 0; i < Math.max(a.prerelease.length, b.prerelease.length); i++) {
+    const x = a.prerelease[i];
+    const y = b.prerelease[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    const xNum = /^\d+$/.test(x);
+    const yNum = /^\d+$/.test(y);
+    if (xNum && yNum && Number(x) !== Number(y)) return Number(x) - Number(y);
+    if (xNum !== yNum) return xNum ? -1 : 1;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * The live-source version is the navigation entry that tracks docs/ most
+ * closely: an entry that routes to docs/ directly, otherwise the entry whose
+ * snapshot is the newest release (for example 3.2-rc while 3.2 is in RC, and
+ * 3.2 after GA).
+ */
+function findLiveSourceVersion(versions) {
+  let best = null;
+  for (const entry of versions) {
+    const pages = collectPages(entry.groups);
+    if (pages.some(page => page.startsWith('docs/'))) {
+      return { entry, snapshot: null, pages };
+    }
+    const snapshot = pages
+      .map(page => /^dist\/docs\/([^/]+)\//.exec(page)?.[1])
+      .find(Boolean);
+    if (!snapshot || !parseSnapshotVersion(snapshot)) continue;
+    if (!best || compareSnapshotVersions(snapshot, best.snapshot) > 0) {
+      best = { entry, snapshot, pages };
+    }
+  }
+  return best;
+}
+
+function listSourcePages(docsDir) {
+  const pages = [];
+  const walk = dir => {
+    for (const dirent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, dirent.name);
+      if (dirent.isDirectory()) {
+        walk(fullPath);
+      } else if (/\.mdx?$/.test(dirent.name)) {
+        pages.push(path.relative(docsDir, fullPath).split(path.sep).join('/').replace(/\.mdx?$/, ''));
+      }
+    }
+  };
+  walk(docsDir);
+  return pages.sort();
+}
+
+function allowlistReason(page) {
+  if (NAV_COVERAGE_ALLOWLIST.has(page)) return NAV_COVERAGE_ALLOWLIST.get(page);
+  for (const [entry, reason] of NAV_COVERAGE_ALLOWLIST) {
+    if (entry.endsWith('/') && page.startsWith(entry)) return reason;
+  }
+  return null;
+}
+
 // --- Run tests ---
 
 log('\n🧪 Docs Navigation Validation Tests');
@@ -225,17 +327,37 @@ test('OpenAPI navigation uses release-pinned public sources', () => {
   }
 });
 
+// The stable maintenance branch follows the docs default: 3.1 -> origin/3.1.x,
+// and after the 3.2 GA flip, 3.2 -> origin/3.2.x. Until that branch is cut,
+// main itself is the stable surface and CI leaves REQUIRE_STABLE_DOCS_REF unset.
+function stableDocsRef() {
+  if (process.env.STABLE_DOCS_REF) return process.env.STABLE_DOCS_REF;
+  const line = /^(\d+\.\d+)$/.exec(defaultVersion)?.[1];
+  if (!line) return null;
+  const branch = `${line}.x`;
+  // On the stable maintenance branch itself, or a pull request into it, the
+  // branch is its own release surface. Comparing against its pre-change tip
+  // would reject every navigation change there, including the GA flip that
+  // makes it the stable surface.
+  if ((process.env.GITHUB_BASE_REF || process.env.GITHUB_REF_NAME) === branch) return 'HEAD';
+  return `origin/${branch}`;
+}
+
 test('default navigation matches the stable release branch surface', () => {
+  const stableRef = stableDocsRef();
+  if (!stableRef) {
+    throw new Error(`Default docs version "${defaultVersion}" must be a stable X.Y release line`);
+  }
   let releaseConfig;
   try {
     releaseConfig = JSON.parse(execFileSync(
       'git',
-      ['show', 'origin/3.1.x:docs.json'],
+      ['show', `${stableRef}:docs.json`],
       { cwd: rootDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
     ));
   } catch {
     if (process.env.REQUIRE_STABLE_DOCS_REF === '1') {
-      throw new Error('origin/3.1.x is required but unavailable');
+      throw new Error(`${stableRef} is required but unavailable`);
     }
     return;
   }
@@ -244,6 +366,19 @@ test('default navigation matches the stable release branch surface', () => {
     || navigation.versions[0];
   const releaseDefault = releaseConfig.navigation.versions.find(version => version.default)
     || releaseConfig.navigation.versions[0];
+  // 3.2.x was cut at v3.2.1 before the GA docs snapshot landed on main.
+  // Permit only that exact tag as a bootstrap state. The first maintenance
+  // branch update must carry the snapshot or route parity is enforced again.
+  if (stableRef === 'origin/3.2.x'
+    && currentDefault.version === '3.2'
+    && releaseDefault.version === '3.1') {
+    const releaseSha = execFileSync('git', ['rev-parse', stableRef], {
+      cwd: rootDir, encoding: 'utf8'
+    }).trim();
+    // This is the v3.2.1 tag target, pinned here because broken-links CI
+    // checks out shallowly and does not fetch release tags.
+    if (releaseSha === 'c32bd78c5389753e3b8f3ffd8a1c04b777854d83') return;
+  }
   const normalize = page => page
     .replace(/^dist\/docs\/[^/]+\//, '')
     .replace(/^docs\//, '');
@@ -262,7 +397,7 @@ test('default navigation matches the stable release branch surface', () => {
     const unexpected = currentRoutes.filter(route => !releaseSet.has(route));
     const missing = releaseRoutes.filter(route => !currentSet.has(route));
     throw new Error(
-      `Stable navigation drifted from origin/3.1.x.`
+      `Stable navigation drifted from ${stableRef}.`
       + `\n      Unexpected: ${unexpected.join(', ') || 'none'}`
       + `\n      Missing: ${missing.join(', ') || 'none'}`
     );
@@ -447,6 +582,94 @@ for (const versionEntry of navigation.versions) {
 
   log('');
 }
+
+log('Nav coverage');
+
+const liveSource = findLiveSourceVersion(navigation.versions);
+const sourcePages = listSourcePages(path.join(rootDir, 'docs'));
+
+test('every published docs/ page is in the live-source navigation or allowlisted', () => {
+  if (!liveSource) throw new Error('Could not identify the live-source docs version');
+  const { entry, snapshot, pages } = liveSource;
+  const navRoutes = new Set(pages.map(page => page
+    .replace(/^dist\/docs\/[^/]+\//, '')
+    .replace(/^docs\//, '')));
+  const inSnapshot = page => !snapshot || ['.mdx', '.md'].some(ext =>
+    fs.existsSync(path.join(rootDir, 'dist/docs', snapshot, `${page}${ext}`)));
+
+  const missing = [];
+  const pending = [];
+  for (const page of sourcePages) {
+    if (navRoutes.has(page) || allowlistReason(page)) continue;
+    // A page added to docs/ after the snapshot was cut cannot be linked yet;
+    // it becomes required when the next snapshot PR retargets this entry.
+    if (inSnapshot(page)) missing.push(page);
+    else pending.push(page);
+  }
+
+  if (pending.length > 0) {
+    log(`    Awaiting the next ${entry.version} snapshot (add to nav in the snapshot PR): ` +
+      pending.join(', '), 'warning');
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Pages missing from the "${entry.version}" navigation are invisible to Mintlify ` +
+      `search, sitemap.xml, and llms indexes. Add them to the "${entry.version}" entry in ` +
+      `docs.json${snapshot ? ` (as dist/docs/${snapshot}/<page>)` : ''}, or add them to ` +
+      `NAV_COVERAGE_ALLOWLIST in tests/docs-nav-validation.test.cjs with a reason:\n      ` +
+      missing.join('\n      ')
+    );
+  }
+});
+
+test('nav coverage allowlist has no stale entries', () => {
+  if (!liveSource) throw new Error('Could not identify the live-source docs version');
+  const navRoutes = new Set(liveSource.pages.map(page => page
+    .replace(/^dist\/docs\/[^/]+\//, '')
+    .replace(/^docs\//, '')));
+  const stale = [];
+  for (const [entry, reason] of NAV_COVERAGE_ALLOWLIST) {
+    if (!reason || !reason.trim()) stale.push(`${entry} (missing reason)`);
+    const matches = entry.endsWith('/')
+      ? sourcePages.filter(page => page.startsWith(entry))
+      : sourcePages.filter(page => page === entry);
+    if (matches.length === 0) stale.push(`${entry} (no matching docs/ page)`);
+    const listed = matches.filter(page => navRoutes.has(page));
+    if (listed.length > 0) {
+      stale.push(`${entry} (in the ${liveSource.entry.version} navigation: ${listed.join(', ')})`);
+    }
+  }
+  if (stale.length > 0) {
+    throw new Error(`Remove or fix stale NAV_COVERAGE_ALLOWLIST entries:\n      ${stale.join('\n      ')}`);
+  }
+});
+
+test('live-source version selection follows semver precedence', () => {
+  const ordered = ['3.1.24', '3.2.0-beta.11', '3.2.0-rc.6', '3.2.0-rc.10', '3.2.0', '3.2.1'];
+  for (let i = 1; i < ordered.length; i++) {
+    if (compareSnapshotVersions(ordered[i], ordered[i - 1]) <= 0) {
+      throw new Error(`${ordered[i]} must sort after ${ordered[i - 1]}`);
+    }
+  }
+  const entry = (version, snapshot) => ({
+    version,
+    groups: [{ group: 'G', pages: [`dist/docs/${snapshot}/intro`] }],
+  });
+  const picked = findLiveSourceVersion([
+    entry('3.1', '3.1.24'),
+    entry('3.2-rc', '3.2.0-rc.6'),
+    entry('3.2-beta', '3.2.0-beta.11'),
+  ]);
+  if (picked?.entry.version !== '3.2-rc') {
+    throw new Error(`expected 3.2-rc as live source, got ${picked?.entry.version}`);
+  }
+  const afterGa = findLiveSourceVersion([entry('3.2', '3.2.0'), entry('3.1', '3.1.25')]);
+  if (afterGa?.entry.version !== '3.2') {
+    throw new Error(`expected 3.2 as live source after GA, got ${afterGa?.entry.version}`);
+  }
+});
+
+log('');
 
 test('page files belong to only one version', () => {
   if (crossVersionDuplicates.length > 0) {

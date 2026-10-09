@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/core/frequency-cap-interval-constraints.json",
+  "title": "Frequency Cap Interval Constraints",
+  "x-adcp-hoist": true,
+  "description": "Exact supported intervals for one duration unit, declared as either an exhaustive preset list or an inclusive integer range. The two forms are mutually exclusive.",
+  "type": "object",
+  "properties": {
+    "unit": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/core/frequency-cap-duration-unit.json"
+    },
+    "minimum_interval": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "maximum_interval": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "allowed_intervals": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/core/ext.json"
+    }
+  },
+  "required": [
+    "unit"
+  ],
+  "oneOf": [
+    {
+      "required": [
+        "allowed_intervals"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "minimum_interval"
+            ]
+          },
+          {
+            "required": [
+              "maximum_interval"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "required": [
+        "minimum_interval",
+        "maximum_interval"
+      ],
+      "not": {
+        "required": [
+          "allowed_intervals"
+        ]
+      }
+    }
+  ],
+  "if": {
+    "properties": {
+      "unit": {
+        "const": "campaign"
+      }
+    },
+    "required": [
+      "unit"
+    ]
+  },
+  "then": {
+    "properties": {
+      "minimum_interval": {
+        "const": 1
+      },
+      "maximum_interval": {
+        "const": 1
+      },
+      "allowed_intervals": {
+        "items": {
+          "const": 1
+        }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "ordered_bounds": "minimum_interval MUST be less than or equal to maximum_interval."
+  }
+}

@@ -44,6 +44,42 @@ function call(input: Record<string, unknown> = { id: 'abc' }): ModelToolCallCont
 describe('createAddieToolExecutor', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('reuses only identical deterministic validation failures within one executor turn', async () => {
+    const raw = '❌ **Invalid.** Validation errors against https://adcontextprotocol.org/schemas/3.1.24/core/product.json:\n\n- /totals: must be object';
+    const handler = vi.fn().mockResolvedValue(raw);
+    const options = { executionMode: 'evaluation' as const, policy: () => ({ allowed: true }) };
+    const makeExecutor = () => createAddieToolExecutor([{ ...tool, name: 'validate_json' }], new Map([['validate_json', handler]]), options);
+    const execute = makeExecutor();
+    const first = { ...call({ json: { totals: [], status: 'ok' }, schema_path: 'core/product.json' }), name: 'validate_json' };
+    await execute(first, 1);
+    const duplicate = await execute({ ...first, id: 'duplicate', input: { schema_path: 'core/product.json', json: { status: 'ok', totals: [] } } }, 2);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(duplicate.execution).toMatchObject({ is_error: true, reused_result: true, duration_ms: 0, sequence: 2 });
+    expect(duplicate.result).toMatchObject({ toolCallId: 'duplicate', isError: true });
+    expect(duplicate.result.content).toContain('Change the candidate or schema');
+    expect(duplicate.result.content).toContain('/totals: must be object');
+    await execute({ ...first, input: { ...first.input, json: { totals: {}, status: 'ok' } } }, 3);
+    await execute({ ...first, input: { ...first.input, schema_path: 'core/format.json' } }, 4);
+    await execute({ ...first, input: { ...first.input, version: '3.2-rc' } }, 5);
+    await makeExecutor()(first, 1);
+    expect(handler).toHaveBeenCalledTimes(5);
+  });
+
+  it.each([
+    '❌ **Invalid.** Validation errors against https://adcontextprotocol.org/schemas/3.1.24/core/product.json:\n\n- Schema validation failed: upstream unavailable',
+    '✅ **Valid!** The JSON validates successfully against https://adcontextprotocol.org/schemas/3.1.24/core/product.json',
+    'Error: Temporary timeout',
+  ])('does not cache successful or nondeterministic validation results', async raw => {
+    const handler = vi.fn().mockResolvedValue(raw);
+    const execute = createAddieToolExecutor([{ ...tool, name: 'validate_json' }], new Map([['validate_json', handler]]), {
+      executionMode: 'evaluation', policy: () => ({ allowed: true }),
+    });
+    const request = { ...call({ json: {} }), name: 'validate_json' };
+    await execute(request, 1);
+    await execute(request, 2);
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     ['list_github_issues', 'GitHub rejected the request while trying to list issues (422).', 'invalid_input'],
     ['call_adcp_task', '**Task failed:** `si_initiate_session`\n\n**Error:** Unknown tool: si_initiate_session', 'error'],
@@ -694,11 +730,14 @@ describe('AddieToolExecutionLedger', () => {
     expect(ledger.executions[1]?.normalized_result?.telemetry?.recovered_by_later_success).toBeUndefined();
   });
 
-  it('does not let another agent success recover a failed target with the same operation', async () => {
+  it.each([
+    ['another agent', 'https://agent-b.example', 'same-products-request-key'],
+    ['another logical request', 'https://agent-a.example', 'a-different-products-key'],
+  ])('does not let %s success recover a failed target with the same operation', async (_label, agentUrl, idempotencyKey) => {
     const ledger = new AddieToolExecutionLedger();
     const calls = [
       { ...call({ agent_url: 'https://agent-a.example', task: 'get_products', params: { idempotency_key: 'same-products-request-key' } }), id: 'call_error', name: 'call_adcp_task' },
-      { ...call({ agent_url: 'https://agent-b.example', idempotency_key: 'same-products-request-key', buying_mode: 'wholesale' }), id: 'call_success', name: 'call_adcp_get_products' },
+      { ...call({ agent_url: agentUrl, idempotency_key: idempotencyKey, buying_mode: 'wholesale' }), id: 'call_success', name: 'call_adcp_get_products' },
     ];
     let invocation = 0;
     const execute = vi.fn(async (toolCall: ModelToolCallContent, sequence: number) => {
@@ -991,4 +1030,17 @@ describe('orchestrateAcceptedAddieTurn', () => {
       },
     });
   });
+});
+
+
+it('explains the standalone GitHub confirmation without dispatching or issuing a receipt', async () => {
+  const handler = vi.fn();
+  const execute = createAddieToolExecutor([{ ...tool, name: 'create_github_issue' }], new Map([['create_github_issue', handler]]), {
+    executionMode: 'production', policy: () => ({ allowed: false, reason: 'github_confirmation_required' }),
+  });
+  const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
+  expect(handler).not.toHaveBeenCalled();
+  expect(result.result.content).toContain('separate message with only "Create it" or "Yes"');
+  expect(result.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
+  expect(result.execution.github_issue_receipt).toBeUndefined();
 });

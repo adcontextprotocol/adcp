@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 
 // Mock WorkOS client before any imports that depend on it
 vi.mock('../../src/auth/workos-client.js', () => ({
@@ -54,6 +55,7 @@ vi.mock('../../src/middleware/auth.js', () => {
     invalidateSessionCache: vi.fn(),
     invalidateBanCache: vi.fn(),
     invalidateSessionsForUsers: vi.fn(),
+    switchSessionOrganization: vi.fn(),
     isDevModeEnabled: () => false,
     getDevUser: () => null,
     getAvailableDevUsers: () => ({}),
@@ -377,17 +379,114 @@ describe('My Content — body, admin scope, status, delete', () => {
     });
 
     it('admins see every perspective so they can edit anything', async () => {
-      await insertPerspective({
-        slug: 'mc-test-orphan',
-        title: 'Orphaned official content',
-        proposerUserId: null,
-        workingGroupId: null,
-      });
+      const namespace = `content-page-fixture-${randomUUID()}`;
+      const orphanId = '00000000-0000-0000-0000-000000000000';
+      const orphanSlug = `${namespace}-orphan`;
+      const orphanBody = 'Body of Orphaned official content';
+      const owned: Array<{ id: string; slug: string }> = [];
+      const previousAdmin = adminState.isAdmin;
+      const evidence: Record<string, unknown> = { orphanId, orphanSlug };
+      const ownedParams = () => [owned.map(row => row.id), owned.map(row => row.slug)];
 
-      adminState.isAdmin = true;
-      const response = await request(app).get('/api/me/content').expect(200);
-      const slugs = response.body.items.map((i: any) => i.slug);
-      expect(slugs).toContain('mc-test-orphan');
+      const assertOwnedRows = async () => {
+        const rows = await pool.query(
+          `SELECT p.id, p.slug, p.content, p.status, p.proposer_user_id, p.working_group_id,
+                  (SELECT COUNT(*)::int FROM content_authors ca WHERE ca.perspective_id = p.id) AS author_count
+           FROM perspectives p
+           JOIN unnest($1::uuid[], $2::text[]) AS fixture(id, slug)
+             ON p.id = fixture.id AND p.slug = fixture.slug`,
+          ownedParams()
+        );
+        expect(rows.rows).toHaveLength(52);
+        for (const row of rows.rows) {
+          expect(row.proposer_user_id).toBeNull();
+          expect(row.working_group_id).toBeNull();
+          expect(row.author_count).toBe(0);
+        }
+        const orphan = rows.rows.find(row => row.id === orphanId);
+        expect(orphan).toMatchObject({ id: orphanId, slug: orphanSlug, content: orphanBody, status: 'published' });
+        return rows.rowCount;
+      };
+
+      try {
+        // A successful insert of the minimum UUID guarantees first-page placement.
+        // A collision fails; ownership is recorded only after INSERT RETURNING succeeds.
+        const inserted = await pool.query(
+          `INSERT INTO perspectives
+             (id, slug, content_type, title, content, excerpt, category, status, published_at,
+              working_group_id, content_origin, proposer_user_id, author_name)
+           VALUES ($1, $2, 'article', 'Orphaned official content', $3, 'summary', 'Perspective',
+                   'published', NOW(), NULL, 'member', NULL, 'Author')
+           RETURNING id`,
+          [orphanId, orphanSlug, orphanBody]
+        );
+        owned.push({ id: inserted.rows[0].id, slug: orphanSlug });
+        for (let index = 0; index < 51; index++) {
+          const slug = `${namespace}-pressure-${index}`;
+          const id = await insertPerspective({
+            slug,
+            title: `Unrelated page pressure ${index}`,
+            proposerUserId: null,
+            workingGroupId: null,
+          });
+          owned.push({ id, slug });
+          expect(id > orphanId).toBe(true);
+        }
+        evidence.beforeHTTPCount = await assertOwnedRows();
+
+        adminState.isAdmin = false;
+        const nonAdminResponse = await request(app).get('/api/me/content').expect(200);
+        expect(nonAdminResponse.body.items.some((item: any) => item.id === orphanId)).toBe(false);
+        expect(nonAdminResponse.body.items.some((item: any) => item.slug === orphanSlug)).toBe(false);
+        evidence.nonAdminExcluded = true;
+        evidence.betweenHTTPCount = await assertOwnedRows();
+
+        adminState.isAdmin = true;
+        const response = await request(app).get('/api/me/content').expect(200);
+        const items = response.body.items;
+        expect(items.length).toBe(50);
+        const ids = items.map((item: any) => item.id as string);
+        expect(new Set(ids).size).toBe(50);
+        expect(ids.every((id: string, index: number) => index === 0 || ids[index - 1] < id)).toBe(true);
+        // Check identity before inspecting fields so only the owned row is reported.
+        expect(items[0].id === orphanId).toBe(true);
+        expect(items[0]).toMatchObject({
+          id: orphanId, slug: orphanSlug, content: orphanBody, status: 'published',
+          collection: { type: 'personal', committee_name: null, committee_slug: null },
+          relationships: [], authors: [],
+        });
+        const slugs = items.map((item: any) => item.slug);
+        expect(slugs.includes(orphanSlug)).toBe(true);
+        evidence.adminDefaultPageCount = items.length;
+        evidence.adminFirstOwnedId = items[0].id;
+        evidence.uniqueAscendingIds = true;
+        evidence.afterHTTPCount = await assertOwnedRows();
+      } finally {
+        adminState.isAdmin = previousAdmin;
+        if (owned.length > 0) {
+          await pool.query(
+            `DELETE FROM content_authors ca USING perspectives p,
+               unnest($1::uuid[], $2::text[]) AS fixture(id, slug)
+             WHERE ca.perspective_id = p.id AND p.id = fixture.id AND p.slug = fixture.slug`,
+            ownedParams()
+          );
+          await pool.query(
+            `DELETE FROM perspectives p USING unnest($1::uuid[], $2::text[]) AS fixture(id, slug)
+             WHERE p.id = fixture.id AND p.slug = fixture.slug`,
+            ownedParams()
+          );
+        }
+        const remaining = await pool.query(
+          `SELECT COUNT(*)::int AS count FROM perspectives p
+           JOIN unnest($1::uuid[], $2::text[]) AS fixture(id, slug)
+             ON p.id = fixture.id AND p.slug = fixture.slug`,
+          ownedParams()
+        );
+        expect(remaining.rows[0].count).toBe(0);
+        console.info('Owned content page fixture evidence', {
+          ...evidence, successfullyOwnedRows: owned.length, remainingOwnedRows: remaining.rows[0].count,
+        });
+      }
     });
   });
 

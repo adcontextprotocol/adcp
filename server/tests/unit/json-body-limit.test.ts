@@ -7,5 +7,6 @@ describe('JSON transport body limits', () => {
     expect(jsonBodyLimitForPath('/api/si/sessions/si_123/messages/stream')).toBe('32kb');
     expect(jsonBodyLimitForPath('/api/addie/chat/thread-123/feedback')).toBe('16kb');
     expect(jsonBodyLimitForPath('/api/me/member-profile')).toBe('10mb');
+    expect(jsonBodyLimitForPath('/api/json/validate-upload')).toBe('16kb');
   });
 });

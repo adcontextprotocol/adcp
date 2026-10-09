@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   discovery: vi.fn(),
+  sdkComply: vi.fn(),
   safeFetch: vi.fn(),
   fallbackTarget: {
     requested: '3.0',
@@ -21,10 +22,15 @@ vi.mock('@adcp/sdk/testing', () => ({
   SAMPLE_BRIEFS: [],
   getBriefsByVertical: vi.fn(),
   setAgentTesterLogger: vi.fn(),
-  comply: vi.fn(),
+  comply: mocks.sdkComply,
   loadComplianceIndex: vi.fn(),
   testCapabilityDiscovery: mocks.discovery,
-  CapabilityResolutionError: class CapabilityResolutionError extends Error {},
+  CapabilityResolutionError: class CapabilityResolutionError extends Error {
+    constructor(params: { code: string; message: string; specialism?: string; parentProtocol?: string }) {
+      super(params.message);
+      Object.assign(this, params);
+    }
+  },
 }));
 
 vi.mock('../../src/services/hosted-compliance-version.js', () => ({
@@ -49,7 +55,7 @@ vi.mock('../../src/services/hosted-compliance-version.js', () => ({
   }),
   withHostedTestOptions: (options: Record<string, unknown>, target: { version: string }) => ({
     ...options,
-    adcpVersion: target.version,
+    adcpVersion: options.adcpVersion ?? target.version,
   }),
 }));
 
@@ -67,10 +73,36 @@ vi.mock('../../src/services/storyboards.js', () => ({
   getStoryboard: vi.fn(),
 }));
 
+import { CapabilityResolutionError } from '@adcp/sdk/testing';
 import {
   HOSTED_TARGET_DISCOVERY_TIMEOUT_MS,
+  classifyCapabilityResolutionErrorWithDeclaredProtocols,
+  comply,
+  hostedCapabilityDiscoveryOptions,
   selectComplianceTargetForAgentSelection,
 } from '../../src/addie/services/compliance-testing.js';
+
+describe('hosted capability probe versions', () => {
+  it('pins explicit recommendation targets and preserves auth and safe transport', () => {
+    const options = hostedCapabilityDiscoveryOptions(
+      { auth: { type: 'bearer', token: 'secret' } },
+      { requested: '3.1.20', version: '3.1.20', complianceDir: '/compliance/3.1.20', schemaRoot: '/schemas/3.1.20' },
+    );
+    expect(options).toMatchObject({
+      adcpVersion: '3.1.20',
+      versionEnvelope: 'auto',
+      auth: { type: 'bearer', token: 'secret' },
+      transport: { fetchFn: mocks.safeFetch },
+    });
+  });
+
+  it('uses major-only recovery before a target is selected', () => {
+    const options = hostedCapabilityDiscoveryOptions({ adcpVersion: '3.2.0-rc.7' });
+    expect(options.versionEnvelope).toBe('major-only');
+    expect(options.adcpVersion).toBeUndefined();
+    expect(options.transport?.fetchFn).toBe(mocks.safeFetch);
+  });
+});
 
 describe('hosted compliance target discovery deadline', () => {
   afterEach(() => {
@@ -112,6 +144,7 @@ describe('hosted compliance target discovery deadline', () => {
       test_session_id: 'heartbeat-test',
       userAgent: 'heartbeat-agent',
       auth: { type: 'bearer', token: 'secret' },
+      versionEnvelope: 'major-only',
       signal: expect.any(AbortSignal),
       transport: { fetchFn: expect.any(Function) },
     });
@@ -150,6 +183,37 @@ describe('hosted compliance target discovery deadline', () => {
       source: 'default',
     });
     expect(transportSignal?.aborted).toBe(true);
+  });
+
+  it('probes with a major-only envelope when no stored versions seed a pin', async () => {
+    mocks.discovery.mockResolvedValue({ profile: { adcp_supported_versions: ['3.1'] }, steps: [] });
+
+    await selectComplianceTargetForAgentSelection(
+      'https://agent.example/mcp',
+      {},
+      mocks.fallbackTarget,
+      'canonical',
+    );
+
+    const options = mocks.discovery.mock.calls[0][1];
+    expect(options).toMatchObject({ versionEnvelope: 'major-only' });
+    expect(options.adcpVersion).toBeUndefined();
+  });
+
+  it('pins to the stored target instead of major-only when versions are seeded', async () => {
+    mocks.discovery.mockResolvedValue({ profile: { adcp_supported_versions: ['3.1'] }, steps: [] });
+
+    await selectComplianceTargetForAgentSelection(
+      'https://agent.example/mcp',
+      {},
+      mocks.fallbackTarget,
+      'canonical',
+      ['3.1'],
+    );
+
+    const options = mocks.discovery.mock.calls[0][1];
+    expect(options.adcpVersion).toBe(mocks.selectedTarget.version);
+    expect(options.versionEnvelope).toBe('auto');
   });
 
   it('hard-stops even when discovery ignores its signal and never settles', async () => {
@@ -375,5 +439,152 @@ describe('hosted compliance target discovery deadline', () => {
 
     await vi.advanceTimersByTimeAsync(HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
     expect(receivedSignal?.aborted).toBe(false);
+  });
+});
+
+const exactStableTarget = {
+  requested: '3.1.20',
+  version: '3.1.20',
+  complianceDir: '/compliance/3.1.20',
+  schemaRoot: '/schemas/3.1.20',
+};
+
+describe('hosted compliance run pre-discovery', () => {
+  beforeEach(() => {
+    mocks.discovery.mockReset();
+    mocks.sdkComply.mockReset();
+    mocks.discovery.mockResolvedValue({
+      profile: { adcp_supported_versions: ['3.1'] },
+      steps: [],
+    });
+    mocks.sdkComply.mockResolvedValue({ agent_profile: {} });
+  });
+
+  it.each([
+    ['no operator auth', {}],
+    ['bearer auth', { auth: { type: 'bearer' as const, token: 'secret' } }],
+    ['static fixture probe task without operator auth', { test_kit: { auth: { probe_task: 'list_creative_formats' } } }],
+  ])('probes the agent at the requested exact target version with %s', async (_label, options) => {
+    await comply('https://agent.example/mcp', { test_session_id: 'explicit-target', ...options }, exactStableTarget);
+
+    expect(mocks.discovery).toHaveBeenCalledTimes(1);
+    expect(mocks.discovery.mock.calls[0][1]).toMatchObject({ adcpVersion: '3.1.20' });
+  });
+
+  it('skips pre-discovery when operator auth already names a probe task', async () => {
+    await comply('https://agent.example/mcp', {
+      test_session_id: 'explicit-target',
+      auth: { type: 'bearer', token: 'secret' },
+      test_kit: { auth: { probe_task: 'list_creative_formats' } },
+    }, exactStableTarget);
+
+    expect(mocks.discovery).not.toHaveBeenCalled();
+    expect(mocks.sdkComply).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('capability resolution error reprobe', () => {
+  const parentProtocolMissing = () => new CapabilityResolutionError({
+    code: 'specialism_parent_protocol_missing',
+    message: 'Agent declared specialism "sales-guaranteed" (parent protocol: media_buy) but did not include it in supported_protocols',
+    specialism: 'sales-guaranteed',
+    parentProtocol: 'media_buy',
+  });
+
+  beforeEach(() => {
+    mocks.discovery.mockReset();
+    mocks.safeFetch.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('reprobes the agent at the failed run target version with the caller auth and safe transport', async () => {
+    mocks.discovery.mockResolvedValue({
+      profile: { adcp_supported_versions: ['3.1'], supported_protocols: ['media-buy'] },
+      steps: [],
+    });
+
+    await classifyCapabilityResolutionErrorWithDeclaredProtocols(
+      parentProtocolMissing(),
+      'https://agent.example/mcp',
+      { type: 'bearer', token: 'secret' },
+      exactStableTarget,
+    );
+
+    expect(mocks.discovery).toHaveBeenCalledTimes(1);
+    expect(mocks.discovery.mock.calls[0][1]).toMatchObject({
+      adcpVersion: '3.1.20',
+      auth: { type: 'bearer', token: 'secret' },
+      transport: { fetchFn: expect.any(Function) },
+    });
+  });
+
+  it('refines the classification from the reprobed supported protocols', async () => {
+    mocks.discovery.mockResolvedValue({
+      profile: { adcp_supported_versions: ['3.1'], supported_protocols: ['media-buy'] },
+      steps: [],
+    });
+
+    await expect(classifyCapabilityResolutionErrorWithDeclaredProtocols(
+      parentProtocolMissing(),
+      'https://agent.example/mcp',
+      undefined,
+      exactStableTarget,
+    )).resolves.toMatchObject({
+      kind: 'unrecognized_supported_protocol',
+      declaredProtocol: 'media-buy',
+      expectedProtocol: 'media_buy',
+    });
+  });
+
+  it('does not reprobe for other capability resolution errors', async () => {
+    const unknownSpecialism = new CapabilityResolutionError({
+      code: 'unknown_specialism',
+      message: 'Agent declared specialism "made-up" but no bundle exists for it',
+      specialism: 'made-up',
+    });
+
+    await expect(classifyCapabilityResolutionErrorWithDeclaredProtocols(
+      unknownSpecialism,
+      'https://agent.example/mcp',
+      undefined,
+      exactStableTarget,
+    )).resolves.toMatchObject({ kind: 'unknown_specialism' });
+    expect(mocks.discovery).not.toHaveBeenCalled();
+  });
+
+  it('keeps the initial classification when the reprobe fails', async () => {
+    mocks.discovery.mockRejectedValue(new Error('agent unreachable'));
+
+    await expect(classifyCapabilityResolutionErrorWithDeclaredProtocols(
+      parentProtocolMissing(),
+      'https://agent.example/mcp',
+      undefined,
+      exactStableTarget,
+    )).resolves.toMatchObject({ kind: 'specialism_parent_protocol_missing', parentProtocol: 'media_buy' });
+  });
+
+  it('stops waiting for a reprobe that never settles at the discovery deadline', async () => {
+    vi.useFakeTimers();
+    mocks.discovery.mockImplementation(() => new Promise(() => {}));
+
+    let settled = false;
+    const classification = classifyCapabilityResolutionErrorWithDeclaredProtocols(
+      parentProtocolMissing(),
+      'https://agent.example/mcp',
+      undefined,
+      exactStableTarget,
+    ).then(result => {
+      settled = true;
+      return result;
+    });
+
+    await vi.advanceTimersByTimeAsync(HOSTED_TARGET_DISCOVERY_TIMEOUT_MS - 1);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(classification).resolves.toMatchObject({ kind: 'specialism_parent_protocol_missing' });
   });
 });

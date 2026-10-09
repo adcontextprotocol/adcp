@@ -396,6 +396,7 @@ async function isContentUserAAOAdmin(user: ContentUser): Promise<boolean> {
  */
 export interface ProposeContentResult {
   success: boolean;
+  error_code?: 'MEMBERSHIP_REQUIRED' | 'COMMITTEE_MEMBERSHIP_REQUIRED';
   id?: string;
   slug?: string;
   status?: 'published' | 'pending_review' | 'draft';
@@ -454,6 +455,7 @@ export async function proposeContentForUser(
       logger.warn({ userId: user.id }, 'proposeContentForUser blocked — insufficient membership tier');
       return {
         success: false,
+        error_code: 'MEMBERSHIP_REQUIRED',
         error: 'Publishing perspectives is a benefit of Professional, Builder, Partner, or Leader membership. To submit content, upgrade at https://agenticadvertising.org/dashboard/membership.',
       };
     }
@@ -539,7 +541,7 @@ export async function proposeContentForUser(
     );
     if (membershipResult.rows.length === 0) {
       logger.warn({ committeeSlug, userId: user.id }, 'Content proposal failed: user not a member');
-      return { success: false, error: 'You must be a member of this committee to submit content' };
+      return { success: false, error_code: 'COMMITTEE_MEMBERSHIP_REQUIRED', error: 'You must be a member of this committee to submit content. Join the working group before submitting.' };
     }
   }
 
@@ -1259,7 +1261,7 @@ export function createContentRouter(): Router {
 
       if (!result.success) {
         // Map errors to appropriate HTTP status codes
-        const isTierGate = result.error?.includes('/dashboard/membership');
+        const isTierGate = result.error_code === 'MEMBERSHIP_REQUIRED';
         const status = result.error?.includes('not found') ? 404
                      : (result.error?.includes('must be a member') || isTierGate) ? 403
                      : 400;

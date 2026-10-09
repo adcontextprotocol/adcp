@@ -281,14 +281,13 @@ function assertDisjointSyntheticPacks(): void {
 assertDisjointSyntheticPacks();
 
 export type AddieMatchedV4CellId =
-  | `direct:openai:gpt-5.6-${"luna" | "terra" | "sol"}:${"provider_default" | "none" | "low" | "medium" | "high" | "xhigh" | "max"}:${AddieMatchedV4ToolSurface}`
+  | `direct:openai:gpt-5.6-${"luna" | "terra" | "sol"}:${ModelReasoningEffort}:${AddieMatchedV4ToolSurface}`
   | `direct:google:gemini-3.${"7" | "8"}-flash:${"provider_default" | "low" | "medium" | "high"}:${AddieMatchedV4ToolSurface}`
   | `direct:anthropic:${"claude-haiku-4-5" | "claude-sonnet-5" | "claude-opus-5"}:${"provider_default" | "medium"}:${AddieMatchedV4ToolSurface}`
   | `routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:${AddieMatchedV4ToolSurface}`;
 
-/** xhigh/max are legal only on the sealed OpenAI evaluation adapter. */
-export type AddieMatchedV4ReasoningEffort =
-  ModelReasoningEffort | "xhigh" | "max";
+/** Only controls exposed by the ordinary production adapters are admissible. */
+export type AddieMatchedV4ReasoningEffort = ModelReasoningEffort;
 
 export interface AddieMatchedV4Cell {
   readonly id: AddieMatchedV4CellId;
@@ -312,8 +311,6 @@ const OPENAI_EFFORTS = Object.freeze([
   "low",
   "medium",
   "high",
-  "xhigh",
-  "max",
 ] as const);
 const GOOGLE_EFFORTS = Object.freeze([
   "provider_default",
@@ -325,7 +322,9 @@ const ANTHROPIC_EFFORTS = Object.freeze([
   "provider_default",
   "medium",
 ] as const);
-const FULL_MAX_PROMOTED_CELLS = 16;
+// Two same-surface routed baselines plus 15 promoted direct cells keep the
+// full stage below migration 584's immutable 1,584-dispatch ledger ceiling.
+const FULL_MAX_PROMOTED_CELLS = 15;
 
 const BROAD_SCREENING_CELLS = [
   ...(["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"] as const).flatMap(
@@ -412,13 +411,17 @@ export const ADDIE_MATCHED_V4_SCREENING_CELLS = Object.freeze([
   })),
 ] satisfies readonly AddieMatchedV4Cell[]);
 
-export const ADDIE_MATCHED_V4_BASELINE_CELL_ID =
-  "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:broad" as const;
+export const ADDIE_MATCHED_V4_BASELINE_CELL_IDS = Object.freeze({
+  broad:
+    "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:broad",
+  clean:
+    "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:clean",
+} as const satisfies Readonly<Record<AddieMatchedV4ToolSurface, AddieMatchedV4CellId>>);
 
 export interface AddieMatchedV4Plan {
   readonly version: typeof ADDIE_MATCHED_V4_EVALUATION_VERSION;
   readonly executionAuthority: "declarative_only_no_provider_calls_no_selector_consumption";
-  readonly baselineCellId: typeof ADDIE_MATCHED_V4_BASELINE_CELL_ID;
+  readonly baselineCellIdsByToolSurface: typeof ADDIE_MATCHED_V4_BASELINE_CELL_IDS;
   readonly screening: Readonly<{
     packSha256: string;
     traceIds: readonly string[];
@@ -459,12 +462,16 @@ export function createAddieMatchedV4Plan(): AddieMatchedV4Plan {
   // Sonnet calls, so three is the closed upper bound per trace.
   const screeningDispatches =
     ADDIE_MATCHED_V4_SCREENING_CELLS.length * SCREENING_TRACES.length * 3;
-  const fullDispatches = (FULL_MAX_PROMOTED_CELLS + 1) * FULL_TRACES.length * 3;
+  const fullDispatches =
+    (FULL_MAX_PROMOTED_CELLS +
+      Object.keys(ADDIE_MATCHED_V4_BASELINE_CELL_IDS).length) *
+    FULL_TRACES.length *
+    3;
   const plan = freeze({
     version: ADDIE_MATCHED_V4_EVALUATION_VERSION,
     executionAuthority:
       "declarative_only_no_provider_calls_no_selector_consumption",
-    baselineCellId: ADDIE_MATCHED_V4_BASELINE_CELL_ID,
+    baselineCellIdsByToolSurface: ADDIE_MATCHED_V4_BASELINE_CELL_IDS,
     screening: {
       packSha256: digest(SCREENING_TRACES),
       traceIds: SCREENING_TRACES.map((trace) => trace.id),
@@ -479,8 +486,8 @@ export function createAddieMatchedV4Plan(): AddieMatchedV4Plan {
     full: {
       packSha256: digest(FULL_TRACES),
       traceIds: FULL_TRACES.map((trace) => trace.id),
-      // 16 promoted direct cells plus the declared baseline remain strictly
-      // below migration 584's immutable 1,584 physical-dispatch cap.
+      // 15 promoted direct cells plus both same-surface baselines remain
+      // strictly below migration 584's immutable physical-dispatch cap.
       maxPromotedCells: FULL_MAX_PROMOTED_CELLS,
       maxProviderDispatchesPerTrace: 3,
       maxProviderDispatches: fullDispatches,

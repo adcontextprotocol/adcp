@@ -37,7 +37,7 @@ const activeWorkflowPaths = [
   'check-testable-snippets.yml',
   'release.yml',
 ];
-const forwardMergeWorkflows = ['3.0', '3.1'].map((line) => ({
+const forwardMergeWorkflows = ['3.0', '3.1', '3.2'].map((line) => ({
   line,
   source: fs.readFileSync(
     path.join(repoRoot, `.github/workflows/forward-merge-${line}.yml`),
@@ -55,7 +55,7 @@ function extractStep(name) {
 const releaseRelevance = extractStep('Detect release-relevant push');
 const releaseTarget = extractStep('Resolve release target');
 const artifactDetection = extractStep('Detect committed release artifacts');
-const approvalGate = extractStep('Require human authorization for committed release artifacts');
+const approvalGate = extractStep('Require human approval for committed release artifacts');
 const changesetsStep = extractStep('Create Release Pull Request or Tag Release');
 const uploadStep = extractStep('Upload protocol tarball to GitHub Release');
 const changesetsStepConfig = workflowConfig.jobs.release.steps.find(
@@ -114,12 +114,13 @@ assert(
   'Python candidate validation must align its disposable package-data allowlist after pinning ADCP_VERSION and before schema generation.'
 );
 assert(
-  pythonCandidateStep.includes('"sdk/pyproject.toml": [') &&
-    pythonCandidateStep.includes('f"_schemas/{sdk_version}/"') &&
+  pythonCandidateStep.includes('from adcp.validation.version import resolve_bundle_key') &&
+    pythonCandidateStep.includes('"sdk/pyproject.toml": [') &&
+    pythonCandidateStep.includes(`f'"_schemas/{new_key}/**/*.json"'`) &&
     pythonCandidateStep.includes('"sdk/MANIFEST.in": [') &&
-    pythonCandidateStep.includes('f"_schemas/{sdk_version} "') &&
-    pythonCandidateStep.includes('f"schemas/cache/{sdk_version} "'),
-  'Python candidate validation must update the wheel and both sdist schema allowlist syntaxes.'
+    pythonCandidateStep.includes('f"recursive-include src/adcp/_schemas/{new_key} *.json"') &&
+    pythonCandidateStep.includes('f"recursive-include schemas/cache/{new_key} *.json"'),
+  'Python candidate validation must key the wheel and both sdist schema allowlist syntaxes with the SDK bundle key.'
 );
 
 const storyboardCandidateMode = trainingAgentWorkflowConfig.jobs.storyboards.steps.find(
@@ -195,6 +196,31 @@ assert.strictEqual(
   'Manual release recovery must require an explicit release commit.'
 );
 
+assert.deepStrictEqual(
+  workflowConfig.on.workflow_dispatch.inputs.prepare_next,
+  {
+    description: 'Generate the next candidate from a reviewed unpublished-release supersession marker',
+    required: false,
+    default: false,
+    type: 'boolean',
+  },
+  'Prerelease supersession must require an explicit manual-dispatch mode.'
+);
+
+assert(
+  releaseRelevance.includes('if [ "$RELEASE_SHA" != "$TESTED_SHA" ]') &&
+    releaseRelevance.includes('node scripts/check-release-supersession.cjs verify'),
+  'Supersession generation must bind the reviewed marker to the exact current release-branch head.'
+);
+
+assert.strictEqual(
+  workflowConfig.jobs['verify-release'].steps.find(
+    (step) => step.name === 'Detect release-relevant push'
+  ).env.GH_TOKEN,
+  '${{ github.token }}',
+  'The read-only verification job must authenticate its GitHub Release absence check.'
+);
+
 assert.strictEqual(
   verificationJob.outputs.target_commit,
   '${{ steps.release-target.outputs.commit }}',
@@ -204,7 +230,7 @@ assert.strictEqual(
 assert(
   releaseTarget.includes('^[0-9a-f]{40}$') &&
     releaseTarget.includes('git merge-base --is-ancestor "${target_commit}" "refs/remotes/origin/${GITHUB_REF_NAME}"') &&
-    releaseTarget.includes('main|3.1.x|3.0.x'),
+    releaseTarget.includes('main|3.2.x|3.1.x|3.0.x'),
   'Manual recovery must require a full SHA already reachable from a supported release branch.'
 );
 
@@ -246,8 +272,34 @@ assert.strictEqual(
 );
 assert.strictEqual(
   releaseCheckout.with.ref,
-  '${{ needs.verify-release.outputs.target_commit }}',
-  'The release job must check out the validated release target.'
+  '${{ github.sha }}',
+  'The release job must use the current tested checkout while RELEASE_SHA preserves the validated original release target.'
+);
+
+const artifactCheckout = releaseJob.steps.find(
+  step => step.name === 'Refresh credentials for artifact publication'
+);
+const r2Publication = releaseJob.steps.find(
+  step => step.name === 'Publish release artifacts to R2'
+);
+assert.strictEqual(
+  artifactCheckout.with.token,
+  '${{ github.token }}',
+  'Long immutable publication must refresh the expiring App checkout credential with the job-scoped token.'
+);
+assert.strictEqual(
+  artifactCheckout.with.ref,
+  '${{ github.sha }}',
+  'The credential refresh must preserve the validated release checkout.'
+);
+assert.strictEqual(
+  r2Publication.env.GH_TOKEN,
+  '${{ github.token }}',
+  'R2 publication freshness reads must use the job-scoped token rather than the one-hour App token.'
+);
+assert(
+  releaseJob.steps.indexOf(artifactCheckout) < releaseJob.steps.indexOf(r2Publication),
+  'Artifact publication credentials must refresh immediately before the R2 phase.'
 );
 
 assert(
@@ -265,35 +317,17 @@ assert(
   'Human approval must be required whenever a commit contains release artifacts.'
 );
 
-assert(
-  approvalGate.includes('/commits/${RELEASE_COMMIT}/pulls') &&
-    approvalGate.includes('.base.ref == $base') &&
-    approvalGate.includes('.merged_at != null'),
-  'The approval gate must resolve the merged PR associated with the release commit and branch.'
+assert.strictEqual(
+  workflowConfig.jobs.release.steps.find(
+    step => step.name === 'Require human approval for committed release artifacts'
+  ).run,
+  'set -euo pipefail\nnode scripts/check-release-state.cjs committed "${{ steps.release-artifacts.outputs.version }}"\nnode scripts/check-release-state.cjs approval\n',
+  'Committed release publication must verify the original artifact surface before the permission and merge-provenance gate.'
 );
 
 assert(
-  approvalGate.includes('select(.user.type == "User")') &&
-    approvalGate.includes('map(last)') &&
-    approvalGate.includes('select(.state == "APPROVED" and .commit_id == $head)'),
-  'Human review authorization must require an approval submitted against the final release PR head.'
-);
-
-assert(
-  approvalGate.includes('[ "${author_type}" = "Bot" ]') &&
-    approvalGate.includes('[ "${merger_type}" = "User" ]') &&
-    approvalGate.includes('/issues/${pr_number}/timeline') &&
-    approvalGate.includes('.event == "auto_squash_enabled"') &&
-    approvalGate.includes('.event == "auto_merge_disabled"') &&
-    approvalGate.includes('[ "${auto_merge_state}" = "not_enabled" ]') &&
-    approvalGate.includes('[ "${auto_merge_state}" = "auto_merge_disabled" ]') &&
-    approvalGate.includes('[ "${approved_count}" -lt 1 ] && [ "${direct_merge_authorized}" != "true" ]'),
-  'A human merge may authorize publication only for a bot-authored release PR.'
-);
-
-assert(
-  artifactDetection.includes('git show --format= --name-only --no-renames "${RELEASE_COMMIT}"') &&
-    uploadStep.includes('--target "${RELEASE_COMMIT}"'),
+  artifactDetection.includes('git show --first-parent --format= --name-only --no-renames "${RELEASE_SHA}"') &&
+    uploadStep.includes('--target "${RELEASE_SHA}"'),
   'Recovery must detect and publish artifacts from the validated release commit.'
 );
 
@@ -301,6 +335,12 @@ assert(
   artifactDetection.includes('[ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]') &&
     artifactDetection.includes('does not commit artifacts for ${VERSION}'),
   'Manual recovery must fail instead of running Changesets when its target has no committed release artifacts.'
+);
+
+assert(
+  artifactDetection.includes('node scripts/check-release-supersession.cjs verify') &&
+    artifactDetection.includes('[ "$PREPARE_NEXT" != true ]'),
+  'Only a separately verified supersession dispatch may generate past an unpublished committed prerelease.'
 );
 
 assert(
@@ -326,18 +366,20 @@ assert.deepStrictEqual(
     name: 'Create Release Pull Request or Tag Release',
     if: "steps.release-artifacts.outputs.has_release_artifacts != 'true'",
     id: 'changesets',
+    'timeout-minutes': 40,
     uses: `changesets/action@${changesetsActionSha}`,
     with: {
-      'github-token': '${{ steps.app-token.outputs.token }}',
+      'github-token': '${{ steps.changesets-token.outputs.token }}',
       'version-script': 'npm run version',
-      'publish-script': 'npx --no-install changeset git-tag',
       'commit-message': 'Version Packages',
       'pr-title': 'Version Packages',
-      'create-github-releases': true,
+      'pr-draft': 'always',
+      'create-github-releases': false,
       'push-with-git-cli': true,
     },
     env: {
       HUSKY: '0',
+      GH_TOKEN: '${{ steps.changesets-token.outputs.token }}',
     },
   },
   'Release automation must preserve the pinned Changesets v2.1.2 input contract and git-CLI push mode.'

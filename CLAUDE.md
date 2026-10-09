@@ -3,6 +3,11 @@
 This file is a thin wrapper. The canonical shared behavior for this repository
 lives in `.agents/playbook.md`.
 
+## Completion invariant
+
+Do not declare work done or merge a PR until its comments, review threads, and
+required checks meet the canonical completion rule in `.agents/playbook.md`.
+
 ## Start Here
 
 1. Read `.agents/playbook.md`.

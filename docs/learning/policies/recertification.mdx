@@ -128,7 +128,7 @@ is provisional until program leadership maps it to the final GA artifact.
 | S2 Creative | `s2_ex1_sc_pixel_density_and_renditions`, `s2_ex1_sc_vast_accessibility_provenance` | Pixel-density, rendition, validation, accessibility, and provenance rules narrow prior format-authoring and validation competencies. |
 | S6 Security | `s6_ex2_sc_3_2_signed_body_integrity`, `s6_ex4_sc_webhook_delivery_identity` | Body binding and binary encoding extend request-signing evidence; separating echoed `operation_id` correlation from payload `idempotency_key` deduplication extends webhook-security evidence. |
 
-For each credential, `criteria_effective_at` is the later of AdCP 3.2.0 GA and
+For each credential, `criteria_effective_at` is the later of AdCP 3.2 GA (release 3.2.1, 2026-09-30) and
 production deployment of `550_curriculum_3_2_criteria.sql` with the applicable
 assessment path available. `delta_window_opens_at` equals that effective point;
 `delta_window_closes_at` is 90 calendar days later at 23:59 UTC. The auditable
@@ -140,7 +140,7 @@ criterion requires no action.
 Assign the current full module instead of the delta when the prior record is
 missing or cannot be mapped, the learner misses the delta window, or later GA
 changes materially invalidate the beta-era mapping above. Program leadership
-must re-review this decision against the final 3.2.0 artifact before opening the
+must re-review this decision against the 3.2.1 artifact before opening the
 window; if GA changes a listed competency, update the criterion and rationale
 before targeting learners.
 
@@ -150,7 +150,7 @@ The 3.2 delta is recorded but inactive during beta. Before anyone sets a 3.2
 criteria deployment timestamp or targets an existing holder, engineering and
 program leadership must verify all of the following:
 
-- the final 3.2.0 artifact still maps to the criterion IDs above;
+- the 3.2.1 artifact still maps to the criterion IDs above;
 - each affected module has a registered delta definition and independently
   configurable release gate—one module's window must not activate another;
 - Addie can present only the missing criteria, save criterion-level evidence,

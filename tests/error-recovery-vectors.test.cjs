@@ -13,6 +13,9 @@ function readJson(relativePath) {
 
 const errorSchema = readJson('static/schemas/source/core/error.json');
 const errorCodes = readJson('static/schemas/source/enums/error-code.json');
+const requestSigningErrorCodes = readJson(
+  'static/schemas/source/enums/request-signing-error-code.json',
+);
 const fixture = readJson('static/compliance/source/test-vectors/error-recovery/vectors.json');
 const validateError = new Ajv({ allErrors: true, strict: false }).compile(errorSchema);
 const errorGuide = fs.readFileSync(
@@ -44,6 +47,74 @@ function is32(version) {
 function knownRecovery(code) {
   return errorCodes.enumMetadata[code]?.recovery;
 }
+
+test('error-code prose recovery tags agree with the machine-readable authority', () => {
+  // Same invariant the request-signing enum below is already held to, applied
+  // to enums/error-code.json. Its own enumMetadata $comment makes this
+  // normative: "SDKs MUST consume this block instead of parsing 'Recovery: X'
+  // from enumDescriptions prose ... the recovery classification embedded in
+  // that prose is normative and MUST match the value here."
+  //
+  // A prose tag naming a value outside core/error.json's closed recovery enum
+  // is what this catches: an SDK author transcribing it emits a value no
+  // receiver can decode, because recovery is the field a receiver is required
+  // to read when it does not recognise a code.
+  for (const code of errorCodes.enum) {
+    const description = errorCodes.enumDescriptions[code];
+    const metadata = errorCodes.enumMetadata[code];
+    assert.equal(typeof description, 'string', `${code} must carry enumDescriptions prose`);
+    assert.ok(
+      RECOVERY_VALUES.has(metadata?.recovery),
+      `${code} enumMetadata.recovery must be a member of the recovery enum`,
+    );
+
+    // Codes whose prose does not tag a recovery classification are out of
+    // scope here; this asserts that a tag, where present, is correct.
+    if (!/Recovery:\s*\S/.test(description)) continue;
+    assert.equal(
+      description.match(/Recovery:\s*(correctable|transient|terminal)\b/i)?.[1].toLowerCase(),
+      metadata.recovery,
+      `${code} prose and enumMetadata recovery must agree, and the prose value `
+        + `must be a member of the recovery enum`,
+    );
+  }
+});
+
+test('request-signing prose codes have one machine-readable recovery authority', () => {
+  const documentedCodes = new Set(
+    [...securityGuide.matchAll(/`(request_(?:signature|body|target)_[a-z_]+)`/g)]
+      .map(match => match[1]),
+  );
+  const schemaCodes = new Set(requestSigningErrorCodes.enum);
+
+  assert.deepEqual([...schemaCodes].sort(), [...documentedCodes].sort());
+  for (const code of schemaCodes) {
+    const description = requestSigningErrorCodes.enumDescriptions[code];
+    const metadata = requestSigningErrorCodes.enumMetadata[code];
+    assert.match(code, /^request_(?:signature|body|target)_[a-z_]+$/);
+    assert.equal(typeof description, 'string');
+    assert.ok(RECOVERY_VALUES.has(metadata?.recovery));
+    assert.equal(typeof metadata?.suggestion, 'string');
+    assert.equal(
+      description.match(/Recovery:\s*(correctable|transient|terminal)\b/i)?.[1].toLowerCase(),
+      metadata.recovery,
+      `${code} prose and enumMetadata recovery must agree`,
+    );
+  }
+
+  assert.equal(
+    requestSigningErrorCodes.enumMetadata.request_signature_brand_json_malformed.recovery,
+    'terminal',
+  );
+  assert.equal(
+    requestSigningErrorCodes.enumMetadata.request_signature_jwks_unavailable.recovery,
+    'transient',
+  );
+  assert.match(
+    securityGuide,
+    /machine-readable authority is \[`request-signing-error-code\.json`\]\(https:\/\/adcontextprotocol\.org\/schemas\/v3\/enums\/request-signing-error-code\.json\)/,
+  );
+});
 
 function effectiveRecovery(error) {
   if (error.recovery !== undefined) {

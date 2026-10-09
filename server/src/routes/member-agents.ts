@@ -152,9 +152,9 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
   ): Promise<{ orgId: string; orgAutoCreated: boolean } | null> {
     const apiKey = (req as typeof req & { apiKey?: ValidatedApiKey }).apiKey;
     if (!apiKey && (typeof req.query.org !== 'string' || !req.query.org)) {
-      res.status(403).json({
-        error: 'organization_onboarding_disabled',
-        message: 'Select an existing organization explicitly with ?org= to register an agent.',
+      res.status(400).json({
+        error: 'explicit_organization_required',
+        message: 'Create an organization in onboarding first, then retry with its explicit ?org= identifier.',
       });
       return null;
     }

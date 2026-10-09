@@ -2123,6 +2123,107 @@ test("product identity and forecast semantics distinguish wholesale from custom 
   assert.match(product.properties.expires_at.description, /PRODUCT_NOT_FOUND/);
 });
 
+test("canonical products carry targeting resolution and reporting offerings without is_custom", async () => {
+  const [validateCanonical, validateReporting] = await Promise.all([
+    compile("/schemas/core/canonical-product.json"),
+    compile("/schemas/core/canonical-reporting-capabilities.json"),
+  ]);
+  const configured = {
+    product_id: "prod_configured_age_456",
+    name: "Configured video",
+    expires_at: "2026-08-05T12:00:00Z",
+    targeting_resolution: {
+      modifications: [
+        {
+          operation: "replace",
+          path: "/demographics/age",
+          applied: { min: 25, max: 34, include_unknown: false },
+          reason: "Product executes seller-defined age intervals.",
+        },
+      ],
+    },
+  };
+  assert.equal(validateCanonical(configured), true, errors(validateCanonical));
+  const withoutExpiry = { ...configured };
+  delete withoutExpiry.expires_at;
+  assert.equal(
+    validateCanonical(withoutExpiry),
+    false,
+    "canonical targeting_resolution requires expires_at"
+  );
+  assert.equal(
+    validateCanonical({ ...configured, is_custom: true }),
+    false,
+    "canonical products carry no is_custom; expires_at marks request-specific offers"
+  );
+  assert.equal(
+    validateCanonical({
+      product_id: "prod_exact_configured",
+      name: "Exact configured",
+      expires_at: "2026-08-05T12:00:00Z",
+    }),
+    true,
+    errors(validateCanonical)
+  );
+
+  const canonical = JSON.parse(
+    fs.readFileSync(
+      path.join(SCHEMA_ROOT, "core", "canonical-product.json"),
+      "utf8"
+    )
+  );
+  const legacy = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "product.json"), "utf8")
+  );
+  assert.equal(
+    canonical.properties.targeting_resolution.$ref,
+    legacy.properties.targeting_resolution.$ref
+  );
+  assert.equal(canonical.properties.is_custom, undefined);
+
+  const reporting = {
+    available_reporting_frequencies: ["daily"],
+    expected_delay_minutes: 60,
+    timezone: "UTC",
+    supports_webhooks: false,
+    available_metrics: ["impressions"],
+    date_range_support: "date_range",
+  };
+  for (const offeringIds of [[], ["managed_bucket_daily"]]) {
+    assert.equal(
+      validateReporting({ ...reporting, reporting_delivery_offering_ids: offeringIds }),
+      true,
+      errors(validateReporting)
+    );
+  }
+  assert.equal(
+    validateReporting({ ...reporting, reporting_delivery_offering_ids: ["a", "a"] }),
+    false
+  );
+  const legacyReporting = JSON.parse(
+    fs.readFileSync(
+      path.join(SCHEMA_ROOT, "core", "reporting-capabilities.json"),
+      "utf8"
+    )
+  );
+  const canonicalReporting = JSON.parse(
+    fs.readFileSync(
+      path.join(SCHEMA_ROOT, "core", "canonical-reporting-capabilities.json"),
+      "utf8"
+    )
+  );
+  assert.deepEqual(
+    canonicalReporting.properties.reporting_delivery_offering_ids,
+    legacyReporting.properties.reporting_delivery_offering_ids
+  );
+
+  const fields = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "media-buy", "product-fields.json"), "utf8")
+  );
+  assert.ok(fields.items.enum.includes("targeting_resolution"));
+  assert.ok(!fields.items.enum.includes("is_custom"));
+});
+
 test("named-place targeting supports known-now and declared-later discovery", async () => {
   const [validateRequest, validateRequirements, validateSupport] =
     await Promise.all([

@@ -128,10 +128,13 @@ Designates an MCP agent that provides brand information:
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
   "version": "1.0",
-  "brand_agent": {
-    "url": "https://agent.acme.com/mcp",
-    "id": "acme_brand_agent"
-  }
+  "agents": [
+    {
+      "type": "brand",
+      "url": "https://agent.acme.com/mcp",
+      "id": "acme_brand_agent"
+    }
+  ]
 }
 ```
 
@@ -350,7 +353,7 @@ There is no inheritance/override block. Each consumer-side question has a single
 
 When `scopes` is omitted, consumers should treat the entry as backwards-compatible broad authorization for the listed brands and countries. When `scopes` is present, the operator is authorized only for the listed activities, or for all activities when it explicitly contains `all`.
 
-`authorized_operators[]` does not replace publisher-side inventory authorization. For delegated or network inventory, buyers still need the publisher's matching `adagents.json` authorization; the brand file establishes who may represent the brand or house, while `adagents.json` establishes who may sell a publisher's inventory.
+`authorized_operators[]` does not replace publisher-side inventory authorization. For direct, delegated, or network inventory, buyers still need the publisher's matching `adagents.json` authorization; the brand file establishes who may represent the brand or house, while `adagents.json` establishes who may sell a publisher's inventory.
 
 **Compliance and governance fields**: the resolved value is the **strictest of** the house-level and brand-level values. A brand cannot weaken a house's governance assertions; it can only add stricter constraints. Applies to:
 
@@ -459,8 +462,9 @@ Each brand in the `brands` array:
 | `keller_type` | enum | No | `master`, `sub_brand`, `endorsed`, `independent` |
 | `parent_brand` | string | No | Parent brand's id |
 | `properties` | array | No | Digital properties associated with this brand |
-| `brand_agent` | object | No | Agent providing brand identity data `{ url, id }` |
-| `rights_agent` | object | No | Rights licensing agent `{ url, id, available_uses, right_types, countries }` |
+| `agents` | array | No | Agents acting for this brand, each `{ type, url, id }` plus optional `jwks_uri`, `description`, `countries`. Rights agents (`type: "rights"`) add `available_uses` and `right_types`. |
+| `brand_agent` | object | No | Deprecated: use an `agents[]` entry with `type: "brand"`. |
+| `rights_agent` | object | No | Deprecated: use an `agents[]` entry with `type: "rights"`. |
 | `logos` | array | No | Brand logo assets |
 | `colors` | object | No | Brand color palette |
 | `fonts` | object | No | Brand typography |
@@ -1221,7 +1225,7 @@ Properties are digital touchpoints associated with brands:
 | `store` | enum | No | App store (`apple`, `google`, etc.) |
 | `region` | string | No | ISO country code or `global` |
 | `primary` | boolean | No | Is this the primary property? |
-| `relationship` | enum | No | How this brand relates to the property: `owned` (default), `direct`, `delegated`, `ad_network`. Delegated/network values match `delegation_type` in adagents.json for bilateral verification; `owned` is a brand.json-only ownership claim. See [ad networks](/docs/sponsored-intelligence/networks). |
+| `relationship` | enum | No | How this brand relates to the property: `owned` (default), `direct`, `delegated`, `ad_network`. Direct, delegated, and network values match `delegation_type` in adagents.json for bilateral verification; `owned` is a brand.json-only ownership claim. See [ad networks](/docs/sponsored-intelligence/networks). |
 
 ### Property types
 
@@ -1249,7 +1253,7 @@ Properties default to `owned` — the brand operates the property directly. For 
 | `delegated` | Brand manages monetization — in charge of ad sales | Mediavine managing a food blog |
 | `ad_network` | Brand sells as part of a network/exchange — a path, not the path | PubMatic as an SSP |
 
-This is the AdCP equivalent of `sellers.json` — the operator's public declaration of which publishers they work with. For delegated or network paths, the publisher confirms by setting the matching `delegation_type` on the agent's authorization in their [adagents.json](/docs/governance/property/adagents). For first-party inventory, `relationship: "owned"` is the operator's inline ownership declaration. Sell-side implementations need the operator's `brand.json` claim and, when inventory is publisher-authorized or delegated, the publisher's matching `adagents.json` authorization. See [seller setup](/docs/brand-protocol/seller-setup) for the step-by-step sell-side pattern and [ad networks](/docs/sponsored-intelligence/networks) for network-specific guidance.
+This is the AdCP equivalent of `sellers.json` — the operator's public declaration of which publishers they work with. For direct, delegated, or network paths, the publisher confirms by setting the matching `delegation_type` on the agent's authorization in their [adagents.json](/docs/governance/property/adagents). For first-party inventory, `relationship: "owned"` is the operator's inline ownership declaration. Sell-side implementations need the operator's `brand.json` claim and, when inventory is publisher-authorized or delegated, the publisher's matching `adagents.json` authorization. See [seller setup](/docs/brand-protocol/seller-setup) for the step-by-step sell-side pattern and [ad networks](/docs/sponsored-intelligence/networks) for network-specific guidance.
 
 ## Resolution algorithm
 
@@ -1259,12 +1263,14 @@ To resolve a domain to a canonical brand:
 2. Check variant:
    - **authoritative_location**: fetch that exact HTTPS URL with zero HTTP redirects, then continue from step 2.
    - **house** (string): fetch from house domain, continue from step 2.
-   - **brand_agent**: return agent URL — the agent is authoritative.
+   - **Brand Agent** (no top-level `id`, `names`, or `house`; carries `agents[]` with a `type: "brand"` entry, or the deprecated `brand_agent`): return the agent URL — the agent is authoritative.
    - **House Portfolio** (`house` object + `brands[]` and/or `brand_refs[]`): for an inline child, find the brand whose `properties[]` or `id` matches the query; for a pointer child, follow `brand_refs[].domain` and resolve once — the followed document MUST be a Brand Canonical Document, never another House Portfolio.
    - **Brand Canonical Document** (`id` + `names` at top level): the document is the brand. If `house_domain` is present, fetch the house's `brand.json` to verify reciprocation in its `brand_refs[]` (mutual assertion). When the house side is itself a [House Redirect](#2-house-redirect), follow the redirect chain on the house side before comparing. Read corporate-level fields (e.g., `data_subject_contestation`) from the house if not present on the brand; for compliance fields, resolve **strictest-of** house and brand (see [Mutual-assertion trust model](#mutual-assertion-trust-model)).
 3. Return canonical brand information.
 
 Maximum document redirect depth: 3 hops. This budget counts `authoritative_location` and House Redirect variants; it is separate from the initial well-known HTTP redirect limit in [File location](#file-location). Each explicit `authoritative_location` fetch has an HTTP redirect limit of zero. The brand → house lookup is single-hop (no recursive parent walks). See [Mutual-assertion trust model](#mutual-assertion-trust-model) for trust semantics.
+
+**Document size.** A brand.json SHOULD stay under 2 MiB (2,097,152 bytes). Registry and identity consumers, and verifiers that fetch brand.json as a [signing trust root](/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url), apply the same 2 MiB body cap, enforced while the body streams, so a larger file is rejected. Consumers still enforcing the 256 KiB cap from earlier releases reject large files; see the [3.2 to 3.3 migration guide](/docs/reference/migration/3-2-to-3-3#brand-json-size-cap-rises-to-2-mib).
 
 ## Complete examples
 
@@ -1301,10 +1307,13 @@ Maximum document redirect depth: 3 hops. This budget counts `authoritative_locat
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
   "version": "1.0",
-  "brand_agent": {
-    "url": "https://brand-agent.enterprise.com/mcp",
-    "id": "enterprise_brand_agent"
-  },
+  "agents": [
+    {
+      "type": "brand",
+      "url": "https://brand-agent.enterprise.com/mcp",
+      "id": "enterprise_brand_agent"
+    }
+  ],
   "contact": {
     "name": "Enterprise Brand Team",
     "email": "brand@enterprise.com"
@@ -1391,22 +1400,18 @@ A talent agency managing athlete brands with licensable rights:
           "type": "rights",
           "url": "https://rights.lotientertainment.com/mcp",
           "id": "loti_entertainment",
-          "jwks_uri": "https://rights.lotientertainment.com/.well-known/jwks.json"
+          "jwks_uri": "https://rights.lotientertainment.com/.well-known/jwks.json",
+          "available_uses": ["likeness", "voice", "endorsement"],
+          "right_types": ["talent"],
+          "countries": ["NL", "BE", "DE"]
         }
-      ],
-      "rights_agent": {
-        "url": "https://rights.lotientertainment.com/mcp",
-        "id": "loti_entertainment",
-        "available_uses": ["likeness", "voice", "endorsement"],
-        "right_types": ["talent"],
-        "countries": ["NL", "BE", "DE"]
-      }
+      ]
     }
   ]
 }
 ```
 
-The deprecated `rights_agent` discovery field tells crawlers what's licensable without an MCP call. The canonical `agents[]` entry authorizes the exact rights endpoint and its JWKS for credential verification. Buyer agents can search the registry for "Dutch athletes available for voice licensing" and find matches from the indexed brand.json data.
+The `agents[]` entry does both jobs: `available_uses`, `right_types`, and `countries` tell crawlers what's licensable without an MCP call, and `url` plus `jwks_uri` authorize the exact rights endpoint for credential verification. Buyer agents can search the registry for "Dutch athletes available for voice licensing" and find matches from the indexed brand.json data.
 
 ### Regional Domain Redirect
 

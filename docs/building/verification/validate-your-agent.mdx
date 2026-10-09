@@ -112,16 +112,16 @@ Add `--json` for structured output.
 
 ### Select a compliance cache and test kit
 
-`--compliance-version` selects a cache bundled with the SDK. For an extracted cache, pass its versioned directory to `--compliance-dir`; `--test-kit` takes a YAML file from the `test-kits/` directory below that same cache root. After extracting the `@adcp/sdk` 13.0.0-rc.18 npm tarball in the current directory, use its versioned cache root like this:
+`--compliance-version` selects a cache bundled with the SDK. For an extracted cache, pass its versioned directory to `--compliance-dir`; `--test-kit` takes a YAML file from the `test-kits/` directory below that same cache root. After extracting the `@adcp/sdk` 14.0.0 npm tarball in the current directory, use its versioned cache root like this:
 
 ```bash
-npx @adcp/sdk@13.0.0-rc.18 storyboard run my-agent \
-  --compliance-dir ./package/compliance/cache/3.1.13 \
-  --test-kit ./package/compliance/cache/3.1.13/test-kits/acme-outdoor.yaml
+npx @adcp/sdk@14.0.0 storyboard run my-agent \
+  --compliance-dir ./package/compliance/cache/3.2.1 \
+  --test-kit ./package/compliance/cache/3.2.1/test-kits/acme-outdoor.yaml
 ```
 
 <Note>
-`@adcp/sdk` 13.0.0-rc.18 infers the compliance line from test-kit metadata and rejects mixed or ambiguous `--test-kit`, `--compliance-version`, and `--compliance-dir` selections before contacting the agent. Keep the test kit and storyboard files under the same versioned cache root.
+`@adcp/sdk` 13.0.0 and later infer the compliance line from test-kit metadata and reject mixed or ambiguous `--test-kit`, `--compliance-version`, and `--compliance-dir` selections before contacting the agent. Keep the test kit and storyboard files under the same versioned cache root.
 </Note>
 
 The storyboard runner operates in two modes depending on whether your agent implements the optional [compliance test controller](/docs/building/by-layer/L3/comply-test-controller):
@@ -133,7 +133,7 @@ The storyboard runner operates in two modes depending on whether your agent impl
 
 ### Reading `partial`
 
-`partial` is a coverage result, not automatically a failure. The runner uses it when one or more selected scenarios could not be graded even though no executed assertion failed. The most common cause is intentional: production endpoints MUST NOT expose [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller), so controller-seeded or controller-forced phases skip with `missing_test_controller`.
+`partial` is a coverage result, not automatically a failure. The runner uses it when one or more selected scenarios could not be graded even though no executed assertion failed. The most common cause is intentional: production endpoints MUST NOT expose [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller), so controller-seeded storyboards skip with a storyboard-level `requirement_unmet` naming `controller`, and controller-forced steps that are not gated skip with `missing_test_controller`.
 
 Read `steps_not_selected` separately from `steps_skipped`. Not-selected scenarios were outside the suite or run mode you asked for. Skipped scenarios were inside the selected suite, but the runner could not execute them because of an applicability gate, missing test surface, missing tool, or prerequisite.
 
@@ -143,7 +143,7 @@ Use the summary counters and skip reasons to decide what the result means:
 |---------|----------------|
 | `0 failed`, `steps_not_selected > 0`, `steps_skipped = 0` | Expected for the selected run mode, such as sandbox-only testing that excludes live-only probes |
 | `0 failed`, only capability-gate `not_applicable` skips | Clean pass for the capability scope the seller declared |
-| `0 failed`, `missing_test_controller` skips | Buyer-visible path passed, but deterministic lifecycle coverage was not graded |
+| `0 failed`, `requirement_unmet` (`controller`) or `missing_test_controller` skips | Buyer-visible path passed, but deterministic lifecycle coverage was not graded |
 | Any `missing_tool` skip for a declared protocol or specialism | The seller overclaimed or forgot to expose a required tool |
 | Any failed step | Not conformant for the declared scope until fixed |
 

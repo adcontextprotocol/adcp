@@ -171,8 +171,8 @@ describe('POST /api/organizations/:orgId/claim', () => {
     userOverride = { emailVerified: verified as boolean, email: `claimer@${domain}` };
     await seedProspect(pool, { orgId: TEST_ORG_PROSPECT, domain: TEST_DOMAIN });
     const res = await request(app).post(`/api/organizations/${TEST_ORG_PROSPECT}/claim`).send({});
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe('organization_onboarding_disabled');
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('organization_adoption_unavailable');
     expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
     expect((await pool.query('SELECT * FROM organization_memberships WHERE workos_organization_id = $1', [TEST_ORG_PROSPECT])).rowCount).toBe(0);
     expect((await pool.query('SELECT * FROM registry_audit_log WHERE workos_organization_id = $1', [TEST_ORG_PROSPECT])).rowCount).toBe(0);

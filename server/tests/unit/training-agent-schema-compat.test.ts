@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   resolveRetainedSchemaRoot,
   RETAINED_SCHEMA_BUNDLE,
+  RETAINED_SCHEMA_BUNDLES,
 } from '../../src/training-agent/schema-compat.js';
 
 const repoRoot = path.resolve(fileURLToPath(new URL('../../../', import.meta.url)));
@@ -26,6 +27,15 @@ describe('training-agent retained schema bundle resolution', () => {
 
     expect(path.resolve(resolveRetainedSchemaRoot(compiledModuleUrl))).toBe(retainedSchemaRoot);
     expect(existsSync(retainedSchemaRoot)).toBe(true);
+  });
+
+  it('retains the beta.6 and last 3.2 RC checkpoints the installed SDK does not package', () => {
+    expect(RETAINED_SCHEMA_BUNDLES).toEqual({
+      '3.2-beta.6': '3.2.0-beta.6',
+      '3.2-rc.7': '3.2.0-rc.7',
+    });
+    expect(path.resolve(resolveRetainedSchemaRoot(undefined, undefined, '3.2.0-rc.7')))
+      .toBe(path.join(repoRoot, 'dist/schemas/3.2.0-rc.7'));
   });
 
   it('reports every checked location when the bundle is absent', () => {

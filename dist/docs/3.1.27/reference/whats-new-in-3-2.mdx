@@ -1,0 +1,240 @@
+---
+title: What's new in AdCP 3.2
+sidebarTitle: What's new in 3.2
+description: "AdCP 3.2 is GA: agents run media with the full power of the platform (shared budgets, cost controls, outcome planning), Reliable Reporting, clean-room data collaboration, and a compact lifecycle with 71–94% smaller tool schemas."
+"og:title": "AdCP — What's New in 3.2"
+---
+
+# What's new in AdCP 3.2
+
+<Info>
+**AdCP 3.2 is generally available** (published 2026-09-30). The release artifact is `3.2.1` and the wire pin is `adcp_version: "3.2"`. The number `3.2.0` was never released ([why](/dist/docs/3.1.27/reference/release-notes#why-the-first-stable-release-is-3-2-1)). 3.1 stays supported for integrations pinned to `"3.1"`, and nothing forces you to migrate.
+</Info>
+
+3.1 made agents safe to operate. 3.2 makes the deal between them explicit. A buyer can move from a brief to seller-authored plans, negotiate typed terms, hold inventory, accept one exact snapshot, and run the campaign without either agent guessing which kind of change is happening. Reports the seller owes can no longer silently disappear.
+
+This page is the adopter overview. The complete record is [Release Notes § Version 3.2.1](/dist/docs/3.1.27/reference/release-notes#version-3-2-1), and the role-based checklist is [Migrating from 3.1 to 3.2](/dist/docs/3.1.27/reference/migration/3-1-to-3-2).
+
+<CardGroup cols={3}>
+  <Card
+    title="Try the proposal lifecycle"
+    icon="messages"
+    href="https://agenticadvertising.org/chat?prompt=Walk%20me%20through%20the%20AdCP%203.2%20proposal%20lifecycle%20against%20the%20constrained-seller%20training%20profile.%20Show%20the%20alternatives%2C%20pause%20before%20finalizing%20a%20hold%2C%20then%20pause%20again%20before%20accepting%20it."
+  >
+    Ask Addie to walk you through discovery, negotiation, the hold, and acceptance, with a confirmation step at each gate. No membership or setup needed.
+  </Card>
+  <Card title="Build it" icon="code" href="/dist/docs/3.1.27/building/by-layer/L4/choose-your-sdk">
+    `@adcp/sdk@14.0.0` and Python `adcp==8.0.0` ship alongside `3.2.1` and embed it.
+  </Card>
+  <Card title="Adopt it" icon="route" href="/dist/docs/3.1.27/reference/migration/3-1-to-3-2">
+    Add the compact tools one at a time while your 3.1 traffic keeps working.
+  </Card>
+</CardGroup>
+
+## Why 3.2 matters
+
+3.1 made agents safe to operate. **3.2 lets them run real media with the full power of the platforms they buy on, and prove what ran.**
+
+1. **Platform power.** Social and other self-optimizing platforms can take one shared budget, optimize it natively against the buyer's cost controls, and plan to an outcome before the buy.
+2. **Reliable Reporting.** The reporting pipeline is part of the protocol, so a missing report shows up as missing (experimental).
+3. **Data collaboration.** Products declare how your audience data can reach them, including clean rooms and dataset shares (experimental).
+4. **Compact lifecycle.** One small tool per step of a buy, with MCP schemas 71–94% smaller: fewer tokens and less to implement.
+5. **Trust you can check.** AI-generated content is declared, do-not-run lists are honored, measurement says who measured it, and rights grants carry verifiable attestations (experimental).
+
+| If you are… | What changes for you |
+|---|---|
+| **A buyer or agency** | Hand a platform one budget with the cost caps, cost targets, or ROAS targets you care about, and ask what an outcome will cost before you buy. See which reports you are owed and when one is late or missing. Proposals, holds, and one accepted snapshot keep the agreed terms on record. |
+| **A seller or platform** | Sell the way your platform works: optimize a shared budget natively against the buyer's cost controls, state what a product needs before it can run (event source, app catalog, page or profile), and declare how audience data reaches you, including clean rooms. Declare exchange, retail media, streaming TV, and DOOH specialisms, and report on your own reporting clock. |
+| **An agent or SDK builder** | Seven task-specific tools replace overloaded modes, with MCP schemas 71–94% smaller than the 3.1 facades. You also get exact version negotiation, required error recovery, body-bound signing with published test vectors, and conformance that extends to buyer and orchestrator agents through preview specialisms. |
+
+Adopting 3.2 has a short list of requirements, and the stable-surface exceptions to 3.x compatibility are recorded in one place: [3.2 exceptions to 3.x compatibility](/dist/docs/3.1.27/reference/versioning#3-2-exceptions-to-3-x-compatibility). The two with the widest impact are `media_buy_status` on create and update success, and RFC 8941 encoding for request signatures.
+
+## The 3.2 feature set
+
+- **Compact commercial lifecycle.** `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy`.
+- **Targeting that survives execution.** One model from discovery to readback, including age and demographic bases, named places, subdivisions, browser families, property exclusions, exact `null`-clear semantics, and daypart time zones.
+- **Frequency management.** A MediaBuy-level cap counted across every package, structured product cap constraints, and a post-purchase cap-update action.
+- **Budgets, bidding, and pricing.** Seller-optimized shared budgets with separately declared package controls, a `bidding` block, hard daily caps, atomic total-budget changes, revenue-share pricing, creative rotation, and a shared MediaBuy `name`.
+- **Planning.** Ask which dates are available, or which budget reaches a target outcome.
+- **Reliable Reporting 1.0 (experimental).** Reporting obligations, immutable revisions, health, managed delivery, reconciled receipts, and a buyer-to-seller consumption-status loop.
+- **Delivery reporting and measurement.** Metric narrowing, sortable and paginated breakdowns, delivery by format, time-based views, a `viewable_rate` goal, first-party measurement disclosure, and dates on the seller's reporting timezone.
+- **Accounts and principals.** Operator reconciliation, account time zones and currency, change notifications, an experimental account change feed, and an experimental authenticated-principal layer.
+- **Seller specialisms and channels.** `sales-dooh` (stable), `sales-exchange`, `sales-retail-media`, and `sales-streaming-tv` (preview). DOOH, OOH, radio, audio VAST, CTV experiences, and programmed channels.
+- **Creative.** Canonical formats as the default path, revision and served-variant identity, representation sets, tracker execution contracts, VAST 4.3 and validation, localization, and pixel density.
+- **Trust and runtime.** Required `error.recovery`, body-bound signing, a published signing-error vocabulary, non-authoritative MCP sessions, durable idempotency ledgers, and portable attestations.
+- **Conformance.** Preview buyer and orchestrator specialisms, a buyer-orchestrator certification track, owner-selectable Legacy and Strict Spec grading, and 3.2 request-signing vectors.
+
+## 3.1 to 3.2 by the numbers
+
+| Published surface | 3.1.0 | 3.2.1 | Change |
+|---|---:|---:|---:|
+| Manifested tools | 64 | 78 | +15 added, 1 webhook payload removed from the manifest |
+| Specialisms | 21 | 31 | +10 |
+| Standard error codes | 92 | 120 | +28 |
+| Source JSON Schema files | 648 | 1,017 | +369 |
+| Compliance YAML files | 137 | 237 | +100 |
+
+Seven of the new tools are the compact lifecycle. The rest are principal, reporting, account change-feed, notification-configuration, and governance-adjustment tasks.
+
+The corpus grew, but each operation got lighter. The compact tools stop pulling every legacy mode, inline creative, and provenance branch into each call. Comparing the 3.1 bundled request and response schemas with the 3.2 MCP `2026-07-28` media-buy pairs:
+
+| Comparable operation | 3.1 compatibility pair | 3.2 compact pair | Reduction |
+|---|---:|---:|---:|
+| Proposal planning | ~3.0 MB (`get_products`) | ~0.89 MB (`request_proposals`) | 71% |
+| Direct purchase | ~2.8 MB (`create_media_buy`) | ~0.60 MB (`buy_products`) | 78% |
+| Proposal acceptance | ~2.8 MB (`create_media_buy`) | ~0.37 MB (`accept_proposal`) | 87% |
+| Operational control | ~4.4 MB (`update_media_buy`) | ~0.25 MB (`control_media_buy`) | 94% |
+
+These are schema artifact sizes, not request-body sizes or latency. The model-context profile presents input-only schemas; response schemas stay available to SDKs and validators.
+
+## Headline features
+
+### A media buy you can audit: the compact lifecycle
+
+Each tool marks one business boundary:
+
+| Boundary | What becomes true |
+|---|---|
+| `list_products` | Published offers are listed, and the read has no side effects. |
+| `request_proposals` | The seller has authored non-binding plan snapshots from the brief. |
+| `refine_proposals` with `revise` | A new immutable snapshot records the changed terms without rewriting history. |
+| `refine_proposals` with `finalize` | The exact terms are committed, and inventory is held until `expires_at`. |
+| `decline_proposals` | The buyer's feedback is recorded, and the proposal can no longer execute. |
+| `buy_products` | A published offer is purchased directly. |
+| `accept_proposal` | The held snapshot becomes an accepted MediaBuy: a new buy, an amendment, or a negotiated cancellation. |
+| `control_media_buy` | Delivery changes inside the accepted envelope, guarded by the current revision. |
+
+Proposals carry typed `commercial_terms` and an RFC 8785 `terms_digest`. That gives buyers one recovery rule: use `control_media_buy` inside the accepted terms, and request a new snapshot for anything that changes them. Sellers advertise the subset they serve in `media_buy.lifecycle_tools`. When that field is absent, use the 3.x facades (`get_products`, `create_media_buy`, `update_media_buy`), which stay available throughout 3.x.
+
+The contract ends at acceptance. `accept_proposal` does not standardize invoicing, payment rails, FX, makegoods, or disputes. The [3.3 commercial-completion workstream](https://github.com/adcontextprotocol/adcp/issues/7064) covers what comes after. See [Proposal negotiation](/dist/docs/3.1.27/media-buy/product-discovery/proposal-negotiation).
+
+### Targeting and frequency that survive execution
+
+- **Discovery.** Buyers put known values in `targeting_overlay` and use `required_overlay_support` for values they will choose later. Sellers price and forecast against the effective targeting and disclose material interpretation in `targeting_resolution`. Package readback echoes the exact committed targeting, including `placement_selection` and `collection_selection`.
+- **New dimensions.** Basis-aware age and portable demographic predicates, named places (`geo_places`), country-aware ISO subdivisions, browser families, device-platform exclusion, `property_list_exclude`, and BCP 47 language ranges. Daypart runs on inventory-local time or one named IANA zone.
+- **Clearing a dimension.** On request-only inputs, omitting a dimension inherits or preserves it, a value replaces it, and `null` clears it.
+- **Frequency.** A root `frequency_cap` on the MediaBuy counts once across every package. Sellers advertise it through `media_buy.aggregate_frequency_capping`, and products opt in through `media_buy_support`. Products with limited package caps declare them in `overlay_support.frequency_cap_support`. The `update_media_buy_frequency_cap` action changes or clears the root cap after purchase.
+- **No persistent identifier, no cap.** A product that declares no persistent identifier (`Product.identity.persistent_identifier`, experimental feature `media_buy.product_identity`) must reject capped purchases instead of accepting them without enforcement.
+
+See [Targeting-aware product discovery](/dist/docs/3.1.27/reference/migration/targeting-aware-discovery).
+
+### Budgets, bidding, pricing, and planning
+
+- **Shared budgets, honestly declared.** A seller can optimize one shared `total_budget` across packages under the buyer's goals. `media_buy.features.seller_optimized_budget` covers only that core contract plus media-buy-level pacing. Package budget caps, minimum-spend targets, and package pacing are separate capabilities (`seller_optimized_package_budgets`, `seller_optimized_min_spend_targets`, `seller_optimized_package_pacing`). A seller that lacks one rejects that control with `UNSUPPORTED_FEATURE` instead of dropping it. Core sellers must accept omitted or `even` pacing and may reject `asap` or `front_loaded`, and must not coerce them to `even`.
+- **Say which allocation you mean.** Omitting `budget_allocation` still means fixed package budgets, but buyer agents should send `{"mode": "fixed"}` or a `seller_optimized` block explicitly, and ask the principal when the instruction is ambiguous.
+- **Caps and bidding.** `daily_budget_cap` is always hard, and one `budget_cap_timezone` defines the day. Total-budget changes are atomic. A `bidding` block separates the objective from automatic bidding, manual bids, ceilings, and ROAS controls.
+- **Pricing and controls.** `revenue_share` pricing applies a `commission_rate` to settled `commissionable_value`. Package creative rotation can be weighted, even, sequential, or random. A shared MediaBuy `name` gives both sides one trafficking label. Structured warnings and durable indicators flag risks that need buyer attention.
+- **Declines.** Sellers can say why a request was declined with a coarse `decline_reason`, without exposing private thresholds.
+- **Planning.** `offer_filters.availability_horizon` answers "which dates can I run?" `criteria.outcome_target` answers "what budget reaches 10,000 clicks?", or, with an optional `cost_per`, "what can I get at 3 or less per click on a 5,000 budget?"; the seller answers with a cost control never below the ask. Both are capability-gated, and availability answers are snapshots, never holds.
+- **Products that say what they need before you buy (experimental).** Products can declare `execution_requirements`: the event source, catalog (including `app`), or downstream connection a package needs before `create_media_buy` succeeds. The declaration is the same for every account, and an unmet requirement is rejected with `VALIDATION_ERROR` pointing at the binding. Sellers opt in with `media_buy.execution_requirements` in `experimental_features`; per-account readiness is planned for 3.3.
+
+### Reliable Reporting 1.0: missing data becomes visible
+
+For every reporting period a seller owes, the buyer can see whether it is waiting, healthy, delayed, or needs action; whether an official revision exists; and whether that revision is correct even when it has zero rows. A missing obligation can't drop out of the seller's own denominator.
+
+| Tier | What it adds |
+|---|---|
+| **Core** | Obligations derived from the schedule, immutable revisions, explicit adjustments, and health, read through `get_reporting_status`. A polling-only seller can implement it. |
+| **Managed Delivery** | Durable file, dataset-share, and warehouse deliveries bound to exact revisions, destinations, retention, and revocation. |
+| **Reconciled Billing** | Authenticated consumer receipts (`sync_reporting_receipts`) and canonical content agreement. It does not create or settle invoices. |
+
+The buyer closes the loop with `sync_reporting_status`, reporting what it received, missed, could not read, or disputes as a `content_mismatch`. The buyer owes a status by `expected_at + automated_recovery_window_seconds`, and a missed status never changes seller health. A seller restatement gets a re-read grace window before it escalates.
+
+Reliable Reporting is experimental, discovered through `media_buy.reporting_delivery` with `reliable_reporting_version: "1.0"`. `sync_reporting_status` is opt-in in 3.2 and becomes required Core in the next eligible minor, no earlier than October 24, 2026. See [Implementing Reliable Reporting Core](/dist/docs/3.1.27/media-buy/reporting-core-implementation-guide) and the [status-loop migration](/dist/docs/3.1.27/reference/migration/reliable-reporting-status-loop).
+
+### Delivery reporting and measurement buyers can act on
+
+- **Ask for what you need.** `requested_metrics` narrows a `get_media_buy_delivery` response. Breakdowns become negotiable (`limit`, `sort_by`, `sort_direction`), echo the sort they applied, disclose truncation, and page with cursors.
+- **New cuts.** `by_format` reports delivery per canonical `format_kind`. `time_based_views` separates play-time from in-view counting. Leaf metrics such as `quartile_100` and `viewable_rate` can be committed and sorted.
+- **Optimize for viewability.** `viewable_rate` is a metric optimization goal. It requires a viewability `standard` (`mrc` or `groupm`) and accepts an optional measurement `vendor`. The `views` goal means content views as defined in delivery metrics (the CPV-billable quantity), not viewable impressions.
+- **Dates on the seller's clock.** Delivery dates and `daily_breakdown[].date` are calendar dates in the products' `reporting_capabilities.timezone`, and `reporting_period.timezone` echoes the zone applied. A dated or windowed (`time_granularity`) request that spans more than one reporting timezone is rejected with `VALIDATION_ERROR`.
+- **Know who measured it.** `vendor_relationship` (`first_party`, `affiliated`, or `third_party`) discloses seller-owned measurement. `measurable_plays` gives DOOH, cinema, and place-based channels a real denominator.
+- **Report at the right grain.** Demographic and spot-level (as-run) delivery, delivery by property, collection, and placement, and currency at media-buy or package grain. The response-wide `aggregated_totals` is deprecated.
+
+### Seller specialisms and channels
+
+| Specialism | Status | For |
+|---|---|---|
+| `sales-dooh` | Stable | Non-guaranteed digital out-of-home venue and screen inventory |
+| `sales-exchange` | Preview | Exchanges and SSPs: floors, bid guidance, auction-priced buys, auction transparency |
+| `sales-retail-media` | Preview | Retail media networks: catalog sync, keyword sponsored search, item availability |
+| `sales-streaming-tv` | Preview | CTV and streaming: VAST sync, household frequency caps, household reach |
+
+Underneath the specialisms:
+
+- **DOOH.** Structured slot, loop, resolution, and motion attributes, with duration-weighted share of voice.
+- **Static OOH (experimental).** Posting periods, modeled impressions, and proof of posting.
+- **Audio.** The `audio_vast` canonical format, `nielsen_audio` demographic notation, and loudness constraints.
+- **CTV.** Experience profiles for menu, pause, screensaver, overlay, squeezeback, and in-scene ads, built on existing canonical formats.
+- **Programmed channels.** FAST, virtual linear, and syndicated audio streams become first-class `kind: "channel"` collections with verified owner-sold carriage.
+
+See the [compliance catalog](/dist/docs/3.1.27/building/verification/compliance-catalog#choosing-a-sales-specialism).
+
+### Accounts, principals, and change visibility
+
+- **Operator changes.** `sync_accounts` can rekey an account's operator identity with revision checks. Former keys return `ACCOUNT_MOVED` instead of creating duplicates.
+- **Account settings.** Sellers declare account time zones and currency modes.
+- **Cache invalidation.** `capabilities.changed` and `account.status_changed` tell caches when to refresh.
+- **Account change feed (experimental).** `list_account_changes` is an optional, capability-gated feed of material changes to a shared account, including changes made outside your own calls. It ships as experimental feature `account.change_feed` while [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810) is open.
+- **Authenticated principals (experimental).** `sync_principal` and `get_principal` hold a caller's standing relationship with a seller: caller-level webhooks with a one-call kill switch, reusable reporting destinations, and declarations of which async versions, signing algorithms, and experimental features the caller can consume. Principal configuration never grants advertiser-account authority. Follow the buyer-side flow in [Set up your buyer agent with a seller](/dist/docs/3.1.27/accounts/principal-registration-walkthrough).
+
+### Creative: one traceable path from brief to replay
+
+Canonical formats are the authoring and discovery path. Creative agents advertise `creative.supported_formats[].capability_id` and `operations`, and products expose the formats they accept in `format_options[]`. For a generative campaign, one identity chain runs from brief to format selection, build, pre-flight preview, assignment, live delivery, and post-flight replay:
+
+- **Revision identity.** Buyer-authored, immutable revision identity follows a creative through sync, review, library readback, and delivery attribution.
+- **Served-variant identity.** Makes post-flight preview replay unambiguous.
+- **Representation sets and paired redirects.** Say exactly what gets delivered.
+- **Tracker execution contracts.** Tell buyers, before spend, which pixel, VAST, and DAAST trackers will fire.
+- **VAST.** VAST 4.3, three validation levels (`structural`, `document`, `wrapper`), and three VAST error codes catch unplayable tags before serve time.
+
+3.2 also adds pixel-density and rendition sets, materialized localization on a shared BCP 47 primitive, opt-in async preview with `quality_used`, structured accessibility rejection detail, synthetic-depiction provenance, and buyer-pushed catalog item suppression. `list_creative_formats` remains only for compatibility; exact plural `format_ids` fields are deprecated for removal in 4.0.
+
+### Trust and runtime hardening
+
+- **Errors.** Every 3.2 error carries `error.recovery`, and `retry_after` is an integer. Classification comes before retry: a delay never makes a `correctable` or `terminal` error retryable. 28 new standard codes and versioned error-recovery vectors let SDKs pin behavior.
+- **Request integrity.** Request signing stays optional in 3.x. A 3.2 signing endpoint covers `content-digest` on every body and encodes values as RFC 8941 `sf-binary`. A published signing-error vocabulary lets SDKs classify failures without guessing, and 3.2 request-signing vectors let a `covers_content_digest: "required"` verifier grade checklist steps 2–12. Signing becomes required for spend-committing operations in 4.0.
+- **Sessions and replay.** Verifiers derive identity and authorization from each request, never from `Mcp-Session-Id`. Idempotency ledgers outlive the resources they create, and `COMMITTED_RESOURCE_PURGED` reports writes committed before their resource was purged.
+- **Evidence.** Portable, reference-first attestations back audience evidence, rights grants, and runtime signal quality. OAuth discovery consistency is graded. Product and signal agents can declare `anonymous_discovery`.
+- **Transports.** Compact MCP `2026-07-28` schemas, a 128 KiB MCP interoperability target, the A2A 1.0 profile extension, and cross-transport async identity rules.
+
+### Conformance that grades both sides of the trade
+
+- **Buyer and orchestrator agents** get their own preview specialisms: `buyer-discovery`, `buyer-activation`, `buyer-negotiation`, `buyer-monitoring`, `buyer-recovery`, and `orchestrator-multi-agent`. Together they form a buyer-orchestrator compliance track with three certification levels. Preview specialisms can be claimed, and the runner reports a `preview` result instead of a verified pass or fail.
+- **Capability-scoped grading.** Storyboards resolve against what an agent actually advertises, and fixture gaps grade as not applicable instead of failing.
+- **Grading profiles.** Verified-agent owners can choose Legacy or Strict Spec grading.
+- **Badges.** 3.2 badges are issued once hosted grading moves to the `3.2.1` compliance bundle, graded against `3.2.1` with a `"3.2"` advertisement and response echo; prerelease runs are diagnostic only. See [AAO Verified](/dist/docs/3.1.27/building/verification/aao-verified).
+- **Reference agent.** The public training agent answers `"3.2"` and moves to the `3.2.1` bundle with `@adcp/sdk@14.0.0`.
+
+## Experimental surfaces in 3.2
+
+Experimental surfaces in 3.2 include campaign governance (`governance.campaign`), Trusted Match (`trusted_match.core`), audience activation (`media_buy.audience_activation`), product identity (`media_buy.product_identity`), execution requirements (`media_buy.execution_requirements`), Reliable Reporting (`media_buy.reporting_delivery`), principals (`protocol.principal`), the account change feed (`account.change_feed`), measurement (`measurement.core`, `measurement.gateway`), the static OOH delivery block, and the `seller_rendered_stateful_display` and `coordinated_placements` canonical formats. The full registry is in [experimental status](/dist/docs/3.1.27/reference/experimental-status).
+
+To use them, inspect `experimental_features` and pin an exact release. 3.2 carries announced breaking changes for two of them:
+
+- **Governance.** Task-scoped enforcement, intent-only conditions, and new required delivery-observation fields. See the [cross-role governance migration](/dist/docs/3.1.27/reference/migration/cross-role-governance-enforcement).
+- **Trusted Match.** Publisher authentication, provider-attributed key-values, and `macros` renamed to `creative_data`.
+
+See the [release notes](/dist/docs/3.1.27/reference/release-notes#experimental-surface-changes) and the [experimental-status contract](/dist/docs/3.1.27/reference/experimental-status).
+
+## What to change when you adopt 3.2
+
+| If you are… | Before advertising or sending `"3.2"` |
+|---|---|
+| Any seller or service | Advertise `"3.2"` only when you serve it, and echo it on responses. Populate `error.recovery` on every error. Declare only the capabilities and specialisms you implement. |
+| A buyer | Gate compact tools and optional fields on capabilities. Don't infer 3.2 support from a major-only declaration. Send `budget_allocation` explicitly. |
+| A media-buy implementer | Use `media_buy_status` on create and update success. Root `status` is the task-envelope state. If you declare `seller_optimized_budget`, declare the package-control sub-capabilities you honor. |
+| A signing implementation | Require `content-digest` coverage and RFC 8941 `sf-binary` values on 3.2 signing endpoints. The endpoint, not the request pin, selects the profile. |
+| An MCP server or verifier | Never derive identity or task ownership from `Mcp-Session-Id`. |
+| A delivery-reporting implementer | Emit currency at media-buy or package grain, stop producing new `aggregated_totals`, and report dates on your reporting timezone with `reporting_period.timezone`. |
+| A creative implementation | Discover through `format_options[]` and `creative.supported_formats[]`. Isolate named-format conversion. |
+| An SDK maintainer | Generate from the signed `3.2.1` tarball and publish an exact support statement. |
+
+**SDKs.** TypeScript `@adcp/sdk@14.0.0` (npm `latest`) and Python `adcp==8.0.0` ship alongside `3.2.1` and embed it. Go and Java support for final 3.2 is planned as a follow-up. Both 3.2 SDK lines still call and serve 3.0 and 3.1 peers.
+
+## Start here
+
+1. Follow [Migrating from 3.1 to 3.2](/dist/docs/3.1.27/reference/migration/3-1-to-3-2).
+2. Pick an SDK in [Choose your SDK](/dist/docs/3.1.27/building/by-layer/L4/choose-your-sdk).
+3. Run your agent against the `3.2.1` compliance bundle. See [Validate your agent](/dist/docs/3.1.27/building/verification/validate-your-agent).
+4. Use the [Release Notes](/dist/docs/3.1.27/reference/release-notes#version-3-2-1) for the full record, or the [3.2 prerelease history](/dist/docs/3.1.27/reference/3-2-beta) if you pinned a beta or RC.

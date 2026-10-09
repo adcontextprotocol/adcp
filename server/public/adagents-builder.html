@@ -4883,14 +4883,36 @@
         return false;
       }
 
-      function copyJson() {
+      async function copyJson() {
         if (blockIfAgentsMissScope('copy')) return;
         if (!syncFormatsFromTextarea({ silent: false })) return;
         updateJsonPreview();
-        const textarea = document.getElementById('json-output');
-        textarea.select();
-        document.execCommand('copy');
-        alert('JSON copied to clipboard!');
+        const json = document.getElementById('json-output').value;
+        let copied = false;
+        try {
+          await navigator.clipboard.writeText(json);
+          copied = true;
+        } catch {
+          // The preview can be collapsed, so use a selectable temporary input
+          // when the Clipboard API is unavailable or permission is denied.
+          const previousFocus = document.activeElement;
+          const input = document.createElement('textarea');
+          input.value = json;
+          input.readOnly = true;
+          input.style.position = 'fixed';
+          input.style.left = '-9999px';
+          document.body.appendChild(input);
+          input.select();
+          try {
+            copied = document.execCommand('copy');
+          } catch {
+            copied = false;
+          } finally {
+            input.remove();
+            previousFocus?.focus({ preventScroll: true });
+          }
+        }
+        alert(copied ? 'JSON copied to clipboard!' : 'Copy failed. Use Download JSON instead.');
       }
 
       function downloadJson() {

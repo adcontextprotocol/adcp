@@ -159,15 +159,37 @@ function transformPublishedSchemaText(content, version) {
 }
 
 // Keep generated file-based discovery aligned with the CDN and server
-// middleware. Exact artifacts remain available, but non-selectable releases
-// must never win latest/major/minor aliases.
+// middleware (tests/schema-release-status.test.ts enforces this). Exact
+// artifacts remain available, but non-selectable releases must never win
+// latest/major/minor aliases. 3.2.0 is the permanently withdrawn June 2026
+// accidental cut; 3.2 GA ships as 3.2.1 (.changeset/withdrawn-release.json).
 const RELEASE_STATUS_OVERRIDES = new Map([
   ['3.1.3', 'withdrawn'],
+  ['3.2.0-rc.5', 'unpublished'],
   ['3.2.0', 'unpublished'],
 ]);
 
 function isSelectableRelease(version) {
   return !RELEASE_STATUS_OVERRIDES.has(version);
+}
+
+// A prerelease is superseded by the first selectable stable release on its
+// minor line that is newer than it. Withdrawn/unpublished stable numbers
+// (e.g. 3.2.0) never supersede anything, so 3.2.0-rc.N resolves to 3.2.1.
+function supersedingStableVersion(version, knownVersions = []) {
+  const parsed = semver.parse(version);
+  if (!parsed || parsed.prerelease.length === 0) return undefined;
+  return knownVersions
+    .filter((candidate) => {
+      if (!isSelectableRelease(candidate)) return false;
+      const stable = semver.parse(candidate);
+      return stable
+        && stable.prerelease.length === 0
+        && stable.major === parsed.major
+        && stable.minor === parsed.minor
+        && semver.gt(candidate, version);
+    })
+    .sort(semver.compare)[0];
 }
 
 // Parse command line arguments
@@ -271,7 +293,7 @@ function getReleaseMetadata(version, knownVersions = []) {
   if (statusOverride === 'unpublished') {
     return {
       stability: 'unpublished',
-      prerelease: false,
+      prerelease: String(version).includes('-'),
       deprecated: false,
       published: false,
     };
@@ -299,8 +321,7 @@ function getReleaseMetadata(version, knownVersions = []) {
   }
 
   const label = prerelease.split('.')[0].toLowerCase();
-  const stableVersion = String(version).split('-')[0];
-  const supersededBy = knownVersions.includes(stableVersion) ? stableVersion : undefined;
+  const supersededBy = supersedingStableVersion(String(version), knownVersions);
   const metadata = {
     stability: label === 'rc' ? 'rc' : label === 'beta' ? 'beta' : 'prerelease',
     prerelease: true,
@@ -757,8 +778,8 @@ function compareMinorVersions(a, b) {
 }
 
 /**
- * Reserved namespaces that cannot be used for typed extensions
- * These could cause confusion with core AdCP concepts
+ * Reserved namespaces that cannot be claimed by vendor extensions.
+ * The registry's canonical AdCP-owned entry is the only exception.
  */
 const RESERVED_NAMESPACES = ['adcp', 'core', 'protocol', 'schema', 'meta', 'ext', 'context'];
 
@@ -767,7 +788,12 @@ const RESERVED_NAMESPACES = ['adcp', 'core', 'protocol', 'schema', 'meta', 'ext'
  * @param {string} namespace - Extension namespace to validate
  * @throws {Error} If namespace is reserved
  */
-function validateExtensionNamespace(namespace) {
+function validateExtensionNamespace(namespace, schema) {
+  if (namespace === 'adcp' &&
+      schema?.$id === '/schemas/extensions/adcp.json' &&
+      schema['x-adcp-owned'] === true) {
+    return;
+  }
   if (RESERVED_NAMESPACES.includes(namespace.toLowerCase())) {
     throw new Error(`Namespace "${namespace}" is reserved and cannot be used for extensions`);
   }
@@ -798,7 +824,7 @@ function discoverExtensions(extensionsDir) {
       const namespace = file.replace('.json', '');
 
       // Validate namespace is not reserved
-      validateExtensionNamespace(namespace);
+      validateExtensionNamespace(namespace, content);
 
       extensions.push({
         namespace,
@@ -1574,20 +1600,31 @@ function findSchemaFiles(dir, baseDir = dir) {
  * true circular references (A → B → A). This is different from multiple
  * references to the same schema from different locations, which should
  * all be resolved.
+ *
+ * `options.hoistRefs` (a Map of `/schemas/...` ref -> `{ defName, count }`)
+ * is set only by `hoistBySourceIdentity`: listed refs are rewritten to
+ * `#/$defs/<defName>` instead of inlined, and `count` tallies call-sites.
  */
-function resolveRefs(schema, sourceDir, ancestorRefs = new Set()) {
+function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) {
   if (!schema || typeof schema !== 'object') {
     return schema;
   }
 
   if (Array.isArray(schema)) {
-    return schema.map(item => resolveRefs(item, sourceDir, ancestorRefs));
+    return schema.map(item => resolveRefs(item, sourceDir, ancestorRefs, options));
   }
 
   const result = {};
 
   for (const [key, value] of Object.entries(schema)) {
-    if (key === '$ref' && typeof value === 'string' && value.startsWith('/schemas/')) {
+    if (key === '$ref' && typeof value === 'string' && options.hoistRefs && options.hoistRefs.has(value)) {
+      // Source-identity hoist (see `hoistBySourceIdentity`): point at the
+      // root `$defs` entry instead of inlining. Sibling keys (notably the
+      // per-call-site `description`) are visited as ordinary keys of this
+      // object and survive untouched.
+      options.hoistRefs.get(value).count++;
+      result[key] = `#/$defs/${options.hoistRefs.get(value).defName}`;
+    } else if (key === '$ref' && typeof value === 'string' && value.startsWith('/schemas/')) {
       // Resolve the reference
       const externalRef = value.replace('/schemas/', '');
       const hashIndex = externalRef.indexOf('#');
@@ -1622,7 +1659,7 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set()) {
         const newAncestors = new Set(ancestorRefs);
         newAncestors.add(ancestorKey);
         // Recursively resolve refs in the referenced schema
-        const resolvedRef = resolveRefs(refContent, sourceDir, newAncestors);
+        const resolvedRef = resolveRefs(refContent, sourceDir, newAncestors, options);
         // Merge the resolved content. Drop `$schema` (only meaningful at
         // document root). Preserve `$id` on the inlined subtree so SDK
         // error reporting can name the deep sub-schema (#3868) — if the
@@ -1640,10 +1677,89 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set()) {
         result[key] = value;
       }
     } else {
-      result[key] = resolveRefs(value, sourceDir, ancestorRefs);
+      result[key] = resolveRefs(value, sourceDir, ancestorRefs, options);
     }
   }
 
+  return result;
+}
+
+/**
+ * Resolve every `$ref` like `resolveRefs`, except that refs to the listed
+ * source schemas are NOT inlined. Each one is written once to the root
+ * `$defs` (named after the source schema's `title`) and every call-site
+ * becomes `{ "$ref": "#/$defs/<Title>", ...siblings }`.
+ *
+ * Why identity-based and not `x-adcp-hoist`: `hoistMarkedSchemas` matches
+ * on inlined content and replaces the whole node, which drops `$ref`
+ * siblings. Call-site `description`s (e.g. "overrides manifest-level
+ * provenance") are real adopter information, so they must stay next to the
+ * `$ref`. Siblings are already merged into the inlined body by the time
+ * a post-inline pass runs, so the hoist has to happen while resolving.
+ *
+ * Wire-neutral: the sibling keys are annotation-only (`description`), and
+ * the `$defs` entry is the same body that used to be inlined at each site.
+ * Source schemas are untouched.
+ *
+ * `refPaths` are `/schemas/...` refs without a fragment, e.g.
+ * `/schemas/core/provenance.json`. A listed ref is hoisted only when it
+ * appears 2+ times in the resolved schema; otherwise it is inlined as
+ * before and no `$defs` entry is added.
+ */
+function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new Set()) {
+  const hoistRefs = new Map();
+  const bodies = new Map();
+  for (const refPath of refPaths) {
+    if (!refPath.startsWith('/schemas/') || refPath.includes('#')) {
+      throw new Error(`hoistBySourceIdentity: expected a /schemas/ ref without a fragment, got '${refPath}'.`);
+    }
+    // A missing source file just means this tree never references it
+    // (synthetic fixtures); a real dangling ref is handled by `resolveRefs`.
+    const sourceFile = path.join(sourceDir, refPath.replace('/schemas/', ''));
+    if (!fs.existsSync(sourceFile)) continue;
+    const source = JSON.parse(fs.readFileSync(sourceFile, 'utf8'));
+    const defName = typeof source.title === 'string' ? source.title.replace(/[^A-Za-z0-9_]/g, '') : '';
+    if (!defName || ['__proto__', 'constructor', 'prototype'].includes(defName)) {
+      throw new Error(`hoistBySourceIdentity: ${refPath} needs a usable \`title\` to name its $defs entry.`);
+    }
+    hoistRefs.set(refPath, { defName, count: 0 });
+    bodies.set(refPath, source);
+  }
+
+  let options = { hoistRefs };
+  let result = resolveRefs(schema, sourceDir, ancestorRefs, options);
+
+  // Like `hoistDuplicateInlineEnums`, only hoist what repeats. A single
+  // call-site gains nothing from a `$defs` indirection, and the local
+  // `#/$defs/...` ref would make `stripIdsFromSubtreesWithLocalRefs` drop
+  // the `$id` of every enclosing inlined schema. Re-resolve without the
+  // singletons so those bundles stay byte-identical to before.
+  let hasSingleton = false;
+  for (const [refPath, entry] of [...hoistRefs]) {
+    if (entry.count === 1) hasSingleton = true;
+    if (entry.count < 2) hoistRefs.delete(refPath);
+  }
+  if (hasSingleton) {
+    for (const refPath of [...bodies.keys()]) if (!hoistRefs.has(refPath)) bodies.delete(refPath);
+    for (const entry of hoistRefs.values()) entry.count = 0;
+    options = { hoistRefs };
+    result = resolveRefs(schema, sourceDir, ancestorRefs, options);
+  }
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
+
+  for (const [refPath, entry] of hoistRefs) {
+    // Resolve the body once; its internal refs (enums, ext) inline exactly
+    // as they did at every old call-site.
+    const refFile = path.join(sourceDir, refPath.replace('/schemas/', ''));
+    const { $schema, ...body } = resolveRefs(bodies.get(refPath), sourceDir, new Set([...ancestorRefs, refFile]), options);
+    result.$defs = result.$defs || {};
+    if (Object.prototype.hasOwnProperty.call(result.$defs, entry.defName)) {
+      throw new Error(
+        `hoistBySourceIdentity: root $defs already defines '${entry.defName}'; cannot hoist ${refPath} under that name.`
+      );
+    }
+    result.$defs[entry.defName] = body;
+  }
   return result;
 }
 
@@ -2177,6 +2293,14 @@ function dedupBundledSchemaIds(schema) {
 }
 
 /**
+ * Source schemas that are hoisted to root `$defs` by identity rather than
+ * inlined at every `$ref` call-site. `core/provenance.json` is referenced
+ * from ~25 asset/manifest schemas, so inlining multiplied its ~300-line
+ * body 40-80x per bundled response. See #4875.
+ */
+const IDENTITY_HOISTED_REFS = ['/schemas/core/provenance.json'];
+
+/**
  * Generate bundled (dereferenced) schemas
  * These have all $ref resolved inline for tools that can't handle references
  */
@@ -2220,8 +2344,10 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // Read the schema
       const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-      // Resolve all $refs
-      const dereferenced = resolveRefs(schema, sourceDir, new Set([schemaPath]));
+      // Resolve all $refs. Schemas listed in IDENTITY_HOISTED_REFS are
+      // written once to root $defs instead of being inlined at every
+      // call-site, keeping per-call-site `description` siblings. See #4875.
+      const dereferenced = hoistBySourceIdentity(schema, sourceDir, IDENTITY_HOISTED_REFS, new Set([schemaPath]));
 
       // After inlining, referenced schemas that carried local `#/$defs/...`
       // pointers leave their `$defs` nested wherever they were inlined —
@@ -2713,8 +2839,13 @@ module.exports = {
   canonicalPublishedSchemaUri,
   canonicalizePublishedSchemaUris,
   generateExtensionRegistry,
+  validateExtensionNamespace,
+  discoverExtensions,
+  filterExtensionsForVersion,
+  buildExtensions,
   hoistDuplicateInlineEnums,
   hoistMarkedSchemas,
+  hoistBySourceIdentity,
   resolveRefs,
   versionInlineSchemaIds,
   dedupBundledSchemaIds,
@@ -2723,6 +2854,8 @@ module.exports = {
   getReleaseMetadata,
   buildRootSchemaDiscovery,
   isSelectableRelease,
+  RELEASE_STATUS_OVERRIDES,
+  supersedingStableVersion,
   discoverTools,
   buildTaskResultResolution,
   validateManifestToolRelationships,

@@ -65,7 +65,20 @@ describe('ComplianceDatabase.getLastKnownSupportedVersions', () => {
 
     expect(mockedQuery).toHaveBeenCalledWith(
       expect.stringMatching(/SET next_compliance_check_at = NOW\(\)[\s\S]*next_compliance_check_at > NOW\(\)/),
-      ['https://agent.example/mcp'],
+      ['https://agent.example/mcp', false],
+    );
+  });
+
+  it('uses bounded exponential backoff after repeated target failures', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 } as never);
+
+    await expect(db.deferComplianceCheckAfterInconclusiveTarget(
+      'https://agent.example/mcp', { exponentialBackoff: true },
+    )).resolves.toBe(true);
+
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.stringContaining('LEAST(48, check_interval_hours * (1 << LEAST(compliance_inconclusive_streak, 3)))'),
+      ['https://agent.example/mcp', true],
     );
   });
 

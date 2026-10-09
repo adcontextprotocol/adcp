@@ -129,6 +129,14 @@
       "description": "Plan identifier echoed on an initial plan-addressed check. Optional on continuation checks addressed by governance_context; services do not need this value and MUST treat the token binding as authoritative.",
       "x-entity": "governance_plan"
     },
+    "budget_period_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "description": "The plan budget period (`plans[].budget.periods[].budget_period_id`) that contains the action's whole flight. Present when the plan has periods and the action is dated and a containing period exists, whatever the verdict, so the buyer can record which period each buy belongs to without re-deriving it. Omitted when the plan has no periods, when the action carries no dates, or when no single period contains the flight (a straddling or unallocated flight is denied).",
+      "x-entity": "governance_budget_period"
+    },
     "explanation": {
       "type": "string",
       "description": "Human-readable explanation of the governance decision."

@@ -47,6 +47,12 @@ vi.mock('@google/genai', async (importOriginal) => {
   return { ...actual, GoogleGenAI: googleGenAIConstructor };
 });
 
+const normalizationWarnings = vi.hoisted(() => vi.fn());
+vi.mock('../../../src/logger.js', () => {
+  const logger = { warn: normalizationWarnings, info: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => logger };
+  return { createLogger: () => logger, logger };
+});
+
 function request(model: string, overrides: Partial<ModelRequest> = {}): ModelRequest {
   return {
     model,
@@ -167,11 +173,11 @@ describe('OpenAIResponsesProvider', () => {
     },
   );
 
-  it.each(['xhigh', 'max'] as const)('scopes OpenAI evaluation-only control %s outside the runtime adapter', (effort) => {
+  it.each(['xhigh', 'max'] as const)('rejects unreviewed OpenAI reasoning control %s in runtime and evaluation projections', (effort) => {
     const runtime = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
     const evaluationRequest = request(OPENAI_ROUTER_MODEL, { reasoning: { effort } as never });
     expect(() => runtime.prepare(evaluationRequest)).toThrow('reasoning');
-    expect(prepareOpenAIResponsesEvaluationRequest(evaluationRequest)).toMatchObject({ reasoning: { effort } });
+    expect(() => prepareOpenAIResponsesEvaluationRequest(evaluationRequest)).toThrow('reasoning');
     expect(prepareOpenAIResponsesEvaluationRequest(request(OPENAI_ROUTER_MODEL, { reasoning: { effort: 'provider_default' } })))
       .not.toHaveProperty('reasoning');
   });
@@ -1182,4 +1188,32 @@ describe('GoogleGenerateContentProvider', () => {
     })).rejects.toThrow('policy_rejected');
     expect(generateContent).not.toHaveBeenCalled();
   });
+});
+
+
+describe('sanitized Google normalization diagnostics', () => {
+  it.each([
+    ['candidate_count', { candidates: [] }],
+    ['finish_reason', { candidates: [{ finishReason: 'private-customer@example.test Bearer secret-value' }] }],
+    ['tool_call_signature', { candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [{ functionCall: { id: 'private-id', name: 'private-name', args: { email: 'private-customer@example.test' } } }] } }] }],
+    ['unknown_structure', { candidates: [null] }],
+  ])('logs only the structural reason %s', async (reason, overrides) => {
+    normalizationWarnings.mockClear();
+    const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent: vi.fn().mockResolvedValue(googleResponse(overrides)) } });
+    await expect(collectModelResponse(provider.respond(request(GOOGLE_ROUTER_MODEL))))
+      .rejects.toThrow(MODEL_PROVIDER_ADAPTER_FAILURE_MESSAGE);
+    expect(normalizationWarnings).toHaveBeenCalledExactlyOnceWith({ reason }, 'Google response normalization failed');
+    expect(JSON.stringify(normalizationWarnings.mock.calls)).not.toMatch(/private|secret-value/);
+  });
+});
+
+
+it('contains hostile exceptions raised while reading a provider response', async () => {
+  normalizationWarnings.mockClear();
+  const untrusted = new Proxy({}, { getPrototypeOf() { throw new Error('private-provider-value'); } });
+  const response = Object.defineProperty(googleResponse(), 'responseId', { get() { throw untrusted; } });
+  const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent: vi.fn().mockResolvedValue(response) } });
+  await expect(collectModelResponse(provider.respond(request(GOOGLE_ROUTER_MODEL))))
+    .rejects.toThrow(MODEL_PROVIDER_ADAPTER_FAILURE_MESSAGE);
+  expect(normalizationWarnings).toHaveBeenCalledExactlyOnceWith({ reason: 'unknown_structure' }, 'Google response normalization failed');
 });

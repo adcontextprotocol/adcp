@@ -40,6 +40,21 @@ const TRAINING_PRINCIPAL_FIELD = '__training_principal';
 const TRAINING_TASK_OWNER_SCOPE_FIELD = '__training_task_owner_scope';
 const TRAINING_OPERATOR_UNIT_BRIDGE_FIELD = '__training_operator_unit';
 export const CONTROLLER_TASK_SETTLEMENT_TIMEOUT_MS = 10_000;
+const completionLocks = new Map<string, Promise<void>>();
+
+async function withControllerTaskCompletionLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+  const previous = completionLocks.get(key);
+  let release!: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  completionLocks.set(key, current);
+  if (previous) await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (completionLocks.get(key) === current) completionLocks.delete(key);
+  }
+}
 
 function restoreControllerOperatorUnit(input: Record<string, unknown>): Record<string, unknown> {
   const ext = input.ext && typeof input.ext === 'object' && !Array.isArray(input.ext)
@@ -246,6 +261,7 @@ async function awaitControllerTaskSettlement(
 
 function controllerTaskScope(
   input: Record<string, unknown>,
+  restoreBridge = true,
 ): TaskRegistryScope | null {
   // The router overwrites this field after bearer authentication. It is not
   // accepted as caller authority on routes that bypass that trusted bridge.
@@ -253,7 +269,9 @@ function controllerTaskScope(
   if (typeof ownerScope !== 'string' || ownerScope.length === 0) return null;
 
   try {
-    const accountRef = normalizeControllerAccountRef(restoreControllerOperatorUnit(input).account);
+    const accountRef = normalizeControllerAccountRef(
+      (restoreBridge ? restoreControllerOperatorUnit(input) : input).account,
+    );
     const account = canonicalizeAccountRef(accountRef);
     if (account.kind === 'account_id') {
       return { accountId: account.account_id, ownerScope };
@@ -265,6 +283,26 @@ function controllerTaskScope(
   } catch {
     return null;
   }
+}
+
+function completionTaskScope(ctx: ComplyControllerContext): TaskRegistryScope | null {
+  const trusted = ctx.taskScope ?? controllerTaskScope(ctx.input);
+  if (!trusted || !ctx.taskScope) return trusted;
+
+  // The current SDK controller wrapper strips operator_unit before resolving
+  // its trusted account. Our ingress moved that schema-valid field from the
+  // original AccountRef into ext after discarding any caller-supplied bridge.
+  // Restore only the account partition, and only when the stripped reference
+  // resolves to the exact trusted account and authenticated owner scope.
+  const ext = ctx.input.ext;
+  if (!ext || typeof ext !== 'object' || Array.isArray(ext)
+      || !Object.hasOwn(ext, TRAINING_OPERATOR_UNIT_BRIDGE_FIELD)) return trusted;
+  const base = controllerTaskScope(ctx.input, false);
+  if (!base || base.accountId !== trusted.accountId || base.ownerScope !== trusted.ownerScope
+      || ctx.account?.id !== trusted.accountId) return trusted;
+  const restored = controllerTaskScope(restoreControllerOperatorUnit(ctx.input));
+  if (!restored || restored.ownerScope !== trusted.ownerScope) return trusted;
+  return { ...trusted, accountId: restored.accountId };
 }
 
 function seedAdapter(scenario: string, storyboardCompat?: TrainingContext['storyboardCompat']): AdapterShim {
@@ -296,44 +334,80 @@ function taskCompletionAdapter(
     const params = rawParams as Record<string, unknown>;
     const taskId = params.task_id;
     const result = params.result;
-    let scope: TaskRegistryScope | undefined;
-    if (
-      taskRegistry
-      && typeof taskId === 'string'
-      && result
-      && typeof result === 'object'
-      && !Array.isArray(result)
-    ) {
-      // Authorize before dispatchV5 signals the pending worker. Checking only
-      // after dispatch would still let a cross-scope caller resolve it.
-      scope = await requireControllerTaskScope(
-        taskRegistry,
-        taskId,
-        controllerTaskScope(ctx.input),
+    const runCompletion = async () => {
+      let scope: TaskRegistryScope | undefined;
+      let taskTool: string | undefined;
+      let taskIsSubmitted = false;
+      if (
+        taskRegistry
+        && typeof taskId === 'string'
+        && result
+        && typeof result === 'object'
+        && !Array.isArray(result)
+      ) {
+        // Authorize before dispatchV5 signals the pending worker. Checking only
+        // after dispatch would still let a cross-scope caller resolve it.
+        // The SDK resolves the authenticated owner scope. Its current
+        // controller wrapper drops operator_unit, so completionTaskScope may
+        // restore the validated account partition from our trusted bridge.
+        scope = await requireControllerTaskScope(
+          taskRegistry,
+          taskId,
+          completionTaskScope(ctx),
+        );
+        const task = await taskRegistry.getTask(taskId, scope);
+        taskTool = task?.tool;
+        taskIsSubmitted = task?.status === 'submitted';
+      }
+      const completionScope = scope
+        ? {
+            ...scope,
+            registryNamespace: taskRegistryNamespaceForTenant(tenantId),
+          }
+        : undefined;
+      if (
+        taskTool === 'create_media_buy'
+        && taskIsSubmitted
+        && result && typeof result === 'object' && !Array.isArray(result)
+        && typeof (result as Record<string, unknown>).media_buy_id === 'string'
+      ) {
+        // Materialize before the pending task can become terminal or emit a
+        // completion webhook. A buyer reading immediately on that signal must
+        // already be able to retrieve the approved media buy.
+        const mediaBuyResult = result as Record<string, unknown>;
+        const seeded = await dispatchV5('seed_media_buy', {
+          media_buy_id: mediaBuyResult.media_buy_id as string,
+          fixture: {
+            ...mediaBuyResult,
+            status: mediaBuyResult.media_buy_status,
+            account: normalizeControllerAccountRef(restoreControllerOperatorUnit(ctx.input).account),
+          },
+        }, ctx.input, storyboardCompat);
+        throwOnFailure(seeded);
+      }
+      const controllerResult = await dispatchV5(
+        'force_task_completion',
+        params,
+        ctx.input,
+        storyboardCompat,
+        completionScope,
       );
-    }
-    const completionScope = scope
-      ? {
-          ...scope,
-          registryNamespace: taskRegistryNamespaceForTenant(tenantId),
-        }
-      : undefined;
-    const controllerResult = await dispatchV5(
-      'force_task_completion',
-      params,
-      ctx.input,
-      storyboardCompat,
-      completionScope,
-    );
-    throwOnFailure(controllerResult);
-    if (taskRegistry && scope && typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
-      // The forced-completion signal resolves the framework-owned handoff.
-      // Wait for that background settlement instead of writing the registry
-      // directly: winning the write race here makes the framework observe an
-      // already-terminal task and skip its completion webhook.
-      await awaitControllerTaskSettlement(taskRegistry, taskId, scope);
-    }
-    return controllerResult;
+      throwOnFailure(controllerResult);
+      if (taskRegistry && scope && typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
+        // The forced-completion signal resolves the framework-owned handoff.
+        // Wait for that background settlement instead of writing the registry
+        // directly: winning the write race here makes the framework observe an
+        // already-terminal task and skip its completion webhook.
+        await awaitControllerTaskSettlement(taskRegistry, taskId, scope);
+      }
+      return controllerResult;
+    };
+    // A task can receive two controller calls at once. Serialize the scoped
+    // read, buy materialization, and terminal publication so a losing replay
+    // cannot leave an orphan buy. The task registry itself is process-local.
+    return typeof taskId === 'string'
+      ? withControllerTaskCompletionLock(`${tenantId}:${taskId}`, runCompletion)
+      : runCompletion();
   };
 }
 

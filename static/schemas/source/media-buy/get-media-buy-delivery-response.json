@@ -78,17 +78,26 @@
     },
     "reporting_period": {
       "type": "object",
-      "description": "Half-open date range for the report: start is inclusive and end is exclusive. All periods use UTC timezone.",
+      "description": "Half-open period for the report: start is inclusive and end is exclusive. Both are instants. For a date-bounded request they are the instants at which start_date and end_date begin in the reporting timezone (the in-scope products' reporting_capabilities.timezone, echoed in timezone). They fall on UTC midnight only when that timezone is UTC. An exact reporting_revision_id read returns the revision's period instead, whose source_timezone names its calendar.",
       "properties": {
         "start": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 start timestamp in UTC (e.g., 2024-02-05T00:00:00Z)"
+          "description": "Inclusive RFC 3339 start instant. For a date-bounded request, the start of start_date in the reporting timezone, written with that zone's UTC offset or as the equivalent UTC instant (e.g., 2026-04-15T00:00:00-04:00 or 2026-04-15T04:00:00Z for America/New_York; 2026-04-15T00:00:00Z for UTC)."
         },
         "end": {
           "type": "string",
           "format": "date-time",
-          "description": "Exclusive ISO 8601 end timestamp in UTC (e.g., 2024-02-06T00:00:00Z for a report covering 2024-02-05)"
+          "description": "Exclusive RFC 3339 end instant. For a date-bounded request, the start of end_date in the reporting timezone (e.g., 2026-04-16T00:00:00-04:00 for a report covering 2026-04-15 in America/New_York)."
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Reporting timezone applied to this report, as 'UTC' or an IANA timezone identifier. It equals the in-scope products' reporting_capabilities.timezone. start_date, end_date, the reporting_period boundaries, daily_breakdown[].date, and daily, weekly, or monthly windows[] all use it, so a stored report stays interpretable if the product's capability later changes. Sellers SHOULD return it on reads without reporting_revision_id whenever every in-scope media buy shares one reporting timezone. Exact reporting_revision_id reads return the revision period, which carries source_timezone instead.",
+          "examples": [
+            "UTC",
+            "America/New_York"
+          ]
         }
       },
       "required": [
@@ -916,7 +925,7 @@
                     },
                     "by_spot": {
                       "type": "array",
-                      "description": "Spot-level as-run airing records for broadcast TV, radio, or other scheduled inventory. Available when the buyer requests spot breakdown and the product declares supports_spot_breakdown. Sellers MUST order rows by aired_at ascending. The same spot_id is reused when a later package measurement_window adds or revises metrics. Network and station are optional so station-direct radio and network-level TV records use the same channel-neutral shape. Sellers SHOULD populate creative_id whenever they can associate a specific airing with a creative, particularly when the package could serve more than one creative during any part of the reporting period, including a mid-period replacement. Sellers that cannot make that association MUST omit creative_id rather than emit a default or placeholder. Buyers MUST NOT aggregate by_spot rows by creative_id and expect the result to equal by_creative impressions for the same creative: the two dimensions are independently produced at different granularities and are subject to different metric-maturation and attribution semantics within the package measurement_window. by_creative is the authoritative creative-performance aggregate; creative_id on a by_spot row identifies which creative aired, not an independent metric roll-up source.",
+                      "description": "Spot-level as-run airing records for broadcast TV, radio, or other scheduled inventory. Available when the buyer requests spot breakdown and the product declares supports_spot_breakdown. Sellers MUST order rows ascending by aired_at when present, otherwise by scheduled_at. Rows with equal sort keys have no defined relative order. Experimental in AdCP 3.3: spot_status, scheduled_at, replaces_spot_id and break_position extend this item so one spot_id tracks from plan to as-run; a seller declares which of them it populates in supports_spot_breakdown. Rows without spot_status are aired rows, as in AdCP 3.2. Delivery metrics on a scheduled row, such as grps, are expectations for the planned airing, not actuals; buyers MUST NOT add them to actuals or treat them as delivered, and the same field carries the measured value once the row is aired. A preempted row delivered nothing and SHOULD omit delivery metrics. Sellers MUST NOT send scheduled or preempted rows to callers pinned below AdCP 3.3, because AdCP 3.2 validators require aired_at on every row. A caller with no declared pin is treated as pinned below AdCP 3.3. Rows are selected for a reporting period by aired_at, else scheduled_at, and a seller MUST NOT silently drop a scheduled spot: one that will not air is reported as preempted, and one that moves keeps its spot_id with a new scheduled_at. The same spot_id is reused when a later package measurement_window adds or revises metrics. Network and station are optional so station-direct radio and network-level TV records use the same channel-neutral shape. Sellers SHOULD populate creative_id whenever they can associate a specific airing with a creative, particularly when the package could serve more than one creative during any part of the reporting period, including a mid-period replacement. Sellers that cannot make that association MUST omit creative_id rather than emit a default or placeholder. Buyers MUST NOT aggregate by_spot rows by creative_id and expect the result to equal by_creative impressions for the same creative: the two dimensions are independently produced at different granularities and are subject to different metric-maturation and attribution semantics within the package measurement_window. by_creative is the authoritative creative-performance aggregate; creative_id on a by_spot row identifies which creative aired, not an independent metric roll-up source.",
                       "items": {
                         "allOf": [
                           {
@@ -928,7 +937,7 @@
                               "spot_id": {
                                 "type": "string",
                                 "minLength": 1,
-                                "description": "Stable seller-scoped identifier for this scheduled spot occurrence. Reused across measurement-window updates and available to later preemption or makegood workflows. Distinct from creative_id.",
+                                "description": "Stable seller-scoped identifier for this scheduled spot occurrence. Reused across measurement-window updates and across the scheduled-to-aired or scheduled-to-preempted transition, and the target of replaces_spot_id on makegood rows. Distinct from creative_id.",
                                 "x-entity": "spot_airing"
                               },
                               "creative_id": {
@@ -937,10 +946,54 @@
                                 "description": "Optional identifier for the creative that aired in this spot occurrence, matching the package's creative asset or assignment. For library-backed sellers this is the sync_creatives identifier; inline-only sellers use the packages[].creatives creative_id.",
                                 "x-entity": "creative"
                               },
+                              "spot_status": {
+                                "$ref": "/schemas/enums/spot-status.json",
+                                "x-status": "experimental",
+                                "description": "Lifecycle status of this row. Absent means aired, which preserves AdCP 3.2 behavior. A scheduled row later becomes aired (same spot_id) or preempted. A makegood row is a separate airing, with its own spot_id, that carries replaces_spot_id; a planned replacement is a scheduled row that already carries it. Sellers declare the statuses they report in supports_spot_breakdown.available_statuses; a status not declared there is not reported, which is different from no spot having that status."
+                              },
                               "aired_at": {
                                 "type": "string",
                                 "format": "date-time",
-                                "description": "RFC 3339 timestamp when the spot actually aired. Its presence proves an airing; it is not inferred from impressions."
+                                "description": "RFC 3339 timestamp when the spot actually aired. Its presence proves an airing; it is not inferred from impressions. Required when spot_status is aired or makegood, or when spot_status is absent. MUST be absent when spot_status is scheduled or preempted."
+                              },
+                              "scheduled_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "x-status": "experimental",
+                                "description": "RFC 3339 timestamp of the planned airing slot. Required when spot_status is scheduled or preempted (for a preempted row, the last slot that was scheduled). The seller may move a scheduled spot until it airs, so the value can change between reports while spot_id does not; a buyer that needs the original slot compares reports. Optional on aired and makegood rows, where it records the last slot scheduled before airing."
+                              },
+                              "replaces_spot_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "x-status": "experimental",
+                                "description": "The spot_id of the preempted spot that this replacement airing replaces. Required when spot_status is makegood. A planned replacement carries it from the time it is scheduled, so the buyer sees the link before the spot airs; it keeps the value if it is then preempted, which preserves the chain back to the original spot. MUST be absent on aired rows and on rows without spot_status. The replaced spot_id SHOULD appear in the same response as a preempted row when it falls in the reporting period.",
+                                "x-entity": "spot_airing"
+                              },
+                              "break_position": {
+                                "type": "object",
+                                "x-status": "experimental",
+                                "description": "Where the spot ran inside its commercial break. Sellers declare support in supports_spot_breakdown.supports_break_position; omission means the position is not reported. On a scheduled row the value is the planned position and may change before airing.",
+                                "properties": {
+                                  "position_in_break": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "description": "1-based position of the spot in its break; 1 is the first spot."
+                                  },
+                                  "spots_in_break": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "description": "Total number of spots in the break. Expected to be at least position_in_break; JSON Schema cannot enforce this, so receivers SHOULD check it."
+                                  },
+                                  "break_id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Optional seller-scoped identifier for the break. Spots that share a break_id ran in the same break."
+                                  }
+                                },
+                                "required": [
+                                  "position_in_break",
+                                  "spots_in_break"
+                                ]
                               },
                               "network": {
                                 "type": "string",
@@ -959,8 +1012,56 @@
                               }
                             },
                             "required": [
-                              "spot_id",
-                              "aired_at"
+                              "spot_id"
+                            ],
+                            "allOf": [
+                              {
+                                "if": {
+                                  "properties": {
+                                    "spot_status": {
+                                      "enum": ["scheduled", "preempted"]
+                                    }
+                                  },
+                                  "required": ["spot_status"]
+                                },
+                                "then": {
+                                  "required": ["scheduled_at"],
+                                  "not": {
+                                    "required": ["aired_at"]
+                                  }
+                                },
+                                "else": {
+                                  "required": ["aired_at"]
+                                }
+                              },
+                              {
+                                "if": {
+                                  "properties": {
+                                    "spot_status": {
+                                      "const": "makegood"
+                                    }
+                                  },
+                                  "required": ["spot_status"]
+                                },
+                                "then": {
+                                  "required": ["replaces_spot_id"]
+                                }
+                              },
+                              {
+                                "if": {
+                                  "properties": {
+                                    "spot_status": {
+                                      "enum": ["scheduled", "preempted", "makegood"]
+                                    }
+                                  },
+                                  "required": ["spot_status"]
+                                },
+                                "else": {
+                                  "not": {
+                                    "required": ["replaces_spot_id"]
+                                  }
+                                }
+                              }
                             ]
                           }
                         ]
@@ -979,7 +1080,7 @@
                           "date": {
                             "type": "string",
                             "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-                            "description": "Date (YYYY-MM-DD)"
+                            "description": "Calendar date (YYYY-MM-DD) in the reporting timezone: reporting_period.timezone when present, otherwise this package's product reporting_capabilities.timezone. The row covers that local day, which can be 23 or 25 hours long across a DST change."
                           },
                           "impressions": {
                             "type": "number",
@@ -1047,7 +1148,7 @@
                 "window_start": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "ISO 8601 start of the window slice (inclusive). UTC."
+                  "description": "ISO 8601 start of the window slice (inclusive). Daily, weekly, monthly, and quarterly slices start on reporting-timezone calendar boundaries (see reporting_period.timezone), which are UTC midnights only when that timezone is UTC. Weekly slices start Monday 00:00 in the reporting timezone (ISO 8601 weeks). Quarterly slices start on 1 January, 1 April, 1 July and 1 October."
                 },
                 "window_end": {
                   "type": "string",
@@ -1110,14 +1211,14 @@
           },
           "daily_breakdown": {
             "type": "array",
-            "description": "Day-by-day delivery for a media-buy row with one currency. Sellers MUST omit this aggregate breakdown for a legacy or externally created mixed-currency buy because these rows have no package currency field.",
+            "description": "Day-by-day delivery for a media-buy row with one currency. Sellers MUST omit this aggregate breakdown for a legacy or externally created mixed-currency buy because these rows have no package currency field. Sellers MUST also omit this aggregate breakdown when the media buy's packages span more than one reporting timezone; package-level daily_breakdown remains, each in its own product's reporting timezone.",
             "items": {
               "type": "object",
               "properties": {
                 "date": {
                   "type": "string",
                   "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-                  "description": "Date (YYYY-MM-DD)"
+                  "description": "Calendar date (YYYY-MM-DD) in the reporting timezone: reporting_period.timezone when present, otherwise this media buy's product reporting_capabilities.timezone. The row covers that local day, which can be 23 or 25 hours long across a DST change."
                 },
                 "impressions": {
                   "type": "number",

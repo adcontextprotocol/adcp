@@ -86,6 +86,63 @@ describe('GET /brands/:domain/brand.json real route', () => {
     expect(res.body.brand_context).toBeUndefined();
   });
 
+  it('does not publish trust fields from rows whose domain control is unproven', async () => {
+    server = new HTTPServer();
+    const app = (server as unknown as { app: unknown }).app;
+    const getDiscoveredBrandByDomain = vi.fn().mockResolvedValue({
+      is_public: true,
+      source_type: 'community',
+      review_status: 'approved',
+      brand_manifest: {
+        house: {
+          domain: 'victim.example',
+          name: 'Victim',
+          agents: [{ type: 'sales', id: 's', url: 'https://agent.victim.example/mcp', jwks_uri: 'https://attacker.example/jwks.json' }],
+        },
+        brands: [{ id: 'victim', names: [{ en: 'Victim' }] }],
+        authorized_operators: [{ domain: 'attacker.example', brands: ['*'] }],
+        brand_refs: [{ domain: 'other.example', brand_id: 'other' }],
+      },
+    });
+    (server as unknown as { brandDb: { getDiscoveredBrandByDomain: typeof getDiscoveredBrandByDomain } }).brandDb = {
+      getDiscoveredBrandByDomain,
+    };
+
+    const res = await request(app).get('/brands/victim.example/brand.json');
+
+    expect(res.status).toBe(200);
+    expect(res.body.authorized_operators).toBeUndefined();
+    expect(res.body.brand_refs).toBeUndefined();
+    expect(res.body.house.agents).toEqual([{ type: 'sales', id: 's', url: 'https://agent.victim.example/mcp' }]);
+    expect(res.body.house.name).toBe('Victim');
+  });
+
+  it('publishes trust fields from verified owner-hosted rows', async () => {
+    server = new HTTPServer();
+    const app = (server as unknown as { app: unknown }).app;
+    const manifest = {
+      house: { domain: 'owner.example', name: 'Owner' },
+      brands: [{ id: 'owner', names: [{ en: 'Owner' }] }],
+      authorized_operators: [{ domain: 'agency.example', brands: ['*'] }],
+    };
+    const getDiscoveredBrandByDomain = vi.fn().mockResolvedValue({
+      is_public: true,
+      source_type: 'community',
+      review_status: 'approved',
+      domain_verified: true,
+      workos_organization_id: 'org_owner',
+      brand_manifest: manifest,
+    });
+    (server as unknown as { brandDb: { getDiscoveredBrandByDomain: typeof getDiscoveredBrandByDomain } }).brandDb = {
+      getDiscoveredBrandByDomain,
+    };
+
+    const res = await request(app).get('/brands/owner.example/brand.json');
+
+    expect(res.status).toBe(200);
+    expect(res.body.authorized_operators).toEqual(manifest.authorized_operators);
+  });
+
   it('publishes the training agent operator record on its canonical hostname', async () => {
     server = new HTTPServer();
     const app = (server as unknown as { app: unknown }).app;

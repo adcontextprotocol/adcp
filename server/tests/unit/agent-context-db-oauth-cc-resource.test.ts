@@ -64,6 +64,25 @@ describe('AgentContextDatabase — oauth_cc_resource save/load (RFC 8707 multi-r
   // ── Save: TEXT column encoding ─────────────────────────────────────────
 
   describe('saveOAuthClientCredentials', () => {
+    it('clears saved bearer/basic credentials in the same update that selects client credentials', async () => {
+      mockGetById();
+      mockedEncrypt.mockReturnValueOnce({ encrypted: 'enc', iv: 'iv' });
+      mockUpdate();
+
+      await db.saveOAuthClientCredentials('ctx_1', {
+        token_endpoint: 'https://auth.example.com/oauth/token',
+        client_id: 'client_abc',
+        client_secret: 'secret',
+      });
+
+      const [sql] = mockedQuery.mock.calls[1];
+      expect(sql).toContain('oauth_cc_client_secret_encrypted = $3');
+      expect(sql).toContain('auth_token_encrypted = NULL');
+      expect(sql).toContain('auth_token_iv = NULL');
+      expect(sql).toContain('auth_token_hint = NULL');
+      expect(mockedQuery).toHaveBeenCalledTimes(2);
+    });
+
     it('stores an array resource with the v1a: prefix', async () => {
       mockGetById();
       mockedEncrypt.mockReturnValueOnce({ encrypted: 'enc', iv: 'iv' });

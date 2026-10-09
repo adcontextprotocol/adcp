@@ -6,12 +6,32 @@ maintenance-line checklist, see `.agents/shortcuts/cut-patch.md`.
 
 ## Current topology
 
+AdCP 3.2 GA ships as `3.2.1` (tag `v3.2.1`, wire pin `"3.2"`); `3.2.0` is
+permanently withdrawn. The branch topology changes on GA day, in the order in
+[`.agents/shortcuts/cut-minor-ga.md`](.agents/shortcuts/cut-minor-ga.md):
+
+**Until `v3.2.1` is tagged:**
+
 - `3.1.x` is the stable maintenance line. Patch fixes are reviewed on `main`
   first, then cherry-picked to a PR targeting `3.1.x`.
-- `main` is the next-minor line. It must be in Changesets beta pre mode
-  (`.changeset/pre.json` with `"tag": "beta"`) while developing 3.2, so its
-  Version Packages PRs produce `3.2.0-beta.N` rather than stable `3.2.0`.
-- Forward merges are one-way: `3.1.x → main`. Never merge `main` into the
+- `main` is the 3.2 line. It stays in Changesets RC pre mode
+  (`.changeset/pre.json` with `"tag": "rc"`) until the separately reviewed
+  pre-exit PR; the next Version Packages cut after that exit produces `3.2.1`.
+- Forward merges are one-way: `3.1.x → main`.
+
+**After `v3.2.1` (GA runbook Phase 10):**
+
+- `3.2.x` is created from the `v3.2.1` Version Packages merge and becomes the
+  stable maintenance line. Patches continue as `3.2.2`, `3.2.3`, and so on.
+  Fixes land on `main` first and are cherry-picked to `3.2.x`.
+- `main` re-enters Changesets **beta** pre mode for 3.3 the same day
+  (`npx changeset pre enter beta`), so minor changesets can never cut an
+  accidental stable release.
+- `3.1.x` stays a security and critical-fix line for a maintainer-decided
+  window; the fix flow among `3.1.x`, `3.2.x`, and `main` is recorded when
+  `3.2.x` is created.
+- Forward merges stay one-way from maintenance lines toward `main`
+  (`3.2.x → main` through `forward-merge-3.2.yml`). Never merge `main` into a
   maintenance branch.
 
 The root `adcontextprotocol` package is private. Its version is release
@@ -33,7 +53,7 @@ stable protocol surface, and `major` for breaking stable changes. Addie,
 website, infrastructure, internal tooling, and non-normative docs do not get a
 protocol changeset.
 
-For a fix that must ship in 3.1.x:
+For a fix that must ship in 3.1.x (after GA, the same flow applies to `3.2.x`):
 
 1. Land the normal PR on `main`.
 2. Confirm every protocol changeset in the merged commit is `patch`.
@@ -43,7 +63,7 @@ For a fix that must ship in 3.1.x:
    `changeset-release/3.1.x` Version Packages PR.
 
 Do not downgrade a `minor` or `major` changeset during a backport. Reclassify
-the change on `main` first or leave it for 3.2.
+the change on `main` first or leave it for the next minor.
 
 ## Cutting a 3.1.x patch
 
@@ -190,13 +210,291 @@ npx changeset pre exit
 ```
 
 The resulting Version Packages PR removes the prerelease suffix. Do not
-re-enter another tag before that stable versioning step.
+re-enter another tag before that stable versioning step. 3.2 GA ships as
+**`3.2.1`**, not `3.2.0` (see the next section). Follow the ordered GA runbook
+in [`.agents/shortcuts/cut-minor-ga.md`](.agents/shortcuts/cut-minor-ga.md):
+freeze gates, pre-exit PR contents, the Version Packages audit, CDN worker
+deploy and discovery refresh, docs snapshot, SDK stable releases, hosted
+surfaces, and the `3.2.x` branch and 3.3 pre-mode re-entry.
+
+## Shipping a stable release over a withdrawn version number
+
+A stable version number whose bytes were exposed without a release (for
+example the 2026-06-30 accidental `3.2.0` cut, reverted in #5769, whose
+signed artifacts remain on the artifact CDN) is permanently withdrawn. Its
+bytes are never overwritten, deleted, or retired, and it stays marked
+`unpublished` in `scripts/build-schemas.cjs`, `server/src/schemas-middleware.ts`,
+and `workers/artifact-cdn/src/index.js` so it never wins `latest_stable` or a
+`vN` / `vN.M` alias. `tests/schema-release-status.test.ts` keeps those three
+maps identical. Prerelease `superseded_by` is derived from the first
+*selectable* stable release on the minor line, so the 3.2 candidates point at
+`3.2.1` only once it exists.
+
+`npm run version` refuses to generate any withdrawn/unpublished number. To
+ship the line's first stable release as the next patch instead, land a
+reviewed `.changeset/withdrawn-release.json` while the line is still in pre
+mode. It binds:
+
+- `withdrawn_version` and `target_version` (must be the next patch);
+- `withdrawn_release_commit` (the accidental Version Packages commit, which
+  must commit that version) and `revert_commit` (whose first parent is that
+  commit);
+- `withdrawn_protocol_sha256`, the exposed tarball's digest; and
+- a concrete `reason`, which is copied into the changelog.
+
+During ordinary prerelease cuts, `scripts/version-packages.mjs` verifies the
+marker and leaves it in place. On the pre-exit cut it additionally proves that
+no tag or GitHub Release exists for the withdrawn number. Changesets then
+consumes the complete pending and archived pool and computes the withdrawn
+number. The step retitles that changelog block, moves the package to
+`target_version`, and deletes the marker. Any mismatch fails closed. Preview
+the effect without versioning:
+
+```bash
+GITHUB_REPOSITORY=adcontextprotocol/adcp node scripts/skip-withdrawn-release.mjs check --remote
+GITHUB_REPOSITORY=adcontextprotocol/adcp node scripts/skip-withdrawn-release.mjs preview
+```
 
 ## Recovery
 
-If the automated release fails after the Version Packages merge, fix and
-rerun the workflow when safe. Manual tag/release recovery is the last resort:
+If the automated release fails after the Version Packages merge, use the
+explicit current-head recovery procedure below. Manual tag/release recovery
+is the last resort:
 the tag must target the Version Packages merge, and the same four signed
 assets must be uploaded without overwriting an existing artifact with a
 different digest. See `.agents/shortcuts/cut-major.md` for the fallback
 commands.
+
+### Publication authority and ordering
+
+For the 2026-09-14 incident, the publication fence in
+[#7510](https://github.com/adcontextprotocol/adcp/pull/7510) is a hard
+predecessor of both the JSONL filter fix in
+[#7509](https://github.com/adcontextprotocol/adcp/pull/7509) and the curated
+3.1.22/3.1.23 artifacts in [#7507](https://github.com/adcontextprotocol/adcp/pull/7507).
+The legacy deploy bulk upload would otherwise expose those historical artifacts
+without recovery approval. Land the human-approved fence first; then rebase and
+requalify each dependent PR on that main, including combined tests and human review. Neither merge authorizes
+historical backfill or incident recovery.
+
+Routine app deployment is authorized to rebuild and upload only
+`schemas/latest/**`, `compliance/latest/**`, and `protocol/latest.tgz*`.
+It uses `backfill-cdn-artifacts.sh --latest-only`; root version indexes and
+all semver paths are excluded. The app itself serves committed `dist`, so a
+committed package version without a published GitHub Release and its four
+assets also blocks app deployment. This can delay app-only fixes while a
+release needs recovery.
+
+Only the release workflow publishes a new immutable version. It verifies the
+current tested branch, the original merged release PR's final-head maintainer
+approval, and the committed signed tuple. Approval must come from a non-author
+human with current repository write, maintain, or admin permission. Every
+candidate approver is checked through GitHub's collaborator-permission API;
+missing, failed, ambiguous, or unsupported permission responses stop publication.
+Public review ability and author association are not sufficient authority.
+It stages the four GitHub assets in
+a draft, publishes the tag/release targeting the original release merge, then
+uploads that version alone with `--version VERSION --skip-latest`. Changesets
+only prepares release PRs; it has no independent tag/publish command. Missing
+signatures must be fixed through review, never regenerated during publication.
+
+Release runs use `queue: max` without in-progress cancellation. GitHub permits
+100 pending runs; this is not an unlimited or guaranteed delivery queue.
+See [GitHub's concurrency contract](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+The exact queue/cancellation combination is regression-tested; older actionlint
+parsers require only the specific unsupported `queue`-key diagnostic exception.
+Old
+runs fail their current-branch fence. A later push with a stranded committed
+version fails explicitly, including an app-only push, and must use the recovery
+procedure below before Changesets advances the package again.
+
+Before Changesets runs, its fence resolves exactly zero or one open Version
+Packages PR and captures the prior branch OID (or confirmed absence). An existing
+PR must match that ref; it is synchronously marked Draft, verified, and given a
+HOLD comment before generation. An orphan ref, missing ref for an existing PR,
+ambiguous lookup, or failed quarantine stops the run. The pinned action's single
+push shape is replaced with an explicit lease on the captured OID. Fetch/push
+URLs must identify this repository; writes use the captured URL and reject URL
+rewrites. The HOLD comment's identity, issue, and body are read back before any
+push. API/read commands have a 60-second bound; pushes have a 10-minute bound,
+with process-group termination and read-back reconciliation on timeout. Freshness is
+checked before and after that push, and again after the action's PR API calls.
+
+Drift, push errors (including lost acknowledgements), or an incomplete action
+trigger restoration of the captured ref with a second lease expecting only the
+recorded new OID. Only a ref created by this transaction from confirmed absence
+may be deleted. Restoration is read back and verified; a lost lease preserves
+the third-party ref. Existing PRs stay Draft with HOLD/reconciliation evidence.
+API outages fail closed and retain the transaction's prior/new/observed OIDs in
+the Actions log, job summary, and attempted artifact upload; they are not reported
+as verified quarantine. A retry only reconciles recorded state, never repeats a
+push. Successful changes remain Draft (`pr-draft: always`) for a later human
+Ready transition and exact-head review.
+
+Changesets receives a fresh App token after setup, with preparation and action
+bounds of 10 and 40 minutes. An `always()` step mints a separate reconciliation
+token. Each token mint has a two-minute bound so a hung request cannot prevent
+finalization. Git recovery uses that token through temporary command-scoped headers,
+never an expired checkout credential. Failed refresh leaves explicit unverified
+reconciliation evidence; it does not fall back to stale credentials.
+
+An App-token push synchronously changes an already-open release PR, even if
+the post-push check fails. Publication therefore also checks immutable Git
+provenance: the approved final head must be one commit based on the release
+merge's exact first parent, and its entire tree must equal the released tree.
+A two-parent merge must name that approved head as its second parent. A stale
+or altered merge is quarantined even with trusted approval and bypassed or
+non-strict branch checks. Regenerate the release PR from current verified main
+and obtain new final-head maintainer review before merging. Do not transplant
+old approvals, replay an old workflow, or treat an existing PR as unchanged
+just because the later PR API call was skipped.
+
+Freshness is checked again before external writes and after uploads. GitHub
+refs, GitHub Releases, and R2 have no shared transaction: a branch can move
+between a check and a request. The pre-push hook narrows the Changesets race to
+its push/PR requests; it does not lock main. An in-flight request can finish
+after main moves. Such a failure requires inspection and explicit recovery;
+never treat a previous verification or a queued run as current authority.
+
+GitHub assets are staged privately in a draft before release publication. Exactly
+the four signed tuple assets are required; extras and duplicates are rejected. R2
+publication is **progressive, with per-object atomicity only**: conditional
+`If-None-Match: *` writes create missing objects, and existing objects must
+match byte-for-byte, including signatures and certificates. A failed upload
+may leave a publicly visible subset after the approved tag/release. It must
+not overwrite, delete, advertise whole-bundle atomicity, or claim CDN
+completion. Consumers needing one complete artifact should use the signed
+GitHub tarball and verify its checksum/signature; CDN completion additionally
+requires a full committed-path byte audit, including JSONL after the separate
+extension-filter fix. Mutable `latest` uploads remain progressive as well.
+
+Live unscoped bulk backfills are disabled. `--dry-run` remains available for
+inventory; it is not release authorization. Historical CDN recovery must use
+an existing approved tag/release, a current tested branch fence, unchanged
+committed bytes, and conditional missing-object creation. The stable-only
+`recover-protocol-cdn.yml` recovers four protocol files, not schemas/compliance
+and not RC releases.
+
+### Explicit recovery of a superseded release merge
+
+Do not rerun the obsolete push: a rerun retains its old SHA and workflow.
+After the corrected workflow is merged, an authorized maintainer can dispatch
+`release.yml` **on current main** (or the applicable current maintenance branch)
+with `release_commit` set to the original approved release merge. The dispatch
+re-runs the existing verification jobs on current main, verifies that the
+release merge is an ancestor, requires the same package version and unchanged
+versioned artifacts, rechecks original final-head maintainer permission and
+merge provenance, and fences
+every publication phase. It never silently repairs from an unrelated push.
+A new main commit during the attempt requires another explicit dispatch and
+verification of the new head. If a later package version has already landed,
+stop for a separately reviewed historical recovery; this path refuses it.
+
+### Superseding an unpublishable committed prerelease
+
+An unpublished prerelease whose Version Packages merge lacks valid release
+authority must not be recovered, retroactively approved, tagged, or uploaded.
+Preserve its committed bytes and advance to a freshly generated candidate.
+This path applies only to an `rc.N` while Changesets remains in `rc` pre mode.
+
+Land a reviewed `.changeset/release-supersession.json` together with the
+supersession gate. The marker binds the unpublishable version to its exact
+release merge and protocol-tarball digest, explains why it cannot publish, and
+lists every pending changeset with its digest. Mark that version `unpublished`
+in generated and runtime release discovery so it cannot win a public alias.
+
+After that plan merges, dispatch `release.yml` on the exact current `main` SHA:
+
+```bash
+MAIN_SHA=$(git ls-remote origin refs/heads/main | cut -f1)
+gh workflow run release.yml --ref main \
+  -f release_commit="$MAIN_SHA" \
+  -f prepare_next=true
+```
+
+The workflow fails closed unless `main` is still that exact SHA, the named RC
+artifacts remain byte-identical to their merge, no tag or GitHub Release exists,
+the tarball and pending changesets match the reviewed digests, and the complete
+pending changeset set advances the candidate. The new Version Packages commit
+consumes the marker. Review that generated PR normally and require a non-author
+maintainer approval on its final head before merge; only the new candidate may
+publish.
+
+For the 2026-09-14 `3.2.0-rc.3` incident, the recovery target is
+`71f9cd5414454e94ccfef87ce25777ead6fad228` (#7485), whose final PR head
+`e7d42cbe5d7b3d05c3fcdcaa6f568b08ba131439` received human approval at
+12:34:18 UTC. Release run `34844149713` was cancelled with zero jobs. Deploy
+`34845112730` exposed its R2 objects before a tag/GitHub Release; the independent
+incident audit found 2,092 matching schema/compliance objects of 2,093 paths
+(1,612 schemas and 481 compliance files). Four protocol files bring the full
+release inventory to 2,097. The JSONL workstream owns the omitted path/filter
+and schema/compliance enumeration verification.
+This version is externally exposed; absence of a GitHub Release is not
+permission to edit or retire its bytes.
+
+**rc.3 recovery is quarantined.** The reviewed head `e7d42cbe` has parent
+`decd95f6303ba08d8d482c93078adad0770a4bf3`, but release merge `71f9cd54` has
+parent `eb3cbd605fc11be6e398c5b83f4e53d332a8e365`; their trees also differ.
+The intervening base changes include a protocol changeset, compliance source,
+and storyboard tooling. The original final-head review does not establish
+approval of the exact 71f tree. The provenance gate rejects ordinary dispatch
+for 71f; the previously proposed dispatch-only recovery is withdrawn. There
+is no grandfather exception or provenance override in this patch.
+
+The stale `eb3cbd605fc11be6e398c5b83f4e53d332a8e365` release run
+`34842463221` subsequently created #7508 at
+`102916bb28c156b1710f031aa28e4655bcf71cdc`, tree
+`fd299f52f6bf1a4427ef85f890832d1e5713aade`. Its sole parent/merge-base
+is eb3cbd, two commits behind then-current af1. The direct delta against
+current main changes exposed rc.3 artifacts and omits #7504; its three-dot PR
+display obscures that omission. The coordinator marked it Draft, disabled
+auto-merge, and posted a
+[HOLD](https://github.com/adcontextprotocol/adcp/pull/7508#issuecomment-5664735087).
+It is not a recovery candidate. Do not merge, close, replace, or otherwise
+mutate it without coordinating with that owner; retain the original committed
+71f release artifacts. The fencing regression tests cover this stale-parent
+shape, missing later changeset, and conflicting rc.3 bytes.
+
+The safe incident handoff, requiring separate maintainer authorization, is:
+
+1. Review and land the ordering fix first, then rebase/requalify and review the
+   JSONL fix. Coordinate #7502/#7503's immutability guard and documentation claims;
+   this patch changes no release content. Account for every existing release
+   and deploy run using the old workflow, including `34842463221` and
+   `34847610745`, before enabling recovery. New workflow code does not fence
+   runs that already loaded the old code. Maintainers must quiesce those old
+   writers and reserve a quiet publication window.
+2. Recheck current main, original review and current reviewer permission, the
+   reviewed-head and merge-parent/tree relationship, ancestry, package version,
+   the full committed rc.3 tree, checksum, Sigstore identity, tag and release
+   state, and every existing R2 object's bytes. Any conflicting tag, release
+   asset, or R2 bytes is a stop; do not overwrite, delete, regenerate, roll
+   back, or retag. Preserve already exposed bytes and record discrepancies.
+3. **Stop at the 71f provenance mismatch.** Obtain a separately reviewed plan
+   binding fresh maintainer authority to the exact original 71f tree and its
+   already exposed bytes. No such exception or recovery execution is authorized
+   here. Do not rerun/dispatch the ordinary workflow expecting to bypass the
+   gate, regenerate artifacts, retarget the original merge, or overwrite R2.
+   Any future approved recovery must retain tag target 71f, stage its unchanged
+   signed tuple before release/R2 publication, and enforce conditional writes.
+4. After a separately approved recovery, independently verify the tag target,
+   prerelease flag, all four GitHub assets,
+   all 2,093 schema/compliance paths (including JSONL) plus the four protocol
+   files, byte hashes, checksum and Sigstore identity (2,097 files total). Check deployment and docs/SDK readiness separately. If
+   anything fails or main advances, record the partial state and stop for
+   explicit reauthorization on the next verified current head.
+
+These are recovery instructions, not a record of operations performed. The
+ordering-fix work must not publish, delete, roll back, tag, release, deploy,
+rerun/cancel workflows, mutate R2/CDN, or change branch rules.
+## Maintained 3.1 publication authority
+
+The 3.1 release workflow publishes only the exact committed version after current-branch and original release-merge provenance checks. Its final generated head needs approval from a non-author human with current repository write, maintain or admin permission. Existing approval on an older head does not authorize a refreshed candidate. Here, non-author means the release PR author; this check does not establish last-pusher independence. Independently verify the actual bot producer/run and final generated head before recording human approval.
+
+This maintained-line policy overrides the older direct tag/public-release fallbacks in `cut-patch.md` and `cut-major.md`; do not use those fallbacks or their `--latest` flag for 3.1 publication. Keep the maintained branch unchanged until its publication run completes.
+
+Changesets prepares the release PR without tagging or publishing. Publication requires all four committed signed tuple files; it never re-signs or rebuilds missing artifacts. Signature verification binds the original producer commit (the original release merge's first parent), maintained branch, repository and push event; it does not identify a particular run attempt. GitHub assets are byte-checked and staged as an exact four-file draft before publication. The workflow rechecks final-head review state and current maintainer permission after all four assets are read back, immediately before making the release public. R2 publication uses `--version VERSION --skip-latest`, preserves existing objects only when their bytes match, and conditionally creates missing objects. It cannot write historical versions, mutable aliases, CORS or deletions. CDN verification retries the full tuple and stops each attempt on any failed download or checksum before checking the signature. A failed or stale release remains held for separately reviewed recovery.
+
+R2 object writes are individually atomic, not a bundle transaction. A branch move or storage failure after GitHub publication can leave the CDN version missing or partial. The failed publication/CDN verification run is the signal; the later `pending` check verifies GitHub only and does not certify R2 completeness. Do not rerun an obsolete workflow, bulk-backfill, or infer authority from a public tag alone. Hold publication and prepare a separately reviewed recovery plan tied to the original signed tuple, exact original release merge, current tested maintained head and current-version final-head human approval. Historical versions need separate explicit authorization. Any regenerated release candidate needs a fresh human review on its exact head. Maintenance publication explicitly preserves the repository's GitHub Latest alias.
+
+Recovery dispatch checks out the current tested workflow commit and keeps the requested original release commit in `RELEASE_SHA`. The original release must still be an ancestor of the current supported branch. Its package version and all six artifact surfaces must match the current tested tree and local checkout; a later helper change does not replace the original signed producer. A newer package version requires a separately reviewed historical recovery plan.

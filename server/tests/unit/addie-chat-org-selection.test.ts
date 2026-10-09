@@ -451,7 +451,9 @@ describe('mounted Addie web-thread ownership', () => {
     expect(response.body).toEqual({
       error: 'Internal server error',
       message: 'Unable to process message',
+      request_id: response.headers['x-request-id'],
     });
+    expect(response.body.request_id).toMatch(/^[0-9a-f-]{36}$/);
     expect(router.route).toHaveBeenCalledOnce();
     expect(chatClient.processMessage).not.toHaveBeenCalled();
     expect(chatClient.processMessageStream).not.toHaveBeenCalled();

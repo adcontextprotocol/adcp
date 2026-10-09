@@ -174,7 +174,7 @@ describe('Join Request Approval', () => {
       .send({ organization_id: TEST_ORG_ID })
       .expect(403);
 
-    expect(response.body.error).toBe('organization_onboarding_disabled');
+    expect(response.body.error).toBe('organization_join_onboarding_unavailable');
     expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
   });
 
@@ -195,7 +195,7 @@ describe('Join Request Approval', () => {
       .send({ organization_id: TEST_ORG_ID })
       .expect(403);
 
-    expect(response.body.error).toBe('organization_onboarding_disabled');
+    expect(response.body.error).toBe('organization_join_onboarding_unavailable');
 
     const result = await pool.query(
       `SELECT id FROM organization_join_requests

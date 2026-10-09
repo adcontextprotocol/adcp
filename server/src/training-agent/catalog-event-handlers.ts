@@ -5,7 +5,7 @@
  * and provide_performance_feedback per AdCP schemas.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs, AccountRef } from './types.js';
 import { getSession, sessionKeyFromArgs, findMediaBuyAcrossSessions } from './state.js';
 
@@ -154,12 +154,109 @@ export function findEventSourceAnywhere(eventSourceId: string): EventSourceState
   return undefined;
 }
 
+// ── Seller-managed event sources ─────────────────────────────────
+//
+// Always-on sources the seller runs itself, listed by sync_event_sources
+// with managed_by: "seller" next to the buyer's synced sources. The sales
+// tenant sells retail media (ShopGrid, Beacon Search) whose products declare
+// conversion_tracking.platform_managed: true, and the spec says such a
+// seller's sync_event_sources response includes its seller-managed sources.
+// The set is one closed-loop purchase attribution source, fed by the
+// network's first-party shopper data. Every account has its own instance:
+// the event_source_id is the same on every account, and seller_id is derived
+// from the account. Buyers read these sources but cannot upsert them through
+// sync_event_sources, delete them with delete_missing, or send events to them
+// through log_event (log_event carries the buyer's own conversion data for
+// sources the buyer configured).
+
+export const SELLER_MANAGED_PURCHASE_SOURCE_ID = 'seller_purchase_attribution';
+
+const SELLER_MANAGED_EVENT_SOURCES: ReadonlyArray<{
+  eventSourceId: string;
+  name: string;
+  eventTypes: readonly string[];
+  actionSource: string;
+  instructions: string;
+}> = [{
+  eventSourceId: SELLER_MANAGED_PURCHASE_SOURCE_ID,
+  name: 'Closed-loop purchase attribution',
+  eventTypes: ['purchase'],
+  actionSource: 'website',
+  instructions: 'Seller-managed and always on: purchases are attributed from the retail network\'s own transaction data. No tag or log_event integration is needed, and log_event does not accept events for this source.',
+}];
+
+export function isSellerManagedEventSourceId(eventSourceId: string): boolean {
+  return SELLER_MANAGED_EVENT_SOURCES.some(source => source.eventSourceId === eventSourceId);
+}
+
+/** Stable per-account platform id for a seller-managed source. */
+function sellerManagedSellerId(sessionKey: string, eventSourceId: string): string {
+  return `sm_${createHash('sha256').update(`${sessionKey}\0${eventSourceId}`).digest('hex').slice(0, 12)}`;
+}
+
+/** The account's seller-managed sources as sync_event_sources results. */
+function sellerManagedEventSourceResults(sessionKey: string): Record<string, unknown>[] {
+  return SELLER_MANAGED_EVENT_SOURCES.map(source => ({
+    event_source_id: source.eventSourceId,
+    name: source.name,
+    seller_id: sellerManagedSellerId(sessionKey, source.eventSourceId),
+    event_types: [...source.eventTypes],
+    action_source: source.actionSource,
+    managed_by: 'seller',
+    setup: { snippet_type: 'server_only', instructions: source.instructions },
+    action: 'unchanged',
+  }));
+}
+
 /** Look up an event source in a specific session, falling back to global scan.
  *  Used by create_media_buy to validate that event-kind optimization_goals
- *  reference a previously-registered event_source_id rather than silently
- *  accepting phantom ids. */
+ *  reference an event source available on the account (buyer-registered or
+ *  seller-managed) rather than silently accepting phantom ids. */
 export function findEventSourceInSession(sessionKey: string, eventSourceId: string): EventSourceState | undefined {
+  const sellerManaged = SELLER_MANAGED_EVENT_SOURCES.find(source => source.eventSourceId === eventSourceId);
+  if (sellerManaged) {
+    return {
+      eventSourceId: sellerManaged.eventSourceId,
+      name: sellerManaged.name,
+      sellerId: sellerManagedSellerId(sessionKey, sellerManaged.eventSourceId),
+      eventTypes: [...sellerManaged.eventTypes],
+      allowedDomains: [],
+      action: 'unchanged',
+      createdAt: new Date(0).toISOString(),
+    };
+  }
   return eventSourceStore.get(sessionKey)?.get(eventSourceId) ?? findEventSourceAnywhere(eventSourceId);
+}
+
+export type AvailableEventSource = {
+  event_source_id: string;
+  event_types: string[];
+  managed_by: 'buyer' | 'seller';
+};
+
+/** Event sources available on one caller's account, with the event types
+ *  each tracks: the seller-managed sources, then the sources the buyer
+ *  registered through sync_event_sources in registration order. Used to bind
+ *  an outcome_target cost target to an event goal, which takes the first
+ *  source tracking the goal's event, so this order is the selection order.
+ *  The spec does not rank buyer-synced against seller-managed sources. The
+ *  seller's closed-loop source ranks first because it attributes purchases
+ *  from the retail network's own transactions, not from a buyer tag whose
+ *  coverage the seller cannot see. The only seller-managed source tracks
+ *  purchase, so every other event binds a buyer source. There is no
+ *  cross-session fallback: the sources must belong to the buyer's account. */
+export function availableEventSourcesInSession(sessionKey: string): AvailableEventSource[] {
+  const sellerManaged = SELLER_MANAGED_EVENT_SOURCES.map(source => ({
+    event_source_id: source.eventSourceId,
+    event_types: [...source.eventTypes],
+    managed_by: 'seller' as const,
+  }));
+  const buyerSynced = Array.from(eventSourceStore.get(sessionKey)?.values() ?? []).map(source => ({
+    event_source_id: source.eventSourceId,
+    event_types: [...source.eventTypes],
+    managed_by: 'buyer' as const,
+  }));
+  return [...sellerManaged, ...buyerSynced];
 }
 
 /** Exported for testing */
@@ -650,7 +747,8 @@ export async function handleSyncEventSources(args: ToolArgs, ctx: TrainingContex
   const sources = getEventSourceMap(sessionKey);
   const now = new Date().toISOString();
 
-  // Discovery mode
+  // Discovery mode: every source on the account, buyer-synced first, then
+  // the account's seller-managed sources.
   if (!req.event_sources) {
     const existing = Array.from(sources.values()).map(s => ({
       event_source_id: s.eventSourceId,
@@ -660,7 +758,7 @@ export async function handleSyncEventSources(args: ToolArgs, ctx: TrainingContex
       managed_by: 'buyer',
       action: 'unchanged',
     }));
-    return { event_sources: existing };
+    return { event_sources: [...existing, ...sellerManagedEventSourceResults(sessionKey)] };
   }
 
   const results: Record<string, unknown>[] = [];
@@ -671,6 +769,20 @@ export async function handleSyncEventSources(args: ToolArgs, ctx: TrainingContex
         event_source_id: input.event_source_id || 'unknown',
         action: 'failed',
         errors: [{ code: 'INVALID_REQUEST', message: 'event_source_id and name are required' }],
+      });
+      continue;
+    }
+    if (isSellerManagedEventSourceId(input.event_source_id)) {
+      results.push({
+        event_source_id: input.event_source_id,
+        managed_by: 'seller',
+        action: 'failed',
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: `event_source_id "${input.event_source_id}" is a seller-managed source on this account; buyers cannot configure it. Use a different event_source_id for a buyer-managed source.`,
+          field: 'event_source_id',
+          recovery: 'correctable',
+        }],
       });
       continue;
     }
@@ -706,7 +818,13 @@ export async function handleSyncEventSources(args: ToolArgs, ctx: TrainingContex
     });
   }
 
-  return { event_sources: results };
+  // The response always includes the account's seller-managed sources. They
+  // follow the per-request results so those keep their request positions; a
+  // seller-managed id the buyer tried to upsert is reported once, as failed.
+  const reported = new Set(results.map(result => result.event_source_id));
+  const sellerManaged = sellerManagedEventSourceResults(sessionKey)
+    .filter(result => !reported.has(result.event_source_id));
+  return { event_sources: [...results, ...sellerManaged] };
 }
 
 export async function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
@@ -721,6 +839,22 @@ export async function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
   if (!req.events || !Array.isArray(req.events) || req.events.length === 0) {
     return {
       errors: [{ code: 'INVALID_REQUEST', message: 'events array is required and must not be empty' }],
+    };
+  }
+
+  // A seller-managed source carries the seller's own attribution data; the
+  // buyer does not write to it. The spec defines log_event for sources the
+  // buyer configured through sync_event_sources, and (as with seller-managed
+  // catalogs in sync_catalogs) a write to a known seller-managed resource is
+  // INVALID_REQUEST rather than a not-found.
+  if (isSellerManagedEventSourceId(req.event_source_id)) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: `event_source_id "${req.event_source_id}" is a seller-managed source; the seller attributes its events from its own data and log_event does not accept buyer events for it. Log events to a buyer-managed source registered with sync_event_sources.`,
+        field: 'event_source_id',
+        recovery: 'correctable',
+      }],
     };
   }
 

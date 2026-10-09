@@ -14,7 +14,20 @@ import { Router, type Request, type Response, type RequestHandler } from 'expres
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
-import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
+import { createRegistryHolder, resolveTenantHost, type RegistryHolder } from './registry.js';
+import { getTrainingGovernanceIssuer } from '../canonical-base.js';
+import {
+  GOVERNANCE_AGENT_CREDENTIAL_EXTRA_KEY,
+  HOSTED_GRADER_CREDENTIAL_EXTRA_KEY,
+  governanceAgentCredentialFromRequest,
+  hostedGraderCredentialFromRequest,
+  isGovernanceAgentCredentialPrincipal,
+  isGovernanceAgentCredentialRequestAllowed,
+  isHostedGraderCredentialPrincipal,
+  isHostedGraderCredentialRequestAllowed,
+  type GovernanceAgentCredentialExtra,
+  type HostedGraderCredentialExtra,
+} from '../governance-agent-credentials.js';
 import { buildSignedRevocationList } from '../governance-revocations.js';
 import {
   resolveTrainingSalesRequestContext,
@@ -33,14 +46,17 @@ import {
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
-import { supportsAccountChangeFeed, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } from '../seller-optimized-budget.js';
+import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
+import { runWithReleaseLineEcho } from './release-line-echo.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
 import { runWithTrainingTaskScope, trainingTaskScope } from '../mcp-task-store.js';
 import { PUBLISHERS } from '../publishers.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from '../product-factory.js';
+import { PRINCIPAL_CAPABILITY, SELLER_WEBHOOK_SIGNING_ALGORITHMS } from '../principal.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -347,6 +363,66 @@ function tenantMcpHandler(
     // / `static:primary` / `workos:<orgId>` principal shapes; downstream
     // gates dispatch on those prefixes.
     const principal = res.locals.trainingPrincipal as string | undefined;
+    // A minted governance-agent credential authenticates as exactly one
+    // seller URL, only on the governance tenant, and only for the seller's
+    // side of the governance loop. Re-verify it here and stamp the verified
+    // scope on the trusted auth bridge; nothing request-supplied reaches it.
+    let governanceAgentCredential: GovernanceAgentCredentialExtra | undefined;
+    if (isGovernanceAgentCredentialPrincipal(principal)) {
+      const claims = tenantId === 'governance' ? governanceAgentCredentialFromRequest(req) : null;
+      if (!claims) {
+        setCORSHeaders(res);
+        res.status(401).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32001, message: 'This credential is not valid for this endpoint.' },
+        });
+        return;
+      }
+      if (!isGovernanceAgentCredentialRequestAllowed(req.body)) {
+        setCORSHeaders(res);
+        res.status(403).json({
+          jsonrpc: '2.0',
+          id: (req.body as { id?: unknown } | undefined)?.id ?? null,
+          error: {
+            code: -32001,
+            message: 'A seller governance credential may only call check_governance (execution checks) and report_plan_adjustment.',
+          },
+        });
+        return;
+      }
+      governanceAgentCredential = { agent_url: claims.agentUrl, nonce: claims.nonce };
+    }
+    // A minted hosted-grader credential authenticates as the one fixed
+    // hosted-grader buyer agent, only on the governance tenant, and only for
+    // the buyer side of its own run (#7758). Same re-verification and trusted
+    // stamping as the seller credential above.
+    let hostedGraderCredential: HostedGraderCredentialExtra | undefined;
+    if (isHostedGraderCredentialPrincipal(principal)) {
+      const claims = tenantId === 'governance' ? hostedGraderCredentialFromRequest(req) : null;
+      if (!claims) {
+        setCORSHeaders(res);
+        res.status(401).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32001, message: 'This credential is not valid for this endpoint.' },
+        });
+        return;
+      }
+      if (!isHostedGraderCredentialRequestAllowed(req.body)) {
+        setCORSHeaders(res);
+        res.status(403).json({
+          jsonrpc: '2.0',
+          id: (req.body as { id?: unknown } | undefined)?.id ?? null,
+          error: {
+            code: -32001,
+            message: 'A hosted-grader credential may only call sync_plans, check_governance (intent checks), get_plan_audit_logs, and report_plan_outcome.',
+          },
+        });
+        return;
+      }
+      hostedGraderCredential = { agent_url: claims.agentUrl, nonce: claims.nonce };
+    }
     if (principal && !(req as { auth?: unknown }).auth) {
       // Shape mirrors @adcp/sdk@6.7.0 server/serve.js attachAuthInfo —
       // `token: ''` matches the framework's no-token path verbatim, so any
@@ -368,6 +444,12 @@ function tenantMcpHandler(
         scopes: [],
         extra: {
           ...(demoToken !== undefined && { demo_token: demoToken }),
+          ...(governanceAgentCredential && {
+            [GOVERNANCE_AGENT_CREDENTIAL_EXTRA_KEY]: governanceAgentCredential,
+          }),
+          ...(hostedGraderCredential && {
+            [HOSTED_GRADER_CREDENTIAL_EXTRA_KEY]: hostedGraderCredential,
+          }),
           credential: apiKeyCredential(req, principal),
         },
       };
@@ -518,13 +600,13 @@ function tenantMcpHandler(
         await resolved.server.connect(transport);
         logger.debug({ tenantId: resolved.tenantId, method: req.body?.method }, 'tenant MCP request');
         installConflictEnvelopeRedaction(res);
-        await runWithTrainingTaskScope(
+        await runWithReleaseLineEcho(req.body, () => runWithTrainingTaskScope(
           trainingTaskScope(resolved.tenantId, principal ?? 'anonymous'),
           () => runWithSessionContext(async () => {
             await transport.handleRequest(req, res, req.body);
             await flushDirtySessions();
           }),
-        );
+        ));
       } catch (err) {
         logger.error({ err, tenantId: resolved.tenantId }, 'tenant MCP error');
         if (!res.headersSent) {
@@ -876,6 +958,7 @@ function projectTenantCapabilities(
           creative?: Record<string, unknown>;
           media_buy?: Record<string, unknown>;
           signals?: Record<string, unknown>;
+          governance?: Record<string, unknown>;
           wholesale_feed_versioning?: Record<string, unknown>;
           wholesale_feed_webhooks?: Record<string, unknown>;
           webhook_signing?: Record<string, unknown>;
@@ -915,6 +998,11 @@ function projectTenantCapabilities(
         delete structured.media_buy;
       }
     }
+    // The governance tenant enforces plan budget periods (adcp#7956); a 3.0
+    // projection predates the field, so it keeps the released capability shape.
+    if (tenantId === 'governance' && storyboardCompat?.version !== '3.0') {
+      structured.governance = { ...structured.governance, supports_budget_periods: true };
+    }
     if (tenantId === 'sales' && storyboardCompat?.version !== '3.0') {
       structured.adcp.capability_changes = {
         capabilities_version: `training-agent-${TRAINING_AGENT_CURRENT_ADCP_VERSION}`,
@@ -927,6 +1015,12 @@ function projectTenantCapabilities(
           coalescence_window_seconds: 300,
         },
       };
+      structured.adcp.principal = structuredClone(PRINCIPAL_CAPABILITY);
+      const principalFeatures = Array.isArray(structured.experimental_features)
+        ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
+        : [];
+      if (!principalFeatures.includes('protocol.principal')) principalFeatures.push('protocol.principal');
+      structured.experimental_features = principalFeatures;
     }
     if (storyboardCompat?.version !== '3.0') {
       const account = structured.account && typeof structured.account === 'object'
@@ -1076,6 +1170,22 @@ function projectTenantCapabilities(
               : {}
           ),
           ...salesProjection.features,
+          // Fixed media-buy cost_per, the policy outcome_target cost answers
+          // use (3.2 bundles only; earlier features allow booleans only).
+          ...(storyboardCompat?.version !== '3.0' && supportsBiddingPolicyCapability(servedVersion) && {
+            bidding_policy: structuredClone(TRAINING_BIDDING_POLICY_CAPABILITY),
+          }),
+          // Shared seller-optimized budgets: only the controls create/update
+          // enforce (undeclared ones answer UNSUPPORTED_FEATURE).
+          ...(storyboardCompat?.version !== '3.0' && sellerOptimizedFeatureFlags(sellerOptimizedDeclarationForVersion(servedVersion))),
+          // Rollups for the per-product property breakdown flags. The
+          // reference seller echoes property rows injected through
+          // comply_test_controller and never derives them from catalog
+          // eligibility.
+          ...(storyboardCompat?.version !== '3.0' && {
+            supports_property_breakdown: true,
+            supports_installment_property_breakdown: true,
+          }),
         },
         ...(supportsGetProductsRejected(servedVersion) && {
           audience_targeting: {
@@ -1129,6 +1239,11 @@ function projectTenantCapabilities(
             resource_types: ['creative'],
           },
         };
+        // The feed is experimental in 3.2 (RFC #6810): advertising the block
+        // requires the matching experimental_features declaration.
+        if (!experimentalFeatures.includes('account.change_feed')) {
+          experimentalFeatures.push('account.change_feed');
+        }
       }
       const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
         ? structured.compliance_testing
@@ -1187,7 +1302,7 @@ function projectWholesaleCapabilities(
     structured.webhook_signing = {
       supported: true,
       profile: 'adcp/webhook-signing/v1',
-      algorithms: ['ed25519'],
+      algorithms: [...SELLER_WEBHOOK_SIGNING_ALGORITHMS],
       legacy_hmac_fallback: true,
       delivery_retry_horizon_seconds: 86400,
     };
@@ -1254,6 +1369,13 @@ export interface TenantRouteMiddleware {
   rateLimit?: RequestHandler;
   /** Bearer-auth middleware applied to every tenant POST (sets `res.locals.trainingPrincipal`). */
   requireAuth?: RequestHandler;
+  /**
+   * Bearer-auth middleware for the governance tenant's routes. Accepts the
+   * shared credentials plus minted sandbox governance-agent credentials
+   * (governance-agent-credentials.ts), which authenticate nowhere else.
+   * Falls back to `requireAuth`.
+   */
+  requireGovernanceAuth?: RequestHandler;
   /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
   storyboardCompat?: TrainingContext['storyboardCompat'];
 }
@@ -1327,12 +1449,20 @@ export function mountTenantRoutes(
   const mw: RequestHandler[] = [];
   if (middleware.rateLimit) mw.push(middleware.rateLimit);
   if (middleware.requireAuth) mw.push(middleware.requireAuth);
+  const governanceMw: RequestHandler[] = [];
+  if (middleware.rateLimit) governanceMw.push(middleware.rateLimit);
+  const governanceAuth = middleware.requireGovernanceAuth ?? middleware.requireAuth;
+  if (governanceAuth) governanceMw.push(governanceAuth);
   for (const tenantId of tenantIds) {
     parent.options(`/${tenantId}/mcp`, (_req, res) => {
       setCORSHeaders(res);
       res.status(204).end();
     });
-    parent.post(`/${tenantId}/mcp`, ...mw, tenantMcpHandler(holder, tenantId, middleware.storyboardCompat));
+    parent.post(
+      `/${tenantId}/mcp`,
+      ...(tenantId === 'governance' ? governanceMw : mw),
+      tenantMcpHandler(holder, tenantId, middleware.storyboardCompat),
+    );
     parent.get(`/${tenantId}/mcp`, (_req, res) => {
       setCORSHeaders(res);
       res.setHeader('Allow', 'POST, OPTIONS');
@@ -1342,6 +1472,19 @@ export function mountTenantRoutes(
         error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
       });
     });
+  }
+
+  // The training agent's own URL is the governance agent the storyboards
+  // register (`governance_agent_url: https://test-agent.adcontextprotocol.org`)
+  // and the `iss` its governance tokens carry. A seller calls
+  // `check_governance` at that registered URL over MCP, so the root serves
+  // the governance tenant. Browsers' GET / is untouched.
+  if (tenantIds.includes('governance')) {
+    parent.options('/', (_req, res) => {
+      setCORSHeaders(res);
+      res.status(204).end();
+    });
+    parent.post('/', ...governanceMw, tenantMcpHandler(holder, 'governance', middleware.storyboardCompat));
   }
 
   if (
@@ -1387,7 +1530,7 @@ export function mountTenantRoutes(
   // parse conformance tests to pass.
   parent.get('/.well-known/governance-revocations.json', async (_req, res, next) => {
     try {
-      const signed = await buildSignedRevocationList(`${getCanonicalBase()}/governance`);
+      const signed = await buildSignedRevocationList(getTrainingGovernanceIssuer());
       res.setHeader('Cache-Control', 'public, max-age=60');
       res.json(signed);
     } catch (err) {

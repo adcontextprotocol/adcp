@@ -23,26 +23,30 @@ For the layered model behind this — what each layer contains and what an SDK a
 
 What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide).
 
-*Last updated: 2026-09-19.*
+*Last updated: 2026-10-06.*
 
-| SDK | Current package | 3.2 RC support | L0 | L1 | L2 | L3 |
+| SDK | Current package | 3.2 support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TypeScript) | `14.0.0-rc.40` | Exact `3.2.0-rc.3` support | ✅ | ✅ | ✅ | ✅ |
-| **`adcp`** (Python) | `8.0.0b14` | Exact `3.2.0-rc.1` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
-| **`adcp/v3`** (Go) | `v3.2.1` | Exact `3.2.0-rc.1` generated schemas and types; higher layers remain role-dependent | ✅ | ⚠️ | ⚠️ | ⚠️ |
+| **`@adcp/sdk`** (TypeScript) | `15.0.0` | Exact `3.2.1` support | ✅ | ✅ | ✅ | ✅ |
+| **`adcp`** (Python) | `8.0.0` | Exact `3.2.1` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
+| **`adcp/v3`** (Go) | `v3.2.1` | Embeds `3.2.0-rc.1` generated schemas and types and defaults to the `"3.1"` wire pin; final 3.2 support is planned as a follow-up | ✅ | ⚠️ | ⚠️ | ⚠️ |
 
 Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. The L0–L3 columns describe the current package, not a 3.2 support claim.
 
-The current `rc` npm tag of `@adcp/sdk` matches this checkpoint and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`). Python and Go remain pinned to RC.1 until their next SDK wave.
+`@adcp/sdk@15.0.0` is on the npm `latest` dist-tag and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`) and the buyer-side consumer module (`@adcp/sdk/reporting/consumer`). Python `adcp==8.0.0` embeds the final 3.2 schemas. Final 3.2 support for Go is planned as a follow-up release; check the [adcp-go releases](https://github.com/adcontextprotocol/adcp-go/releases).
 
-<Warning>
-**The TypeScript SDK embeds RC.3, the current protocol checkpoint.** Python
-and Go still embed `3.2.0-rc.1`. Pin the exact package and matching wire
-version shown here for development and staging. Raw-wire and code-generation
-workflows can also use RC.3's [signed bundle](/docs/reference/3-2-beta#use-the-rc-3-artifact-directly).
-This is not a GA signal: production integrations should remain on 3.1 until
-3.2 is released. See the [3.2 prerelease program](/docs/reference/3-2-beta).
-</Warning>
+SDK 15 tightens OAuth issuer binding and provider/storage defaults. Before upgrading an existing integration, follow the [SDK 15 OAuth migration and owner recovery guide](https://github.com/adcontextprotocol/adcp-client/blob/68614aa0ce84046c78d76dda9721ffbf9328639a/docs/migration-oauth-issuer-bindings.md).
+
+Integrations that stay on 3.1 keep using the 3.1 lines: `@adcp/sdk` 13.x (npm `adcp-3.1` dist-tag) and `adcp` 7.x. The [SDK version map](/docs/reference/migration/3-1-to-3-2#sdk-versions-for-3-2) lists the 3.1 and 3.2 line for each language and each SDK's upgrade guide.
+
+<Note>
+**The TypeScript and Python SDKs embed AdCP 3.2 (`3.2.1`).** Send
+`adcp_version: "3.2"` to peers that list `"3.2"` in
+`get_adcp_capabilities.adcp.supported_versions`; keep `"3.1"` for peers that
+do not. Raw-wire and code-generation workflows can use the
+[signed `3.2.1` bundle](https://adcontextprotocol.org/protocol/3.2.1.tgz)
+(see [verifying protocol tarballs](/docs/reference/verifying-protocol-tarballs)).
+</Note>
 
 The TypeScript SDK currently provides the broadest L0–L3 surface. Python is a
 first-class SDK with complete schema/type coverage and role-dependent higher
@@ -71,9 +75,10 @@ advertised lifecycle tools separate.
 | Go | Version helpers, generated request/response types, and typed server registration. | Buyer lifecycle selection and continuation orchestration remain application-owned. |
 
 The TypeScript coordinator already supports ordinary legacy purchase behavior
-with explicit loss opt-ins. Its current listing adapter rejects compact
-`criteria`, and its direct-buy adapter still requires a real `feed_version`,
-even when the caller accepts non-atomic fencing. Products-only brief purchase
+with explicit loss opt-ins. Its listing adapter maps representable
+`criteria.offer_filters` against the negotiated legacy schema and rejects
+other unsupported criteria before dispatch. Its direct-buy adapter still
+requires a real `feed_version`, even when the caller accepts non-atomic fencing. Products-only brief purchase
 continuations provide a separate legacy path. A missing new guarantee does
 not make the seller's established creation API unusable.
 
@@ -93,7 +98,7 @@ documents coordinator options, continuation storage, and supported projections.
 [![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/sdk@14.0.0-rc.40
+npm install @adcp/sdk@15.0.0
 ```
 
 ```javascript
@@ -107,7 +112,7 @@ const client = createSingleAgentClient({
 });
 
 const products = await client.listProducts({
-  adcp_version: '3.2-rc.3',
+  adcp_version: '3.2',
   account: { account_id: 'account_123' },
   criteria: {
     offer_filters: { channels: ['ctv'] },
@@ -144,7 +149,7 @@ integrations should use the main server and per-tool type exports.
 [![PyPI version](https://img.shields.io/pypi/v/adcp)](https://pypi.org/project/adcp/)
 
 ```bash
-pip install adcp==8.0.0b14
+pip install adcp==8.0.0
 ```
 
 ```python
@@ -175,10 +180,13 @@ result = await client.get_products(
 go get github.com/adcontextprotocol/adcp-go/adcp/v3@v3.2.1
 ```
 
-The Go SDK's `adcp/v3` module provides RC.1 generated schemas and types, typed
+The Go SDK's `adcp/v3` module provides `3.2.0-rc.1` generated schemas and types, typed
 tool registration, response builders, signing, a compliance test controller,
 and transport/server building blocks. Higher-layer coverage remains
 role-dependent. The `/v3` suffix is required by Go semantic import versioning.
+Go module versions are not AdCP versions: `v3.2.1` is an SDK release that
+defaults to the `"3.1"` wire pin, not AdCP 3.2.1. Final 3.2 support for Go is
+planned as a follow-up release; check the [adcp-go releases](https://github.com/adcontextprotocol/adcp-go/releases).
 
 | Component | Import |
 |-----------|--------|
@@ -202,15 +210,15 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ### JavaScript CLI
 
 ```bash
-npx @adcp/sdk@14.0.0-rc.40 --help
-npx @adcp/sdk@14.0.0-rc.40 --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@14.0.0-rc.40 my-agent list_products '{"adcp_version":"3.2-rc.3","account":{"account_id":"account_123"}}'
+npx @adcp/sdk@15.0.0 --help
+npx @adcp/sdk@15.0.0 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@15.0.0 my-agent list_products '{"adcp_version":"3.2","account":{"account_id":"account_123"}}'
 # or against the built-in public test agent:
-npx @adcp/sdk@14.0.0-rc.40 test-mcp list_products '{"adcp_version":"3.2-rc.3"}'
+npx @adcp/sdk@15.0.0 test-mcp list_products '{"adcp_version":"3.2"}'
 ```
 
 The `adcp_version` in the payload is a wire pin the CLI passes through, so it
-can name a checkpoint other than the one the SDK embeds. Request and response
+can name a release other than the one the SDK embeds. Request and response
 validation still uses the SDK's embedded bundle.
 
 The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`adcp grade`), and registry diagnostics. See `--help` for the full surface.
@@ -218,9 +226,9 @@ The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`a
 ### Python CLI
 
 ```bash
-uvx --from adcp==8.0.0b14 adcp --help
-uvx --from adcp==8.0.0b14 adcp --save-auth my-agent https://sales.example.com/mcp
-uvx --from adcp==8.0.0b14 adcp my-agent get_products '{"adcp_version":"3.2-rc.1","idempotency_key":"550e8400-e29b-41d4-a716-446655442064","buying_mode":"brief","brief":"CTV campaign"}'
+uvx --from adcp==8.0.0 adcp --help
+uvx --from adcp==8.0.0 adcp --save-auth my-agent https://sales.example.com/mcp
+uvx --from adcp==8.0.0 adcp my-agent get_products '{"adcp_version":"3.2","idempotency_key":"550e8400-e29b-41d4-a716-446655442064","buying_mode":"brief","brief":"CTV campaign"}'
 ```
 
 ## What's next

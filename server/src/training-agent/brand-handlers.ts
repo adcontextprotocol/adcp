@@ -13,7 +13,7 @@ import { getSandboxBrands } from '@adcp/sdk/testing';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { resolveGovernanceAgentsForAccount } from './account-handlers.js';
-import { getCanonicalBase } from './canonical-base.js';
+import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
 import { decodeOffsetCursor, encodeOffsetCursor } from './pagination.js';
 
 async function governedCommitmentRejection(
@@ -27,7 +27,7 @@ async function governedCommitmentRejection(
 ): Promise<string | undefined> {
   const result = await verifyGovernedServiceAuthorization({
     token: governanceContext,
-    expectedIssuer: `${getCanonicalBase()}/governance`,
+    expectedIssuer: getTrainingGovernanceIssuer(),
     expectedTask: task,
     expectedAudience,
     payload,
@@ -1408,6 +1408,50 @@ export async function handleAcquireRights(
   };
 }
 
+/**
+ * Resolve a controller-seeded grant that the storyboard runner could not
+ * seed into the caller's exact account.
+ *
+ * `@adcp/sdk`'s runner builds `seed_rights_grant` controller calls from the
+ * test-kit account, which drops the authored `operator_unit`. The seed then
+ * lands in the `{ brand, operator: buyer_domain, sandbox }` partition, while
+ * the buyer's `update_rights` call names the full sandbox account including
+ * its `operator_unit`. Only that dropped field is bridged here: the fallback
+ * reads the same natural key without `operator_unit`, and accepts only a
+ * sandbox, controller-seeded grant whose buyer is the request operator.
+ * Organically acquired grants (no seedFingerprint), live accounts, and any
+ * other key difference still miss and return REFERENCE_NOT_FOUND. The
+ * buyerDomain comparison is defense in depth: the seed already keyed the
+ * partition by that operator. Governance for the update still evaluates the
+ * caller's own operator_unit account, not the seed partition.
+ */
+async function findControllerSeededGrant(
+  req: { account?: import('./types.js').AccountRef },
+  rightsId: string,
+  ctx: TrainingContext,
+): Promise<import('./types.js').RightsGrantState | undefined> {
+  const account = req.account;
+  if (
+    !account
+    || account.sandbox !== true
+    || typeof account.account_id === 'string'
+    || !account.operator_unit
+    || typeof account.operator !== 'string'
+  ) {
+    return undefined;
+  }
+  const { operator_unit: _operatorUnit, ...withoutOperatorUnit } = account;
+  const seedSessionKey = sessionKeyFromArgs(
+    { ...req, account: withoutOperatorUnit },
+    ctx.mode,
+    ctx.userId,
+    ctx.moduleId,
+  );
+  const grant = (await getSession(seedSessionKey)).rightsGrants.get(rightsId);
+  if (!grant?.seedFingerprint || grant.buyerDomain !== account.operator) return undefined;
+  return grant;
+}
+
 export async function handleUpdateRights(
   args: ToolArgs,
   ctx: TrainingContext,
@@ -1432,7 +1476,8 @@ export async function handleUpdateRights(
 
   const accountSessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(accountSessionKey);
-  const grant = session.rightsGrants.get(rightsId);
+  const grant = session.rightsGrants.get(rightsId)
+    ?? await findControllerSeededGrant(req, rightsId, ctx);
   if (!grant || grant.status !== 'acquired') {
     return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No active grant with id '${rightsId}'` }] };
   }

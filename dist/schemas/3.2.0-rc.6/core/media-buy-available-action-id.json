@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/media-buy-available-action-id.json",
+  "title": "Media Buy Available Action ID",
+  "description": "An action identifier for the structured available_actions surface. It contains every legacy valid_actions value plus structured-only actions introduced after that deprecated flat surface.",
+  "anyOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/enums/media-buy-valid-action.json"
+    },
+    {
+      "type": "string",
+      "const": "update_media_buy_frequency_cap"
+    }
+  ],
+  "enumMetadata": {
+    "update_media_buy_frequency_cap": {
+      "update_fields": [
+        "frequency_cap"
+      ]
+    }
+  }
+}

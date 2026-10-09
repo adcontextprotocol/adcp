@@ -14,8 +14,16 @@
         "kind": { "type": "string", "const": "metric" },
         "metric": {
           "type": "string",
-          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"],
-          "description": "Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swipe-throughs, CTA taps that navigate away), views (viewable impressions), completed_views (video/audio completions — see view_duration_seconds), reach (unique audience reach — see reach_unit and target_frequency). Duration/score metrics: viewed_seconds (time in view per impression — reported back via `delivery-metrics.viewability.viewed_seconds`, governed by the viewability `standard`). Audience action metrics: engagements (any direct interaction with the ad unit beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps, companion banner interactions on audio and CTV), follows (new followers, page likes, artist/podcast/channel follows, or free channel/feed subscribes; paid subscriptions use event_type: subscribe), saves (saves, bookmarks, playlist adds, pins — signals of intent to return), profile_visits (visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks, which are covered by 'clicks'). **DEPRECATED values** (slated for removal at next major): `attention_seconds` and `attention_score` — these have no industry-graduated definition (DoubleVerify, IAS, Adelaide, TVision, Lumen each define them differently) and cannot be meaningfully optimized for without a vendor binding. Use `kind: 'vendor_metric'` with an explicit `vendor` and `metric_id` instead — that path binds the goal to a specific measurement vendor and reconciles to the same `(vendor, metric_id)` key in delivery's `vendor_metric_values[]`. Sellers MAY reject the deprecated values with `TERMS_REJECTED` and a suggestion to use the `vendor_metric` kind."
+          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "viewable_rate", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"],
+          "description": "Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swipe-throughs, CTA taps that navigate away), views (content views at the billable view threshold, as defined by delivery-metrics `views`; for viewability use viewable_rate), completed_views (video/audio completions — see view_duration_seconds), reach (unique audience reach — see reach_unit and target_frequency). Duration/score metrics: viewed_seconds (time in view per impression — reported back via `delivery-metrics.viewability.viewed_seconds`, governed by the viewability `standard`). Quality-rate metrics: viewable_rate (viewable / measurable impressions under the goal's `standard`; requires `standard`). Audience action metrics: engagements (any direct interaction with the ad unit beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps, companion banner interactions on audio and CTV), follows (new followers, page likes, artist/podcast/channel follows, or free channel/feed subscribes; paid subscriptions use event_type: subscribe), saves (saves, bookmarks, playlist adds, pins — signals of intent to return), profile_visits (visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks, which are covered by 'clicks'). **DEPRECATED values** (slated for removal at next major): `attention_seconds` and `attention_score` — these have no industry-graduated definition (DoubleVerify, IAS, Adelaide, TVision, Lumen each define them differently) and cannot be meaningfully optimized for without a vendor binding. Use `kind: 'vendor_metric'` with an explicit `vendor` and `metric_id` instead — that path binds the goal to a specific measurement vendor and reconciles to the same `(vendor, metric_id)` key in delivery's `vendor_metric_values[]`. Sellers MAY reject the deprecated values with `TERMS_REJECTED` and a suggestion to use the `vendor_metric` kind."
+        },
+        "standard": {
+          "allOf": [{ "$ref": "/schemas/enums/viewability-standard.json" }],
+          "description": "Viewability standard the goal is judged against. Required when metric is 'viewable_rate'; optional for 'viewed_seconds' (seller default standard when omitted); not allowed for other metrics. Must be in metric_optimization.supported_viewability_standards when declared. A goal below a same-standard viewability performance_standard never relaxes that standard."
+        },
+        "vendor": {
+          "allOf": [{ "$ref": "/schemas/core/brand-ref.json" }],
+          "description": "Measurement vendor judging a viewable_rate or viewed_seconds goal; not allowed for other metrics. When omitted, the seller's default viewability measurement applies. Sellers MUST reject a vendor they cannot optimize against rather than substitute another."
         },
         "reach_unit": {
           "allOf": [{ "$ref": "/schemas/enums/reach-unit.json" }],
@@ -71,10 +79,10 @@
             },
             {
               "type": "object",
-              "description": "Minimum per-impression rate for this metric. The metric defines the units: proportions for count metrics (e.g., 0.001 for 0.1% CTR, 0.70 for 70% viewability), seconds for duration metrics (e.g., 3.0 for 3s in view), or score for score metrics.",
+              "description": "Minimum per-impression rate for this metric. The metric defines the units: proportions for count metrics (e.g., 0.001 for 0.1% CTR, 0.70 for 70% viewable_rate), seconds for duration metrics (e.g., 3.0 for 3s in view), or score for score metrics.",
               "properties": {
                 "kind": { "type": "string", "const": "threshold_rate" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Minimum per-impression value. Units depend on the metric: proportion (clicks, views, completed_views), seconds (viewed_seconds, attention_seconds), or score (attention_score)." }
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Minimum per-impression value. Units depend on the metric: proportion (clicks, views, completed_views, viewable_rate), seconds (viewed_seconds, attention_seconds), or score (attention_score)." }
               },
               "required": ["kind", "value"],
               "additionalProperties": true
@@ -88,6 +96,19 @@
         }
       },
       "required": ["kind", "metric"],
+      "allOf": [
+        {
+          "if": { "properties": { "metric": { "const": "viewable_rate" } }, "required": ["metric"] },
+          "then": {
+            "required": ["standard"],
+            "properties": { "target": { "properties": { "kind": { "const": "threshold_rate" }, "value": { "maximum": 1 } } } }
+          }
+        },
+        {
+          "if": { "properties": { "metric": { "enum": ["viewable_rate", "viewed_seconds"] } }, "required": ["metric"] },
+          "else": { "not": { "anyOf": [{ "required": ["standard"] }, { "required": ["vendor"] }] } }
+        }
+      ],
       "additionalProperties": true
     },
     {

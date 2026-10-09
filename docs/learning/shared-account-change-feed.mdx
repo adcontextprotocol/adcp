@@ -21,9 +21,9 @@ This lab teaches the buyer convergence loop:
 6. locally allowlist `repair.task`, construct a validated request from the
    authenticated account and resource identity, and reread the resource.
 
-<Warning>
-This lab exercises the AdCP 3.2 draft in [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810). The surface can change before ratification.
-</Warning>
+<Note>
+**Experimental.** This lab exercises the account change feed, an experimental AdCP 3.2 surface (`account.change_feed`) while [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810) remains open. It may change between 3.x releases with at least 6 weeks' notice. See [experimental status](/docs/reference/experimental-status).
+</Note>
 
 <Warning>
 The hosted training seller does not advertise this capability until its
@@ -75,6 +75,7 @@ Call `get_adcp_capabilities` and require:
 
 ```json
 {
+  "experimental_features": ["account.change_feed"],
   "account": {
     "change_feed": {
       "supported": true,

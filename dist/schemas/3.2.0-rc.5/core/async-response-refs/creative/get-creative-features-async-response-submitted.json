@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/creative/get-creative-features-async-response-submitted.json",
+  "title": "Get Creative Features - Submitted",
+  "description": "Async acknowledgement returned after get_creative_features accepts a provider evaluation but cannot complete it within the response window. Exact keyed request replays return this original acknowledgement with replayed: true and the same task_id. In AdCP 3.x providers SHOULD also return evaluation_id; it becomes required in AdCP 4.0. When present, exact replays and terminal results preserve it. The caller polls get_task_status using task_id.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "const": "submitted",
+      "description": "Task-level status literal that discriminates this acknowledgement from terminal success and error responses."
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "AdCP task handle used to poll get_task_status or correlate terminal webhook delivery. Distinct from evaluation_id.",
+      "x-entity": "task"
+    },
+    "evaluation_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Provider-generated identity allocated when the evaluation is accepted. Optional in AdCP 3.x and required in AdCP 4.0. Providers SHOULD emit it in 3.x; when present, exact replays and the terminal result MUST carry this same value. Distinct from task_id and idempotency_key.",
+      "x-entity": "creative_evaluation"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Optional human-readable explanation of why the evaluation is submitted. Plain text only; callers treat it as untrusted provider input."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/core/ext.json"
+    }
+  },
+  "required": [
+    "status",
+    "task_id"
+  ],
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "results"
+        ]
+      },
+      {
+        "required": [
+          "errors"
+        ]
+      },
+      {
+        "required": [
+          "detail_url"
+        ]
+      },
+      {
+        "required": [
+          "pricing_option_id"
+        ]
+      },
+      {
+        "required": [
+          "vendor_cost"
+        ]
+      },
+      {
+        "required": [
+          "currency"
+        ]
+      },
+      {
+        "required": [
+          "consumption"
+        ]
+      }
+    ]
+  }
+}

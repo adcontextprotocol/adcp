@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/extensions/adcp.json",
+  "title": "AdCP-owned extensions",
+  "description": "AdCP Working Group-owned extension namespace. The opportunity binding carries the published 3.2 planning-cycle object on get_products. Sellers opt in through extensions_supported; support applies to documented bindings, not arbitrary future features. Core fields take precedence where the selected task defines them.",
+  "x-adcp-owned": true,
+  "valid_from": "3.2",
+  "docs_url": "https://github.com/adcontextprotocol/adcp/blob/main/docs/building/by-layer/L2/context-sessions.mdx#adcp-opportunity-extension",
+  "type": "object",
+  "properties": {
+    "opportunity": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.1/core/opportunity-context.json",
+      "description": "Planning-cycle association on get_products, using the unchanged 3.2.1 OpportunityContext shape and seller/account scope. Lifecycle fields are discovery snapshots, not independent transitions. See the documented task binding for account resolution, proposal inheritance, and migration."
+    }
+  },
+  "additionalProperties": true
+}

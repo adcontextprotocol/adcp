@@ -27,7 +27,8 @@ const PROTOCOL_SCOPED_PATHS = [
   /^dist\/protocol\/[^/]+[.]tgz(?:[.](?:sha256|sig|crt))?$/,
   /^scripts\/(?:build-schemas|build-compliance|build-protocol-tarball|sign-protocol-tarball|update-schema-versions|verify-version-sync|patch-3-0-compat-bundle)[.](?:cjs|mjs|sh)$/,
   /^scripts\/run-storyboards-(?:[^/]+[.]sh|isolated[.]mjs)$/,
-  /^[.]github\/workflows\/(?:release|training-agent-storyboards)[.]yml$/,
+  // Publication orchestration is operational; protocol generators above remain scoped.
+  /^[.]github\/workflows\/training-agent-storyboards[.]yml$/,
 ];
 
 const CHANGESET_POLICY_CODE_PATHS = new Set([
@@ -95,8 +96,27 @@ function isProtocolScopedPath(filePath) {
   return PROTOCOL_SCOPED_PATHS.some(pattern => pattern.test(normalized));
 }
 
-function hasProtocolScopedChanges(changes) {
-  return changes.some(change => (change.paths || []).some(isProtocolScopedPath));
+function isStoryboardBranchRegistrationOnly(headContent, baseContent) {
+  const oldBranches = "branches: [main, '3.1.x', '3.0.x']";
+  const newBranches = "branches: [main, '3.2.x', '3.1.x', '3.0.x']";
+  return baseContent.split(oldBranches).length === 3
+    && headContent === baseContent.replaceAll(oldBranches, newBranches);
+}
+
+function isProtocolScopedChange(change, readFileAtHead, readFileAtBase) {
+  return (change.paths || []).some(filePath => {
+    if (!isProtocolScopedPath(filePath)) return false;
+    if (normalizePath(filePath) === '.github/workflows/training-agent-storyboards.yml'
+      && change.status === 'M'
+      && isStoryboardBranchRegistrationOnly(
+        readFileAtHead(filePath), readFileAtBase(filePath)
+      )) return false;
+    return true;
+  });
+}
+
+function hasProtocolScopedChanges(changes, readFileAtHead = () => '', readFileAtBase = () => '') {
+  return changes.some(change => isProtocolScopedChange(change, readFileAtHead, readFileAtBase));
 }
 
 function isChangesetMaintenancePath(filePath) {
@@ -220,10 +240,8 @@ function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileA
   const protocolScopedFiles = [];
 
   for (const change of changes) {
-    for (const filePath of change.paths || []) {
-      if (isProtocolScopedPath(filePath)) {
-        protocolScopedFiles.push(filePath);
-      }
+    if (isProtocolScopedChange(change, readFileAtHead, readFileAtBase)) {
+      protocolScopedFiles.push(...change.paths.filter(isProtocolScopedPath));
     }
 
     const headPath = changedPathForHead(change);
@@ -312,7 +330,11 @@ function run(argv = process.argv.slice(2)) {
   }
 
   if (argv.includes('--has-protocol-scoped-changes')) {
-    const hasProtocol = hasProtocolScopedChanges(changes);
+    const hasProtocol = hasProtocolScopedChanges(
+      changes,
+      readFileAtHead,
+      filePath => readFileAtRef(baseRef, filePath)
+    );
     if (hasProtocol) {
       console.log('Protocol-scoped changes detected.');
       return 0;
@@ -346,6 +368,7 @@ module.exports = {
   findChangesetProtocolScopeViolations,
   formatViolationMessage,
   hasProtocolScopedChanges,
+  isStoryboardBranchRegistrationOnly,
   isChangesetBumpDowngradeOrRemoval,
   isChangesetBumpEscalation,
   isChangesetClassificationMaintenance,

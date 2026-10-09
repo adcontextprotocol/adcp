@@ -44,7 +44,7 @@ import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
 import { runWgSlackContextJob } from './wg-slack-context.js';
 import { runSecretariatExecutorJob } from './secretariat-executor.js';
 import { runSecretariatPrShepherdJob } from './secretariat-pr-shepherd.js';
-import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
+import { assertComplianceHeartbeatOperationalProgress, runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runVerificationProfileProjectionJob } from './verification-profile-projection.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runAddieCorrectedCaptureJob } from './shadow-corrected-capture.js';
@@ -68,6 +68,8 @@ import { runOrphanOrgAudit, type OrphanOrgAuditResult } from './orphan-org-audit
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
 import { createLogger } from '../../logger.js';
+import { getAuthorizationEnforcementWorkos } from '../../auth/workos-client.js';
+import { runOrganizationOnboardingReconciliationJob } from './organization-onboarding-reconciliation.js';
 
 const logger = createLogger('job-definitions');
 
@@ -131,6 +133,20 @@ async function runContentCuratorJob() {
  * Call this on startup before starting jobs.
  */
 export function registerAllJobs(): void {
+  jobScheduler.register({
+    name: 'organization-onboarding-reconciliation',
+    description: 'Resume fenced exact-credential organization onboarding operations',
+    interval: { value: 1, unit: 'minutes' },
+    initialDelay: { value: 30, unit: 'seconds' },
+    executionTimeoutMs: 3 * 60 * 1000,
+    runner: () => runOrganizationOnboardingReconciliationJob(
+      getAuthorizationEnforcementWorkos(),
+      2,
+      10,
+    ),
+    shouldLogResult: (result) => result.attempted > 0 || result.manualQueued > 0,
+  });
+
   // Document indexer - indexes Google Docs tracked by committees
   jobScheduler.register({
     name: 'document-indexer',
@@ -557,15 +573,14 @@ export function registerAllJobs(): void {
   jobScheduler.register({
     name: 'compliance-heartbeat',
     description: 'Agent compliance heartbeat',
-    interval: { value: 1, unit: 'hours' },
+    interval: { value: 5, unit: 'minutes' },
     initialDelay: { value: 10, unit: 'minutes' },
-    // Ten agents can each consume the 10-minute suite budget plus two
-    // 30-second discovery budgets. Two hours bounds admission plus the
-    // documented ~115m run, so waiting behind a wedged pool is bounded too.
+    // Six agents run in at most three two-agent waves. Each wave may consume
+    // a 30-minute extended budget, five-minute overrun, and discovery time.
     executionTimeoutMs: 2 * 60 * 60 * 1000,
     passExecutionContext: true,
     runner: (options, context) => runComplianceHeartbeatJob(options, context.signal),
-    options: { limit: 10, includeOperationalDiagnostics: true },
+    options: { limit: 6, includeOperationalDiagnostics: true },
     shouldLogResult: (r) => r.checked > 0,
     statusResult: (r) => ({
       checked: r.checked,
@@ -574,15 +589,7 @@ export function registerAllJobs(): void {
       skipped: r.skipped,
       ...r.diagnostics,
     }),
-    validateResult: (r) => {
-      if (r.diagnostics && r.diagnostics.selectedAgents.length > 0 && r.checked === 0) {
-        throw new Error(
-          `Compliance heartbeat made no authoritative progress across ${r.diagnostics.selectedAgents.length} selected agents`
-          + ` (backlog=${r.diagnostics.eligibleBacklog}, runs_recorded=${r.diagnostics.runsRecorded},`
-          + ` skips=${JSON.stringify(r.diagnostics.skipReasons)})`,
-        );
-      }
-    },
+    validateResult: assertComplianceHeartbeatOperationalProgress,
   });
 
   jobScheduler.register({
@@ -1012,6 +1019,7 @@ export function registerAllJobs(): void {
  * Job names for conditional startup (e.g., Moltbook jobs only if API key is set)
  */
 export const JOB_NAMES = {
+  ORGANIZATION_ONBOARDING_RECONCILIATION: 'organization-onboarding-reconciliation',
   DOCUMENT_INDEXER: 'document-indexer',
   SUMMARY_GENERATOR: 'summary-generator',
   RELATIONSHIP_ORCHESTRATOR: 'relationship-orchestrator',

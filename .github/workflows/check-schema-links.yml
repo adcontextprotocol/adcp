@@ -102,8 +102,9 @@ jobs:
             # the stable major alias.
             if [ "$VERSION" = "latest" ]; then
               CURRENT_MAJOR=$(node -p "require('./package.json').version.split('.')[0]")
-              CURRENT_RELEASE_PATH=$(ls -d dist/schemas/${CURRENT_MAJOR}.* 2>/dev/null | sort -V | tail -1)
-              CURRENT_RELEASE=$(basename "$CURRENT_RELEASE_PATH" 2>/dev/null || echo "")
+              # Consult the published alias instead of choosing the newest
+              # directory. Prerelease directories do not move /schemas/vN/.
+              CURRENT_RELEASE=$(node -e 'const index = require("./dist/schemas/index.json"); process.stdout.write(index.aliases?.[`v${process.argv[1]}`] || index.latest_by_major?.[process.argv[1]] || "")' "$CURRENT_MAJOR")
               if [ -n "$CURRENT_RELEASE" ] && [ -f "dist/schemas/$CURRENT_RELEASE/$SCHEMA_PATH" ]; then
                 ERRORS="$ERRORS\n- \`$url\`\n  - Schema is already released in $CURRENT_RELEASE\n  - **Action**: Change URL to /schemas/v${CURRENT_MAJOR}/$SCHEMA_PATH"
               else
@@ -113,12 +114,11 @@ jobs:
             fi
             
             # Check if schema exists in the versioned release
-            # vN -> latest N.x.x release in dist/schemas/
+            # vN -> the release selected by the published major alias. This
+            # deliberately excludes newer beta/RC directories.
             MAJOR_NUM=$(echo "$VERSION" | sed 's/v//')
             
-            # Find latest release for this major version
-            LATEST_RELEASE_PATH=$(ls -d dist/schemas/${MAJOR_NUM}.* 2>/dev/null | sort -V | tail -1)
-            LATEST_RELEASE=$(basename "$LATEST_RELEASE_PATH" 2>/dev/null || echo "")
+            LATEST_RELEASE=$(node -e 'const index = require("./dist/schemas/index.json"); process.stdout.write(index.aliases?.[process.argv[1]] || index.latest_by_major?.[process.argv[1].slice(1)] || "")' "$VERSION")
             if [ -n "$LATEST_RELEASE" ]; then
               RELEASE_PATH="dist/schemas/$LATEST_RELEASE/$SCHEMA_PATH"
               # Determine next release name
