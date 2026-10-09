@@ -11,7 +11,9 @@
     "audience_saturation",
     "inventory_shortfall_forecast",
     "pacing_risk",
-    "budget_constrained"
+    "budget_constrained",
+    "flight_extension_opportunity",
+    "scale_budget_opportunity"
   ],
   "enumDescriptions": {
     "creative_fatigue": "Package–creative assignment only. The seller currently attributes material audience saturation or objective-relevant performance degradation to repeated delivery of this creative in the enclosing package and optional publisher/placement scope, such that the buyer should consider changing it. Ordinary underperformance without an asserted repeated-exposure relationship is not creative fatigue.",
@@ -20,6 +22,8 @@
     "audience_saturation": "Package only. The seller currently judges that the package's reachable audience is materially saturated independent of any single creative, such that targeting, frequency, or reach strategy may need adjustment.",
     "inventory_shortfall_forecast": "Package only. The seller's current forecast is materially below the package's requested delivery goal, although the package remains accepted and may still deliver partially. Forecast method, horizon, requested value, and projected value belong in ext.",
     "pacing_risk": "Package only. The seller currently projects material over- or under-delivery by the end of the package flight absent intervention. Current factual delivery remains in snapshot/reporting; this type is the seller's forward-looking interpretation.",
-    "budget_constrained": "Media-buy or package. The seller currently judges that budget or a spend cap is materially limiting otherwise eligible delivery. Normal exhaustion at a completed flight is lifecycle/delivery state rather than this indicator."
+    "budget_constrained": "Media-buy or package. The seller currently judges that budget or a spend cap is materially limiting otherwise eligible delivery. Normal exhaustion at a completed flight is lifecycle/delivery state rather than this indicator. May co-occur with scale_budget_opportunity when a cap-limited buy is also outperforming.",
+    "flight_extension_opportunity": "Media-buy or package. The seller currently judges that the buy or package (packages carry their own flights) is outperforming its objective or plan (performance against goal, not delivery volume alone) such that extending the flight would likely capture further value. At package level the extension applies to that package flight. This is a seller-asserted opportunity, not authorization: the buyer acts, if at all, through update_media_buy and normal governance. Rationale and any suggested end date belong in ext. Distinct from pacing_risk, which covers projected over- or under-delivery of volume, and from lifecycle state such as an approaching end date. May be emitted alone or together with scale_budget_opportunity, and at either level.",
+    "scale_budget_opportunity": "Media-buy or package. The seller currently judges that the buy or package is outperforming its objective or plan (performance against goal, not delivery volume alone) and that additional budget would likely compound that performance. This is a seller-asserted opportunity, not authorization: the buyer acts, if at all, through update_media_buy and normal governance. Rationale and any suggested budget change belong in ext. Distinct from budget_constrained, where a budget or spend cap limits otherwise eligible delivery; the two are not mutually exclusive and a cap-limited, outperforming buy MAY carry both. Distinct from pacing_risk, which covers projected over- or under-delivery of volume."
   }
 }

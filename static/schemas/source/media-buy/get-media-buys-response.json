@@ -706,7 +706,9 @@
                           "audience_saturation",
                           "inventory_shortfall_forecast",
                           "pacing_risk",
-                          "budget_constrained"
+                          "budget_constrained",
+                          "flight_extension_opportunity",
+                          "scale_budget_opportunity"
                         ]
                       }
                     },
@@ -719,7 +721,9 @@
                               "audience_saturation",
                               "inventory_shortfall_forecast",
                               "pacing_risk",
-                              "budget_constrained"
+                              "budget_constrained",
+                              "flight_extension_opportunity",
+                              "scale_budget_opportunity"
                             ]
                           }
                         }
@@ -832,7 +836,9 @@
               "indicator_types_evaluated": {
                 "items": {
                   "enum": [
-                    "budget_constrained"
+                    "budget_constrained",
+                    "flight_extension_opportunity",
+                    "scale_budget_opportunity"
                   ]
                 }
               },
@@ -841,7 +847,9 @@
                   "properties": {
                     "type": {
                       "enum": [
-                        "budget_constrained"
+                        "budget_constrained",
+                        "flight_extension_opportunity",
+                        "scale_budget_opportunity"
                       ]
                     }
                   }
