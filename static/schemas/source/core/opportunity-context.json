@@ -60,7 +60,7 @@
       "type": "object",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.open_opportunities). Buyer consent to proposals the seller creates after the creating task completes. Absent at creation means no consent; absent later means unchanged, except that a purchase keeping the opportunity open resets it. accepted false withdraws consent; closure ends it. Never inferred from an absent response_deadline.",
+      "description": "Experimental (media_buy.open_opportunities) consent to later proposals; see the open-opportunities rules.",
       "properties": {
         "accepted": {
           "type": "boolean",
@@ -69,18 +69,18 @@
         "until": {
           "type": "string",
           "format": "date-time",
-          "description": "End of the later-proposal window. response_deadline still governs only the creating task's response."
+          "description": "Later-proposal window end."
         },
         "max_count": {
           "type": "integer",
           "minimum": 1,
           "maximum": 50,
           "default": 5,
-          "description": "Maximum later proposals under this consent. Defaults to 5 when omitted. Sellers MUST NOT exceed it and MAY apply a lower cap."
+          "description": "Defaults to 5."
         },
         "min_interval": {
           "allOf": [{ "$ref": "/schemas/core/duration.json" }, { "not": { "properties": { "unit": { "const": "campaign" } }, "required": ["unit"] } }],
-          "description": "Minimum time between later proposals. Defaults to 1 day when omitted. Sellers MUST NOT create one sooner and MAY apply a longer interval."
+          "description": "Defaults to 1 day."
         }
       },
       "required": ["accepted"],

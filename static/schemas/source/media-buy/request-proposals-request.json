@@ -56,7 +56,7 @@
           }
         }
       ],
-      "description": "Optional planning-cycle context that the seller associates with every proposal created by this request. For sellers advertising media_buy.open_opportunities (experimental), a held opportunity_id updates that opportunity's brief, criteria, and supplied consent, earlier proposals keep their lifecycle, and a closed opportunity_id is rejected with INVALID_REQUEST."
+      "description": "Optional planning-cycle context that the seller associates with every proposal created by this request. Experimental: a held opportunity_id updates it; a closed one is rejected."
     }
   },
   "required": ["idempotency_key", "brief"],

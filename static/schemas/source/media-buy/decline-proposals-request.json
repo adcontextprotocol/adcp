@@ -36,7 +36,7 @@
     },
     "declines": {
       "type": "array",
-      "description": "Proposal declines to apply. Empty is valid only with opportunity, for sellers advertising media_buy.open_opportunities (experimental), to update the opportunity without declining a proposal. proposal_id is the semantic uniqueness key and values MUST be unique even when two entries otherwise differ; implementations enforce this rule because JSON Schema uniqueItems only compares whole objects. Results preserve request order.",
+      "description": "Proposal declines to apply. Empty only with opportunity, for media_buy.open_opportunities sellers. proposal_id is the semantic uniqueness key and values MUST be unique even when two entries otherwise differ; implementations enforce this rule because JSON Schema uniqueItems only compares whole objects. Results preserve request order.",
       "items": { "$ref": "/schemas/media-buy/proposal-decline.json" },
       "minItems": 0,
       "maxItems": 25,
@@ -44,7 +44,7 @@
     },
     "opportunity": {
       "$ref": "/schemas/core/opportunity-context.json",
-      "description": "Optional planning-cycle update. Every named proposal MUST belong to this opportunity_id. Sellers apply the update only when every result is declined; if any result is unable, the opportunity remains unchanged. Use status closed when these declines end the broader opportunity. Sellers advertising media_buy.open_opportunities reject status open for an opportunity the buyer already closed with INVALID_REQUEST."
+      "description": "Optional planning-cycle update. Every named proposal MUST belong to this opportunity_id. Sellers apply the update only when every result is declined; if any result is unable, the opportunity remains unchanged. Use status closed when these declines end the broader opportunity. media_buy.open_opportunities sellers reject reopening a closed opportunity."
     }
   },
   "required": ["idempotency_key", "declines"],
