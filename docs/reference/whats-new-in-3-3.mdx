@@ -1,72 +1,105 @@
 ---
 title: What's new in AdCP 3.3
 sidebarTitle: What's new in 3.3
-description: "Adopter overview of the AdCP 3.3 beta: discovery that never provisions accounts, one agent-resolution rule for every signing surface, catalog ingestion declarations, structured DOOH location, and a registered ext.adcp namespace."
+description: "Adopter overview of the AdCP 3.3 beta: scheduled, human-gated, and offline media in the same buy as programmatic, honest delivery data for linear TV, print, and DOOH, and the places 3.2 implementations could still disagree, now closed."
 "og:title": "AdCP — What's New in 3.3"
 ---
 
 # What's new in AdCP 3.3
 
 <Warning>
-**3.3 is in its beta cycle.** Beta.0 publishes the protocol artifacts before SDK support. Beta.1 incorporates integration feedback, then becomes SDK-backed after a second SDK refresh against the exact beta.1 bundle. Use the beta in development and staging, and read the [3.3 beta program](/docs/reference/3-3-beta) before testing. This page lists only what has merged; the narrative is refreshed at each beta cut.
+**3.3 is in its beta cycle.** Beta.0 publishes the protocol artifacts before SDK support. Beta.1 incorporates integration feedback, then becomes SDK-backed after a second SDK refresh against the exact beta.1 bundle. Use the beta in development and staging, and read the [3.3 beta program](/docs/reference/3-3-beta) before testing. This page lists only what has merged; it is refreshed at each beta cut.
 </Warning>
 
-3.2 added the compact lifecycle and portable evidence. 3.3 is a minor release that so far tightens the places where two conformant 3.2 implementations could still disagree: when an account comes into existence, which agent a signature belongs to, and what a seller's catalog intake accepts.
+AdCP 3.3 lets scheduled, human-gated, and offline media run through the same buy as programmatic. A booking can say when it will be confirmed. A proposal's third-party definitions are pinned so they cannot drift after commitment. A proposal request can target a vendor-measured outcome, and a governance plan can budget by period. Products, audiences, and delivery reports can carry what a linear-TV, print, or DOOH seller actually knows: spot lifecycle and makegoods, break position, print proof of insertion and circulation, structured DOOH location, property-grain rollups, and audience sizes as honest ranges. Minute-level dayparts, broadcast mezzanine formats, and the NMO and VideoAmp demographic systems fill in the TV edges.
 
-No stable field, enum value, or task is removed, renamed, or deprecated, and 3.3 adds optional fields and declarations. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `adcp.implementation` (previously an open extension point), `media_buy.features.catalog_ingestion` (previously any boolean was admissible), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points; `lon`, not `lng`), and the now-reserved `ext.adcp`. Two merged changes are normative narrowings, not additions: what a lazily provisioning seller may do on discovery tasks, and which signatures verify. A third loosens a required field: delivery rows may omit `impressions`, gated on the caller's pin. All three are recorded in [Versioning and governance](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta) and lead the [migration guide](/docs/reference/migration/3-2-to-3-3).
+Around that, 3.3 tightens the places where two conformant 3.2 implementations could still disagree: discovery never provisions an account, one agent-resolution rule covers every signing surface, `required_for` is enforced over A2A with its hardening clauses required, and `reporting_webhook.operation_id` correlation fails closed. Catalog intake becomes an optional declaration, verifiers can advertise A2A `required_for` enforcement through `request_signing.operation_sources`, and `ext.adcp` becomes a reserved namespace. New single-adopter surfaces ship as experimental, so 3.4 can reshape them without breaking stable integrations.
 
-## The 3.3 feature set
+No stable field, enum value, or task is removed, renamed, or deprecated. 3.3 adds optional fields, enum values, and capability declarations. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines with a different shape; the list is in the [migration guide](/docs/reference/migration/3-2-to-3-3#what-can-fail-validation). The normative narrowings are recorded in [Versioning and governance](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta) and lead the [migration guide](/docs/reference/migration/3-2-to-3-3#required-to-claim-3-3-behavior).
 
-### SDK identity and integration depth
+## Scheduled and human-gated buying
 
-Agents can optionally report `adcp.implementation.sdks[]`: package identifiers, exact resolved versions, and the server components they actually use. This distinguishes build-time types or runtime validation from SDK transport, authentication, signing, lifecycle, idempotency, and webhook handling. Missing metadata means unknown SDK use; an empty SDK list explicitly reports none. An SDK entry with `components: []` reports package use without claiming agent-wide coverage. The report helps buyers target checks and investigate known SDK behavior. It is self-reported, does not establish approval or change conformance obligations, and cannot justify certification shortcuts without independently trusted evidence covering the endpoint and integration. See [implementation metadata](/docs/protocol/get_adcp_capabilities#implementation).
+- **Expected confirmation time.** The `submitted` envelope of `create_media_buy`, `buy_products`, and `accept_proposal` can carry `expected_confirmation_at`. A seller whose confirmation waits on a booking round or a manual review window SHOULD set it, and buyers SHOULD check status at that time instead of polling tightly. It is an estimate, not a commitment. `refine_proposals` can carry it too, on a `submitted` finalize whose hold waits on a person's agreement, such as a creator or host. On `buy_products`, `accept_proposal`, and `refine_proposals`, send it only to callers negotiating 3.3. See [Expected confirmation time](/docs/media-buy/task-reference/create_media_buy#expected-confirmation-time).
+- **Definition pins.** For callers negotiating 3.3, a seller MUST pin the third-party definitions its proposal terms reference (publisher-catalog format options and placements, `adagents.json` collections, data-provider signals) in `commercial_terms.definition_pins[]`. A changed definition fails finalize with the `definition_changed` reason and fails `accept_proposal` with `REFERENCE_DEFINITION_CHANGED`, before any hold or mutation. See [Definition pins](/docs/media-buy/specification#definition-pins).
+- **Vendor-metric outcome goals.** `criteria.outcome_target.goal` accepts `kind: "vendor_metric"`, so a buyer can plan "5,000 store visits measured by a foot-traffic vendor", optionally with a cost per visit. The seller answers in each forecast point's `vendor_metric_values[]` and plans only `(vendor, metric_id)` pairs its products declare. Send it only on a negotiated 3.3 version. See [Vendor-metric goals](/docs/media-buy/task-reference/request_proposals#vendor-metric-goals).
+- **Governance budget periods (experimental).** A campaign governance plan can split its budget by time with `budget.periods[]`. `check_governance` denies a dated action that straddles a period, sits in unallocated budget, or overruns its period. Governance agents declare `governance.supports_budget_periods`. Part of the experimental `governance.campaign` cluster. See [Budget periods](/docs/governance/campaign/tasks/sync_plans#budget-periods).
+- **Change cutoff.** Installment deadlines can carry `change_cutoff`, the last moment a creative swap, pause, or stop still takes effect (traffic log close, posting-cycle lock, print issue close). See [Installment deadlines](/docs/media-buy/product-discovery/collections-and-installments#installment-deadlines).
 
-### Discovery never provisions an account
+## Delivery data offline sellers actually have
 
-Discovery and negotiation tasks, including `get_products`, `list_products`, `get_signals`, `request_proposals`, `refine_proposals`, and `decline_proposals`, MUST NOT create or activate an account, or accept a seller's default terms on a buyer's behalf. A lazily provisioning seller provisions only on a task that commits spend or creates account-owned resources, such as `create_media_buy`, `buy_products`, `accept_proposal`, `sync_accounts`, `sync_creatives`, `sync_catalogs`, `sync_event_sources`, or `activate_signal`. A seller that provisions lazily instead of exposing `sync_accounts` MAY answer a discovery task for a complete natural key it would provision, as if that account existed, without creating it; a seller that exposes `sync_accounts` returns `ACCOUNT_NOT_FOUND`. (An unresolved `account` returning `ACCOUNT_NOT_FOUND`, even where `account` is optional, was already required and was clarified in 3.2.2.)
+- **Spot lifecycle, makegoods, and break position (experimental).** `by_spot[]` rows can carry `spot_status` (`scheduled`, `aired`, `preempted`, `makegood`), `scheduled_at`, `replaces_spot_id`, and `break_position`. Sellers declare what they report, so a missing row is not read as non-delivery, and they never send `scheduled` or `preempted` rows, or the new capability fields, to callers pinned below 3.3. Feature id `media_buy.spot_lifecycle`. See [Spot lifecycle](/docs/media-buy/media-buys/optimization-reporting#spot-lifecycle-makegoods-and-break-position).
+- **Print proof of insertion and circulation (experimental).** `print_metrics` on `by_installment` rows reports the page and position delivered, circulation and its basis (`audited` or `seller_modeled`), and a tearsheet `evidence` record. See [Delivery evidence and circulation](/docs/creative/channels/print#delivery-evidence-and-circulation).
+- **Property-grain rollups.** `media_buy.features.supports_property_breakdown` and `supports_installment_property_breakdown` commit a seller to return `by_property` and `by_installment_property` on every product that declares the per-product flag. Two capability-gated scenarios grade it. See [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
+- **Structured DOOH location.** Concrete screens can carry `dooh_placement_attributes.location` (`lat`, `lon`, structured `address`), and network products can carry `dooh_inventory_summary.venue_counts[]`. Both are disclosure metadata; `location` never changes placement identity. See [DOOH](/docs/creative/channels/dooh#structured-location-for-planning-and-mapping).
+- **Rows without impressions.** Delivery rows may omit `impressions` when the seller did not measure them, for example on linear TV or audio rows that report plays or ratings. Absence means not measured, never zero; receivers do not derive impression-based rates, and sellers never omit it toward callers pinned below 3.3. See [Rows without impressions](/docs/media-buy/media-buys/optimization-reporting#rows-without-impressions).
+- **Audience sizes as ranges.** `sync_audiences` results can carry `audience_size` and `targetable_size` as bounded ranges with a `precision`, plus `match_rate_basis`. `matched_count` and `effective_match_rate` may now be absent, and buyers MUST NOT read absence as zero. See [Audience size](/docs/media-buy/task-reference/sync_audiences#audience-size).
 
-The advisory storyboard `media_buy_seller/unprovisioned_account_reference` grades this; its checks become required at runner capability `14.1.0`. See [Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning).
+## Linear TV edges
 
-### One agent-resolution rule for every signing surface
+- **Minute-level dayparts (experimental).** A daypart entry can use `start_time` and `end_time` (`HH:MM`) instead of whole hours, and products declare the finest resolution they honor in `time_granularity`. A seller rejects a finer time with `UNSUPPORTED_FEATURE` and never rounds it. Feature id `media_buy.daypart_granularity`. See [Minute-resolution dayparts](/docs/media-buy/advanced-topics/targeting#minute-resolution-dayparts-experimental).
+- **Broadcast formats and currencies.** `demographic-system` gains `nmo` (Netherlands) and `videoamp`. `video_hosted` gains the `mxf` container and the `mpeg2`, `avc_intra`, and `xavc` codecs as stable values, plus an experimental `loudness` object (feature id `creative.broadcast_loudness`). See [Broadcast creative](/docs/creative/channels/broadcast#loudness-experimental).
+- **Broadcast TV guide.** The [broadcast guide](/docs/creative/channels/broadcast) now states the reconciliation contract between as-run logs and audience data and walks a CPM-on-demo buy end to end.
 
-Request signing, webhook signing, governance JWS `iss`, designated-task response signing, and rights attestations now share one algorithm for deciding which brand.json lists an agent and which keys it may sign with. Agent URLs match by canonical URL everywhere, a publisher's `adagents.json` `signing_keys` pin narrows the accepted keys for sell-side signatures about that publisher's inventory, and webhook discovery starts from `identity.brand_json_url`. TMP keeps its own publisher-key model. See [Agent resolution](/docs/building/by-layer/L1/security#agent-resolution).
+## Tightened rules
 
-This is a verification change: some signatures that verified under 3.2 can fail, mostly webhook and request signing. The list is in the [migration guide](/docs/reference/migration/3-2-to-3-3#signature-verification-tightens).
+These narrow what a conformant implementation may do. Each is detailed in the [migration guide](/docs/reference/migration/3-2-to-3-3#required-to-claim-3-3-behavior) and recorded in [Versioning and governance](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta).
 
-### Catalog ingestion declarations
+- **Discovery never provisions an account.** Discovery and negotiation tasks MUST NOT create or activate an account or accept default terms. See [Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning).
+- **One agent-resolution rule.** Request signing, webhook signing, governance JWS `iss`, designated-task response signing, and rights attestations share one algorithm for which brand.json lists an agent and which keys it may sign with. Some signatures that verified under 3.2 now fail. See [Agent resolution](/docs/building/by-layer/L1/security#agent-resolution).
+- **`required_for` over A2A, hardened.** The A2A operation-resolution errata shipped in 3.2.3. Its hardening clauses were SHOULD in 3.2.x and are MUST from 3.3. Verifiers declare support with the new optional `request_signing.operation_sources` capability; a counterparty MUST NOT infer A2A enforcement from an absent field, and buyers sign every operation in `required_for` regardless of the marker. See [Operation resolution over A2A](/docs/building/by-layer/L1/security#operation-resolution-over-a2a).
+- **`reporting_webhook.operation_id` fails closed.** The seller echoes it into every `media_buy_delivery` webhook and sends none to a registration that omits it. See [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks).
+- **Definition pins** are required for callers negotiating 3.3 (above).
+- **Advertise only the measurement terms you accept.** See [Advertise only what you accept](/docs/media-buy/task-reference/get_products#advertise-only-what-you-accept).
+- **Audience identifiers keep their wire form.** `uids[].value` for `uid2` and `euid` is the raw identifier, never the encrypted token, and is never case-folded or re-encoded.
+- **brand.json fetch limits.** The cap rises to 2 MiB, with new MUSTs for streaming enforcement, nesting depth, and bounded fetches.
+- **Delivery rows may omit `impressions`** toward 3.3 callers only, and receivers MUST NOT read absence as zero or derive impression-denominated values. The schema loosens; the rules around it narrow.
+- **Receivers ignore `aggregated_totals` in delivery webhooks** and do not reject a payload for carrying it.
 
-Sellers can declare what their catalog intake accepts in an optional `media_buy.features.catalog_ingestion` object: accepted catalog types, ingestion modes (`feed_url`, `inline_items`), feed formats, content identifier types, an inline batch limit, and whether item status is reported `per_item` or at the `feed_level`. A seller that declares it must also declare `catalog_management: true`, and must reject an unlisted catalog type, ingestion mode, or feed format, and an explicitly supplied `content_id_type` outside a declared `supported_content_id_types` list, with `UNSUPPORTED_FEATURE` before changing state, including on dry runs. Inline items beyond `max_inline_items_per_request` fail with `INVALID_REQUEST`. A buyer that finds no declaration should treat ingestion limits as unknown, not unlimited. See [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs#ingestion-compatibility) and [capabilities](/docs/protocol/get_adcp_capabilities#catalog_ingestion).
+Two more guarantees loosen: a 3.2 verifier can reject a brand.json between 256 KiB and 2 MiB that a 3.3 verifier accepts, and a `ready` audience no longer promises match counts. Many new fields sit inside objects 3.2 closes, so send them only to peers that negotiated 3.3; see [Send only to 3.3 peers](/docs/reference/migration/3-2-to-3-3#send-only-to-3-3-peers).
 
-### Structured DOOH location
+## Optional declarations
 
-Concrete screens can carry `dooh_placement_attributes.location` (`lat`, `lon`, and a structured `address`) on placements. Network products can carry `dooh_inventory_summary.venue_counts[]` to describe aggregate geography by `geo_level` and `geo_code`. Both are optional disclosure metadata, and `location` never changes placement identity. See [DOOH](/docs/creative/channels/dooh#structured-location-for-planning-and-mapping).
+- **Catalog ingestion.** `media_buy.features.catalog_ingestion` declares accepted catalog types, ingestion modes, feed formats, content identifier types, an inline batch limit, and item-status granularity. A declaring seller rejects out-of-declaration requests with `UNSUPPORTED_FEATURE` before changing state. See [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs#ingestion-compatibility).
+- **SDK implementation metadata.** Agents can report `adcp.implementation.sdks[]`: package identifiers, exact resolved versions, and the server components they actually use. Missing metadata means unknown; `sdks: []` reports none. It is self-reported, does not establish approval or change conformance obligations, and cannot justify certification shortcuts without independently trusted evidence. See [implementation metadata](/docs/protocol/get_adcp_capabilities#implementation).
+- **Targeting error details.** `UNSUPPORTED_FEATURE` for an unsupported or removed targeting dimension SHOULD carry the new `unsupported-targeting-dimension` details. No new error code. See [Rejected targeting dimensions](/docs/media-buy/advanced-topics/targeting#rejected-targeting-dimensions).
+- **The `ext.adcp` namespace.** `ext.adcp` is a registered, AdCP-owned extension namespace. Its first member is an optional `opportunity` binding for cooperating 3.2 `get_products` integrations. See [AdCP opportunity extension](/docs/building/by-layer/L2/context-sessions#adcp-opportunity-extension).
 
-### The `ext.adcp` namespace
+## Experimental in 3.3
 
-`ext.adcp` is now a registered, AdCP-owned extension namespace. Its first member is an optional `opportunity` binding for cooperating 3.2 `get_products` integrations, declared by listing `adcp` in `extensions_supported`. It reuses the published 3.2 `OpportunityContext` shape and is not the core `opportunity` field. The namespace is reserved for the AdCP working group, so vendors keep their own namespaces. See [AdCP opportunity extension](/docs/building/by-layer/L2/context-sessions#adcp-opportunity-extension).
+New feature ids are `media_buy.spot_lifecycle`, `media_buy.daypart_granularity`, and `creative.broadcast_loudness`. `print_metrics` carries `x-status: experimental` without a feature id, like `ooh_metrics`, and reuses the existing experimental `placement-evidence` record. `identity.trust_json` publishes the `trust.json` v1 schemas for review only: nothing consumes them in 3.3, and there is nothing to declare ([trust.json](/docs/reference/trust-json)). Governance budget periods extend the existing `governance.campaign` cluster. Reliable Reporting carries a new breaking-change notice: older superseded snapshots [may be compacted](/docs/reference/migration/3-2-to-3-3#superseded-reporting-snapshots-may-be-compacted) no earlier than the first minor after November 20, 2026, and it adds the `REVISION_UNREADABLE` issue code. The per-surface status table is in the [release notes](/docs/reference/release-notes#experimental-surfaces-in-3-3).
 
-### Clarifications and conformance
+## Clarifications and conformance
 
-- `authorized_agents[].url` in `adagents.json` is the agent's full protocol endpoint URL, including its path, and one entry is needed for each agent URL. See [Agent URL matching](/docs/governance/property/adagents#agent-url-matching).
-- Compliance storyboards gate advanced delivery reporting on advertised wholesale discovery support and proposal-finalization replay on advertised idempotency support, exercise the documented polling path in `sales-guaranteed`, and provision an explicit sandbox account in the acceptance-policy discovery scenario. These change grading results, not the wire.
-- The trust and verification docs now agree with the schemas: only `verify_brand_claim` and `verify_brand_claims` carry signed response payloads. Examples use `agents[]` instead of the deprecated `brand_agent` and `rights_agent` fields.
+- **Product channels.** Every product SHOULD declare a nonempty `channels` list; buyers request channel details before classifying a sparse response. See [Product channel declarations](/docs/media-buy/product-discovery/media-products#product-channel-declarations).
+- **Principal walkthrough.** [Set up your buyer agent with a seller](/docs/accounts/principal-registration-walkthrough) walks the experimental principal layer end to end.
+- **Broadcast TV certification.** `sales-broadcast-tv` now certifies one authorized TV transaction on a guaranteed or a non-guaranteed fixed-price path. Existing claimants should expect new checks; 1.0.x claims have a grace window.
+- **Controller gate.** Every storyboard that seeds fixtures through `comply_test_controller` now declares `requires: [controller]`. A seller without a controller gets one storyboard-level skip instead of a failure on every seeded step.
+- **New storyboards and vectors.** `media_buy_seller/unprovisioned_account_reference` (advisory until runner capability `14.1.0`), and capability-gated `media_buy_seller/definition_pin_drift`, `governance/budget_periods`, `media_buy_seller/property_delivery_reporting`, `media_buy_seller/installment_property_delivery_reporting`, `media_buy_seller/outcome_target_vendor_metric`, and `media_buy_seller/outcome_target_event_cost`. Request-signing vectors `negative/029`–`031` and `positive/013`–`015` grade three step-1 header rules, and `negative/026` now expects `request_target_uri_malformed`.
 
-The account-reference and trust-docs clarifications already shipped in 3.2.2 ([`v3.2.2`](https://github.com/adcontextprotocol/adcp/releases/tag/v3.2.2)).
+These change grading results, not the wire.
+
+## Already shipped in 3.2.2 and 3.2.3
+
+These merged on `main` during the 3.3 cycle and were also released on the 3.2 line. They appear again in the 3.3.0 changelog but are not new to 3.2.3 adopters.
+
+- **3.2.2:** the account-reference clarification and the trust-docs consistency fixes ([`v3.2.2`](https://github.com/adcontextprotocol/adcp/releases/tag/v3.2.2)).
+- **3.2.3:** the A2A operation-resolution security errata ([GHSA-2pm6-6mc8-8xcm](https://github.com/adcontextprotocol/adcp/security/advisories/GHSA-2pm6-6mc8-8xcm)) with hardening at SHOULD, the `adagents.json` agent-URL clarification, the evaluator feature-membership fix, storyboard capability gates for wholesale discovery and finalize replay, the polling-based `sales-guaranteed` path, the `validate_input` gates, and the acceptance-policy sandbox account ([`v3.2.3`](https://github.com/adcontextprotocol/adcp/releases/tag/v3.2.3)).
 
 ## What requires adopter attention
 
 | If you are… | Review before advertising 3.3 |
 |---|---|
-| A seller that provisions accounts lazily | Stop provisioning on discovery tasks; return `ACCOUNT_NOT_FOUND` for an unresolved `account` unless you answer for the account you would create. |
-| A signing or verifying implementation | Resolve agents by canonical URL from `identity.brand_json_url`, and publish every pinned key in the agent's JWKS. |
-| A seller with a catalog intake | Declare `catalog_ingestion` if buyers need your limits, and reject out-of-declaration requests before mutation. |
-| A DOOH seller | Add `location` and `venue_counts` where you can disclose them; both are optional. |
-| An SDK maintainer | Generate from the signed beta.0 tarball and publish an exact support statement. |
+| A seller that provisions accounts lazily | Stop provisioning on discovery tasks. |
+| A signing or verifying implementation | Resolve agents by canonical URL from `identity.brand_json_url`, publish every pinned key in your JWKS, apply the A2A hardening clauses, and raise the brand.json cap to 2 MiB. |
+| A seller sending delivery webhooks | Echo `reporting_webhook.operation_id`, and send nothing to a registration without one. |
+| A seller returning proposals | Pin covered third-party definitions for 3.3 callers, and advertise only measurement terms you accept on replay. |
+| A linear TV, print, or DOOH seller | Adopt the delivery fields you can populate; gate 3.3-only rows and fields on the negotiated version. |
+| An SDK maintainer | Generate from the signed beta.0 tarball and check the [SDK-facing changes](/docs/reference/migration/3-2-to-3-3#sdk-and-code-generator-maintainers). |
 | A compliance operator | Treat beta.0 as an implementation input. Do not issue a 3.3 badge from beta.0. |
 
-## Still in review
+## In review for 3.3
 
-Open 3.3 proposals are in working-group review and are not part of any beta until they merge. The current list is in the [3.3 beta program](/docs/reference/3-3-beta#in-working-group-review-for-3-3).
+Open 3.3 proposals are not part of any beta until they merge. The current list is in the [3.3 beta program](/docs/reference/3-3-beta#in-review-for-3-3).
 
 ## Start here
 
