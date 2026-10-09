@@ -1,0 +1,266 @@
+id: signals_baseline
+version: "1.1.0"
+title: "Signals baseline"
+protocol: signals
+category: signals_baseline
+summary: "Baseline domain storyboard — every signals agent must discover signals and return an activation, regardless of whether they are owned or marketplace."
+track: signals
+required_tools:
+  - get_signals
+  - activate_signal
+
+narrative: |
+  Signals domain agents expose audience and contextual signals to buyers and
+  activate them on downstream destinations (DSPs, sales agents, clean rooms).
+  Every signals agent — whether a first-party owned platform or a third-party
+  marketplace — must support the same three-call flow at the protocol level:
+
+    1. Declare the signals protocol in get_adcp_capabilities.
+    2. Respond to get_signals with a schema-valid signals array.
+    3. Respond to activate_signal with a schema-valid deployments array.
+
+  This baseline tests those three calls and nothing beyond them. Specialism
+  storyboards (signal-owned, signal-marketplace) exercise the richer flows
+  specific to each model — pricing option selection, source/provenance
+  discriminators, agent-destination vs. platform-destination activation,
+  and deactivation for compliance.
+
+  Agents declaring supported_protocols: ["signals"] MUST pass this baseline
+  even before claiming a specialism. Declaring signals without exposing
+  get_signals or activate_signal fails the baseline with missing_tool.
+
+agent:
+  interaction_model: owned_signals
+  capabilities: []
+  examples:
+    - "Any signals agent (owned or marketplace)"
+    - "Retailer CDPs"
+    - "Publisher contextual platforms"
+    - "Data provider marketplaces"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    The buyer has a campaign brief with broad targeting objectives. The test
+    kit provides a sample brand (Nova Motors) with a signal description that
+    any signals agent should be able to interpret.
+  test_kit: "test-kits/nova-motors.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent serves signals
+      before issuing discovery or activation calls.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares `signals` in supported_protocols.
+          Without this claim the buyer will not send get_signals or
+          activate_signal.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring `signals` in supported_protocols.
+
+        sample_request:
+          context:
+            correlation_id: "signals_baseline--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signals_baseline--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: discovery
+    title: "Signal discovery"
+    narrative: |
+      The buyer calls get_signals with a natural language signal_spec. Every
+      signals agent — owned or marketplace — must return a schema-valid
+      response. The buyer uses the returned signal_agent_segment_id values
+      to drive activation in the next phase.
+
+    steps:
+      - id: search_signals
+        title: "Discover signals matching a spec"
+        narrative: |
+          The buyer describes a target audience in natural language. The agent
+          returns a list of signals from its catalog that match. Each signal
+          must include the fields the buyer needs to proceed to activation.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: signals_flow
+        stateful: false
+        expected: |
+          Return a signals array with at least one entry. Each signal must
+          carry a signal_agent_segment_id that the buyer can pass to
+          activate_signal, along with pricing_options and a signal_id that
+          includes a source discriminator.
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+          signal_spec: "Adults interested in electric vehicles"
+          context:
+            correlation_id: "signals_baseline--search_signals"
+        context_outputs:
+          - name: signal_agent_segment_id
+            path: "signals[0].signal_agent_segment_id"
+          - name: pricing_option_id
+            path: "signals[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-signals-response.json schema"
+          - check: field_present
+            path: "signals[0].signal_agent_segment_id"
+            description: "First signal carries a signal_agent_segment_id"
+          - check: field_present
+            path: "signals[0].signal_id.source"
+            description: "Signal ID carries a source discriminator (agent_native or data_provider)"
+          - check: field_present
+            path: "signals[0].pricing_options"
+            description: "Signal carries pricing options the buyer can select"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signals_baseline--search_signals"
+            description: "Context correlation_id returned unchanged"
+
+  - id: activation
+    title: "Signal activation"
+    narrative: |
+      The buyer activates one of the signals returned from discovery against
+      a destination. The protocol baseline tests only that the agent accepts
+      the call and returns a schema-valid deployments array — specialisms
+      exercise owned vs. marketplace activation patterns in depth.
+
+    steps:
+      - id: activate_on_agent
+        title: "Activate on a sales agent destination"
+        narrative: |
+          Using the signal_agent_segment_id and pricing_option_id captured
+          from the previous step, the buyer activates the signal on a sales
+          agent destination. Every signals agent MUST accept `type: agent`
+          per the signals specification — the SA records the activation
+          internally and applies targeting in subsequent media-buy calls.
+        task: activate_signal
+        schema_ref: "signals/activate-signal-request.json"
+        response_schema_ref: "signals/activate-signal-response.json"
+        doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signals_flow
+        stateful: true
+        expected: |
+          Return a deployments array with at least one entry carrying a
+          `type` discriminator and, for live deployments, an
+          `activation_key`. Agents MAY return an async deployment with
+          `is_live: false` and `estimated_activation_duration_minutes`.
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+          signal_agent_segment_id: "$context.signal_agent_segment_id"
+          pricing_option_id: "$context.pricing_option_id"
+          destinations:
+            - type: "agent"
+              agent_url: "https://wonderstruck.salesagents.example"
+          idempotency_key: "$generate:uuid_v4#signals_baseline_activate_agent"
+
+          context:
+            correlation_id: "signals_baseline--activate_on_agent"
+          ext:
+            test_platform:
+              test_run: true
+        validations:
+          - check: response_schema
+            description: "Response matches activate-signal-response.json schema"
+          - check: field_present
+            path: "deployments[0].type"
+            description: "Deployment carries a type discriminator"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signals_baseline--activate_on_agent"
+            description: "Context correlation_id returned unchanged"
+
+      - id: activate_on_platform
+        title: "Activate on a platform destination"
+        narrative: |
+          The buyer re-activates the same signal against a platform
+          destination (a DSP). Signal agents MUST accept `type: platform`
+          per the signals specification — the agent pushes the segment to
+          the platform and returns a deployment record.
+        task: activate_signal
+        schema_ref: "signals/activate-signal-request.json"
+        response_schema_ref: "signals/activate-signal-response.json"
+        doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signals_flow
+        stateful: true
+        expected: |
+          Return a deployments array with at least one entry whose
+          `type: "platform"` and, for live deployments, an
+          `activation_key` with `type: "segment_id"`. Async deployments
+          MAY report `is_live: false` with
+          `estimated_activation_duration_minutes`.
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+          signal_agent_segment_id: "$context.signal_agent_segment_id"
+          pricing_option_id: "$context.pricing_option_id"
+          destinations:
+            - type: "platform"
+              platform: "the-trade-desk"
+              account: "agency-123-ttd"
+          idempotency_key: "$generate:uuid_v4#signals_baseline_activate_platform"
+
+          context:
+            correlation_id: "signals_baseline--activate_on_platform"
+          ext:
+            test_platform:
+              test_run: true
+        validations:
+          - check: response_schema
+            description: "Response matches activate-signal-response.json schema"
+          - check: field_present
+            path: "deployments[0].type"
+            description: "Deployment carries a type discriminator"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signals_baseline--activate_on_platform"
+            description: "Context correlation_id returned unchanged"
