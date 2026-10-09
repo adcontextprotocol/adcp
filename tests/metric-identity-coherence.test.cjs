@@ -51,6 +51,7 @@ const NON_SCALAR_AGGREGATE_IDENTITIES = [
   "time_based_views",
   "dooh_metrics",
   "print_metrics",
+  "publication",
 ];
 
 // Package-grain survey/model-based estimates: reportable and committable,

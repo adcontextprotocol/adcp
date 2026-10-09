@@ -143,6 +143,14 @@
       "type": "boolean",
       "description": "Whether this product supports installment breakdowns in delivery reporting (by_installment within by_package)."
     },
+    "available_installment_statuses": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "items": { "$ref": "/schemas/enums/installment-status.json" },
+      "uniqueItems": true,
+      "description": "Installment lifecycle statuses this product reports in by_installment. Meaningful only with supports_installment_breakdown: true. Absent, or an empty array, means by_installment carries delivery rows only, with no installment_status, as in AdCP 3.2. When present, a status that is not listed is not reported, so the absence of such rows proves nothing and a buyer MUST NOT read it as nothing scheduled, postponed, or cancelled. 'published', 'aired', and 'live' are delivery statuses and need not be listed. Sellers MUST NOT emit this field to callers pinned below AdCP 3.3, or to callers with no declared pin."
+    },
     "supports_collection_property_breakdown": {
       "type": "boolean",
       "description": "Whether this product supports collection × property intersection reporting (by_collection_property within by_package)."
