@@ -227,6 +227,30 @@
         "properties": {
           "media_buy": {
             "properties": {
+              "proposal_refinement": {
+                "properties": { "hold_extension": { "const": true } },
+                "required": ["hold_extension"]
+              }
+            },
+            "required": ["proposal_refinement"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.hold_extension" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
               "audience_targeting": {
                 "required": ["supported_activation_methods"]
               }
@@ -1349,6 +1373,13 @@
               "minimum": 2,
               "maximum": 10,
               "description": "Optional maximum alternatives.count the seller accepts, up to the protocol maximum of 10. Valid only when supported_dimensions includes alternatives. Requests above this ceiling fail at task level with VALIDATION_ERROR identifying refinements[i].alternatives.count; sellers MUST NOT silently clamp the request or return alternatives_unavailable for the declared ceiling violation."
+            },
+            "hold_extension": {
+              "type": "boolean",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "Whether the seller accepts action extend_hold on refine_proposals (feature id media_buy.hold_extension). Buyers MUST NOT send extend_hold unless this is true. A seller that does not declare it fails the unknown action with VALIDATION_ERROR. Counts and maximum hold durations are seller policy, expressed through hold_unavailable.",
+              "default": false
             }
           },
           "required": ["supported_dimensions"],

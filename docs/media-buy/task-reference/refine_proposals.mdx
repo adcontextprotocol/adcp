@@ -1,6 +1,6 @@
 ---
 title: refine_proposals
-description: "Revise proposals or finalize drafts into inventory holds."
+description: "Revise proposals, finalize drafts into inventory holds, or extend a committed hold."
 "og:title": "AdCP refine_proposals Task"
 testable: true
 ---
@@ -9,6 +9,7 @@ testable: true
 
 - `action: "revise"` applies structured discovery `criteria`, typed boundaries, product changes, requested alternatives, and/or the buyer's free-text `ask`, returning one or more new draft proposals.
 - `action: "finalize"` changes no commercial terms and returns a new committed proposal backed by an inventory hold until `expires_at`.
+- `action: "extend_hold"` (experimental) changes no commercial terms and returns a new committed proposal with a later `expires_at`; the hold transfers to it. See [Extend a hold](#extend-a-hold-experimental).
 
 For an end-to-end buyer and seller implementation workflow, see [Proposal negotiation](/docs/media-buy/product-discovery/proposal-negotiation).
 
@@ -78,7 +79,7 @@ The response contains one ordered `results[]` entry per requested source proposa
 |---|---|---|
 | `revised` | `proposals[]` | Every hard constraint is satisfied. Without `alternatives`, the array has one draft; with `alternatives.count`, it has exactly that many and every `terms_digest` is unique. |
 | `partial` | `proposals[]` | Honest drafts were produced, but a hard constraint, typed change, requested count, or free-text ask was not fully applied. `reason_code` and `reason` are required. |
-| `finalized` | `proposal` | One committed proposal backed by an inventory hold. |
+| `finalized` | `proposal` | One committed proposal backed by an inventory hold. Also reports a successful `extend_hold`: the committed successor of the extended source. |
 | `unable` | none | No honest draft was produced. `reason_code` and `reason` are required. |
 
 `reason_code` distinguishes commercial refusal from implementation limits:
@@ -91,8 +92,8 @@ The response contains one ordered `results[]` entry per requested source proposa
 | `uninterpreted` | Some or all of the free-text `ask` could not be interpreted. |
 | `alternatives_unavailable` | Fewer distinct drafts were produced than requested. |
 | `source_unavailable` | The source proposal was unavailable or ineligible for this caller. |
-| `hold_unavailable` | The seller declined or failed to reserve inventory for a finalize. |
-| `batch_aborted` | This entry failed only because a sibling in the all-or-none finalize batch failed. |
+| `hold_unavailable` | The seller declined or failed to reserve inventory for a finalize, or declined to extend the hold on an `extend_hold`. |
+| `batch_aborted` | This entry failed only because a sibling in the all-or-none finalize or `extend_hold` batch failed. |
 | `definition_changed` | A third-party-published definition pinned in the source proposal no longer matches its pin. Valid only on `unable`, with required `drifted_pins[]`. |
 
 Typed failures always use `constraint_unsatisfiable`, regardless of whether the refusal is capability or commercial; won't-versus-can't nuance belongs in `reason` or a `commercially_declined` response to an `ask`. When multiple shortfalls co-occur, `constraint_unsatisfiable` takes precedence over every other code, and an alternatives shortfall remains visible through `proposals.length`.
@@ -186,7 +187,7 @@ reservation. If the seller cannot complete that transition synchronously, it
 uses the task's `submitted` path and exposes the committed proposal only after
 the reservation has succeeded.
 
-A request containing `finalize` must contain only finalize entries. Sellers validate the complete batch before creating any holds; multi-proposal finalization is atomic. When any hold cannot be created, no result is `finalized`: the failing entry returns `unable` with `reason_code: "hold_unavailable"`, and otherwise-eligible siblings return `unable` with `reason_code: "batch_aborted"`. Exact retries use the same idempotency key. A new key does not extend or recreate an existing hold: while a committed successor's hold is unexpired, finalizing the same draft again MUST fail at task level with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) rather than minting a second hold; after expiry a new finalize MAY create a new one.
+A request containing `finalize` must contain only finalize entries. Sellers validate the complete batch before creating any holds; multi-proposal finalization is atomic. When any hold cannot be created, no result is `finalized`: the failing entry returns `unable` with `reason_code: "hold_unavailable"`, and otherwise-eligible siblings return `unable` with `reason_code: "batch_aborted"`. Exact retries use the same idempotency key. A new key does not extend or recreate an existing hold: while a committed successor's hold is unexpired, finalizing the same draft again MUST fail at task level with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) rather than minting a second hold; after expiry a new finalize MAY create a new one. To lengthen an unexpired hold, use [`extend_hold`](#extend-a-hold-experimental).
 
 **Definition pins are verified before the hold.** Finalization re-resolves each entry in the source proposal's `commercial_terms.definition_pins[]` (see [Definition pins](/docs/media-buy/specification#definition-pins)) and takes no hold if any published definition no longer matches. The entry returns `unable` with `reason_code: "definition_changed"` and a required `drifted_pins[]`; each item carries the `pin` exactly as the draft carried it and the `current_content_digest` the definition resolves to now, omitted only when the entry was withdrawn from a successfully fetched, validated document. The seller verifies every entry's pins before creating any hold. A pin failure is an entry failure: that entry's `definition_changed` takes precedence over `batch_aborted`, and otherwise-eligible siblings in the finalize batch return `batch_aborted`. A source document that cannot be fetched or parsed is not drift; the seller returns [`SERVICE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-service-unavailable) at task level without taking any hold. The buyer revises the proposal, which re-resolves the definitions and issues fresh pins, reviews the changed definition, and finalizes again. Only `commercial_terms` is frozen at finalize: `forecast` may differ between a draft and its committed successor, and a rename or other change outside the pin's projection is not drift.
 
@@ -195,11 +196,41 @@ Holds are a seller commitment against real inventory, so hold policy is the sell
 This contract does not define a pDOOH booking horizon, a frame/loop overlap
 model, or a locking or scheduling algorithm for separate concurrent finalize
 requests. Those policies cannot be inferred from `expires_at`. Whatever policy
-a seller implements, every unexpired committed proposal retains the existing
-acceptance guarantee; sellers cannot issue a committed hold and later reject it
+a seller implements, every unexpired committed proposal that has not been superseded by
+[`extend_hold`](#extend-a-hold-experimental) retains the existing acceptance
+guarantee; sellers cannot issue a committed hold and later reject it
 merely because the same inventory was allocated elsewhere.
 
 Every revised proposal inherits the source proposal's opportunity association. Callers do not repeat opportunity context during refinement.
+
+## Extend a hold (experimental)
+
+Buyers often need more time for legal review or client sign-off than the seller's first `expires_at` allows. `action: "extend_hold"` lengthens a hold without lapsing it and re-finalizing. It is experimental under feature id `media_buy.hold_extension`: a seller that supports it lists that id in `experimental_features` and declares `media_buy.proposal_refinement.hold_extension: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#proposal_refinement). Buyers MUST NOT send `extend_hold` unless the seller declares it; a seller that does not declare it fails the unknown `action` value with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error). The shared request schema lists `extend_hold`, so this is enforced by the seller at runtime, not by schema validation.
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441021",
+  "refinements": [
+    {
+      "proposal_id": "prop_committed_001",
+      "action": "extend_hold"
+    }
+  ]
+}
+```
+
+`extend_hold` carries only `proposal_id` and `action`, like `finalize`, and forbids every revise field. Because proposals are immutable, extension never mutates `expires_at` in place:
+
+- **Source.** The source MUST be a committed, unexpired proposal that has not already been extended. A draft source fails at task level with [`PROPOSAL_NOT_COMMITTED`](/docs/building/verification/compliance-catalog#error-code-proposal-not-committed); an accepted or already-extended source fails with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state); an expired source fails with [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired), and the buyer finalizes the draft again. An unknown or invisible source returns `unable` with `reason_code: "source_unavailable"`, and otherwise-eligible siblings return `batch_aborted`.
+- **Success.** The result is `outcome: "finalized"` with a new committed proposal whose `parent_proposal_id` is the source, whose `commercial_terms` and `terms_digest` equal the source's, and whose `expires_at` is later than the source's. The seller MUST persist the successor and transfer the hold to it as one state transition, as for finalize. A buyer tells an extension from a finalize by the request it sent (a batch is all one or the other) and by the source's `proposal_status`; it SHOULD verify the successor's `terms_digest` equals the source's before moving its own approval records to the new `proposal_id`.
+- **The source is superseded.** The source snapshot is immutable and keeps `proposal_status: committed`, but from that transition it is superseded by its successor and can no longer be accepted: [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) against it fails with `INVALID_STATE`, and a second `extend_hold` against it also fails with `INVALID_STATE`. To extend again, target the successor. If an `accept_proposal` and an `extend_hold` race on the same source, the seller serializes them: the first to commit wins and the other receives the error above. An accepted source consumes its hold, so a racing extension cannot succeed after it.
+- **Failure.** The entry returns `unable` with `reason_code: "hold_unavailable"` and a `reason`, and otherwise-eligible siblings return `batch_aborted`. The source and its hold are unchanged and remain acceptable until their original `expires_at`.
+- **Batches.** A request containing `extend_hold` contains only `extend_hold` entries and is atomic: every hold is extended or none is, the same pattern as finalize.
+- **Async.** A seller whose extension depends on a person's confirmation MAY use the task's `submitted` path; the source stays acceptable until the extension completes.
+- **Retries.** An exact retry with the same idempotency key replays the original response. A new key after a successful extension targets a source that is no longer acceptable, so it fails with `INVALID_STATE`; extending a hold always goes through `extend_hold`, never through a new finalize key.
+- **Seller policy.** Sellers MAY decline any extension and MAY cap extensions per root lineage, so repeated extension cannot turn a hold into a free option. How far `expires_at` moves is the seller's choice, as for finalize. The number of extensions and the maximum total hold duration are seller policy, expressed only through `hold_unavailable`, until a `hold_policy` declaration is specified ([#7661](https://github.com/adcontextprotocol/adcp/issues/7661)).
+
+Once `hold_semantics: "terms_only"` is specified ([#7954](https://github.com/adcontextprotocol/adcp/pull/7954), still open; this paragraph is non-normative until it lands), a seller holding no inventory reserves nothing, so `extend_hold` extends the acceptance window rather than a hold. The successor, supersession, replay, and failure rules are otherwise the same, and a `terms_only` seller declines an extension with `hold_unavailable` (the one case where that code is valid under `terms_only`).
 
 ## Negotiation security
 
