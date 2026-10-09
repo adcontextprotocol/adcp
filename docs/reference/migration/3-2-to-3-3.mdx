@@ -30,7 +30,8 @@ For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/w
 | 7 | Verifiers that fetch brand.json | Raise the brand.json body cap from 256 KiB to 2 MiB; leave JWKS and capabilities caps unchanged. |
 | 8 | Sellers with a catalog intake | Optionally declare `media_buy.features.catalog_ingestion`. |
 | 9 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
-| 10 | Buyers and sellers of hosted video or audio | Optionally move playback trackers from `event: custom` to the new `pixel_tracker` playback events. |
+| 10 | Reliable Reporting buyers | Stop relying on exact reads of older superseded snapshots; persist any snapshot rows you need. |
+| 11 | Buyers and sellers of hosted video or audio | Optionally move playback trackers from `event: custom` to the new `pixel_tracker` playback events. |
 
 ## Required to claim 3.3 behavior
 
@@ -71,6 +72,44 @@ The brand.json body cap rises from 256 KiB to 2 MiB (2,097,152 bytes) on every f
 **Verifiers.** Raise the brand.json cap to 2 MiB, and keep the mitigations that make the larger cap safe: count bytes while the body streams and abort the connection once the cap is exceeded (never buffer then check, and never read past 2 MiB); apply the cap to decoded bytes when the response is content-encoded; keep the 5 s connect and 10 s total deadlines (the total covers reading the body); enforce a nesting depth of 32 while strict-parsing; run cheap checks before the fetch and bound concurrent trust-root fetches; and keep the success-cache lifetime bounded by the JWKS revocation polling interval with negative caching at or under 60 s. Revalidating with `ETag` and single-flighting concurrent fetches keep the larger body from being refetched on every request. SDKs that hard-clamp brand.json to 256 KiB need a release before their verifiers accept the larger size; check your SDK's changelog.
 
 **Operators.** A brand.json SHOULD stay under 2 MiB. While counterparties may still be on 3.2 verifiers, an operator whose brand.json carries `agents[]` or signing keys and needs to verify with them SHOULD keep that file under 256 KiB, for example by pointing `identity.brand_json_url` at a small Brand Agent variant that carries only the agent entries, until those peers upgrade.
+
+### Superseded reporting snapshots may be compacted
+
+<Warning>
+**Experimental breaking-change notice published October 9, 2026.** Under the
+six-week [experimental-surface notice policy](/docs/reference/experimental-status),
+compaction takes effect only in the next eligible minor after November 20, 2026.
+Until then, sellers keep every superseded snapshot's content readable for its full
+retention window. If 3.3 is published before that date, compaction is not permitted
+under 3.3 and takes effect in the following minor.
+</Warning>
+
+This change applies to Reliable Reporting (`media_buy.reporting_delivery`, experimental).
+`status_retention_days` keeps metadata for every revision, but content only for:
+
+- the current revision of each logical slice, including every official revision;
+- the snapshot it immediately supersedes;
+- any superseded snapshot for `automated_recovery_window_seconds` or one hour,
+  whichever is longer, after it was superseded; and
+- for the requesting caller, revisions named by that caller's own receipts or by its
+  current `received`, `unreadable`, or `content_mismatch` status statement.
+
+The seller may compact other superseded snapshots to metadata only.
+
+Before: with `status_retention_days: 30`, an exact read of a pacing snapshot
+superseded three restatements ago returned its full `reporting_rows` for 30 days.
+
+After: once that snapshot has been compacted, the same read returns the
+nondisclosing `REFERENCE_NOT_FOUND` with `field: "reporting_revision_id"`, exactly
+as for an unknown ID. Its metadata still appears in `get_reporting_status`.
+
+**Buyers.** If you need a snapshot's rows after it is superseded, persist them when
+you read them, or record a receipt or status statement that names the revision.
+**Sellers.** Retaining the full chain stays conformant. A revision you still owe
+whose content you cannot serve is a `REVISION_UNREADABLE` issue, never a not-found.
+Each window starts at the revision's `created_at`, or at its successor's once
+superseded; an official revision's window restarts at its newest adjustment. See
+[revision retention](/docs/media-buy/task-reference/get_reporting_status#reliability-model).
 
 ## Clarifications
 
