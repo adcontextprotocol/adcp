@@ -3192,17 +3192,20 @@ export class HTTPServer {
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
       checks.chat = isWebChatReady();
-      try {
-        const reporting = getTrainingGcsReporting();
-        if (reporting) checks.reporting = await reporting.probe();
-      } catch { checks.reporting = false; }
+      if (req.path === '/ready') {
+        try {
+          const reporting = getTrainingGcsReporting();
+          if (reporting) checks.reporting = await reporting.probe();
+        } catch { checks.reporting = false; }
+      }
 
       // A listening socket and a reachable database do not mean a new web
       // instance can answer chat. Hold deployment traffic until deferred
       // indexing and tool registration finish. /health remains a DB/liveness
       // probe for workers and operational diagnostics.
       const chatRequired = !!(process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY);
-      const ready = checks.database && checks.reporting !== false && (req.path !== '/ready' || !chatRequired || checks.chat);
+      const ready = checks.database && (req.path !== '/ready'
+        || (checks.reporting !== false && (!chatRequired || checks.chat)));
       const status = ready ? "ok" : "unavailable";
       const body: Record<string, unknown> = {
         status,
