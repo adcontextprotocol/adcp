@@ -9,6 +9,7 @@
       "type": "object",
       "properties": {
         "vendor": { "$ref": "/schemas/core/brand-key.json" },
+        "counting_mechanisms": { "type": "array", "items": { "$ref": "/schemas/enums/collection-mechanism.json" }, "minItems": 1, "uniqueItems": true },
         "max_variance_percent": { "type": "number", "minimum": 0, "exclusiveMaximum": 100 },
         "measurement_window": { "type": "string", "minLength": 1 },
         "finalization_deadline_hours": { "type": "integer", "minimum": 0 }
