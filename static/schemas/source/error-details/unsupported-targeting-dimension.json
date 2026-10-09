@@ -3,6 +3,7 @@
   "$id": "/schemas/error-details/unsupported-targeting-dimension.json",
   "title": "Unsupported Targeting Dimension Details",
   "description": "Recommended details shape for UNSUPPORTED_FEATURE errors rejecting a targeting dimension that the product or seller does not support, or that was previously accepted and has been removed. Sellers MUST NOT silently drop the dimension. `error.field` SHOULD point at the targeting path (for example `packages[0].targeting_overlay.geo_countries`). Sellers echo only what the caller could already read from capabilities or Product `overlay_support`.",
+  "x-added-in": "3.3.0",
   "type": "object",
   "properties": {
     "unsupported_dimension": {
