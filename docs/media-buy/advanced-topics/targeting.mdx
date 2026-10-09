@@ -26,7 +26,7 @@ Use a typed `targeting_overlay` whenever a requirement has a structured represen
 3.2 includes portable age audience targeting, but no core gender predicate.
 Cooperating buyers and sellers can agree to use the optional official
 `ext.adcp.demographics.gender` binding described in the
-[development targeting guide](https://github.com/adcontextprotocol/adcp/blob/main/docs/media-buy/advanced-topics/targeting.mdx#gender-audience-targeting-optional-adcp-extension).
+[3.2 gender agreement below](#gender-audience-targeting-optional-adcp-extension).
 Its vocabulary includes `female`, `male`, and `non_binary`, with unknown
 membership kept separate. Consult that agreement for binding negotiation,
 product capability, exact execution, governance, and requested/applied
@@ -624,6 +624,215 @@ Use for **legal compliance** requirements:
 - `world_id` - Applicable verified World ID age-threshold proof or credential. Orb/personhood verification alone is insufficient.
 
 **Note**: "Inferred" age (guessing from behavior/profile) is **not** accepted for regulatory compliance. Platforms declare their supported verification methods in `get_adcp_capabilities`.
+
+### Gender audience targeting: optional AdCP extension
+
+Age audience targeting shipped in 3.2 as `demographics.age`. Gender was
+left open in [the demographic targeting RFC](https://github.com/adcontextprotocol/adcp/issues/6087).
+Cooperating 3.2 buyers and sellers can use the optional
+`demographics.gender.v1` binding in `ext.adcp` for exact gender targeting.
+This agreement does not add a baseline 3.2 requirement. The
+[experimental 3.3 core contract](https://github.com/adcontextprotocol/adcp/blob/main/docs/media-buy/advanced-topics/targeting.mdx#core-gender-targeting-33) addresses
+[RFC #7921](https://github.com/adcontextprotocol/adcp/issues/7921), including
+signals execution and core governance vocabulary.
+
+This is a documentation-only agreement for cooperating 3.2 implementations,
+not a binding published in the 3.2 or 3.3 source schemas. Immutable 3.2 schemas
+and registries are unchanged. The existing AdCP-owned namespace remains
+available; namespace support alone does not establish support for this binding.
+Validation of the outer task's open extension fields does not validate the
+inner agreement or establish execution support. Buyers and sellers validate
+that agreement separately and preserve it through their SDK, transport,
+policy, pricing, and execution paths.
+
+#### Vocabulary and exact membership
+
+Use `female`, `male`, and `non_binary`. These are AdCP wire names for gender
+categories, distinct from sex recorded at birth and sexual orientation. The
+[ABS gender standard](https://www.abs.gov.au/statistics/standards/standard-sex-gender-variations-sex-characteristics-and-sexual-orientation-variables/latest-release#gender)
+and [HL7's minimum gender-identity vocabulary](https://terminology.hl7.org/en/ValueSet-gender-identity.html)
+provide precedent for these three categories; this binding does not adopt
+their numeric codes, data-collection rules, or a verification guarantee.
+
+[IAB Audience Taxonomy 1.1](https://github.com/InteractiveAdvertisingBureau/Taxonomies/blob/a1f83d5d98841db798d6e055e418d7f70c4d6600/Audience%20Taxonomies/Audience%20Taxonomy%201.1.tsv)
+has Female (49), Male (50), Other Gender (51), and Unknown Gender (52),
+but no explicit non-binary category. Neither Other Gender nor the historical
+OpenRTB `O` code establishes an exact `non_binary` mapping. OpenRTB's
+[`user.gender` field is deprecated](https://github.com/InteractiveAdvertisingBureau/openrtb2.x/blob/2.6-202606/2.6.md#objectuser).
+Sellers advertise only categories they can execute with the stated meaning;
+they reject a request when their platform vocabulary cannot represent it
+exactly. A label match alone is insufficient.
+
+A predicate requires a nonempty, unique `values` set and explicit
+`include_unknown`, with no defaults. Selected values combine with OR; the
+gender predicate combines with age and every other constraint using AND.
+Unknown means the seller has no usable gender classification. A known,
+unselected category does not become unknown, including non-binary or another
+known category outside this vocabulary. Unknown age and unknown gender are
+independent choices.
+
+This complete targeting overlay requests ages 18–55 who are classified as
+female or non-binary, excluding unknown age and unknown gender:
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "demographics": {
+    "age": { "min": 18, "max": 55, "include_unknown": false }
+  },
+  "ext": {
+    "adcp": {
+      "demographics": {
+        "gender": { "values": ["female", "non_binary"], "include_unknown": false }
+      }
+    }
+  }
+}
+```
+
+Gender-only requests omit core `demographics` entirely; they do not invent
+an age predicate. v1 uses native execution, where the seller compiles the
+predicate directly into its targeting configuration. It does not add gender
+metadata to core signals or introduce a core execution variant.
+
+#### Support, discovery, and purchase
+
+Confirm both `get_adcp_capabilities.extensions_supported: ["adcp"]` and the
+binding identifier in `get_adcp_capabilities.ext.adcp.bindings`.
+`extensions_supported` accepts namespace tokens, not dotted feature names.
+Support for the opportunity binding alone does not imply gender support.
+The following examples are the separately validated **inner namespace**
+objects, not complete task responses.
+
+Capabilities response `ext.adcp`:
+
+```json
+{
+  "bindings": ["demographics.gender.v1"]
+}
+```
+
+Each executable Product declares `ext.adcp.demographic_targeting.gender`:
+
+```json
+{
+  "demographic_targeting": {
+    "gender": {
+      "values": ["female", "male", "non_binary"],
+      "unknown_handling": "selectable",
+      "supports_clearing": true
+    }
+  }
+}
+```
+
+`values` lists the product's executable subset. Any nonempty subset of those
+values is supported with compatible unknown handling, subject to existing
+policy and commercial checks. `selectable` honors either `include_unknown`
+value; `always_excluded` accepts only `false`; `always_included` accepts only
+`true`. Missing product capability makes no gender execution commitment.
+Compact `fields` has no extension selector. Participating sellers include
+this capability on executable canonical products independently of field
+projection, including products returned with proposals.
+
+Supply the predicate through the existing targeting-overlay location during
+discovery, including both legacy and compact discovery tasks. Participating
+sellers filter out products that cannot execute it. An explicit alternative
+uses the existing configured-product mechanism: a `replace` modification at
+`/ext/adcp/demographics/gender` contains the whole replacement predicate and
+an explanation. Selecting that distinct configured product accepts the
+alternative. A fresh purchase or update applies its accepted predicate
+exactly or rejects before mutation; it never silently chooses an alternative.
+
+Forecasts, pricing, proposals, and accepted purchase terms retain the effective
+predicate. Discovery interpretations of hard brief prose retain it in the
+existing `brief_targeting` overlay. Configured-product selection and purchase
+inheritance preserve it, with the same seller/account scope as the product.
+Gender is a hard constraint only after binding support is established; a
+buyer cannot rely on a seller that merely accepts arbitrary JSON in `ext`.
+
+In the compact workflow, `list_products` and `request_proposals` take discovery
+intent at `criteria.targeting_overlay`; `buy_products` takes purchase intent
+at `purchases[].targeting_overlay`. Proposal snapshots retain the effective
+predicate at `commercial_terms.purchases[].targeting_overlay`. Proposal
+refinement replaces each supplied criteria field as a whole: when resending
+`criteria.targeting_overlay`, include every constraint you want to retain.
+The create/update per-dimension omission rules below do not apply to that
+whole-overlay replacement. Compact acceptance returns `purchase_bindings`,
+not package snapshots; follow their `package_id` values to `get_media_buys`
+for execution readback.
+
+#### Updates and execution readback
+
+Treat nested gender as an independent replaceable dimension. In create and
+update request overlays, omission inherits the configured/default gender or
+preserves the existing gender, respectively. A predicate replaces it;
+`gender: null` suppresses an inherited/default predicate on create or clears
+the current predicate on update. Null requires `supports_clearing: true` and
+cannot remove inherent product scope or bypass authorization or requote
+checks. Clearing core `demographics` clears age, without clearing extension
+gender. Preserve unrelated extension keys. Reject an unsupported or partially
+applicable mutation atomically.
+
+Effective snapshots omit cleared gender and its resolution; they never
+contain null. For every effective gender constraint, return its predicate in
+`Package.targeting_overlay.ext.adcp.demographics.gender` and its execution
+attestation in `Package.ext.adcp.demographic_targeting_resolution.gender`.
+This applies to completed create `packages`, completed update
+`affected_packages`, and `get_media_buys` packages, including eventual task
+completion artifacts. Preserve complete package state on these surfaces.
+
+Package `ext.adcp`:
+
+```json
+{
+  "demographic_targeting_resolution": {
+    "gender": {
+      "requested": { "values": ["female", "non_binary"], "include_unknown": false },
+      "applied": { "values": ["female", "non_binary"], "include_unknown": false },
+      "equivalent": true,
+      "execution": { "type": "native" }
+    }
+  }
+}
+```
+
+`requested` records the predicate the buyer accepted, including configured
+product terms; it persists until gender changes. `applied` records the
+executed predicate. Their value sets are equal irrespective of order, their
+unknown membership is identical, and `applied` equals the effective package
+predicate. Buyers check these equalities; a seller cannot attest success by
+merely echoing input. JSON Schema validates shape, not execution or equality
+across objects. Gender readback always uses this extension location, including
+when age is also present: the released 3.2 core demographic resolution requires
+age and cannot describe gender-only execution.
+
+#### Governance and eventual migration
+
+Existing buyer governance and independent seller policy checks apply to the
+complete extension-bearing payload. Participating evaluators recognize this
+binding as gender targeting and apply resolved policies, `custom_policies`,
+and the existing `restricted_attributes_custom: ["gender"]` mechanism.
+Checks evaluate the resulting effective predicate, including gender inherited
+from configured/default product terms or preserved by an omitted update.
+Request-field presence alone cannot establish whether gender targeting applies.
+`sex_life_sexual_orientation` is not a synonym for gender.
+
+A required evaluator that cannot evaluate the binding returns the existing
+`UNSUPPORTED_FEATURE` error before mutation. Policy denial and service
+unavailability retain their existing error behavior. A signature alone does
+not prove the gender constraint was evaluated. Preserve the extension in
+governance payload hashes, request signing, and idempotency fingerprints;
+dropping it would authorize a different request. Validation of this agreement rejects
+unknown members inside recognized gender predicates, capabilities, and
+resolutions, while unrelated extension fields remain open.
+
+To migrate to AdCP 3.3, negotiate that contract and a seller that advertises
+experimental core gender support. Use the core predicate, product capability,
+`sex_gender` governance classification, and core resolution together. This
+bilateral extension agreement remains specific to 3.2 and does not become a
+second representation published in 3.3. Preserve unrelated `ext.adcp` fields,
+including opportunity bindings, during migration.
 
 ### Device Platform (Technical Compatibility)
 Use for **technical requirements**:
