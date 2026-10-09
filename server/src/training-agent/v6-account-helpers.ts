@@ -37,7 +37,9 @@ import type {
   ResolveContext,
   SyncAccountsResultRow,
 } from '@adcp/sdk/server';
-import { handleSyncAccounts } from './account-handlers.js';
+import { AdcpError } from '@adcp/sdk/server';
+import { handleSyncAccounts, isNaturalAccountRefProvisioned } from './account-handlers.js';
+import type { CanonicalAccountRef } from './account-scope.js';
 import { pickFromInput } from './v6-input-helpers.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -110,3 +112,73 @@ export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (re
   const wrapped = v5Result as { accounts?: unknown[] };
   return (wrapped.accounts ?? []) as SyncAccountsResultRow[];
 };
+
+/**
+ * comply_test_controller carries its own account object: an account_id plus
+ * the required `sandbox: true` caller assertion, which core AccountRef forbids
+ * on account_id refs. Drop the assertion before canonicalizing; the resolved
+ * account record, not the flag, decides sandbox status.
+ */
+export function accountRefForResolution(ref: unknown, toolName: string | undefined): unknown {
+  if (toolName !== 'comply_test_controller' || ref == null || typeof ref !== 'object' || Array.isArray(ref)) return ref;
+  const record = ref as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, 'account_id') || record.sandbox !== true) return ref;
+  const { sandbox: _sandbox, ...identity } = record;
+  return identity;
+}
+
+/**
+ * AdCP 3.0 comply_test_controller requests may carry only the sandbox
+ * assertion (`{ sandbox: true }`) with no account identity. Resolve those to
+ * no account instead of rejecting the ref, so the framework's documented
+ * fallback for refs that name no account reads the sandbox assertion.
+ */
+export function isIdentitylessControllerRef(ref: unknown, toolName: string | undefined): boolean {
+  if (toolName !== 'comply_test_controller' || ref == null || typeof ref !== 'object' || Array.isArray(ref)) return false;
+  const keys = Object.keys(ref);
+  return keys.length === 1 && keys[0] === 'sandbox' && (ref as { sandbox?: unknown }).sandbox === true;
+}
+
+/**
+ * Discovery and negotiation tasks never provision an account (accounts
+ * overview, "Account references before provisioning"). The training agent
+ * exposes `sync_accounts`, so the lazy-provisioning exception does not apply:
+ * a natural key on one of these tasks must already be provisioned.
+ */
+const DISCOVERY_AND_NEGOTIATION_TOOLS: ReadonlySet<string> = new Set([
+  'get_products',
+  'list_products',
+  'get_signals',
+  'request_proposals',
+  'refine_proposals',
+  'decline_proposals',
+]);
+
+/**
+ * Reject a buyer-declared natural key that this principal never provisioned
+ * when it arrives on a discovery or negotiation task. Returning public results
+ * instead would claim rate-card pricing for an account that does not exist.
+ * `account_id` refs and every other task keep the synthetic-account posture.
+ */
+export async function assertDiscoveryAccountProvisioned(
+  canonical: CanonicalAccountRef,
+  toolName: string | undefined,
+  principal: string | undefined,
+): Promise<void> {
+  if (canonical.kind !== 'natural') return;
+  if (toolName === undefined || !DISCOVERY_AND_NEGOTIATION_TOOLS.has(toolName)) return;
+  const ref = {
+    brand: canonical.brand,
+    operator: canonical.operator,
+    ...(canonical.operator_unit && { operator_unit: canonical.operator_unit }),
+    ...(canonical.currency && { currency: canonical.currency }),
+    ...(canonical.timezone && { timezone: canonical.timezone }),
+    sandbox: canonical.sandbox,
+  };
+  if (await isNaturalAccountRefProvisioned(principal, ref)) return;
+  throw new AdcpError('ACCOUNT_NOT_FOUND', {
+    recovery: 'terminal',
+    field: 'account',
+    message: 'Account reference could not be resolved. Provision it with sync_accounts, or omit account for public discovery.',
+  });
+}

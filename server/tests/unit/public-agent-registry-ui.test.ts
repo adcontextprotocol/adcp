@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const agentsHtml = readFileSync(new URL('../../public/agents.html', import.meta.url), 'utf8');
 
@@ -33,5 +33,32 @@ describe('public agent registry UI', () => {
     expect(agentsHtml).toContain("parsed.protocol === 'https:'");
     expect(agentsHtml).not.toContain('href="${escapeHtml(p.verification_url)}"');
     expect(agentsHtml).toContain('escapeHtml(String(params.min_width || 0))');
+  });
+
+  describe('registry list fetch', () => {
+    const source = agentsHtml.match(/async function fetchRegistryAgents\(query\) \{[\s\S]*?\n    \}\n/)?.[0];
+    const load = (fetchImpl: typeof fetch) =>
+      new Function('fetch', `${source}; return fetchRegistryAgents;`)(fetchImpl) as (query: string) => Promise<unknown[]>;
+    const json = (status: number, body: unknown) =>
+      new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+    it('retries anonymously when a stale session cookie is rejected', async () => {
+      expect(source).toBeDefined();
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(json(401, { error: 'Invalid session', login_url: '/auth/login' }))
+        .mockResolvedValueOnce(json(200, { agents: [{ url: 'https://agent.example' }], count: 1 }));
+
+      await expect(load(fetchMock)('health=true')).resolves.toEqual([{ url: 'https://agent.example' }]);
+      expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/registry/agents?health=true');
+      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/registry/agents?health=true', { credentials: 'omit' });
+    });
+
+    it('surfaces failures instead of rendering an empty registry', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(json(503, { error: 'Authorization service temporarily unavailable' }));
+
+      await expect(load(fetchMock)('health=true')).rejects.toThrow('Authorization service temporarily unavailable');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(agentsHtml).toContain('Failed to load agents: ${escapeHtml(loadError.message)}');
+    });
   });
 });

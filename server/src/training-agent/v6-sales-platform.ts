@@ -12,6 +12,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { dispatchTrainingGcsReporting } from './gcs-reporting-tools.js';
 import { createLogger } from '../logger.js';
 import {
   AdcpError,
@@ -57,7 +58,12 @@ import {
   handleLogEvent,
 } from './catalog-event-handlers.js';
 import { handleSyncAudiences } from './audience-handlers.js';
-import { syncAccountsUpsert } from './v6-account-helpers.js';
+import {
+  syncAccountsUpsert,
+  accountRefForResolution,
+  assertDiscoveryAccountProvisioned,
+  isIdentitylessControllerRef,
+} from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { PUBLISHERS } from './publishers.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
@@ -78,7 +84,7 @@ import {
   withDurableReportingLedger,
 } from './reporting-reliability.js';
 import { getSession, registerSharedPublicBrandPartition, runWithSessionContext, sessionKeyFromArgs } from './state.js';
-import { supportsReliableReporting, supportsReportingStatus, type ToolArgs, type TrainingContext } from './types.js';
+import { supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
@@ -488,6 +494,10 @@ export const TRAINING_SALES_CAPABILITIES = {
     language: true,
     keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
     negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
+    // Seller-wide rollups; Product.overlay_support is authoritative. Mirrors
+    // handleGetAdcpCapabilities.
+    property_list: true,
+    property_list_exclude: true,
   },
   audience_targeting: {
     supported_identifier_types: ['hashed_email' as const],
@@ -497,6 +507,14 @@ export const TRAINING_SALES_CAPABILITIES = {
     supported_event_types: ['purchase' as const, 'add_to_cart' as const, 'lead' as const, 'page_view' as const],
     supported_hashed_identifiers: ['hashed_email' as const],
     supported_action_sources: ['website' as const, 'app' as const],
+    // Event-goal cost targets the outcome_target planner binds to a source.
+    supported_targets: [...TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS],
+    // Mirrors TRAINING_ATTRIBUTION_WINDOWS: the one window the outcome_target
+    // planner states on event goals it binds to registered sources.
+    attribution_windows: [{
+      post_click: [{ interval: 7, unit: 'days' as const }],
+      post_view: [{ interval: 1, unit: 'days' as const }],
+    }],
   },
   // Seller-level rollup of metric-optimization capabilities. The SDK can
   // derive this from an adopter-supplied static productCatalog (#1818); this
@@ -943,6 +961,10 @@ function projectCreateMediaBuyCompatibilityWebhookResult(
  * v6 mandates `accounts.resolve()` on every request; we synthesize an
  * Account from the wire reference (or from auth for no-account tools
  * like `provide_performance_feedback` and `list_creative_formats`).
+ * Exception: a buyer-declared natural key on a discovery or negotiation task
+ * (get_products, list_products, request/refine/decline_proposals) must already
+ * be provisioned — otherwise ACCOUNT_NOT_FOUND, never a public fallback. See
+ * `assertDiscoveryAccountProvisioned`.
  *
  * `upsert` delegates to the v5 `handleSyncAccounts` so the BILLING_NOT_SUPPORTED
  * + BILLING_NOT_PERMITTED_FOR_AGENT gates (landed in #3851) fire identically
@@ -951,62 +973,20 @@ function projectCreateMediaBuyCompatibilityWebhookResult(
  * through `ctx.authInfo` into the v5 handler's `ctx.principal`, where the
  * per-agent gate consults the commercial-relationships map.
  */
-const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
-  resolution: 'explicit',
-  resolve: async (ref, ctx) => {
-    const principal = ctx?.authInfo?.clientId;
-    if (ref == null) {
-      const id = 'public_sandbox';
-      return {
-        id,
-        name: 'Public Sandbox',
-        status: 'active',
-        mode: 'sandbox',
-        ctx_metadata: {
-          task_owner_scope: taskOwnerScopeForRequest(ctx as TaskOwnerRequestContext, id),
-          webhook_tenant_scope: webhookTenantScopeForPlatformContext({
-            ...(ctx as TaskOwnerRequestContext),
-            account: { id },
-          }),
-        },
-        sandbox: true,
-        authInfo: { kind: 'public', ...(principal && { principal }) },
-      };
-    }
-    if (typeof ref !== 'object' || Array.isArray(ref)) {
-      throw new AdcpError('INVALID_REQUEST', {
-        message: 'account must be an object',
-        field: 'account',
-        recovery: 'correctable',
-      });
-    }
-    const canonical = canonicalizeAccountRef(ref);
-    const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
-      ? { account_id: canonical.account_id }
-      : {
-          brand: canonical.brand,
-          operator: canonical.operator,
-          ...(canonical.operator_unit && { operator_unit: canonical.operator_unit }),
-          ...(canonical.currency && { currency: canonical.currency }),
-          ...(canonical.timezone && { timezone: canonical.timezone }),
-          ...(canonical.sandbox && { sandbox: true }),
-        };
-    const brandDomain = canonical.kind === 'natural' ? canonical.brand.domain : undefined;
-    const operator = canonical.kind === 'natural' ? canonical.operator : undefined;
-    const id = canonical.kind === 'account_id'
-      ? canonical.account_id
-      : syntheticAccountIdFromRef(accountRef);
+async function resolveTrainingSalesAccount(
+  ref: Parameters<AccountStore<TrainingSalesMeta>['resolve']>[0],
+  ctx: Parameters<AccountStore<TrainingSalesMeta>['resolve']>[1],
+  { enforceDiscoveryProvisioning }: { enforceDiscoveryProvisioning: boolean },
+): Promise<Awaited<ReturnType<AccountStore<TrainingSalesMeta>['resolve']>>> {
+  const principal = ctx?.authInfo?.clientId;
+  if (ref == null) {
+    const id = 'public_sandbox';
     return {
       id,
-      name: brandDomain ?? id,
+      name: 'Public Sandbox',
       status: 'active',
       mode: 'sandbox',
-      ...(brandDomain != null && { brand: { domain: brandDomain } }),
-      ...(operator && { operator }),
       ctx_metadata: {
-        account_ref: accountRef,
-        brand_domain: brandDomain,
-        ...(operator && { operator }),
         task_owner_scope: taskOwnerScopeForRequest(ctx as TaskOwnerRequestContext, id),
         webhook_tenant_scope: webhookTenantScopeForPlatformContext({
           ...(ctx as TaskOwnerRequestContext),
@@ -1014,9 +994,70 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
         }),
       },
       sandbox: true,
-      authInfo: { kind: 'api_key', ...(principal && { principal }) },
+      authInfo: { kind: 'public', ...(principal && { principal }) },
     };
-  },
+  }
+  if (typeof ref !== 'object' || Array.isArray(ref)) {
+    throw new AdcpError('INVALID_REQUEST', {
+      message: 'account must be an object',
+      field: 'account',
+      recovery: 'correctable',
+    });
+  }
+  const toolName = (ctx as { toolName?: string } | undefined)?.toolName;
+  if (isIdentitylessControllerRef(ref, toolName)) return null;
+  const canonical = canonicalizeAccountRef(accountRefForResolution(ref, toolName));
+  if (enforceDiscoveryProvisioning) {
+    await assertDiscoveryAccountProvisioned(canonical, toolName, principal);
+  }
+  const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
+    ? { account_id: canonical.account_id }
+    : {
+        brand: canonical.brand,
+        operator: canonical.operator,
+        ...(canonical.operator_unit && { operator_unit: canonical.operator_unit }),
+        ...(canonical.currency && { currency: canonical.currency }),
+        ...(canonical.timezone && { timezone: canonical.timezone }),
+        ...(canonical.sandbox && { sandbox: true }),
+      };
+  const brandDomain = canonical.kind === 'natural' ? canonical.brand.domain : undefined;
+  const operator = canonical.kind === 'natural' ? canonical.operator : undefined;
+  const id = canonical.kind === 'account_id'
+    ? canonical.account_id
+    : syntheticAccountIdFromRef(accountRef);
+  return {
+    id,
+    name: brandDomain ?? id,
+    status: 'active',
+    mode: 'sandbox',
+    ...(brandDomain != null && { brand: { domain: brandDomain } }),
+    ...(operator && { operator }),
+    ctx_metadata: {
+      account_ref: accountRef,
+      brand_domain: brandDomain,
+      ...(operator && { operator }),
+      task_owner_scope: taskOwnerScopeForRequest(ctx as TaskOwnerRequestContext, id),
+      webhook_tenant_scope: webhookTenantScopeForPlatformContext({
+        ...(ctx as TaskOwnerRequestContext),
+        account: { id },
+      }),
+    },
+    sandbox: true,
+    authInfo: { kind: 'api_key', ...(principal && { principal }) },
+  };
+}
+
+const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
+  resolution: 'explicit',
+  resolve: (ref, ctx) => resolveTrainingSalesAccount(ref, ctx, { enforceDiscoveryProvisioning: true }),
+  upsert: syncAccountsUpsert,
+};
+
+/** The frozen AdCP 3.0 compatibility surface predates the provisioning rule
+ * and exposes no account fixture seeding, so it keeps the synthetic posture. */
+const trainingSalesAccountsThreeZeroCompat: AccountStore<TrainingSalesMeta> = {
+  resolution: 'explicit',
+  resolve: (ref, ctx) => resolveTrainingSalesAccount(ref, ctx, { enforceDiscoveryProvisioning: false }),
   upsert: syncAccountsUpsert,
 };
 
@@ -1041,7 +1082,10 @@ export async function resolveTrainingSalesRequestContext(
     ...(auth?.extra && { extra: auth.extra }),
     input,
   });
-  const account = await trainingSalesAccounts.resolve(
+  // comply_test_controller lifecycle probes are not discovery tasks, so the
+  // provisioning gate does not apply even though the ref is resolved as a
+  // get_products-shaped read.
+  const account = await resolveTrainingSalesAccount(
     input.account as never,
     {
       authInfo: {
@@ -1054,6 +1098,7 @@ export async function resolveTrainingSalesRequestContext(
       ...(agent && { agent }),
       input,
     },
+    { enforceDiscoveryProvisioning: false },
   );
   if (!account) throw new Error('Unable to resolve sales account');
   return buildTrainingCtx({
@@ -1159,6 +1204,8 @@ export function legacyGetProductsHandler(
  */
 export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHandlers['getReportingStatus']> {
   return async (req, ctx) => {
+    const gcs = await dispatchTrainingGcsReporting('get_reporting_status', req as unknown as Record<string, unknown>, ctx.authInfo?.clientId);
+    if (gcs) return gcs;
     const version = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
     if (!version.ok || !supportsReportingStatus(version.servedVersion)) {
       throw new AdcpError('VERSION_UNSUPPORTED', {
@@ -1255,6 +1302,8 @@ function projectRc0ReportingStatus(response: Record<string, unknown>): Record<st
 
 export function legacySyncReportingReceiptsHandler(): NonNullable<LegacyMediaBuyHandlers['syncReportingReceipts']> {
   return async (req, ctx) => {
+    const gcs = await dispatchTrainingGcsReporting('sync_reporting_receipts', req as unknown as Record<string, unknown>, ctx.authInfo?.clientId);
+    if (gcs) return gcs;
     const version = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
     if (!version.ok || !supportsReliableReporting(version.servedVersion)) {
       throw new AdcpError('VERSION_UNSUPPORTED', {
@@ -1328,6 +1377,8 @@ export async function syncReportingStatusForCustomTool(
   ctx: TrainingContext,
 ): Promise<object> {
   try {
+    const gcs = await dispatchTrainingGcsReporting('sync_reporting_status', args as unknown as Record<string, unknown>, ctx.principal);
+    if (gcs) return gcs;
     const version = resolveServedAdcpVersion(args as unknown as Record<string, unknown>);
     if (!version.ok || !supportsReliableReporting(version.servedVersion)) {
       throw new AdcpError('VERSION_UNSUPPORTED', {
@@ -1519,13 +1570,20 @@ export class TrainingSalesPlatform
     if (this.storyboardCompat?.version === '3.0') {
       const { reporting_delivery: _reportingDelivery, ...mediaBuy } = TRAINING_SALES_CAPABILITIES.overrides.media_buy;
       const { experimental_features: _experimentalFeatures, ...overrides } = TRAINING_SALES_CAPABILITIES.overrides;
+      // conversion_tracking.supported_targets is a 3.1+ field.
+      const { supported_targets: _supportedTargets, ...conversionTracking } = TRAINING_SALES_CAPABILITIES.conversion_tracking;
       return {
         ...TRAINING_SALES_CAPABILITIES,
+        conversion_tracking: conversionTracking,
         specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
         overrides: { ...overrides, media_buy: mediaBuy },
       };
     }
-    return TRAINING_SALES_CAPABILITIES;
+    // @adcp/sdk 14.0.0 bundles only the 3.0, 3.1 and 3.2 GA releases, so it
+    // no longer derives the retained 3.2-rc.7 checkpoint on its own. Declare
+    // the served releases explicitly so exact prerelease pins negotiate to
+    // the checkpoint the agent advertises instead of downshifting to 3.1.
+    return { ...TRAINING_SALES_CAPABILITIES, supported_versions: [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS] };
   }
 
   async acknowledgeSellerManagedWebhook(taskId: string): Promise<void> {
@@ -1533,7 +1591,11 @@ export class TrainingSalesPlatform
   }
 
   statusMappers = {};
-  accounts: AccountStore<TrainingSalesMeta> = trainingSalesAccounts;
+  get accounts(): AccountStore<TrainingSalesMeta> {
+    return this.storyboardCompat?.version === '3.0'
+      ? trainingSalesAccountsThreeZeroCompat
+      : trainingSalesAccounts;
+  }
   agentRegistry = trainingBuyerAgentRegistry;
 
   sales: SalesPlatform<TrainingSalesMeta> = {

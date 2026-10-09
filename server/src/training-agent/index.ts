@@ -14,6 +14,7 @@
  */
 
 import { Router } from 'express';
+import { trainingGcsReportingRouter } from './gcs-reporting-routes.js';
 import type { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { WorkOS } from '@workos-inc/node';
@@ -49,6 +50,7 @@ import {
 import {
   buildStrictRequestSigningAuthenticator,
   buildStrictRequiredRequestSigningAuthenticator,
+  buildStrictRequiredLegacyRequestSigningAuthenticator,
   buildStrictForbiddenRequestSigningAuthenticator,
   enforceSigningWhenWebhookAuthPresent,
   mcpOperationResolver,
@@ -56,6 +58,8 @@ import {
   STRICT_PROTOCOL_METHODS_REQUIRED_FOR,
 } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
+import { buildGovernanceAgentCredentialAuthenticator } from './governance-agent-credentials.js';
+import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, TRAINING_BUYER_METADATA_PATH } from './buyer-oauth.js';
 
 const logger = createLogger('training-agent-routes');
 
@@ -134,29 +138,13 @@ function buildBearerAuthenticator(): Authenticator | null {
 // Lazy so strict signing authenticators build on first auth call —
 // avoids reading the compliance test JWKS at module import time, which
 // would break test setups that mock the compliance cache. Each strict route
-// owns its own InMemoryReplayStore (#3338) so digest-profile variants do not
-// falsely share nonce state with each other.
-let _strictSigningAuth: Authenticator | null = null;
-function lazyStrictSigningAuth(): Authenticator {
+// owns its own authenticator (#3338) so digest-profile and signing-profile
+// variants do not falsely share verifier state with each other.
+function lazySigningAuth(build: () => Authenticator): Authenticator {
+  let built: Authenticator | null = null;
   return (req) => {
-    if (!_strictSigningAuth) _strictSigningAuth = buildStrictRequestSigningAuthenticator();
-    return _strictSigningAuth(req);
-  };
-}
-
-let _strictRequiredSigningAuth: Authenticator | null = null;
-function lazyStrictRequiredSigningAuth(): Authenticator {
-  return (req) => {
-    if (!_strictRequiredSigningAuth) _strictRequiredSigningAuth = buildStrictRequiredRequestSigningAuthenticator();
-    return _strictRequiredSigningAuth(req);
-  };
-}
-
-let _strictForbiddenSigningAuth: Authenticator | null = null;
-function lazyStrictForbiddenSigningAuth(): Authenticator {
-  return (req) => {
-    if (!_strictForbiddenSigningAuth) _strictForbiddenSigningAuth = buildStrictForbiddenRequestSigningAuthenticator();
-    return _strictForbiddenSigningAuth(req);
+    if (!built) built = build();
+    return built(req);
   };
 }
 
@@ -200,42 +188,12 @@ function rejectBearerOnStrictRequiredOps(inner: Authenticator, requiredOps: read
  * still admit bearer so the grader can do setup probes without signing
  * infrastructure.
  */
-function buildStrictAuthenticator(): Authenticator | null {
+function buildStrictAuthenticator(signingAuth: Authenticator): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
   if (!bearerAuth) return null;
   const requiredOps = [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR];
   const presenceGated = requireSignatureWhenPresent(
-    lazyStrictSigningAuth(),
-    rejectBearerOnStrictRequiredOps(bearerAuth, requiredOps),
-    {
-      requiredFor: requiredOps,
-      resolveOperation: mcpOperationResolver,
-    },
-  );
-  return enforceSigningWhenWebhookAuthPresent(presenceGated);
-}
-
-function buildStrictRequiredAuthenticator(): Authenticator | null {
-  const bearerAuth = buildBearerAuthenticator();
-  if (!bearerAuth) return null;
-  const requiredOps = [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR];
-  const presenceGated = requireSignatureWhenPresent(
-    lazyStrictRequiredSigningAuth(),
-    rejectBearerOnStrictRequiredOps(bearerAuth, requiredOps),
-    {
-      requiredFor: requiredOps,
-      resolveOperation: mcpOperationResolver,
-    },
-  );
-  return enforceSigningWhenWebhookAuthPresent(presenceGated);
-}
-
-function buildStrictForbiddenAuthenticator(): Authenticator | null {
-  const bearerAuth = buildBearerAuthenticator();
-  if (!bearerAuth) return null;
-  const requiredOps = [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR];
-  const presenceGated = requireSignatureWhenPresent(
-    lazyStrictForbiddenSigningAuth(),
+    signingAuth,
     rejectBearerOnStrictRequiredOps(bearerAuth, requiredOps),
     {
       requiredFor: requiredOps,
@@ -246,9 +204,12 @@ function buildStrictForbiddenAuthenticator(): Authenticator | null {
 }
 
 const defaultAuthenticator = buildDefaultAuthenticator();
-const strictAuthenticator = buildStrictAuthenticator();
-const strictRequiredAuthenticator = buildStrictRequiredAuthenticator();
-const strictForbiddenAuthenticator = buildStrictForbiddenAuthenticator();
+const strictAuthenticator = buildStrictAuthenticator(lazySigningAuth(buildStrictRequestSigningAuthenticator));
+const strictRequiredAuthenticator = buildStrictAuthenticator(lazySigningAuth(buildStrictRequiredRequestSigningAuthenticator));
+const strictRequiredLegacyAuthenticator = buildStrictAuthenticator(
+  lazySigningAuth(buildStrictRequiredLegacyRequestSigningAuthenticator),
+);
+const strictForbiddenAuthenticator = buildStrictAuthenticator(lazySigningAuth(buildStrictForbiddenRequestSigningAuthenticator));
 
 function buildRequireToken(authenticator: Authenticator | null) {
   return async function requireToken(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -290,8 +251,18 @@ function buildRequireToken(authenticator: Authenticator | null) {
 }
 
 const requireTokenDefault = buildRequireToken(defaultAuthenticator);
+// Governance tenant routes additionally accept minted sandbox
+// governance-agent credentials, checked first so a valid one never reaches
+// the WorkOS verifier (an invalid one falls through and fails that chain's
+// key-format checks). They authenticate on no other route.
+const requireTokenGovernance = buildRequireToken(
+  defaultAuthenticator
+    ? anyOf(buildGovernanceAgentCredentialAuthenticator(), defaultAuthenticator)
+    : null,
+);
 const requireTokenStrict = buildRequireToken(strictAuthenticator);
 const requireTokenStrictRequired = buildRequireToken(strictRequiredAuthenticator);
+const requireTokenStrictRequiredLegacy = buildRequireToken(strictRequiredLegacyAuthenticator);
 const requireTokenStrictForbidden = buildRequireToken(strictForbiddenAuthenticator);
 
 function getBaseUrl(req: Request): string {
@@ -352,6 +323,12 @@ export function createTrainingAgentRouter(options: {
   disableRateLimit?: boolean;
 } = {}): Router {
   const router = Router();
+  const buyerOAuth = trainingBuyerOAuthConfig();
+  const requireSalesAuth = buyerOAuth ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault) : requireTokenDefault;
+  if (buyerOAuth) router.get(TRAINING_BUYER_METADATA_PATH, (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.json(trainingBuyerMetadata(buyerOAuth));
+  });
 
   startSessionCleanup();
 
@@ -373,12 +350,16 @@ export function createTrainingAgentRouter(options: {
     },
   });
 
+  router.use('/sales/reporting', ...(!options.disableRateLimit ? [mcpRateLimiter] : []), requireSalesAuth, trainingGcsReportingRouter());
+
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via
   // resolveByRequest(host, pathname).
   mountTenantRoutes(router, TENANT_IDS, {
     ...(!options.disableRateLimit && { rateLimit: mcpRateLimiter }),
     requireAuth: requireTokenDefault,
+    requireSalesAuth,
+    requireGovernanceAuth: requireTokenGovernance,
     storyboardCompat: options.storyboardCompat,
   });
 
@@ -477,7 +458,10 @@ export function createTrainingAgentRouter(options: {
   // dispatch. The default `/<tenant>/mcp` continues to serve the v6
   // framework as a bearer-authenticated public sandbox with no request-signing
   // advertisement or enforcement.
-  function makeStrictMcpHandler(digestMode?: 'either' | 'required' | 'forbidden') {
+  function makeStrictMcpHandler(
+    digestMode?: 'either' | 'required' | 'forbidden',
+    legacySigningProfile = false,
+  ) {
     return async function strictMcpHandler(req: Request, res: Response): Promise<void> {
       setLegacyCORS(res);
       let server: ReturnType<typeof createTrainingAgentServer> | null = null;
@@ -488,6 +472,7 @@ export function createTrainingAgentRouter(options: {
           principal,
           strict: true,
           ...(digestMode !== undefined && { digestMode }),
+          ...(legacySigningProfile && { legacySigningProfile }),
           ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }),
         };
         server = createTrainingAgentServer(ctx);
@@ -533,6 +518,7 @@ export function createTrainingAgentRouter(options: {
 
   const strictMcpHandler = makeStrictMcpHandler();
   const strictRequiredMcpHandler = makeStrictMcpHandler('required');
+  const strictRequiredLegacyMcpHandler = makeStrictMcpHandler('required', true);
   const strictForbiddenMcpHandler = makeStrictMcpHandler('forbidden');
 
   for (const tenantId of TENANT_IDS) {
@@ -557,6 +543,27 @@ export function createTrainingAgentRouter(options: {
     });
     router.post(`/${tenantId}/mcp-strict-required`, mcpRateLimiter, requireTokenStrictRequired, strictRequiredMcpHandler);
     router.get(`/${tenantId}/mcp-strict-required`, (_req: Request, res: Response) => {
+      setLegacyCORS(res);
+      res.setHeader('Allow', 'POST, OPTIONS');
+      res.status(405).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
+      });
+    });
+
+    // Same required-digest policy as `/mcp-strict-required`, verified under
+    // the AdCP 3.0/3.1 legacy signing profile (Base64URL sf-binary) and
+    // advertising only pre-3.2 releases. `/mcp-strict-required` is pinned to
+    // the 3.2 profile, which MUST NOT accept a legacy token, so 3.0/3.1
+    // signers and the frozen 3.0 vectors that need required coverage use
+    // this route instead.
+    router.options(`/${tenantId}/mcp-strict-required-legacy`, (_req: Request, res: Response) => {
+      setLegacyCORS(res);
+      res.status(204).end();
+    });
+    router.post(`/${tenantId}/mcp-strict-required-legacy`, mcpRateLimiter, requireTokenStrictRequiredLegacy, strictRequiredLegacyMcpHandler);
+    router.get(`/${tenantId}/mcp-strict-required-legacy`, (_req: Request, res: Response) => {
       setLegacyCORS(res);
       res.setHeader('Allow', 'POST, OPTIONS');
       res.status(405).json({

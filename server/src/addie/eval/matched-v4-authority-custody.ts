@@ -7,7 +7,7 @@ import type { Pool, PoolClient } from "pg";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import {
-  ADDIE_MATCHED_V4_BASELINE_CELL_ID,
+  ADDIE_MATCHED_V4_BASELINE_CELL_IDS,
   ADDIE_MATCHED_V4_EVALUATION_VERSION,
   ADDIE_MATCHED_V4_FULL_PACK,
   ADDIE_MATCHED_V4_SCREENING_CELLS,
@@ -1409,7 +1409,11 @@ class AddieMatchedV4PrivateAuthority {
               .filter((metric) => metric.cell.arm === "direct")
               .map((candidate) => {
                 const baseline = metrics.find(
-                  (metric) => metric.cell.id === this.#plan.baselineCellId,
+                  (metric) =>
+                    metric.cell.id ===
+                    this.#plan.baselineCellIdsByToolSurface[
+                      candidate.cell.toolSurface
+                    ],
                 );
                 if (!baseline)
                   throw Error(
@@ -2197,13 +2201,19 @@ function allowedCellsFor(
     );
   if (
     promotion.promotedCellIds.length === 0 ||
-    promotion.promotedCellIds.includes(ADDIE_MATCHED_V4_BASELINE_CELL_ID)
+    Object.values(ADDIE_MATCHED_V4_BASELINE_CELL_IDS).some((baseline) =>
+      (promotion.promotedCellIds as readonly AddieMatchedV4CellId[]).includes(
+        baseline,
+      ),
+    )
   ) {
     throw new Error("Matched v4 full stage promotion is invalid");
   }
   return ADDIE_MATCHED_V4_SCREENING_CELLS.filter(
     (cell) =>
-      cell.id === ADDIE_MATCHED_V4_BASELINE_CELL_ID ||
+      (Object.values(ADDIE_MATCHED_V4_BASELINE_CELL_IDS) as readonly string[]).includes(
+        cell.id,
+      ) ||
       promotion.promotedCellIds.includes(cell.id),
   );
 }
@@ -2804,8 +2814,11 @@ function addieMatchedV4PairedOutcomeCi(
     !baselineArtifact ||
     baselineArtifact !== validatedMetrics.get(candidate) ||
     issuedArtifacts.get(baselineArtifact)?.stage !== "full" ||
-    baseline.cell.id !== ADDIE_MATCHED_V4_BASELINE_CELL_ID ||
-    candidate.cell.id === ADDIE_MATCHED_V4_BASELINE_CELL_ID
+    baseline.cell.id !==
+      ADDIE_MATCHED_V4_BASELINE_CELL_IDS[baseline.cell.toolSurface] ||
+    candidate.cell.id ===
+      ADDIE_MATCHED_V4_BASELINE_CELL_IDS[candidate.cell.toolSurface] ||
+    baseline.cell.toolSurface !== candidate.cell.toolSurface
   )
     throw new Error(
       "Matched v4 CI requires one validated full-stage artifact and declared baseline",

@@ -1,0 +1,670 @@
+id: creative/get_creative_features_idempotency
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Creative feature evaluations are retry-safe and reconcilable"
+category: creative
+summary: "Proves exact sync and async replay, payload conflicts, concurrent deduplication, submitted acknowledgement validity, and stable provider evaluation economics through polling."
+track: creative
+required_tools:
+  - get_adcp_capabilities
+  - get_creative_features
+  - get_task_status
+  - comply_test_controller
+
+narrative: |
+  get_creative_features accepts provider work even when the caller-facing price
+  is zero. AdCP 3.x keeps idempotency_key and evaluation_id optional for wire
+  compatibility, while clients and providers SHOULD use both; AdCP 4.0 will
+  require them. This scenario exercises that recommended keyed and identified
+  profile. One accepted request creates one provider evaluation identity, one
+  result, and at most one consumption or cost record.
+
+  This scenario proves six parts of that contract: exact synchronous replay;
+  exact asynchronous replay; conflict on changed manifests or feature filters;
+  concurrent first-insert-wins behavior; a schema-valid submitted
+  acknowledgement; and stable evaluation, pricing, cost, currency, and
+  consumption fields through terminal polling.
+
+agent:
+  interaction_model: creative_governance_provider
+  capabilities:
+    - evaluates_creative_features
+    - supports_test_controller
+  examples:
+    - "Creative malware scanning provider"
+    - "Creative quality and policy evaluation provider"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  controller_seeding: true
+  description: |
+    The provider exposes get_creative_features, get_task_status, and the
+    sandbox-only comply_test_controller. It advertises at least one creative
+    feature and adcp.idempotency with supported: true and a replay window of at
+    least 86400 seconds. The parallel phase requires the optional
+    parallel_dispatch_runner contract.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_2c11d1c2ebb8"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_get_creative_features_idemp-07021f6f"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_sandbox_111924ce6ccf"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "creative-features-changed-account-7604"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+
+phases:
+  - id: capability_discovery
+    title: "Discover replay and feature support"
+    steps:
+      - id: discover_creative_feature_replay
+        title: "Read provider capabilities"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        sample_request:
+          protocols: ["creative", "governance"]
+          context:
+            correlation_id: "creative_features_idempotency--capabilities"
+        context_outputs:
+          - name: creative_feature_id
+            path: "governance.creative_features[0].feature_id"
+          - name: sync_replay_key
+            generate: uuid_v4
+          - name: async_replay_key
+            generate: uuid_v4
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_value
+            path: "adcp.idempotency.supported"
+            value: true
+            description: "Provider advertises replay protection"
+          - check: field_greater_than
+            path: "adcp.idempotency.replay_ttl_seconds"
+            value: 86399
+            description: "Creative evaluation replay records survive for at least 24 hours"
+          - check: field_present
+            path: "governance.creative_features[0].feature_id"
+            description: "At least one creative feature is discoverable"
+
+  - id: synchronous_replay
+    title: "Exact synchronous replay preserves the evaluation and economics"
+    steps:
+      - id: force_creative_evaluation_completed
+        title: "Force a deterministic synchronous evaluation result"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        comply_scenario: creative_features_idempotency
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
+            sandbox: true
+          scenario: "force_get_creative_features_arm"
+          params:
+            arm: "completed"
+            result:
+              status: "completed"
+              evaluation_id: "eval_creative_sync_7604"
+              results:
+                - feature_id: "$context.creative_feature_id"
+                  value: true
+                  confidence: 0.98
+              pricing_option_id: "standard_scan"
+              vendor_cost: 0.025
+              currency: "USD"
+              consumption:
+                duration_seconds: 1.25
+          context:
+            correlation_id: "creative_features_idempotency--force_sync"
+        validations:
+          - check: response_schema
+            description: "Controller accepts a deterministic completed evaluation result"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Controller registers the synchronous response directive"
+          - check: field_value
+            path: "forced.arm"
+            value: "completed"
+            description: "The next evaluation is forced to complete synchronously"
+
+      - id: evaluate_creative_initial
+        title: "Run one creative evaluation"
+        task: get_creative_features
+        schema_ref: "creative/get-creative-features-request.json"
+        response_schema_ref: "creative/get-creative-features-response.json"
+        doc_ref: "/governance/creative/get_creative_features"
+        comply_scenario: creative_features_idempotency
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.sync_replay_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
+            sandbox: true
+          creative_manifest:
+            format_kind: "display_tag"
+            assets:
+              tag_url:
+                asset_type: "url"
+                url: "https://creative.pinnacle-agency.example/compliance/clean-tag.html"
+          feature_ids:
+            - "$context.creative_feature_id"
+          context:
+            correlation_id: "creative_features_idempotency--sync_initial"
+        context_outputs:
+          - name: sync_evaluation_id
+            path: "evaluation_id"
+          - name: sync_results
+            path: "results"
+          - name: sync_pricing_option_id
+            path: "pricing_option_id"
+          - name: sync_vendor_cost
+            path: "vendor_cost"
+          - name: sync_currency
+            path: "currency"
+          - name: sync_consumption
+            path: "consumption"
+        validations:
+          - check: response_schema
+            description: "Initial terminal response matches the published response contract"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "This vector establishes a synchronous terminal response"
+          - check: field_present
+            path: "evaluation_id"
+            description: "Provider allocates a stable evaluation identity"
+          - check: field_present
+            path: "results"
+            description: "Provider returns evaluated features"
+          - check: field_value_or_absent
+            path: "replayed"
+            allowed_values: [false]
+            description: "Fresh execution is not marked as replayed"
+
+      - id: evaluate_creative_replay
+        title: "Replay the identical evaluation request"
+        task: get_creative_features
+        schema_ref: "creative/get-creative-features-request.json"
+        response_schema_ref: "creative/get-creative-features-response.json"
+        doc_ref: "/governance/creative/get_creative_features"
+        comply_scenario: creative_features_idempotency
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.sync_replay_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
+            sandbox: true
+          creative_manifest:
+            format_kind: "display_tag"
+            assets:
+              tag_url:
+                asset_type: "url"
+                url: "https://creative.pinnacle-agency.example/compliance/clean-tag.html"
+          feature_ids:
+            - "$context.creative_feature_id"
+          context:
+            correlation_id: "creative_features_idempotency--sync_replay"
+        validations:
+          - check: response_schema
+            description: "Replay matches the terminal response contract"
+          - check: field_value
+            path: "replayed"
+            value: true
+            description: "Exact replay is served from the replay record"
+          - check: field_equals_context
+            path: "evaluation_id"
+            context_key: "sync_evaluation_id"
+            description: "Replay preserves provider evaluation identity"
+          - check: field_equals_context
+            path: "results"
+            context_key: "sync_results"
+            description: "Replay preserves the exact results array"
+          - check: field_equals_context
+            path: "pricing_option_id"
+            context_key: "sync_pricing_option_id"
+            description: "Replay preserves any applied pricing option"
+          - check: field_equals_context
+            path: "vendor_cost"
+            context_key: "sync_vendor_cost"
+            description: "Replay preserves any provider cost"
+          - check: field_equals_context
+            path: "currency"
+            context_key: "sync_currency"
+            description: "Replay preserves any cost currency"
+          - check: field_equals_context
+            path: "consumption"
+            context_key: "sync_consumption"
+            description: "Replay preserves any consumption record"
+        reviewer_checks:
+          - "Confirm provider dispatch, evaluation persistence, consumption recording, and charging each executed exactly once across the initial request and replay."
+
+  - id: payload_conflicts
+    title: "Changed evaluation payloads conflict under the original key"
+    steps:
+      - id: changed_manifest_conflict
+        title: "Reject the same key with a changed creative manifest"
+        task: get_creative_features
+        schema_ref: "creative/get-creative-features-request.json"
+        response_schema_ref: "creative/get-creative-features-response.json"
+        doc_ref: "/governance/creative/get_creative_features"
+        comply_scenario: creative_features_idempotency
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.sync_replay_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
+            sandbox: true
+          creative_manifest:
+            format_kind: "display_tag"
+            assets:
+              tag_url:
+                asset_type: "url"
+                url: "https://creative.pinnacle-agency.example/compliance/changed-tag.html"
+          feature_ids:
+            - "$context.creative_feature_id"
+          context:
+            correlation_id: "creative_features_idempotency--manifest_conflict"
+        validations:
+          - check: error_code
+            allowed_values: ["IDEMPOTENCY_CONFLICT"]
+            description: "A changed manifest conflicts before provider dispatch"
+
+      - id: changed_account_conflict
+        title: "Reject the same key with a changed account"
+        task: get_creative_features
+        schema_ref: "creative/get-creative-features-request.json"
+        response_schema_ref: "creative/get-creative-features-response.json"
+        doc_ref: "/governance/creative/get_creative_features"
+        comply_scenario: creative_features_idempotency
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.sync_replay_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "creative-features-changed-account-7604"
+            sandbox: true
+          creative_manifest:
+            format_kind: "display_tag"
+            assets:
+              tag_url:
+                asset_type: "url"
+                url: "https://creative.pinnacle-agency.example/compliance/clean-tag.html"
+          feature_ids:
+            - "$context.creative_feature_id"
+          context:
+            correlation_id: "creative_features_idempotency--account_conflict"
+        validations:
+          - check: error_code
+            allowed_values: ["IDEMPOTENCY_CONFLICT"]
+            description: "A changed account conflicts before provider dispatch"
+
+      - id: changed_features_conflict
+        title: "Reject the same key with changed feature_ids"
+        task: get_creative_features
+        schema_ref: "creative/get-creative-features-request.json"
+        response_schema_ref: "creative/get-creative-features-response.json"
+        doc_ref: "/governance/creative/get_creative_features"
+        comply_scenario: creative_features_idempotency
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.sync_replay_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
+            sandbox: true
+          creative_manifest:
+            format_kind: "display_tag"
+            assets:
+              tag_url:
+                asset_type: "url"
+                url: "https://creative.pinnacle-agency.example/compliance/clean-tag.html"
+          feature_ids:
+            - "$context.creative_feature_id"
+            - "compliance_secondary_feature"
+          context:
+            correlation_id: "creative_features_idempotency--features_conflict"
+        validations:
+          - check: error_code
+            allowed_values: ["IDEMPOTENCY_CONFLICT"]
+            description: "A changed ordered feature_ids array conflicts before provider dispatch"
+
+  - id: concurrent_duplicates
+    title: "Concurrent duplicates allocate one evaluation"
+    steps:
+      - id: evaluate_creative_concurrently
+        title: "Dispatch two identical evaluations at once"
+        task: get_creative_features
+        schema_ref: "creative/get-creative-features-request.json"
+        response_schema_ref: "creative/get-creative-features-response.json"
+        doc_ref: "/governance/creative/get_creative_features"
+        comply_scenario: creative_features_idempotency
+        stateful: true
+        requires_contract: parallel_dispatch_runner
+        parallel_dispatch:
+          count: 2
+          same_idempotency_key: true
+          barrier_timeout_ms: 5000
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#creative_features_concurrent"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
+            sandbox: true
+          creative_manifest:
+            format_kind: "display_tag"
+            assets:
+              tag_url:
+                asset_type: "url"
+                url: "https://creative.pinnacle-agency.example/compliance/concurrent-tag.html"
+          feature_ids:
+            - "$context.creative_feature_id"
+          context:
+            correlation_id: "creative_features_idempotency--concurrent"
+        validations:
+          - check: cross_response_count_distinct
+            path: "evaluation_id"
+            allowed_values: [1]
+            description: "Concurrent duplicates allocate exactly one provider evaluation identity"
+        reviewer_checks:
+          - "Confirm both resolved responses use the same response arm; submitted responses also preserve one task_id."
+          - "Confirm the provider recorded no duplicate consumption or charge while resolving the concurrent requests."
+
+  - id: asynchronous_replay
+    title: "Async replay preserves task and evaluation identities"
+    steps:
+      - id: force_creative_evaluation_submitted
+        title: "Force the next evaluation into the submitted arm"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        comply_scenario: creative_features_idempotency
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
+            sandbox: true
+          scenario: "force_get_creative_features_arm"
+          params:
+            arm: "submitted"
+            task_id: "task_creative_evaluation_7604"
+            evaluation_id: "eval_creative_evaluation_7604"
+            message: "Sandboxed creative scan accepted"
+          context:
+            correlation_id: "creative_features_idempotency--force_submitted"
+        validations:
+          - check: response_schema
+            description: "Controller accepts the submitted directive"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Directive is registered"
+          - check: field_value
+            path: "forced.task_id"
+            value: "task_creative_evaluation_7604"
+            description: "Controller echoes the forced task identity"
+          - check: field_value
+            path: "forced.evaluation_id"
+            value: "eval_creative_evaluation_7604"
+            description: "Controller echoes the forced provider evaluation identity"
+
+      - id: submit_creative_evaluation
+        title: "Receive a schema-valid submitted acknowledgement"
+        task: get_creative_features
+        schema_ref: "creative/get-creative-features-request.json"
+        response_schema_ref: "creative/get-creative-features-response.json"
+        doc_ref: "/governance/creative/get_creative_features"
+        comply_scenario: creative_features_idempotency
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.async_replay_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
+            sandbox: true
+          creative_manifest:
+            format_kind: "display_tag"
+            assets:
+              tag_url:
+                asset_type: "url"
+                url: "https://creative.pinnacle-agency.example/compliance/async-tag.html"
+          feature_ids:
+            - "$context.creative_feature_id"
+          context:
+            correlation_id: "creative_features_idempotency--async_initial"
+        context_outputs:
+          - name: async_task_id
+            path: "task_id"
+          - name: async_evaluation_id
+            path: "evaluation_id"
+        validations:
+          - check: response_schema
+            description: "Submitted acknowledgement validates against get-creative-features-response.json"
+          - check: field_value
+            path: "status"
+            value: "submitted"
+            description: "Provider acknowledges accepted async work"
+          - check: field_present
+            path: "task_id"
+            description: "Acknowledgement carries the pollable task identity"
+          - check: field_present
+            path: "evaluation_id"
+            description: "Acknowledgement carries the provider evaluation identity"
+          - check: field_absent
+            path: "results"
+            description: "Terminal results are absent from the acknowledgement"
+
+      - id: replay_submitted_evaluation
+        title: "Replay returns the original submitted acknowledgement"
+        task: get_creative_features
+        schema_ref: "creative/get-creative-features-request.json"
+        response_schema_ref: "creative/get-creative-features-response.json"
+        doc_ref: "/governance/creative/get_creative_features"
+        comply_scenario: creative_features_idempotency
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.async_replay_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
+            sandbox: true
+          creative_manifest:
+            format_kind: "display_tag"
+            assets:
+              tag_url:
+                asset_type: "url"
+                url: "https://creative.pinnacle-agency.example/compliance/async-tag.html"
+          feature_ids:
+            - "$context.creative_feature_id"
+          context:
+            correlation_id: "creative_features_idempotency--async_replay"
+        validations:
+          - check: response_schema
+            description: "Replayed acknowledgement remains schema-valid"
+          - check: field_value
+            path: "replayed"
+            value: true
+            description: "Async retry is served from the replay record"
+          - check: field_equals_context
+            path: "task_id"
+            context_key: "async_task_id"
+            description: "Async replay preserves the original task identity"
+          - check: field_equals_context
+            path: "evaluation_id"
+            context_key: "async_evaluation_id"
+            description: "Async replay preserves the original provider evaluation identity"
+
+  - id: terminal_reconciliation
+    title: "Terminal polling preserves evaluation economics"
+    steps:
+      - id: complete_creative_evaluation
+        title: "Complete the forced evaluation"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        comply_scenario: creative_features_idempotency
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
+            sandbox: true
+          scenario: "force_task_completion"
+          params:
+            task_id: "$context.async_task_id"
+            result:
+              status: "completed"
+              evaluation_id: "eval_creative_evaluation_7604"
+              results:
+                - feature_id: "$context.creative_feature_id"
+                  value: false
+                  confidence: 0.99
+              pricing_option_id: "standard_scan"
+              vendor_cost: 0.025
+              currency: "USD"
+              consumption:
+                duration_seconds: 1.25
+          context:
+            correlation_id: "creative_features_idempotency--complete"
+        validations:
+          - check: response_schema
+            description: "Controller completion response is valid"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Controller completes the evaluation task"
+          - check: field_value
+            path: "current_state"
+            value: "completed"
+            description: "Task reaches terminal completion"
+
+      - id: poll_completed_creative_evaluation
+        title: "Poll the terminal evaluation artifact"
+        task: get_task_status
+        schema_ref: "protocol/get-task-status-request.json"
+        response_schema_ref: "protocol/get-task-status-response.json"
+        doc_ref: "/protocol/get_task_status"
+        comply_scenario: creative_features_idempotency
+        stateful: true
+        sample_request:
+          task_id: "$context.async_task_id"
+          include_result: true
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_get_creative_features_idemp-07021f6f"
+            sandbox: true
+          context:
+            correlation_id: "creative_features_idempotency--poll_terminal"
+        validations:
+          - check: response_schema
+            description: "Polling response matches get-task-status-response.json"
+          - check: field_equals_context
+            path: "task_id"
+            context_key: "async_task_id"
+            description: "Polling preserves the submitted task identity"
+          - check: field_value
+            path: "task_type"
+            value: "get_creative_features"
+            description: "Task identifies the originating evaluation operation"
+          - check: field_value
+            path: "protocol"
+            value: "creative"
+            description: "Task is classified in the creative protocol"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "Polling returns the terminal state"
+          - check: field_equals_context
+            path: "result.evaluation_id"
+            context_key: "async_evaluation_id"
+            description: "Terminal artifact preserves the acceptance-time evaluation identity"
+          - check: field_value
+            path: "result.pricing_option_id"
+            value: "standard_scan"
+            description: "Terminal artifact preserves the pricing option"
+          - check: field_value
+            path: "result.vendor_cost"
+            value: 0.025
+            description: "Terminal artifact preserves provider cost"
+          - check: field_value
+            path: "result.currency"
+            value: "USD"
+            description: "Terminal artifact preserves cost currency"
+          - check: field_value
+            path: "result.consumption.duration_seconds"
+            value: 1.25
+            description: "Terminal artifact preserves structured consumption"

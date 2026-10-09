@@ -1,9 +1,11 @@
 id: media_buy_seller/vendor_metric_accountability
-version: "1.0.0"
+version: "1.0.1"
 title: "End-to-end vendor-metric accountability: declaration → commitment → delivery audit"
 category: media_buy_seller
 summary: "Buyer commits vendor metrics on two packages, then verifies one clean package, one overdue gap, and one not-yet-measurable omission."
 track: reporting
+requires:
+  - controller
 
 requires_capability:
   path: media_buy.features.committed_metrics_supported
@@ -64,7 +66,10 @@ prerequisites:
 fixtures:
   products:
     - product_id: "display_premium_vendor_metrics"
-      delivery_type: "guaranteed"
+      # Non-guaranteed so sales-non-guaranteed-only sellers can run this scenario
+      # (#7754). Fixed-price because discovery filters on is_fixed_price and the
+      # creates send no bid. is_guarantee_basis is not conditioned on delivery_type.
+      delivery_type: "non_guaranteed"
       channels: ["display"]
       format_options:
         - format_option_id: "display_300x250"

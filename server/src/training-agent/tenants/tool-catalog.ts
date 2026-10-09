@@ -65,6 +65,8 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // it. Catalog mirrors that advertisement so the drift test stays green.
   list_creative_formats: ['sales', 'creative', 'creative-builder'],
   sync_agent_notification_configs: ['sales'],
+  sync_principal: ['sales'],
+  get_principal: ['sales'],
 
   // creative — exposed on multiple tenants
   // list_creatives / get_creative_delivery are sales-side / ad-server-side
@@ -173,7 +175,7 @@ export function toolsForTenant(
       if (tool === 'validate_input' || tool === 'list_transformers') return false;
       if (
         tenantId === 'sales'
-        && ['sync_agent_notification_configs', 'build_creative', 'preview_creative'].includes(tool)
+        && ['sync_agent_notification_configs', 'sync_principal', 'get_principal', 'build_creative', 'preview_creative'].includes(tool)
       ) return false;
       if (tool === 'sync_governance' && tenantId !== 'signals') return false;
       return true;

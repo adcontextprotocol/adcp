@@ -29,6 +29,21 @@ function loadRefreshHelpers(overrides: Record<string, unknown> = {}) {
   return context;
 }
 
+function loadAgentStateFetcher(fetch: ReturnType<typeof vi.fn>) {
+  const fetcherStart = dashboardSource.indexOf("const MAX_RETRY_WAIT_MS = 3000;");
+  const fetcherEnd = dashboardSource.indexOf("async function loadAgents()", fetcherStart);
+  if (fetcherStart < 0 || fetcherEnd < 0) {
+    throw new Error("agent state fetcher not found");
+  }
+  const context = vm.createContext({ fetch, setTimeout, encodeURIComponent });
+  vm.runInContext(dashboardSource.slice(fetcherStart, fetcherEnd), context);
+  return context.fetchAgentState as (
+    agent: { url: string },
+    organizationId: string,
+    onPartial?: (state: Record<string, unknown>) => void,
+  ) => Promise<Record<string, unknown>>;
+}
+
 function loadRefreshClickHandler(options: {
   responseData: Record<string, unknown>;
   responseStatus?: number;
@@ -86,7 +101,7 @@ function loadRefreshClickHandler(options: {
   const context = vm.createContext({
     document,
     fetch,
-    pageState: { orgId: "org_test" },
+    pageState: { orgId: "org_test", activeRefreshPolls: new Set() },
     reloadAgentCardAfterRefresh,
     buildAgentRefreshSummary: vi.fn(() => "refresh summary"),
     isSuccessfulAgentRetest: (data: {
@@ -109,6 +124,38 @@ function loadRefreshClickHandler(options: {
 }
 
 describe("dashboard agent refresh", () => {
+  it('keeps polling after a transient status service failure', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({
+        status: 503, ok: false, headers: { get: () => null }, json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        status: 200, ok: true, headers: { get: () => null },
+        json: async () => ({ status: 'succeeded', result: { online: true } }),
+      });
+    const context = loadRefreshHelpers({ fetch, setTimeout: (resolve: () => void) => resolve() });
+    const result = await (context.pollAgentRefresh as (url: string) => Promise<{ status: string }>)('/refresh/status');
+    expect(result.status).toBe('succeeded');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retains a durable refresh status URL across a dashboard reload', () => {
+    const storage = new Map<string, string>();
+    const context = loadRefreshHelpers({
+      sessionStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
+    });
+    const agentUrl = 'https://seller.example/mcp';
+    const statusUrl = `/api/registry/agents/${encodeURIComponent(agentUrl)}/refreshes/123e4567-e89b-42d3-a456-426614174000`;
+    (context.rememberRefresh as (agentUrl: string, statusUrl: string) => void)(agentUrl, statusUrl);
+    expect((context.pendingRefreshUrl as (agentUrl: string) => string | null)(agentUrl)).toBe(statusUrl);
+    (context.forgetRefresh as (agentUrl: string) => void)(agentUrl);
+    expect((context.pendingRefreshUrl as (agentUrl: string) => string | null)(agentUrl)).toBeNull();
+  });
+
   it("reports the newly negotiated target and concrete cache after a 3.0 to 3.1 migration", () => {
     const context = loadRefreshHelpers();
     const buildAgentRefreshSummary = context.buildAgentRefreshSummary as (
@@ -260,9 +307,53 @@ describe("dashboard agent refresh", () => {
   it('renders the non-retryable pause before a click and keeps requeue semantically separate', () => {
     expect(dashboardSource).toContain('cs?.refresh_availability');
     expect(dashboardSource).toContain('data-refresh-paused="true"');
+    expect(dashboardSource).toContain('refreshAvailability.tracking_issue');
     expect(dashboardSource).toContain('This is not a human refresh and has no guaranteed start time.');
     expect(dashboardSource).not.toContain('runs within ~1 hour');
     expect(dashboardSource).not.toContain('next heartbeat cycle (within ~1 hour)');
+  });
+
+  it('renders history and auth actions before the slower compliance response completes', async () => {
+    let resolveCompliance: ((response: unknown) => void) | undefined;
+    const response = (data: unknown) => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: vi.fn(() => null) },
+      json: vi.fn().mockResolvedValue(data),
+    });
+    const fetch = vi.fn((url: string) => {
+      if (url.includes('/compliance?org=')) {
+        return new Promise(resolve => { resolveCompliance = resolve; });
+      }
+      if (url.includes('/compliance/history')) {
+        return Promise.resolve(response({ runs: [{ overall_status: 'passing' }] }));
+      }
+      return Promise.resolve(response({ has_auth: true, auth_type: 'oauth' }));
+    });
+    const fetchAgentState = loadAgentStateFetcher(fetch);
+    const partial = vi.fn();
+    let finalResolved = false;
+    const finalPromise = fetchAgentState(
+      { url: 'https://seller.example/mcp' },
+      'org_test',
+      partial,
+    ).then(value => {
+      finalResolved = true;
+      return value;
+    });
+
+    await vi.waitFor(() => expect(partial).toHaveBeenCalledOnce());
+    expect(finalResolved).toBe(false);
+    expect(partial.mock.calls[0][0]).toMatchObject({
+      status: null,
+      history: { runs: [{ overall_status: 'passing' }] },
+      authStatus: { has_auth: true, auth_type: 'oauth' },
+    });
+    expect(dashboardSource).toContain("hasPartialData ? `<button class=\"agent-requeue-btn");
+
+    resolveCompliance?.(response({ status: 'passing' }));
+    await expect(finalPromise).resolves.toMatchObject({ status: { status: 'passing' } });
   });
 
   it("preserves compliance targets in storyboard catalog requests", () => {

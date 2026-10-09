@@ -18,6 +18,7 @@ import {
   type PreparedModelInvocation,
 } from './model-provider.js';
 import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
+import { supportsForcedToolChoice } from '../../config/models.js';
 import { validateNormalizedModelResponse } from './events.js';
 
 type AnthropicRequest = Record<string, unknown>;
@@ -593,9 +594,13 @@ export class AnthropicModelProvider implements ModelProvider {
       })),
       tools,
       ...(request.toolChoice && {
-        tool_choice: request.toolChoice.type === 'tool'
-          ? { type: 'tool', name: request.toolChoice.name }
-          : { type: request.toolChoice.type === 'required' ? 'any' : 'auto' },
+        // Sonnet 5.5-class models reject forced tool use; there the prompt
+        // steers toward the tool and the loop handles a turn without it.
+        tool_choice: !supportsForcedToolChoice(request.model)
+          ? { type: 'auto' }
+          : request.toolChoice.type === 'tool'
+            ? { type: 'tool', name: request.toolChoice.name }
+            : { type: request.toolChoice.type === 'required' ? 'any' : 'auto' },
       }),
       messages: toAnthropicMessages(request.messages),
       betas: ['web-search-2025-03-05'],

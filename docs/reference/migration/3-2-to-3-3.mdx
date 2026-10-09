@@ -1,0 +1,126 @@
+---
+title: Migrating from 3.2 to 3.3
+sidebarTitle: 3.2 to 3.3
+description: "Role-based migration checklist for adopting the AdCP 3.3 beta while preserving 3.2 compatibility: two behavior tightenings, optional new declarations, and no deprecations."
+"og:title": "AdCP — Migrating from 3.2 to 3.3"
+---
+
+# Migrating from 3.2 to 3.3
+
+<Warning>
+**3.3 is in its beta cycle.** Keep production traffic pinned to `"3.2"` while validating 3.3 in staging. See the [3.3 beta program](/docs/reference/3-3-beta) for artifact and SDK timing.
+</Warning>
+
+3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
+
+Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). One change loosens a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib). Everything else is an optional declaration or a clarification.
+
+For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3). For prerelease artifacts and SDK timing, use the [3.3 beta program](/docs/reference/3-3-beta).
+
+## Upgrade checklist
+
+| Step | Who | Action |
+|---|---|---|
+| 1 | Everyone | Keep production on `"3.2"`; choose an exact 3.3 beta artifact for staging. |
+| 2 | SDK and codegen maintainers | Generate from the signed `3.3.0-beta.0` protocol tarball, not `main` or `/schemas/latest/`. |
+| 3 | Sellers and agents | Advertise the exact prerelease in `adcp.supported_versions` and echo the release actually served. |
+| 4 | Buyers | Send `adcp_version: "3.3-beta.N"` only after exact capability discovery; never silently move between beta pins. |
+| 5 | Sellers that provision accounts lazily | Move provisioning off discovery tasks. |
+| 6 | Signing and verifying implementations | Check agent resolution and pinned keys against the list below. |
+| 7 | Verifiers that fetch brand.json | Raise the brand.json body cap from 256 KiB to 2 MiB; leave JWKS and capabilities caps unchanged. |
+| 8 | Sellers with a catalog intake | Optionally declare `media_buy.features.catalog_ingestion`. |
+| 9 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
+
+## Required to claim 3.3 behavior
+
+### Discovery tasks never provision an account
+
+A seller that provisions accounts lazily, instead of exposing `sync_accounts`, now provisions only on a provisioning task: one that commits spend or creates account-owned resources, such as `create_media_buy`, `buy_products`, `accept_proposal`, `sync_creatives`, `sync_catalogs`, `sync_event_sources`, or `activate_signal`. Discovery and negotiation tasks MUST NOT create or activate an account, or accept a seller's default terms for the buyer. They include:
+
+- `get_products`, `list_products`
+- `get_signals`
+- `request_proposals`, `refine_proposals`, `decline_proposals`
+
+**Sellers.** An `account` that does not resolve returns `ACCOUNT_NOT_FOUND` on these tasks, even where `account` is optional, instead of being dropped in favor of public results. A seller that provisions lazily instead of exposing `sync_accounts` MAY answer a discovery task for a complete natural key it would provision, as if that account existed, without creating it. A seller that exposes `sync_accounts` returns `ACCOUNT_NOT_FOUND`. `list_accounts` is the exception: its `account` field is a filter, so a key that matches nothing returns an empty list. A seller that provisioned on `get_products` or on the "first account-scoped request" was conformant under 3.2 and is not under 3.3. Request and response schemas are unchanged; the required side effect is not.
+
+**Buyers.** Omit `account` and send `brand` until the account is provisioned, and provision before `request_proposals` when you intend to accept. Returning `ACCOUNT_NOT_FOUND` for an unresolved `account` was already required and was clarified in [3.2.2](https://github.com/adcontextprotocol/adcp/releases/tag/v3.2.2). It has one recovery everywhere: provision a natural key with `sync_accounts` (or the seller's lazy path), or verify an `account_id`. An `account_id` echoed by `sync_accounts` for a buyer-declared account is a seller handle, not something to assume is accepted as an `AccountRef`.
+
+The advisory storyboard `media_buy_seller/unprovisioned_account_reference` grades this for sellers that expose `sync_accounts`. Its checks become required at runner capability `14.1.0`. See [Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning).
+
+### Signature verification tightens
+
+Request signing, webhook signing, governance JWS `iss`, designated-task response signing, and rights attestations now share one [agent-resolution algorithm](/docs/building/by-layer/L1/security#agent-resolution). Some signatures that verified under 3.2 can fail:
+
+- A pinned `signing_keys` key that is not published in the agent's JWKS is rejected. The pin narrows the accepted keys for sell-side signatures the agent makes about that publisher's inventory, such as webhooks; it never adds a key and does not apply to the agent's other traffic. Where a message covers several publishers, the key must match every pin that applies. Publish every pinned key in the agent's JWKS.
+- A pin entry without complete public-key parameters for its `kty`, such as one with only a `kid`, matches nothing. Matching is by RFC 7638 thumbprint.
+- `key_origins` is now checked for every webhook signer that publishes `brand_json_url`, including pinned keys, and origin binding (the agent URL's eTLD+1 equals the `brand_json_url` eTLD+1, or a House Portfolio `authorized_operators[]` entry covers it) applies to webhook signers.
+- Webhook discovery starts from `identity.brand_json_url`. When it is present, buyers MUST use it and MUST NOT fall back. The 3.x fallback reads `/.well-known/brand.json` at the agent's host, or its eTLD+1, only for sellers that omit the field. Every resolution failure rejects with `webhook_signature_key_unknown`.
+- Agent URLs match by canonical URL on every surface. Webhook discovery and governance `iss` no longer compare byte for byte, and the schema's `agent_url_match` verifier constraint is now `canonical`. Two `agents[]` entries that match canonically are ambiguous only if they differ in `type` or in resolved JWKS source; entries that agree on both count once.
+- Governance buyer identity for signed requests is the exact operator record that agent resolution selected, and `iss` must match exactly one governance-typed entry.
+- Cached or onboarding mappings must be confirmed against the agent's `brand_json_url` and re-confirmed within the brand.json cache lifetime.
+
+TMP keeps its own publisher-key model. Verifiers take the publishers that apply from their own record of the media buy, never from the payload.
+
+### Brand JSON size cap rises to 2 MiB
+
+The brand.json body cap rises from 256 KiB to 2 MiB (2,097,152 bytes) on every fetch path: the AgenticAdvertising.org registry's live read, and the signing trust-root fetches in [`security.mdx`](/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url) (rights-holder resolution, designated-task response signing, and `brand_json_url` key discovery). Real brand houses with visual guidelines, colorways, and localized names exceed 256 KiB, so the old cap made them unverifiable. The cap applies to brand.json only. `MAX_JWKS_BYTES` and `MAX_CAPABILITIES_BYTES` are unchanged.
+
+**This loosens a limit, so interop is asymmetric.** A verifier still enforcing 256 KiB rejects a brand.json between 256 KiB and 2 MiB with `request_signature_brand_json_malformed` (or `webhook_signature_key_unknown` on the webhook surface), even though a 3.3 verifier accepts it.
+
+**Verifiers.** Raise the brand.json cap to 2 MiB, and keep the mitigations that make the larger cap safe: count bytes while the body streams and abort the connection once the cap is exceeded (never buffer then check, and never read past 2 MiB); apply the cap to decoded bytes when the response is content-encoded; keep the 5 s connect and 10 s total deadlines (the total covers reading the body); enforce a nesting depth of 32 while strict-parsing; run cheap checks before the fetch and bound concurrent trust-root fetches; and keep the success-cache lifetime bounded by the JWKS revocation polling interval with negative caching at or under 60 s. Revalidating with `ETag` and single-flighting concurrent fetches keep the larger body from being refetched on every request. SDKs that hard-clamp brand.json to 256 KiB need a release before their verifiers accept the larger size; check your SDK's changelog.
+
+**Operators.** A brand.json SHOULD stay under 2 MiB. While counterparties may still be on 3.2 verifiers, an operator whose brand.json carries `agents[]` or signing keys and needs to verify with them SHOULD keep that file under 256 KiB, for example by pointing `identity.brand_json_url` at a small Brand Agent variant that carries only the agent entries, until those peers upgrade.
+
+## Clarifications
+
+These restate existing rules and need no wire change.
+
+- **`adagents.json` agent URLs.** `authorized_agents[].url` is the agent's full protocol endpoint URL including its path, for example `https://agent.example.com/mcp`, not its origin. List one entry for each agent URL when MCP and A2A are served at different paths. See [Agent URL matching](/docs/governance/property/adagents#agent-url-matching).
+- **Trust and verification docs.** Only `verify_brand_claim` and `verify_brand_claims` carry a signed response payload; `get_products` responses are not signed. A missing `authorized_operators` listing leads to rejection or manual review, never automatic approval. Use `agents[]` with `type: "brand"` or `"rights"`; the `brand_agent` and `rights_agent` fields were already deprecated.
+- **`ext.adcp` is reserved.** The namespace belongs to the AdCP working group. Vendors that used `ext.adcp` for their own data should move to their own namespace.
+- **Interim `reporting_webhook.operation_id`.** Docs-only guidance lets 3.2.1 integrations carry `operation_id` on `reporting_webhook` as an opt-in field. The core field is a proposal still in working-group review. See [webhooks](/docs/building/by-layer/L3/webhooks#adcp-3-2-interim-reporting-correlation).
+- **Already in 3.2.2.** The account-reference and trust-docs clarifications were published as documentation-only changes in 3.2.2, so 3.2.2 adopters have seen them.
+
+## Adopt by capability
+
+### SDK implementation metadata
+
+Optional. Agents can report `adcp.implementation.sdks[]` with a package `name`, exact resolved `version`, and a `components` list. `components: []` reports SDK use without claiming agent-wide component coverage, such as an SDK signing helper used on only some routes. Existing agents may omit the block; buyers treat omission as unknown SDK use, while `sdks: []` explicitly reports no AdCP SDK use. Components describe the deployed server integration, including build-time type imports, rather than the package's available features. Buyers keep using AdCP version declarations for negotiation and retain all conformance obligations. Approval comes from a trusted catalog, and reducing check depth requires independently trusted evidence covering the endpoint and integration. See [implementation metadata](/docs/protocol/get_adcp_capabilities#implementation). If a 3.2 agent already uses `adcp.implementation` as an extension point, migrate it to this shape or a vendor-owned `ext` namespace.
+
+### Catalog ingestion declarations
+
+Optional. A seller declares `media_buy.features.catalog_ingestion` with accepted catalog types, `ingestion_modes` (`feed_url`, `inline_items`), feed formats, content identifier types, `max_inline_items_per_request`, and `item_status_reporting` (`per_item` or `feed_level`). `accepted_catalog_types`, `ingestion_modes`, and `item_status_reporting` are required. `supported_feed_formats` is required whenever `feed_url` is listed, and an empty array means no external formats. `max_inline_items_per_request` is valid only when `inline_items` is listed. `supported_content_id_types` is optional: absent means unknown, empty means none of the named types. Declaring it requires `catalog_management: true`; a legacy boolean-only `catalog_management` declaration stays valid. A declaring seller MUST reject an unlisted catalog type, ingestion mode, or feed format, and an explicit `content_id_type` outside a declared `supported_content_id_types` list, with `UNSUPPORTED_FEATURE` before mutation, including on `dry_run`. Inline items beyond `max_inline_items_per_request` fail with `INVALID_REQUEST`. Under `per_item` reporting, terminal results for created, updated, or unchanged catalogs, and discovery-only reads, carry one `item_issues` entry per item, so the unique `item_id` count equals `item_count`. Use a fresh `idempotency_key` for each current read, because replays are historical snapshots, and dry-run statuses are previews. Buyers treat an absent declaration as unknown, not unrestricted. See [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs#ingestion-compatibility).
+
+### DOOH location and venue summary
+
+Optional. Add `dooh_placement_attributes.location` (`lat`, `lon`, `address`) to a concrete single-screen placement, and `dooh_inventory_summary.venue_counts[]` to a network product. The field is `lon`, not `lng`. All `location` fields are optional, and `location` is disclosure metadata that must not change `placement_id` or `identifiers[]`. Each `venue_counts` row requires `geo_level`, `geo_code`, and `count`; metro rows also require `system`, native postal rows need `country` plus `system`, and country and region rows omit `system` and `country`. See [DOOH](/docs/creative/channels/dooh#structured-location-for-planning-and-mapping).
+
+### `ext.adcp.opportunity`
+
+Optional. Cooperating `get_products` integrations can carry an opportunity binding under `ext.adcp.opportunity`, declared by listing `adcp` in `extensions_supported`. Durable association needs an authorized account scope from the request's `account` or unambiguous authenticated context, and a mismatched ID on refine is rejected with `INVALID_REQUEST`; compact `refine_proposals` inherits the association and does not accept the extension. The typed schema is not in any 3.2.x artifact and links through `latest` until the first 3.3 release. The core `opportunity` field on `get_products` is a proposal still in working-group review, not part of 3.3 today. See [AdCP opportunity extension](/docs/building/by-layer/L2/context-sessions#adcp-opportunity-extension).
+
+## Deprecations
+
+None. 3.3 deprecates no stable field, task, or enum value. Existing 3.2 deprecations keep their published removal windows.
+
+## Compliance and grading
+
+- `media_buy_seller/unprovisioned_account_reference` is new and advisory until runner capability `14.1.0`.
+- Advanced delivery reporting runs only for sellers that advertise wholesale discovery, and proposal-finalization replay only for sellers that advertise idempotency support.
+- Hosted grading of governance-aware sellers is covered in [AAO Verified](/docs/building/verification/aao-verified).
+- `sales-guaranteed` exercises the documented polling path and no longer requires an optional task webhook.
+- The acceptance-policy discovery scenario provisions and selects its own sandbox account.
+
+These change grading results, not the wire.
+
+## Rollback
+
+Stay on, or return to, `"3.2"`: every 3.3 declaration is optional, so removing it restores 3.2 behavior. The two tightenings above are the exception: they apply as soon as you claim 3.3 behavior, so keep a 3.2-pinned route until your discovery and verification paths pass against the beta.
+
+## Related
+
+- [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3)
+- [3.3 beta program](/docs/reference/3-3-beta)
+- [Release Notes](/docs/reference/release-notes#version-3-3-0)
+- [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2)
+- [Versions & Compatibility](/docs/reference/versions)

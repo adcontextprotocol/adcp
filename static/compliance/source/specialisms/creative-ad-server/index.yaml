@@ -5,6 +5,9 @@ protocol: creative
 category: creative_ad_server
 summary: "Stateful ad server with pre-loaded creatives. Generates serving tags per media buy. Optionally bills through AdCP."
 track: creative
+requires:
+  - controller
+
 required_tools:
   - build_creative
 

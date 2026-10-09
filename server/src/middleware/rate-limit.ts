@@ -77,6 +77,20 @@ export const nativeAuthTokenRateLimiter = rateLimit({
   },
 });
 
+/** Bound anonymous whole-file schema validation before reading multipart input. */
+export const jsonUploadValidationRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('json-upload-validation:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (_req: Request, res: Response) => {
+    res.status(429).json({ error: 'Too many file validations. Try again in a minute.' });
+  },
+});
+
 /** Bound anonymous endpoints that fan out into outbound agent probes. */
 export const agentCardValidationRateLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -864,4 +878,41 @@ export const logoUploadRateLimiter = rateLimit({
       retryAfter: Math.ceil(60 * 60),
     });
   },
+});
+
+function brandImportLimitHandler(windowLabel: string, retryAfterSeconds: number) {
+  return (req: Request, res: Response) => {
+    logger.warn({ userId: (req as any).user?.id, ip: req.ip, window: windowLabel }, 'Rate limit exceeded for brand-book import');
+    res.status(429).json({
+      error: 'Too many requests',
+      message: `Brand-book import limit reached (${windowLabel}). Please try again later.`,
+      retryAfter: retryAfterSeconds,
+    });
+  };
+}
+
+/**
+ * Brand-book import runs a model call per request and is open to anonymous
+ * visitors on brandjson.org. Limits: 5 per hour and 20 per day per user/IP.
+ */
+export const brandImportHourlyRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('brand-import-hour:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: brandImportLimitHandler('5 per hour', 60 * 60),
+});
+
+export const brandImportDailyRateLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('brand-import-day:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: brandImportLimitHandler('20 per day', 24 * 60 * 60),
 });

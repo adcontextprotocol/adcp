@@ -14,11 +14,13 @@ import type {
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { withSdkSafeTransport } from './utils/sdk-safe-fetch.js';
 import { assertValidBrandDomain } from './services/identifier-normalization.js';
+import { getSandboxBrand } from './services/sandbox-brands.js';
 import {
   observeBrandRelationshipDeclaration,
   type BrandRelationshipDeclaration,
 } from './db/brand-relationship-db.js';
 import {
+  BRAND_JSON_MAX_RESPONSE_BYTES,
   BRAND_MANAGER_CACHE_TTL_SECONDS,
   brandManagerResolutionTtlMs,
 } from './services/brand-resolution-cache-policy.js';
@@ -130,7 +132,6 @@ export type BrandJson =
 
 const LEGACY_BRAND_SCHEMA = 'https://schemas.adcontextprotocol.org/brand/v1/brand.json';
 const CURRENT_BRAND_SCHEMA = 'https://adcontextprotocol.org/schemas/v3/brand.json';
-const BRAND_JSON_MAX_RESPONSE_BYTES = 256 * 1024;
 // Initial /.well-known/brand.json discovery permits only HTTPS redirects
 // between the originally requested hostname and its exact www counterpart,
 // with SSRF validation repeated per hop. Keep this HTTP budget separate from
@@ -1127,6 +1128,8 @@ export class BrandManager {
     const { maxRedirects = 3, skipCache = false } = options;
     const normalizedDomain = this.normalizeLookupDomain(domain);
     if (!normalizedDomain) return null;
+    const sandboxBrand = getSandboxBrand(normalizedDomain);
+    if (sandboxBrand) return this.resolveSandboxBrand(sandboxBrand, normalizedDomain);
     const cacheKey = `resolve:${normalizedDomain}`;
     const cachedBeforeRefresh = skipCache
       ? this.resolutionCache.get(cacheKey)
@@ -1604,6 +1607,23 @@ export class BrandManager {
         source: 'brand_json',
       },
       retainCachedMutual,
+    };
+  }
+
+  /**
+   * A compliance test-kit brand. AgenticAdvertising.org authors these and is
+   * their only possible owner, so they resolve as `hosted`.
+   */
+  private resolveSandboxBrand(data: BrandCanonicalDocument, domain: string): ResolvedBrand {
+    return {
+      canonical_id: data.id,
+      canonical_domain: domain,
+      brand_name: this.getPrimaryName(data.names) || data.id,
+      names: data.names,
+      keller_type: data.keller_type,
+      relationship_trust: 'standalone',
+      brand_manifest: this.buildBrandManifest(data),
+      source: 'hosted',
     };
   }
 

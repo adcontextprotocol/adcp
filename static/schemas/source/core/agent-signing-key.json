@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/agent-signing-key.json",
   "title": "Agent Signing Key",
-  "description": "Publisher-attested public key material for an authorized agent. Buyers use these keys to verify signed agent responses against the trust anchor published in adagents.json rather than trusting key discovery from the agent domain alone.",
+  "description": "Publisher-attested public key material for an authorized agent. Verifiers accept a sell-side signature about this publisher's inventory only when the key appears both in this pin and in the agent's own JWKS, so a takeover of the agent domain alone cannot introduce a new key.",
   "type": "object",
   "properties": {
     "kid": {

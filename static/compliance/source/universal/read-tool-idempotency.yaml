@@ -5,6 +5,9 @@ title: "Read-tool idempotency_key envelope tolerance"
 category: idempotency
 summary: "Validates that read-only AdCP tasks and the 3.x get_products compatibility facade tolerate an optional idempotency_key without claiming read-response replay."
 track: core
+requires:
+  - controller
+
 required_tools: []  # protocol-level baseline; read-tool probes gate themselves per step
 
 narrative: |
@@ -227,7 +230,6 @@ phases:
 
         sample_request:
           idempotency_key: "$generate:uuid_v4#read_tools_3_1_list_formats"
-          type: "display"
           pagination:
             max_results: 10
           context:

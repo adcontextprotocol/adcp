@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>trust.json: which agents act for your organization (draft)</title>
+  <meta name="description" content="trust.json is a draft open standard for publishing which agents an organization runs, their keys, and who may act on its behalf, at /.well-known/trust.json.">
+  <link rel="canonical" href="https://trustjson.org/">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/sites/standard-site.css">
+</head>
+<body>
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
+  <header class="std-hero">
+    <span class="std-badge">Draft</span>
+    <h1>trust.json</h1>
+    <p>One file at <code>/.well-known/trust.json</code> that says which agents your organization runs, which keys they sign with, and who may act on your behalf.</p>
+    <div class="std-actions">
+      <a class="btn btn-primary" href="https://github.com/adcontextprotocol/adcp/pull/7819">Read the draft</a>
+      <a class="btn btn-secondary-on-dark" href="https://github.com/adcontextprotocol/adcp/issues/7809">Join the discussion</a>
+    </div>
+  </header>
+
+  <main class="std-main">
+    <h2>What it answers</h2>
+    <div class="std-cards">
+      <div class="std-card">
+        <h3>Which agents are ours?</h3>
+        <p><code>agents[]</code>: each agent's URL, roles, and signing keys, published from your own domain.</p>
+      </div>
+      <div class="std-card">
+        <h3>Who may act for us?</h3>
+        <p><code>grants[]</code>: authority you delegate to other organizations, scoped and time-boxed. Grants never carry keys.</p>
+      </div>
+      <div class="std-card">
+        <h3>Whose grants do we accept?</h3>
+        <p><code>acknowledgements[]</code>: a pointer to a grant someone else published. The terms stay in their file.</p>
+      </div>
+    </div>
+
+    <h2>Not just for advertising</h2>
+    <p>The core is protocol-neutral. Roles and scopes are namespaced, for example <code>adcp:sales</code> for the Ad Context Protocol, so any agent protocol can define its own profile.</p>
+
+    <h2>A minimal example</h2>
+<pre>{
+  "agents": [
+    {
+      "url": "https://agents.acme.example/sales",
+      "roles": ["adcp:sales"],
+      "jwks_uri": "https://agents.acme.example/.well-known/jwks.json"
+    }
+  ]
+}</pre>
+
+    <h2>Status</h2>
+    <p>trust.json is a draft under discussion in <a href="https://github.com/adcontextprotocol/adcp/issues/7809">RFC #7809</a>. Field names may change before v1. Identity stays in <a href="https://brandjson.org">brand.json</a>.</p>
+  </main>
+
+  <div id="adcp-footer"></div>
+</body>
+</html>

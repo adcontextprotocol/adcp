@@ -217,10 +217,10 @@ describe('Gemini Direct production integration', () => {
     const f = fixture([
       receipt([call('list_escalations', { status: 'open' })]),
       receipt([call('resolve_escalation', { escalation_id: 583 })], 'resolve'),
-      receipt([{ text: 'Escalation 583 was resolved.' }], 'answer'),
+      receipt([{ text: 'Escalation 583 was resolved and the user was notified.' }], 'answer'),
     ]);
     const list = vi.fn().mockResolvedValue('{"escalations":[{"id":583,"status":"open"}]}');
-    const resolve = vi.fn().mockResolvedValue('{"status":"resolved","escalation_id":583}');
+    const resolve = vi.fn().mockResolvedValue(JSON.stringify({ success: true, status: 'resolved', escalation_id: 583, notification_sent: true, notification_channel: 'email' }));
     const reserve = vi.fn();
     const requestTools = {
       tools: ['list_escalations', 'resolve_escalation'].map(name => ({ name, description: name, input_schema: { type: 'object', properties: {} } })),
@@ -230,6 +230,7 @@ describe('Gemini Direct production integration', () => {
     expect(result.response?.model_execution).toMatchObject({ provider: 'google', fallback_reason: null });
     expect(list).toHaveBeenCalledExactlyOnceWith({ status: 'open' });
     expect(resolve).toHaveBeenCalledExactlyOnceWith({ escalation_id: 583 });
+    expect(result.response?.text).toBe('Escalation #583 is marked as resolved. The user notification was sent via email.');
     expect(reserve).toHaveBeenCalledExactlyOnceWith({ toolName: 'resolve_escalation', parameters: { escalation_id: 583 } });
     expect(f.getControlTools).not.toHaveBeenCalled();
     expect(f.control).not.toHaveBeenCalled();

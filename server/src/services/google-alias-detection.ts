@@ -26,9 +26,13 @@ export async function detectGoogleAliasAccount(
 
   const pool = getPool();
   const local = await pool.query<{ workos_user_id: string; email: string }>(
-    `SELECT workos_user_id, email FROM users
-      WHERE LOWER(email) = ANY($1::text[]) AND workos_user_id <> $2
-      ORDER BY workos_user_id LIMIT 1`,
+    `SELECT u.workos_user_id, u.email FROM users u
+      WHERE LOWER(u.email) = ANY($1::text[]) AND u.workos_user_id <> $2
+        AND NOT EXISTS (
+          SELECT 1 FROM user_email_aliases a
+          WHERE LOWER(a.email) = LOWER(u.email)
+        )
+      ORDER BY u.workos_user_id LIMIT 1`,
     [aliases, credential.id],
   );
   let duplicate = local.rows[0]
@@ -36,10 +40,21 @@ export async function detectGoogleAliasAccount(
     : undefined;
 
   if (!duplicate) {
+    // Read-only: an email already claimed as an alias is excluded locally, so
+    // the provider fallback must not reintroduce it as a support candidate.
+    search:
     for (const email of aliases) {
       const users = await provider.listUsers({ email });
-      duplicate = users.data.find((user) => user.id !== credential.id);
-      if (duplicate) break;
+      for (const candidate of users.data) {
+        if (candidate.id === credential.id) continue;
+        const claimed = await pool.query(
+          'SELECT 1 FROM user_email_aliases WHERE LOWER(email) = LOWER($1) LIMIT 1',
+          [candidate.email],
+        );
+        if (claimed.rows.length > 0) continue;
+        duplicate = candidate;
+        break search;
+      }
     }
   }
   if (!duplicate) return null;

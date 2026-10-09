@@ -106,6 +106,7 @@ describe('Google aliases never union credential authority', () => {
   async function cleanup() {
     await pool.query('DELETE FROM working_group_memberships WHERE workos_user_id = ANY($1)', [USER_IDS]);
     await pool.query('DELETE FROM working_groups WHERE slug = $1', [GROUP_SLUG]);
+    await pool.query('DELETE FROM user_email_aliases WHERE workos_user_id = ANY($1)', [USER_IDS]);
     await pool.query('DELETE FROM registry_audit_log WHERE workos_user_id = ANY($1)', [USER_IDS]);
     await pool.query('DELETE FROM organization_memberships WHERE workos_user_id = ANY($1)', [USER_IDS]);
     await pool.query('DELETE FROM users WHERE workos_user_id = ANY($1)', [USER_IDS]);
@@ -296,6 +297,29 @@ describe('Google aliases never union credential authority', () => {
       memberships: structuredClone(memberships), credentials: structuredClone(credentials),
     };
   }
+
+  it.each([0, 1])('skips an already-claimed alias email from provider lookup when credential %i signs in', async (index) => {
+    await pool.query(
+      'INSERT INTO user_email_aliases (workos_user_id, email) VALUES ($1, $2)',
+      [USER_IDS[index], EMAILS[1 - index]],
+    );
+    const before = await snapshot();
+    const auditCount = async () => (await pool.query(
+      'SELECT COUNT(*)::int AS n FROM registry_audit_log WHERE workos_user_id = ANY($1)', [USER_IDS],
+    )).rows[0].n;
+    expect(await auditCount()).toBe(0);
+
+    expect(await detectGoogleAliasAccount({ id: USER_IDS[index], email: EMAILS[index] }, provider)).toBeNull();
+
+    // Provider fallback ran and saw the claimed candidate, but produced no hint.
+    expect(provider.listUsers).toHaveBeenCalledWith({ email: EMAILS[1 - index] });
+    expect(await auditCount()).toBe(0);
+    expect(await snapshot()).toEqual(before);
+    expect(provider.createOrganizationMembership).not.toHaveBeenCalled();
+    expect(provider.updateUser).not.toHaveBeenCalled();
+    expect(provider.deleteUser).not.toHaveBeenCalled();
+    expect(provider.fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+  });
 
   it.each([0, 1])('preserves all authority and routing when credential %i signs in, including retries', async (index) => {
     const before = await snapshot();

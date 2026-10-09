@@ -26,6 +26,8 @@ const path = require('node:path');
     'node scripts/promote-release-candidate.mjs',
   );
   assert.match(versionWrapper, /\.changeset\/rc-promotion\.json/);
+  assert.match(versionWrapper, /\.changeset\/release-supersession\.json/);
+  assert.match(versionWrapper, /check-release-supersession\.cjs/);
   assert.match(versionWrapper, /changeset', 'version'/);
 
   const plan = planRcPromotion({

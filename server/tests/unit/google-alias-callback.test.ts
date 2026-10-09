@@ -232,8 +232,20 @@ describe.each(accounts)('Google alias callback for $email', (account) => {
       expect(writes).toHaveLength(failurePoint === 'audit insert' ? 2 : 1);
       expect(writes[0][0]).toMatch(/INSERT INTO users \(\s*workos_user_id, email,/);
       expect(writes[0][1].slice(0, 2)).toEqual([account.id, account.email]);
+      // Only the local and provider claimed-email SELECTs may read aliases.
+      const aliasReads = mocks.query.mock.calls.filter(([sql]) => sql.includes('user_email_aliases'));
+      for (const [sql, params] of aliasReads) {
+        if (sql.trim() === 'SELECT 1 FROM user_email_aliases WHERE LOWER(email) = LOWER($1) LIMIT 1') {
+          expect(params).toEqual([duplicate.email]);
+        } else {
+          expect(sql.trim()).toMatch(/^SELECT u\.workos_user_id, u\.email FROM users u/);
+          expect(sql).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM user_email_aliases a/);
+          expect(params[0]).toContain(duplicate.email);
+          expect(params[1]).toBe(account.id);
+        }
+      }
       expect(mocks.query.mock.calls.map(([sql]) => sql).join('\n'))
-        .not.toMatch(/user_email_aliases|identity_workos_users|organization_memberships|DELETE FROM users/);
+        .not.toMatch(/identity_workos_users|organization_memberships|DELETE FROM users/);
       if (failurePoint === 'audit insert') {
         expect(writes[1][0]).toContain('INSERT INTO registry_audit_log');
         expect(writes[1][1]).toEqual([

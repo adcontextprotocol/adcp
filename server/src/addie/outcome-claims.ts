@@ -10,6 +10,8 @@ const CERTIFICATION_CONTEXT = /\b(?:certification|capstone|credential|certificat
 const COMPLETION = /\b(?:completed?|concludes?|concluded|finished|mastered|passed|earned|certified|awarded|issued|done|locked in|in the books|wrapped up|wraps? up|you(?:'re| are) through)\b/gi;
 const CREDENTIAL = /\b(?:credential|certificate|badge|certified|certification)\b/i;
 const ESCALATION_CLAIM = /\b(?:I(?:'ve| have| just| will|'ll| am going to|'m going to|'m| am)?|we(?:'ve| have| will|'ll| are going to|'re going to|'re| are)?)\s+(?:(?:will|have|already|just)\s+)?(flag(?:ged|ging)?|escalat(?:e|ed|ing)|notif(?:y|ied|ying)|rais(?:e|ed|ing)|fil(?:e|ed|ing)|creat(?:e|ed|ing)|open(?:ed|ing)?|send(?:ing)?|sent|pass(?:ed|ing)?|forward(?:ed|ing)?|hand(?:ed|ing)?|contact(?:ed|ing)?|reach(?:ed|ing)? out)\b/i;
+const RESOLUTION_CLAIM = /\b(?:I(?:'ve| have| just)?\s+(?:resolved|closed)\s+(?:the\s+)?(?:escalation|ticket|support request)|(?:escalation|ticket|support request)(?: #?\d+)?\s+(?:(?:has been|was|is|marked as)\s+)?(?:resolved|closed|wont_do))\b/gi;
+const USER_NOTIFICATION_CLAIM = /\b(?:I(?:'ve| have| just)?\s+(?:notified|emailed)|(?:user|requester|member)\s+(?:has been|was|is)\s+(?:notified|emailed))\b/i;
 const SUPPORT_OBJECT = /\b(?:ticket|support request|team|admins?|support|github issue)\b/i;
 const SUPPORT_DESTINATION = /\b(?:ticket|support request|github issue)\b|\b(?:for|to|with)\s+(?:(?:the|our|your|support)\s+){0,2}(?:team|admins?|support)\b/i;
 const PASSIVE_ESCALATION = /\b(?:(?:team|admins?) (?:has been|have been|will be|is being|was|were) (?:notified|alerted)|(?:ticket|support request|escalation)(?: #\d+)? (?:has been |was |is |will be )?(?:created|filed|opened|raised|saved)|(?:this|it|issue|request|problem|bug) (?:has been|was|will be|is being) (?:flagged|escalated|forwarded|passed|sent))\b/gi;
@@ -125,13 +127,18 @@ function hasOnlyGenericCredentialReferences(text: string): boolean {
   });
 }
 
-function supportReceipt(executions: readonly ToolExecution[]): { id: number; notified: boolean } | null {
+function supportReceipt(executions: readonly ToolExecution[], operation: 'create' | 'resolve'): { id: number; notified: boolean; status?: 'resolved' | 'wont_do'; channel?: 'email' | 'slack' } | null {
   for (const execution of [...executions].reverse()) {
-    if (execution.tool_name !== 'escalate_to_admin' || execution.is_error) continue;
+    if (execution.tool_name !== (operation === 'create' ? 'escalate_to_admin' : 'resolve_escalation') || execution.is_error) continue;
     try {
       const receipt = JSON.parse(execution.result);
       if (receipt?.success === true && Number.isSafeInteger(receipt.escalation_id) && receipt.escalation_id > 0
         && typeof receipt.notification_sent === 'boolean') {
+        if (operation === 'resolve') {
+          if (receipt.status !== 'resolved' && receipt.status !== 'wont_do') continue;
+          if (receipt.notification_sent && !['email', 'slack'].includes(receipt.notification_channel)) continue;
+          return { id: receipt.escalation_id, notified: receipt.notification_sent, status: receipt.status, channel: receipt.notification_channel };
+        }
         return { id: receipt.escalation_id, notified: receipt.notification_sent };
       }
     } catch { /* Legacy prose is not a persisted receipt. */ }
@@ -140,22 +147,50 @@ function supportReceipt(executions: readonly ToolExecution[]): { id: number; not
 }
 
 /** Test each outcome predicate; an unrelated negation cannot exempt a claim. */
-function assertsCertificationOutcome(text: string): boolean {
-  if (/^(?:complete|finish|pass|master|earn)\b/i.test(text.trim())) return false;
-  if (/^(?:have|has|is|are|did|can|could|would|will)\b/i.test(text.trim()) && text.endsWith('?')) return false;
+function certificationPredicates(text: string): RegExpMatchArray[] {
+  if (/^(?:complete|finish|pass|master|earn)\b/i.test(text.trim())) return [];
+  if (/^(?:have|has|is|are|did|can|could|would|will)\b/i.test(text.trim()) && text.endsWith('?')) return [];
   const predicates = [...text.matchAll(COMPLETION)];
   if (CREDENTIAL.test(text)) predicates.push(...text.matchAll(/\b(?:yours|ready(?=\s*[.!?]?$| to (?:download|share)| for (?:download|sharing)))/gi));
   if (/\bmastery\b/i.test(text)) predicates.push(...text.matchAll(/\b(?:confirmed|demonstrated|recorded)\b/gi));
-  for (const match of predicates) {
+  return predicates.filter(match => {
     const prefix = text.slice(0, match.index);
     // Negation must apply to this predicate, not another clause.
-    if (/\b(?:not|never|haven't|hasn't|isn't|aren't|cannot|can't)(?:\s+\w+){0,2}\s+$/i.test(prefix)) continue;
+    if (/\b(?:not|never|haven't|hasn't|isn't|aren't|cannot|can't)(?:\s+\w+){0,2}\s+$/i.test(prefix)) return false;
     const clause = prefix.split(/[,;:]|\b(?:but|and|so)\b/i).at(-1)!.trim();
-    if (/^(?:once|if|when|until|before|to)\b/i.test(clause)) continue;
-    if (/\bto\s+$/i.test(prefix)) continue;
+    if (/^(?:once|if|when|until|before|to)\b/i.test(clause)) return false;
+    if (/\bto\s+$/i.test(prefix)) return false;
     return true;
+  });
+}
+
+const MODULE_OBJECT = '(?:(?:all(?:\\s+of)?|both)\\s+)?(?:(?:this|that|the|your|each|every)\\s+)?(?:(?:entire|whole)\\s+)?(?:(?:modules?\\s+)?[A-Z]{1,2}\\d{1,2}(?:\\s+and\\s+(?:module\\s+)?[A-Z]{1,2}\\d{1,2})*(?:\\s+module)?|module|capstone)';
+const CREDENTIAL_NAME_WORD = '(?!(?:is|are|was|has|have|been|requires|needs)\\b)[\\w\'-]+';
+const CREDENTIAL_OBJECT = `(?:(?!(?:access|to|for|about|explaining|exercise|registration|buy|options|course|requires|needs|but)\\b)[\\w'-]+\\s+){0,5}(?:credential|certificate|badge|certification)(?:\\s+(?:for|in|of|as)\\s+${CREDENTIAL_NAME_WORD}(?:\\s+${CREDENTIAL_NAME_WORD}){0,3})?`;
+const OUTCOME_OBJECT = `(?:${MODULE_OBJECT}|${CREDENTIAL_OBJECT})`;
+const OUTCOME_SUBJECT = new RegExp(`\\b(${OUTCOME_OBJECT})(?:'s)?\\s*(?:(?:is|are|was|were|has|have|been|now|officially|already|successfully|recorded|marked|as|mastery)\\s+){0,6}$`, 'i');
+const OUTCOME_DIRECT_OBJECT = new RegExp(`^\\s+(?:with\\s+)?(${OUTCOME_OBJECT})\\b(?!\\s+(?:course|options|requirements|access)\\b)`, 'i');
+
+/** Extract only objects attached to outcome predicates, never generic pronouns. */
+function certificationClaim(text: string, teachingContext: boolean): { ids: string[]; credential: boolean; module: boolean } {
+  const ids = new Set<string>();
+  let credential = false;
+  let module = false;
+  for (const predicate of certificationPredicates(text)) {
+    const prefix = text.slice(0, predicate.index);
+    const suffix = text.slice(predicate.index! + predicate[0].length);
+    if (predicate[0].toLowerCase() === 'certified') credential = true;
+    const subject = OUTCOME_SUBJECT.exec(prefix)?.[1];
+    const object = OUTCOME_DIRECT_OBJECT.exec(suffix)?.[1];
+    for (const target of [subject, object]) {
+      if (!target) continue;
+      if (CREDENTIAL.test(target)) { credential = true; continue; }
+      if (!teachingContext && !/\b(?:modules?\s+[A-Z]{1,2}\d{1,2}|[A-Z]{1,2}\d{1,2}\s+module|capstone)\b/i.test(target)) continue;
+      module = true;
+      for (const id of target.matchAll(MODULE_ID)) ids.add(id[0].toUpperCase());
+    }
   }
-  return false;
+  return { ids: [...ids], credential, module };
 }
 
 /**
@@ -168,38 +203,81 @@ export function enforceOutcomeClaims(
   executions: readonly ToolExecution[],
   conversationContext = '',
 ): { text: string; reason: string | null } {
+  // Code/payload strings are data, never assistant assertions. In particular,
+  // do not corrupt a validated JSON example by rewriting its string values.
+  const parts = text.split(/(```[^\n]*\n[\s\S]*?```|~~~[^\n]*\n[\s\S]*?~~~|`[\[{][^`\n]*[\]}]`)/g);
+  const reasons = new Set<string>();
+  for (let i = 0; i < parts.length; i += 2) {
+    const result = enforceProseOutcomeClaims(parts[i]!, executions, conversationContext);
+    parts[i] = result.text;
+    if (result.reason) reasons.add(result.reason);
+  }
+  return { text: parts.join(''), reason: [...reasons].join('; ') || null };
+}
+
+function enforceProseOutcomeClaims(
+  text: string,
+  executions: readonly ToolExecution[],
+  conversationContext: string,
+): { text: string; reason: string | null } {
   const evidence = certificationEvidence(executions);
-  const support = supportReceipt(executions);
+  const support = supportReceipt(executions, 'create');
+  const resolution = supportReceipt(executions, 'resolve');
+  const savedSupport = support
+    ? `Support request #${support.id} is saved.${support.notified ? ' The team notification was sent.' : ' I could not confirm a team notification.'}`
+    : DIRECT_SUPPORT;
   const certificationContext = CERTIFICATION_CONTEXT.test(conversationContext)
     || executions.some(execution => CERTIFICATION_TOOLS.has(execution.tool_name));
   const reasons = new Set<string>();
   let certificationReplaced = false;
   let certificationRendered = false;
   let supportReplaced = false;
-  const parts = text.split(/((?<=[.!?])\s+|\n+)/);
+  let resolutionReplaced = false;
+  // Separate independent clauses before binding objects to predicates. A next
+  // module mentioned in a membership/next-step clause is not a completed one.
+  const parts = text.split(/((?<=[.!?])\s+|\n+|;\s*|,\s*(?=(?:but|so)\b)|\s+(?=and (?:module\s+)?[A-Z]{1,2}\d{1,2}\s+(?:requires|needs)\b))/);
   const output: string[] = [];
   for (const [index, part] of parts.entries()) {
     if (index % 2 === 1) { output.push(part); continue; }
     const plain = part.replace(/\[([^\[\]\n]*)\]\([^\[\]\s()]+\)/g, '$1')
       .replace(/[*_`]/g, '').replace(/[’‘]/g, "'");
+    const resolutionClaim = [...plain.matchAll(RESOLUTION_CLAIM)].some(match => {
+      const prefix = plain.slice(0, match.index);
+      return !/\b(?:no|not|never)\s+(?:(?:a|the|any)\s+)?$/i.test(prefix)
+        && !/\b(?:can't|cannot|couldn't|haven't|have not)\s+(?:confirm|verify|say)\s+(?:(?:that|whether)\s+)?(?:(?:the|a)\s+)?$/i.test(prefix)
+        && !/\b(?:not sure|unclear)\s+(?:(?:that|whether|if)\s+)?(?:(?:the|a)\s+)?$/i.test(prefix)
+        && !/(?:^|[,;:]\s*)\s*(?:if|whether|when|once|until)\s+(?:(?:the|a)\s+)?$/i.test(prefix);
+    });
+    const userNotification = USER_NOTIFICATION_CLAIM.test(plain)
+      && /\b(?:user|requester|member)\b/i.test(plain)
+      && (resolution !== null || /\b(?:escalation|ticket|support request)\b/i.test(`${conversationContext}\n${plain}`));
+    if (userNotification && !resolutionClaim && !resolution && support) {
+      // A creation receipt confirms the saved request/team notification, not
+      // notification of the requester. Preserve that independent success.
+      if (!supportReplaced) output.push(savedSupport);
+      output.push(' I could not confirm a notification to the user.');
+      supportReplaced = true;
+      reasons.add('Unconfirmed support notification');
+      continue;
+    }
+    if (resolutionClaim || userNotification) {
+      if (!resolutionReplaced) output.push(resolution
+        ? `Escalation #${resolution.id} is marked as ${resolution.status}.${resolution.notified ? ` The user notification was sent via ${resolution.channel === 'email' ? 'email' : 'Slack DM'}.` : ' I could not confirm a user notification.'}`
+        : "I haven't confirmed a saved resolution or user notification for this escalation.");
+      if (!resolution) reasons.add('Unconfirmed support resolution');
+      resolutionReplaced = true;
+      continue;
+    }
     if (hasSupportClaim(plain, `${conversationContext}\n${text}${support ? '\nSupport request receipt.' : ''}`)) {
-      if (!supportReplaced) output.push(support
-        ? `Support request #${support.id} is saved.${support.notified ? ' The team notification was sent.' : ' I could not confirm a team notification.'}`
-        : DIRECT_SUPPORT);
+      if (!supportReplaced) output.push(savedSupport);
       supportReplaced = true;
       if (!support) reasons.add('Unconfirmed support escalation');
       continue;
     }
-    const ids = [...plain.matchAll(MODULE_ID)].map(match => match[0].toUpperCase());
-    const teachingSubtask = ids.length === 0 && !CREDENTIAL.test(plain)
-      && !/\b(?:module|capstone|mastery)\b/i.test(plain)
-      && [...plain.matchAll(COMPLETION)].length === 1
-      && /\b(?:completed?|finished|passed|mastered)\s+(?:(?:the|this|that|an?|your)\s+)?(?:example|exercise|question|practice|tutorial|request|media buy|deployment)\b/i.test(plain);
-    const isCertificationClaim = !teachingSubtask && assertsCertificationOutcome(plain)
-      && (CREDENTIAL.test(plain) || /\bcapstone\b|\bmodule\s+[A-Z]{1,2}\d{1,2}\b/i.test(plain)
-        || (certificationContext && (ids.length > 0 || /\b(?:module|you|your|we|that|this|it)\b/i.test(plain))));
-    if (isCertificationClaim) {
-      const credentialClaim = CREDENTIAL.test(plain);
+    const claim = certificationClaim(plain, certificationContext);
+    const ids = claim.ids;
+    if (claim.module || claim.credential) {
+      const credentialClaim = claim.credential;
       const externalIssuance = /\b(?:issued|sent|delivered|download|share|ready)\b/i.test(plain);
       const credentials = externalIssuance ? evidence.issuedCredentials : evidence.credentials;
       const modulesSupported = ids.every(id => evidence.modules.has(id));
@@ -207,7 +285,7 @@ export function enforceOutcomeClaims(
       if (claimedCredentials.length === 0 && credentials.size === 1 && hasOnlyGenericCredentialReferences(plain)) {
         claimedCredentials.push(...credentials.keys());
       }
-      const modules = ids.length ? ids : [...evidence.modules];
+      const modules = ids.length ? ids : credentialClaim ? [] : [...evidence.modules];
       const supported = modulesSupported && (credentialClaim ? claimedCredentials.length > 0 : modules.length > 0);
       if (!supported) {
         if (!certificationReplaced) output.push(UNCONFIRMED_CERTIFICATION);
@@ -230,5 +308,5 @@ export function enforceOutcomeClaims(
     }
     output.push(part);
   }
-  return { text: reasons.size > 0 || supportReplaced || certificationRendered ? output.join('').trim() : text, reason: [...reasons].join('; ') || null };
+  return { text: reasons.size > 0 || supportReplaced || resolutionReplaced || certificationRendered ? output.join('') : text, reason: [...reasons].join('; ') || null };
 }

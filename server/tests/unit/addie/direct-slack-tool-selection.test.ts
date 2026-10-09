@@ -5,15 +5,50 @@ import { AAOAdminLookupUnavailableError } from '../../../src/addie/admin-status-
 import {
   PUBLIC_MENTION_READ_ONLY_TOOL_NAMES,
 } from '../../../src/addie/slack-tool-selection.js';
+import { ModelConfig } from '../../../src/config/models.js';
 
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Slack response provider integration', () => {
+  it('passes current uploads and earlier file-only messages to the response model', async () => {
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'sonnet');
+    const processMessage = vi.fn().mockResolvedValue({ text: 'I can see the upload.', tools_used: [], tool_executions: [] });
+    const currentUrl = 'https://files.slack.com/files-pri/T_TEST-F_CURRENT/adagents.json';
+    const previousUrl = 'https://files.slack.com/files-pri/T_TEST-F_PREVIOUS/notes.txt';
+    const selectRoutedTools = vi.fn().mockResolvedValue({
+      tools: { tools: [], handlers: new Map() }, allowedToolNames: ['read_slack_file'],
+      selectedToolSets: ['community_discussions'], isAAOAdmin: false,
+    });
+    await handleAppMention({
+      event: { channel: 'C_PRIVATE', ts: '2', thread_ts: '1', user: 'U_TEST', text: '<@B_ADDIE>',
+        files: [{ id: 'F_CURRENT', name: 'adagents.json', url_private: currentUrl }] },
+      context: { botUserId: 'B_ADDIE' }, say: vi.fn(),
+    } as never, {
+      claudeClient: { processMessage, getRegisteredTools: () => ['read_slack_file'] } as never,
+      resolveChannelContext: vi.fn().mockResolvedValue({ viewing_channel_is_private: true }),
+      getThreadReplies: vi.fn().mockResolvedValue([{ ts: '1', text: '', files: [
+        { id: 'F_PREVIOUS', name: 'notes.txt', url_private: previousUrl },
+      ] }]),
+      getMemberContext: vi.fn().mockResolvedValue(null),
+      buildRequestContext: vi.fn().mockResolvedValue({ requestContext: 'Trusted context', memberContext: null }),
+      getThreadService: vi.fn(() => ({
+        getOrCreateThread: vi.fn().mockResolvedValue({ thread_id: 'thread-1' }),
+        getThreadMessages: vi.fn().mockResolvedValue([]), addMessage: vi.fn(),
+      }) as never),
+      selectRoutedTools,
+      buildCurrentChannelCostOptions: vi.fn().mockResolvedValue({}), logInteraction: vi.fn(),
+    });
+    expect(processMessage).toHaveBeenCalledOnce();
+    expect(processMessage.mock.calls[0][0]).toContain(currentUrl);
+    expect(processMessage.mock.calls[0][4].requestContext).toContain(previousUrl);
+    expect(selectRoutedTools.mock.calls[0][6].threadMessages.join('\n')).toContain('notes.txt');
+  });
+
   it.each([
     ['gemini', false], ['gemini', true], ['sonnet', false], ['sonnet', true],
   ] as const)('uses %s for mentions (thread=%s) while preserving routing authority and delivery', async (provider, inThread) => {
     vi.stubEnv('ADDIE_RESPONSE_PROVIDER', provider); vi.stubEnv('GEMINI_API_KEY', 'unused');
-    const model = provider === 'gemini' ? 'gemini-3.7-flash' : 'claude-sonnet-5';
+    const model = provider === 'gemini' ? 'gemini-3.7-flash' : ModelConfig.primary;
     const model_execution = { source: 'provider', requested_provider: provider === 'gemini' ? 'google' : 'anthropic',
       requested_model: model, provider: provider === 'gemini' ? 'google' : 'anthropic', model, model_resolution: 'exact', fallback_reason: null };
     const answer = { text: 'Slack answer.', tools_used: [], tool_executions: [], model_execution };

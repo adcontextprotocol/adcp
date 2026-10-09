@@ -1,0 +1,198 @@
+id: brand_rights/governance_denied
+version: "2.0.0"
+title: "Brand agent rejects rights acquisition without governance approval"
+category: brand_rights
+summary: "Verifies that a rights agent claiming acquire_rights governance enforcement fails closed without signed authorization and creates no grant."
+track: brand
+required_tools:
+  - sync_accounts
+  - sync_governance
+  - get_rights
+  - acquire_rights
+  - update_rights
+
+requires_capability:
+  path: adcp.governance_enforcement.tasks
+  contains:
+    task: acquire_rights
+    modes:
+      - signed_context
+
+narrative: |
+  An agent advertising signed-context enforcement for acquire_rights commits to
+  validating buyer governance authorization before creating a paid rights grant.
+  Non-claiming agents grade this scenario not_applicable.
+
+  The runner registers a governance agent, discovers a priced rights offering,
+  and submits a well-formed acquisition without governance_context. The brand
+  agent must use the task's structured rejection arm and must not persist a grant.
+  A follow-up update_rights probe for the rejected rights_id proves the absence of
+  that side effect. Echoing request context is never governance evidence.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+
+agent:
+  interaction_model: brand_rights_holder
+  capabilities:
+    - rights_licensing
+    - governance_aware
+  examples:
+    - "Any brand rights agent that honors governance before licensing"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    A governance agent URL to register and a brand agent supporting account
+    setup, governance registration, rights discovery, acquisition, and update.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: brand_agent_setup
+    title: "Register account and governance with the brand agent"
+    steps:
+      - id: sync_accounts
+        title: "Establish account with brand agent"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: "Brand agent returns an active account."
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: sync_governance
+        title: "Register governance agent with brand agent"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: "Brand agent acknowledges governance registration."
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+
+  - id: rights_denied
+    title: "Attempt rights acquisition without governance context"
+    steps:
+      - id: get_rights_catalog
+        title: "Discover priced rights"
+        task: get_rights
+        schema_ref: "brand/get-rights-request.json"
+        response_schema_ref: "brand/get-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/get_rights"
+        stateful: false
+        expected: "Return at least one rights offering with a pricing option."
+        sample_request:
+          buyer:
+            domain: "pinnacle-agency.example"
+          query: "licensed commercial rights for a regional outdoor retail campaign"
+          uses: ["commercial", "endorsement"]
+        context_outputs:
+          - path: "rights[0].rights_id"
+            key: "rights_id"
+          - path: "rights[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-rights-response.json schema"
+          - check: field_present
+            path: "rights[0].pricing_options[0].pricing_option_id"
+            description: "The selected offering is a paid commitment"
+
+      - id: acquire_rights_denied
+        title: "acquire_rights — missing governance approval"
+        task: acquire_rights
+        schema_ref: "brand/acquire-rights-request.json"
+        response_schema_ref: "brand/acquire-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/acquire_rights"
+        expected_arm: "rejected"
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Return AcquireRightsRejected with rights_status rejected and a reason
+          explaining that governance approval is required. Do not create a grant.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          rights_id: "$context.rights_id"
+          pricing_option_id: "$context.pricing_option_id"
+          buyer:
+            domain: "pinnacle-agency.example"
+          campaign:
+            description: "Governance-denied rights acquisition probe"
+            uses: ["likeness", "commercial"]
+            countries: ["US"]
+            estimated_impressions: 1000000
+            start_date: "2099-04-01"
+            end_date: "2099-06-30"
+          revocation_webhook:
+            url: "https://pinnacle-agency.example/webhooks/revocation"
+            authentication:
+              schemes: ["Bearer"]
+              credentials: "pinnacle-revocation-webhook-secret-token"
+          idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_acquire"
+        validations:
+          - check: response_schema
+            description: "Response matches the mutually exclusive AcquireRightsRejected arm"
+          - check: field_value
+            path: "rights_status"
+            value: "rejected"
+            description: "The structured rejection discriminator is present"
+          - check: field_present
+            path: "reason"
+            description: "The rejection explains that governance approval is required"
+
+      - id: rejected_grant_not_persisted
+        title: "Rejected acquisition created no rights grant"
+        task: update_rights
+        schema_ref: "brand/update-rights-request.json"
+        response_schema_ref: "brand/update-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/update_rights"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: "Return REFERENCE_NOT_FOUND because the rejected acquisition created no grant."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          rights_id: "$context.rights_id"
+          paused: true
+          idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_no_grant"
+        validations:
+          - check: error_code
+            value: "REFERENCE_NOT_FOUND"
+            description: "No grant exists for the rejected acquisition"

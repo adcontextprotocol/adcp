@@ -18,6 +18,8 @@ import type {
   GovernanceAdjustmentType,
   GovernanceFinding,
   GovernanceCondition,
+  GovernanceBudgetPeriod,
+  GovernanceActionFlight,
   SessionState,
 } from './types.js';
 import { canonicalize, type BrandReference } from '@adcp/sdk';
@@ -27,7 +29,8 @@ import {
   findSessionMatching,
 } from './state.js';
 import { signGovernanceContext, type GovernancePhase, type PolicyDecision } from './governance-context.js';
-import { getCanonicalBase } from './canonical-base.js';
+import { getTrainingGovernanceIssuer } from './canonical-base.js';
+import { isGovernanceAgentCredentialPlanInScope } from './governance-agent-credentials.js';
 import {
   computeDeliveryStatementDigest,
   computeGovernanceAdjustmentHash,
@@ -35,6 +38,16 @@ import {
   computeGovernedPayloadHash,
 } from './governance-payload-hash.js';
 import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
+import {
+  PERIOD_ID_RE,
+  buildBuyCommitments,
+  evaluateBudgetPeriods,
+  mergeStatedFlight,
+  parseBudgetPeriods,
+  periodResyncViolation,
+  resolveActionFlight,
+  type BuyCommitment,
+} from './governance-budget-periods.js';
 
 const EXECUTION_GOVERNANCE_PHASES = new Set<GovernancePhase>(['purchase', 'modification', 'delivery']);
 const MAX_REPORTED_OUTCOME_ERROR_BYTES = 16 * 1024;
@@ -232,6 +245,93 @@ function findGovernancePlanEntry(
     && (ownerAgentUrl === undefined || plan.ownerAgentUrl === ownerAgentUrl));
 }
 
+/** Settled commitments of a plan, aggregated per buy, for budget-period accounting. */
+function sessionBuyCommitments(session: SessionState, plan: GovernancePlanState): Map<string, BuyCommitment> {
+  const ownedByPlan = <T extends { planId: string; planOwnerAgentUrl?: string }>(entry: T) =>
+    entry.planId === plan.planId && entry.planOwnerAgentUrl === plan.ownerAgentUrl;
+  return buildBuyCommitments(
+    [...session.governanceOutcomes.values()].filter(ownedByPlan),
+    [...session.governanceAdjustments.values()].filter(ownedByPlan),
+  );
+}
+
+/**
+ * Evaluate one action against the plan's budget periods and translate the
+ * result into critical findings. The action's flight is resolved even when the
+ * plan has no periods, so the ledger keeps the flight of every dated
+ * commitment and periods can be added to a plan that already has buys. With no
+ * periods and no assertion there are no findings, so a plan without
+ * `budget.periods` behaves exactly as before.
+ */
+function evaluatePlanBudgetPeriods(input: {
+  plan: GovernancePlanState;
+  session: SessionState;
+  stated: { start?: unknown; end?: unknown; conflict?: string };
+  /** Flights to complete a half-stated flight from, most authoritative first. */
+  fallbackFlights: Array<GovernanceActionFlight | undefined>;
+  /** The buy being modified. Absent for a new purchase. */
+  buyKey?: string;
+  amount?: number;
+  asserted?: string;
+  deriveOnly?: boolean;
+  /** True for a modification: the buy must already be on the ledger if no dates are stated. */
+  isModification?: boolean;
+  nowMs: number;
+}): { periodId?: string; flight?: GovernanceActionFlight; findings: GovernanceFinding[] } {
+  const { plan, asserted } = input;
+  const enforcing = Boolean(plan.budget.periods?.length) || asserted !== undefined;
+  const buys = sessionBuyCommitments(input.session, plan);
+  const buyKey = input.buyKey?.slice(0, 255);
+  const fallback = input.fallbackFlights.find(flight => flight !== undefined)
+    ?? (buyKey ? buys.get(buyKey)?.flight : undefined);
+  const resolution = resolveActionFlight(input.stated, fallback, input.nowMs);
+  const flight = resolution.kind === 'dated' ? resolution.flight : undefined;
+  if (!enforcing) return { flight, findings: [] };
+
+  const finding = (explanation: string, details?: GovernanceFinding['details']): GovernanceFinding => ({
+    categoryId: 'budget_period',
+    severity: 'critical',
+    explanation,
+    ...(details && { details }),
+  });
+  if (plan.budget.periods?.length && !input.deriveOnly) {
+    if (resolution.kind === 'invalid') {
+      return { findings: [finding(`The action's flight cannot be placed in a budget period: ${resolution.reason}.`)] };
+    }
+    // A modification of a buy the ledger has never settled cannot be placed
+    // when it states no dates, and must not slip past periods as "undated".
+    if (resolution.kind === 'undated' && input.isModification && buyKey && !buys.has(buyKey)) {
+      return {
+        findings: [finding(`Buy ${buyKey} has no settled commitment on this plan and the modification states no flight, so it cannot be placed in a budget period.`)],
+      };
+    }
+  }
+  const result = evaluateBudgetPeriods({
+    periods: plan.budget.periods,
+    flight,
+    amount: input.amount,
+    buyKey,
+    buys,
+    asserted,
+    deriveOnly: input.deriveOnly,
+  });
+  const findings = result.findings.map(item => finding(item.explanation, item.details));
+  // An action a non-enforcing mode approved despite a period violation must not
+  // enter the ledger as a dated commitment: it would sit outside every period
+  // and make every later re-sync with periods unsatisfiable.
+  return { periodId: result.periodId, flight: findings.length > 0 ? undefined : flight, findings };
+}
+
+/** Where an intent payload states its flight: top-level times, `flight`, campaign dates. */
+function statedPayloadFlight(payload: CheckPayload) {
+  return mergeStatedFlight([
+    { start: payload.start_time, end: payload.end_time },
+    payload.flight && { start: payload.flight.start, end: payload.flight.end },
+    payload.flight && { start: payload.flight.start_time, end: payload.flight.end_time },
+    payload.campaign && { start: payload.campaign.start_date, end: payload.campaign.end_date },
+  ]);
+}
+
 function findAccessibleGovernancePlan(
   session: SessionState,
   planId: string,
@@ -361,6 +461,7 @@ interface SyncPlanInput {
     reallocation_unlimited?: boolean;
     per_seller_max_pct?: number;
     allocations?: Record<string, { amount?: number; max_pct?: number }>;
+    periods?: unknown;
     accounting_mode?: 'gross_commitment' | 'verified_net_cost';
   };
   human_review_required?: boolean;
@@ -388,6 +489,7 @@ interface CheckGovernanceInput extends ToolArgs {
   caller: string;
   target_agent?: string;
   purchase_type?: string;
+  budget_period_id?: string;
   proposed_commitment?: { amount: number; currency: string };
   execution_commitment?: { amount: number; currency: string };
   tool?: string;
@@ -644,6 +746,22 @@ export const GOVERNANCE_TOOLS = [
                       },
                     },
                   },
+                  periods: {
+                    type: 'array',
+                    minItems: 1,
+                    description: 'Optional budget partition across time. Half-open [start, end) windows inside the plan flight, no overlap; amounts sum to at most total.',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        budget_period_id: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9_.:-]+$' },
+                        start: { type: 'string', format: 'date-time' },
+                        end: { type: 'string', format: 'date-time' },
+                        amount: { type: 'number', minimum: 0 },
+                      },
+                      required: ['budget_period_id', 'start', 'end', 'amount'],
+                      additionalProperties: false,
+                    },
+                  },
                 },
                 required: ['total', 'currency'],
               },
@@ -743,6 +861,7 @@ export const GOVERNANCE_TOOLS = [
           description: 'Exact downstream service URL. Required on intent checks and signed as the governance token audience.',
         },
         purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
+        budget_period_id: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9_.:-]+$', description: 'Optional assertion of the plan budget period this action belongs to. Denied when it differs from the period derived from the action flight.' },
         proposed_commitment: {
           type: 'object',
           description: 'Task-neutral amount authorized by this intent. For update_media_buy, this is the buyer-computed positive incremental commitment, not the post-update total.',
@@ -951,7 +1070,73 @@ const GOVERNANCE_CATEGORIES = [
 
 // ── Handler implementations ─────────────────────────────────────
 
+/**
+ * A minted sandbox governance-agent credential stands for the seller's side
+ * of the governance loop only (governance-agent-credentials.ts). Buyer-side
+ * operations reject it even though the tenant router already filters them.
+ */
+function sellerCredentialBuyerSideError(ctx: TrainingContext, task: string) {
+  if (!ctx.governanceAgentCredential) return undefined;
+  return {
+    errors: [{
+      code: 'PERMISSION_DENIED',
+      message: `A seller governance credential cannot call ${task}; use a buyer credential.`,
+    }],
+  };
+}
+
+/**
+ * A minted hosted-grader credential stands for the buyer side of one hosted
+ * run only (governance-agent-credentials.ts). Every plan it names must carry
+ * the run nonce, so it cannot read or change another run's plans or anyone
+ * else's, even though every grader run authenticates as the same buyer agent.
+ */
+function hostedGraderPlanScopeError(ctx: TrainingContext, planIds: ReadonlyArray<string | undefined>) {
+  if (!ctx.hostedGraderCredential) return undefined;
+  const credential = ctx.hostedGraderCredential;
+  if (planIds.length > 0 && planIds.every(planId => isGovernanceAgentCredentialPlanInScope(credential, planId))) {
+    return undefined;
+  }
+  return {
+    errors: [{
+      code: 'PERMISSION_DENIED',
+      message: 'This hosted-grader credential is scoped to the plans of the hosted run that issued it.',
+    }],
+  };
+}
+
+function hostedGraderDeniedError(ctx: TrainingContext, task: string) {
+  if (!ctx.hostedGraderCredential) return undefined;
+  return {
+    errors: [{
+      code: 'PERMISSION_DENIED',
+      message: `A hosted-grader credential cannot call ${task}.`,
+    }],
+  };
+}
+
+function sellerCredentialPlanScopeError(ctx: TrainingContext, planId: string | undefined) {
+  if (!ctx.governanceAgentCredential) return undefined;
+  if (isGovernanceAgentCredentialPlanInScope(ctx.governanceAgentCredential, planId)) return undefined;
+  return {
+    errors: [{
+      code: 'PERMISSION_DENIED',
+      message: 'This seller governance credential is scoped to the plans of the hosted run that issued it.',
+    }],
+  };
+}
+
 export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
+  const sellerCredentialError = sellerCredentialBuyerSideError(ctx, 'sync_plans');
+  if (sellerCredentialError) return sellerCredentialError;
+  if (ctx.hostedGraderCredential) {
+    const plans = (args as SyncPlansInput).plans;
+    const graderError = hostedGraderPlanScopeError(
+      ctx,
+      Array.isArray(plans) ? plans.map(plan => (plan && typeof plan === 'object' ? plan.plan_id : undefined)) : [],
+    );
+    if (graderError) return graderError;
+  }
   if (!ctx.authenticatedAgentUrl) {
     return { errors: [{ code: 'PERMISSION_DENIED', message: 'sync_plans requires an authenticated buyer agent.' }] };
   }
@@ -963,6 +1148,8 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
   }
 
   const results: Array<{ plan_id: string; status: string; version: number; categories: Array<{ category_id: string; status: string }> }> = [];
+
+  const syncedPeriods = new Map<number, GovernanceBudgetPeriod[]>();
 
   // Validate all plans before mutating session state to keep the operation atomic
   for (let i = 0; i < input.plans.length; i++) {
@@ -1012,6 +1199,27 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
       if (invalidKeys.length > 0) {
         return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} budget.allocations has invalid keys: ${invalidKeys.join(', ')}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
       }
+    }
+    if (plan.budget.periods !== undefined) {
+      const parsed = parseBudgetPeriods(plan.budget.periods, {
+        planId: plan.plan_id,
+        flight: plan.flight,
+        total: plan.budget.total,
+      });
+      if ('error' in parsed) {
+        return { errors: [{ code: 'INVALID_REQUEST', message: parsed.error.message, field: `plans[${i}].${parsed.error.field}` }] };
+      }
+      // Rule 6: a re-sync may not strand an existing dated commitment or cut a
+      // period below what is already committed to it. Same VALIDATION_ERROR
+      // as a budget.total that drops below committed spend.
+      const priorPlan = findGovernancePlanEntry(session, plan.plan_id, ctx.authenticatedAgentUrl)?.[1];
+      const violation = priorPlan
+        ? periodResyncViolation(plan.plan_id, parsed.periods, sessionBuyCommitments(session, priorPlan).values())
+        : undefined;
+      if (violation) {
+        return { errors: [{ code: 'VALIDATION_ERROR', message: violation.message, field: `plans[${i}].${violation.field}` }] };
+      }
+      syncedPeriods.set(i, parsed.periods);
     }
 
     const existingSession = await findSessionMatching(candidate =>
@@ -1069,7 +1277,7 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
     }
   }
 
-  for (const plan of input.plans) {
+  for (const [planIndex, plan] of input.plans.entries()) {
     const existing = findGovernancePlanEntry(session, plan.plan_id, ctx.authenticatedAgentUrl)?.[1];
     const version = existing ? existing.version + 1 : 1;
 
@@ -1099,6 +1307,7 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
         allocations: plan.budget.allocations ? Object.fromEntries(
           Object.entries(plan.budget.allocations).map(([k, v]) => [k, { amount: v.amount, maxPct: v.max_pct }]),
         ) : undefined,
+        periods: syncedPeriods.get(planIndex),
       },
       humanReviewRequired: effectiveHumanReview,
       // Union new triggers with prior triggers so re-sync doesn't lose audit history.
@@ -1159,7 +1368,7 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
       plan_id: plan.plan_id,
       status: 'active',
       version,
-      categories: GOVERNANCE_CATEGORIES.map(id => ({
+      categories: [...GOVERNANCE_CATEGORIES, ...(syncedPeriods.has(planIndex) ? ['budget_period'] : [])].map(id => ({
         category_id: id,
         status: 'active' as const,
       })),
@@ -1171,6 +1380,18 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
 
 export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
   const req = args as CheckGovernanceInput;
+  if (ctx.hostedGraderCredential) {
+    // The grader runs intent checks (including an adjusted re-check with
+    // consultation_context) on its own run's plans only; execution checks
+    // belong to the seller named as the token audience. Checked from the
+    // request alone, before any cross-session lookup, so an explicit in-scope
+    // plan_id is required.
+    const intentOnly = req.tool !== undefined && req.payload !== undefined && !req.governance_context;
+    const graderError = intentOnly
+      ? hostedGraderPlanScopeError(ctx, [req.plan_id])
+      : hostedGraderDeniedError(ctx, 'check_governance execution checks');
+    if (graderError) return graderError;
+  }
   let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const governanceContext = req.governance_context;
   const consultationContext = req.consultation_context;
@@ -1201,6 +1422,15 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   }
 
   const planId = req.plan_id ?? priorCheck?.planId ?? priorConsultationCheck?.planId;
+  if (ctx.governanceAgentCredential) {
+    // A seller credential runs execution checks on its own run's plans only.
+    // Checked before any plan lookup so it cannot probe other plans.
+    const intentShaped = req.tool !== undefined || req.payload !== undefined || !governanceContext;
+    const credentialError = intentShaped
+      ? sellerCredentialBuyerSideError(ctx, 'check_governance intent checks')
+      : sellerCredentialPlanScopeError(ctx, planId);
+    if (credentialError) return credentialError;
+  }
   if (!planId) {
     return { errors: [{ code: 'PLAN_NOT_FOUND', message: 'No plan could be resolved from plan_id or governance_context.' }] };
   }
@@ -1252,6 +1482,17 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
 
   if (req.purchase_type && !VALID_PURCHASE_TYPES.has(req.purchase_type)) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
+  }
+  if (req.budget_period_id !== undefined && (
+    typeof req.budget_period_id !== 'string' || !PERIOD_ID_RE.test(req.budget_period_id)
+  )) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'budget_period_id must match ^[A-Za-z0-9_.:-]{1,64}$.',
+        field: 'budget_period_id',
+      }],
+    };
   }
 
   if (
@@ -1760,6 +2001,9 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   const findings: GovernanceFinding[] = [];
   const conditions: GovernanceCondition[] = [];
   const categoriesEvaluated: string[] = [];
+  let budgetPeriodId: string | undefined;
+  let authorizedFlight: GovernanceActionFlight | undefined;
+  let boundMediaBuyId: string | undefined;
   // When a human must approve before the action can proceed, the training agent
   // records a critical human_review finding and denies the check. Human approval
   // is resolved off-protocol; the buyer then calls check_governance again with
@@ -2017,6 +2261,26 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
         });
       }
     }
+
+    // Budget periods: the period is derived from the flight, never named by
+    // the buyer. A modification that moves a buy checks its whole commitment
+    // against the new period.
+    if (plan.budget.periods?.length || req.budget_period_id !== undefined) categoriesEvaluated.push('budget_period');
+    boundMediaBuyId = typeof policyPayload.media_buy_id === 'string' ? policyPayload.media_buy_id : undefined;
+    const periodEvaluation = evaluatePlanBudgetPeriods({
+      plan,
+      session,
+      stated: statedPayloadFlight(policyPayload),
+      fallbackFlights: [],
+      buyKey: boundMediaBuyId,
+      isModification: boundMediaBuyId !== undefined,
+      amount: payloadBudget,
+      asserted: req.budget_period_id,
+      nowMs: Date.now(),
+    });
+    findings.push(...periodEvaluation.findings);
+    budgetPeriodId = periodEvaluation.periodId;
+    authorizedFlight = periodEvaluation.flight;
   }
 
   // Custom policies declared on the plan with `must` enforcement become intent
@@ -2117,18 +2381,28 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     // A delivery check reports evidence about an already-authorized
     // commitment. Treating planned_delivery.total_budget as a fresh
     // commitment here would charge the same media buy against the plan twice.
+    // planned_delivery.total_budget is optional. When a purchase check omits
+    // it, the ledger authority is the governance agent's own intent record
+    // (specification.mdx "Plan binding and audit"): evaluate the intent's
+    // authorized commitment against the current plan instead of skipping
+    // budget authority, so an amended plan still binds the execution check.
+    const intentCeilingFallback = phase === 'purchase' && pdBudget === undefined
+      ? originalIntentCheck?.authorizedBudget
+      : undefined;
     executionCommitment = phase === 'delivery'
       ? undefined
       : INCREMENTAL_COMMITMENT_TOOLS.has(originalIntentCheck?.tool ?? '')
         ? req.execution_commitment?.amount
-        : pdBudget;
+        : pdBudget ?? intentCeilingFallback;
     if (executionCommitment !== undefined) {
       categoriesEvaluated.push('budget_authority');
       const intentCurrency = originalIntentCheck?.authorizedCurrency;
+      const executionCurrency = plannedDelivery.currency
+        ?? (intentCeilingFallback !== undefined ? intentCurrency : undefined);
       if (
         intentCurrency === undefined
-        || plannedDelivery.currency !== intentCurrency
-        || plannedDelivery.currency !== plan.budget.currency
+        || executionCurrency !== intentCurrency
+        || executionCurrency !== plan.budget.currency
       ) {
         findings.push({
           categoryId: 'budget_authority',
@@ -2161,24 +2435,76 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     }
   }
 
+  // Budget periods on an execution check. Purchase and modification checks
+  // re-derive the period from the seller's planned flight and deny like the
+  // intent did; a delivery check only derives it, so pacing can be judged
+  // against the buy's period rather than the whole plan.
+  if (binding === 'committed' && plannedDelivery) {
+    if (plan.budget.periods?.length || req.budget_period_id !== undefined) categoriesEvaluated.push('budget_period');
+    const buyKey = plannedDelivery.media_buy_id;
+    boundMediaBuyId = buyKey;
+    const ledgerFlight = buyKey ? sessionBuyCommitments(session, plan).get(buyKey.slice(0, 255))?.flight : undefined;
+    // Delivery describes a commitment already on the ledger: its period comes
+    // from that record, never from dates the seller restates, so the seller
+    // cannot choose which period pacing is judged against.
+    const periodEvaluation = evaluatePlanBudgetPeriods({
+      plan,
+      session,
+      stated: phase === 'delivery'
+        ? {}
+        : { start: plannedDelivery.start_time, end: plannedDelivery.end_time },
+      fallbackFlights: phase === 'delivery'
+        ? [ledgerFlight, originalIntentCheck?.authorizedFlight]
+        : [originalIntentCheck?.authorizedFlight, ledgerFlight],
+      buyKey,
+      isModification: phase === 'modification',
+      amount: executionCommitment,
+      asserted: req.budget_period_id,
+      deriveOnly: phase === 'delivery',
+      nowMs: Date.now(),
+    });
+    findings.push(...periodEvaluation.findings);
+    budgetPeriodId = periodEvaluation.periodId;
+    authorizedFlight = periodEvaluation.flight;
+    if (
+      phase !== 'delivery'
+      && budgetPeriodId !== undefined
+      && originalIntentCheck?.budgetPeriodId !== undefined
+      && originalIntentCheck.budgetPeriodId !== budgetPeriodId
+    ) {
+      findings.push({
+        categoryId: 'budget_period',
+        severity: 'critical',
+        explanation: `Planned delivery falls in budget period ${budgetPeriodId}, but the intent was authorized for period ${originalIntentCheck.budgetPeriodId}.`,
+        details: { field: 'budget_period_id', expected: originalIntentCheck.budgetPeriodId, actual: budgetPeriodId },
+      });
+    }
+  }
+
   // Delivery phase: check delivery metrics for drift
   if (phase === 'delivery' && deliveryMetrics) {
     categoriesEvaluated.push('delivery_pacing');
     const cumulativeSpend = deliveryMetrics.cumulative_spend;
     if (cumulativeSpend !== undefined) {
-      const spendPct = (cumulativeSpend / plan.budget.total) * 100;
+      // The buy's period amount is the pacing budget when the plan has periods.
+      const pacingPeriod = budgetPeriodId
+        ? plan.budget.periods?.find(period => period.budgetPeriodId === budgetPeriodId)
+        : undefined;
+      const pacingBudget = pacingPeriod?.amount ?? plan.budget.total;
+      const pacingScope = pacingPeriod ? `budget period ${pacingPeriod.budgetPeriodId}` : 'plan budget';
+      const spendPct = (cumulativeSpend / pacingBudget) * 100;
       if (spendPct > 95) {
         findings.push({
           categoryId: 'delivery_pacing',
           severity: 'critical',
-          explanation: `Cumulative spend $${cumulativeSpend} is ${spendPct.toFixed(1)}% of plan budget — near exhaustion.`,
+          explanation: `Cumulative spend $${cumulativeSpend} is ${spendPct.toFixed(1)}% of ${pacingScope} — near exhaustion.`,
           confidence: 0.95,
         });
       } else if (spendPct > 80) {
         findings.push({
           categoryId: 'delivery_pacing',
           severity: 'warning',
-          explanation: `Cumulative spend $${cumulativeSpend} is ${spendPct.toFixed(1)}% of plan budget.`,
+          explanation: `Cumulative spend $${cumulativeSpend} is ${spendPct.toFixed(1)}% of ${pacingScope}.`,
           confidence: 0.9,
         });
       }
@@ -2342,7 +2668,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       : undefined;
 
     effectiveContext = await signGovernanceContext({
-      issuer: `${getCanonicalBase()}/governance`,
+      issuer: getTrainingGovernanceIssuer(),
       audience: targetAudience,
       bindingId: governanceBindingId,
       phase,
@@ -2384,6 +2710,9 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     ...(status === 'approved' && authorizedCurrency !== undefined
       ? { authorizedCurrency }
       : {}),
+    ...(status === 'approved' && authorizedFlight ? { authorizedFlight } : {}),
+    ...(budgetPeriodId ? { budgetPeriodId } : {}),
+    ...(boundMediaBuyId ? { mediaBuyId: boundMediaBuyId } : {}),
     phase,
     targetAudience,
     findings,
@@ -2402,7 +2731,11 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
 }
 
 export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
+  const sellerCredentialError = sellerCredentialBuyerSideError(ctx, 'report_plan_outcome');
+  if (sellerCredentialError) return sellerCredentialError;
   const req = args as ReportPlanOutcomeInput;
+  const graderError = hostedGraderPlanScopeError(ctx, [req.plan_id]);
+  if (graderError) return graderError;
   let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = req.plan_id;
   const checkId = req.check_id;
@@ -2745,6 +3078,9 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
 
   let committedBudget = 0;
   let reportedCommittedBudget: number | undefined;
+  // Flight of the settled action; places its commitment in a budget period.
+  let settledFlight: GovernanceActionFlight | undefined;
+  let settledMediaBuyId: string | undefined;
   const findings: GovernanceFinding[] = [];
   let deliveryReconciliationStatus: GovernanceOutcomeState['deliveryReconciliationStatus'];
   let deliveryPeriodState: GovernanceOutcomeState['deliveryPeriodState'];
@@ -2978,6 +3314,12 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     if (!applyLedgerAddition(committedBudget)) {
       return validationError('Governance-authorized budget exceeds numeric ledger limits');
     }
+    settledFlight = executionAuthorization?.authorizedFlight
+      ?? intentAuthorization?.authorizedFlight
+      ?? authorizationCheck?.authorizedFlight;
+    settledMediaBuyId = executionAuthorization?.mediaBuyId
+      ?? intentAuthorization?.mediaBuyId
+      ?? authorizationCheck?.mediaBuyId;
 
     // Check if committed now exceeds authorized
     if (plan.committedBudget > plan.budget.total) {
@@ -3034,6 +3376,8 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     sellerReference: sellerResponse?.seller_reference?.slice(0, 255),
     outcomeType: outcome,
     committedBudget,
+    ...(settledFlight ? { flight: settledFlight } : {}),
+    ...(settledMediaBuyId ? { mediaBuyId: settledMediaBuyId.slice(0, 255) } : {}),
     ...(reportedCommittedBudget !== undefined ? { reportedCommittedBudget } : {}),
     ...(req.idempotency_key ? { idempotencyKey: req.idempotency_key } : {}),
     ...(ctx.authenticatedAgentUrl ? { reporterCaller: ctx.authenticatedAgentUrl } : {}),
@@ -3088,6 +3432,8 @@ function buildAdjustmentPlanSummary(
 }
 
 export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingContext) {
+  const graderAdjustmentError = hostedGraderDeniedError(ctx, 'report_plan_adjustment');
+  if (graderAdjustmentError) return graderAdjustmentError;
   const req = args as ReportPlanAdjustmentInput | ReviewPlanAdjustmentInput;
   let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const validationError = (message: string) => ({
@@ -3111,6 +3457,14 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
 
   if (!ctx.authenticatedAgentUrl) {
     return { errors: [{ code: 'PERMISSION_DENIED', message: 'report_plan_adjustment requires an authenticated agent.' }] };
+  }
+  if (ctx.governanceAgentCredential) {
+    // Seller-side only: report, never review (review is the plan owner's).
+    const reviewError = req.action === 'review'
+      ? sellerCredentialBuyerSideError(ctx, 'report_plan_adjustment review')
+      : undefined;
+    const scopeError = reviewError ?? sellerCredentialPlanScopeError(ctx, req.plan_id);
+    if (scopeError) return scopeError;
   }
 
   if (req.action === 'review') {
@@ -3454,7 +3808,16 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
 }
 
 export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
+  const sellerCredentialError = sellerCredentialBuyerSideError(ctx, 'get_plan_audit_logs');
+  if (sellerCredentialError) return sellerCredentialError;
   const req = args as GetPlanAuditLogsInput;
+  if (ctx.hostedGraderCredential) {
+    // Explicit plan ids only: no portfolio or governance_context lookups.
+    const graderError = (req.portfolio_plan_ids?.length || req.governance_contexts?.length)
+      ? hostedGraderDeniedError(ctx, 'get_plan_audit_logs by portfolio or governance_context')
+      : hostedGraderPlanScopeError(ctx, [...(req.plan_ids || []), ...(req.plan_id ? [req.plan_id] : [])]);
+    if (graderError) return graderError;
+  }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planIds = [...(req.plan_ids || []), ...(req.plan_id ? [req.plan_id] : [])];
   const portfolioPlanIds = req.portfolio_plan_ids || [];
@@ -3944,6 +4307,7 @@ function buildCheckResponse(check: GovernanceCheckState) {
     status: check.status,
     verdict: check.status,
     ...(check.binding === 'proposed' && { plan_id: check.planId }),
+    ...(check.budgetPeriodId && { budget_period_id: check.budgetPeriodId }),
     explanation: check.explanation,
     mode: check.mode,
     categories_evaluated: check.categoriesEvaluated,

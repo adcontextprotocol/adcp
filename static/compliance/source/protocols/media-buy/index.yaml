@@ -4,6 +4,9 @@ title: "Media buy seller agent"
 category: media_buy_seller
 summary: "Seller agent that receives briefs, returns products, accepts media buys, and reports delivery."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy
@@ -12,6 +15,8 @@ requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/advanced_delivery_reporting
+  - media_buy_seller/property_delivery_reporting
+  - media_buy_seller/installment_property_delivery_reporting
   - media_buy_seller/audience_activation_discovery
   - media_buy_seller/external_audience_source_binding
   - media_buy_seller/measurement_terms_rejected
@@ -43,6 +48,8 @@ requires_scenarios:
   - media_buy_seller/dependency_impairment_audience
   - media_buy_seller/dependency_impairment_cardinality
   - media_buy_seller/seller_optimized_budget
+  - media_buy_seller/seller_optimized_proposal_package_pacing
+  - media_buy_seller/seller_optimized_min_spend_target_exceeds_package_cap
   - media_buy_seller/total_budget_redistribution
   - media_buy_seller/bidding_policy_placement
   - media_buy_seller/bidding_cost_binding
@@ -59,6 +66,7 @@ requires_scenarios:
   - media_buy_seller/budget_cap_timezone_override_rejected
   - media_buy_seller/owner_sold_channel_carriage
   - media_buy_seller/collection_selection
+  - media_buy_seller/outcome_target_list_products_inert
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that

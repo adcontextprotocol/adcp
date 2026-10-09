@@ -807,7 +807,7 @@ export const AgentComplianceSchema = z
     verified_roles: z.array(BadgeRoleSchema).optional()
       .openapi({ description: "Canonical badge roles the agent is AgenticAdvertising.org Verified for (e.g. media-buy, creative)." }),
     verified_role_versions: z.record(z.string(), z.array(z.string())).optional()
-      .openapi({ description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.1', '3.0'] }). Use this when choosing a version-pinned badge URL." }),
+      .openapi({ description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.2', '3.1'] }). Use this when choosing a version-pinned badge URL." }),
   })
   .openapi("AgentCompliance");
 
@@ -816,7 +816,7 @@ export const VerificationBadgeSchema = z
     role: BadgeRoleSchema
       .openapi({ description: "Canonical role this verification badge covers." }),
     adcp_version: z.string()
-      .openapi({ description: "AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK." }),
+      .openapi({ description: "AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.1', '3.2'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK." }),
     verified_at: z.string(),
     verified_specialisms: z.array(z.enum(ADCP_SPECIALISMS as [string, ...string[]]))
       .openapi({ description: "Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges." }),
@@ -948,6 +948,19 @@ const OwnerComplianceEligibilitySchema = z.object({
   }),
 }).openapi('OwnerComplianceEligibility');
 
+export const StoryboardSkippedStepSchema = z
+  .object({
+    step_id: z.string().nullable().openapi({ description: "Skipped step id (derived from the title when the runner omits it)." }),
+    title: z.string().nullable(),
+    task: z.string().nullable(),
+    reason: z.string().nullable().openapi({ description: "Runner skip reason, e.g. prerequisite_failed or controller_seeding_failed." }),
+    detail: z.string().nullable().openapi({ description: "Redacted runner skip detail. May echo agent-supplied text." }),
+    blocked_by_step_id: z.string().nullable().openapi({ description: "Nearest earlier step in the same storyboard that did not pass, when one exists." }),
+    blocked_by_step_title: z.string().nullable(),
+    blocked_by_reason: z.string().nullable().openapi({ description: "'failed', or the skip reason of the earlier step." }),
+  })
+  .openapi("StoryboardSkippedStep");
+
 export const AgentComplianceDetailSchema = z
   .object({
     provenance: ComplianceRunProvenanceSchema.nullable().optional(),
@@ -973,15 +986,8 @@ export const AgentComplianceDetailSchema = z
     }),
     refresh_availability: z.object({
       available: z.boolean(),
-      retryable: z.boolean().openapi({ description: "Whether retrying the same human refresh request later is expected to succeed without a platform change." }),
-      scope: z.literal('platform'),
-      applies_to: z.literal('human_session'),
-      code: z.literal('refresh_authorization_provenance_required'),
-      notice: z.string(),
-      alternative_action: z.literal('monitoring_requeue'),
-      alternative_description: z.string(),
     }).optional().openapi({
-      description: "Current human refresh admission state. Monitoring requeue is a separate scheduler operation and is not a retry or ETA for this endpoint.",
+      description: "Whether authenticated owners and administrators can queue an agent refresh.",
     }),
     tracks: z.record(z.string(), z.string()).optional(),
     track_details: z.array(z.object({
@@ -1000,6 +1006,19 @@ export const AgentComplianceDetailSchema = z
     status_changed_at: z.string().nullable().optional(),
     storyboards_passing: z.number().int().optional(),
     storyboards_total: z.number().int().optional(),
+    latest_attempt: z.object({
+      id: z.string().uuid(),
+      tested_at: z.string(),
+      triggered_by: z.enum(['heartbeat', 'owner_test', 'manual', 'webhook']),
+      completeness: z.enum(['complete', 'timed_out', 'not_completed']),
+      is_authoritative: z.boolean(),
+      requested_compliance_target: z.string().nullable(),
+      storyboards_completed: z.number().int().nullable(),
+      storyboards_total: z.number().int().nullable(),
+      first_blocker: z.string().nullable(),
+    }).nullable().optional().openapi({
+      description: 'Owner/operator-only newest persisted full assessment, including audit-only timeouts. Null for other viewers. This does not change the public verdict.',
+    }),
     check_interval_hours: z.number().int().optional().openapi({ description: "How often the heartbeat re-tests this agent, in hours" }),
     declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared in get_adcp_capabilities, from the latest run" }),
     specialism_status: z.record(z.string(), z.enum(['passing', 'failing', 'untested', 'unknown'])).optional().openapi({ description: "Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status" }),
@@ -1023,6 +1042,7 @@ export const AgentComplianceDetailSchema = z
       first_failed_step_task: z.string().nullable(),
       first_failure_message: z.string().nullable(),
       first_failure_validations: z.array(z.any()).openapi({ description: "Validation evidence for the first failure. Populated only for owners and empty for other callers." }),
+      skipped_steps: z.array(StoryboardSkippedStepSchema).openapi({ description: "Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step. Populated only for owners and empty for other callers." }),
       last_tested_at: z.string().nullable(),
       last_passed_at: z.string().nullable(),
     })).optional().openapi({ description: "Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers." }),
@@ -1075,6 +1095,7 @@ export const StoryboardStatusSchema = z
     first_failed_step_title: z.string().nullable().openapi({ description: "First root failing or actionable skipped step title, when captured." }),
     first_failed_step_task: z.string().nullable().openapi({ description: "Task/tool name for the first root failing or actionable skipped step, when captured." }),
     first_failure_message: z.string().nullable().openapi({ description: "Runner error/detail text for the first root failing or actionable skipped step, when captured." }),
+    skipped_steps: z.array(StoryboardSkippedStepSchema).openapi({ description: "Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step, when captured. Owner-scoped; empty for other callers." }),
     last_tested_at: z.string().nullable(),
     last_passed_at: z.string().nullable(),
   })
@@ -1497,6 +1518,9 @@ export const ComplianceRunSchema = z
     is_authoritative: z.boolean().optional(),
     requested_compliance_target: z.string().nullable().optional(),
     adcp_version: z.string().nullable().optional(),
+    runner_capability_version: z.string().nullable().optional().openapi({
+      description: "Runner capability version recorded at execution time, separate from the AdCP version under test. Null when not recorded, including historical runs.",
+    }),
     overall_status: z.string(),
     headline: z.string().nullable(),
     tracks_passed: z.number().int(),

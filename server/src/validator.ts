@@ -1,5 +1,6 @@
 import dns from "node:dns/promises";
 import net from "node:net";
+import { canonicalTargetUri } from "@adcp/sdk/signing";
 import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import type {
   AdAgentsJson,
@@ -50,6 +51,15 @@ export class AgentValidator {
     const normalizedDomain = this.normalizeDomain(domain);
     const normalizedAgentUrl = this.normalizeUrl(agentUrl);
     const normalizedScope = this.normalizeScope(scope, normalizedDomain);
+    if (normalizedAgentUrl === null) {
+      return {
+        authorized: false,
+        domain,
+        agent_url: agentUrl,
+        checked_at: new Date().toISOString(),
+        error: "Invalid agent URL",
+      };
+    }
     // SSRF reject (localhost / IP / empty) collapsed normalizedDomain to "".
     // Fail closed here so downstream comparisons can't match a selector
     // whose canonical form is also "" (e.g., "/", ".", "https://").
@@ -244,7 +254,7 @@ export class AgentValidator {
     topLevelPlacements: PlacementDefinition[],
     placementTagDefinitions: Record<string, PlacementTagDefinition>
   ): boolean {
-    if (this.normalizeUrl(agent.url) !== normalizedAgentUrl) {
+    if (typeof agent.url !== "string" || this.normalizeUrl(agent.url) !== normalizedAgentUrl) {
       return false;
     }
 
@@ -648,12 +658,18 @@ export class AgentValidator {
     return normalized;
   }
 
-  private normalizeUrl(value: string): string {
-    let normalized = value;
-    while (normalized.endsWith("/")) {
-      normalized = normalized.slice(0, -1);
+  /**
+   * AdCP URL canonicalization (docs/reference/url-canonicalization) for
+   * `authorized_agents[].url` matching. Path case and trailing slashes stay
+   * significant: `/mcp` and `/mcp/` are different agents. Returns null for
+   * URLs the algorithm rejects, which never match.
+   */
+  private normalizeUrl(value: string): string | null {
+    try {
+      return canonicalTargetUri(value);
+    } catch {
+      return null;
     }
-    return normalized;
   }
 
   private buildAdAgentsUrl(normalizedDomain: string): URL {

@@ -17,7 +17,7 @@ import {
   governanceBindingStore,
   type GovernanceBindingRecord,
 } from './governance-binding-store.js';
-import { getAgentUrl } from './config.js';
+import { getAgentUrl, TRAINING_AGENT_URL } from './config.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { getCommercialRelationship } from './commercial-relationships.js';
 import { isPerAccountBillingRestricted } from './account-billing-relationships.js';
@@ -65,13 +65,28 @@ const ACCOUNT_WEBHOOK_PROOF_SYNC_DEADLINE_MS = 30_000;
  */
 const TRAINING_ACCEPTED_GOVERNANCE_AGENT_INPUT_URLS = [
   'https://governance.example/mcp',
-  'https://test-agent.adcontextprotocol.org',
+  TRAINING_AGENT_URL,
   'https://governance.pinnacle-agency.example',
 ] as const;
 
 export const TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS = TRAINING_ACCEPTED_GOVERNANCE_AGENT_INPUT_URLS
   .map(agentUrl => canonicalTargetUri(agentUrl));
 const TRAINING_ACCEPTED_GOVERNANCE_AGENT_URL_SET = new Set(TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS);
+
+/**
+ * The accepted entry that names this training agent's own governance service
+ * (the `/governance` tenant the multi-agent runner drives). Its tokens are not
+ * discovered through buyer brand.json: this deployment signs them, so once a
+ * buyer registers this entry through sync_governance, a governed tenant
+ * verifies them against the deployment's own governance issuer and the one
+ * sandbox governance key it publishes. Every other accepted authority keeps
+ * the byte-for-byte `iss` = registered URL rule and remote key discovery.
+ */
+const TRAINING_SELF_GOVERNANCE_AGENT_URL = canonicalTargetUri(TRAINING_AGENT_URL);
+
+export function isTrainingSelfGovernanceAuthority(agentUrl: string): boolean {
+  return agentUrl === TRAINING_SELF_GOVERNANCE_AGENT_URL;
+}
 
 export const TRAINING_ACCEPTED_GOVERNANCE_AGENTS = {
   any_of: TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS.map(agent_url => ({
@@ -1062,6 +1077,59 @@ export function resolveAccountIdForRef(
     ? findAccountByIdAcrossSessions(ref.account_id, principal)?.accountId
       ?? getComplianceAccounts().find(account => account.account_id === ref.account_id)?.account_id
     : undefined;
+}
+
+/**
+ * Whether this principal has provisioned the complete buyer-declared natural
+ * key: synced through `sync_accounts` (failed rows are never stored), seeded
+ * through `comply_test_controller` `seed_account` (which storyboard
+ * `fixtures.accounts` use), restored from a durable reporting binding, or one
+ * of the shared compliance fixture accounts `list_accounts` already exposes.
+ * Matching is on the canonical account scope, so brand domain, brand_id,
+ * countries, operator, operator_unit.id, currency, timezone, and sandbox must
+ * all agree. See docs/accounts/overview.mdx "Account references before
+ * provisioning".
+ */
+export async function isNaturalAccountRefProvisioned(
+  principal: string | undefined,
+  ref: AccountRef,
+): Promise<boolean> {
+  const scope = accountScopeFromRef(ref);
+  const sameScope = (
+    brand: { domain: string; brand_id?: string; countries?: string[] },
+    operator: string,
+    operatorUnit: OperatorUnit | undefined,
+    currency: string | undefined,
+    sandbox: boolean,
+    timezone: string | undefined,
+  ): boolean => {
+    try {
+      return accountKey(brand, operator, operatorUnit, currency, sandbox, timezone) === scope;
+    } catch {
+      return false;
+    }
+  };
+  for (const account of accountsForPrincipal(principal)) {
+    if (sameScope(
+      account.brand,
+      account.operator,
+      account.operatorUnit,
+      account.currency,
+      account.sandbox,
+      account.timezone,
+    )) return true;
+  }
+  for (const fixture of getComplianceAccounts()) {
+    if (sameScope(
+      fixture.brand,
+      fixture.operator,
+      fixture.operator_unit,
+      fixture.currency,
+      fixture.sandbox === true,
+      fixture.timezone,
+    )) return true;
+  }
+  return (await resolveReportingAccountDurably(principal, ref)) !== undefined;
 }
 
 /** Resolve the immutable currency of a currency-bound advertiser account. */

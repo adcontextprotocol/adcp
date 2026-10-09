@@ -33,7 +33,7 @@ import {
 } from '@adcp/sdk';
 
 const MAX_CAPABILITIES_BYTES = 65_536;
-const MAX_BRAND_JSON_BYTES = 262_144;
+const MAX_BRAND_JSON_BYTES = 2_097_152;
 const MAX_JWKS_BYTES = 65_536;
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -99,6 +99,70 @@ interface FetchResult<T> {
   bytes: number;
 }
 
+const MAX_JSON_DEPTH = 32;
+
+/** Read a response body, counting bytes as they arrive and aborting past `cap`. */
+async function readBodyWithCap(res: Response, cap: number, url: string): Promise<Buffer> {
+  const reader = res.body?.getReader();
+  if (!reader) return Buffer.alloc(0);
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > cap) {
+      await reader.cancel();
+      throw new ResolutionError('body_cap_exceeded', { url, bytes: total, cap });
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Strict-JSON pre-check: rejects duplicate object keys and nesting deeper than
+ * MAX_JSON_DEPTH. Node's JSON.parse is last-wins on duplicate keys, so the
+ * trust-root document must be scanned before it is parsed.
+ */
+function assertStrictJson(text: string): void {
+  const keyStack: Array<Set<string> | null> = [];
+  let i = 0;
+  const readString = (): string => {
+    const start = i++;
+    while (i < text.length && text[i] !== '"') i += text[i] === '\\' ? 2 : 1;
+    i++;
+    return JSON.parse(text.slice(start, i)) as string;
+  };
+  let expectKey = false;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '{' || c === '[') {
+      if (keyStack.length >= MAX_JSON_DEPTH) throw new Error(`nesting deeper than ${MAX_JSON_DEPTH}`);
+      keyStack.push(c === '{' ? new Set() : null);
+      expectKey = c === '{';
+      i++;
+    } else if (c === '}' || c === ']') {
+      keyStack.pop();
+      expectKey = false;
+      i++;
+    } else if (c === ',') {
+      expectKey = keyStack[keyStack.length - 1] !== null && keyStack.length > 0;
+      i++;
+    } else if (c === '"') {
+      const str = readString();
+      const keys = keyStack[keyStack.length - 1];
+      if (expectKey && keys) {
+        if (keys.has(str)) throw new Error(`duplicate key "${str}"`);
+        keys.add(str);
+        expectKey = false;
+      }
+    } else {
+      i++;
+    }
+  }
+}
+
 async function fetchJsonWithBudget<T>(url: string, opts: { maxBytes: number }): Promise<FetchResult<T>> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -111,23 +175,21 @@ async function fetchJsonWithBudget<T>(url: string, opts: { maxBytes: number }): 
     if (res.status >= 300 && res.status < 400) {
       throw new ResolutionError('redirect_not_allowed', { url, status: res.status });
     }
-    const text = await res.text();
-    if (text.length > opts.maxBytes) {
-      throw new ResolutionError('body_cap_exceeded', { url, bytes: text.length, cap: opts.maxBytes });
-    }
+    // Enforce the cap while the body streams (abort on exceed) rather than
+    // buffering the whole body and checking its length afterwards.
+    const body = await readBodyWithCap(res, opts.maxBytes, url);
     if (!res.ok) {
       throw new ResolutionError('non_2xx', { url, status: res.status });
     }
-    // Strict-parse: Node's JSON.parse is last-wins on duplicate keys (a
-    // known parser-differential gap). The script flags suspected
-    // duplicates by re-parsing with a reviver that counts occurrences.
+    const text = body.toString('utf-8');
     let data: T;
     try {
+      assertStrictJson(text);
       data = JSON.parse(text) as T;
     } catch (err) {
       throw new ResolutionError('parse_error', { url, error: (err as Error).message });
     }
-    return { data, status: res.status, bytes: text.length };
+    return { data, status: res.status, bytes: body.byteLength };
   } finally {
     clearTimeout(timer);
   }

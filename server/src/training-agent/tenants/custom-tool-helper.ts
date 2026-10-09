@@ -15,6 +15,7 @@ import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
+import { governanceAgentCredentialFromExtra, hostedGraderCredentialFromExtra } from '../governance-agent-credentials.js';
 import { AccountRefValidationError, accountScopeFromRef } from '../account-scope.js';
 import {
   getIdempotencyStore,
@@ -186,10 +187,14 @@ export function customToolFor(
       const authenticatedAgentUrl = options.resolveAuthenticatedAgentUrl
         ? await options.resolveAuthenticatedAgentUrl(authInfo, params)
         : undefined;
+      const governanceAgentCredential = governanceAgentCredentialFromExtra(authInfo?.extra);
+      const hostedGraderCredential = hostedGraderCredentialFromExtra(authInfo?.extra);
       const trainingCtx: TrainingContext = {
         mode: 'open',
         principal: authInfo?.clientId ?? 'anonymous',
         ...(authenticatedAgentUrl && { authenticatedAgentUrl }),
+        ...(governanceAgentCredential && { governanceAgentCredential }),
+        ...(hostedGraderCredential && { hostedGraderCredential }),
         ...options.trainingContext,
       };
       const { context: callerContext, ...handlerArgs } = params;
@@ -285,7 +290,11 @@ export function customToolFor(
         if (claim) {
           const hasPayloadErrors = Array.isArray((result as { errors?: unknown[] } | null | undefined)?.errors)
             && ((result as { errors?: unknown[] }).errors ?? []).length > 0;
-          if (!response.isError && !hasPayloadErrors) {
+          // A `kind: failed` result (for example a stale-version CONFLICT) is not
+          // a completed operation: release the claim so a retry with the same
+          // key and body re-executes instead of replaying the failure.
+          const failedResult = (result as { result?: { kind?: unknown } } | null | undefined)?.result?.kind === 'failed';
+          if (!response.isError && !hasPayloadErrors && !failedResult) {
             await getIdempotencyStore().save({
               principal: claim.principal,
               key: claim.key,

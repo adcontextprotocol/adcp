@@ -90,6 +90,9 @@ vi.mock('../../src/middleware/auth.js', async () => {
   };
 });
 
+// Server shutdown imports telemetry lazily. Load its dependencies before the
+// teardown deadline so cold module transforms do not time out this route test.
+import '../../src/utils/otel-logs.js';
 import { HTTPServer } from '../../src/http.js';
 
 describe('perspective asset cache privacy', () => {
@@ -117,7 +120,13 @@ describe('perspective asset cache privacy', () => {
     [true, undefined, 'public, max-age=0, must-revalidate'],
     [false, 'draft-author', 'private, no-store'],
   ])('sets visibility-aware asset caching when is_public=%s', async (isPublic, userId, expected) => {
-    mocks.query.mockResolvedValueOnce({ rows: [{ id: 'perspective-1', is_public: isPublic }] });
+    // HTTP startup also queries the database while indexing knowledge sources.
+    // Keep the asset lookup fixture tied to its SQL rather than call ordering.
+    mocks.query.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('AS is_public')
+        ? [{ id: 'perspective-1', is_public: isPublic }]
+        : [],
+    }));
     mocks.getAssetData.mockResolvedValueOnce({
       file_data: Buffer.from('asset bytes'),
       file_mime_type: 'image/png',

@@ -1,0 +1,330 @@
+id: media_buy_seller/media_buy_frequency_cap_readback
+version: "1.0.0"
+title: "Seller accepts and reads back a MediaBuy frequency cap"
+category: media_buy_seller
+summary: "Verifies participation-gated discovery, incompatible-mix rejection, exact acceptance, and readback of a root cap across a two-product buy."
+track: media_buy
+
+requires_capability:
+  path: media_buy.aggregate_frequency_capping
+  present: true
+
+required_tools:
+  - sync_accounts
+  - get_products
+  - create_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  A root frequency_cap is distinct from package targeting state and denotes one
+  seller counter across participating packages. This scenario verifies the
+  portable configuration contract: seller capability, product participation,
+  rejection when a selected product does not participate or does not support
+  the requested per unit, exact root acceptance for a compatible pair, and
+  durable readback.
+
+  Generic delivery totals cannot prove per-entity enforcement or distinguish a
+  shared counter from copied package counters. Runtime enforcement therefore
+  requires a controller with deterministic entity- and package-level exposure
+  injection; this scenario deliberately makes no claim from average frequency.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities: [sells_media, supports_non_guaranteed, frequency_capping]
+  examples:
+    - "Platforms supporting a shared maximum-impression cap across packages"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency"
+
+prerequisites:
+  description: "The seller exposes a compatible pair, a product without aggregate participation, and a household-only alternative."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "frequency_capped_display_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      media_buy_support:
+        frequency_cap: true
+        frequency_cap_constraints:
+          mutable_fields: ["max_impressions"]
+          supported_control_modes: ["max_impressions"]
+          supported_per_units: ["individuals"]
+          max_impressions_constraints:
+            minimum: 1
+            maximum: 10
+          window_constraints:
+            - unit: "campaign"
+              allowed_intervals: [1]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params: { width: 300, height: 250 }
+    - product_id: "frequency_capped_display_companion_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      media_buy_support:
+        frequency_cap: true
+        frequency_cap_constraints:
+          mutable_fields: ["max_impressions"]
+          supported_control_modes: ["max_impressions"]
+          supported_per_units: ["individuals"]
+          max_impressions_constraints:
+            minimum: 1
+            maximum: 10
+          window_constraints:
+            - unit: "campaign"
+              allowed_intervals: [1]
+      format_options:
+        - format_option_id: "display_300x250_companion"
+          format_kind: "image"
+          params: { width: 300, height: 250 }
+    - product_id: "frequency_capped_display_uncapped_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "display_300x250_uncapped"
+          format_kind: "image"
+          params: { width: 300, height: 250 }
+    - product_id: "frequency_capped_display_household_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      media_buy_support:
+        frequency_cap: true
+        frequency_cap_constraints:
+          mutable_fields: []
+          supported_control_modes: ["max_impressions"]
+          supported_per_units: ["households"]
+          max_impressions_constraints:
+            minimum: 1
+            maximum: 10
+          window_constraints:
+            - unit: "campaign"
+              allowed_intervals: [1]
+      format_options:
+        - format_option_id: "display_300x250_household"
+          format_kind: "image"
+          params: { width: 300, height: 250 }
+  pricing_options:
+    - product_id: "frequency_capped_display_q2"
+      pricing_option_id: "auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.00
+    - product_id: "frequency_capped_display_companion_q2"
+      pricing_option_id: "companion_auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.25
+    - product_id: "frequency_capped_display_uncapped_q2"
+      pricing_option_id: "uncapped_auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.10
+    - product_id: "frequency_capped_display_household_q2"
+      pricing_option_id: "household_auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.15
+
+phases:
+  - id: setup
+    title: "Establish account and discover aggregate-cap products"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand: { domain: "acmeoutdoor.example" }
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_readback_sync"
+        context_outputs:
+          - name: account_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: response_schema
+          - check: field_present
+            path: "accounts[0].account_id"
+
+      - id: get_products_for_frequency_cap
+        title: "Discover compatible products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_readback_products"
+          buying_mode: "brief"
+          brief: "Display inventory for a two-package buy with a shared cap."
+          media_buy_frequency_cap:
+            max_impressions: 3
+            per: "individuals"
+            window: { interval: 1, unit: "campaign" }
+          required_media_buy_support:
+            frequency_cap: true
+          account:
+            account_id: "$context.account_id"
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "products[0].media_buy_support.frequency_cap"
+            value: true
+          - check: field_contains
+            path: "products[*].product_id"
+            value: "frequency_capped_display_companion_q2"
+          - check: array_length
+            path: "products"
+            value: 2
+            description: "Only the two participating products that support per: individuals are returned; the non-participating and household-only fixtures are excluded"
+
+  - id: create_and_read
+    title: "Create two packages under one root cap and read it back"
+    steps:
+      - id: reject_non_participating_product
+        title: "Reject a mix containing a product without aggregate participation"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          brand: { domain: "acmeoutdoor.example" }
+          account: { account_id: "$context.account_id" }
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          frequency_cap:
+            max_impressions: 3
+            per: "individuals"
+            window: { interval: 1, unit: "campaign" }
+          packages:
+            - product_id: "frequency_capped_display_q2"
+              budget: 7500
+              pricing_option_id: "auction_cpm"
+              bid_price: 3.00
+            - product_id: "frequency_capped_display_companion_q2"
+              budget: 7500
+              pricing_option_id: "companion_auction_cpm"
+              bid_price: 3.00
+            - product_id: "frequency_capped_display_uncapped_q2"
+              budget: 7500
+              pricing_option_id: "uncapped_auction_cpm"
+              bid_price: 3.00
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_non_participating"
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+
+      - id: reject_incompatible_per_unit
+        title: "Reject a participating product that lacks the requested per unit"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          brand: { domain: "acmeoutdoor.example" }
+          account: { account_id: "$context.account_id" }
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          frequency_cap:
+            max_impressions: 3
+            per: "individuals"
+            window: { interval: 1, unit: "campaign" }
+          packages:
+            - product_id: "frequency_capped_display_q2"
+              budget: 7500
+              pricing_option_id: "auction_cpm"
+              bid_price: 3.00
+            - product_id: "frequency_capped_display_household_q2"
+              budget: 7500
+              pricing_option_id: "household_auction_cpm"
+              bid_price: 3.00
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_wrong_per_unit"
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+
+      - id: create_media_buy_with_frequency_cap
+        title: "Create the capped MediaBuy"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand: { domain: "acmeoutdoor.example" }
+          account: { account_id: "$context.account_id" }
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          frequency_cap:
+            max_impressions: 3
+            per: "individuals"
+            window: { interval: 1, unit: "campaign" }
+          packages:
+            - product_id: "frequency_capped_display_companion_q2"
+              budget: 7500
+              pricing_option_id: "companion_auction_cpm"
+              bid_price: 3.00
+            - product_id: "frequency_capped_display_q2"
+              budget: 7500
+              pricing_option_id: "auction_cpm"
+              bid_price: 3.00
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_readback_create"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "frequency_cap.max_impressions"
+            value: 3
+          - check: field_value
+            path: "frequency_cap.per"
+            value: "individuals"
+          - check: field_value
+            path: "frequency_cap.window.unit"
+            value: "campaign"
+
+      - id: get_capped_media_buy
+        title: "Read back the root cap"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_ids: ["$context.media_buy_id"]
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "media_buys[0].frequency_cap.max_impressions"
+            value: 3
+          - check: field_value
+            path: "media_buys[0].frequency_cap.per"
+            value: "individuals"
+          - check: field_value
+            path: "media_buys[0].frequency_cap.window.interval"
+            value: 1
+          - check: field_value
+            path: "media_buys[0].frequency_cap.window.unit"
+            value: "campaign"

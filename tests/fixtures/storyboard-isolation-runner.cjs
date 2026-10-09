@@ -91,7 +91,7 @@ if (storyboardId === 'hang') {
   const summaryIds = signedShape === 'current'
     ? ['signed_requests-strict-required']
     : signedShape === 'legacy'
-      ? ['signed_requests-strict', 'signed_requests-strict-required', 'signed_requests-strict-forbidden']
+      ? ['signed_requests-strict', 'signed_requests-strict-required-legacy', 'signed_requests-strict-forbidden']
       : signedShape === 'duplicate'
         ? ['signed_requests-strict-required', 'signed_requests-strict-required', 'signed_requests-strict-required']
       : ['signed_requests-strict'];

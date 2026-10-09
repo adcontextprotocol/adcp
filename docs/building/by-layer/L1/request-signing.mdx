@@ -361,50 +361,156 @@ app.post(
 ```
 </Tab>
 <Tab title="Python">
-The Python SDK ships framework wrappers for Flask and Starlette/FastAPI. Both call into the same `verify_request_signature` and raise `SignatureVerificationError` on rejection — map that to a 401 with `unauthorized_response_headers`:
+The Python SDK ships framework wrappers for Flask and Starlette/FastAPI. Both call into the same `verify_request_signature` and raise `SignatureVerificationError` on rejection. Map that to a 401 with `unauthorized_response_headers`.
 
-```python
-from fastapi import FastAPI, Request, HTTPException
+A JWKS resolver covers one JWKS, so it's bound to one buyer agent. `CachingJwksResolver` takes that agent's `jwks_uri`. A seller with several buyers keeps one resolver per onboarded agent and picks it by `keyid`. The request carries no agent URL, so the `keyid` → agent index is built from onboarding records (see [Seller walkthrough: buyer-declared accounts](/docs/building/by-layer/L2/accounts-and-agents#seller-walkthrough-buyer-declared-accounts)). `VerifyOptions` also needs the per-request `now` and `operation`, so build it for each request and reuse one replay store:
+
+```python test=false
+import json
+import time
+
+from fastapi import FastAPI, HTTPException, Request
 from adcp.signing import (
-    VerifyOptions,
-    VerifierCapability,
-    CachingJwksResolver,
+    AgentResolverError,
     InMemoryReplayStore,
-    StaticRevocationChecker,
-)
-from adcp.signing.middleware import (
-    verify_starlette_request,
-    unauthorized_response_headers,
+    StaticJwksResolver,
+    VerifierCapability,
+    VerifyOptions,
+    async_resolve_agent,
+    check_key_origin_consistency,
+    parse_signature_input_header,
 )
 from adcp.signing.errors import SignatureVerificationError
+from adcp.signing.middleware import (
+    unauthorized_response_headers,
+    verify_starlette_request,
+)
 
 app = FastAPI()
 
-verify_options = VerifyOptions(
-    capability=VerifierCapability(
-        supported=True,
-        covers_content_digest="required",
-        required_for={"create_media_buy", "update_media_buy"},
-    ),
-    jwks_resolver=CachingJwksResolver(),
-    replay_store=InMemoryReplayStore(),
-    revocation_checker=StaticRevocationChecker(set()),
+SIGNING_PROFILE = "3.2"  # the profile this endpoint advertises; never read it from the request
+SIG_LABEL = "sig1"
+CAPABILITY = VerifierCapability(
+    supported=True,
+    covers_content_digest="required",
+    supported_for=frozenset({"create_media_buy", "update_media_buy"}),
+    required_for=frozenset({"create_media_buy", "update_media_buy"}),
 )
+REPLAY_STORE = InMemoryReplayStore()  # one per process; use a shared store across replicas
+NO_KEYS = StaticJwksResolver({"keys": []})  # unknown keyid -> request_signature_key_unknown
+AGENT_INDEX: dict[str, tuple[str, StaticJwksResolver]] = {}  # kid -> (agent URL, its keys)
+
+
+async def rebuild_agent_index(onboarded_agent_urls: list[str]) -> None:
+    """Run at startup and at least once per revocation polling interval.
+
+    Agent URLs come from your onboarding records, never from a request.
+    """
+    global AGENT_INDEX
+    owners: dict[str, list[tuple[str, StaticJwksResolver]]] = {}
+    for url in onboarded_agent_urls:
+        try:
+            res = await async_resolve_agent(url, agent_type="buying")
+            check_key_origin_consistency(
+                jwks_uri=res.jwks_uri, key_origins=res.key_origins, purpose="request_signing"
+            )
+        except (AgentResolverError, SignatureVerificationError):
+            continue  # delisted or misconfigured: the agent drops out of the index
+        agent = (res.agent_entry["url"], StaticJwksResolver(res.jwks))
+        for key in res.jwks.get("keys", []):
+            owners.setdefault(key.get("kid"), []).append(agent)
+    # A kid published by more than one agent maps to neither: both fail closed.
+    AGENT_INDEX = {kid: agents[0] for kid, agents in owners.items() if kid and len(agents) == 1}
+
+
+def _reject_duplicate_keys(pairs):
+    obj = {}
+    for key, value in pairs:
+        if key in obj:
+            raise ValueError(f"duplicate key {key!r}")
+        obj[key] = value
+    return obj
+
+
+def parse_envelope(body: bytes) -> dict | None:
+    """Parse once, strictly (checklist step 14). None means malformed."""
+    try:
+        envelope = json.loads(body, object_pairs_hook=_reject_duplicate_keys)
+    except ValueError:
+        return None
+    return envelope if isinstance(envelope, dict) else None
+
+
+def mcp_operation(envelope: dict | None) -> str:
+    if envelope is None or envelope.get("method") != "tools/call":
+        return ""  # JSON-RPC protocol methods are matched by protocol_methods_*, not here
+    params = envelope.get("params")
+    name = params.get("name") if isinstance(params, dict) else None
+    return name if isinstance(name, str) else ""
+
+
+def signature_keyid(headers) -> str | None:
+    try:
+        label = parse_signature_input_header(headers.get("signature-input", ""))[SIG_LABEL]
+    except (ValueError, KeyError):
+        return None  # the verifier reports the precise header error
+    return str(label.params.get("keyid"))
+
 
 @app.post("/mcp")
 async def mcp(request: Request):
+    body = await request.body()
+    envelope = parse_envelope(body)
+    operation = mcp_operation(envelope)
+
+    if "signature" not in request.headers and "signature-input" not in request.headers:
+        if envelope is None:
+            raise HTTPException(status_code=400, detail="malformed JSON-RPC body")
+        principal = authenticate_fallback(request, envelope, operation)  # bearer / API key / mTLS
+        if principal is None and operation in CAPABILITY.required_for:
+            raise HTTPException(
+                status_code=401,
+                detail="request_signature_required",
+                headers={"WWW-Authenticate": 'Signature error="request_signature_required"'},
+            )
+        if principal is None:
+            return auth_error(request)  # AUTH_MISSING, or AUTH_INVALID for a rejected credential
+        return await handle_mcp(envelope, principal)
+
+    agent_url, jwks = AGENT_INDEX.get(signature_keyid(request.headers), (None, NO_KEYS))
+    options = VerifyOptions(
+        now=time.time(),
+        capability=CAPABILITY,
+        operation=operation,
+        jwks_resolver=jwks,
+        agent_url=agent_url,  # copied onto signer.agent_url
+        replay_store=REPLAY_STORE,
+        label=SIG_LABEL,
+        signing_profile_version=SIGNING_PROFILE,
+    )
     try:
-        signer = await verify_starlette_request(request, options=verify_options)
+        signer = await verify_starlette_request(request, options=options)
+        if envelope is None:
+            # Verified first so step 13 burned the nonce; now reject the ambiguous body.
+            raise SignatureVerificationError("request_body_malformed", step=14)
     except SignatureVerificationError as exc:
         raise HTTPException(
             status_code=401,
             detail=exc.code,
             headers=unauthorized_response_headers(exc),
         )
-    # signer.key_id, signer.agent_url, signer.verified_at available for audit.
-    body = await request.body()
-    return await handle_mcp(body, signer)
+    # signer.key_id, signer.agent_url, signer.verified_at are available for audit.
+    return await handle_mcp(envelope, signer)
 ```
+
+`authenticate_fallback`, `auth_error`, and `handle_mcp` stand for your own code, which is why the block is marked `test=false`. Some points the example depends on:
+
+- **Unsigned requests.** `authenticate_fallback` returns `None` for a credential you don't accept. It also has to refuse an operation where signing must be unconditional (the strict posture), and a payload that carries a webhook `authentication` block when you support signing. Those cases get `request_signature_required` too ([Composition with fallback authenticators](/docs/building/by-layer/L1/security#composition-with-fallback-authenticators)).
+- **One strict parse.** The SDK verifier doesn't run the step-14 duplicate-key check, so the example parses the body once with duplicate keys rejected and hands `envelope` to `handle_mcp`. Business logic never parses the body again.
+- **Key rotation.** A `kid` published between rebuilds fails with `request_signature_key_unknown` until the next rebuild, so rebuild at least as often as your JWKS cache TTL. Never fall back to trying every agent's keys.
+- **Blocking fetches.** `StaticJwksResolver` never fetches, which keeps the request path off the network. `CachingJwksResolver(jwks_uri=...)` refetches on a `kid` miss, but it fetches synchronously. If you use it in an async handler, prime it at startup or call `verify_request_signature` through `run_in_threadpool`.
+
+The SDK doesn't derive `signer.agent_url` from the request. It copies the `agent_url` you pass in `VerifyOptions`, and it's `None` when you pass none. `await verify_from_agent_url(request, agent_url, agent_type="buying", operation=..., capability=CAPABILITY)` runs the full discovery chain and fills `agent_url` from the matched `agents[]` entry. It fetches on every call, so pass an agent URL from your onboarding record, never one taken from the request. Always pass `capability`: the default is `VerifierCapability(supported=True)`, which accepts signatures without `content-digest`, and the helper can't set `signing_profile_version`, so it verifies under the 3.1 profile. Pass `revocation_checker` (for example, `CachingRevocationChecker`) if you track revoked keys.
 
 For Flask: swap `verify_starlette_request` for `verify_flask_request` (sync). For non-Starlette ASGI frameworks, call `verify_request_signature` directly.
 </Tab>
@@ -722,7 +828,7 @@ The spec ships legacy-profile wire vectors, dedicated 3.2 wire vectors, and the 
 
 - **Legacy 3.1 positive vectors**: valid signed requests using the legacy binary encoding
 - **Legacy 3.1 negative vectors**: invalid requests a 3.1 verifier must reject with the stated error code
-- **Profile-3.2 wire vectors**: body-bound positives and rejections of malformed RFC 8941 `sf-binary`
+- **Profile-3.2 wire vectors**: 3.2 versions of the legacy positive vectors and of the checklist step 2–12 negatives. They sign with `content-digest` covered (except the one negative that tests its absence) and assume a verifier advertising `covers_content_digest: "required"`. The set also includes rejections of malformed RFC 8941 `sf-binary` and malformed authorities.
 
 ```bash
 # Debug a single vector with the matching public key fixture.

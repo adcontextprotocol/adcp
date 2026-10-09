@@ -242,6 +242,8 @@ Publishers can proactively push reporting data to buyers through webhook notific
 
 #### Webhook Configuration
 
+For AdCP 3.2 scheduled delivery, coordinate support for the interim `reporting_webhook.operation_id` field with your seller and ensure your SDK preserves it. See [AdCP 3.2 interim reporting correlation](/docs/building/by-layer/L3/webhooks#adcp-3-2-interim-reporting-correlation), including the steps for updating existing registrations. The field is standardized as an optional field in 3.3; the 3.2 interim wire shape is identical, and on 3.2 it is opt-in.
+
 Configure reporting webhooks when creating a media buy using the `reporting_webhook` parameter:
 
 ```json
@@ -249,6 +251,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
   "packages": [...],
   "reporting_webhook": {
     "url": "https://buyer.example.com/webhooks/reporting",
+    "operation_id": "op_reporting_001",
     "authentication": {
       "schemes": ["Bearer"],
       "credentials": "secret_token_min_32_chars"
@@ -264,6 +267,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
   "packages": [...],
   "reporting_webhook": {
     "url": "https://buyer.example.com/webhooks/reporting",
+    "operation_id": "op_reporting_001",
     "authentication": {
       "schemes": ["HMAC-SHA256"],
       "credentials": "shared_secret_min_32_chars"
@@ -332,6 +336,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`time_based_views`**: Time-threshold view counts, one entry per (threshold_seconds, basis). `play_time` (platform-counted playback time, no independent viewability qualification) and `in_view` (IAB/MRC viewable-video clock, 50% of pixels) are not comparable and must not be summed. 2s and 6s are RECOMMENDED cross-platform reporting points; sellers may report other thresholds. Primarily an autoplay/skippable-video metric (social, olv, in-feed video) — completion (`quartile_data`) remains the currency for lean-back CTV/cinema inventory. Disclosure-grade: a `committed_metrics` entry for `time_based_views` contracts the array's presence, not specific thresholds.
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
 - **`ooh_metrics`**: Classic (static) OOH metrics — panels, posting period, posting records with photo evidence, and modeled `estimated_impressions` with a declared `estimation_basis`; the channel has no play events
+- **`print_metrics`**: Print-specific metrics (experimental) — per-issue proof of insertion (tearsheet evidence, page, position) and circulation, reported on `by_installment` rows; see [Print creative](/docs/creative/channels/print#delivery-evidence-and-circulation)
 - **`cost_per_click`**: Cost per click (`spend / clicks`)
 - **`cost_per_completed_view`**: Cost per completed view (`spend / completed_views`); CPCV pricing scalar for video/audio inventory
 - **`cpm`**: Cost per thousand impressions (`(spend / impressions) × 1000`); universal pricing scalar across CTV, display, mobile/web video, native, audio, and DOOH
@@ -395,7 +400,7 @@ Reporting webhooks send a full MCP webhook envelope. The delivery report itself 
     "next_expected_at": "2024-02-06T08:00:00Z",
     "reporting_period": {
       "start": "2024-02-05T00:00:00Z",
-      "end": "2024-02-05T23:59:59Z"
+      "end": "2024-02-06T00:00:00Z"
     },
     "currency": "USD",
     "media_buy_deliveries": [
@@ -424,7 +429,7 @@ The inner `result` object can be shown or stored separately, but this shape is n
   "sequence_number": 5,
   "reporting_period": {
     "start": "2024-02-05T00:00:00Z",
-    "end": "2024-02-05T23:59:59Z"
+    "end": "2024-02-06T00:00:00Z"
   },
   "currency": "USD",
   "media_buy_deliveries": [
@@ -457,29 +462,30 @@ Webhook signatures and content digests are computed over the exact raw bytes of 
 
 #### Timezone Handling
 
-**All reporting MUST use UTC.** This eliminates DST complexity, simplifies reconciliation, and ensures consistent 24-hour reporting periods.
+Each product declares its reporting timezone in `reporting_capabilities.timezone`, as `UTC` or an IANA identifier. It may differ from `Account.timezone`. Delivery reporting uses this timezone for calendar periods:
+
+- `get_media_buy_delivery` `start_date`/`end_date` and `daily_breakdown[].date` are calendar dates in the reporting timezone.
+- `reporting_period.start`/`end` are RFC 3339 instants on reporting-timezone boundaries. They fall on UTC midnight only when the reporting timezone is `UTC`.
+- Daily, weekly, monthly, and quarterly periods follow reporting-timezone calendar days, so a day can be 23 or 25 hours long across a DST change. Weekly periods start Monday 00:00 in the reporting timezone (ISO 8601 weeks). Quarterly periods are calendar quarters starting 1 January, 1 April, 1 July and 1 October. Hourly periods are always one hour.
+- Sellers SHOULD echo the applied timezone in `reporting_period.timezone`.
 
 ```json
 {
   "reporting_capabilities": {
-    "timezone": "UTC",
+    "timezone": "America/New_York",
     "available_reporting_frequencies": ["daily"],
     "date_range_support": "date_range"
   }
 }
 ```
 
-**Reporting periods:**
-- Daily: 00:00:00Z to 23:59:59Z (always 24 hours)
-- Hourly: Top of hour to 59:59 seconds (always 1 hour)
-- Monthly: First to last day of month
-
-**Example webhook payload:**
+**Example `get_media_buy_delivery` period** for `start_date: "2024-02-05"`, `end_date: "2024-02-06"` in `America/New_York`:
 ```json
 {
   "reporting_period": {
-    "start": "2024-02-05T00:00:00Z",
-    "end": "2024-02-05T23:59:59Z"
+    "start": "2024-02-05T00:00:00-05:00",
+    "end": "2024-02-06T00:00:00-05:00",
+    "timezone": "America/New_York"
   }
 }
 ```
@@ -605,7 +611,7 @@ The `media_buy_deliveries` array may contain 1 to N media buys per webhook. Buye
   "notification_type": "scheduled",
   "reporting_period": {
     "start": "2024-02-05T00:00:00Z",
-    "end": "2024-02-05T23:59:59Z"
+    "end": "2024-02-06T00:00:00Z"
   },
   "media_buy_deliveries": [{
     "media_buy_id": "mb_external_001",
@@ -649,7 +655,7 @@ Publishers SHOULD send aggregated webhooks containing all available data, using 
   "sequence_number": 5,
   "reporting_period": {
     "start": "2024-02-05T00:00:00Z",
-    "end": "2024-02-05T23:59:59Z"
+    "end": "2024-02-06T00:00:00Z"
   },
   "currency": "USD",
   "media_buy_deliveries": [
@@ -924,9 +930,9 @@ One media buy delivery per line (newline-delimited JSON). Each line contains a s
 
 **Example JSONL file:**
 ```jsonl
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_001", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_002", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_003", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-06T00:00:00Z"}, "currency": "USD", "media_buy_id": "mb_001", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-06T00:00:00Z"}, "currency": "USD", "media_buy_id": "mb_002", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-06T00:00:00Z"}, "currency": "USD", "media_buy_id": "mb_003", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
 ```
 
 #### CSV
@@ -938,10 +944,10 @@ CSV files require unnesting nested arrays. Each record should be unnested to the
 **Example CSV structure:**
 ```csv
 notification_type,sequence_number,next_expected_at,reporting_period_start,reporting_period_end,currency,media_buy_id,status,totals_impressions,totals_spend,totals_clicks,totals_ctr,by_package_package_id,by_package_impressions,by_package_spend,by_package_clicks,by_package_pacing_index,by_package_pricing_model,by_package_rate,by_package_currency
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,active,50000,1750.00,100,0.002,pkg_001,30000,1050.00,60,0.95,cpm,0.035,USD
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,active,50000,1750.00,100,0.002,pkg_002,20000,700.00,40,0.98,cpm,0.035,USD
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_002,active,200000,9000.00,400,0.002,pkg_003,200000,9000.00,400,1.02,cpm,45.00,USD
-scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_003,active,75000,3375.00,150,0.002,pkg_004,75000,3375.00,150,0.96,cpcv,0.045,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-06T00:00:00Z,USD,mb_001,active,50000,1750.00,100,0.002,pkg_001,30000,1050.00,60,0.95,cpm,0.035,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-06T00:00:00Z,USD,mb_001,active,50000,1750.00,100,0.002,pkg_002,20000,700.00,40,0.98,cpm,0.035,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-06T00:00:00Z,USD,mb_002,active,200000,9000.00,400,0.002,pkg_003,200000,9000.00,400,1.02,cpm,45.00,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-06T00:00:00Z,USD,mb_003,active,75000,3375.00,150,0.002,pkg_004,75000,3375.00,150,0.96,cpcv,0.045,USD
 ```
 
 #### Parquet
@@ -1196,7 +1202,7 @@ When late data arrives for a previously reported period, **resend that period** 
   "notification_type": "adjusted",
   "reporting_period": {
     "start": "2024-02-01T00:00:00Z",
-    "end": "2024-02-01T23:59:59Z"
+    "end": "2024-02-02T00:00:00Z"
   },
   "media_buy_deliveries": [{
     "media_buy_id": "mb_001",
@@ -1341,7 +1347,7 @@ Delivery data can be broken down across multiple dimensions within each package.
 | Installment × property | `by_installment_property` | `installment_ref`, `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, `installment_name`, `scheduled_at`, `property_name` | `supports_installment_property_breakdown` |
 | Placement × property | `by_placement_property` | `placement_id`, `placement_identity`, `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, convenience names | `supports_placement_property_breakdown` |
 | Creative | `by_creative` | `creative_id`, `impressions`, `spend` | `creative_name`, `weight`, other delivery metrics | `supports_creative_breakdown` |
-| Spot/as-run | `by_spot` | `spot_id`, `aired_at` | `creative_id`, `impressions`, `network`, `station`, `daypart`, other delivery metrics | `supports_spot_breakdown` |
+| Spot/as-run | `by_spot` | `spot_id`; `aired_at` on aired and makegood rows, `scheduled_at` on scheduled and preempted rows | `creative_id`, `impressions`, `network`, `station`, `daypart`, other delivery metrics; experimental `spot_status`, `scheduled_at`, `replaces_spot_id`, `break_position` | `supports_spot_breakdown` |
 
 Each breakdown entry inherits all fields from `delivery-metrics` (clicks, conversions, and other optional metrics) plus its dimension-specific fields. Every entry requires the fields shown in the required fields column. Check `reporting_capabilities` on the product to discover which dimensions are available; product-level capabilities are authoritative because different products from the same seller may support different breakdowns. `supports_geo_breakdown`, `supports_demographic_breakdown`, and `supports_spot_breakdown` are structured declarations; the other capability declarations in this table are boolean flags. Within `supports_geo_breakdown`, `country` and `region` are booleans, while `metro` is keyed by `metro-system` values and native `postal_area` is keyed by ISO 3166-1 alpha-2 country with arrays of country-local `postal-system` values. Geo rows use `system` for `geo_level: "metro"` and `"postal_area"`; native postal rows also include `country`. Deprecated country-fused postal systems remain accepted for compatibility.
 
@@ -1376,11 +1382,211 @@ Placement identity names its authority. `placement_identity.kind: "publisher_ref
 
 Property rows require `publisher_domain` plus an operational `identifier`; that tuple remains unambiguous even when the surface is not cataloged. `property_ref` enriches a row when it resolves to `adagents.json` and MUST use the same domain. Collection and installment reporting is publisher-scoped through `collection_ref` and `installment_ref`. Marginal arrays cannot establish correlation: `by_collection_property` proves which host property carried a collection, `by_installment_property` proves where a specific airing or programming block ran, and `by_placement_property` proves which web, app, social, or assistant property carried an aggregate placement. Catalog metadata describes eligibility or carriage, not delivery. If an intersection is truncated or suppressed, a returned row is affirmative evidence, but an absent row proves nothing. Each property-grain array discloses privacy, policy, or measurement-threshold omissions through its own `by_*_suppressed` flag; suppression and top-N truncation may both apply.
 
-Spot rows are channel-neutral as-run records: TV sellers commonly populate `network`, radio sellers commonly populate `station`, and either may populate both. `spot_id` is stable across measurement-window updates; `aired_at` proves the airing. Sellers MUST order rows by `aired_at` ascending. An empty `reporting_dimensions.spot` request asks for the complete log for the reporting period; an optional `limit` may bound the response. `by_spot_truncated` indicates whether the log is complete.
+Spot rows are channel-neutral as-run records: TV sellers commonly populate `network`, radio sellers commonly populate `station`, and either may populate both. `spot_id` is stable across measurement-window updates; `aired_at` proves the airing. Sellers MUST order rows ascending by `aired_at`, or by `scheduled_at` for rows that have no `aired_at`; rows with equal sort keys have no defined relative order. An empty `reporting_dimensions.spot` request asks for the complete log for the reporting period; an optional `limit` may bound the response. `by_spot_truncated` indicates whether the log is complete.
 
 The optional `creative_id` identifies the creative that aired, matching the package's creative asset or assignment. For library-backed sellers this is the [`sync_creatives`](/docs/creative/task-reference/sync_creatives) identifier; inline-only sellers use the `creative_id` supplied through `packages[].creatives`. Sellers SHOULD populate it whenever they can associate a specific airing with a creative, particularly when the package could serve more than one creative during any part of the reporting period, including a mid-period replacement. Sellers that cannot make that association MUST omit the field rather than emit a default or placeholder. Buyers MUST NOT aggregate `by_spot` rows by `creative_id` and expect the result to equal `by_creative[]` impressions for the same creative: the two dimensions are independently produced at different granularities and are subject to different metric-maturation and attribution semantics within the package `measurement_window`. `by_creative` is the authoritative creative-performance aggregate; `creative_id` on a spot row identifies which creative aired, not an independent metric roll-up source.
 
 Spot metrics are optional because airing evidence and audience measurement mature independently. `supports_spot_breakdown.available_metrics` tells the buyer which metrics the product can eventually produce at spot grain. A Live row may contain only `{ spot_id, aired_at }`; the same `spot_id` can reappear under C3 or C7 with `impressions`. An absent `impressions` field means unavailable at that measurement window or not declared at spot grain. `impressions: 0` means a measured zero and is never interchangeable with omission; sellers do not emit `null`.
+
+#### Spot lifecycle, makegoods, and break position
+
+<Note>
+Experimental in AdCP 3.3 (`media_buy.spot_lifecycle` in `experimental_features`). `spot_status`, `scheduled_at`, `replaces_spot_id`, `break_position`, and the capability declarations below can change within 3.x with the notice described in [experimental status](/docs/reference/experimental-status). This is the report-time half of linear-TV preemption and makegoods; contract-time preemption criteria and an interactive replacement-offer flow are not part of 3.3.
+</Note>
+
+One `by_spot` row can follow a spot from plan to as-run. A sales house places spots after the buyer submits budget, period, and audience, and may move them until airing, so a buyer can see a planned schedule before anything airs.
+
+| `spot_status` | Meaning | Required fields | `aired_at` |
+|---|---|---|---|
+| `scheduled` | Planned, not yet aired. The seller may still move or preempt it. May already carry `replaces_spot_id` when it is a planned makegood. | `spot_id`, `scheduled_at` | MUST be absent |
+| `aired` | Aired. The default when `spot_status` is absent. | `spot_id`, `aired_at` | Required |
+| `preempted` | Was scheduled and did not air. | `spot_id`, `scheduled_at` (the last slot scheduled) | MUST be absent |
+| `makegood` | Aired as a replacement for a preempted spot. | `spot_id`, `aired_at`, `replaces_spot_id` | Required |
+
+- **Stable identity.** A `scheduled` row becomes `aired` or `preempted` under the same `spot_id`. A makegood is a new airing with its own `spot_id`; `replaces_spot_id` names the preempted spot it replaces. `replaces_spot_id` is required on `makegood` rows and MUST be absent on `aired` rows and rows without `spot_status`. A planned makegood is a `scheduled` row that carries it from the start, so the buyer sees the link before the replacement airs. If the replacement is itself `preempted` it keeps the value, and a second makegood points at it, so the chain back to the original spot survives.
+- **Moves and removals.** A seller may move a `scheduled` spot; it keeps its `spot_id` and gets a new `scheduled_at`, and a buyer that needs the original slot compares reports. On an `aired` row, `scheduled_at` is the last slot scheduled before airing. A seller MUST NOT silently drop a scheduled spot: one that will not air is reported as `preempted`. Rows are selected for a reporting period by `aired_at`, else `scheduled_at`.
+- **Expected versus actual.** Delivery metrics on a `scheduled` row, such as `grps`, are the seller's expectations for the planned airing, not delivery. Buyers MUST NOT add them to actuals or to package totals. The same field carries the measured value once the row is `aired`. A `preempted` row delivered nothing and SHOULD omit delivery metrics. `makegood` rows are real delivery, so a buyer that sums actuals from `by_spot` includes `aired` and `makegood` rows and excludes `scheduled` and `preempted` ones; filtering on `aired` alone drops makegood delivery. `measurement_window` and revision semantics apply to the metrics on `aired` and `makegood` rows only.
+- **Ordering.** Rows are ordered ascending by `aired_at`, or by `scheduled_at` when there is no `aired_at`. A spot that moved from `scheduled` to `aired` therefore re-sorts by its actual airing time.
+- **Seller identity mapping.** Broadcast traffic systems often keep the pre-air schedule and the as-run log as separate record sets. A seller that reports `scheduled` rows MUST reconcile them so the `spot_id` a buyer saw while the spot was scheduled is the one it sees after airing or preemption.
+- **Not reported versus not delivered.** `supports_spot_breakdown.available_statuses` lists the statuses the seller reports. A status that is not listed is not reported, so the absence of `scheduled`, `preempted`, or `makegood` rows proves nothing. A buyer MUST NOT read it as nothing planned, nothing preempted, or no makegoods. `supports_spot_breakdown.supports_break_position` says whether `break_position` is populated. When the declaration is absent, or `available_statuses` is empty, the seller reports aired rows only, as in AdCP 3.2. A seller that lists `scheduled` does not promise a planning horizon, so an empty plan this early is not evidence that nothing will be placed.
+- **Compatibility.** Rows with no `spot_status` and an `aired_at` stay valid and mean `aired`, so AdCP 3.2 documents are unchanged. AdCP 3.2 validators require `aired_at` on every row, so sellers MUST NOT send `scheduled` or `preempted` rows, or the new capability fields, to callers pinned below AdCP 3.3. A caller with no declared pin is treated as pinned below 3.3, and reporting webhooks follow the pin of the registration that receives them. `aired` and `makegood` rows carry `aired_at` and are valid there, because 3.2 validators ignore the new properties.
+
+`break_position` places a spot in its commercial break: `position_in_break` (1-based), `spots_in_break` (total spots in that break, at least `position_in_break`), and an optional `break_id` shared by spots in the same break. On a `scheduled` row it is the planned position and can change before airing. Validators SHOULD check `spots_in_break >= position_in_break`, which JSON Schema cannot express. Position pricing is outside this reporting contract. A seller that returns any of these fields MUST list `media_buy.spot_lifecycle` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
+
+Rows are ordered ascending, and a spot that moves from `scheduled` to `aired` can change position between polls. On a long flight `limit` drops the latest rows first, which are the planned ones. Scope the request with `reporting_period` rather than relying on `limit` when planned rows matter.
+
+**Plan to as-run, aired.** Before airing, the buyer sees the planned spots and what the seller expects them to deliver:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json",
+  "status": "completed",
+  "reporting_period": { "start": "2026-11-15T00:00:00Z", "end": "2026-11-16T00:00:00Z" },
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_pinnacle_q4",
+      "status": "active",
+      "totals": { "impressions": 0, "spend": 0 },
+      "by_package": [
+        {
+          "package_id": "pkg_prime",
+          "spend": 0,
+          "pricing_model": "cpm",
+          "rate": 18.5,
+          "currency": "EUR",
+          "by_spot": [
+            {
+              "spot_id": "spot_pinnacle_001",
+              "spot_status": "scheduled",
+              "scheduled_at": "2026-11-15T20:00:00Z",
+              "network": "Pinnacle One",
+              "daypart": "prime_time",
+              "grps": 2.1,
+              "break_position": { "position_in_break": 2, "spots_in_break": 5, "break_id": "brk_20h00" }
+            },
+            {
+              "spot_id": "spot_pinnacle_002",
+              "spot_status": "scheduled",
+              "scheduled_at": "2026-11-15T21:00:00Z",
+              "network": "Pinnacle One",
+              "daypart": "prime_time",
+              "grps": 1.8
+            }
+          ],
+          "by_spot_truncated": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+After the evening, the same `spot_id` is `aired` with its actual time and measured value; `grps` is now an actual. The 21:00 spot is reported as `preempted`, so its absence from the as-run log is explained, and its planned replacement already appears as a `scheduled` row that points back at it:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json",
+  "status": "completed",
+  "reporting_period": { "start": "2026-11-15T00:00:00Z", "end": "2026-11-18T00:00:00Z" },
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_pinnacle_q4",
+      "status": "active",
+      "totals": { "impressions": 410000, "spend": 7585 },
+      "by_package": [
+        {
+          "package_id": "pkg_prime",
+          "spend": 7585,
+          "pricing_model": "cpm",
+          "rate": 18.5,
+          "currency": "EUR",
+          "by_spot": [
+            {
+              "spot_id": "spot_pinnacle_001",
+              "spot_status": "aired",
+              "scheduled_at": "2026-11-15T20:00:00Z",
+              "aired_at": "2026-11-15T20:02:00Z",
+              "network": "Pinnacle One",
+              "daypart": "prime_time",
+              "impressions": 410000,
+              "grps": 1.9,
+              "break_position": { "position_in_break": 2, "spots_in_break": 5, "break_id": "brk_20h00" }
+            },
+            {
+              "spot_id": "spot_pinnacle_002",
+              "spot_status": "preempted",
+              "scheduled_at": "2026-11-15T21:00:00Z",
+              "network": "Pinnacle One"
+            },
+            {
+              "spot_id": "spot_pinnacle_009",
+              "spot_status": "scheduled",
+              "replaces_spot_id": "spot_pinnacle_002",
+              "scheduled_at": "2026-11-17T20:00:00Z",
+              "network": "Pinnacle One",
+              "grps": 1.8
+            }
+          ],
+          "by_spot_truncated": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Plan to as-run, preempted and made good.** The 21:00 spot never aired. The seller reports it as `preempted`, and a later report carries the replacement as a `makegood` row that points at it. Before the replacement airs, the seller can already show it as a `scheduled` row with `replaces_spot_id`. Rows are in `aired_at`/`scheduled_at` order:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json",
+  "status": "completed",
+  "reporting_period": { "start": "2026-11-15T00:00:00Z", "end": "2026-11-18T00:00:00Z" },
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_pinnacle_q4",
+      "status": "active",
+      "totals": { "impressions": 800000, "spend": 14800 },
+      "by_package": [
+        {
+          "package_id": "pkg_prime",
+          "spend": 14800,
+          "pricing_model": "cpm",
+          "rate": 18.5,
+          "currency": "EUR",
+          "by_spot": [
+            {
+              "spot_id": "spot_pinnacle_001",
+              "spot_status": "aired",
+              "scheduled_at": "2026-11-15T20:00:00Z",
+              "aired_at": "2026-11-15T20:02:00Z",
+              "network": "Pinnacle One",
+              "impressions": 410000,
+              "grps": 1.9
+            },
+            {
+              "spot_id": "spot_pinnacle_002",
+              "spot_status": "preempted",
+              "scheduled_at": "2026-11-15T21:00:00Z",
+              "network": "Pinnacle One"
+            },
+            {
+              "spot_id": "spot_pinnacle_009",
+              "spot_status": "makegood",
+              "replaces_spot_id": "spot_pinnacle_002",
+              "scheduled_at": "2026-11-17T20:00:00Z",
+              "aired_at": "2026-11-17T20:05:00Z",
+              "network": "Pinnacle One",
+              "impressions": 390000,
+              "grps": 1.8
+            }
+          ],
+          "by_spot_truncated": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+A seller that reports these rows declares them in the product's reporting capabilities:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/reporting-capabilities.json",
+  "available_reporting_frequencies": ["daily"],
+  "expected_delay_minutes": 180,
+  "timezone": "Europe/Amsterdam",
+  "supports_webhooks": false,
+  "available_metrics": ["impressions", "spend", "grps"],
+  "date_range_support": "date_range",
+  "supports_spot_breakdown": {
+    "available_metrics": ["impressions", "grps"],
+    "available_statuses": ["scheduled", "preempted", "makegood"],
+    "supports_break_position": true
+  }
+}
+```
 
 Breakdowns are opt-in — no dimension data is returned unless explicitly requested. Sellers that don't support a requested dimension silently omit it. An unsupported `demographic.age_ranges` value on a product that otherwise supports the dimension returns `UNSUPPORTED_FEATURE`; sellers never widen or narrow it silently. Each breakdown array has a sibling `by_*_truncated` boolean indicating whether additional non-suppressed rows exist beyond the requested `limit`.
 

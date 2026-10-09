@@ -202,11 +202,11 @@
           "$ref": "/schemas/core/budget-allocation.json"
         }
       ],
-      "description": "Updated allocation configuration. Switching between fixed and seller-optimized modes is allowed only when update_budget_allocation is advertised in available_actions and the resulting package constraints are valid."
+      "description": "Updated allocation configuration. Switching between fixed and seller-optimized modes is allowed only when update_budget_allocation is advertised in available_actions and the resulting package constraints are valid. A resulting seller_optimized allocation requires advertised media_buy.features.seller_optimized_budget, and any package budget caps, min_spend_target values, or package pacing it retains require their own advertised sub-capability; otherwise the update is rejected with UNSUPPORTED_FEATURE before any over-subscription validation."
     },
     "pacing": {
       "$ref": "/schemas/enums/pacing.json",
-      "description": "Updated aggregate media-buy pacing. Package pacing remains subordinate to this aggregate strategy."
+      "description": "Updated aggregate media-buy pacing. Package pacing remains subordinate to this aggregate strategy. When the resulting buy is seller-optimized, a seller declaring media_buy.features.seller_optimized_budget MUST accept `even`; it MAY reject `asap` or `front_loaded` with UNSUPPORTED_FEATURE (error.field `pacing`) before any provider mutation, including a switch to seller-optimized allocation that would retain such pacing, and MUST NOT silently coerce them to `even`. Fixed-allocation semantics are unchanged."
     },
     "bidding": {
       "description": "Replace the complete media-buy-authored bidding default. An object replaces the prior block; `{automatic:true}` records an explicit automatic policy. null clears it; packages with explicit package.bidding remain explicit, while packages without overrides fall back to provider automatic delivery. Goal binding follows the resulting budget allocation: seller-optimized outcome controls bind to allocation goals, while fixed inherited cost_per requires compatible package result units. Monetary fields use the media-buy currency and all affected pricing options MUST match it. The seller MUST validate all resulting policies atomically before mutation.",
