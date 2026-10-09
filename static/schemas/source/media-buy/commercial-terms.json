@@ -124,6 +124,7 @@
       }
     },
     "definition_pins": {
+      "x-added-in": "3.3.0",
       "type": "array",
       "items": { "$ref": "/schemas/core/definition-pin.json" },
       "minItems": 1,

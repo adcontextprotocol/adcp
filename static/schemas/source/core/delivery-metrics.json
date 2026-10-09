@@ -445,6 +445,7 @@
       "additionalProperties": true
     },
     "print_metrics": {
+      "x-added-in": "3.3.0",
       "type": "object",
       "x-status": "experimental",
       "description": "Print-specific metrics (only included for print campaigns). Experimental in AdCP 3.3. Report one object per installment (issue) on `by_installment` rows, which inherit this schema; the object is not meaningful at package, daily, or total grain. It describes one insertion per row and carries the proof the insertion ran and the circulation it ran against. Sellers SHOULD populate `evidence` for guaranteed print products; when a seller cannot, the gap is reported through `by_package[].missing_metrics` rather than by silently omitting the field. Nothing here is schema-required.",

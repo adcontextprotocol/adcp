@@ -3,6 +3,7 @@
   "$id": "/schemas/error-details/reference-definition-changed.json",
   "title": "Reference Definition Changed Details",
   "description": "Recommended details shape for REFERENCE_DEFINITION_CHANGED errors, one error per drifted pin. error.field identifies the failing pin as a path into the proposal's commercial_terms, such as commercial_terms.definition_pins[2]. The details object carries the digest the definition resolves to now so the buyer can compare it with the pin it holds. Producer-authored values MUST remain buyer-safe and MUST NOT contain fetch targets, resolver errors, internal identifiers, or other producer-private detail.",
+  "x-added-in": "3.3.0",
   "type": "object",
   "properties": {
     "current_content_digest": {

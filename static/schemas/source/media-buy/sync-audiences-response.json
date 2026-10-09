@@ -74,14 +74,17 @@
                 "maximum": 1
               },
               "match_rate_basis": {
+                "x-added-in": "3.3.0",
                 "$ref": "/schemas/enums/audience-match-rate-basis.json",
                 "description": "Where effective_match_rate came from: 'platform_reported' when the destination platform supplied it, 'derived' when the seller computed it, for example from approximate counts. Describes effective_match_rate, so it is only meaningful when that field is present. When absent, the basis is unspecified."
               },
               "audience_size": {
+                "x-added-in": "3.3.0",
                 "$ref": "/schemas/core/audience-size.json",
                 "description": "People matched on the platform, as a range with a stated precision. Use this when the platform reports an interval, approximation, or bucket rather than an exact count. May accompany or replace matched_count: a seller that reports a size but no matched count omits matched_count. Populated when status is 'ready' and the seller can report it. A seller MUST NOT disclose a size below its minimum audience size, so this field MUST be omitted when status is 'too_small'; the existing too_small status and minimum_size govern that case."
               },
               "targetable_size": {
+                "x-added-in": "3.3.0",
                 "$ref": "/schemas/core/audience-size.json",
                 "description": "People the platform can serve to now, as a range with a stated precision. Differs from audience_size when only part of the matched audience is eligible to be served, for example because of surface, consent, or recency limits. Reported as one value: how a platform with several serving surfaces combines them is left to the seller. Populated when status is 'ready' and the seller can report it. A seller MUST NOT disclose a size below its minimum audience size, so this field MUST be omitted when status is 'too_small'."
               },

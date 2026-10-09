@@ -3,6 +3,7 @@
   "$id": "/schemas/enums/audience-match-rate-basis.json",
   "title": "Audience Match Rate Basis",
   "description": "Where an audience match rate came from. Qualifies effective_match_rate on a sync_audiences result so a buyer can tell a rate the platform reported from one computed from approximate counts.",
+  "x-added-in": "3.3.0",
   "type": "string",
   "enum": [
     "platform_reported",

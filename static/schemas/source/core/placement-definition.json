@@ -70,7 +70,7 @@
           "$ref": "/schemas/enums/dooh-motion-type.json",
           "description": "Physical motion capability of a visual DOOH screen, not an accepted-format declaration. Omit for audio-only placements."
         },
-        "location": { "$ref": "#/definitions/PublisherDoohLocation" }
+        "location": { "$ref": "#/definitions/PublisherDoohLocation", "x-added-in": "3.3.0" }
       },
       "x-adcp-validation": {
         "verifier_constraints": {
