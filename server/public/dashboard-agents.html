@@ -3659,7 +3659,8 @@
         const returnTo = window.location.pathname + window.location.search + window.location.hash;
         window.location.href = '/api/oauth/agent/start'
           + '?agent_context_id=' + encodeURIComponent(agentContextId)
-          + '&return_to=' + encodeURIComponent(returnTo);
+          + '&return_to=' + encodeURIComponent(returnTo)
+          + (btn.dataset.oauthFresh === 'true' ? '&fresh=1' : '');
       } catch (err) {
         btn.disabled = false;
         btn.textContent = originalLabel;
@@ -4279,7 +4280,8 @@
 
       // Shared: render a "Connect via OAuth" prompt when an agent 401s with
       // a WWW-Authenticate: Bearer challenge and no refreshable token is stored.
-      function renderOAuthChallenge(agentUrl, agentContextId, reason) {
+      function renderOAuthChallenge(agentUrl, agentContextId, reason, ownerFresh = false) {
+        if (ownerFresh === true) reason = "Saved OAuth credentials need an explicit owner sign-in. If the authorization server changed, confirm trusted client configuration; saved clients are not rebound automatically.";
         const safeReason = reason
           ? '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(String(reason)) + '</div>'
           : '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">This agent requires OAuth authorization before storyboards can run.</div>';
@@ -4288,7 +4290,8 @@
           '<div style="padding:var(--space-3);background:var(--color-warning-bg);border:1px solid var(--color-warning-border, var(--color-border));border-radius:var(--radius-md);">'
           + '<div style="font-weight:var(--font-semibold);margin-bottom:var(--space-2);">Connect via OAuth</div>'
           + safeReason
-          + '<button class="agent-oauth-challenge-btn" data-agent-url="' + escapeHtml(agentUrl) + '"' + ctxAttr + '>Authorize with agent</button>'
+          + '<button class="agent-oauth-challenge-btn" data-agent-url="' + escapeHtml(agentUrl) + '"' + ctxAttr
+          + (ownerFresh === true ? ' data-oauth-fresh="true">Start a new sign-in</button>' : '>Authorize with agent</button>')
           + '</div>'
         );
       }
@@ -4467,7 +4470,7 @@
           }
 
           if (errBody.needs_oauth) {
-            panel.innerHTML = renderOAuthChallenge(agentUrl, errBody.agent_context_id, errBody.error);
+            panel.innerHTML = renderOAuthChallenge(agentUrl, errBody.agent_context_id, errBody.error, errBody.oauth_fresh === true);
             return;
           }
 
@@ -4679,7 +4682,7 @@
           }
 
           if (result.needs_oauth) {
-            panel.innerHTML = renderOAuthChallenge(agentUrl, result.agent_context_id, result.error);
+            panel.innerHTML = renderOAuthChallenge(agentUrl, result.agent_context_id, result.error, result.oauth_fresh === true);
             return;
           }
 
@@ -4775,7 +4778,7 @@
           progressEl.remove();
 
           if (res.status === 422 && data.needs_oauth) {
-            panel.innerHTML = renderOAuthChallenge(agentUrl, data.agent_context_id, data.error);
+            panel.innerHTML = renderOAuthChallenge(agentUrl, data.agent_context_id, data.error, data.oauth_fresh === true);
             return;
           }
 
