@@ -877,14 +877,12 @@ function buildProduct(
         vendor_metrics: pub.vendorMetrics,
       }),
     } as NonNullable<Product['reporting_capabilities']>,
-    // A sponsored video slot is not audience-targeted, geo-targeted, or capped.
-    ...(!offer && {
-      audience_activation: {
-        methods: structuredClone(TRAINING_AUDIENCE_ACTIVATION_METHODS) as unknown as Array<Record<string, unknown>>,
-        preferred_method: { pattern: 'sync_audiences' },
-        notes: 'Inline AdCP sync is preferred; dataset sharing requires bilateral account setup.',
-      },
-    }),
+    audience_activation: {
+      methods: structuredClone(TRAINING_AUDIENCE_ACTIVATION_METHODS) as unknown as Array<Record<string, unknown>>,
+      preferred_method: { pattern: 'sync_audiences' },
+      notes: 'Inline AdCP sync is preferred; dataset sharing requires bilateral account setup.',
+    },
+    // A sponsored video slot is not geo-targeted or frequency-capped.
     overlay_support: offer ? {} : {
       geo_countries: true,
       // Broad legacy package-cap promise within the seller-wide
