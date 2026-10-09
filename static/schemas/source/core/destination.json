@@ -48,7 +48,7 @@
         "delivery_method": {
           "type": "object",
           "x-status": "experimental",
-          "description": "Optional operator pin for provider-initiated delivery to this agent destination. The signal agent MUST use a matching rail or fail this destination with UNSUPPORTED_FEATURE, never falling back. Agents that do not list signals.delivery_methods MUST reject a pin. Without a pin it chooses from the pattern+vendor intersection. Experimental (signals.delivery_methods).",
+          "description": "Optional operator pin for provider-initiated delivery to this agent destination. The signal agent MUST use a matching rail or fail this destination with UNSUPPORTED_FEATURE, never falling back. Agents that do not list signals.delivery_methods MUST reject a pin. Without a pin it chooses from the pattern+vendor intersection. Applies to activate_signal only; ignored on get_signals destinations, where it neither filters nor errors. Experimental (signals.delivery_methods).",
           "properties": {
             "pattern": {
               "type": "string",
@@ -69,7 +69,8 @@
           "required": [
             "pattern"
           ],
-          "additionalProperties": false
+          "additionalProperties": false,
+          "x-added-in": "3.3.0"
         }
       },
       "required": [

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/enums/signal-delivery-state.json",
-  "title": "Signal Delivery State",
+  "$id": "/schemas/enums/signal-delivery-status.json",
+  "title": "Signal Delivery Status",
   "x-status": "experimental",
   "description": "Arrival of provider-initiated membership delivery to an agent destination. Separate from addressability (is_live) and match outcome (match_status). Experimental (signals.delivery_methods).",
   "type": "string",
@@ -14,5 +14,6 @@
     "awaiting_read": "Shipped; the destination has not read it yet. Normal and possibly days-long on some rails.",
     "delivered": "The destination has read the membership. Not an addressability claim.",
     "failed": "Delivery did not complete (no rail intersection, pin mismatch, rail error); delivery_error carries the reason."
-  }
+  },
+  "x-added-in": "3.3.0"
 }

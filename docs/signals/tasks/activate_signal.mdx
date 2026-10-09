@@ -94,7 +94,7 @@ Any rail in the intersection is eligible, and selection is the signal agent's di
 
 A signal agent that declares `delivery_methods` MUST deliver to agent destinations only over a rail in the intersection. If there is none, including when the destination has declared no methods (an undeclared destination has no address to deliver to; the seller must declare one), that destination fails with `UNSUPPORTED_FEATURE` rather than activating over a bespoke route. A signal agent that does not declare `delivery_methods` keeps its existing agent-destination behavior; the capability is not mandatory for every signal agent.
 
-A failed destination does not fail the others. Report it as a deployment with `delivery_state: "failed"` and a `delivery_error` whose `field` names the destination entry (`destinations[0]`, or `destinations[0].delivery_method` for a pin mismatch). When every requested destination fails this way the signal agent MAY return the error response instead. `failed` is terminal for that attempt; retry with a new `idempotency_key`.
+A failed destination does not fail the others. Report it as a deployment with `delivery_status: "failed"` and a `delivery_error` whose `field` names the destination entry (`destinations[0]`, or `destinations[0].delivery_method` for a pin mismatch). When every requested destination fails this way the signal agent MUST return the `errors[]` arm instead, so a buyer reading `status: "completed"` never mistakes total failure for success. `failed` is terminal for that attempt; retry with a new `idempotency_key`.
 
 Delivery cost is absorbed in the signal's price: provider-initiated delivery uses the existing `pricing_options` and `pricing_option_id`, with no separate rail fee.
 
@@ -104,13 +104,13 @@ Three questions are reported separately on each agent deployment:
 
 | Question | Field | Values |
 |---|---|---|
-| Has membership arrived? | `delivery_state` | `awaiting_read`, `delivered`, `failed` |
+| Has membership arrived? | `delivery_status` | `awaiting_read`, `delivered`, `failed` |
 | Can the signal be targeted? | `is_live` (with `activation_key`) | boolean |
-| How well did it match? | `match_status` (optionally `matched_count`, `effective_match_rate`) | the [audience status](https://adcontextprotocol.org/schemas/v3/enums/audience-status.json) values `sync_audiences` reports |
+| How well did it match? | `match_status` (optionally `matched_count`, `effective_match_rate`, `match_rate_basis`, `audience_size`) | the [audience status](https://adcontextprotocol.org/schemas/v3/enums/audience-status.json) values `sync_audiences` reports |
 
 `delivered` is not an addressability claim, and coverage on the seller's inventory is the match rate against the seller's own identity graph. The signal agent populates all of these from what its rail reports back. For pull rails (`dataset_query`, `platform_distribution`, `clean_room`) `delivered` means the destination has read the membership, as attested by the rail or the seller. For push rails (`sync_audiences`, `file_transfer`) it means the destination accepted the write. State moves `awaiting_read` → `delivered` or `failed`. Agents SHOULD set `is_live: true` only once `delivered`, and include `delivery_error` when, and only when, the state is `failed`. When a delivery window is declared on the destination (`bind_expiry_days` for `platform_distribution`), reaching it moves the deployment to `failed`.
 
-`match_status` and the counts are optional and use the same vocabulary on every rail, so they are not rail-dependent. They appear only when the destination reports them back to the signal agent (for example through the `sync_audiences` response); absence means not reported, never zero. `too_small` implies `is_live: false`.
+`match_status` and the counts are optional; `audience_size` (a range with stated precision, the shape `sync_audiences` adopted for range-only platforms) and `match_rate_basis` let those platforms relay a match outcome without inventing a point count and use the same vocabulary on every rail, so they are not rail-dependent. They appear only when the destination reports them back to the signal agent (for example through the `sync_audiences` response); absence means not reported, never zero. `too_small` implies `is_live: false`.
 
 Distribution can take days, so `awaiting_read` is a normal, long-lived state. The first response returns the current state, and the task is complete at that point, so later state changes do not fire a task webhook. Read them through [`get_signals`](/docs/signals/tasks/get_signals), which returns the same deployment objects. `action: "deactivate"` removes the deployment and carries no delivery state.
 
@@ -149,7 +149,7 @@ Initial response, with membership shipped and awaiting the seller's read:
     "type": "agent",
     "agent_url": "https://wonderstruck.salesagents.com",
     "is_live": false,
-    "delivery_state": "awaiting_read",
+    "delivery_status": "awaiting_read",
     "delivery": {
       "kind": "platform_segment",
       "vendor": { "domain": "activation-hub.example" },
@@ -170,7 +170,7 @@ After the seller reads and matches:
     "type": "agent",
     "agent_url": "https://wonderstruck.salesagents.com",
     "is_live": true,
-    "delivery_state": "delivered",
+    "delivery_status": "delivered",
     "delivery": {
       "kind": "platform_segment",
       "vendor": { "domain": "activation-hub.example" },
@@ -195,7 +195,7 @@ No rail in common with the destination:
     "type": "agent",
     "agent_url": "https://wonderstruck.salesagents.com",
     "is_live": false,
-    "delivery_state": "failed",
+    "delivery_status": "failed",
     "delivery_error": {
       "code": "UNSUPPORTED_FEATURE",
       "message": "Destination declares no delivery rail in common with this signal agent.",
@@ -258,7 +258,7 @@ For asynchronous operations like activation, both protocols support:
   - **activation_key**: The key to use for targeting (see Activation Key below). Only present if the authenticated caller has access to this deployment.
   - **estimated_activation_duration_minutes**: Estimated completion time for async operations
   - **deployed_at**: ISO 8601 timestamp when activation completed
-  - **delivery_state**, **delivery**, **delivery_error**, **match_status**, **matched_count**, **effective_match_rate** (agent deployments, experimental): provider-initiated delivery arrival, descriptor, failure reason, and optional match outcome. See [Delivering membership to agent destinations](#delivering-membership-to-agent-destinations-experimental).
+  - **delivery_status**, **delivery**, **delivery_error**, **match_status**, **matched_count**, **effective_match_rate** (agent deployments, experimental): provider-initiated delivery arrival, descriptor, failure reason, and optional match outcome. See [Delivering membership to agent destinations](#delivering-membership-to-agent-destinations-experimental).
 - **errors**: Optional array of errors and warnings encountered during activation
   - **code**: Standardized error code for programmatic handling
   - **message**: Human-readable error description with context

@@ -55,22 +55,12 @@ describe('signal delivery methods (experimental)', () => {
     assert.deepEqual([...pin].sort(), receive);
   });
 
-  it('keeps match_status in step with the audience-status enum', () => {
-    const inline = readSchema('/schemas/core/deployment.json').oneOf[1].properties.match_status.enum;
-    assert.deepEqual(inline, readSchema('/schemas/enums/audience-status.json').enum);
-  });
-
-  it('keeps the delivery descriptor in step with audience-source', () => {
-    const source = readSchema('/schemas/core/audience-source.json').oneOf;
-    const delivery = readSchema('/schemas/core/deployment.json').oneOf[1].properties.delivery;
-    assert.deepEqual(delivery.properties.kind.enum, source.map(v => v.properties.kind.const));
-    const dataset = source.find(v => v.properties.kind.const === 'dataset').properties;
-    const segment = source.find(v => v.properties.kind.const === 'platform_segment').properties;
-    for (const key of ['minLength', 'maxLength']) {
-      assert.equal(delivery.properties.locator[key], dataset.locator[key]);
-      assert.equal(delivery.properties.segment_ref[key], segment.segment_ref[key]);
-    }
-    assert.equal(delivery.properties.vendor.$ref, dataset.vendor.$ref);
+  it('reuses audience-status and audience-source by reference', () => {
+    const props = readSchema('/schemas/core/deployment.json').oneOf[1].properties;
+    assert.equal(props.match_status.$ref, '/schemas/enums/audience-status.json');
+    assert.equal(props.match_rate_basis.$ref, '/schemas/enums/audience-match-rate-basis.json');
+    assert.equal(props.audience_size.$ref, '/schemas/core/audience-size.json');
+    assert.equal(props.delivery.allOf[0].$ref, '/schemas/core/audience-source.json');
   });
 
   it('accepts a destination pin and rejects tmp_identity_match as a pin', () => {
@@ -84,7 +74,7 @@ describe('signal delivery methods (experimental)', () => {
     assert.equal(deployment({
       ...AGENT,
       is_live: true,
-      delivery_state: 'delivered',
+      delivery_status: 'delivered',
       delivery: { kind: 'platform_segment', vendor: { domain: 'activation-hub.example' }, segment_ref: 'seg_88213' },
       match_status: 'ready',
       matched_count: 1200,
@@ -92,15 +82,30 @@ describe('signal delivery methods (experimental)', () => {
     }), true, JSON.stringify(deployment.errors));
     assert.equal(deployment({
       ...AGENT,
-      delivery_state: 'failed',
+      delivery_status: 'failed',
       delivery_error: { code: 'UNSUPPORTED_FEATURE', message: 'No shared rail.', field: 'destinations[0]' },
     }), true, JSON.stringify(deployment.errors));
+  });
+
+  it('relays range-only match outcomes', () => {
+    assert.equal(deployment({
+      ...AGENT,
+      match_status: 'ready',
+      audience_size: { lower_bound: 1000, upper_bound: 5000, precision: 'approximate' },
+      effective_match_rate: 0.5,
+      match_rate_basis: 'platform_reported',
+    }), true, JSON.stringify(deployment.errors));
+    assert.equal(deployment({ ...AGENT, match_rate_basis: 'guessed' }), false);
   });
 
   it('rejects malformed delivery descriptors and unknown arrival states', () => {
     assert.equal(deployment({ ...AGENT, delivery: { kind: 'dataset', vendor: { domain: 'a.example' } } }), false);
     assert.equal(deployment({ ...AGENT, delivery: { kind: 'dataset', vendor: { domain: 'a.example' }, segment_ref: 's' } }), false);
-    assert.equal(deployment({ ...AGENT, delivery_state: 'pending' }), false);
+    assert.equal(deployment({ ...AGENT, delivery_status: 'pending' }), false);
+    assert.equal(deployment({
+      ...AGENT,
+      delivery: { kind: 'dataset', vendor: { domain: 'a.example' }, locator: 'L', access_expires_at: '2026-12-01T00:00:00Z' },
+    }), false);
     assert.equal(deployment({ ...AGENT, effective_match_rate: 2 }), false);
   });
 

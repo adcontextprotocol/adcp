@@ -84,98 +84,67 @@
           "format": "date-time",
           "description": "Timestamp when activation completed (if is_live=true)"
         },
-        "delivery_state": {
-          "$ref": "/schemas/enums/signal-delivery-state.json",
-          "description": "Arrival of provider-initiated delivery; separate from is_live and match_status. Experimental (signals.delivery_methods).",
-          "x-status": "experimental"
+        "delivery_status": {
+          "$ref": "/schemas/enums/signal-delivery-status.json",
+          "description": "Arrival of provider-initiated membership delivery; separate from is_live (addressability) and match_status.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
         },
         "delivery": {
-          "type": "object",
-          "description": "What was shipped, shaped like core/audience-source.json; the destination-side join key. Omitted when the rail has no vendor-addressable artifact. Never a credential. Experimental.",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "enum": [
-                "dataset",
-                "platform_segment"
-              ]
-            },
-            "vendor": {
-              "$ref": "/schemas/core/brand-ref.json",
-              "description": "Vendor whose rails delivered the artifact."
-            },
-            "locator": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512,
-              "description": "Vendor-native share or table reference (dataset)."
-            },
-            "segment_ref": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "description": "Vendor's segment identifier (platform_segment)."
-            }
-          },
-          "required": [
-            "kind",
-            "vendor"
-          ],
-          "oneOf": [
+          "allOf": [
             {
-              "properties": {
-                "kind": {
-                  "const": "dataset"
-                }
-              },
-              "required": [
-                "kind",
-                "locator"
-              ]
+              "$ref": "/schemas/core/audience-source.json"
             },
             {
-              "properties": {
-                "kind": {
-                  "const": "platform_segment"
-                }
-              },
-              "required": [
-                "kind",
-                "segment_ref"
-              ]
+              "not": {
+                "required": [
+                  "access_expires_at"
+                ]
+              }
             }
           ],
-          "additionalProperties": false,
-          "x-status": "experimental"
+          "description": "What the signal agent shipped, as a core/audience-source.json reference: the destination-side join key. No access_expires_at. Omitted when the rail has no vendor-addressable artifact. Never a credential.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
         },
         "delivery_error": {
           "$ref": "/schemas/core/error.json",
-          "description": "Why delivery failed; present when delivery_state is failed. UNSUPPORTED_FEATURE when no declared rail intersects or the pin does not match. Experimental.",
-          "x-status": "experimental"
+          "description": "Why delivery failed; present when delivery_status is failed. UNSUPPORTED_FEATURE when no declared rail intersects or the pin does not match.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
         },
         "match_status": {
-          "type": "string",
-          "enum": [
-            "processing",
-            "ready",
-            "too_small",
-            "suspended"
-          ],
-          "description": "Match outcome using the audience-status vocabulary (enums/audience-status.json); optional and rail-independent. too_small implies is_live false. Experimental.",
-          "x-status": "experimental"
+          "$ref": "/schemas/enums/audience-status.json",
+          "description": "Match outcome in the audience-status vocabulary sync_audiences reports; optional and rail-independent. too_small implies is_live false.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
         },
         "matched_count": {
           "type": "integer",
           "minimum": 0,
           "description": "Members matched; absence is not zero.",
-          "x-status": "experimental"
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
         },
         "effective_match_rate": {
           "type": "number",
           "minimum": 0,
           "maximum": 1,
           "description": "Deduplicated match rate; absence is not zero.",
-          "x-status": "experimental"
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "match_rate_basis": {
+          "$ref": "/schemas/enums/audience-match-rate-basis.json",
+          "description": "Where effective_match_rate came from, as on sync_audiences.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "audience_size": {
+          "$ref": "/schemas/core/audience-size.json",
+          "description": "People matched, as a range with stated precision (the #8024 shape), for platforms that report an interval. May replace matched_count. Omit when match_status is too_small.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
         }
       },
       "required": [
