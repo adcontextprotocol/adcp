@@ -114,6 +114,24 @@
       "required": ["effective_at"],
       "additionalProperties": false
     },
+    "seller_adjustment_allowances": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/seller-adjustment-allowance.json" },
+      "minItems": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.seller_adjustment_allowances). Bounded changes the buyer pre-authorizes the seller to apply unilaterally to a live buy, covered by terms_digest and keyed by allowance_id. Absent means no unilateral leeway. Sellers MUST NOT emit it to callers pinned below AdCP 3.3 (the 3.2 schema is closed); no declared pin counts as below 3.3.",
+      "x-adcp-validation": {
+        "unique_by": "allowance_id",
+        "verifier_constraints": {
+          "allowance_bounds": {
+            "purchase_index": "less_than_purchases_length",
+            "one_entry_per_purchase_and_kind": true,
+            "on_violation": "reject_proposal"
+          }
+        }
+      }
+    },
     "change_terms": {
       "type": "array",
       "items": { "$ref": "/schemas/media-buy/change-term.json" },

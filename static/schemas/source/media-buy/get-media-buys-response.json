@@ -56,6 +56,13 @@
             ],
             "description": "Current accepted compact proposal, including the complete digested commercial envelope. Required whenever accepted_proposal_id is present so restarted SDKs can recover control-versus-refinement routing without reconstructing historical offers."
           },
+          "applied_adjustments": {
+            "type": "array",
+            "items": { "$ref": "/schemas/core/applied-seller-adjustment.json" },
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
+            "description": "Experimental (media_buy.seller_adjustment_allowances). Changes the seller applied under the buy's accepted seller_adjustment_allowances, oldest first. This is the repair read for media_buy.allowance_applied. Omit when empty. Sellers MUST NOT include the field for callers pinned below AdCP 3.3; a caller with no declared pin is treated as pinned below 3.3."
+          },
           "account": {
             "$ref": "/schemas/core/account.json",
             "description": "Account billed for this media buy"
@@ -258,10 +265,39 @@
                   "description": "Package affected, when the change targeted a specific package.",
                   "x-entity": "package"
                 },
+                "change_origin": {
+                  "$ref": "/schemas/enums/change-origin.json",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0",
+                  "description": "Experimental (media_buy.seller_adjustment_allowances). What authorized this change. seller_allowance means the seller applied it unilaterally under an accepted allowance; allowance_id and reason are then present."
+                },
+                "allowance_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "x-entity": "seller_adjustment_allowance",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0",
+                  "description": "The allowance that authorized this change. Present when change_origin is seller_allowance."
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500,
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0",
+                  "description": "Why the seller made this change. Present when change_origin is seller_allowance."
+                },
                 "ext": {
                   "$ref": "/schemas/core/ext.json"
                 }
               },
+              "allOf": [
+                {
+                  "if": { "properties": { "change_origin": { "const": "seller_allowance" } }, "required": ["change_origin"] },
+                  "then": { "required": ["allowance_id", "reason"] }
+                }
+              ],
               "required": [
                 "revision",
                 "timestamp",

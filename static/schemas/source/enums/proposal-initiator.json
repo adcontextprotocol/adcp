@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/proposal-initiator.json",
+  "title": "Proposal Initiator",
+  "description": "Which party originated a proposal. Experimental in AdCP 3.3 (media_buy.seller_offers). Absent on a proposal means buyer. A seller-initiated proposal is a seller offer: a committed amendment or negotiated cancellation of an accepted media buy that the buyer accepts, declines, or lets lapse.",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": [
+    "buyer",
+    "seller"
+  ],
+  "enumDescriptions": {
+    "buyer": "Originated by the buyer: a request_proposals or refine_proposals result, including any revision a buyer makes of a seller offer. This is the implied value when proposal_initiator is absent.",
+    "seller": "Originated by the seller as an offer against an accepted media buy. Always committed, always carries offer_reason, and never takes effect until the buyer calls accept_proposal."
+  }
+}

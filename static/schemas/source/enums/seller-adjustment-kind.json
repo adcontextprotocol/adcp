@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/seller-adjustment-kind.json",
+  "title": "Seller Adjustment Kind",
+  "description": "Kind of bounded change a buyer pre-authorizes the seller to apply to a live media buy without a new offer. Experimental in AdCP 3.3 (media_buy.seller_adjustment_allowances).",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": [
+    "budget_release",
+    "schedule_shift"
+  ],
+  "enumDescriptions": {
+    "budget_release": "The seller may reduce a purchase's committed budget when it forecasts under-delivery, instead of under-delivering. Reduce only: never an increase and never a price change. The released budget is no longer billable and returns to the buyer.",
+    "schedule_shift": "The seller may move an installment, spot, or airing within an agreed window, to an ordered pre-approved alternate, or both. The general form of broadcast line alternates."
+  }
+}

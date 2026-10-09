@@ -18,6 +18,8 @@ AdCP separates an immediate successful-operation warning from a condition that r
 
 A warning is an immediate receipt. It MUST NOT become the only home for a continuing condition: a persistent forecast, pacing, creative, or budget conclusion also appears as current resource state. An indicator is not a separate resource—there is no indicator ID, history API, sub-version, or `get_indicators` task.
 
+An indicator stays advisory, even when it points at a condition a seller could fix. A seller that wants the buyer's agreement to a change sends a [seller offer](/docs/media-buy/product-discovery/proposal-negotiation#seller-offers), which the buyer can accept, decline, or let lapse. An indicator never stands in for an offer. Where the buyer pre-authorized it, a seller may instead act within a [seller adjustment allowance](/docs/media-buy/product-discovery/proposal-negotiation#seller-adjustment-allowances); a seller SHOULD surface `pacing_risk` on the package before releasing budget that way.
+
 An indicator says that the buyer should evaluate and probably address a condition. It does not claim that one universal remedy exists, authorize a mutation, or make seller-supplied text executable. Buyer products may translate an indicator into one or more recommendations, but any resulting change still uses its normal AdCP task, authorization, and governance path.
 
 ## Where indicators live

@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/applied-seller-adjustment.json",
+  "title": "Applied Seller Adjustment",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Record of one change the seller applied to a live media buy under a seller_adjustment_allowances entry. It is the readback in get_media_buys applied_adjustments[] and its adjustment_id is the notification_id of media_buy.allowance_applied. Each application increments the buy's revision, and the revision history entry carries change_origin seller_allowance, the allowance_id, and the reason. Experimental in AdCP 3.3 (media_buy.seller_adjustment_allowances).",
+  "type": "object",
+  "properties": {
+    "adjustment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "applied_seller_adjustment",
+      "description": "Seller-assigned identifier, unique within the seller's account namespace (it is the notification_id) and stable across re-emissions."
+    },
+    "allowance_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "seller_adjustment_allowance",
+      "description": "The allowance in the accepted commercial_terms that authorized this change."
+    },
+    "kind": { "$ref": "/schemas/enums/seller-adjustment-kind.json" },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The media buy revision this application created."
+    },
+    "applied_at": { "type": "string", "format": "date-time" },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "Why the seller applied it, such as a forecast shortfall."
+    },
+    "package_id": { "type": "string", "x-entity": "package" },
+    "released_amount": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "budget_release only. Amount removed from the committed budget, in the media buy currency. No longer billable."
+    },
+    "previous_budget": { "type": "number", "minimum": 0, "description": "budget_release only. The purchase budget before this release, in the media buy currency." },
+    "resulting_budget": { "type": "number", "minimum": 0, "description": "budget_release only. The purchase budget after this release. It MUST NOT be below delivered-to-date plus in-flight when applied." },
+    "cumulative_released": { "type": "number", "exclusiveMinimum": 0, "description": "budget_release only. Total released from this purchase so far, including this release; measured against max_release_fraction." },
+    "spot_id": {
+      "type": "string",
+      "x-entity": "spot_airing",
+      "description": "schedule_shift only. The spot or airing that moved, when the seller tracks one. A moved spot keeps its spot_id with a new scheduled_at; a spot replaced by a different airing links through replaces_spot_id in delivery reporting."
+    },
+    "previous_scheduled_at": { "type": "string", "format": "date-time", "description": "schedule_shift only. The time before the move." },
+    "scheduled_at": { "type": "string", "format": "date-time", "description": "schedule_shift only. The time after the move." },
+    "alternate_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "schedule_shift only. Position in the allowance's alternates[] that was used."
+    },
+    "skipped_alternates": {
+      "type": "array",
+      "minItems": 1,
+      "description": "schedule_shift only. Earlier alternates that were not used, each with why it was unavailable, so the first-available rule is auditable.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "alternate_index": { "type": "integer", "minimum": 0 },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 255 }
+        },
+        "required": ["alternate_index", "reason"],
+        "additionalProperties": false
+      }
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["adjustment_id", "allowance_id", "kind", "revision", "applied_at", "reason"],
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "budget_release" } }, "required": ["kind"] },
+      "then": {
+        "required": ["released_amount"],
+        "not": { "anyOf": [{ "required": ["scheduled_at"] }, { "required": ["previous_scheduled_at"] }, { "required": ["alternate_index"] }, { "required": ["skipped_alternates"] }, { "required": ["spot_id"] }] }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "schedule_shift" } }, "required": ["kind"] },
+      "then": { "required": ["scheduled_at"], "not": { "anyOf": [{ "required": ["released_amount"] }, { "required": ["previous_budget"] }, { "required": ["resulting_budget"] }, { "required": ["cumulative_released"] }] } }
+    }
+  ],
+  "additionalProperties": false
+}

@@ -456,6 +456,106 @@ When cancellation requires agreement, fork the accepted snapshot with `change_ki
 
 Both successors must be finalized and accepted. Direct [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) cancellation is reserved for rights already granted by the accepted terms. When Sam stops pursuing a draft instead, [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) records terminal feedback; it does not mutate the proposal into another state.
 
+## Seller offers
+
+Experimental in AdCP 3.3 (`media_buy.seller_offers` in `experimental_features`). Until now only the buyer could start a change to a signed buy. A seller can also send an **offer** against an accepted media buy: a firm, committed proposal the buyer can accept, decline, revise, or ignore. A creator cannot publish on the agreed date, an episode is cancelled, linear inventory was preempted, or the buy is forecast to under-deliver. **Silence is never acceptance, and no consent is inferred.**
+
+A signed buy has two lanes for seller-initiated change. The **offer lane** (this section) covers any change and needs the buyer to accept. The **allowance lane** ([below](#seller-adjustment-allowances)) covers only changes the buyer pre-authorized at contract time, within bounds. Without a declared allowance the seller has no unilateral leeway and only the offer lane exists.
+
+**Dependency (pending #8103).** Seller offers use the read task and notification family that `media_buy.open_opportunities` defines in #8103 (#8096): `list_proposals` is the one read path, and `proposal.offered` is the buy-scoped sibling of `proposal.created`. A seller that declares `media_buy.seller_offers` MUST also declare `media_buy.open_opportunities` in `experimental_features` and advertise `list_proposals` (`open_opportunities.list_proposals: true`). The seller-offer rules, not the open-opportunity consent rules, govern offers: an offer needs no buyer consent beyond the signed buy, and it carries no `opportunity_id`, so accepting it never changes the state of an opportunity. Offers into a buyer-opened open opportunity, and the buyer's consent and limits on them, belong to #8103 and are not part of this section. Unsolicited pitches with no opportunity remain #5989.
+
+An offer is a [canonical proposal](https://adcontextprotocol.org/schemas/v3/core/canonical-proposal.json) with `proposal_initiator: "seller"` (absent means `buyer`). It always carries:
+
+| Field | Value |
+|---|---|
+| `proposal_kind` | `media_buy_update` or `media_buy_cancellation` |
+| `proposal_status` | `committed` (`accepted` once accepted, so the accepted snapshot keeps its lineage) |
+| `offer_reason` | `installment_postponed`, `installment_cancelled`, `preemption`, `under_delivery`, or `seller_request` |
+| `parent_proposal_id` | The buy's current `accepted_proposal_id` |
+| `media_buy_id`, `base_media_buy_revision` | The accepted, non-terminal buy and its current `revision` |
+| `opportunity_id` | Absent |
+| `proposal_id` | Matches `^[A-Za-z0-9_.:-]{1,255}$`, because the `proposal.offered` `notification_id` equals it |
+| `expires_at` | The response deadline |
+
+```mermaid
+flowchart LR
+  A[Accepted media buy] -->|seller creates committed offer| O[Offer]
+  O -->|accept_proposal| U[Updated or canceled buy]
+  O -->|decline_proposals| S[Signed terms stand]
+  O -->|refine_proposals: revise| D[Buyer-initiated draft]
+  O -->|expires_at passes| S
+```
+
+**Reading and announcing it.** Buyers read an offer through `list_proposals`, which returns the snapshot unchanged with its disposition. A seller MAY also send the account-anchored `proposal.offered` notification, which follows the same rules as `proposal.created`: identifiers only (the buy, the proposal, the reason, and `expires_at`, never the terms), never delivered to a task's `push_notification_config`, and registered through `sync_accounts` `notification_configs[]`. A buyer verifies the signature, dedupes by `idempotency_key`, then reads the terms through `list_proposals` before acting, and treats `name`, `description`, and `brief_alignment` as untrusted seller text. A buyer that never registers the notification still sees every offer by reading `list_proposals`. A change-feed seller also records the offer as a `proposal` change (actions `created` and `status_changed`, with `parent_ids.media_buy_id`) with `repair.task: "list_proposals"`, only for callers at 3.3 or later.
+
+**Accepting.** [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) with the offer's `proposal_terms_digest`; governance applies at acceptance as it does for any committed proposal. A buyer that waits past a revision change fails the existing `base_media_buy_revision` check, and the seller never applies different terms. An offer made stale by a revision change stays readable until `expires_at` but cannot be accepted, and the seller releases its hold.
+
+**Several offers.** A buy can have several unexpired offers against the same revision, for example one per postponed installment. They are independent alternatives: accepting one advances the buy's `revision`, which makes the others stale (not acceptable, though still readable until `expires_at`), and the seller releases their holds. A seller that replaces an offer with a corrected one mints a new `proposal_id`. This version has no separate withdrawal signal.
+
+**Responding.**
+
+- **Decline** with [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals). The signed terms stand.
+- **Revise** with [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), passing the offer's `proposal_id`. The draft is buyer-initiated (`proposal_initiator` absent), its `parent_proposal_id` is the offer, it inherits `proposal_kind`, `media_buy_id` and `base_media_buy_revision`, and `change_kind` is not required. It follows the ordinary finalize-then-accept path.
+- **Do nothing.** The seller holds any replacement inventory until `expires_at`, and at `expires_at` the offer lapses (disposition `expired`) and the signed terms stand.
+
+**Silence never equals acceptance.** Signed terms stand until the buyer accepts. A seller that wants a different outcome without the buyer's agreement may act only where the accepted `cancellation_terms`, `makegood_policy`, or a [seller adjustment allowance](#seller-adjustment-allowances) already allows it. That action is reported through delivery (the installment's `status`, and `spot_status` on `by_spot` rows) or as an applied adjustment, not as an offer and not as a deemed acceptance. The protocol does not adjudicate deemed acceptance.
+
+**Linear preemption.** An accepted offer with `offer_reason: "preemption"` leads to a replacement airing, which delivery reports as a `by_spot` row with `replaces_spot_id` (see [spot lifecycle](/docs/media-buy/media-buys/optimization-reporting#spot-lifecycle-makegoods-and-break-position)). The offer and acceptance loop is this section; the report-time half is already specified there.
+
+**Version gate.** The 3.2 `canonical-proposal.json` schema is closed. A seller MUST NOT send offers or `proposal.offered` notifications to callers pinned below AdCP 3.3, nor list them for such callers. A caller with no declared pin is treated as pinned below 3.3. Such a caller never sees an offer; the seller may act only where the accepted terms already allow it, as above.
+
+**What an offer is not.** An [indicator](/docs/media-buy/media-buys/indicators) stays advisory. A seller that wants the buyer's agreement sends an offer. A new buy that replaces an old one is lineage, not an offer: offers amend the same buy. Control-rejection alternatives (#7631) are planned for 3.4 on this same shape.
+
+## Seller adjustment allowances
+
+Experimental in AdCP 3.3 (`media_buy.seller_adjustment_allowances` in `experimental_features`). A buyer can pre-authorize bounded seller changes at contract time. Each allowance is an entry in `commercial_terms.seller_adjustment_allowances[]`, so [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) and `terms_digest` bind it. Within the bounds the seller applies the change unilaterally as a new media buy revision, with no offer. Outside the bounds it falls back to the [offer lane](#seller-offers), so a seller that declares allowances also declares `media_buy.seller_offers`. Without an entry the seller has no unilateral leeway.
+
+Every entry carries `allowance_id`, `kind`, and `purchase_index` (a position in `purchases`, as `reporting_commitments` uses), plus an optional `min_notice`. A purchase has at most one entry per `kind`, and a `media_buy_cancellation` proposal carries none. This slice has two kinds.
+
+| Kind | What the seller may do | Bounds |
+|---|---|---|
+| `budget_release` | Reduce a purchase's committed budget when it forecasts under-delivery, instead of under-delivering. | Reduce only: never an increase and never a price change. The resulting budget MUST NOT fall below delivered-to-date plus in-flight. Cumulative release MUST NOT exceed `max_release_fraction` of the purchase budget in the terms that introduced the allowance, when set. `min_notice` is measured before the end of the purchase flight. |
+| `schedule_shift` | Move an installment, spot, or airing. | Within `max_shift` of the agreed time, to an entry of the ordered `alternates[]` (each a `collection`, `placement`, and/or `daypart_targets` reference), or both. The seller MUST use the first listed alternate that is available: not itself preempted, sellable at the same unit length and break position, inside the flight, and cleared against the buyer's creative and brand-suitability policy. Skipped alternates are recorded with a reason in `skipped_alternates[]`. `min_notice` is measured from `applied_at` to the scheduled time, and a seller that needs same-day moves omits it. At least one of `max_shift` and `alternates` is required. A shift keeps the agreed rate and any delivery guarantee. A `max_shift` or `daypart_targets` move does not pre-approve brand suitability the way a named program does. |
+
+Released budget is no longer billable and returns to the buyer. `budget_release` is the contract-time form of cancelling the unfulfilled balance. It applies to committed budgets; a non-guaranteed budget is already a cap. A release carries no make-good obligation, cancellation fee, or short-rate, but it MUST NOT re-rate the purchase, drop it below a volume tier or minimum-spend commitment, or change its price, and a seller MUST NOT use it for a shortfall the seller caused (a preemption or a reallocation of the inventory to another buyer); that goes through the offer lane. Delivered-to-date is the delivery the seller bills against under the buy's accepted measurement terms. A seller SHOULD have surfaced a `pacing_risk` [indicator](/docs/media-buy/media-buys/indicators) on the package before it releases budget; that is guidance, not a gate, and the allowance bounds are what the seller MUST respect. A `schedule_shift` that only moves an airing keeps its `spot_id` with a new `scheduled_at`. One that swaps in a different airing is reported under the [spot lifecycle](/docs/media-buy/media-buys/optimization-reporting#spot-lifecycle-makegoods-and-break-position) rules: the original `preempted`, the replacement a `makegood` row with `replaces_spot_id`. The allowance, not the row status, is what shows it was pre-authorized, and it creates no make-good credit. Broadcast line alternates (a primary program with ordered substitutes) are the `alternates[]` form of `schedule_shift`.
+
+This excerpt of `commercial_terms` shows one allowance of each kind:
+
+```text
+{
+  "seller_adjustment_allowances": [
+    {
+      "allowance_id": "allow_release_1",
+      "kind": "budget_release",
+      "purchase_index": 0,
+      "max_release_fraction": 0.2,
+      "min_notice": { "interval": 7, "unit": "days" }
+    },
+    {
+      "allowance_id": "allow_alt_1",
+      "kind": "schedule_shift",
+      "purchase_index": 1,
+      "min_notice": { "interval": 24, "unit": "hours" },
+      "alternates": [
+        { "label": "Quiz Night", "collection": { "publisher_domain": "network.example", "collection_id": "quiz_night" } },
+        { "label": "Evening News 6P", "collection": { "publisher_domain": "network.example", "collection_id": "evening_news_6p" } }
+      ]
+    }
+  ]
+}
+```
+
+**Applied adjustments are visible and auditable.** Each application:
+
+- increments the buy's `revision`, which makes any open offer against the old revision stale, so a seller that still wants the offer re-issues it against the new revision with a new `proposal_id`;
+- is appended to `applied_adjustments[]` on the media buy in [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), with `adjustment_id` (unique in the seller's account namespace), `allowance_id`, `kind`, `revision`, `applied_at`, `reason`, and the kind's result (`released_amount` with `previous_budget`, `resulting_budget` and `cumulative_released`, or `scheduled_at`, `previous_scheduled_at`, `alternate_index` and `skipped_alternates`);
+- carries `change_origin: "seller_allowance"`, the `allowance_id`, and the `reason` on its revision history entry;
+- is announced by the account-anchored `media_buy.allowance_applied` notification (`notification_id` equals `adjustment_id`; repair through `get_media_buys`), and a change-feed seller also records it as a `media_buy` change.
+
+An application does not mint a new accepted proposal: `accepted_proposal_id` and its digest are unchanged, and the buy's current budget or schedule fields show the result. A later amendment is drafted against those current values and carries the allowances forward unchanged; cumulative release still counts every applied adjustment. `media_buy.allowance_applied` does not itself change governance state, so a buyer under a governance plan reconciles a released budget through the plan's adjustment flow. A caller pinned below 3.3 sees only the budget or schedule change, so the seller SHOULD state the reason in the history `summary`. A seller MUST NOT apply a change outside an entry's bounds; if the allowance does not cover it, the seller sends an offer, with `offer_reason` `under_delivery` for a budget change or `installment_postponed` or `preemption` for a schedule change.
+
+**Version gate.** The 3.2 `commercial_terms` schema is closed. A seller MUST NOT emit `seller_adjustment_allowances`, `applied_adjustments[]`, the new history fields, or `media_buy.allowance_applied` to callers pinned below AdCP 3.3. A caller with no declared pin is treated as pinned below 3.3.
+
 ## Seller implementation
 
 ### Compose a proposal specialist behind the sales agent
