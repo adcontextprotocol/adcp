@@ -1,4 +1,4 @@
-// Validates the proposal examples against the draft schemas (not wired into npm test).
+// Validates the proposal examples against the experimental trust/v1 schemas under static/schemas/source/trust/v1/ (not wired into npm test).
 // Run: node specs/brand-identity-trust-split/validate.cjs
 const Ajv = require('ajv'); const addFormats = require('ajv-formats');
 const fs = require('fs'); const path = require('path');
@@ -8,7 +8,6 @@ const src = path.join(root, 'static/schemas/source');
 const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.json') ? [path.join(d, e.name)] : []);
 for (const f of walk(src)) { try { const s = JSON.parse(fs.readFileSync(f)); if (s.$id) ajv.addSchema(s); } catch {} }
 const dir = __dirname;
-for (const f of ['trust.json', 'trust-acknowledgements.json']) ajv.addSchema(JSON.parse(fs.readFileSync(path.join(dir, f))));
 let fail = 0;
 for (const f of fs.readdirSync(path.join(dir, 'examples'))) {
   const doc = JSON.parse(fs.readFileSync(path.join(dir, 'examples', f)));

@@ -4,7 +4,7 @@
 
 **Related**: [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) (demand-side acts-for grants), [`capabilities-brand-url.md`](./capabilities-brand-url.md) (the `brand_json_url` bootstrap this supersedes)
 
-**Draft schemas**: [`trust.json`](./brand-identity-trust-split/trust.json), [`trust-acknowledgements.json`](./brand-identity-trust-split/trust-acknowledgements.json), and [examples](./brand-identity-trust-split/examples/). Validate with `node specs/brand-identity-trust-split/validate.cjs`. These live under `specs/` on purpose, so none of this is published protocol surface until the implementation PRs below land.
+**Schemas**: [`trust.json`](../static/schemas/source/trust/v1/trust.json) and [`trust-acknowledgements.json`](../static/schemas/source/trust/v1/trust-acknowledgements.json) ship in AdCP 3.3 as **experimental, schemas only** (feature id `identity.trust_json`; nothing consumes them yet). The [examples](./brand-identity-trust-split/examples/) stay here; validate them with `node specs/brand-identity-trust-split/validate.cjs`. The capability field, resolver rules and everything else in this document remain planned for a later release.
 
 **Decided**:
 - A separate well-known trust record. brand.json becomes identity-only, with the trust fields removed in 4.0.
