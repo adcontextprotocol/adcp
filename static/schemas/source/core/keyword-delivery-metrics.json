@@ -21,7 +21,6 @@
       "required": [
         "keyword",
         "match_type",
-        "impressions",
         "spend"
       ]
     }

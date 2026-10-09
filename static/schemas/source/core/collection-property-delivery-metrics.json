@@ -36,7 +36,7 @@
           "description": "Current human-readable property name. Convenience metadata only."
         }
       },
-      "required": ["collection_ref", "publisher_domain", "identifier", "impressions", "spend"]
+      "required": ["collection_ref", "publisher_domain", "identifier", "spend"]
     }
   ]
 }

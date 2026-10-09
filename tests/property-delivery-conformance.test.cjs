@@ -78,14 +78,16 @@ describe("property-grain delivery conformance", () => {
   it("keeps the inline controller row shape aligned with the response row schemas", () => {
     // The controller schema describes rows by shape instead of $ref-ing the row
     // schemas so the MCP projection stays under the parity compile limit; the
-    // training agent validates against the real row schemas.
+    // training agent validates against the real row schemas. Seeded rows keep
+    // `impressions` required (a fixture always supplies a count) while the
+    // response rows made it optional in 3.3 (#8089).
     const params = readSchema("/schemas/compliance/comply-test-controller-request.json").properties.params.properties;
     for (const [field, rowSchema] of [
       ["property_delivery", "/schemas/core/property-delivery-metrics.json"],
       ["installment_property_delivery", "/schemas/core/installment-property-delivery-metrics.json"],
     ]) {
       const rowRequired = readSchema(rowSchema).allOf.find(part => part.required).required;
-      assert.deepEqual([...params[field].items.required].sort(), [...rowRequired].sort(), field);
+      assert.deepEqual([...params[field].items.required].sort(), [...rowRequired, "impressions"].sort(), field);
     }
   });
 

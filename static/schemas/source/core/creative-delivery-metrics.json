@@ -28,7 +28,6 @@
       },
       "required": [
         "creative_id",
-        "impressions",
         "spend"
       ]
     }

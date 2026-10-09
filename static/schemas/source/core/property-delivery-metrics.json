@@ -31,7 +31,7 @@
           "description": "Current human-readable property name. Convenience metadata only; property_ref is stable identity."
         }
       },
-      "required": ["publisher_domain", "identifier", "impressions", "spend"]
+      "required": ["publisher_domain", "identifier", "spend"]
     }
   ]
 }
