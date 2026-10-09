@@ -54,7 +54,9 @@ A collection is a persistent, publisher-controlled content program that produces
 | `season` | string | No | Current or most recent season identifier (e.g., `"3"`, `"2026"`) |
 | `status` | string | No | `active`, `hiatus`, `ended`, `upcoming` |
 | `production_quality` | string | No | `professional`, `prosumer`, `ugc`. Seller-declared. Maps to OpenRTB `content.prodq`. |
-| `talent` | array | No | Hosts, recurring cast, creators. Each entry has `role`, `name`, and optional `brand_url` linking to [brand.json](/docs/brand-protocol/brand-json). |
+| `images` | array | No | Experimental (`media_buy.collection_cards`). 1–10 image assets for a collection card (cover art, poster, creator avatar). The first entry is the primary thumbnail. |
+| `sample_content` | array | No | Experimental (`media_buy.collection_cards`). 1–10 published-post references to representative past installments or a sizzle reel. The platform URL implies the kind. Display only: not a creative, and not authorization to reuse the content. |
+| `talent` | array | No | Hosts, recurring cast, creators. Each entry has `role`, `name`, an optional `brand_ref` (experimental, `media_buy.collection_cards`) and an optional `brand_url`, both linking to [brand.json](/docs/brand-protocol/brand-json). `brand_ref` is the typed link, for example a rights-holder brand with `right_type: talent`. When both are present they MUST identify the same brand, and `brand_ref` wins. |
 | `special` | object | No | When present, this collection is a special — content anchored to a real-world event or occasion. See [specials and limited series](#specials-and-limited-series). |
 | `limited_series` | object | No | When present, this collection is a limited series — a bounded run with a defined arc and end date. See [specials and limited series](#specials-and-limited-series). |
 | `distribution` | array | No | Where this collection is distributed, with host `property_ids`, identifiers, or both per publisher. For `channel` collections this is the carriage map, not proof of sales authorization. |
@@ -78,10 +80,27 @@ A collection is a persistent, publisher-controlled content program that produces
   "season": "1",
   "status": "active",
   "production_quality": "professional",
+  "images": [
+    {
+      "asset_type": "image",
+      "url": "https://cdn.acmestreaming.example.com/pinnacle-challenge/poster.jpg",
+      "width": 1200,
+      "height": 675,
+      "alt_text": "The Pinnacle Challenge key art"
+    }
+  ],
+  "sample_content": [
+    {
+      "asset_type": "published_post",
+      "post_url": "https://video.example.com/watch/pinnacle-challenge-s1e3",
+      "platform": "video.example.com"
+    }
+  ],
   "talent": [
     {
       "role": "host",
       "name": "Jordan Vega",
+      "brand_ref": { "domain": "jordanvega.example.com" },
       "brand_url": "https://jordanvega.example.com/brand.json"
     }
   ],
@@ -101,6 +120,14 @@ A collection is a persistent, publisher-controlled content program that produces
   ]
 }
 ```
+
+### Collection cards (experimental)
+
+`images`, `sample_content` and `talent[].brand_ref` give a creator or show a card: a picture, samples of its content, and a typed link to the person's brand identity. Sellers that populate them list `media_buy.collection_cards` in `experimental_features`. Publishers declaring collections in `adagents.json` cannot list experimental features, so consumers treat these fields as experimental wherever they appear.
+
+Collection objects reach buyers only through `adagents.json`. `get_products` and proposals carry collection selectors, not collection objects, so the in-band card a buyer sees in a proposal is `product_card_detailed`. Sellers that want the same samples in-band attach them to the product card with the `sample_content` [reference asset role](/docs/media-buy/product-discovery/media-products#reference-assets).
+
+Keep arrays short: `adagents.json` has fetch-size budgets, so `images` and `sample_content` are capped at 10 entries each. `sample_content` carries no `kind`; the platform URL implies it.
 
 ## Programmed channels and owner-sold carriage
 

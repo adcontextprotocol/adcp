@@ -13,6 +13,12 @@
       "type": "string",
       "description": "Person's name as credited on the collection"
     },
+    "brand_ref": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Typed link to this person's brand in brand.json, for example a rights-holder brand with right_type talent. When brand_ref and brand_url are both present they MUST identify the same brand, and brand_ref wins.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
     "brand_url": {
       "type": "string",
       "format": "uri",

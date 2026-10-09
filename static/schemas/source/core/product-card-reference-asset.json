@@ -13,9 +13,10 @@
         "environment_photo",
         "media_kit",
         "logo",
+        "sample_content",
         "other"
       ],
-      "description": "Semantic role of this asset. coverage_map: geographic or audience reach visualization; sample_render: mockup of ad placement in context; environment_photo: photo of the physical or digital environment; media_kit: downloadable media kit or spec sheet; logo: seller or property logo; other: seller-defined role (provide role_label)."
+      "description": "Semantic role of this asset. coverage_map: geographic or audience reach visualization; sample_render: mockup of ad placement in context; environment_photo: photo of the physical or digital environment; media_kit: downloadable media kit or spec sheet; logo: seller or property logo; sample_content: a representative example of the content this inventory runs in or alongside (past episode, post, sizzle reel), distinct from sample_render, which mocks up the ad in context (experimental, `media_buy.collection_cards`); other: seller-defined role (provide role_label)."
     },
     "role_label": {
       "type": "string",

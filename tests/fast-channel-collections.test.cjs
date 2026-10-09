@@ -160,3 +160,50 @@ test('a host can authorize owner-sold inventory by external collection selector'
 
   assert.equal(validate(manifest), true, JSON.stringify(validate.errors, null, 2));
 });
+
+test('collection cards carry images, sample content and a typed talent brand link', async () => {
+  const validate = await compile('/schemas/core/collection.json');
+  const image = { asset_type: 'image', url: 'https://cdn.example.com/retro_news.jpg', width: 1200, height: 675 };
+  const collection = {
+    collection_id: 'retro_news',
+    name: 'Acme Retro News',
+    images: [image],
+    sample_content: [{
+      asset_type: 'published_post',
+      post_url: 'https://video.example.com/watch/retro-news-ep-12',
+      platform: 'video.example.com',
+    }],
+    talent: [{
+      role: 'host',
+      name: 'Jordan Vega',
+      brand_ref: { domain: 'jordanvega.example.com' },
+      brand_url: 'https://jordanvega.example.com/.well-known/brand.json',
+    }],
+  };
+  assert.equal(validate(collection), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(validate({ ...collection, images: [] }), false, 'images needs at least one entry');
+  assert.equal(validate({ ...collection, images: Array(11).fill(image) }), false, 'images is bounded');
+  assert.equal(validate({ ...collection, sample_content: [] }), false, 'sample_content needs at least one entry');
+  assert.equal(validate({ ...collection, sample_content: Array(11).fill(collection.sample_content[0]) }), false, 'sample_content is bounded');
+  assert.equal(validate({ ...collection, talent: [{ role: 'host', name: 'Jordan Vega', brand_ref: { domain: 'Not A Domain' } }] }), false);
+});
+
+test('new collection card fields are experimental and added in 3.3.0', () => {
+  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
+  const collection = read('core/collection.json').properties;
+  const talent = read('core/talent.json').properties;
+  for (const field of [collection.images, collection.sample_content, talent.brand_ref]) {
+    assert.equal(field['x-status'], 'experimental');
+    assert.equal(field['x-added-in'], '3.3.0');
+  }
+  assert.equal(talent.brand_url.deprecated, undefined, 'brand_url is not deprecated');
+});
+
+test('product card reference assets accept the sample_content role', async () => {
+  const validate = await compile('/schemas/core/product-card-reference-asset.json');
+  assert.equal(validate({
+    role: 'sample_content',
+    asset: { asset_type: 'url', url: 'https://video.example.com/watch/sizzle' },
+    description: 'Sizzle reel for the show this product runs in',
+  }), true, JSON.stringify(validate.errors, null, 2));
+});
