@@ -25,7 +25,8 @@ import {
   type AgentClient,
   type TaskRequestFor,
 } from '@adcp/sdk';
-import { buildAgentOAuthAuthorizeUrl } from '../../routes/helpers/agent-oauth-prompt.js';
+import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
+import { isOAuthOwnerReauthorizationError } from '../../routes/helpers/oauth-error-detection.js';
 import { TRAINING_AGENT_HOSTNAMES } from '../../training-agent/config.js';
 import {
   PROPOSAL_NEGOTIATION_PROFILES,
@@ -33,7 +34,7 @@ import {
   type TrainingContext,
   type ProposalNegotiationProfile,
 } from '../../training-agent/types.js';
-import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
+import { agentConfigAuthFields, assertOwnerOAuthReady, type SdkAuth } from '../../services/sdk-auth-adapter.js';
 import {
   ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
   withSdkSafeTransport,
@@ -1132,11 +1133,13 @@ export function createAdcpToolHandlers(
                 access_token: tokens.access_token,
                 refresh_token: refreshToken,
                 ...(tokens.expires_at && { expires_at: tokens.expires_at.toISOString() }),
+                ...(tokens.issuer !== undefined && { issuer: tokens.issuer }),
               },
               ...(client && {
                 client: {
                   client_id: client.client_id,
                   ...(client.client_secret && { client_secret: client.client_secret }),
+                  ...(client.issuer !== undefined && { issuer: client.issuer }),
                 },
               }),
             };
@@ -1330,6 +1333,7 @@ export function createAdcpToolHandlers(
     logger.info({ agentUrl, task, hasAuth: !!authInfo, authType: authInfo?.type, debug }, `AdCP: executing ${task}`);
 
     try {
+      await assertOwnerOAuthReady(authInfo, agentUrl);
       const { AdCPClient } = await import('@adcp/sdk');
       const { getRequestSigningProvider } = await import('../../security/gcp-kms-signer.js');
 
@@ -1414,17 +1418,17 @@ export function createAdcpToolHandlers(
       logger.warn({ error, agentUrl, task }, `AdCP: ${task} failed`);
 
       // Handle AuthenticationRequiredError from @adcp/sdk (includes OAuth metadata)
-      if (error instanceof AuthenticationRequiredError) {
+      if (isOAuthRequiredError(error)) {
         const organizationId = memberContext?.organization?.workos_organization_id;
-        if (error.hasOAuth) {
+        if (isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth)) {
           const authUrl = await buildAgentOAuthAuthorizeUrl(
             agentUrl,
             organizationId,
             agentContextDb,
-            { pendingTask: task, pendingParams: requestParams },
+            { pendingTask: task, pendingParams: requestParams, authorizationError: error },
           );
           if (authUrl) {
-            return structuredAdcpResult({ status: 'access_denied', operation: task, code: 'OAUTH_AUTHORIZATION_REQUIRED', category: 'authentication', retryable: false, modelContext: `OAuth authorization is required. Ask the user to authorize using this one-time link, then retry ${task}: ${authUrl}`, userSummary: 'Authorize the agent, then try the request again.' });
+            return structuredAdcpResult({ status: 'access_denied', operation: task, code: 'OAUTH_AUTHORIZATION_REQUIRED', category: 'authentication', retryable: false, modelContext: `${isOAuthOwnerReauthorizationError(error) ? "Saved OAuth credentials require an explicit owner sign-in. If the authorization server changed, confirm independently trusted client configuration; saved clients are not rebound automatically." : "OAuth authorization is required."} Ask the user to authorize using this one-time link, then retry ${task}: ${authUrl}`, userSummary: 'Authorize the agent, then try the request again.' });
           }
         }
 

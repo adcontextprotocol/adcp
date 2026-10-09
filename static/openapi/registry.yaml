@@ -13879,6 +13879,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+    delete:
+      operationId: removeAgentAuthToken
+      summary: Clear saved bearer or basic credentials
+      description: Clear the selected organization's static credential while retaining OAuth configuration and compliance history. Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+          required: false
+          name: org
+          in: query
+      responses:
+        "204":
+          description: Static credential cleared
+        "400":
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/oauth-client-credentials:
     put:
       operationId: saveAgentOAuthClientCredentials

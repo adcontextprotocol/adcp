@@ -31,6 +31,7 @@ Version negotiation, idempotency contract, build identifier.
 - **`supported_versions`** — release-precision strings (e.g. `"3.0"`, `"3.1"`). Authoritative for buyer-side release pinning.
 - **`major_versions`** — DEPRECATED in favor of `supported_versions`; sellers MUST keep emitting through 3.x.
 - **`build_version`** — full semver build identifier; advisory metadata for buyer-side incident triage.
+- **`implementation`** — optional since 3.3; self-reported SDK packages, exact versions, and integrated server components. See [implementation metadata](/docs/protocol/get_adcp_capabilities#implementation). This does not establish approval or verification.
 - **`idempotency`** — discriminated union (`IdempotencySupported` / `IdempotencyUnsupported`) declaring replay semantics. **A declaration here is a commitment** — sellers that declare `supported: true` are probed by the conformance runner.
 - **`capability_changes`** — freshness metadata and optional `capabilities.changed` invalidation webhooks for cached capability documents.
 

@@ -247,6 +247,29 @@ jobs:
           # whose provenance and checksum were verified above, so drop only
           # that version's pin from this disposable checkout.
           rm -f "sdk/schemas/releases/${bundle_version}.json"
+          # Historical validation caches are already tracked in the SDK.
+          # Sync only the candidate here: applying its local host and unsigned
+          # settings to an audited preview release is deliberately forbidden.
+          # Keep all other release pins and their cached schemas intact.
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path("sdk/scripts/sync_schemas.py")
+          source = path.read_text()
+          assignments = [
+              node for node in ast.parse(source).body
+              if isinstance(node, ast.AnnAssign)
+              and isinstance(node.target, ast.Name)
+              and node.target.id == "PREVIEW_VERSIONS"
+          ]
+          if len(assignments) != 1:
+              raise SystemExit("SDK preview configuration changed; review candidate sync isolation")
+          node = assignments[0]
+          lines = source.splitlines(keepends=True)
+          lines[node.lineno - 1:node.end_lineno] = ["PREVIEW_VERSIONS: tuple[str, ...] = ()\n"]
+          path.write_text("".join(lines))
+          PY
           mkdir -p "${RUNNER_TEMP}/protocol-host/protocol"
           cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
           cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"

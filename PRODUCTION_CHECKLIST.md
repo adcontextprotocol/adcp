@@ -62,6 +62,14 @@ fly secrets set \
 
 ## Deployment Steps
 
+Before deployment or manual migrations, complete the
+[database bootstrap prerequisite](docs/runbooks/training-agent-gcs-reporting.md#database-bootstrap-prerequisite)
+on the authoritative application primary. Migration 620 requires the reporting
+namespace even with GCS reporting disabled, including fresh databases and
+disaster recovery. Use a separate DBA connection for initial provisioning;
+verify an existing namespace's owner and preserve its installation authority,
+grants, inventory and tombstones before proceeding.
+
 1. **Build and deploy:**
    ```bash
    fly deploy --app adcp-docs

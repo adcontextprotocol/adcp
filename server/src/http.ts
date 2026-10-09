@@ -179,6 +179,7 @@ import { createJsonValidationRouter } from "./routes/json-validation.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
+import { initializeTrainingGcsReporting, getTrainingGcsReporting, drainTrainingGcsReporting, stopTrainingGcsReporting } from './training-agent/gcs-reporting.js';
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
 import { createHostedGraderHostRouter, HOSTED_GRADER_HOSTNAME } from "./training-agent/hosted-grader.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
@@ -196,7 +197,8 @@ import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notif
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
 import { AgentContextDatabase } from "./db/agent-context-db.js";
 import { getWebMemberContext } from "./addie/member-context.js";
-import { buildAgentOAuthAuthorizeUrl } from "./routes/helpers/agent-oauth-prompt.js";
+import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from "./routes/helpers/agent-oauth-prompt.js";
+import { isOAuthOwnerReauthorizationError } from "./routes/helpers/oauth-error-detection.js";
 import {
   buildNativeErrorRedirect,
   consumeNativePendingAuth,
@@ -3191,13 +3193,20 @@ export class HTTPServer {
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
       checks.chat = isWebChatReady();
+      if (req.path === '/ready') {
+        try {
+          const reporting = getTrainingGcsReporting();
+          if (reporting) checks.reporting = await reporting.probe();
+        } catch { checks.reporting = false; }
+      }
 
       // A listening socket and a reachable database do not mean a new web
       // instance can answer chat. Hold deployment traffic until deferred
       // indexing and tool registration finish. /health remains a DB/liveness
       // probe for workers and operational diagnostics.
       const chatRequired = !!(process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY);
-      const ready = checks.database && (req.path !== '/ready' || !chatRequired || checks.chat);
+      const ready = checks.database && (req.path !== '/ready'
+        || (checks.reporting !== false && (!chatRequired || checks.chat)));
       const status = ready ? "ok" : "unavailable";
       const body: Record<string, unknown> = {
         status,
@@ -10008,11 +10017,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       } catch (error) {
         // Auth-required is an expected agent state, not a system error. Log
         // at warn so it doesn't page #aao-errors via the pino → posthog hook.
-        if (error instanceof AuthenticationRequiredError) {
-          logger.warn({ url, hasOAuth: error.hasOAuth }, 'Agent requires authentication');
+        if (isOAuthRequiredError(error)) {
+          const hasOAuth = isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth);
+          logger.warn({ url, hasOAuth: hasOAuth }, 'Agent requires authentication');
 
           let oauth_authorize_url: string | undefined;
-          if (error.hasOAuth) {
+          if (hasOAuth) {
             const userId = req.user?.id;
             if (userId) {
               try {
@@ -10023,7 +10033,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                     url,
                     orgId,
                     new AgentContextDatabase(),
-                    { returnTo: '/profile/edit' },
+                    { returnTo: '/profile/edit', authorizationError: error },
                   );
                   if (authorizeUrl) oauth_authorize_url = authorizeUrl;
                 }
@@ -10035,10 +10045,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
           return res.status(401).json({
             error: 'authentication_required',
-            message: error.hasOAuth
+            message: hasOAuth
               ? 'This agent requires OAuth authorization.'
               : 'This agent requires authentication. Save an auth token to continue.',
-            needs_oauth: error.hasOAuth,
+            needs_oauth: hasOAuth,
             ...(oauth_authorize_url && { oauth_authorize_url }),
           });
         }
@@ -10195,6 +10205,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+    await initializeTrainingGcsReporting();
 
     // Escalate pool-level errors to Slack
     onPoolError(() => {
@@ -10263,6 +10274,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.refreshOnlyBackground = this.options.backgroundServices === 'refresh-only';
     this.isWorker = this.refreshOnlyBackground || processRole !== 'web';
     const isWorker = this.isWorker;
+    if (isWorker && !this.refreshOnlyBackground) getTrainingGcsReporting()?.start();
     logger.info({ isWorker }, 'Process role resolved');
 
     if (this.refreshOnlyBackground) {
@@ -10360,6 +10372,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
    */
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
+    // Stop accepting new connections before draining reporting's coordinated scheduler.
+    const httpDrain = this.server ? new Promise<void>((resolve, reject) => {
+      this.server!.close(error => error ? reject(error) : resolve());
+    }) : Promise.resolve();
+    const drains = Promise.all([httpDrain, drainTrainingGcsReporting()]);
+    // Attach a rejection handler immediately while unrelated services drain.
+    void drains.catch(() => {});
 
     // Only stop background services that were started on this machine
     if (this.isWorker) {
@@ -10400,19 +10419,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     }
 
     // Close HTTP server
-    if (this.server) {
-      await new Promise<void>((resolve, reject) => {
-        this.server!.close((err) => {
-          if (err) {
-            logger.error({ err }, "Error closing HTTP server");
-            reject(err);
-          } else {
-            logger.info("HTTP server closed");
-            resolve();
-          }
-        });
-      });
-    }
+    await drains;
+    await stopTrainingGcsReporting();
 
     // Shutdown PostHog client (flush pending events)
     const { shutdownPostHog } = await import('./utils/posthog.js');

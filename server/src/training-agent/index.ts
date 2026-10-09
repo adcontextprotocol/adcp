@@ -14,6 +14,7 @@
  */
 
 import { Router } from 'express';
+import { trainingGcsReportingRouter } from './gcs-reporting-routes.js';
 import type { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { WorkOS } from '@workos-inc/node';
@@ -58,6 +59,7 @@ import {
 } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { buildGovernanceAgentCredentialAuthenticator } from './governance-agent-credentials.js';
+import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, TRAINING_BUYER_METADATA_PATH } from './buyer-oauth.js';
 
 const logger = createLogger('training-agent-routes');
 
@@ -321,6 +323,12 @@ export function createTrainingAgentRouter(options: {
   disableRateLimit?: boolean;
 } = {}): Router {
   const router = Router();
+  const buyerOAuth = trainingBuyerOAuthConfig();
+  const requireSalesAuth = buyerOAuth ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault) : requireTokenDefault;
+  if (buyerOAuth) router.get(TRAINING_BUYER_METADATA_PATH, (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.json(trainingBuyerMetadata(buyerOAuth));
+  });
 
   startSessionCleanup();
 
@@ -342,12 +350,15 @@ export function createTrainingAgentRouter(options: {
     },
   });
 
+  router.use('/sales/reporting', ...(!options.disableRateLimit ? [mcpRateLimiter] : []), requireSalesAuth, trainingGcsReportingRouter());
+
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via
   // resolveByRequest(host, pathname).
   mountTenantRoutes(router, TENANT_IDS, {
     ...(!options.disableRateLimit && { rateLimit: mcpRateLimiter }),
     requireAuth: requireTokenDefault,
+    requireSalesAuth,
     requireGovernanceAuth: requireTokenGovernance,
     storyboardCompat: options.storyboardCompat,
   });

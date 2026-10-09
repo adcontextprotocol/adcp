@@ -80,7 +80,7 @@ Specialisms are grouped below by parent protocol.
 |-----------|--------|---------|
 | `sales-guaranteed` | stable | Guaranteed media buys with human IO approval |
 | `sales-non-guaranteed` | stable | Non-guaranteed auction-based media buys |
-| `sales-fixed-rate` | preview | Non-guaranteed, fixed-price sales: no reserved inventory, no delivery commitment, no auction or bid; the seller MAY hold a buy for review before committing |
+| `sales-fixed-rate` | preview | Non-guaranteed, fixed-price sales in any medium, digital or linear TV: no reserved inventory, no delivery commitment, no auction or bid (CPM and CPP are pricing units, not bids); the seller MAY hold a buy for review before committing. Requested by two adopters: a fixed-price digital seller ([#6303](https://github.com/adcontextprotocol/adcp/issues/6303), sell.nofluffadvisory.com) and O-N-X (broadcast TV). |
 | `sales-proposal-mode` | deprecated | **Deprecated in 3.1.** Drop this claim and replace with `sales-guaranteed` + `media_buy.supports_proposals: true`. See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823). |
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
@@ -172,11 +172,11 @@ Four specialisms apply to specific delivery channels and have their own storyboa
 | If you sell… | Claim |
 |---|---|
 | Fixed price, and you commit to delivery (IO approval, reserved inventory) | `sales-guaranteed` → see Step 3 |
-| Fixed price, and you make no delivery commitment (non-guaranteed; the seller MAY hold buys for review) | `sales-fixed-rate` |
+| Fixed price, and you make no delivery commitment (non-guaranteed; the seller MAY hold buys for review), including seller-approved linear TV spot packages priced per CPM or per rating point | `sales-fixed-rate` |
 | Auction / PMP non-guaranteed | `sales-non-guaranteed` |
 | More than one of the above | One claim per model, for example `sales-guaranteed` + `sales-fixed-rate` + `sales-non-guaranteed` |
 
-The question that separates `sales-guaranteed` from `sales-fixed-rate` is whether the seller commits to delivery, not whether a human reviews the buy. A fixed-rate seller publishes a price and sells at it without reserving inventory or promising delivery; a seller that reviews or approves buys but commits to delivery claims `sales-guaranteed`. Specialisms are independent claims: each is graded by its own storyboard, and a mixed seller that sells at a fixed rate on some products and by auction on others claims both `sales-fixed-rate` and `sales-non-guaranteed`.
+The question that separates `sales-guaranteed` from `sales-fixed-rate` is whether the seller commits to delivery, not whether a human reviews the buy. A fixed-rate seller publishes a price and sells at it without reserving inventory or promising delivery; a seller that reviews or approves buys but commits to delivery claims `sales-guaranteed`. "Fixed rate" means the pricing option carries `fixed_price` and the buyer never sends a bid. CPM and CPP are pricing and evaluation units, not bids. Specialisms are independent claims: each is graded by its own storyboard, a broadcast seller may claim both `sales-broadcast-tv` and `sales-fixed-rate`, and a mixed seller that sells at a fixed rate on some products and by auction on others claims both `sales-fixed-rate` and `sales-non-guaranteed`.
 
 <a id="which-hold-path"></a>
 
@@ -322,7 +322,7 @@ The kebab↔snake swap between wire specialism IDs and storyboard categories is 
 
 | Specialism ID (wire) | Channel / tool family | Storyboard category | Variant scenarios |
 |----------------------|-----------------------|---------------------|-------------------|
-| `sales-fixed-rate` | Pricing mechanic: `fixed_price` options on `non_guaranteed` products | [`sales_fixed_rate`](/compliance/latest/specialisms/sales-fixed-rate/index.yaml) | — |
+| `sales-fixed-rate` | Pricing mechanic, any channel: `fixed_price` options (cpm, cpp, flat_rate, and so on) on `non_guaranteed` products | [`sales_fixed_rate`](/compliance/latest/specialisms/sales-fixed-rate/index.yaml) | — |
 | `sales-broadcast-tv` | `channels: ['linear_tv']` | [`sales_broadcast_tv`](/compliance/latest/specialisms/sales-broadcast-tv/index.yaml) | — |
 | `sales-dooh` | `channels: ['dooh']` | [`sales_dooh`](/compliance/latest/specialisms/sales-dooh/index.yaml) | — |
 | `sales-social` | `channels: ['social']` | [`sales_social`](/compliance/latest/specialisms/sales-social/index.yaml) | — |

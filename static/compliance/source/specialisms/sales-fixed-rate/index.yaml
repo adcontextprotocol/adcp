@@ -26,12 +26,16 @@ invariants:
   - status.monotonic
 
 narrative: |
-  You sell non-guaranteed inventory at a published fixed price. The product page says
-  what a thousand impressions cost and the buyer pays that, with no auction and no bid.
-  You reserve no inventory and make no delivery commitment: delivery is best effort and
-  the buyer is billed for what is delivered. This storyboard grades those mechanics, not
-  who the seller is, so a publisher, a rep firm, or an SSP selling fixed-rate packages
-  can all make the claim.
+  You sell non-guaranteed inventory at a published fixed price, in any medium: a digital
+  package at a fixed CPM, or a linear TV spot package priced per rating point (CPP) or per
+  thousand (CPM) with each buy approved by your sales desk. "Fixed rate" has one meaning
+  here: the pricing option carries `fixed_price` and the buyer never sends a bid. CPM and
+  CPP are pricing and evaluation units, not bids, and a unit that sounds like an auction
+  term does not make the offer an auction. You reserve no inventory and make no delivery
+  commitment: delivery is best effort and the buyer pays the published rate for what is
+  delivered. This storyboard grades those mechanics, not who the seller is or which medium
+  it sells, so a publisher, a broadcaster, a rep firm, or an SSP selling fixed-rate
+  packages can all make the claim.
 
   This is not the auction path. A fixed-rate product offers `fixed_price` pricing options
   and carries no `floor_price` or `price_guidance`, and the buyer sends no `bid_price`.
@@ -39,6 +43,8 @@ narrative: |
   seller commits to a price, not to delivery. A seller that sells at a fixed rate and also
   commits to delivery claims `sales-guaranteed`; a seller that runs an auction claims
   `sales-non-guaranteed`. The claims are independent, and a mixed seller may make several.
+  A broadcast TV seller that also claims `sales-broadcast-tv` may claim this specialism for
+  its fixed-price, non-guaranteed packages as well.
 
   Some fixed-rate sellers review a buy before they commit to it. When they do, the buy is
   not an async task: `create_media_buy` returns synchronous success with a `media_buy_id`
@@ -70,7 +76,8 @@ agent:
     - supports_non_guaranteed
     - fixed_price
   examples:
-    - "Publisher selling fixed-CPM packages with manual trafficking review"
+    - "Publisher selling fixed-rate packages with manual trafficking review"
+    - "Broadcaster selling seller-approved spot packages at a fixed CPM or CPP without guaranteeing delivery"
     - "Rep firm selling rate-card packages without reserving inventory"
     - "SSP selling fixed-rate direct deals alongside auction inventory"
 
@@ -99,26 +106,30 @@ fixtures:
         billing: "operator"
         status: "active"
         sandbox: true
+  # The fixture is a seller-approved linear TV spot package priced per rating
+  # point. Nothing below depends on the medium: the graded mechanic is
+  # `fixed_price` on a non-guaranteed product, whatever the channel or unit.
   products:
-    - product_id: "fixed_rate_display_q4"
+    - product_id: "fixed_rate_spot_q4"
       delivery_type: "non_guaranteed"
-      channels: ["display"]
+      channels: ["linear_tv"]
       format_options:
-        - format_option_id: "display_300x250"
-          format_kind: "image"
+        - format_option_id: "video_30s"
+          format_kind: "video_hosted"
           params:
-            width: 300
-            height: 250
-  # The fixed price is on a vcpm option, not cpm, on purpose: the SDK runner's
+            duration_ms_exact: 30000
+  # The fixed price is on a cpp option, not cpm, on purpose: the SDK runner's
   # create_media_buy request builder auto-fills a bid_price for any `cpm`
   # option the sample omits, which would turn the bid-less create below into a
-  # bid-carrying one. The graded mechanic is `fixed_price`, whatever the unit.
+  # bid-carrying one. A fixed-price `cpm` option is equally valid for sellers.
   pricing_options:
-    - product_id: "fixed_rate_display_q4"
-      pricing_option_id: "vcpm_fixed_rate"
-      pricing_model: "vcpm"
+    - product_id: "fixed_rate_spot_q4"
+      pricing_option_id: "cpp_fixed_rate"
+      pricing_model: "cpp"
       currency: "USD"
-      fixed_price: 11.0
+      fixed_price: 350.0
+      parameters:
+        demographic: "A25-54"
 
 phases:
   - id: capability_discovery
@@ -178,7 +189,7 @@ phases:
         sample_request:
           idempotency_key: "$generate:uuid_v4#sales_fixed_rate_product_discovery_get_products_fixed_price"
           buying_mode: "brief"
-          brief: "Display inventory at a published rate, Q4 flight, $10K budget. Adults 25-54, US. Fixed price, no auction."
+          brief: "Spot or display inventory at a published rate, Q4 flight, $10K budget. Adults 25-54, US. Fixed price, no auction."
           filters:
             delivery_type: "non_guaranteed"
             is_fixed_price: true

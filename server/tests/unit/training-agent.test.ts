@@ -24207,7 +24207,8 @@ describe('AdCP protocol compliance', () => {
       : undefined;
 
     const targeting = {
-      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_allow_v1' },
+      // Property lists are fetched and applied; see
+      // training-agent-property-list-targeting.test.ts.
       collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_shows_v1' },
       seller_extension: { inventory_tier: 'premium' },
     };
@@ -24298,7 +24299,7 @@ describe('AdCP protocol compliance', () => {
       : undefined;
 
     const initialTargeting = {
-      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_v1' },
+      collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_v1' },
     };
     const created = await simulateCallTool(server, 'create_media_buy', {
       account,
@@ -24317,7 +24318,6 @@ describe('AdCP protocol compliance', () => {
     const packageId = (created.result.packages as Array<{ package_id: string }>)[0]!.package_id;
 
     const newTargeting = {
-      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_v2' },
       collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_v2' },
       seller_extension: { inventory_tier: 'standard' },
     };

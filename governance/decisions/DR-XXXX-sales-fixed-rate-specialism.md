@@ -20,7 +20,15 @@ storyboard can grade:
   buyer sends no `bid_price`.
 - The seller **MAY hold a buy for review** before committing to it.
 
-The specialism is an independent claim. A seller that commits to delivery under
+The specialism is medium-neutral. "Fixed rate" means `fixed_price` is present and no
+bid is ever sent; CPM and CPP are pricing and evaluation units, not bids, so a
+linear TV seller (spots and dayparts, CPM or CPP pricing with `fixed_price`,
+seller approval of each buy, non-guaranteed) can claim it as well as a digital
+seller. It was requested by two adopters, a fixed-price digital seller
+(sell.nofluffadvisory.com, #6303) and O-N-X (broadcast TV).
+
+The specialism is an independent claim. A broadcast seller may claim both
+`sales-broadcast-tv` and `sales-fixed-rate`. A seller that commits to delivery under
 an IO claims `sales-guaranteed`; a seller that runs an auction claims
 `sales-non-guaranteed`; a mixed seller claims each model it runs.
 
