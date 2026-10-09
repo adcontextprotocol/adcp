@@ -800,8 +800,11 @@ serving-grade reads from the ledger, not from the warehouse.
 ### 4.2 Policy
 
 - **Retained as a unit.** Every revision's header, manifest and rows are retained for at
-  least `status_retention_days`. The window is anchored at the later of publication and
-  obligation completion, and expiry is period-aligned.
+  least `status_retention_days`, anchored per #8100: a revision's own `created_at`, its
+  successor's once superseded, and for an official revision its newest adjustment.
+  Expiry is period-aligned, so a period retires only after the latest of its end, its
+  newest revision and its newest adjustment plus the window. SDKs keep every superseded
+  snapshot; the compaction #8100 permits is a later, opt-in optimization.
 - **Holds keep the whole period.** A live materialization, or a live registered feed
   consumer that has not passed the period's changes, holds the **entire** period
   (rows, headers and manifests) until the hold clears or reaches its cap. Rows are
@@ -1074,16 +1077,16 @@ Recommended:
 
 Open questions and upstream follow-ups:
 
-1. **Superseded-snapshot readability (protocol, #8081).** Confirm that the
-   `reporting-revision.json` description is normative for content readability. Name the
-   instant that anchors `status_retention_days`. Promote both to normative text.
-2. **Unreadable retained revision (protocol, #8082).** No issue code currently means "a
-   retained revision is unreadable". This proposes adding one rather than overloading
-   `PRODUCTION_FAILED`.
-3. **Not-found error code (protocol, #8083).** `get_media_buy_delivery` names
-   `REPORTING_REVISION_NOT_FOUND`, which is not in `enums/error-code.json`. That enum
-   requires `REFERENCE_NOT_FOUND` for untyped references. SDKs follow the task document
-   until the two are reconciled.
+1. **Superseded-snapshot readability (protocol, #8081). Resolved by #8100:** metadata
+   is kept for every revision. Content is kept for the current revision, the one it
+   supersedes, superseded snapshots within their recovery grace, and revisions named by
+   the caller's receipts or status statements. The window anchors are given in §4.2.
+2. **Unreadable retained revision (protocol, #8082). Resolved by #8099:** the issue
+   code is `REVISION_UNREADABLE`. While it is open, an authorized exact read returns
+   `SERVICE_UNAVAILABLE`, never not-found. SDKs emit the issue once their pinned schemas
+   include it.
+3. **Not-found error code (protocol, #8083). Resolved by #8085:** unknown, unauthorized
+   and expired revisions return `REFERENCE_NOT_FOUND`.
 4. **Configuration identity.** Is `consumer_id` in the configuration key the right
    general boundary, or should both SDKs use account-only identity with distinct
    internal accounts per caller?
