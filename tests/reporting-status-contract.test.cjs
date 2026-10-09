@@ -1181,6 +1181,18 @@ describe('managed reporting status contract', () => {
     assert.equal(validateStatusIssue({ ...unreadableIssue, severity: 'action_required' }), false);
 
     const issueSchema = readSchema('/schemas/core/reporting-status-issue.json');
+    // Superseded snapshot content may compact, but never content a buyer is
+    // still likely to read.
+    const contentRetention = readSchema('/schemas/core/reporting-revision.json')['x-adcp-validation'].content_retention;
+    assert.match(contentRetention, /Once a later revision names it in supersedes_reporting_revision_id, the window runs from that successor's created_at instead/);
+    assert.match(contentRetention, /An official revision's window runs from the latest created_at among the revision and the reporting adjustments/);
+    assert.match(contentRetention, /\(b\) the revision that the current revision names in supersedes_reporting_revision_id/);
+    assert.match(contentRetention, /\(c\) a superseded snapshot within its recovery grace, which runs from its successor's created_at for automated_recovery_window_seconds or one hour, whichever is longer/);
+    assert.match(contentRetention, /\(d\) named, for the requesting caller, by that caller's own reporting receipt in any status or by its current consumer status statement/);
+    assert.match(contentRetention, /MAY compact any other superseded snapshot revision to metadata only/);
+    assert.match(contentRetention, /is REVISION_UNREADABLE, never REFERENCE_NOT_FOUND/);
+    assert.match(contentRetention, /takes effect only in the next eligible minor release after November 20, 2026/);
+    assert.match(contentRetention, /outside retained coverage \(scope.ledger_retained_from\), never as complete/);
     assert.match(issueSchema['x-adcp-validation'].revision_unreadable, /MUST return SERVICE_UNAVAILABLE\. It MUST NOT return REFERENCE_NOT_FOUND/);
     assert.match(issueSchema['x-adcp-validation'].revision_unreadable, /Unauthorized callers still receive the nondisclosing REFERENCE_NOT_FOUND/);
     assert.match(issueSchema['x-adcp-validation'].revision_unreadable, /obligation whose official revision is lost does not become complete/);
