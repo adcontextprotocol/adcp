@@ -7,6 +7,18 @@
   "properties": {
     "proposal_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "proposal" },
     "proposal_kind": { "type": "string", "enum": ["new_media_buy", "media_buy_update", "media_buy_cancellation"] },
+    "proposal_initiator": {
+      "$ref": "/schemas/enums/proposal-initiator.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.seller_offers). Absent means buyer. A seller-initiated proposal is an offer to amend or cancel an accepted media buy. It requires offer_reason, a media_buy_update or media_buy_cancellation proposal_kind, proposal_status committed (accepted once the buyer accepts it), and a proposal_id matching the proposal.offered notification_id pattern. Seller proposals into an open opportunity are a different surface (media_buy.open_opportunities). Sellers MUST NOT emit it to callers pinned below AdCP 3.3; a caller with no declared pin is treated as pinned below 3.3."
+    },
+    "offer_reason": {
+      "$ref": "/schemas/enums/offer-reason.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.seller_offers). Why the seller made this offer. Present exactly when proposal_initiator is seller."
+    },
     "parent_proposal_id": {
       "type": "string",
       "minLength": 1,
@@ -32,7 +44,7 @@
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "For a draft, the indicative-terms freshness deadline. For a committed proposal, the inventory-hold deadline."
+      "description": "For a draft, the indicative-terms freshness deadline. For a committed proposal, the inventory-hold deadline; for a seller offer it is also the buyer's response deadline, after which the offer lapses and the signed terms stand."
     },
     "name": { "type": "string", "minLength": 1, "maxLength": 500 },
     "description": { "type": "string", "maxLength": 2000 },
@@ -65,6 +77,19 @@
   "required": ["proposal_id", "proposal_kind", "proposal_status", "name", "commercial_terms", "terms_digest"],
   "allOf": [
     {
+      "if": { "properties": { "proposal_initiator": { "const": "seller" } }, "required": ["proposal_initiator"] },
+      "then": {
+        "required": ["offer_reason"],
+        "not": { "required": ["opportunity_id"] },
+        "properties": {
+          "proposal_id": { "pattern": "^[A-Za-z0-9_.:-]{1,255}$" },
+          "proposal_kind": { "enum": ["media_buy_update", "media_buy_cancellation"] },
+          "proposal_status": { "enum": ["committed", "accepted"] }
+        }
+      },
+      "else": { "not": { "required": ["offer_reason"] } }
+    },
+    {
       "if": { "properties": { "proposal_kind": { "enum": ["media_buy_update", "media_buy_cancellation"] } }, "required": ["proposal_kind"] },
       "then": { "required": ["parent_proposal_id", "media_buy_id", "base_media_buy_revision"] }
     },
@@ -78,7 +103,7 @@
     },
     {
       "if": { "properties": { "proposal_kind": { "const": "media_buy_cancellation" } }, "required": ["proposal_kind"] },
-      "then": { "properties": { "commercial_terms": { "required": ["cancellation_terms"], "not": { "required": ["definition_pins"] } } } }
+      "then": { "properties": { "commercial_terms": { "required": ["cancellation_terms"], "not": { "anyOf": [{ "required": ["definition_pins"] }, { "required": ["seller_adjustment_allowances"] }] } } } }
     }
   ],
   "additionalProperties": false

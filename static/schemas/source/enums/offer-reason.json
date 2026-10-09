@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/offer-reason.json",
+  "title": "Offer Reason",
+  "description": "Why a seller made an offer against an accepted media buy. Experimental in AdCP 3.3 (media_buy.seller_offers). The value is a routing hint; the offered commercial_terms are the authoritative change.",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": [
+    "installment_postponed",
+    "installment_cancelled",
+    "preemption",
+    "under_delivery",
+    "seller_request"
+  ],
+  "enumDescriptions": {
+    "installment_postponed": "A scheduled installment (episode, creator post, or broadcast) cannot run on its agreed date. The offer proposes a new date, a substitute installment, or a credit.",
+    "installment_cancelled": "A scheduled installment will not run. The offer proposes a replacement installment, a credit, or a negotiated cancellation of the affected scope.",
+    "preemption": "Booked inventory was preempted, typically linear broadcast. The offer proposes replacement inventory; once accepted and aired, the replacement is reported as a by_spot row carrying replaces_spot_id.",
+    "under_delivery": "The seller forecasts that the buy will miss its committed volume. The offer proposes a remedy such as a flight extension, a budget move to another product, bonus units, or a makegood.",
+    "seller_request": "The seller needs different terms for a reason that none of the other values names. Use sparingly; the proposal name and description explain the change."
+  }
+}

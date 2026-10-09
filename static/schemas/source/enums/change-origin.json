@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/change-origin.json",
+  "title": "Change Origin",
+  "description": "What authorized a change to a media buy. Experimental in AdCP 3.3 (media_buy.seller_adjustment_allowances). Absent means the origin is not stated.",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": [
+    "buyer",
+    "seller_offer",
+    "seller_allowance"
+  ],
+  "enumDescriptions": {
+    "buyer": "The buyer requested the change, through control_media_buy or an amendment the buyer originated.",
+    "seller_offer": "The buyer accepted a seller offer (a proposal with proposal_initiator seller) through accept_proposal.",
+    "seller_allowance": "The seller applied it unilaterally within a seller_adjustment_allowances entry the buyer accepted in the buy's commercial_terms. The change record names the allowance_id."
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/proposal-offered-webhook.json",
+  "title": "Proposal Offered Webhook",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Account-anchored invalidation fired when a seller creates a committed offer against an accepted media buy, after the snapshot is readable through list_proposals. A sibling of proposal-created-webhook.json with the same identifiers-only rule: the payload names the offer and its response deadline but carries no commercial terms or seller prose, so it cannot inject terms or instructions into a buyer agent. Experimental in AdCP 3.3 (media_buy.seller_offers). Registered through sync_accounts notification_configs with event_types: [\"proposal.offered\"]. Receivers verify the webhook signature, dedupe by idempotency_key, and call list_proposals on the seller bound to the notification config, never on an endpoint taken from the body. Push is optional; list_proposals remains the authoritative read. notification_id equals proposal_id, so a seller MUST mint offer proposal_id values that match the notification_id pattern. A replacement offer is a new proposal with a new proposal_id.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Random fire identifier reused across retries. Receivers dedupe within the authenticated sender scope."
+    },
+    "notification_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "description": "Logical notification identifier. Always equals proposal_id; re-emissions of the same offer retain it."
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "proposal.offered"
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subscriber_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "x-entity": "account"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "media_buy"
+    },
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal",
+      "description": "The offer's proposal_id. notification_id equals it."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Response deadline: the offer's expires_at. The seller holds any replacement inventory until then; at this instant the offer lapses and the signed terms stand."
+    },
+    "offer_reason": {
+      "$ref": "/schemas/enums/offer-reason.json",
+      "description": "Why the seller made this offer. One of installment_postponed, installment_cancelled, preemption, under_delivery, or seller_request."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "account_id",
+    "media_buy_id",
+    "proposal_id",
+    "expires_at",
+    "offer_reason"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "A creator postponed a scheduled installment and the seller offered a new date",
+      "data": {
+        "idempotency_key": "whk_01K2OFFER4EXAMPLE8Q7M5N3",
+        "notification_id": "prop_offer_mb_a_0007",
+        "notification_type": "proposal.offered",
+        "fired_at": "2026-10-20T14:01:00Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_example",
+        "media_buy_id": "mb_a",
+        "proposal_id": "prop_offer_mb_a_0007",
+        "expires_at": "2026-10-24T17:00:00Z",
+        "offer_reason": "installment_postponed"
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "properties": {
+        "offer_reason": {
+          "enum": [
+            "installment_postponed",
+            "installment_cancelled",
+            "preemption",
+            "under_delivery",
+            "seller_request"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -53,6 +53,10 @@ A submitted arm MAY carry `expected_confirmation_at` (added in 3.3) when confirm
 
 An unexpired committed proposal cannot be rejected merely because its reserved inventory was sold elsewhere. Once `expires_at` passes, the hold lapses and the seller returns [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired); the buyer must request and finalize a fresh proposal.
 
+### Accepting a seller offer
+
+Experimental in AdCP 3.3. A committed `media_buy_update` or `media_buy_cancellation` proposal with `proposal_initiator: "seller"` is a seller offer against an accepted buy, read through `list_proposals` (pending #8103). Accept it exactly like any committed proposal, with its `proposal_terms_digest`. Acceptance applies the amendment or negotiated cancellation to the buy named by `media_buy_id`. If the buy's `revision` has moved past the offer's `base_media_buy_revision`, the existing base-revision check fails and nothing is applied. After `expires_at` the offer has lapsed as declined and returns [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired). See [Seller offers](/docs/media-buy/product-discovery/proposal-negotiation#seller-offers).
+
 ### Definition pins
 
 Before mutating any state, the seller re-resolves every entry in the proposal's `commercial_terms.definition_pins[]` and compares its current digest with the pin's `content_digest` (see [Definition pins](/docs/media-buy/specification#definition-pins)). The proposal ID and `proposal_terms_digest` can verify while a published definition has changed, because `terms_digest` covers the pin and not the definition it names. A failing pin returns [`REFERENCE_DEFINITION_CHANGED`](/docs/building/verification/compliance-catalog#error-code-reference-definition-changed) with no MediaBuy created or amended, one error per drifted pin in `errors[]`. Each error looks like this:

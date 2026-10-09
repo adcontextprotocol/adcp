@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/allowance-applied-webhook.json",
+  "title": "Allowance Applied Webhook",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Account-anchored invalidation fired after a seller applies a change to a live media buy under a seller_adjustment_allowances entry. Experimental in AdCP 3.3 (media_buy.seller_adjustment_allowances). Registered through sync_accounts notification_configs with event_types: [\"media_buy.allowance_applied\"]. The payload is not authoritative: receivers verify signing, dedupe by idempotency_key, then repair through get_media_buys, which lists the change in applied_adjustments[]. Push is optional; polling sees every applied adjustment.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Random fire identifier reused across retries. Receivers dedupe within the authenticated sender scope."
+    },
+    "notification_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "description": "Logical notification identifier. Always equals adjustment_id; re-emissions retain it."
+    },
+    "notification_type": { "type": "string", "const": "media_buy.allowance_applied" },
+    "fired_at": { "type": "string", "format": "date-time" },
+    "subscriber_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": { "type": "string", "x-entity": "account" },
+    "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" },
+    "adjustment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "applied_seller_adjustment",
+      "description": "The applied adjustment. notification_id equals it."
+    },
+    "allowance_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "seller_adjustment_allowance" },
+    "kind": { "$ref": "/schemas/enums/seller-adjustment-kind.json" },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The media buy revision the adjustment created."
+    },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "account_id",
+    "media_buy_id",
+    "adjustment_id",
+    "allowance_id",
+    "kind",
+    "revision",
+    "reason"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "The seller released budget it forecast it could not deliver",
+      "data": {
+        "idempotency_key": "whk_01K2ALLOWANCE4EXAMPLE8Q7",
+        "notification_id": "adj_mb_a_0003",
+        "notification_type": "media_buy.allowance_applied",
+        "fired_at": "2026-11-12T09:30:00Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_example",
+        "media_buy_id": "mb_a",
+        "adjustment_id": "adj_mb_a_0003",
+        "allowance_id": "allow_release_1",
+        "kind": "budget_release",
+        "revision": 6,
+        "reason": "Forecast delivery is 82% of the committed budget"
+      }
+    }
+  ]
+}
