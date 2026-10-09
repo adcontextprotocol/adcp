@@ -133,7 +133,7 @@ The storyboard runner operates in two modes depending on whether your agent impl
 
 ### Reading `partial`
 
-`partial` is a coverage result, not automatically a failure. The runner uses it when one or more selected scenarios could not be graded even though no executed assertion failed. The most common cause is intentional: production endpoints MUST NOT expose [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller), so controller-seeded or controller-forced phases skip with `missing_test_controller`.
+`partial` is a coverage result, not automatically a failure. The runner uses it when one or more selected scenarios could not be graded even though no executed assertion failed. The most common cause is intentional: production endpoints MUST NOT expose [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller), so controller-seeded storyboards skip with a storyboard-level `requirement_unmet` naming `controller`, and controller-forced steps that are not gated skip with `missing_test_controller`.
 
 Read `steps_not_selected` separately from `steps_skipped`. Not-selected scenarios were outside the suite or run mode you asked for. Skipped scenarios were inside the selected suite, but the runner could not execute them because of an applicability gate, missing test surface, missing tool, or prerequisite.
 
@@ -143,7 +143,7 @@ Use the summary counters and skip reasons to decide what the result means:
 |---------|----------------|
 | `0 failed`, `steps_not_selected > 0`, `steps_skipped = 0` | Expected for the selected run mode, such as sandbox-only testing that excludes live-only probes |
 | `0 failed`, only capability-gate `not_applicable` skips | Clean pass for the capability scope the seller declared |
-| `0 failed`, `missing_test_controller` skips | Buyer-visible path passed, but deterministic lifecycle coverage was not graded |
+| `0 failed`, `requirement_unmet` (`controller`) or `missing_test_controller` skips | Buyer-visible path passed, but deterministic lifecycle coverage was not graded |
 | Any `missing_tool` skip for a declared protocol or specialism | The seller overclaimed or forgot to expose a required tool |
 | Any failed step | Not conformant for the declared scope until fixed |
 

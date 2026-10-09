@@ -4,6 +4,9 @@ title: "Wholesale signals feed cache-scope isolation"
 category: marketplace_catalog
 summary: "Validates that get_signals conditional-fetch is keyed by cache_scope: a wholesale_feed_version minted under one cache_scope must not short-circuit (unchanged: true) a request the agent resolves to a different cache_scope."
 track: signals
+requires:
+  - controller
+
 introduced_in: "3.2"
 
 requires_capability:

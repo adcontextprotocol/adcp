@@ -286,8 +286,10 @@ declaration before the subset test, and a requested window or suppression unit
 matches when the resolved unit list contains it; exact count and interval
 acceptance is tested by supplying the concrete cap in discovery. For dayparts,
 legacy `daypart_targets: true`
-satisfies only `inventory_local` requirements; structured support is required
-for `iana`. For `geo_places` and `geo_places_exclude`,
+satisfies only `inventory_local`, whole-hour requirements; structured support is
+required for `iana`. The experimental `time_granularity` requirement is ordered
+(`hour` < `quarter_hour` < `minute`): product support matches when it is at least
+as fine as the requested value. For `geo_places` and `geo_places_exclude`,
 every requested identifier system and country key must exist, and requested
 place-type and catalog-version arrays must be subsets of the corresponding
 product support arrays. Unrequested object fields and numeric seller limits do
@@ -703,7 +705,7 @@ result set. Otherwise confirmation remains a best practice.
 | `description` | string | Detailed product description |
 | `publisher_properties` | PublisherProperty[] | Array of publisher entries, each with `publisher_domain` and either `property_ids` or `property_tags`. Empty only when `property_coverage.disclosure` is `undisclosed` |
 | `property_coverage` | PropertyCoverage | (Optional) `disclosure`: `complete` (default when absent), `partial`, or `undisclosed`. Declares whether `publisher_properties` is an exhaustive coverage boundary. See [Property coverage](/docs/media-buy/product-discovery/media-products#property-coverage). |
-| `format_options` | ProductFormatDeclaration[] | Closed canonical creative contracts this product can deliver, including optional seller-enforced `locale_policy.accepted_language_ranges` that buyers use to preflight planned creative languages before purchase. |
+| `channels` | MediaChannel[] | (Optional in 3.x) Buying contexts this product is sold as. Sellers SHOULD explicitly declare at least one channel on every product; existing 3.x property-based inheritance remains unchanged. Buyers should request `channels` in a `fields` projection before classification; omission from an unrequested projection does not establish an absent seller declaration. Creative formats and seller-wide capabilities do not independently declare product channels. See [Product channel declarations](/docs/media-buy/product-discovery/media-products#product-channel-declarations). |
 | `format_ids` | FormatID[] | Deprecated 3.x compatibility projection, when emitted. Locale-constrained options cannot be represented on this path. |
 | `delivery_type` | string | `"guaranteed"` or `"non_guaranteed"` |
 | `delivery_measurement` | DeliveryMeasurement | (Optional) How delivery is measured (impressions, views, etc.) |
@@ -728,6 +730,11 @@ result set. Otherwise confirmation remains a best practice.
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | (Optional) Seller's default billing measurement and makegood terms. Buyers may propose different terms at [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). |
 | `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | (Optional) Seller's default performance standards (viewability, IVT, completion rate, brand safety, attention score). Buyers may propose different standards at `create_media_buy`. |
 | `cancellation_policy` | [CancellationPolicy](/docs/media-buy/advanced-topics/pricing-models#cancellation-policy) | (Optional) Cancellation notice period and penalties for guaranteed products. Buyers accept these terms by creating a media buy against the product. |
+
+### Advertise only what you accept
+
+A seller MUST NOT advertise, in a product's `measurement_terms`, a `measurement_window` (or other term value) that it would reject with [`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected) when a buyer replays those terms unchanged on [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). The window MUST reference a `window_id` declared in the product's `reporting_capabilities.measurement_windows`. The rule applies to an otherwise valid request for the product: failures unrelated to terms (budget, flight dates, account) use their own error codes. It does not limit rejecting buyer-modified terms. Sellers that declare `media_buy.measurement_terms_acceptance: true` are additionally graded on replaying advertised terms by the `measurement_terms_accepted` storyboard.
+
 
 ### Publisher properties for non-URL inventory
 

@@ -6,6 +6,7 @@ summary: "Any agent that emits webhooks MUST echo the caller-supplied operation_
 track: core
 requires:
   - webhook_receiver
+  - controller
 
 narrative: |
   Webhook emission is a cross-cutting capability, not a specialism. Sellers emit

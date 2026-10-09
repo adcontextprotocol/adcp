@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Raise the brand.json body cap from 256 KiB to 2 MiB on every brand.json fetch path: the signing trust-root fetches in `security.mdx` (rights-holder resolution, designated-task response signing, `brand_json_url` key discovery, the quickstart `MAX_BRAND_JSON_BYTES`, and the `request_signature_brand_json_malformed` remediation) and the registry live read. JWKS and capabilities caps are unchanged. The cap is now specified as a streaming limit (abort on exceed, never buffer-then-check; decoded bytes for content-encoded responses; the total deadline covers the body read), with a MUST for a JSON nesting-depth limit of 32 during strict parsing, a MUST to run cheap checks first and bound concurrent trust-root fetches, `Accept-Encoding: identity`, and `ETag` revalidation and single-flight guidance; it also corrects the strict-parser examples (`secure-json-parse` and `DisallowUnknownFields` do not detect duplicate keys). This loosens a limit: a verifier still enforcing the 256 KiB cap rejects brand.json files between 256 KiB and 2 MiB. See the 3.2 to 3.3 migration guide.

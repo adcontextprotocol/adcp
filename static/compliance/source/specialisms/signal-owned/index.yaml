@@ -5,6 +5,9 @@ protocol: signals
 category: signal_owned
 summary: "Signal agent serving first-party or proprietary audience data for discovery without external catalog verification."
 track: signals
+requires:
+  - controller
+
 required_tools:
   - get_signals
 

@@ -161,35 +161,17 @@ describe('training agent: account references before provisioning', () => {
     });
   });
 
-  // Temporary exemption for adcontextprotocol/adcp-client#3095: the storyboard
-  // runner synthesizes this exact key on account-less discovery probes.
-  it('exempts only the runner-synthesized acme-outdoor probe key', async () => {
+  // The storyboard runner used to synthesize this self-operated key on
+  // account-less discovery probes (adcontextprotocol/adcp-client#3095, fixed in
+  // @adcp/sdk 14.1.0). It gets no special treatment: unprovisioned means rejected.
+  it('rejects the formerly runner-synthesized acme-outdoor key like any other', async () => {
     const url = `${server.baseUrl}/signals/mcp`;
     await initialize(url);
 
-    const probeKey = { brand: { domain: 'acmeoutdoor.example' }, operator: 'acmeoutdoor.example', sandbox: true };
-    const answered = await callTool(url, 'get_signals', {
+    const rejected = await callTool(url, 'get_signals', {
       signal_spec: 'In-market auto intenders',
-      account: probeKey,
+      account: { brand: { domain: 'acmeoutdoor.example' }, operator: 'acmeoutdoor.example', sandbox: true },
     });
-    expect(answered.result?.structuredContent?.adcp_error).toBeUndefined();
-
-    const otherOperator = await callTool(url, 'get_signals', {
-      signal_spec: 'In-market auto intenders',
-      account: { ...probeKey, operator: 'unprovisioned-agency.example' },
-    });
-    expect(otherOperator.result?.structuredContent?.adcp_error?.code).toBe('ACCOUNT_NOT_FOUND');
-
-    const withCurrency = await callTool(url, 'get_signals', {
-      signal_spec: 'In-market auto intenders',
-      account: { ...probeKey, currency: 'EUR' },
-    });
-    expect(withCurrency.result?.structuredContent?.adcp_error?.code).toBe('ACCOUNT_NOT_FOUND');
-
-    // The exemption creates nothing: no account without brand_id appears.
-    const listed = await callTool(url, 'list_accounts', { account: probeKey });
-    const created = (listed.result?.structuredContent?.accounts ?? [])
-      .filter(account => (account as { brand?: { brand_id?: string } }).brand?.brand_id === undefined);
-    expect(created).toEqual([]);
+    expect(rejected.result?.structuredContent?.adcp_error?.code).toBe('ACCOUNT_NOT_FOUND');
   });
 });

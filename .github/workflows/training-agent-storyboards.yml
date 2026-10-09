@@ -73,6 +73,11 @@ jobs:
           # Selection comes from each tenant's live get_adcp_capabilities
           # declaration; out-of-scope and quarantined storyboards are reported
           # separately from the result rows graded by these floors.
+          # /brand and /governance do not implement validate_input. Correcting
+          # the CTV and premium-display gates removes 14 + 18 controller seed
+          # passes, not validator coverage (those checks all skipped). Subtract
+          # only those 32 false-coverage steps: 115 -> 83 and 160 -> 128.
+          # Clean-storyboard, other-tenant, and 3.0-compat floors stay unchanged.
           - surface: current
             tenant: signals
             min_clean_storyboards: 45
@@ -80,7 +85,7 @@ jobs:
           - surface: current
             tenant: governance
             min_clean_storyboards: 47
-            min_passing_steps: 160
+            min_passing_steps: 128
           - surface: current
             tenant: creative
             min_clean_storyboards: 49
@@ -92,11 +97,36 @@ jobs:
           - surface: current
             tenant: brand
             min_clean_storyboards: 45
-            min_passing_steps: 115
+            min_passing_steps: 83
           - surface: current
             tenant: si
             min_clean_storyboards: 42
             min_passing_steps: 50
+          # Proposal-negotiation profile routes (/sales/profiles/<profile>)
+          # serve the sales tenant with a deterministic seller policy. The
+          # full sales suite is already graded by the isolated /sales
+          # orchestrators below, so these rows pin only the typed negotiation
+          # storyboard against each profile that can satisfy it. The floors are
+          # the exact clean result: 1 storyboard and 20 passed steps (the
+          # capability-gated unsupported-dimension step is skipped because both
+          # profiles declare `flight`).
+          #
+          # finalization-failure is intentionally absent: its finalize handler
+          # always rejects the hold, so it can never satisfy this storyboard's
+          # finalize_draft step. It stays manual-only until it has its own
+          # hold-failure storyboard.
+          - surface: current
+            tenant: typed-negotiation
+            tenant_path: sales/profiles/typed-negotiation
+            storyboard_id: media_buy_seller/typed_proposal_negotiation
+            min_clean_storyboards: 1
+            min_passing_steps: 20
+          - surface: current
+            tenant: constrained-seller
+            tenant_path: sales/profiles/constrained-seller
+            storyboard_id: media_buy_seller/typed_proposal_negotiation
+            min_clean_storyboards: 1
+            min_passing_steps: 20
           - surface: 3.0-compat
             tenant: signals
             min_clean_storyboards: 24
@@ -233,7 +263,13 @@ jobs:
       - name: Run storyboards against /${{ matrix.tenant }}
         id: run
         env:
-          TENANT_PATH: ${{ matrix.tenant }}
+          TENANT_PATH: ${{ matrix.tenant_path || matrix.tenant }}
+          STORYBOARD_ID: ${{ matrix.storyboard_id }}
+          # Profile routes are mounted only when this flag is on (fly.toml sets
+          # it in production). The router also defaults it on outside
+          # production, but CI states it so the profile rows cannot silently
+          # lose their route.
+          ENABLE_ADCP_3_2_PROPOSAL_PROFILES: 'true'
           PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
           ADCP_COMPLIANCE_DIR: ${{ matrix.surface == 'current' && 'dist/compliance/latest' || steps.compat-bundle.outputs.dir }}
           ADCP_SCHEMA_ROOT: ${{ matrix.surface == 'current' && 'dist/schemas/latest' || steps.compat-bundle.outputs.schema_dir }}
@@ -255,7 +291,13 @@ jobs:
             # dev ergonomics). CI grades pass/fail via the floor check below,
             # not the runner's exit code. `|| true` keeps the step alive past
             # the runner so the parse + regression-check stages can run.
-            npx tsx server/tests/manual/run-storyboards.ts 2>&1 | tee /tmp/storyboards.log || true
+            # STORYBOARD_ID narrows a row to one storyboard (profile routes);
+            # unset, the whole tenant suite runs.
+            runner_args=()
+            if [ -n "${STORYBOARD_ID}" ]; then
+              runner_args+=(--storyboard-id "${STORYBOARD_ID}")
+            fi
+            npx tsx server/tests/manual/run-storyboards.ts "${runner_args[@]}" 2>&1 | tee /tmp/storyboards.log || true
           fi
           # `grep` returning empty is not a fatal error here — we want to
           # detect that explicitly below.
@@ -371,18 +413,23 @@ jobs:
         if: matrix.surface == 'current' && matrix.tenant == 'governance'
         run: |
           set -euo pipefail
-          requirement="governance/failed_outcome_audit_persistence:4:0"
-          storyboard_id="${requirement%%:*}"
-          counts="${requirement#*:}"
-          expected_passed="${counts%%:*}"
-          expected_skipped="${counts##*:}"
-          if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓[[:space:]]+${expected_passed}P / ${expected_skipped}S" /tmp/storyboards.log >/dev/null; then
-            echo "Required-exact storyboard passed: ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
-          else
-            echo "::error::Required-exact storyboard counts changed on /governance current surface: ${storyboard_id}"
-            grep -F "${storyboard_id}" /tmp/storyboards.log || true
-            exit 1
-          fi
+          requirements=(
+            "governance/failed_outcome_audit_persistence:4:0"
+            "governance/budget_periods:7:0"
+          )
+          for requirement in "${requirements[@]}"; do
+            storyboard_id="${requirement%%:*}"
+            counts="${requirement#*:}"
+            expected_passed="${counts%%:*}"
+            expected_skipped="${counts##*:}"
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓[[:space:]]+${expected_passed}P / ${expected_skipped}S" /tmp/storyboards.log >/dev/null; then
+              echo "Required-exact storyboard passed: ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
+            else
+              echo "::error::Required-exact storyboard counts changed on /governance current surface: ${storyboard_id}"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
 
       - name: Enforce routed multi-agent governance storyboards
         if: matrix.surface == 'current' && (matrix.tenant == 'signals' || matrix.tenant == 'brand' || matrix.tenant == 'creative-builder')
@@ -670,8 +717,8 @@ jobs:
           # Beta.12 capability-resolved replay. Result-row totals include the
           # three signed-request route profiles; storyboard applicability is
           # reported separately in the aggregate summary.
-          MIN_CLEAN: 133
-          MIN_PASSED: 632
+          MIN_CLEAN: 135
+          MIN_PASSED: 646
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
@@ -725,6 +772,15 @@ jobs:
             "media_buy_seller/governance_agent_binding_acceptance:5:0"
             "media_buy_seller/external_audience_source_binding:9:0"
             "media_buy_seller/get_products_async:11:0"
+            # Seller-optimized shared budgets: the tenant declares the core
+            # contract and every enforced package control, so the three
+            # scenarios run end to end. The 9 skips are the cost-cap and
+            # package-automatic bidding phases (bidding_policy.*.seller_optimized
+            # is not declared) and the six negative phases for undeclared
+            # package controls.
+            "media_buy_seller/seller_optimized_budget:21:9"
+            "media_buy_seller/seller_optimized_min_spend_target_exceeds_package_cap:7:0"
+            "media_buy_seller/seller_optimized_proposal_package_pacing:10:0"
             # Routed requires: [multi_agent] storyboards: exact counts prove
             # the governed calls ran against the governance tenant.
             "media_buy_seller/governance_approved:13:0"
