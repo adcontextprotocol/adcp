@@ -173,10 +173,9 @@
       "then": {
         "properties": { "responsible_party": { "const": "seller" } },
         "required": ["reporting_obligation_id", "reporting_revision_id"],
-        "oneOf": [
-          { "properties": { "severity": { "const": "delayed" }, "recommended_action": { "const": "wait_for_retry" } } },
-          { "properties": { "severity": { "const": "action_required" }, "recommended_action": { "const": "contact_seller" } } }
-        ]
+        "if": { "properties": { "severity": { "const": "delayed" } } },
+        "then": { "properties": { "recommended_action": { "const": "wait_for_retry" } } },
+        "else": { "properties": { "recommended_action": { "const": "contact_seller" } } }
       }
     }
   ],
