@@ -6,6 +6,9 @@ category: media_buy_seller
 summary: "Verifies readiness for a unique candidate, missing setup, several candidates, and an account the seller cannot read, without changing the public cache scope."
 track: media_buy
 
+requires:
+  - controller
+
 requires_capability:
   path: experimental_features
   contains: media_buy.execution_readiness
@@ -182,7 +185,7 @@ phases:
             path: "execution_readiness.version"
             description: "The map carries its own version"
           - check: field_value
-            path: "execution_readiness.products.execution_readiness_conversions.status"
+            path: "execution_readiness.products.execution_readiness_conversions.readiness_status"
             value: "ready"
             description: "One suitable event source makes the product ready"
           - check: field_value
@@ -248,7 +251,7 @@ phases:
             value: "execution_readiness_conversions"
             description: "A product that is not ready is annotated, never filtered out"
           - check: field_value
-            path: "execution_readiness.products.execution_readiness_conversions.status"
+            path: "execution_readiness.products.execution_readiness_conversions.readiness_status"
             value: "setup_required"
             description: "An account with no event source needs setup"
           - check: field_absent
@@ -313,7 +316,7 @@ phases:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
           - check: field_value
-            path: "execution_readiness.products.execution_readiness_conversions.status"
+            path: "execution_readiness.products.execution_readiness_conversions.readiness_status"
             value: "selection_required"
             description: "Several suitable event sources need a buyer choice"
           - check: field_contains
@@ -363,7 +366,7 @@ phases:
             value: "execution_readiness_conversions"
             description: "A product the seller could not check is still returned"
           - check: field_value
-            path: "execution_readiness.products.execution_readiness_conversions.status"
+            path: "execution_readiness.products.execution_readiness_conversions.readiness_status"
             value: "unknown"
             description: "Could not check is unknown, not setup_required"
           - check: field_value

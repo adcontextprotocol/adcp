@@ -27,7 +27,7 @@ const DEFAULT_CONTRACT_ROOT = path.join(
   'request-signing',
 );
 const CONCRETE_REQUEST_CODE_PATTERN = /\brequest_(?:signature_[a-z0-9_]*[a-z0-9]|target_uri_malformed)\b/g;
-const EXACT_REQUEST_CODE_PATTERN = /^request_(?:signature_[a-z0-9_]*[a-z0-9]|target_uri_malformed)$/;
+const EXACT_REQUEST_CODE_PATTERN = /^request_(?:signature_[a-z0-9_]*[a-z0-9]|target_uri_malformed|body_malformed)$/;
 const SNAKE_CASE_CODE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
 
 function walkJsonFiles(directory) {

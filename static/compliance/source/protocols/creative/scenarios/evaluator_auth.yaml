@@ -1,9 +1,12 @@
 id: creative/evaluator_auth
-version: "1.0.2"
+version: "1.0.3"
 title: "Creative evaluator authentication boundary"
 category: creative
 summary: "Verifies that build_creative evaluator pointers use the verifier allowlist, keep credentials out of payloads, and invoke accepted evaluator agents through get_creative_features."
 track: creative
+requires:
+  - controller
+
 introduced_in: "3.1"
 required_tools:
   - build_creative
@@ -175,7 +178,7 @@ phases:
             value: true
             description: "Creative evaluator support is declared"
           - check: field_contains
-            path: "experimental_features"
+            path: "experimental_features[*]"
             value: "creative.evaluator"
             description: "Experimental evaluator feature id is declared"
           - check: field_present

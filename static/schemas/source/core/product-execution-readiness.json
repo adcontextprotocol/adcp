@@ -5,9 +5,9 @@
   "description": "Experimental (`media_buy.execution_readiness`). Whether the caller's account can satisfy a product's `execution_requirements[]`: one entry per requirement plus a rollup. Carried only in the `get_products` `execution_readiness` map. Annotate, never filter: a product that is not `ready`, including `unknown`, may still be runnable.",
   "type": "object",
   "properties": {
-    "status": {
+    "readiness_status": {
       "$ref": "/schemas/enums/execution-readiness-status.json",
-      "description": "Rollup of `requirements[].status`, derivable from it: the first of `setup_required`, `input_required`, `selection_required`, `unknown` that any requirement reports, else `ready`. The rollup is the most blocking state the seller could establish, so `unknown` is reported only when no requirement is definitely blocking and at least one could not be checked. Buyers needing detail MUST read `requirements[]`."
+      "description": "Rollup of `requirements[].readiness_status`, derivable from it: the first of `setup_required`, `input_required`, `selection_required`, `unknown` that any requirement reports, else `ready`. The rollup is the most blocking state the seller could establish, so `unknown` is reported only when no requirement is definitely blocking and at least one could not be checked. Buyers needing detail MUST read `requirements[]`."
     },
     "requirements": {
       "type": "array",
@@ -21,6 +21,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["status", "requirements"],
-  "additionalProperties": true
+  "required": ["readiness_status", "requirements"],
+  "additionalProperties": true,
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
 }

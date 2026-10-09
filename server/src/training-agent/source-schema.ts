@@ -12,6 +12,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const schemaRoot = join(process.cwd(), 'static/schemas/source');
+const VERSION_ENVELOPE_DEFINITION_REF = '#/$defs/core~1version-envelope';
 const parsedSchemas = new Map<string, JsonSchema>();
 const sourceValidators = new Map<string, ValidateFunction>();
 let sourceAjv: Ajv | undefined;
@@ -186,6 +187,23 @@ export function loadProductDiscoveryInputSchema(fileName: string): JsonSchema {
     'x-mutates-state': _mutatesState,
     ...inputSchema
   } = bundled;
+  // The version-envelope allOf arm is redundant in tools/list: the source
+  // schemas redeclare adcp_version/adcp_major_version in `properties` (draft-07
+  // strict roots need that), and MCP discovery projection inlines them anyway.
+  // Dropping the bare arm keeps the four-tool discovery surface within budget.
+  if (Array.isArray(inputSchema.allOf)) {
+    const allOf = inputSchema.allOf.filter(arm => !(
+      isRecord(arm)
+      && Object.keys(arm).length === 1
+      && arm.$ref === VERSION_ENVELOPE_DEFINITION_REF
+    ));
+    if (allOf.length > 0) inputSchema.allOf = allOf;
+    else delete inputSchema.allOf;
+    const defs = inputSchema.$defs;
+    if (isRecord(defs) && !JSON.stringify(inputSchema).includes(`"${VERSION_ENVELOPE_DEFINITION_REF}"`)) {
+      delete defs['core/version-envelope'];
+    }
+  }
   return inputSchema;
 }
 

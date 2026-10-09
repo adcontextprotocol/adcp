@@ -173,6 +173,89 @@ Sellers can adopt committed governance checks incrementally:
 - **Level 2: + Modification** -- One call per `update_media_buy`.
 - **Level 3: + Delivery reporting** -- Periodic calls during active delivery.
 
+## Budget periods
+
+When the plan declares [`budget.periods`](/docs/governance/campaign/tasks/sync_plans#budget-periods), the governance agent partitions budget authority by time as well as by purchase type. The buyer never has to name a period: the governance agent derives it from the dates of the action. The existing flight, `budget.total`, and `budget.allocations` checks still apply, so a dated commitment has to fit its period and its purchase-type allocation.
+
+**Which period a buy belongs to.** On an intent check or an execution check with phase `purchase` or `modification`, the governance agent finds the period that contains the action's whole flight: `payload.start_time` to `payload.end_time` on an intent check, `planned_delivery.start_time` to `planned_delivery.end_time` on an execution check. A period runs from its `start` up to but not including its `end`, so a flight ending exactly on a boundary stays in the earlier period and a flight starting on it belongs to the later one. Because periods do not overlap, at most one period contains a flight. The governance agent MUST deny the action when:
+
+- no period contains the flight, including a flight inside the unallocated remainder or one that crosses a boundary, or
+- the incremental commitment would take that period over its `amount`, counting everything already committed to the period.
+
+Both denials are `denied` verdicts with a critical finding. A denied response carries no `governance_context`. An `asap` start is evaluated as the time of the check, and boundaries are instants, not account-local dates.
+
+The flight comes from the task's own fields: `start_time` and `end_time`, a `flight` object, or campaign dates. When a payload states the same side of its flight in more than one place, the values MUST agree; a payload that states two different flights is denied, because the service executes the task's own fields and the governance agent must not place the buy by whichever field it read.
+
+**Moving a buy.** A modification whose new dates fall in a different period is checked as moving the buy's whole commitment to that period: the period must have room for the buy's existing commitment plus the incremental commitment, and the buy's commitment leaves its old period when the modification settles. A modification whose new flight would straddle two periods is denied. A buy that needs to span two periods has to be two buys. A modification that states no dates keeps the flight the buy already has, and one that states only one end completes it from the buy's retained flight. A buy is identified by its `media_buy_id`: the id carried by the modification or execution check, or, for the check that created it, the `seller_reference` the buyer reports on the completed outcome. A modification of a buy the governance agent has no settled commitment for, with no dates stated, cannot be placed and is denied. A seller's `planned_delivery` on a modification SHOULD state the full resulting `start_time` and `end_time`.
+
+A modification that changes `start_time` or `end_time` so that the buy lands in a different period changes where its commitment is counted, even when the budget delta is zero or negative. The buyer SHOULD invoke `check_governance` for such a change and MUST NOT assume a decrease-only exemption covers it.
+
+**Optional assertion.** `budget_period_id` on the request lets a buyer assert which period it believes a buy belongs to. When present and different from the derived period, the check is denied. When the plan has no periods, or the action carries no flight, there is no derived period and the assertion cannot match, so the check is denied.
+
+**Response.** The response carries the matched `budget_period_id` whenever a single period contains the flight, on approved and denied verdicts alike, so the buyer can record which period each buy belongs to without re-deriving it. It is omitted when the plan has no periods, when the action carries no dates, and when no single period contains the flight.
+
+**Retained flight.** A governance agent MUST retain the flight of every dated commitment it settles, whether or not the plan had periods at the time, so that periods can be added to a plan that already has buys and the re-sync rules in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans#budget-periods) can be applied to them.
+
+**Undated commitments.** Periods govern commitments that carry a flight. An action without dates counts against `budget.total` and its purchase-type allocation only, and it never consumes a period's `amount`. An action whose dates cannot be read, or that states only one end of its flight with nothing to complete it, MUST NOT bypass periods by being treated as undated; the governance agent denies it.
+
+**Delivery checks.** On `delivery` phase checks, a governance agent that evaluates pacing SHOULD evaluate it against the buy's period rather than the whole plan flight. The buy's period comes from the commitment the governance agent retained, not from dates the seller restates on the delivery check. A delivery check reports on a commitment that was already authorized, so it is not denied for its period.
+
+```json
+{
+  "$schema": "/schemas/governance/check-governance-request.json",
+  "plan_id": "nova-spring-2027",
+  "caller": "https://orchestrator.example.com",
+  "target_agent": "https://seller.example.com",
+  "tool": "create_media_buy",
+  "purchase_type": "media_buy",
+  "budget_period_id": "q1",
+  "proposed_commitment": { "amount": 25000, "currency": "USD" },
+  "payload": {
+    "idempotency_key": "nova-spring-q1-buy-0001",
+    "total_budget": { "amount": 25000, "currency": "USD" },
+    "start_time": "2027-01-15T00:00:00Z",
+    "end_time": "2027-03-15T00:00:00Z"
+  }
+}
+```
+
+```json
+{
+  "$schema": "/schemas/governance/check-governance-response.json",
+  "check_id": "chk_period_001",
+  "check_type": "intent",
+  "verdict": "approved",
+  "plan_id": "nova-spring-2027",
+  "budget_period_id": "q1",
+  "explanation": "Flight sits inside budget period q1. Commitment: $25,000 of q1's $60,000.",
+  "categories_evaluated": ["budget_authority", "flight_compliance", "budget_period"],
+  "expires_at": "2027-01-14T01:00:00Z",
+  "governance_context": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFkY3AtZ292K2p3cyJ9.intent.signature"
+}
+```
+
+A flight from 15 March to 15 April crosses the `q1`/`q2` boundary, so the same plan denies it:
+
+```json
+{
+  "$schema": "/schemas/governance/check-governance-response.json",
+  "check_id": "chk_period_002",
+  "check_type": "intent",
+  "verdict": "denied",
+  "plan_id": "nova-spring-2027",
+  "explanation": "Flight 2027-03-15T00:00:00Z to 2027-04-15T00:00:00Z straddles budget periods q1 and q2; split it into one buy per period.",
+  "findings": [
+    {
+      "category_id": "budget_period",
+      "severity": "critical",
+      "explanation": "Flight 2027-03-15T00:00:00Z to 2027-04-15T00:00:00Z straddles budget periods q1 and q2; split it into one buy per period."
+    }
+  ]
+}
+```
+
+Governance agents that enforce periods declare [`governance.supports_budget_periods`](/docs/protocol/get_adcp_capabilities).
+
 ## Invocation requirement
 
 When a governance agent is configured on the plan, buyer agents MUST invoke `check_governance` before every operation classified by its request schema's `x-governed-commitment` annotation. There is no dollar floor or cold-start exemption for commitment-bearing operations. Conditional tasks keep cancellation, pause, deactivation, decrease-only changes, estimates, and zero-cost retrieval outside the gate so governance cannot block risk-reducing cleanup.
@@ -585,6 +668,7 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 | `caller` | string (URI) | Yes | Claimed agent URL. The transport credential must resolve to the same URL, which is used for authorization and audit. Intent callers must be the authenticated plan owner or hold an active delegation; execution callers must match the preserved target audience. |
 | `purchase_type` | enum | No | The kind of financial commitment being validated: `media_buy` (default), `rights_license`, `signal_activation`, or `creative_services`. When omitted, the governance agent assumes `media_buy`. |
 | `target_agent` | string (URI) | Intent | Exact downstream service URL. Required on intent checks and signed as the token audience. It is routing metadata and is not included in `payload`. |
+| `budget_period_id` | string | No | Optional assertion of the plan budget period this action belongs to. The buyer never has to name a period; the governance agent derives it from the action's flight. Denied when it differs from the derived period. See [Budget periods](#budget-periods). |
 | `proposed_commitment` | object | Conditional | Intent-only task-neutral `{amount, currency}`. Required for [`buy_products`](/docs/media-buy/task-reference/buy_products), [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy), [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy), [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights), commitment-increasing [`update_rights`](/docs/brand-protocol/tasks/update_rights), [`activate_signal`](/docs/signals/tasks/activate_signal), and [`build_creative`](/docs/creative/task-reference/build_creative). For update/control it is the positive delta; for `accept_proposal` it derives from `proposal.commercial_terms`; for `buy_products` it derives from the purchase payload. Use amount `0` for a verified no-cost or non-increasing action. |
 | `execution_commitment` | object | Update execution | Seller-computed `{amount, currency}` positive delta for `update_media_buy`. The seller derives it from authoritative current state atomically with the revision check and write. It must not exceed or change the currency of `proposed_commitment`; a mismatch requires a fresh intent. |
 | `tool` | string | Intent | The AdCP tool being checked, including compact `buy_products`, `accept_proposal`, and `control_media_buy`. Present on intent checks; `tool` + `payload` identifies an intent check. |
@@ -632,6 +716,7 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 | `check_type` | enum | `intent` or `execution`. Conditions are valid only for intent. |
 | `verdict` | enum | `approved`, `denied`, or `conditions`. |
 | `plan_id` | string | Echoed on an initial plan-addressed check; optional on context-addressed continuation checks. |
+| `budget_period_id` | string | The plan budget period that contains the action's whole flight. Present when the plan has periods and the action is dated and one period contains it, on any verdict. See [Budget periods](#budget-periods). |
 | `explanation` | string | Human-readable explanation of the decision. |
 | `findings` | array | Per-category issues found. Present when `verdict` is `denied` or `conditions`. MAY also be present on `approved` for informational findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), `uncertainty_reason`, and `attestation_reference_digest` when it relies on a runtime evaluation. `category_id` is an **agent-internal label**, not a protocol-level enum — treat as opaque for display/audit, not for machine pattern-matching. |
 | `conditions` | array | Intent-only counterproposal. `field` is rooted at the complete check request arguments (for example `payload.total_budget.amount` or `proposed_commitment.amount`). Adjustments must be re-checked and never authorize execution. |

@@ -184,12 +184,58 @@ The final per-audience `audiences` array lands on the task completion artifact, 
 | `status` | `processing`, `ready`, or `too_small`. Present when action is `created`, `updated`, or `unchanged`; absent when action is `deleted` or `failed`. |
 | `uploaded_count` | Members submitted in this sync operation (delta, not cumulative). 0 for discovery-only calls. |
 | `total_uploaded_count` | Cumulative members uploaded across all syncs. Compare with `matched_count` to calculate match rate. |
-| `matched_count` | Total members matched to platform users across all syncs (cumulative). Populated when `status: "ready"`. |
-| `effective_match_rate` | Deduplicated match rate across all identifier types (0–1). A single number for reach estimation. Populated when `status: "ready"`. |
+| `matched_count` | Total members matched to platform users across all syncs (cumulative). Populated when `status: "ready"` and the seller can report it. May be absent: buyers MUST NOT read absence as zero. See [Audience size](#audience-size). |
+| `effective_match_rate` | Deduplicated match rate across all identifier types (0–1). A single number for reach estimation. Populated when `status: "ready"` and the seller can report it. May be absent: buyers MUST NOT read absence as zero. |
+| `match_rate_basis` | `platform_reported` or `derived`. Says where `effective_match_rate` came from. See [Audience size](#audience-size). |
+| `audience_size` | People matched on the platform, as a range: `lower_bound`, `upper_bound`, `precision` (`exact`, `approximate`, or `bucketed`), and optional `as_of`. See [Audience size](#audience-size). |
+| `targetable_size` | People the platform can serve to now, in the same range shape as `audience_size`. See [Audience size](#audience-size). |
 | `match_breakdown` | Per-identifier-type match results. Shows which ID types resolve and at what rate. See [match breakdown](#match-breakdown). |
 | `last_synced_at` | ISO 8601 timestamp of the most recent sync. Omitted if the seller does not track this. |
 | `minimum_size` | Minimum matched audience size for targeting on this platform. Populated when `status: "too_small"`. |
 | `errors` | Per-audience errors (only when `action: "failed"`) |
+
+## Audience size
+
+Platforms report audience size in different ways. Some give an exact count, some an approximation or interval for member privacy, and some only a coarse bucket. A single `matched_count` would force the seller to invent a point value, so a seller can report the size as a range instead.
+
+`audience_size` is the number of people the audience matched to on the platform. `targetable_size` is the number of people the platform can serve to now, which can be smaller when only part of the matched audience is eligible to be served. Both use the same object, defined once as [`audience-size.json`](https://adcontextprotocol.org/schemas/latest/core/audience-size.json):
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `lower_bound` | Yes | Lowest number of people the size can be. Integer, at least 0. |
+| `upper_bound` | Yes | Highest number of people the size can be. Integer, at least 0, and MUST be greater than or equal to `lower_bound`. |
+| `precision` | Yes | `exact`, `approximate`, or `bucketed`. |
+| `as_of` | No | ISO 8601 timestamp of when the platform computed this size. |
+
+```json
+{
+  "audience_id": "crm_customers",
+  "action": "updated",
+  "status": "ready",
+  "audience_size": {
+    "lower_bound": 14000000,
+    "upper_bound": 16500000,
+    "precision": "approximate",
+    "as_of": "2026-10-08T12:00:00Z"
+  },
+  "targetable_size": {
+    "lower_bound": 9000000,
+    "upper_bound": 11000000,
+    "precision": "bucketed",
+    "as_of": "2026-10-08T12:00:00Z"
+  },
+  "effective_match_rate": 0.42,
+  "match_rate_basis": "platform_reported"
+}
+```
+
+Key semantics:
+- **`precision` says how to read the bounds.** With `exact`, `lower_bound` equals `upper_bound`. With `approximate`, the true size is expected to fall within the bounds. With `bucketed`, the bounds are the edges of a coarse bucket and say nothing finer than which bucket the audience falls in.
+- **Matched is not targetable.** `targetable_size` can be smaller than `audience_size`. Plan reach against `targetable_size` when a seller reports it.
+- **`matched_count` and `effective_match_rate` can be absent.** A seller whose platform reports a size but no matched count, as with some social platforms, omits `matched_count` and `effective_match_rate`, and reports `audience_size`. Buyers MUST NOT read an absent count or rate as zero.
+- **`match_rate_basis` qualifies the rate.** `platform_reported` means the platform supplied `effective_match_rate`. `derived` means the seller computed it, for example from approximate counts, so it is itself approximate.
+- **Nothing below the seller's minimum is disclosed.** A size below the seller's minimum stays governed by the `too_small` status and `minimum_size`. A seller MUST omit `audience_size` and `targetable_size` when `status` is `too_small`.
+- **All fields are optional.** Sellers that do not report a range keep returning `matched_count` and `effective_match_rate` exactly as before.
 
 ## Match breakdown
 
@@ -580,7 +626,7 @@ Platform matching is asynchronous. The `status` field reflects the current state
 | Status | Meaning |
 |--------|---------|
 | `processing` | Platform is matching uploaded members against its user base. Poll again later — do not create campaigns yet. |
-| `ready` | Audience is available for targeting. `matched_count` is populated. |
+| `ready` | Audience is available for targeting. `matched_count` and `audience_size` are populated when the seller can report them. |
 | `too_small` | Matched audience is below the platform's minimum size. `minimum_size` in the response tells you the threshold. Add more members and re-sync. |
 
 `status` is present when `action` is `created`, `updated`, or `unchanged`. It is absent when `action` is `deleted` or `failed`.
@@ -611,13 +657,14 @@ Invoke [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get
 
 ## Hashing Requirements
 
-Hash all identifiers with SHA-256 before sending. Normalize first:
+Hash emails and phone numbers with SHA-256 before sending, normalizing first. `uids[]` values are not hashed, except a `hashed_email` entry, which carries the same SHA-256 form as the top-level field; send the forms noted below:
 
 | Identifier | Normalization | Example |
 |------------|--------------|---------|
 | Email | Lowercase, trim whitespace | `alice@example.com` → hash |
 | Phone | E.164 format | `+12065551234` → hash |
-| MAID | No normalization needed | As-is |
+| MAID | Lowercase, hyphenated UUID (senders SHOULD; receivers SHOULD normalize case and hyphenation before matching) | `6d3c2f1a-8b4e-4c7d-9a1f-2e5b7c9d0f13` |
+| UID2 / EUID | Raw UID2/EUID, never the encrypted token. Case-sensitive; do not case-fold or re-encode | As issued |
 
 ```javascript test=false
 import { createHash } from "crypto";

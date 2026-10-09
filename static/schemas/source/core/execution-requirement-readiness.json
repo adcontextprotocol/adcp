@@ -9,7 +9,7 @@
       "$ref": "/schemas/core/product-execution-requirement.json",
       "description": "The product's declared requirement, echoed. MUST deep-equal an entry of its current `execution_requirements[]`; no match means the buyer's product feed is stale."
     },
-    "status": {
+    "readiness_status": {
       "$ref": "/schemas/enums/execution-readiness-status.json",
       "description": "Readiness of this requirement. For `downstream_connection`, derived from `connection_state.status`: `connected` and `not_required` are `ready`; `missing`, `pending`, `expired`, `revoked` are `setup_required`; `unknown` is `unknown`. `selection_required` and `input_required` apply only to `event_source` and `catalog`."
     },
@@ -20,7 +20,7 @@
     },
     "resolved": {
       "type": "object",
-      "description": "The resource to use when `status` is `ready`, for `event_source` and `catalog`; REQUIRED then. The buyer MUST still bind `resource_id`: `ready` does not waive binding (`not_bound` per `error-details/execution-requirement-unmet.json`).",
+      "description": "The resource to use when `readiness_status` is `ready`, for `event_source` and `catalog`; REQUIRED then. The buyer MUST still bind `resource_id`: `ready` does not waive binding (`not_bound` per `error-details/execution-requirement-unmet.json`).",
       "properties": {
         "resource_id": {
           "type": "string",
@@ -65,7 +65,7 @@
     },
     "connection_state": {
       "$ref": "/schemas/core/downstream-connection-requirement.json",
-      "description": "For `downstream_connection`, REQUIRED: the account's state for the connection the seller would use (its documented default when several are connected). `missing`, `expired`, or `revoked` SHOULD carry `authorization_url` or `authorization_instructions`. `resource_ref` and `connection_id` only when safe to disclose to this account."
+      "description": "For `downstream_connection`, REQUIRED: the account's state for the connection the seller would use (its documented default when several are connected). Reuses `downstream-connection-requirement.json` as a state record; only `status`, `provider`, `connection_type`, `scope`, `authorization_url`, `authorization_instructions`, and `connection_id` are meaningful here. `missing`, `expired`, or `revoked` SHOULD carry `authorization_url` or `authorization_instructions`; `connection_id` only when safe to disclose to this account."
     },
     "unknown_reason": {
       "type": "string",
@@ -83,16 +83,16 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["requirement", "status"],
+  "required": ["requirement", "readiness_status"],
   "allOf": [
     {
       "if": {
         "properties": {
-          "status": {
+          "readiness_status": {
             "const": "unknown"
           }
         },
-        "required": ["status"]
+        "required": ["readiness_status"]
       },
       "then": {
         "required": ["unknown_reason"],
@@ -116,11 +116,11 @@
     {
       "if": {
         "properties": {
-          "status": {
+          "readiness_status": {
             "const": "selection_required"
           }
         },
-        "required": ["status"]
+        "required": ["readiness_status"]
       },
       "then": {
         "required": ["candidates"],
@@ -137,11 +137,11 @@
     {
       "if": {
         "properties": {
-          "status": {
+          "readiness_status": {
             "const": "ready"
           }
         },
-        "required": ["status"]
+        "required": ["readiness_status"]
       },
       "else": {
         "not": {
@@ -166,7 +166,7 @@
       "then": {
         "required": ["connection_state"],
         "properties": {
-          "status": {
+          "readiness_status": {
             "enum": ["ready", "setup_required", "unknown"]
           },
           "connection_state": {
@@ -202,7 +202,7 @@
             },
             "then": {
               "properties": {
-                "status": {
+                "readiness_status": {
                   "const": "ready"
                 }
               }
@@ -223,7 +223,7 @@
             },
             "then": {
               "properties": {
-                "status": {
+                "readiness_status": {
                   "const": "setup_required"
                 }
               }
@@ -244,7 +244,7 @@
             },
             "then": {
               "properties": {
-                "status": {
+                "readiness_status": {
                   "const": "unknown"
                 }
               }
@@ -260,11 +260,11 @@
           {
             "if": {
               "properties": {
-                "status": {
+                "readiness_status": {
                   "const": "ready"
                 }
               },
-              "required": ["status"]
+              "required": ["readiness_status"]
             },
             "then": {
               "required": ["resolved"]
@@ -281,7 +281,7 @@
         "kind": "event_source",
         "event_types": ["purchase"]
       },
-      "status": "selection_required",
+      "readiness_status": "selection_required",
       "binding_field": "packages[].optimization_goals[].event_sources[].event_source_id",
       "candidates": [
         {
@@ -294,5 +294,7 @@
         }
       ]
     }
-  ]
+  ],
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
 }

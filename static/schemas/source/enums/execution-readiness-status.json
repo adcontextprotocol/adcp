@@ -17,5 +17,7 @@
     "selection_required": "Several suitable resources; the buyer chooses one from `candidates[]` and binds it.",
     "input_required": "The seller cannot discover a suitable resource; the buyer supplies one on the request, such as an inline catalog.",
     "unknown": "The seller could not read the account's resources. Distinct from `setup_required`; the product may be runnable. `unknown_reason` says what to do."
-  }
+  },
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
 }

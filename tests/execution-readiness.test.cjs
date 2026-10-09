@@ -45,7 +45,7 @@ const CATALOG_BINDING = "packages[].catalogs[]";
 
 const READY_EVENT_SOURCE = {
   requirement: EVENT_SOURCE,
-  status: "ready",
+  readiness_status: "ready",
   binding_field: ES_BINDING,
   resolved: {
     resource_id: "es_main",
@@ -54,7 +54,7 @@ const READY_EVENT_SOURCE = {
 };
 const SELECTION_EVENT_SOURCE = {
   requirement: EVENT_SOURCE,
-  status: "selection_required",
+  readiness_status: "selection_required",
   binding_field: ES_BINDING,
   candidates: [
     { resource_id: "es_main", name: "Main pixel" },
@@ -63,7 +63,7 @@ const SELECTION_EVENT_SOURCE = {
 };
 const SETUP_EVENT_SOURCE = {
   requirement: EVENT_SOURCE,
-  status: "setup_required",
+  readiness_status: "setup_required",
   issues: [
     {
       severity: "error",
@@ -74,7 +74,7 @@ const SETUP_EVENT_SOURCE = {
 };
 const INPUT_CATALOG = {
   requirement: CATALOG,
-  status: "input_required",
+  readiness_status: "input_required",
   issues: [
     {
       severity: "info",
@@ -84,12 +84,12 @@ const INPUT_CATALOG = {
 };
 const UNKNOWN_CATALOG = {
   requirement: CATALOG,
-  status: "unknown",
+  readiness_status: "unknown",
   unknown_reason: "permission_denied",
 };
 const connection = (status, extra = {}) => ({
   requirement: CONNECTION,
-  status: {
+  readiness_status: {
     connected: "ready",
     missing: "setup_required",
     pending: "setup_required",
@@ -116,7 +116,7 @@ const ROLLUP_ORDER = [
 ];
 function rollup(requirements) {
   for (const status of ROLLUP_ORDER) {
-    if (requirements.some((r) => r.status === status)) return status;
+    if (requirements.some((r) => r.readiness_status === status)) return status;
   }
   return "ready";
 }
@@ -141,7 +141,7 @@ test("every requirement state has a valid shape", async () => {
     READY_EVENT_SOURCE,
     {
       requirement: CATALOG,
-      status: "ready",
+      readiness_status: "ready",
       binding_field: CATALOG_BINDING,
       resolved: { resource_id: "cat_app_1" },
     },
@@ -243,8 +243,8 @@ test("status and resource fields stay consistent", async () => {
       { ...READY_EVENT_SOURCE, resolved: { name: "no id" } },
       "resolved needs a resource_id",
     ],
-    [{ requirement: EVENT_SOURCE }, "status is required"],
-    [{ status: "ready" }, "requirement is required"],
+    [{ requirement: EVENT_SOURCE }, "readiness_status is required"],
+    [{ readiness_status: "ready" }, "requirement is required"],
   ];
   for (const [entry, why] of invalid) {
     assert.equal(validate(entry), false, why);
@@ -265,7 +265,7 @@ test("downstream_connection readiness derives from connection_state and has no c
     [
       {
         ...connected,
-        status: "setup_required",
+        readiness_status: "setup_required",
         connection_state: {
           connection_type: "advertiser_account",
           status: "not_required",
@@ -274,28 +274,31 @@ test("downstream_connection readiness derives from connection_state and has no c
       "not_required connection is ready",
     ],
     [
-      { ...connected, status: "setup_required" },
+      { ...connected, readiness_status: "setup_required" },
       "connected connection is ready",
     ],
-    [{ ...missing, status: "ready" }, "missing connection is setup_required"],
     [
-      { ...connection("pending"), status: "ready" },
+      { ...missing, readiness_status: "ready" },
+      "missing connection is setup_required",
+    ],
+    [
+      { ...connection("pending"), readiness_status: "ready" },
       "pending connection is setup_required",
     ],
     [
-      { ...connection("unknown"), status: "setup_required" },
+      { ...connection("unknown"), readiness_status: "setup_required" },
       "unknown connection is unknown",
     ],
     [
       {
         ...connected,
-        status: "selection_required",
+        readiness_status: "selection_required",
         candidates: SELECTION_EVENT_SOURCE.candidates,
       },
       "no identity candidates in this slice",
     ],
     [
-      { ...connected, status: "input_required" },
+      { ...connected, readiness_status: "input_required" },
       "input_required applies to bound kinds only",
     ],
     [
@@ -338,20 +341,20 @@ test("product rollup is the first blocking state and is derivable", async () => 
   for (const [requirements, expected] of cases) {
     assert.equal(rollup(requirements), expected);
     assert.equal(
-      validate({ status: expected, requirements }),
+      validate({ readiness_status: expected, requirements }),
       true,
       validationMessage(validate),
     );
   }
   assert.equal(
-    validate({ status: "ready", requirements: [] }),
+    validate({ readiness_status: "ready", requirements: [] }),
     false,
     "requirements is non-empty",
   );
   assert.equal(
     validate({ requirements: [READY_EVENT_SOURCE] }),
     false,
-    "status is required",
+    "readiness_status is required",
   );
 });
 
@@ -364,7 +367,7 @@ test("the readiness map rides on a public-scope response", async () => {
     evaluated_at: "2026-10-06T12:00:00Z",
     products: {
       social_conversions: {
-        status: "selection_required",
+        readiness_status: "selection_required",
         requirements: [SELECTION_EVENT_SOURCE, connection("connected")],
       },
     },
@@ -432,7 +435,7 @@ test("the readiness map rides on a public-scope response", async () => {
       ...base,
       execution_readiness: {
         ...execution_readiness,
-        products: { p: { status: "ready" } },
+        products: { p: { readiness_status: "ready" } },
       },
     }),
     false,
@@ -501,7 +504,7 @@ test("requirement readiness mirrors the declared requirement kinds", async () =>
   assert.equal(
     validate({
       requirement: { kind: "lead_form" },
-      status: "unknown",
+      readiness_status: "unknown",
       unknown_reason: "not_evaluated",
     }),
     false,

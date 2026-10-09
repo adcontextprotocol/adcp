@@ -243,6 +243,14 @@
       "description": "The type of financial commitment being checked. Determines which budget allocation (if any) to validate against. Defaults to 'media_buy' when omitted.",
       "default": "media_buy"
     },
+    "budget_period_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "description": "Optional assertion of the plan budget period (`plans[].budget.periods[].budget_period_id`) this action belongs to. The buyer never has to name a period: the governance agent derives it from the action's flight. When present and different from the derived period, the check is denied. When the plan has no periods, or the action carries no flight, there is no derived period and the assertion cannot match, so the check is denied. The response carries the matched `budget_period_id` either way.",
+      "x-entity": "governance_budget_period"
+    },
     "target_agent": {
       "type": "string",
       "format": "uri",
