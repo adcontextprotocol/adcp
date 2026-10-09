@@ -1,0 +1,139 @@
+---
+title: get_audience_overlap
+description: "get_audience_overlap reads how many people one synced audience shares with others on the same account, as bucketed or approximate ranges. Experimental."
+"og:title": "AdCP — get_audience_overlap"
+---
+
+<Warning>
+**`get_audience_overlap` is experimental in AdCP 3.3.** Sellers that implement it
+declare `media_buy.audience_targeting.audience_overlap` on
+[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#audience_overlap) and list
+`media_buy.audience_overlap` in `experimental_features`. The surface can change
+inside 3.x with notice. See [Experimental status](/docs/reference/experimental-status).
+</Warning>
+
+`get_audience_overlap` answers one buyer question before spend: how many people do two audiences I synced share? Buyers use it to check a suppression list against a prospecting list, to decide whether to add members to an existing audience or create a new one, and to judge whether two audiences are worth running together.
+
+It returns aggregate counts only, never member identifiers. Overlap is reported as a range using the shared [`audience-size.json`](https://adcontextprotocol.org/schemas/latest/core/audience-size.json) object that [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences#audience-size) uses for audience size.
+
+**Request schema:** [`get-audience-overlap-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-audience-overlap-request.json)
+
+**Response schema:** [`get-audience-overlap-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-audience-overlap-response.json)
+
+{/* Using latest because these schemas are not yet released in any version.
+    Update to the correct version alias after the next release. */}
+
+## What can be compared
+
+Only audiences you uploaded yourself through [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) on the request `account`. Every `audience_id` and `compare_to` entry must be one of those.
+
+- Seller-owned and third-party segments, audiences on another account, and audiences created from an external `source` cannot be compared. The seller may not hold or disclose those memberships to you, and comparing against them would let a buyer test whether a specific person is in a segment.
+- The caller must be authorized to read every compared audience. Account membership alone is not enough.
+- Overlap counts matched platform users, the same basis as `audience_size`, not `targetable_size`.
+
+Buyer-side overlap, where an orchestrator that holds the raw hashed lists computes list-level overlap itself, is a different trust boundary and is not part of this task.
+
+## Request
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `account` | Yes | Account that owns every compared audience. |
+| `audience_id` | Yes | The audience to compare from. |
+| `compare_to` | Yes | Audiences to compare against, at most the seller's `max_comparisons`. MUST NOT contain `audience_id` or repeat an entry. |
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-audience-overlap-request.json",
+  "account": { "account_id": "acct_12345" },
+  "audience_id": "crm_customers",
+  "compare_to": ["site_visitors_30d", "lapsed_buyers", "newsletter_signups"]
+}
+```
+
+## Response
+
+One comparison per `compare_to` entry, in request order.
+
+| Field | Description |
+|-------|-------------|
+| `comparisons[].audience_id` | The compared audience. |
+| `comparisons[].overlap_status` | `ready`, `suppressed`, or `not_ready`. |
+| `comparisons[].overlap` | An [audience size](/docs/media-buy/task-reference/sync_audiences#audience-size) range. Present only when `overlap_status` is `ready`. `precision` is `approximate` or `bucketed`, never `exact`. |
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-audience-overlap-response.json",
+  "status": "completed",
+  "audience_id": "crm_customers",
+  "comparisons": [
+    {
+      "audience_id": "site_visitors_30d",
+      "overlap_status": "ready",
+      "overlap": {
+        "lower_bound": 2100000,
+        "upper_bound": 2400000,
+        "precision": "approximate",
+        "as_of": "2026-10-08T12:00:00Z"
+      }
+    },
+    { "audience_id": "lapsed_buyers", "overlap_status": "suppressed" },
+    { "audience_id": "newsletter_signups", "overlap_status": "not_ready" }
+  ]
+}
+```
+
+- **`suppressed` is not zero.** The seller withheld the overlap and does not say why: the compared audience may be below the seller's minimum, the overlap may be below `minimum_overlap_size`, or the audience may be a near-duplicate of one already compared. Do not retry without changing an audience, and do not read it as no overlap.
+- **`not_ready` is transient.** A compared audience is still matching. It reflects only the status [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) already reports. Retry once that status is `ready`.
+- **Treat an unknown `overlap_status` as `suppressed`.**
+
+### Computing shares
+
+The task returns no percentages. Overlap is a count and is the same in both directions. The asymmetry is in the denominator, so derive each share from the overlap range and each audience's `audience_size` from `sync_audiences`. A share is then an interval, not a point:
+
+```
+overlap:        2,100,000 – 2,400,000
+crm_customers:  14,000,000 – 16,500,000   (audience_size)
+
+share of crm_customers   = 2,100,000 / 16,500,000  to  2,400,000 / 14,000,000
+                         ≈ 12.7% – 17.1%
+```
+
+A point percentage returned by the seller would let a buyer who knows the exact size of its own uploaded list recover the exact overlap, defeating the range.
+
+## Privacy
+
+Overlap is the riskiest read in the audience surface, because repeated reads over changing audiences can be differenced to infer a small cell. Sellers MUST:
+
+- **Never disclose an overlap below `minimum_overlap_size`**, and never return zero. `minimum_overlap_size` is at least `minimum_audience_size`. A disclosed `lower_bound` is at least `minimum_overlap_size`.
+- **Never report overlap as `exact`.**
+- **Decide suppression and choose the range from the true overlap plus an offset** that is deterministic for the pair of memberships and derived from a seller-held secret, applied before the range is chosen, with a range at least `minimum_overlap_size` wide. Without it, a buyer can pad audiences until the count sits one member below a threshold or bucket edge, then test one person by adding them.
+- **Return a stable answer** for the same pair of memberships, with no per-request randomness that could be averaged away.
+- **Charge every comparison against an overlap budget before evaluating any suppression rule**, scoped to the calling principal and not only the account, and return [`RATE_LIMITED`](/docs/building/verification/compliance-catalog#error-code-rate-limited) when it is spent. Charging after the outcome would turn the rate limit into an oracle.
+- **Return the same [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found)** for an unknown audience and one the caller cannot access, evaluated first. One such entry fails the whole request.
+- **Pin `overlap.as_of` to when the overlap was computed**, not the request time.
+
+Sellers SHOULD:
+
+- Suppress an overlap when the audience differs, by fewer members than `minimum_audience_size`, from any audience or earlier version on the account for which the seller has already computed an overlap against the same counterpart. This blocks differencing a list against itself plus one person, and nested lists.
+- Not vary response shape or latency by suppression reason, for example by serving every comparison from a cached result.
+
+Residual risks the spec documents and does not prevent: a single `ready` versus `suppressed` bit is an oracle on the same footing as `too_small` on [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences); the buyer controls both inputs and the output reflects the seller's identity graph, so overlap can show whether two identifiers the buyer already holds resolve to one person; and a buyer with many principals can spread probes across budgets.
+
+## Errors
+
+| Error Code | When |
+|------------|------|
+| [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | `audience_id` or a `compare_to` entry is unknown or not accessible. |
+| [`AUDIENCE_TOO_SMALL`](/docs/building/verification/compliance-catalog#error-code-audience-too-small) | `audience_id` is below the seller's minimum audience size. `details` MUST NOT carry `current_size`. |
+| [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) | `audience_id` has not finished matching. |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | `compare_to` is longer than `max_comparisons`, repeats an entry, or contains `audience_id`. |
+| [`RATE_LIMITED`](/docs/building/verification/compliance-catalog#error-code-rate-limited) | The seller's overlap budget is spent. |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | The seller does not advertise `audience_overlap`. |
+
+A seller that computes overlap as a job may return a `submitted` response with a `task_id`. The comparisons land on the task completion artifact.
+
+## Next steps
+
+- [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) — Upload audiences and read their size.
+- [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#audience_overlap) — Read `max_comparisons` and `minimum_overlap_size`.
+- [Experimental status](/docs/reference/experimental-status) — What experimental means for implementers.

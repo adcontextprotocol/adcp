@@ -1186,6 +1186,28 @@ Audience targeting capabilities. Presence of this object indicates the seller su
 | `matching_latency_hours`        | object   |              | Expected matching latency range in hours after upload. Use to calibrate polling cadence and set appropriate expectations before configuring `push_notification_config`. Shape: `{ min: integer, max: integer }`.                                                                                                                                                                                                          |
 | `supported_activation_methods`  | object[] |              | **Experimental** (`media_buy.audience_activation` — MUST be listed in `experimental_features` when present; see [Experimental status](/docs/reference/experimental-status)). Union of per-product [`audience_activation.methods`](/docs/media-buy/product-discovery/media-products#audience-activation) across the seller's catalog. Fast-fail discovery: read this once and skip the catalog walk when nothing overlaps your pipeline. Per-product declarations are the source of truth; sellers MUST keep this consistent with the catalog. Operational coordinates are account-scoped: this union may omit `consumer_identities` and `destination_ref` until bilateral setup establishes them, and must never expose another account's coordinates. Absence of this field with `media_buy.audience_activation` listed in `experimental_features` means walk the catalog — only a present, non-overlapping union is a fast-fail signal. Each entry is an [activation method](/docs/media-buy/product-discovery/media-products#activation-method-patterns). |
 
+##### audience_overlap
+
+**Experimental** (`media_buy.audience_overlap`; sellers declaring it MUST list `media_buy.audience_overlap` in `experimental_features`, see [Experimental status](/docs/reference/experimental-status)). Presence of `media_buy.audience_targeting.audience_overlap` indicates the seller supports [`get_audience_overlap`](/docs/media-buy/task-reference/get_audience_overlap) between audiences the buyer synced on the same account. Absence means the seller does not support overlap reads, and buyers MUST NOT read absence as zero overlap.
+
+| Field                  | Type    | Required     | Description                                                                                                                                                                                                                                       |
+| ---------------------- | ------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `max_comparisons`      | integer | **Required** | Maximum `compare_to` entries per request. A longer list is rejected with `INVALID_REQUEST`. Seller-declared; the schema sets no cap.                                                                                                                |
+| `minimum_overlap_size` | integer | **Required** | Smallest overlap the seller will disclose; anything smaller is returned as `suppressed`. MUST be at least `minimum_audience_size`. JSON Schema cannot compare the two fields, so conformance enforces it.                                          |
+
+```json
+{
+  "media_buy": {
+    "audience_targeting": {
+      "supported_identifier_types": ["hashed_email"],
+      "minimum_audience_size": 1000,
+      "audience_overlap": { "max_comparisons": 5, "minimum_overlap_size": 1000 }
+    }
+  },
+  "experimental_features": ["media_buy.audience_overlap"]
+}
+```
+
 #### conversion_tracking
 
 Seller-level conversion tracking capabilities. Declares what the seller supports for `kind: "event"` optimization goals.

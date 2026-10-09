@@ -35,7 +35,7 @@ test("input-field weight report attributes the largest transitive schema graphs"
   const { schemas } = loadRepresentativeMediaBuyRuntime();
   const report = analyzeInputSchemaWeights(schemas);
 
-  assert.equal(report.tool_count, 19);
+  assert.equal(report.tool_count, 20);
   // Exact Reliable Reporting reads include the shared pagination closure;
   // consumer-status sync adds one compact tool and its status definition;
   // targeting reuses four named codegen-safe item and cross-field schemas.
@@ -48,7 +48,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // reached from list_products, request_proposals, and refine_proposals.
   // Daypart time granularity adds one shared enum reached through the
   // daypart requirement in the targeting-bearing tools.
-  assert.equal(report.definition_instances, 681);
+  // The experimental get_audience_overlap read reuses already-counted shared
+  // definitions (account reference, context, ext) and adds 13 instances.
+  assert.equal(report.definition_instances, 694);
   assert.equal(report.unique_definitions, 185);
   assert.equal(report.repeated_definitions, 133);
   assert.ok(report.repeated_definition_bytes > 180_000);
@@ -233,7 +235,7 @@ test("experiment report keeps all alternatives smaller than standalone model con
   const variants = report.variants;
   assert.equal(report.status, "non-normative");
   assert.equal(report.prompt_cleanup_adapter.required, true);
-  assert.equal(report.selection.tools.length, 19);
+  assert.equal(report.selection.tools.length, 20);
   // Tolerance band, not an exact pin: every schema-touching PR shifts this
   // number, and an exact equality forced each one to re-pin the constant —
   // guaranteeing merge conflicts between any two in-flight schema PRs (#6571).

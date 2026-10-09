@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/get-audience-overlap-request.json",
+  "title": "Get Audience Overlap Request",
+  "x-status": "experimental",
+  "x-tool-summary": "Read how many people one synced audience shares with others on the same account, as bucketed or approximate ranges.",
+  "description": "Optional, capability-advertised read of the overlap between one audience the caller synced on an account and up to media_buy.audience_targeting.audience_overlap.max_comparisons other audiences the caller synced on the same account. Returns aggregate counts only, never member identifiers. The caller MUST be authorized to read every compared audience; account membership alone is not enough. Every audience_id MUST be an audience whose members the caller supplied through sync_audiences on this account; seller-owned segments, third-party segments, audiences from another account, and audiences created from an external source cannot be compared. Sellers implementing this task MUST advertise media_buy.audience_targeting.audience_overlap and list media_buy.audience_overlap in experimental_features. Experimental (x-status: experimental): per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account that owns every compared audience. Overlap is never computed across accounts."
+    },
+    "audience_id": {
+      "type": "string",
+      "x-added-in": "3.3.0",
+      "description": "The audience to compare from, as the buyer identified it in sync_audiences.",
+      "x-entity": "audience"
+    },
+    "compare_to": {
+      "type": "array",
+      "x-added-in": "3.3.0",
+      "description": "Audiences to compare against audience_id, as the buyer identified them in sync_audiences. At most media_buy.audience_targeting.audience_overlap.max_comparisons entries; a longer list is rejected with INVALID_REQUEST. MUST NOT contain audience_id or repeat an entry.",
+      "items": {
+        "type": "string",
+        "x-entity": "audience"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "account",
+    "audience_id",
+    "compare_to"
+  ],
+  "additionalProperties": true
+}

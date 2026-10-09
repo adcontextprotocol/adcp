@@ -247,6 +247,29 @@
     },
     {
       "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "audience_targeting": {
+                "required": ["audience_overlap"]
+              }
+            },
+            "required": ["audience_targeting"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.audience_overlap" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "allOf": [
           {
             "properties": {
@@ -1861,6 +1884,29 @@
                 "$ref": "/schemas/core/audience-activation-method.json"
               },
               "minItems": 1
+            },
+            "audience_overlap": {
+              "type": "object",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "Presence indicates the seller supports get_audience_overlap between audiences the buyer synced on the same account. Absence means the seller does not support overlap reads; buyers MUST NOT call get_audience_overlap and MUST NOT read absence as zero overlap. Experimental (x-status: experimental): sellers declaring this object MUST list media_buy.audience_overlap in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice.",
+              "properties": {
+                "max_comparisons": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Maximum number of compare_to entries the seller accepts in one get_audience_overlap request. A longer list is rejected with INVALID_REQUEST. Seller-declared; the schema sets no cap."
+                },
+                "minimum_overlap_size": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Smallest overlap the seller will disclose. An overlap below this is returned as suppressed, never as a range or as zero. MUST be at least media_buy.audience_targeting.minimum_audience_size, so overlap never exposes a smaller cell than the seller's audience minimum. JSON Schema cannot compare the two fields; conformance enforces it."
+                }
+              },
+              "required": [
+                "max_comparisons",
+                "minimum_overlap_size"
+              ],
+              "additionalProperties": true
             },
             "matching_latency_hours": {
               "type": "object",

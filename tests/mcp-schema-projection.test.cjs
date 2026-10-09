@@ -92,9 +92,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // minute-resolution dayparts add the start_time/end_time pair, its one-of-two
 // exclusion, and the time_granularity requirement to the shared daypart
 // graph carried by every targeting-bearing task (+2,087 bytes measured,
-// 443.3 → 445.4 KiB), bounded at 446 KiB.
+// 443.3 → 445.4 KiB), bounded at 446 KiB. The experimental get_audience_overlap
+// read adds one small request input to the media-buy profile, measured at
+// 461,859 bytes (451.0 KiB) and bounded at 452 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 446,
+  'media-buy': 452,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
