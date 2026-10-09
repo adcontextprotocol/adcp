@@ -247,6 +247,28 @@ jobs:
           # whose provenance and checksum were verified above, so drop only
           # that version's pin from this disposable checkout.
           rm -f "sdk/schemas/releases/${bundle_version}.json"
+          # The SDK also syncs PREVIEW_VERSIONS (currently the audited 3.1.27
+          # maintenance release) alongside the primary pin. Audited pins are
+          # only fetched from the official host and reject ADCP_SKIP_SIGNATURE,
+          # but this job points ADCP_BASE_URL at the local candidate host.
+          # Those previews are validation-only caches unrelated to the PR
+          # bundle, so drop them from this disposable checkout. Fail loudly if
+          # the SDK stops declaring them in this form.
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          path = Path("sdk/scripts/sync_schemas.py")
+          text, count = re.subn(
+              r"^PREVIEW_VERSIONS: tuple\[str, \.\.\.\] = .*$",
+              "PREVIEW_VERSIONS: tuple[str, ...] = ()",
+              path.read_text(),
+              flags=re.MULTILINE,
+          )
+          if count != 1:
+              raise SystemExit("sync_schemas.py does not declare PREVIEW_VERSIONS as expected")
+          path.write_text(text)
+          PY
           mkdir -p "${RUNNER_TEMP}/protocol-host/protocol"
           cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
           cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"
