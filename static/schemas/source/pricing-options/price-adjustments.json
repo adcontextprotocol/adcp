@@ -46,7 +46,6 @@
           "factor": {
             "type": "number",
             "exclusiveMinimum": 0,
-            "exclusiveMaximum": 2,
             "description": "Index multiplier; requires kind index."
           },
           "valid_from": {
@@ -143,7 +142,6 @@
           "factor": {
             "type": "number",
             "exclusiveMinimum": 0,
-            "exclusiveMaximum": 2,
             "description": "Index multiplier; requires kind index."
           },
           "valid_from": {
@@ -220,7 +218,6 @@
           "factor": {
             "type": "number",
             "exclusiveMinimum": 0,
-            "exclusiveMaximum": 2,
             "description": "Index multiplier; requires kind index."
           },
           "valid_from": {
@@ -272,5 +269,6 @@
       "flight_windows": "A flight crossing a row's valid_from or valid_until is rejected with INVALID_REQUEST.",
       "resolved_price_binding": "A buyer-supplied pricing that differs from the resolved result MUST be rejected with INVALID_REQUEST carrying resolved_fixed_price and resolved_price_breakdown."
     }
-  }
+  },
+  "x-status": "experimental"
 }

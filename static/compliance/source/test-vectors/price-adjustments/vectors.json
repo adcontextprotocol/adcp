@@ -433,6 +433,20 @@
           "valid_until": "2027-01-01T00:00:00+01:00"
         }
       ]
+    },
+    "cpm_prime_index": {
+      "pricing_option_id": "cpm_usd_prime_index",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 20.0,
+      "price_adjustments": [
+        {
+          "dimension": "always",
+          "kind": "index",
+          "name": "prime_position_index",
+          "factor": 2.5
+        }
+      ]
     }
   },
   "resolution_cases": [
@@ -1199,6 +1213,29 @@
           }
         ]
       }
+    },
+    {
+      "id": "index_factor_above_two_is_recorded_as_its_currency_amount",
+      "option": "cpm_prime_index",
+      "selection": {
+        "format_option_refs": [],
+        "placement_selection": {
+          "mode": "default"
+        }
+      },
+      "expect": {
+        "fixed_price": 50.0,
+        "applied": [
+          "prime_position_index"
+        ],
+        "breakdown": [
+          {
+            "kind": "fee",
+            "name": "prime_position_index",
+            "amount": 30.0
+          }
+        ]
+      }
     }
   ],
   "invalid_resolution_cases": [
@@ -1398,20 +1435,6 @@
       }
     },
     {
-      "id": "factor_must_stay_below_two",
-      "applies_to": "both",
-      "mutate": {
-        "price_adjustments": [
-          {
-            "dimension": "always",
-            "kind": "index",
-            "name": "x",
-            "factor": 2.0
-          }
-        ]
-      }
-    },
-    {
       "id": "validity_window_must_be_a_date_time",
       "applies_to": "both",
       "mutate": {
@@ -1422,6 +1445,20 @@
             "name": "x",
             "factor": 1.1,
             "valid_from": "November"
+          }
+        ]
+      }
+    },
+    {
+      "id": "factor_must_be_positive",
+      "applies_to": "both",
+      "mutate": {
+        "price_adjustments": [
+          {
+            "dimension": "always",
+            "kind": "index",
+            "name": "x",
+            "factor": 0
           }
         ]
       }

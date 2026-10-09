@@ -88,13 +88,17 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // list_products, request_proposals, and refine_proposals (~0.5 KiB each),
 // measured at 452,953 bytes (442.3 KiB) and bounded at 443 KiB. The
 // outcome_target vendor_metric goal branch (vendor BrandKey plus metric_id,
-// ~0.3 KiB) reaches the same three tasks, bounded at 444 KiB.
-// The selection-dependent price_adjustments table (#7659) adds its two typed row
-// variants to the canonical pricing option embedded in media-buy tool inputs
-// (~1.9 KiB), measured at 455,180 bytes (444.5 KiB) and
-// bounded at 446 KiB.
+// ~0.3 KiB) reaches the same three tasks, bounded at 444 KiB. Experimental
+// minute-resolution dayparts add the start_time/end_time pair, its one-of-two
+// exclusion, and the time_granularity requirement to the shared daypart
+// graph carried by every targeting-bearing task (+2,087 bytes measured,
+// 443.3 → 445.4 KiB), bounded at 446 KiB. The experimental price_adjustments
+// table (#7659: index and premium rows, three selector variants, validity
+// windows) adds its row schema once to the canonical pricing option embedded in
+// media-buy tool inputs (~1.9 KiB), measured at 457,997 bytes (447.3 KiB) and
+// bounded at 448 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 446,
+  'media-buy': 448,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -106,8 +110,11 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // Experimental Product.execution_requirements (#7763) reaches it through the
 // seeded Product and brings it to ~1_260_400 bytes. DOOH placement location and
 // inventory summary fields (#7416) bring it to ~1_267_800 bytes; the headroom
-// covers the additive 3.3 Product fields still in review.
-const PARITY_COMPILE_LIMIT = 1_280_000;
+// covers the additive 3.3 Product fields still in review. The 3.3 broadcast
+// TV, daypart and execution-readiness additions bring it to ~1_282_300 bytes.
+// Further growth should be met by hoisting shared definitions out of the
+// seeded Product (#8041), not by another bump.
+const PARITY_COMPILE_LIMIT = 1_300_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

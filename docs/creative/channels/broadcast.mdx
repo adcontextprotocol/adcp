@@ -1,43 +1,617 @@
 ---
-title: Broadcast Creative
-description: "Canonical hosted video and audio contracts for linear television and radio."
-"og:title": "AdCP — Broadcast Creative"
+title: Broadcast TV creative
+description: "Canonical hosted-video contracts, creative identifiers, and measurement reconciliation for linear television spots."
+"og:title": "AdCP — Broadcast TV creative"
+testable: true
 ---
 
-Linear television uses `video_hosted`; radio uses `audio_hosted`. Spot duration, codec, loudness, frame rate, and delivery-file constraints narrow the canonical. Network, station, daypart, rotation, clearance, and audience measurement remain media-buy facts.
+This guide is for sellers publishing linear TV inventory and for buyer agents planning, trafficking, and reconciling it. Linear television spots use the canonical `video_hosted` format. They do not require a new canonical: the product narrows hosted video to a fixed duration and file specification with a single video slot. Network, station, daypart, clearance, and audience measurement are media-buy facts, not creative facts. [Radio](/docs/creative/channels/radio) has its own guide.
+
+## Reference format declarations
+
+The following :15, :30, and :60 declarations use a common US delivery profile: 16:9 at 1920×1080 or larger, 29.97 fps, MPEG-2 4:2:2 video with PCM audio in an MXF wrapper, and ATSC A/85 loudness (-24 LKFS ±2 dB, true peak -2 dBTP). A station or network may publish a different accepted profile (EBU R 128 loudness in Europe, for example), and the buyer matches the declaration it is offered rather than this one. See [Delivery files](#delivery-files) for the file fields, including the experimental `loudness` object.
+
+### :15 spot
 
 ```json
 {
-  "format_option_id": "broadcast_tv_30s",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
+  "format_option_id": "broadcast_tv_15s",
+  "display_name": "Broadcast TV :15 spot",
+  "applies_to_channels": ["linear_tv"],
   "format_kind": "video_hosted",
   "params": {
-    "duration_ms_exact": 30000,
-    "width": 1920,
-    "height": 1080,
+    "duration_ms_exact": 15000,
+    "aspect_ratio": "16:9",
+    "min_width": 1920,
+    "min_height": 1080,
+    "video_codecs": ["mpeg2"],
+    "audio_codecs": ["pcm"],
     "containers": ["mxf"],
-    "slots": [{ "asset_group_id": "video_main", "asset_type": "video", "required": true }]
+    "frame_rates": [29.97],
+    "loudness": {
+      "standard": "atsc_a85",
+      "target_lufs": -24,
+      "tolerance_db": 2,
+      "max_true_peak_dbfs": -2
+    },
+    "asset_source": "buyer_uploaded",
+    "buyer_asset_acceptance": "accepted",
+    "slots": [
+      { "asset_group_id": "video_main", "asset_type": "video", "required": true }
+    ]
   }
 }
 ```
 
+### :30 spot
+
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
+  "format_option_id": "broadcast_tv_30s",
+  "display_name": "Broadcast TV :30 spot",
+  "applies_to_channels": ["linear_tv"],
   "format_kind": "video_hosted",
+  "params": {
+    "duration_ms_exact": 30000,
+    "aspect_ratio": "16:9",
+    "min_width": 1920,
+    "min_height": 1080,
+    "video_codecs": ["mpeg2"],
+    "audio_codecs": ["pcm"],
+    "containers": ["mxf"],
+    "frame_rates": [29.97],
+    "loudness": {
+      "standard": "atsc_a85",
+      "target_lufs": -24,
+      "tolerance_db": 2,
+      "max_true_peak_dbfs": -2
+    },
+    "asset_source": "buyer_uploaded",
+    "buyer_asset_acceptance": "accepted",
+    "slots": [
+      { "asset_group_id": "video_main", "asset_type": "video", "required": true }
+    ]
+  }
+}
+```
+
+### :60 spot
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
+  "format_option_id": "broadcast_tv_60s",
+  "display_name": "Broadcast TV :60 spot",
+  "applies_to_channels": ["linear_tv"],
+  "format_kind": "video_hosted",
+  "params": {
+    "duration_ms_exact": 60000,
+    "aspect_ratio": "16:9",
+    "min_width": 1920,
+    "min_height": 1080,
+    "video_codecs": ["mpeg2"],
+    "audio_codecs": ["pcm"],
+    "containers": ["mxf"],
+    "frame_rates": [29.97],
+    "loudness": {
+      "standard": "atsc_a85",
+      "target_lufs": -24,
+      "tolerance_db": 2,
+      "max_true_peak_dbfs": -2
+    },
+    "asset_source": "buyer_uploaded",
+    "buyer_asset_acceptance": "accepted",
+    "slots": [
+      { "asset_group_id": "video_main", "asset_type": "video", "required": true }
+    ]
+  }
+}
+```
+
+Each unit length is its own format option, and a product may offer any subset. Other lengths (:10, :05) use the same shape with a different `duration_ms_exact`.
+
+## Delivery files
+
+Broadcast traffic systems ingest a mezzanine file, not a web-playable MP4. A `video_hosted` option narrows to that file with `containers`, `video_codecs`, and `audio_codecs`.
+
+| Field | Broadcast values |
+|-------|------------------|
+| `containers` | `mxf` (SMPTE Material Exchange Format) |
+| `video_codecs` | `mpeg2` (MPEG-2 video, typically 4:2:2 in broadcast delivery, the video essence of XDCAM HD422), `avc_intra` (AVC-Intra), `xavc` (XAVC) |
+| `audio_codecs` | `pcm` |
+
+The codec slugs name codec families, not recording formats or profiles. `avc_intra` and `xavc` are H.264-based but distinct from `h264`: a product that accepts `h264` does not thereby accept them. Wrapper (`containers`) and bitrate bounds are declared separately; chroma subsampling, profile, and scan type are not machine-declarable on `video_hosted` yet, so a seller states them in the product description or its delivery spec sheet. Other mezzanine codecs (for example DNxHD) are not yet in the enum, and `captions` only states whether captions are required.
+
+### Loudness (experimental)
+
+`loudness` states the audio loudness a delivered spot MUST meet. It is optional and [experimental](/docs/reference/experimental-status) in AdCP 3.3, so sellers that populate it list `creative.broadcast_loudness` in `experimental_features`.
+
+| Field | Meaning |
+|-------|---------|
+| `standard` | `ebu_r128` (EBU R 128, Europe), `atsc_a85` (ATSC A/85, US), or `custom` |
+| `target_lufs` | Target integrated loudness measured per ITU-R BS.1770, negative LUFS/LKFS (typical: -23 for R 128, -24 for A/85) |
+| `tolerance_db` | Permitted deviation from `target_lufs` in LU (typical: 0.5 for R 128, 2 for A/85) |
+| `max_true_peak_dbfs` | Maximum true-peak level in dBTP (typical: -1 for R 128, -2 for A/85) |
+
+The three numeric fields carry the same semantics as `loudness_lufs`, `loudness_tolerance_db`, and `true_peak_dbfs` on [`audio_hosted`](/docs/creative/channels/audio). `standard` labels the requirement; the numeric fields are what the receiver checks, and `standard` alone does not imply numeric values. Declare all three numeric fields when the requirement is to be checked.
+
+## Creative identifiers
+
+Use the manifest's `industry_identifiers` list for the traffic or clearance identifier the broadcaster expects. AdCP supports `ad_id`, `isci`, `clearcast_clock`, and `idcrea`. Ad-ID is the common US television identifier; ISCI persists in some station traffic systems; Clearcast and IDcrea serve the UK and France. Choose the identifier your station's traffic system keys on. A manifest may carry more than one identifier (for example both `ad_id` and `isci` when a traffic system still keys on ISCI). Each duration cut carries its own identifiers: the :15 and :30 versions of one spot are two creatives.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json",
+  "format_kind": "video_hosted",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "broadcast_tv_30s"
+  },
+  "industry_identifiers": [
+    { "type": "ad_id", "value": "NOVA1234001H" }
+  ],
   "assets": {
     "video_main": {
       "asset_type": "video",
-      "url": "https://cdn.acmeoutdoor.example/trail-pro-tv-30.mxf",
+      "url": "https://cdn.novabrands.example/tv/summer-30.mxf",
       "duration_ms": 30000,
       "width": 1920,
-      "height": 1080
+      "height": 1080,
+      "container_format": "mxf",
+      "video_codec": "mpeg2",
+      "frame_rate": "29.97",
+      "audio_codec": "pcm"
+    }
+  }
+}
+```
+
+An airing ties back to its creative in two hops. `by_spot[].creative_id` is the AdCP creative identifier you synced, and that creative's manifest carries the `industry_identifiers` value the station's traffic system keys on. [`by_spot`](#reconciliation-contract) rows do not carry the logged Ad-ID or ISCI themselves; the seller maps the logged identifier to your `creative_id`.
+
+## No VAST or tracker semantics
+
+The reference declarations contain only the required `video_main` file slot. A linear spot is played out by the station's automation system, where no VAST tag, impression pixel, click tracker, or clickthrough URL can operate. Their absence is part of the format contract; do not add tracker slots or represent these spots as `video_vast`.
+
+Streaming and connected-TV inventory is a separate execution context. It may use `video_hosted` with explicitly declared trackers or `video_vast` for VAST delivery; see [Video](/docs/creative/channels/video) and [CTV](/docs/creative/channels/ctv). A spot simulcast on a streaming service does not make trackers operational on the linear airing, and a linear buy's counts do not come from trackers at all.
+
+
+
+## Networks, stations, and dayparts
+
+Where a spot runs is described outside the creative, in three places:
+
+- **Inventory** — a product's `publisher_properties` select properties from the seller's `adagents.json`. Linear properties carry `station_id` (a call sign), `facility_id` (a regulator-prefixed license such as `fcc:73953`), or `network_id` identifiers. Model the product by who commits the order: a network or rep-firm package is one product even when it fulfills across affiliates, while station-direct inventory is a product per selling station or group. See [Broadcast TV package forecast](/docs/media-buy/product-discovery/media-products#broadcast-tv-package-forecast).
+- **Daypart on the buy** — `daypart_targets` on the package's targeting overlay (days, a `timezone` where `inventory_local` evaluates each station's own clock, and whole-hour `start_hour`/`end_hour`) when the product supports it. **Experimental in AdCP 3.3** (`media_buy.daypart_granularity`): an entry may instead carry `start_time` and `end_time` as `HH:MM`, so a window such as 19:30–23:00 or a break at a programme junction is expressible. A product declares the finest clock it honors in `overlay_support.daypart_targets.time_granularity` (`hour`, `quarter_hour`, or `minute`), and a seller rejects a finer time than it declares with `UNSUPPORTED_FEATURE` rather than rounding. See [Minute-resolution dayparts](/docs/media-buy/advanced-topics/targeting#minute-resolution-dayparts-experimental).
+- **Daypart on the report** — `daypart` on a [`by_spot`](#reconciliation-contract) row is a seller-defined label such as `prime_time` or `prime_access`. There is no daypart enum, so a buyer reconciling across sellers compares the as-run `aired_at` against the daypart it bought rather than matching labels.
+
+## Delivery measurement and reconciliation
+
+Linear TV plans and guarantees on measured audience: panel, set-top-box, and automatic-content-recognition data licensed from a currency or measurement provider, not served-event counts. What is invoiced depends on the pricing model. CPM and CPP bill on the currency count; a per-spot unit-rate buy bills on aired units, where the as-run log is the evidence of what aired. Three declarations carry the audience contract, and a fourth question (did it air?) is answered by separate evidence.
+
+- **Demographic notation** — `demographic_system` and `demographic` on the forecast (and on the CPP pricing option) say how the audience is written. `nielsen` notation is `A25-54`, `P2+`, `W18-49`. The enum also carries `videoamp` (age bands with an optional gender prefix, such as `P25-54`) and `nmo` (Netherlands: age bands such as `25-67` or `M25-54`); the notation strings for both are still being confirmed with the providers, so treat the examples as provisional. The worked example below writes its demo in `nielsen` notation while VideoAmp counts it; a seller whose provider publishes its own notation declares `demographic_system: "videoamp"` instead. Notation is not a provider.
+- **Provider identity** — `measurement_source` on forecast and delivery rows names whose data produced the numbers, as a lowercase slug (`nielsen`, `videoamp`, `ispot`). The same `demographic_system: "nielsen"` notation can be measured by different providers. The contract names the billing vendor as a brand key (`{ "domain": "videoamp.com" }`, resolved through [brand.json](/docs/brand-protocol/brand-json)) in `measurement_terms.billing_measurement.vendor` (`nielsen.com`, `videoamp.com`, `ispot.tv`). A seller offering the same inventory under more than one currency publishes a forecast per `measurement_source`; each forecast belongs to one product or proposal, so that means one per currency.
+- **Maturation** — `reporting_capabilities.measurement_windows` declares the stages: `live` (the airing day), `c3` (live plus three days of time-shifted viewing), and `c7` (live plus seven). A product typically marks one window `is_guarantee_basis: true`, but which window a deal settles on is a term of the deal: read it from `billing_measurement.measurement_window`, not from convention. A window's `expected_availability_days` says when the vendor publishes it; for C7 that is roughly two to three weeks after the airing. Until a row is `is_final: true` for the billing window, the number is provisional and not an invoicing source; a later window supersedes an earlier one with its own provisional-to-final lifecycle. See [Billing authority](/docs/media-buy/advanced-topics/billing-authority).
+
+Later windows only add time-shifted viewing, so `live` and `c3` undershoot `c7`. Use them for pacing, and do not invoice or declare a shortfall on a provisional row. Airings from different weeks of one flight mature on different days, so a buyer reconciling a long flight pulls date slices and reads each at the window it has reached.
+
+### Reconciliation contract
+
+Two kinds of evidence come back, and they answer different questions.
+
+| | As-run evidence | Audience measurement |
+|---|---|---|
+| Question | Did this spot air, where, and when? | How many people in the demo saw the schedule? |
+| Where | `by_package[].by_spot[]` | `by_package[]` rows, and `by_demographic[]` |
+| Fields | `spot_id`, `aired_at`, `network`, `station`, `daypart`, `creative_id` | `impressions` or `grps`, `measurement_source`, `measurement_window`, `is_final`, `finalized_at` |
+| Produced by | The station's traffic or automation log, or a third-party airing verification | The measurement provider named in `measurement_source` |
+| Matures | On the airing, then stable | Live → C3 → C7 |
+
+The rules:
+
+- **Airing evidence is not a counting source.** Station logs, affidavits, and playout records prove that a spot aired. The audience currency turns airings into the audience-size number. Never infer audience from airings, and never infer an airing from audience: `aired_at` is what proves an airing.
+- **As-run is reported apart from audience.** A product that declares `supports_spot_breakdown` with `available_metrics: []` provides airing evidence only; `by_spot` rows then carry no audience numbers. A product may instead declare metrics at spot grain, which appear when a later window supersedes an earlier one. A guarantee and its invoice reconcile against package rows (and the `by_demographic` row for the contracted demo), and the buyer does not rebuild package totals from spot rows.
+- **Spot lifecycle is experimental and declared.** In AdCP 3.3 a seller may also report `scheduled`, `preempted`, and `makegood` rows through `by_spot[].spot_status`, and says which it reports in `supports_spot_breakdown.available_statuses` (experimental, `media_buy.spot_lifecycle`). Only `aired` and `makegood` rows carry `aired_at` and prove an airing; a `scheduled` or `preempted` row carries `scheduled_at` instead and is not airing evidence. A status the seller does not list proves nothing: the absence of `preempted` rows is not evidence that nothing was preempted. See [Optimization and reporting](/docs/media-buy/media-buys/optimization-reporting).
+- **`spot_id` is stable.** The same `spot_id` is reported under Live, C3, and C7 (and, where the seller reports lifecycle, from `scheduled` through `aired` or `preempted`), so a buyer joins as-run evidence to later audience rows on it. Audience rows join on `(media_buy_id, package_id, reporting_period, measurement_window)`.
+- **Completeness is explicit.** `by_spot_truncated: false` means the as-run log is complete for the period. A buyer reconciling airings requests the spot dimension without a `limit`. A seller that cannot attribute a creative to an airing omits `creative_id` rather than guessing.
+- **Who attests the airing is not declared.** A buyer cannot tell a station traffic log from a third-party airing verification from the rows alone, and affidavit references are not carried on the wire today. Take both from the seller's product description and the contract.
+
+## Worked example: a CPM impression guarantee on a demo
+
+Pinnacle Media buys for Nova Brands from Harbor Broadcasting. Nova wants five million impressions among adults 25–54, delivered through :15 and :30 spots, counted by VideoAmp on the C7 window. The currency, window, and variance are agreed before the first spot airs.
+
+### Today's limits
+
+This works today with four gaps. Read them before building on it:
+
+- **The demo is bound on the forecast, not on the price.** A CPM pricing option has no demographic parameters, unlike a CPP option (`parameters.demographic_system`, `demographic`). `measurement_terms.billing_measurement` binds the vendor, the window, and the variance, but has no demographic field.
+- **The guaranteed volume has no typed definition.** `purchases[].impressions` is the contracted volume, and a buyer can require a floor on it with `refine_proposals` `constraints.impressions` (a hard minimum summed across purchases). The schema does not say that number counts measured audience, in which demo, from which vendor, or on which window. Those facts sit on the forecast and `billing_measurement`, and the forecast is outside `commercial_terms`, so it is not covered by `terms_digest`. Treat the demo as a term agreed in the human contract outside AdCP, not one a protocol agent can verify.
+- **:30 equivalization is only partly expressible.** Rate-side spot-length indexing is expressible through [`price_adjustments`](/docs/media-buy/advanced-topics/pricing-models#selection-dependent-price-adjustments) (an index keyed to the spot's format option). Impression-side :30 equivalization and demo-bound CPM remain open and are tracked for 3.4 in [#8001](https://github.com/adcontextprotocol/adcp/issues/8001). Nothing declares whether a :15 impression counts as half a :30 unit or the factor to apply, so on a buy that mixes :15 and :30 spots the impression-side rule is a term to settle outside the protocol.
+- **No under-delivery trigger, and the schedule on the wire is experimental.** `makegood_policy` does not name a volume shortfall as a trigger. A seller may report the planned schedule as `scheduled` rows in `by_spot`, but that field is experimental and seller-declared, so a buyer cannot assume one. See [Makegoods](#makegoods).
+
+
+### 1. The seller publishes the product
+
+The product is a `linear_tv` package with two `video_hosted` format options, one CPM price, and the measurement it will stand behind. VideoAmp is the billing vendor and C7 is the guarantee window. The final C7 record is due within 360 hours of the window closing, and the seller publishes it on `get_media_buy_delivery`. `supports_spot_breakdown.available_metrics` is empty, so spot rows are airing evidence only. The seller also declares the experimental spot lifecycle (`available_statuses`) and break position (`supports_break_position`), and lists `media_buy.spot_lifecycle` in `experimental_features` on `get_adcp_capabilities`.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/canonical-product.json",
+  "product_id": "harbor_prime_a2554",
+  "name": "Harbor Prime Access and Prime, Adults 25-54",
+  "description": "Prime-access and prime-time :15 and :30 spots on the Harbor network, guaranteed against adults 25-54 impressions.",
+  "publisher_properties": [
+    { "publisher_domain": "harborbroadcasting.example", "selection_type": "all" }
+  ],
+  "channels": ["linear_tv"],
+  "delivery_type": "guaranteed",
+  "format_options": [
+    {
+      "format_option_id": "broadcast_tv_15s",
+      "format_kind": "video_hosted",
+      "params": {
+        "duration_ms_exact": 15000,
+        "aspect_ratio": "16:9",
+        "min_width": 1920,
+        "min_height": 1080,
+        "video_codecs": ["mpeg2"],
+        "audio_codecs": ["pcm"],
+        "containers": ["mxf"],
+        "frame_rates": [29.97],
+        "loudness": {
+          "standard": "atsc_a85",
+          "target_lufs": -24,
+          "tolerance_db": 2,
+          "max_true_peak_dbfs": -2
+        },
+        "slots": [
+          { "asset_group_id": "video_main", "asset_type": "video", "required": true }
+        ]
+      }
+    },
+    {
+      "format_option_id": "broadcast_tv_30s",
+      "format_kind": "video_hosted",
+      "params": {
+        "duration_ms_exact": 30000,
+        "aspect_ratio": "16:9",
+        "min_width": 1920,
+        "min_height": 1080,
+        "video_codecs": ["mpeg2"],
+        "audio_codecs": ["pcm"],
+        "containers": ["mxf"],
+        "frame_rates": [29.97],
+        "loudness": {
+          "standard": "atsc_a85",
+          "target_lufs": -24,
+          "tolerance_db": 2,
+          "max_true_peak_dbfs": -2
+        },
+        "slots": [
+          { "asset_group_id": "video_main", "asset_type": "video", "required": true }
+        ]
+      }
+    }
+  ],
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_usd",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 32
+    }
+  ],
+  "measurement_terms": {
+    "billing_measurement": {
+      "vendor": { "domain": "videoamp.com" },
+      "measurement_window": "c7",
+      "max_variance_percent": 5,
+      "finalization_deadline_hours": 360
+    },
+    "makegood_policy": {
+      "available_remedies": ["additional_delivery", "credit"]
     }
   },
-  "industry_identifiers": [
-    { "type": "ad_id", "value": "ABCD1234000" }
+  "forecast": {
+    "method": "guaranteed",
+    "currency": "USD",
+    "demographic_system": "nielsen",
+    "demographic": "A25-54",
+    "measurement_source": "videoamp",
+    "points": [
+      {
+        "budget": 160000,
+        "metrics": { "measured_impressions": { "mid": 5000000 } }
+      }
+    ]
+  },
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 2880,
+    "timezone": "America/New_York",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "spend"],
+    "date_range_support": "date_range",
+    "measurement_windows": [
+      {
+        "window_id": "live",
+        "description": "Live viewing on the airing day",
+        "duration_days": 0,
+        "expected_availability_days": 2
+      },
+      {
+        "window_id": "c3",
+        "description": "Live plus 3 days of time-shifted viewing",
+        "duration_days": 3,
+        "expected_availability_days": 8
+      },
+      {
+        "window_id": "c7",
+        "description": "Live plus 7 days of time-shifted viewing",
+        "duration_days": 7,
+        "expected_availability_days": 22,
+        "is_guarantee_basis": true
+      }
+    ],
+    "supports_demographic_breakdown": {
+      "age": {
+        "reporting_modes": ["enumerated_intervals"],
+        "intervals": [
+          {
+            "age": { "min": 25, "max": 54, "include_unknown": false },
+            "demographic": "A25-54",
+            "demographic_system": "nielsen"
+          }
+        ]
+      },
+      "demographic_systems": ["nielsen"],
+      "may_suppress_small_cells": false
+    },
+    "supports_spot_breakdown": {
+      "available_metrics": [],
+      "available_statuses": ["scheduled", "preempted", "makegood"],
+      "supports_break_position": true
+    }
+  }
+}
+```
+
+### 2. The buyer asks for the outcome
+
+The buyer fixes the goal and volume, and states the demo in the brief because the goal cannot carry it. Send `criteria.outcome_target` only to a seller that declares `media_buy.outcome_target` in `get_adcp_capabilities`; a seller that does not rejects the structured form with `UNSUPPORTED_FEATURE`, and the buyer falls back to the brief alone. `cost_per` is not sent: it is rejected on `measured_impressions`, and the CPM rate is the price. The goal is a planning input, not a guarantee.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/request-proposals-request.json",
+  "idempotency_key": "6f3d8a52-7b1e-4c4a-9d20-3c1b5e7a9f01",
+  "brief": "Five million adults 25-54 impressions in prime access and prime, :15 and :30 spots, measured by VideoAmp at C7.",
+  "account": {
+    "brand": { "domain": "novabrands.example" },
+    "operator": "pinnacle-media.example"
+  },
+  "criteria": {
+    "product_ids": ["harbor_prime_a2554"],
+    "outcome_target": {
+      "goal": { "kind": "metric", "metric": "measured_impressions" },
+      "volume": 5000000
+    }
+  }
+}
+```
+
+### 3. The seller's proposal carries the contract
+
+The draft states the guaranteed volume, the price, the formats, and the agreed measurement terms on the purchase. Finalizing and accepting it ([`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal)) commits `commercial_terms`. The forecast repeats the demo and the currency so delivery rows can be compared against it, but it is not part of the committed terms and its numbers may change between draft and committed proposal.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/canonical-proposal.json",
+  "proposal_id": "proposal_harbor_a2554_01",
+  "proposal_kind": "new_media_buy",
+  "proposal_status": "draft",
+  "name": "Harbor prime, adults 25-54, 5.0M guaranteed impressions",
+  "brief_alignment": "Adults 25-54 at a $32 CPM, counted by VideoAmp on the C7 window. The demo is declared on the forecast; the CPM price is not demo-bound.",
+  "commercial_terms": {
+    "brand": { "domain": "novabrands.example" },
+    "purchases": [
+      {
+        "product_id": "harbor_prime_a2554",
+        "pricing_option_id": "cpm_usd",
+        "pricing": {
+          "pricing_option_id": "cpm_usd",
+          "pricing_model": "cpm",
+          "currency": "USD",
+          "fixed_price": 32
+        },
+        "format_option_refs": [
+          { "scope": "product", "format_option_id": "broadcast_tv_15s" },
+          { "scope": "product", "format_option_id": "broadcast_tv_30s" }
+        ],
+        "budget": 160000,
+        "impressions": 5000000,
+        "start_time": "2026-08-03T04:00:00Z",
+        "end_time": "2026-08-24T04:00:00Z",
+        "measurement_terms": {
+          "billing_measurement": {
+            "vendor": { "domain": "videoamp.com" },
+            "measurement_window": "c7",
+            "max_variance_percent": 5,
+            "finalization_deadline_hours": 360
+          },
+          "makegood_policy": {
+            "available_remedies": ["additional_delivery", "credit"]
+          }
+        }
+      }
+    ],
+    "start_time": "2026-08-03T04:00:00Z",
+    "end_time": "2026-08-24T04:00:00Z",
+    "total_budget": { "amount": 160000, "currency": "USD" },
+    "agency_estimate_number": "EST-2026-04821"
+  },
+  "terms_digest": "sha256:xuAX4DH8NrqrGIAtXkL56CEW8EcU7vTk2ervdBHJze0",
+  "total_budget_guidance": { "min": 160000, "recommended": 160000, "max": 160000, "currency": "USD" },
+  "forecast": {
+    "method": "guaranteed",
+    "currency": "USD",
+    "demographic_system": "nielsen",
+    "demographic": "A25-54",
+    "measurement_source": "videoamp",
+    "points": [
+      {
+        "budget": 160000,
+        "metrics": { "measured_impressions": { "mid": 5000000 } }
+      }
+    ]
+  }
+}
+```
+
+The forecast's `measured_impressions` is the same count that delivery reports as `impressions` with a `measurement_source`; in a forecast, plain `impressions` means the seller's own ad-server count.
+
+To change a measurement term (a different vendor or window, a different variance), the buyer states the change in `refine_proposals` `ask` and reads the revised `commercial_terms` and `terms_digest`; there is no typed measurement-terms input on refinement. The deprecated `create_media_buy` path instead returns `TERMS_REJECTED` for a term the seller cannot support; see [Accountability](/docs/media-buy/advanced-topics/accountability#measurement-terms-for-phased-maturation-channels).
+
+If the seller confirms through a booking round or sales-desk review, `accept_proposal` returns a `submitted` arm that may carry `expected_confirmation_at` (added in 3.3), an estimate of when to check back. It is not a commitment, so schedule a status check for that time rather than polling tightly. Once `accept_proposal` returns the media buy and its `purchase_bindings[]`, the buyer syncs each cut with [`sync_creatives`](/docs/creative/task-reference/sync_creatives), carrying its own identifier as in [Creative identifiers](#creative-identifiers), and assigns it to the package. Station clearance and delivery deadlines are outside the protocol.
+
+### 4. Delivery: as-run first, audience later
+
+The buyer reads delivery with the demographic breakdown for the contracted demo and the spot breakdown. A reconciliation pull omits the spot `limit` so the log is complete; this example caps it at four rows to stay short.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json",
+  "account": {
+    "brand": { "domain": "novabrands.example" },
+    "operator": "pinnacle-media.example"
+  },
+  "media_buy_ids": ["mb_harbor_a2554"],
+  "start_date": "2026-08-03",
+  "end_date": "2026-08-24",
+  "reporting_dimensions": {
+    "demographic": {
+      "age_ranges": [{ "min": 25, "max": 54, "include_unknown": false }]
+    },
+    "spot": { "limit": 4 }
+  }
+}
+```
+
+During the flight, rows are provisional: Live and C3 numbers with `is_final: false`. As-run evidence is available from the first reporting cycle, about 48 hours after an airing (`expected_delay_minutes`). Once C7 closes and the vendor publishes, the seller reports the settled row:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json",
+  "status": "completed",
+  "reporting_period": {
+    "start": "2026-08-03T00:00:00-04:00",
+    "end": "2026-08-24T00:00:00-04:00",
+    "timezone": "America/New_York"
+  },
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_harbor_a2554",
+      "status": "completed",
+      "is_final": true,
+      "finalized_at": "2026-09-14T15:00:00Z",
+      "totals": {
+        "impressions": 4870000,
+        "spend": 155840
+      },
+      "by_package": [
+        {
+          "package_id": "pkg_harbor_prime",
+          "spend": 155840,
+          "pricing_model": "cpm",
+          "rate": 32,
+          "currency": "USD",
+          "impressions": 4870000,
+          "measurement_source": "videoamp",
+          "measurement_window": "c7",
+          "is_final": true,
+          "finalized_at": "2026-09-14T15:00:00Z",
+          "by_demographic": [
+            {
+              "demographic": "A25-54",
+              "demographic_system": "nielsen",
+              "age": { "min": 25, "max": 54, "include_unknown": false },
+              "impressions": 4870000,
+              "spend": 155840,
+              "measurement_source": "videoamp"
+            }
+          ],
+          "by_demographic_truncated": false,
+          "by_demographic_suppressed": false,
+          "by_spot": [
+            {
+              "spot_id": "spot_0408",
+              "spot_status": "preempted",
+              "scheduled_at": "2026-08-04T19:46:30-04:00",
+              "network": "Harbor Network",
+              "station": "WTST-TV",
+              "daypart": "prime_access",
+              "creative_id": "nova_summer_30"
+            },
+            {
+              "spot_id": "spot_0412",
+              "aired_at": "2026-08-04T20:14:30-04:00",
+              "network": "Harbor Network",
+              "station": "WTST-TV",
+              "daypart": "prime_time",
+              "creative_id": "nova_summer_30",
+              "break_position": { "position_in_break": 2, "spots_in_break": 5 }
+            },
+            {
+              "spot_id": "spot_0413",
+              "aired_at": "2026-08-04T21:02:30-04:00",
+              "network": "Harbor Network",
+              "station": "WTST-TV",
+              "daypart": "prime_time",
+              "creative_id": "nova_summer_15",
+              "break_position": { "position_in_break": 1, "spots_in_break": 4 }
+            },
+            {
+              "spot_id": "spot_0431",
+              "spot_status": "makegood",
+              "replaces_spot_id": "spot_0408",
+              "aired_at": "2026-08-06T19:46:30-04:00",
+              "network": "Harbor Network",
+              "station": "WTST-TV",
+              "daypart": "prime_access",
+              "creative_id": "nova_summer_30"
+            }
+          ],
+          "by_spot_truncated": true
+        }
+      ]
+    }
   ]
 }
 ```
 
-Broadcast systems generally do not fire web trackers. Reconciliation uses traffic logs, affidavits, and audience currencies declared on the product/package. Each cut should carry its own traffic identifier.
+### 5. Reconciliation
 
-See [Video](/docs/creative/channels/video), [Audio](/docs/creative/channels/audio), and [Creative manifests](/docs/creative/creative-manifests).
+The buyer reconciles two streams, each against its own evidence:
+
+1. **Did it air?** Start from the schedule. This seller reports `scheduled` rows (experimental, declared in `available_statuses`), so the planned spots arrive on the wire and each `spot_id` later resolves to an `aired` row or a `preempted` row. A seller that does not declare `scheduled` leaves the schedule outside the protocol, in the buyer's traffic confirmation or the contract. Compare it against the complete `by_spot` log (`by_spot_truncated: false`). A scheduled spot that resolves to a row with `aired_at` is evidenced. A `preempted` row did not air, and the log here shows the replacement: `spot_0431` is a `makegood` row whose `replaces_spot_id` is `spot_0408`. A scheduled spot with no row at all is unevidenced, and it is the basis for a makegood claim. `creative_id` and `daypart` on each aired row confirm that the right cut ran in the daypart the buyer bought, and `break_position` (experimental, `supports_break_position`) places the spot in its break. None of this involves an audience number.
+2. **How many people?** Read the `by_demographic` row for the contracted demo (`A25-54` in `nielsen` notation, with the `age` interval echoed) and confirm `by_demographic_suppressed` is false. The package row must match the agreed `billing_measurement`: `measurement_window: "c7"` with `is_final: true` and `measurement_source: "videoamp"`. The package row carries no demographic of its own, so the `by_demographic` row is how the buyer confirms the number is for the demo. 4,870,000 against the 5,000,000 guarantee is a shortfall of 130,000 impressions.
+3. **What is billed?** This example bills delivered impressions at the CPM, capped at the purchase `budget`: 4,870,000 ÷ 1,000 × $32 = $155,840, the `spend` on the final row. Over-delivery is not billed beyond the cap. That convention is a term of the deal. `max_variance_percent` is not a tolerance on the shortfall against the guarantee; it bounds how far two counts of the same thing may diverge before resolution is triggered. A buyer that holds its own VideoAmp or iSpot subscription reports its count with `report_usage`, as described in [Billing authority](/docs/media-buy/advanced-topics/billing-authority).
+4. **Is the shortfall remedied?** The invoice above already prices out the 130,000 impressions, so an `invoice_adjustment` would be redundant here. Whether a volume shortfall triggers a remedy at all is a term of the deal (see [Makegoods](#makegoods)); `additional_delivery` would fill toward the guarantee and `credit` would carry the value forward.
+
+If the C7 row has not arrived by the deadline (`finalization_deadline_hours`, counted from the close of the C7 window), the counterparty may fall back to its own attestation for invoicing. After the deadline the buyer is exposed: the seller's own attestation could rest on provisional Live or C3 numbers, which understate C7. Set the deadline to match the vendor's published availability, and watch `expected_availability` on the delivery row (or a `reporting_delayed` webhook) before it elapses.
+
+## Makegoods
+
+`measurement_terms.makegood_policy.available_remedies` is a menu the seller commits to, ordered by seller preference: `additional_delivery` (extra airings), `credit` (a credit toward future buys on the account), and `invoice_adjustment` (a reduced invoice). A buyer proposing a remedy the seller does not support is rejected with `TERMS_REJECTED` at negotiation. The schema names performance-standard breaches, billing-variance breaches, and missed finalization deadlines as triggers. A volume shortfall against a guarantee is not among them, so whether and how it triggers a remedy is a term of the deal outside the protocol. Proposing, accepting, and disputing a remedy also happen out of band.
+
+**Report-time spot lifecycle (experimental in AdCP 3.3).** A seller that declares `media_buy.spot_lifecycle` in `experimental_features` can report a preemption and its replacement in `by_spot`:
+
+- A spot keeps one `spot_id` as it moves from `scheduled` to `aired` or to `preempted`. `scheduled_at` carries the planned slot (for a preempted row, the slot that was lost), and a preempted row has no `aired_at`.
+- A `makegood` row is a separate airing with its own `spot_id`, an `aired_at`, and a `replaces_spot_id` naming the preempted spot. A planned replacement is a `scheduled` row that already carries `replaces_spot_id`, so the buyer sees the link before it airs.
+- The seller lists the statuses it reports in `supports_spot_breakdown.available_statuses`. A status that is not listed proves nothing, so a buyer must not read missing `preempted` or `makegood` rows as "nothing was preempted". A preemption surfaces as a `preempted` row on the next report; there is no separate notification, and a seller does not send these rows to callers pinned below 3.3.
+
+These fields can change within 3.x; see [experimental status](/docs/reference/experimental-status) and the [spot breakdown](/docs/media-buy/media-buys/optimization-reporting) reference.
+
+**Not in 3.3.** The criteria for an acceptable replacement airing (same or better daypart, same network or station, same unit length, a rating floor, inside the flight) are not machine-readable, and neither is an interactive replacement offer. Those are agreed in the human contract outside AdCP. Makegood airings can also land after the flight and after C7 closes, and they mature on their own windows. Contract-time pre-approval criteria for replacements are planned for 3.4 in [#5683](https://github.com/adcontextprotocol/adcp/issues/5683).
+
+See [Video](/docs/creative/channels/video), [Radio](/docs/creative/channels/radio), [Billing authority](/docs/media-buy/advanced-topics/billing-authority), [Accountability](/docs/media-buy/advanced-topics/accountability), [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery), and [Creative manifests](/docs/creative/creative-manifests).

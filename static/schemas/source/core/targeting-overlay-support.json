@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-overlay-support.json",
   "title": "Targeting Overlay Support",
-  "description": "Product-scoped package targeting dimensions that may be supplied or changed after discovery. This is the seller response shape and may disclose seller limits such as max_values_per_package and max_packages. Product.overlay_support is the binding selectable-targeting contract: presence means the seller can apply protocol-valid values within the declared systems, countries, values, types, versions, and limits. Inherent product coverage alone does not satisfy a future-support requirement. Support does not guarantee inventory or a value-specific forecast before values are supplied; fixed prices and floors remain binding for supported selections, uniform across values except for adjustments declared by the selected fixed-price pricing option's price_adjustments, which currently price placement_selection and format option selections. geo_regions and geo_regions_exclude are independent: structured support either exhaustively declares every value active in the seller's support snapshot for a country or lists the exact finite selectable subset. Buyer minimums use targeting-overlay-requirements.json. A requirement value of true matches true or any valid support object; an object requirement matches true or a containing support object. The daypart_targets boolean is the backward-compatible exception: true promises inventory_local only, and structured support opts into IANA zones. Every valid structured support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Unrequested object fields and numeric seller limits do not participate in matching. A product declares at most one of frequency_cap: true and frequency_cap_support. Legacy frequency_cap: true keeps its broad meaning within seller-wide limits, including update support. A constrained or create-only product instead advertises frequency_cap_support, so older buyers safely treat it as unsupported.",
+  "description": "Product-scoped package targeting dimensions that may be supplied or changed after discovery. This is the seller response shape and may disclose seller limits such as max_values_per_package and max_packages. Product.overlay_support is the binding selectable-targeting contract: presence means the seller can apply protocol-valid values within the declared systems, countries, values, types, versions, and limits. Inherent product coverage alone does not satisfy a future-support requirement. Support does not guarantee inventory or a value-specific forecast before values are supplied; fixed prices and floors remain binding for supported selections, uniform across values except for adjustments declared by the selected fixed-price pricing option's price_adjustments, which price format option and placement_selection selections and dated windows. geo_regions and geo_regions_exclude are independent: structured support either exhaustively declares every value active in the seller's support snapshot for a country or lists the exact finite selectable subset. Buyer minimums use targeting-overlay-requirements.json. A requirement value of true matches true or any valid support object; an object requirement matches true or a containing support object. The daypart_targets boolean is the backward-compatible exception: true promises inventory_local and whole-hour granularity only, and structured support opts into IANA zones and finer time_granularity. Every valid structured support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Unrequested object fields and numeric seller limits do not participate in matching. A product declares at most one of frequency_cap: true and frequency_cap_support. Legacy frequency_cap: true keeps its broad meaning within seller-wide limits, including update support. A constrained or create-only product instead advertises frequency_cap_support, so older buyers safely treat it as unsupported.",
   "type": "object",
   "definitions": {
     "supported": {
@@ -173,11 +173,11 @@
         {
           "type": "boolean",
           "const": true,
-          "description": "Backward-compatible declaration of inventory_local daypart support. Use the structured form to opt in to concrete IANA timezone execution."
+          "description": "Backward-compatible declaration of inventory_local, whole-hour daypart support. Use the structured form to opt in to concrete IANA timezone execution or finer time granularity."
         },
         {
           "type": "object",
-          "description": "Binding timezone modes this product can apply to package-level daypart targeting. 'inventory_local' covers the default seller-assigned local clock for each inventory unit. 'iana' opts the product into concrete IANA timezone execution and requires iana_timezones to declare whether every valid identifier or an exact subset is supported.",
+          "description": "Binding timezone modes and time granularity this product can apply to package-level daypart targeting. 'inventory_local' covers the default seller-assigned local clock for each inventory unit. 'iana' opts the product into concrete IANA timezone execution and requires iana_timezones to declare whether every valid identifier or an exact subset is supported.",
           "properties": {
             "timezone_modes": {
               "type": "array",
@@ -199,6 +199,12 @@
                   "uniqueItems": true
                 }
               ]
+            },
+            "time_granularity": {
+              "$ref": "/schemas/enums/daypart-time-granularity.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "Experimental in AdCP 3.3. Finest time-of-day resolution this product honors. Omission, and the legacy daypart_targets: true form, mean hour: whole-hour windows only. quarter_hour also honors start_time/end_time on HH:00, HH:15, HH:30, and HH:45; minute honors any HH:MM. A declared granularity includes every coarser one. A daypart entry whose start_time or end_time is finer than this value MUST be rejected with UNSUPPORTED_FEATURE at create or update time; a seller MUST NOT round it to a coarser boundary."
             },
             "ext": {
               "$ref": "/schemas/core/ext.json"

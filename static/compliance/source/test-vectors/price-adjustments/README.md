@@ -29,7 +29,7 @@ a binding fixed-price pricing option:
    table requires a new `pricing_option_id`.
 8. An accepted snapshot carries `base_fixed_price`, the resolved `fixed_price`,
    a `price_breakdown` of declared adjustments plus each fired row (an index as
-   a fee or discount rate, a premium as its currency amount), and the retained
+   a fee or discount rate when the proportion is below 1 and as its currency amount otherwise, a premium as its currency amount), and the retained
    table, so a verifier can re-resolve it.
 
 The `dutch_tv_*` cases are a fictional linear TV rate card: a net base price

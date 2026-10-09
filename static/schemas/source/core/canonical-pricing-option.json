@@ -18,12 +18,15 @@
     "price_breakdown": { "$ref": "/schemas/pricing-options/price-breakdown.json" },
     "price_adjustments": {
       "$ref": "/schemas/pricing-options/price-adjustments.json",
+      "x-added-in": "3.3.0",
+      "x-status": "experimental",
       "description": "Retained adjustment table, covered by terms_digest. See price-adjustments.json."
     },
     "base_fixed_price": {
       "type": "number",
       "minimum": 0,
       "x-added-in": "3.3.0",
+      "x-status": "experimental",
       "description": "Declared fixed_price before any price_adjustments row fired; present in accepted purchase pricing that carries the table."
     },
     "eligible_adjustments": {

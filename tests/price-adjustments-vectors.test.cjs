@@ -202,7 +202,11 @@ function resolve(option, selection) {
     const proportionNum = (up ? int - 10n ** BigInt(scale) : 10n ** BigInt(scale) - int);
     const delta = divRoundHalfAwayFromZero(indexed * proportionNum, 10n ** BigInt(scale));
     indexed += up ? delta : -delta;
-    entries.push({ kind: up ? 'fee' : 'discount', name: row.name, rate: toNumber(proportionNum, scale) });
+    // Recorded as a rate when the proportion is below 1, otherwise as its currency delta.
+    const entry = { kind: up ? 'fee' : 'discount', name: row.name };
+    if (proportionNum < 10n ** BigInt(scale)) entry.rate = toNumber(proportionNum, scale);
+    else entry.amount = toNumber(delta, precision);
+    entries.push(entry);
   }
 
   // Premiums are computed from the indexed price; fixed amounts are not indexed.
