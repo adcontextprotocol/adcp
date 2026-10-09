@@ -232,6 +232,15 @@ AdCP 3.2 contains a bounded set of stable-surface changes that can reject a payl
 
 Experimental surfaces changed under their own notice contract and are not exceptions to these guarantees. See the [migration guide](/docs/reference/migration/3-1-to-3-2#wire-changes-from-3-1-to-3-2) for the governance, Trusted Match, and brand-rights changes.
 
+### 3.3 exceptions to 3.x compatibility (beta)
+
+AdCP 3.3 adds no stable field, removes none, and deprecates none. Two merged changes narrow what a conformant implementation may do, and are recorded here under the rule above for core-security and normative behavior. This list is refreshed at each beta cut.
+
+| Change | What narrows | Basis |
+|---|---|---|
+| Discovery never provisions an account | A seller that lazily provisions an account on `get_products`, `list_products`, `get_signals`, `request_proposals`, `refine_proposals`, or `decline_proposals`, or on the 3.2 wording "first account-scoped request", is no longer conformant. Request and response schemas are unchanged. | #7848, [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3#discovery-tasks-never-provision-an-account) |
+| One agent-resolution algorithm | A pinned `signing_keys` key missing from the agent's JWKS is rejected, a `kid`-only pin matches nothing, `key_origins` is checked for every webhook signer that publishes `brand_json_url`, and agents are matched by canonical URL, where entries that agree on `type` and resolved JWKS source count once and entries that differ in either are an ambiguous match. | #7882, [Signature verification tightens](/docs/reference/migration/3-2-to-3-3#signature-verification-tightens) |
+
 ### Experimental surfaces
 
 The stability guarantees in the table above apply to stable surfaces only. AdCP may publish surfaces as **experimental** when they are part of the core protocol but not yet frozen. Experimental surfaces are marked with `x-status: experimental` in their schemas, and sellers that implement them declare so via `experimental_features` on `get_adcp_capabilities`.
@@ -297,6 +306,7 @@ The v2 sunset is the documented exception to this commitment: v2 predates this p
 | **3.0** | April 2026 — GA release |
 | **3.1** | Late June 2026 |
 | **3.2** | GA September 30, 2026 (release `3.2.1`; `3.2.0` was never released) |
+| **3.3** | Minor release; protocol-first beta cycle under way (see the [3.3 beta program](/docs/reference/3-3-beta)) |
 | **4.0** | Early 2027 — next major, accumulated breaking changes |
 
 3.2 shipped after a protocol-first beta and seven published release candidates; see the
@@ -317,6 +327,8 @@ AdCP distinguishes three levels of schema extension. The rules below apply to ev
 | **Core fields** defined by the protocol | Working group, via a release | Proposed in a working group, accepted through the normal release process. Never extended inline by an implementer. |
 | **`ext.{namespace}`** on any request or response object | Anyone, by declaring a namespace in `extensions_supported` | Namespaced, out-of-band, does not affect baseline interop. Namespaces SHOULD be registered in the [extension registry](/docs/building/by-layer/L2/context-sessions#extensions). |
 | **`additionalProperties: true`** on containers that allow it | Anyone | Additive fields at the declared location. MUST NOT shadow or redefine a core field. Readers MUST ignore unknown fields rather than erroring. When an additional field collides in name with a core field defined on a later release, readers MUST prefer the core field. |
+
+AdCP schemas are open by default ([DR-0009](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0009-additional-properties-default-true.md)), so schema validation does not flag a field the schema omits. A prose MUST NOT on such a field is still normative, and conformance is meant to grade it through storyboards rather than schema validation.
 
 **What MUST NOT happen:**
 

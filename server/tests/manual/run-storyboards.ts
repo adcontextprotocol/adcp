@@ -187,6 +187,12 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
   }));
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
+    // Cold schema compilation can leave the loopback connection idle longer
+    // than Node's default keep-alive window. Keep the fixture-owned socket
+    // available for the next MCP request; request/storyboard deadlines remain
+    // unchanged, and close() below destroys every owned connection.
+    srv.keepAliveTimeout = 90_000;
+    srv.headersTimeout = 95_000;
     const connections = new Set<Socket>();
     srv.on('connection', socket => {
       connections.add(socket);
@@ -479,6 +485,7 @@ function patchStoryboardForLocalRunner(sb: Storyboard): Storyboard {
     || sb.id === 'governance_spend_authority/denied'
     || sb.id === 'governance_delivery_monitor'
     || sb.id === 'governance/failed_outcome_audit_persistence'
+    || sb.id === 'governance/budget_periods'
     || sb.requires?.includes('multi_agent')
   ) {
     patched = structuredClone(patched) as Storyboard;

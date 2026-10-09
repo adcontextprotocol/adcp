@@ -846,7 +846,7 @@ Key things to verify: core fields returned for public callers, deeper data for a
 
 ## Deployment checklist
 
-- [ ] `brand.json` hosted at `/.well-known/brand.json` with `brand_agent.url` pointing to your MCP endpoint
+- [ ] `brand.json` hosted at `/.well-known/brand.json` with an `agents[]` entry of `type: "brand"` whose `url` is your MCP endpoint
 - [ ] `get_adcp_capabilities` returns `supported_protocols: ["brand"]`
 - [ ] `get_brand_identity` returns core fields for public callers
 - [ ] `get_brand_identity` returns deeper data for authorized callers

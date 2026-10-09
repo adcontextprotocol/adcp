@@ -1,0 +1,72 @@
+---
+title: What's new in AdCP 3.3
+sidebarTitle: What's new in 3.3
+description: "Adopter overview of the AdCP 3.3 beta: discovery that never provisions accounts, one agent-resolution rule for every signing surface, catalog ingestion declarations, structured DOOH location, and a registered ext.adcp namespace."
+"og:title": "AdCP — What's New in 3.3"
+---
+
+# What's new in AdCP 3.3
+
+<Warning>
+**3.3 is in its beta cycle.** Beta.0 publishes the protocol artifacts before SDK support. Beta.1 incorporates integration feedback, then becomes SDK-backed after a second SDK refresh against the exact beta.1 bundle. Use the beta in development and staging, and read the [3.3 beta program](/dist/docs/3.2.3/reference/3-3-beta) before testing. This page lists only what has merged; the narrative is refreshed at each beta cut.
+</Warning>
+
+3.2 added the compact lifecycle and portable evidence. 3.3 is a minor release that so far tightens the places where two conformant 3.2 implementations could still disagree: when an account comes into existence, which agent a signature belongs to, and what a seller's catalog intake accepts.
+
+No stable field, enum value, or task is removed, renamed, or deprecated, and 3.3 adds optional fields and one optional capability object. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points; `lon`, not `lng`), and the now-reserved `ext.adcp`. Two merged changes are normative narrowings, not additions: what a lazily provisioning seller may do on discovery tasks, and which signatures verify. Both are recorded in [Versioning and governance](/dist/docs/3.2.3/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta) and lead the [migration guide](/dist/docs/3.2.3/reference/migration/3-2-to-3-3).
+
+## The 3.3 feature set
+
+### Discovery never provisions an account
+
+Discovery and negotiation tasks, including `get_products`, `list_products`, `get_signals`, `request_proposals`, `refine_proposals`, and `decline_proposals`, MUST NOT create or activate an account, or accept a seller's default terms on a buyer's behalf. A lazily provisioning seller provisions only on a task that commits spend or creates account-owned resources, such as `create_media_buy`, `buy_products`, `accept_proposal`, `sync_accounts`, `sync_creatives`, `sync_catalogs`, `sync_event_sources`, or `activate_signal`. A seller that provisions lazily instead of exposing `sync_accounts` MAY answer a discovery task for a complete natural key it would provision, as if that account existed, without creating it; a seller that exposes `sync_accounts` returns `ACCOUNT_NOT_FOUND`. (An unresolved `account` returning `ACCOUNT_NOT_FOUND`, even where `account` is optional, was already required and was clarified in 3.2.2.)
+
+The advisory storyboard `media_buy_seller/unprovisioned_account_reference` grades this; its checks become required at runner capability `14.1.0`. See [Account references before provisioning](/dist/docs/3.2.3/accounts/overview#account-references-before-provisioning).
+
+### One agent-resolution rule for every signing surface
+
+Request signing, webhook signing, governance JWS `iss`, designated-task response signing, and rights attestations now share one algorithm for deciding which brand.json lists an agent and which keys it may sign with. Agent URLs match by canonical URL everywhere, a publisher's `adagents.json` `signing_keys` pin narrows the accepted keys for sell-side signatures about that publisher's inventory, and webhook discovery starts from `identity.brand_json_url`. TMP keeps its own publisher-key model. See [Agent resolution](/dist/docs/3.2.3/building/by-layer/L1/security#agent-resolution).
+
+This is a verification change: some signatures that verified under 3.2 can fail, mostly webhook and request signing. The list is in the [migration guide](/dist/docs/3.2.3/reference/migration/3-2-to-3-3#signature-verification-tightens).
+
+### Catalog ingestion declarations
+
+Sellers can declare what their catalog intake accepts in an optional `media_buy.features.catalog_ingestion` object: accepted catalog types, ingestion modes (`feed_url`, `inline_items`), feed formats, content identifier types, an inline batch limit, and whether item status is reported `per_item` or at the `feed_level`. A seller that declares it must also declare `catalog_management: true`, and must reject an unlisted catalog type, ingestion mode, or feed format, and an explicitly supplied `content_id_type` outside a declared `supported_content_id_types` list, with `UNSUPPORTED_FEATURE` before changing state, including on dry runs. Inline items beyond `max_inline_items_per_request` fail with `INVALID_REQUEST`. A buyer that finds no declaration should treat ingestion limits as unknown, not unlimited. See [`sync_catalogs`](/dist/docs/3.2.3/media-buy/task-reference/sync_catalogs#ingestion-compatibility) and [capabilities](/dist/docs/3.2.3/protocol/get_adcp_capabilities#catalog_ingestion).
+
+### Structured DOOH location
+
+Concrete screens can carry `dooh_placement_attributes.location` (`lat`, `lon`, and a structured `address`) on placements. Network products can carry `dooh_inventory_summary.venue_counts[]` to describe aggregate geography by `geo_level` and `geo_code`. Both are optional disclosure metadata, and `location` never changes placement identity. See [DOOH](/dist/docs/3.2.3/creative/channels/dooh#structured-location-for-planning-and-mapping).
+
+### The `ext.adcp` namespace
+
+`ext.adcp` is now a registered, AdCP-owned extension namespace. Its first member is an optional `opportunity` binding for cooperating 3.2 `get_products` integrations, declared by listing `adcp` in `extensions_supported`. It reuses the published 3.2 `OpportunityContext` shape and is not the core `opportunity` field. The namespace is reserved for the AdCP working group, so vendors keep their own namespaces. See [AdCP opportunity extension](/dist/docs/3.2.3/building/by-layer/L2/context-sessions#adcp-opportunity-extension).
+
+### Clarifications and conformance
+
+- `authorized_agents[].url` in `adagents.json` is the agent's full protocol endpoint URL, including its path, and one entry is needed for each agent URL. See [Agent URL matching](/dist/docs/3.2.3/governance/property/adagents#agent-url-matching).
+- Compliance storyboards gate advanced delivery reporting on advertised wholesale discovery support and proposal-finalization replay on advertised idempotency support, exercise the documented polling path in `sales-guaranteed`, and provision an explicit sandbox account in the acceptance-policy discovery scenario. These change grading results, not the wire.
+- The trust and verification docs now agree with the schemas: only `verify_brand_claim` and `verify_brand_claims` carry signed response payloads. Examples use `agents[]` instead of the deprecated `brand_agent` and `rights_agent` fields.
+
+The account-reference and trust-docs clarifications already shipped in 3.2.2 ([`v3.2.2`](https://github.com/adcontextprotocol/adcp/releases/tag/v3.2.2)).
+
+## What requires adopter attention
+
+| If you are… | Review before advertising 3.3 |
+|---|---|
+| A seller that provisions accounts lazily | Stop provisioning on discovery tasks; return `ACCOUNT_NOT_FOUND` for an unresolved `account` unless you answer for the account you would create. |
+| A signing or verifying implementation | Resolve agents by canonical URL from `identity.brand_json_url`, and publish every pinned key in the agent's JWKS. |
+| A seller with a catalog intake | Declare `catalog_ingestion` if buyers need your limits, and reject out-of-declaration requests before mutation. |
+| A DOOH seller | Add `location` and `venue_counts` where you can disclose them; both are optional. |
+| An SDK maintainer | Generate from the signed beta.0 tarball and publish an exact support statement. |
+| A compliance operator | Treat beta.0 as an implementation input. Do not issue a 3.3 badge from beta.0. |
+
+## Still in review
+
+Open 3.3 proposals are in working-group review and are not part of any beta until they merge. The current list is in the [3.3 beta program](/dist/docs/3.2.3/reference/3-3-beta#in-working-group-review-for-3-3).
+
+## Start here
+
+1. Read the [3.3 beta program](/dist/docs/3.2.3/reference/3-3-beta).
+2. Follow [Migrating from 3.2 to 3.3](/dist/docs/3.2.3/reference/migration/3-2-to-3-3).
+3. Choose the exact package and support level in [Choose your SDK](/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk).
+4. Use the [Release Notes](/dist/docs/3.2.3/reference/release-notes#version-3-3-0) for the cumulative record.

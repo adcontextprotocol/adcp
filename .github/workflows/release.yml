@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - '3.2.x'
       - '3.1.x'
       - '3.0.x'
   workflow_dispatch:
@@ -42,7 +43,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Resolve release target
@@ -57,15 +58,15 @@ jobs:
             exit 1
           fi
 
-          target_commit="$(git rev-parse HEAD)"
-          if [ "${target_commit}" != "${REQUESTED_COMMIT}" ]; then
-            echo "::error::Checked out ${target_commit}, expected ${REQUESTED_COMMIT}."
+          target_commit="$(git rev-parse "${REQUESTED_COMMIT}^{commit}")"
+          if [ "$(git rev-parse HEAD)" != "$TESTED_SHA" ] || [ "${target_commit}" != "${REQUESTED_COMMIT}" ]; then
+            echo "::error::Release recovery requires the current tested checkout and exact requested commit."
             exit 1
           fi
 
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             case "${GITHUB_REF_NAME}" in
-              main|3.1.x|3.0.x) ;;
+              main|3.2.x|3.1.x|3.0.x) ;;
               *)
                 echo "::error::Release recovery must run from a supported release branch."
                 exit 1
@@ -114,7 +115,7 @@ jobs:
             exit 0
           fi
           changed_files="$(git show --first-parent --format= --name-only --no-renames "${{ steps.release-target.outputs.commit }}")"
-          if grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-([^/]+[.]sh|isolated[.]mjs))|[.]github/workflows/(release|training-agent-storyboards|validate-schema-bundle)[.]yml$)' <<< "${changed_files}"; then
+          if grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|stage-sdk-schema-bundle[.]sh|overlay-compliance-cache[.]sh|run-storyboards-([^/]+[.]sh|isolated[.]mjs))|[.]github/workflows/(release|training-agent-storyboards|validate-schema-bundle)[.]yml$)' <<< "${changed_files}"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             echo "Release-relevant files changed."
             exit 0
@@ -141,7 +142,7 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
       - name: Verify current storyboard coverage
-        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.1.x')
+        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.2.x' || github.ref_name == '3.1.x')
         run: npm run test:storyboards
         env:
           # A committed Version Packages bundle can lead the training agent's
@@ -150,7 +151,7 @@ jobs:
           ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: '1'
 
       - name: Verify 3.0 storyboard compatibility
-        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.1.x' || github.ref_name == '3.0.x')
+        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.2.x' || github.ref_name == '3.1.x' || github.ref_name == '3.0.x')
         run: npm run test:storyboards:3.0-compat
         env:
           ADCP_RELEASE_BASE_REF: 3.0.x
@@ -191,7 +192,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ needs.verify-release.outputs.target_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
@@ -213,6 +214,9 @@ jobs:
         run: npm ci
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Recheck current release branch after installation
+        run: node scripts/check-release-state.cjs current
 
       - name: Detect committed release artifacts
         id: release-artifacts
@@ -252,7 +256,10 @@ jobs:
         if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: node scripts/check-release-state.cjs approval
+        run: |
+          set -euo pipefail
+          node scripts/check-release-state.cjs committed "${{ steps.release-artifacts.outputs.version }}"
+          node scripts/check-release-state.cjs approval
 
       - name: Mint Changesets mutation token
         id: changesets-token
@@ -381,20 +388,26 @@ jobs:
           fi
           test -f "${TARBALL}.sig"
           test -f "${TARBALL}.crt"
+          test -f "${TARBALL}.sha256"
 
       - name: Verify local protocol tarball before publication
         if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
         run: |
           set -euo pipefail
           VERSION="${{ steps.release-artifacts.outputs.version }}"
+          PRODUCER_SHA="$(git rev-parse "${RELEASE_SHA}^1")"
           cd dist/protocol
           TARBALL="${VERSION}.tgz"
           shasum -a 256 -c "${TARBALL}.sha256"
           cosign verify-blob \
             --signature "${TARBALL}.sig" \
             --certificate "${TARBALL}.crt" \
-            --certificate-identity-regexp '^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/heads/.*$' \
+            --certificate-identity "https://github.com/adcontextprotocol/adcp/.github/workflows/release.yml@refs/heads/${PUBLICATION_BRANCH}" \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            --certificate-github-workflow-sha "${PRODUCER_SHA}" \
+            --certificate-github-workflow-ref "refs/heads/${PUBLICATION_BRANCH}" \
+            --certificate-github-workflow-repository "${GITHUB_REPOSITORY}" \
+            --certificate-github-workflow-trigger push \
             "${TARBALL}"
 
       # Stage all four committed assets in a draft, then publish the release
@@ -418,12 +431,31 @@ jobs:
             echo '::error::Existing release tag targets a different commit.'
             exit 1
           fi
-          if ! gh release view "${TAG}" >/dev/null 2>&1; then
+          # Only a successful complete inventory can establish absence.
+          # Transport, permissions, malformed responses and duplicate drafts refuse.
+          release_inventory="$(mktemp)"
+          trap 'rm -f "$release_inventory"' EXIT
+          timeout 60s gh api --paginate --slurp "/repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$release_inventory"
+          if [ "$(wc -c < "$release_inventory")" -gt 16777216 ]; then
+            echo '::error::Release inventory exceeds the bounded read budget.'
+            exit 1
+          fi
+          jq -e 'type == "array" and all(.[]; type == "array") and
+            ([.[][]] | all(.[]; type == "object" and (.id | type) == "number" and .id > 0 and .id == (.id | floor) and (.tag_name | type) == "string" and (.tag_name | length) > 0)) and
+            (([.[][].id] | length) == ([.[][].id] | unique | length))' "$release_inventory" >/dev/null
+          release_count="$(jq -er --arg tag "$TAG" '[.[][] | select(.tag_name == $tag)] | length' "$release_inventory")"
+          rm -f "$release_inventory"
+          if [ "$release_count" -gt 1 ]; then
+            echo '::error::Ambiguous releases share the requested version tag.'
+            exit 1
+          fi
+          if [ "$release_count" -eq 0 ]; then
             release_args=()
             if [[ "${VERSION}" == *-* ]]; then
               release_args+=(--prerelease)
             fi
             node scripts/check-release-state.cjs current
+            if [ "$PUBLICATION_BRANCH" != main ]; then release_args+=(--latest=false); fi
             gh release create "${TAG}" --draft \
               --target "${RELEASE_SHA}" \
               --title "${TAG}" \
@@ -482,11 +514,31 @@ jobs:
           upload_asset_if_missing "${TARBALL}.crt"
           gh release view "$TAG" --json assets | jq -e --arg v "$VERSION" \
             '([.assets[].name] | sort) == (["", ".sha256", ".sig", ".crt"] | map($v + ".tgz" + .) | sort)' >/dev/null
+          # Names are insufficient: verify every newly staged byte before making
+          # the draft public, including signature and certificate assets.
+          staged_tuple="$(mktemp -d)"
+          trap 'rm -rf "$staged_tuple"' EXIT
+          for suffix in "" ".sha256" ".sig" ".crt"; do
+            name="${VERSION}.tgz${suffix}"
+            node scripts/check-release-state.cjs current
+            gh release download "$TAG" --pattern "$name" --dir "$staged_tuple"
+            if ! cmp -s "dist/protocol/$name" "$staged_tuple/$name"; then
+              echo "::error::Staged release asset $name differs; keeping the release draft."
+              exit 1
+            fi
+            node scripts/check-release-state.cjs current
+          done
           node scripts/check-release-state.cjs current
-          gh release edit "$TAG" --draft=false
+          node scripts/check-release-state.cjs committed "$VERSION"
+          # Revalidate review state and current maintainer permission after
+          # all four staged assets have been read back, before publication.
+          node scripts/check-release-state.cjs approval
+          publish_args=(--draft=false)
+          if [ "$PUBLICATION_BRANCH" != main ]; then publish_args+=(--latest=false); fi
+          gh release edit "$TAG" "${publish_args[@]}"
           node scripts/check-release-state.cjs published "$VERSION"
 
-      # Immutable R2 publication checks main before and after every object.
+      # Immutable R2 publication checks the current release branch before and after every object.
       # Refresh the persisted Git credential with the job-scoped token so a
       # large release cannot exhaust the one-hour App token after the GitHub
       # Release has already been published. This phase performs GitHub reads
@@ -496,7 +548,7 @@ jobs:
         if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
         uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ needs.verify-release.outputs.target_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           token: ${{ github.token }}
 
@@ -521,6 +573,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ steps.release-artifacts.outputs.version }}"
+          PRODUCER_SHA="$(git rev-parse "${RELEASE_SHA}^1")"
           BASE_URL="https://adcontextprotocol.org/protocol"
           workdir="$(mktemp -d)"
           trap 'rm -rf "${workdir}"' EXIT
@@ -530,16 +583,20 @@ jobs:
             local attempt="$1"
             local bust="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}-$(date +%s)"
             rm -f "${VERSION}.tgz" "${VERSION}.tgz.sha256" "${VERSION}.tgz.sig" "${VERSION}.tgz.crt"
-            curl -fsSLo "${VERSION}.tgz" "${BASE_URL}/${VERSION}.tgz?cache_bust=${bust}"
-            curl -fsSLo "${VERSION}.tgz.sha256" "${BASE_URL}/${VERSION}.tgz.sha256?cache_bust=${bust}"
-            curl -fsSLo "${VERSION}.tgz.sig" "${BASE_URL}/${VERSION}.tgz.sig?cache_bust=${bust}"
-            curl -fsSLo "${VERSION}.tgz.crt" "${BASE_URL}/${VERSION}.tgz.crt?cache_bust=${bust}"
-            shasum -a 256 -c "${VERSION}.tgz.sha256"
+            curl -fsSLo "${VERSION}.tgz" "${BASE_URL}/${VERSION}.tgz?cache_bust=${bust}" || return 1
+            curl -fsSLo "${VERSION}.tgz.sha256" "${BASE_URL}/${VERSION}.tgz.sha256?cache_bust=${bust}" || return 1
+            curl -fsSLo "${VERSION}.tgz.sig" "${BASE_URL}/${VERSION}.tgz.sig?cache_bust=${bust}" || return 1
+            curl -fsSLo "${VERSION}.tgz.crt" "${BASE_URL}/${VERSION}.tgz.crt?cache_bust=${bust}" || return 1
+            shasum -a 256 -c "${VERSION}.tgz.sha256" || return 1
             cosign verify-blob \
               --signature "${VERSION}.tgz.sig" \
               --certificate "${VERSION}.tgz.crt" \
-              --certificate-identity-regexp '^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/heads/.*$' \
+              --certificate-identity "https://github.com/adcontextprotocol/adcp/.github/workflows/release.yml@refs/heads/${PUBLICATION_BRANCH}" \
               --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+              --certificate-github-workflow-sha "${PRODUCER_SHA}" \
+              --certificate-github-workflow-ref "refs/heads/${PUBLICATION_BRANCH}" \
+              --certificate-github-workflow-repository "${GITHUB_REPOSITORY}" \
+              --certificate-github-workflow-trigger push \
               "${VERSION}.tgz"
           }
 

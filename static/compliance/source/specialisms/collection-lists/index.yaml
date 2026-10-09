@@ -5,6 +5,9 @@ protocol: governance
 category: collection_lists
 summary: "Curated collection lists for program-level brand safety and content targeting — create, query, update, and delete lists of content programs (shows, series, podcasts)."
 track: governance
+requires:
+  - controller
+
 required_tools:
   - create_collection_list
 

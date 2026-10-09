@@ -4,6 +4,8 @@ title: "Seller rejects ambiguous fixed cost-control binding"
 category: media_buy_seller
 summary: "Verifies that fixed media-buy cost caps bind deterministically and cannot mean different result units across inheriting packages."
 track: media_buy
+requires:
+  - controller
 
 requires_capability:
   path: media_buy.features.bidding_policy.media_buy.fixed.cost_per_strengths

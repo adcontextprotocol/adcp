@@ -25,7 +25,10 @@ import {
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
 import { query } from '../../db/client.js';
-import { ComplianceRefreshRequestsDatabase } from '../../db/compliance-refresh-requests-db.js';
+import {
+  ComplianceRefreshRequestsDatabase,
+  COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT,
+} from '../../db/compliance-refresh-requests-db.js';
 import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
@@ -44,6 +47,8 @@ import {
 import { deriveVerificationProfileRoleAssessments } from '../../services/verification-profile-assessment.js';
 import {
   hostedComplianceTarget,
+  HOSTED_COMPLIANCE_OVERRUN_MS,
+  HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
 } from '../../services/hosted-compliance-version.js';
 
@@ -127,7 +132,7 @@ export async function runComplianceHeartbeatJob(
   signal?: AbortSignal,
 ): Promise<HeartbeatResult> {
   signal?.throwIfAborted();
-  const limit = options.limit ?? 10;
+  const limit = options.limit ?? 6;
   const result: HeartbeatResult = { checked: 0, passed: 0, failed: 0, skipped: 0 };
   const skipReasons: HeartbeatSkipReasons = {
     execution_fence_busy: 0,
@@ -152,43 +157,49 @@ export async function runComplianceHeartbeatJob(
   const pendingShadowAssessments: PendingShadowAssessment[] = [];
   let runsRecorded = 0;
 
-  // Mark agents as in-progress to prevent concurrent pickup by overlapping runs.
-  // Agents are processed serially, so the lock must outlive the worst-case batch
-  // runtime — otherwise an agent late in the loop has its lock expire before the
-  // loop reaches it and an overlapping run re-picks it (duplicate assessment,
-  // double badge fan-out). Worst case is batchSize × the full-comply budget, plus
-  // headroom for per-agent target selection. Scheduling lives in registry
-  // metadata; the public last_checked_at always describes authoritative evidence.
-  // A mid-loop crash re-queues the agent after this TTL.
-  const urls = agentsDue.map(a => a.agent_url);
+  // Mark selected agents in progress before concurrent processing. The lock
+  // covers the worst-case number of waves, including target discovery, so an
+  // overlapping worker cannot select agents awaiting a local suite slot.
+  const selectedUrls = agentsDue.map(a => a.agent_url);
   // Each agent has two bounded capability pre-discoveries: target selection,
   // then hosted auth defaults inside comply(). Account for both explicitly so
   // the lock remains valid for the documented worst case.
-  if (urls.length > 0) {
-    const perAgentBudgetMs = HOSTED_FULL_COMPLIANCE_TIMEOUT_MS + (2 * HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
-    const lockSeconds = urls.length * (perAgentBudgetMs / 1000) + 300;
-    await query(
+  const perAgentBudgetMs = HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS
+    + HOSTED_COMPLIANCE_OVERRUN_MS + (2 * HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
+  const waves = Math.ceil(selectedUrls.length / COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT);
+  const lockUntil = new Date(Date.now() + waves * perAgentBudgetMs + 300_000);
+  let claimedUrls = new Set<string>();
+  if (selectedUrls.length > 0) {
+    const claimed = await query<{ agent_url: string }>(
       `INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
-       SELECT unnest($1::text[]), NOW() + make_interval(secs => $2)
-       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NOW() + make_interval(secs => $2)`,
-      [urls, lockSeconds],
+       SELECT unnest($1::text[]), $2::timestamptz
+       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = EXCLUDED.next_compliance_check_at
+       WHERE agent_registry_metadata.next_compliance_check_at IS NULL
+          OR agent_registry_metadata.next_compliance_check_at < NOW()
+       RETURNING agent_url`,
+      [selectedUrls, lockUntil],
     );
+    claimedUrls = new Set(claimed.rows.map(row => row.agent_url));
   }
+  const claimedAgents = agentsDue.filter(agent => claimedUrls.has(agent.agent_url));
+  const urls = claimedAgents.map(agent => agent.agent_url);
 
-  for (const agent of agentsDue) {
+  const processAgent = async (agent: (typeof agentsDue)[number]): Promise<void> => {
     signal?.throwIfAborted();
-    const executionFence = await complianceRefreshDb.acquireAgentExecutionFence(agent.agent_url);
+    const executionFence = await complianceRefreshDb.acquireHeartbeatExecutionFence(agent.agent_url);
     if (!executionFence) {
-      await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+      await complianceDb.deferComplianceCheckAfterContention(agent.agent_url, lockUntil);
       result.skipped++;
       skipReasons.execution_fence_busy++;
       logger.debug(
         { agentUrl: agent.agent_url },
         'Compliance heartbeat skipped because another full suite is running',
       );
-      continue;
+      return;
     }
     const startTime = Date.now();
+    let assessmentTimeoutMs = HOSTED_FULL_COMPLIANCE_TIMEOUT_MS;
+    let credentialOrgId: string | null = null;
     const assertExecutionFence = () => {
       if (!executionFence.isValid()) {
         throw Object.assign(new Error('Compliance heartbeat execution fence was lost'), {
@@ -203,7 +214,15 @@ export async function runComplianceHeartbeatJob(
       source: 'default',
     };
     try {
-      const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
+      const previousAttempt = await complianceDb.getLatestComplianceAttempt(agent.agent_url, null);
+      if (previousAttempt?.completeness === 'timed_out'
+        || (previousAttempt?.completeness === 'complete'
+          && (previousAttempt.total_duration_ms ?? 0) >= HOSTED_FULL_COMPLIANCE_TIMEOUT_MS * 0.8)) {
+        assessmentTimeoutMs = HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS;
+      }
+      const auth = await complianceDb.resolveOwnerAuth(agent.agent_url, undefined, orgId => {
+        credentialOrgId = orgId;
+      });
       const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `heartbeat:${agent.agent_url}` });
 
       // adcp#6632 / adcp-client#2639 — distribute coverage across
@@ -214,13 +233,14 @@ export async function runComplianceHeartbeatJob(
       // applies the offset modulo the runnable count and ignores the option
       // when it predates 2639 — safe across SDK versions.
       const storyboardStartOffset = await complianceDb.countComplianceRuns(agent.agent_url);
+      const hardDeadline = AbortSignal.timeout(assessmentTimeoutMs + HOSTED_COMPLIANCE_OVERRUN_MS);
       const complyOptions: ComplyOptions & { storyboard_start_offset?: number } = {
         test_session_id: `heartbeat-${Date.now()}`,
-        timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
+        timeout_ms: assessmentTimeoutMs,
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
         storyboard_start_offset: storyboardStartOffset,
-        signal,
+        signal: signal ? AbortSignal.any([signal, hardDeadline]) : hardDeadline,
       };
       const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(agent.agent_url);
 
@@ -239,7 +259,7 @@ export async function runComplianceHeartbeatJob(
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
         result.skipped++;
         skipReasons.target_unconfirmed++;
-        continue;
+        return;
       }
       runTarget = runTargetSelection.target;
       assertExecutionFence();
@@ -257,7 +277,7 @@ export async function runComplianceHeartbeatJob(
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
         result.skipped++;
         skipReasons.target_superseded++;
-        continue;
+        return;
       }
 
       logOutboundRequest({
@@ -275,6 +295,7 @@ export async function runComplianceHeartbeatJob(
         'heartbeat',
       ), complianceResult);
       dbInput.dry_run = false;
+      dbInput.triggered_org_id = credentialOrgId;
       if (isAuthoritativeComplianceRun(dbInput)) {
         dbInput.grading_profile_assessments = deriveVerificationProfileRoleAssessments({
           result: complianceResult,
@@ -294,7 +315,7 @@ export async function runComplianceHeartbeatJob(
         skipReasons.audit_only++;
         logger.info({ agentUrl: agent.agent_url, runId: run.id, completeness: dbInput.completeness },
           'Recorded audit-only compliance evidence; authoritative grade and badges preserved');
-        continue;
+        return;
       }
 
       result.checked++;
@@ -423,7 +444,7 @@ export async function runComplianceHeartbeatJob(
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
         result.skipped++;
         skipReasons.execution_fence_lost++;
-        continue;
+        return;
       }
 
       // Errors before a compatible target is selected are infrastructure or
@@ -446,7 +467,7 @@ export async function runComplianceHeartbeatJob(
         }
         result.skipped++;
         skipReasons.pre_target_error++;
-        continue;
+        return;
       }
 
       const isAgentTimeout = /timed?\s*out/i.test(errorMessage);
@@ -463,7 +484,7 @@ export async function runComplianceHeartbeatJob(
       let observationSeverity: 'warning' | 'error';
       let observationMessage: string;
       if (isAgentTimeout) {
-        headline = `Timed out: assessment did not complete within ${HOSTED_FULL_COMPLIANCE_TIMEOUT_MS / 1000}s`;
+        headline = `Timed out: assessment did not complete within ${assessmentTimeoutMs / 1000}s`;
         observationCategory = 'connectivity';
         observationSeverity = 'warning';
         observationMessage = headline;
@@ -519,6 +540,7 @@ export async function runComplianceHeartbeatJob(
           tracks_partial: 0,
           observations_json: [{ category: observationCategory, severity: observationSeverity, message: observationMessage }],
           triggered_by: 'heartbeat',
+          triggered_org_id: credentialOrgId,
           dry_run: false,
           completeness: 'not_completed',
           provenance_json: complianceRunProvenance({ adcp_version: runTarget.version, agent_profile: {} as ComplianceResult['agent_profile'] }),
@@ -542,7 +564,7 @@ export async function runComplianceHeartbeatJob(
           await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
           result.skipped++;
           skipReasons.execution_fence_lost++;
-          continue;
+          return;
         }
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }
@@ -552,7 +574,44 @@ export async function runComplianceHeartbeatJob(
     } finally {
       await executionFence.release();
     }
+  };
+
+  let nextAgentIndex = 0;
+  const failures: unknown[] = [];
+  const runWorker = async (): Promise<void> => {
+    while (nextAgentIndex < claimedAgents.length && failures.length === 0 && !signal?.aborted) {
+      const agent = claimedAgents[nextAgentIndex++];
+      try {
+        await processAgent(agent);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+  };
+  const toMb = (bytes: number) => Math.round(bytes / 1024 / 1024);
+  const initialMemory = process.memoryUsage();
+  const peakMemory = { rssMb: toMb(initialMemory.rss), heapUsedMb: toMb(initialMemory.heapUsed) };
+  const sampleMemory = () => {
+    const current = process.memoryUsage();
+    peakMemory.rssMb = Math.max(peakMemory.rssMb, toMb(current.rss));
+    peakMemory.heapUsedMb = Math.max(peakMemory.heapUsedMb, toMb(current.heapUsed));
+  };
+  const memorySampler = setInterval(sampleMemory, 5_000);
+  memorySampler.unref();
+  try {
+    await Promise.all(Array.from(
+      { length: Math.min(COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT, claimedAgents.length) },
+      runWorker,
+    ));
+  } finally {
+    clearInterval(memorySampler);
+    sampleMemory();
   }
+  if (failures.length > 0) {
+    logger.warn({ peakMemory, selectedCount: claimedAgents.length }, 'Compliance heartbeat batch stopped before completion');
+    throw failures[0];
+  }
+  signal?.throwIfAborted();
 
   // Comparison persistence is deliberately outside the public heartbeat loop.
   // It reuses the completed run and has no agent traffic or badge side effects.
@@ -609,7 +668,7 @@ export async function runComplianceHeartbeatJob(
       shadowFlushDurationMs: Date.now() - shadowFlushStartedAt,
       queue: {
         eligibleBacklog,
-        selectedCount: agentsDue.length,
+        selectedCount: claimedAgents.length,
         batchLimit: limit,
       },
       inputs: {
@@ -619,6 +678,7 @@ export async function runComplianceHeartbeatJob(
         complianceCacheVersion: fallbackComplianceTarget.version,
       },
       outcomes: result,
+      peakMemory,
       skipReasons,
       shadow: shadowStats,
     },

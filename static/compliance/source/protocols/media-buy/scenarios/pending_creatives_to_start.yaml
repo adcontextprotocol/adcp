@@ -4,6 +4,8 @@ title: "Creative sync unblocks pending_creatives → pending_start"
 category: media_buy_seller
 summary: "Verifies that a media buy created without creatives sits in pending_creatives until sync_creatives completes, then transitions to pending_start."
 track: media_buy
+requires:
+  - controller
 
 # This scenario requires both a creative library and an explicit auto-approval
 # declaration. Sellers that lack either capability grade not_applicable rather

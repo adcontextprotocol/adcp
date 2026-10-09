@@ -38,6 +38,7 @@ import {
 
 // Directory tools
 import { MCPToolHandler, TOOL_DEFINITIONS, RESOURCE_DEFINITIONS } from '../mcp-tools.js';
+import { JSON_VALIDATOR_RESOURCE, readJsonValidatorResource } from './json-upload-validation.js';
 
 // Chat tool - conversational AI wrapper (has knowledge + directory tools internally)
 import { CHAT_TOOL, createChatToolHandler } from './chat-tool.js';
@@ -246,6 +247,7 @@ export function createUnifiedMCPServer(authContext?: MCPAuthContext): Server {
       capabilities: {
         resources: {},
         tools: {},
+        extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: [JSON_VALIDATOR_RESOURCE.mimeType] } },
       },
     }
   );
@@ -325,11 +327,12 @@ export function createUnifiedMCPServer(authContext?: MCPAuthContext): Server {
 
   // List available resources (from directory)
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    return { resources: RESOURCE_DEFINITIONS };
+    return { resources: [...RESOURCE_DEFINITIONS, JSON_VALIDATOR_RESOURCE] };
   });
 
   // Read resource contents (from directory)
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    if (request.params.uri === JSON_VALIDATOR_RESOURCE.uri) return readJsonValidatorResource();
     return directoryHandler.handleResourceRead(request.params.uri);
   });
 

@@ -19,8 +19,8 @@ describe('registry compliance read concurrency', () => {
     expect(batch).toContain('getBadgesForAgent(agentUrl)');
     expect(batch).toContain('getPublicSelectedGradingStatuses(agentUrl)');
     expect(batch).toContain('getLatestDeclaredSpecialisms(agentUrl)');
-    expect(batch).toContain('getLatestNotices(agentUrl)');
-    expect(batch).toContain('getLatestObservations(agentUrl)');
+    expect(batch).toContain('getLatestNotices(agentUrl, status.last_run_id)');
+    expect(batch).toContain('getLatestObservations(agentUrl, status.last_run_id)');
     expect(batch).toContain('getStoryboardStatuses(agentUrl');
     expect(batch).toContain('resolveOwnerMembership(userId, agentUrl');
     expect(routeSource).toContain('withDatabaseDeadline(\n        complianceCardReadDeadline,');

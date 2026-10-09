@@ -5,6 +5,9 @@ protocol: media-buy
 category: sales_non_guaranteed
 summary: "Seller agent for auction-based, non-guaranteed buying where the buyer sets bid prices and budgets."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy
@@ -369,8 +372,9 @@ phases:
       The buyer creates a media buy with bid prices per package. Since this is
       non-guaranteed, no IO is required and no human approval is needed. The response
       completes synchronously, without an IO or human-approval task. Because this
-      baseline does not attach creatives, the resulting buy waits in pending_creatives
-      until the separate creative lifecycle supplies them.
+      baseline does not attach creatives, a seller with a creative library reports
+      pending_creatives until valid assets are assigned. A seller without a creative
+      library may activate the buy immediately and report active.
 
     steps:
       - id: create_media_buy
@@ -391,7 +395,8 @@ phases:
         expected: |
           Return the media buy synchronously:
           - media_buy_id: your platform's identifier
-          - media_buy_status: pending_creatives until valid assets are assigned
+          - media_buy_status: pending_creatives when waiting for library creatives, or active
+            when the seller does not require creative assignment
           - confirmed_at: timestamp
           - packages: confirmed line items with bid prices acknowledged
           - valid_actions: include the actions available in the current lifecycle state
@@ -446,8 +451,8 @@ phases:
             description: "Seller assigns package_id — must be echoed in update_media_buy"
           - check: field_value
             path: "media_buy_status"
-            value: "pending_creatives"
-            description: "A synchronously accepted buy without assigned assets waits for creatives"
+            allowed_values: ["pending_creatives", "active"]
+            description: "An accepted buy waits for library creatives or is already active"
           # Anti-façade: a real non-guaranteed buy creates line items / orders /
           # campaigns in the seller's adserver or DSP. An adapter returning a
           # shape-valid response with a fabricated media_buy_id but no upstream
@@ -461,9 +466,10 @@ phases:
   - id: monitor_pacing
     title: "Inspect readiness and pacing"
     narrative: |
-      The buyer reads the accepted non-guaranteed buy. Before creatives are assigned,
-      the seller reports pending_creatives and no auction delivery; once the separate
-      creative lifecycle activates it, the same read surface carries pacing data.
+      The buyer reads the accepted non-guaranteed buy. A seller waiting for library
+      creatives reports pending_creatives and no auction delivery. A seller without
+      a creative library may already report active with pacing data; the separate
+      creative lifecycle also uses this read surface after activation.
 
     steps:
       - id: get_media_buys_pacing
@@ -480,7 +486,8 @@ phases:
         expected: |
           Return the media buy with lifecycle and pacing data:
           - media_buy_id: matches the buy created earlier
-          - status: pending_creatives before assets are assigned
+          - status: pending_creatives while waiting for library creatives, or active
+            when creative assignment is not required
           - packages: line items with current delivery and pacing fields
           - valid_actions: actions valid for the reported lifecycle state
 
@@ -504,8 +511,8 @@ phases:
             description: "Media buy has a status"
           - check: field_value
             path: "media_buys[0].status"
-            value: "pending_creatives"
-            description: "The unassigned buy remains pending creatives"
+            allowed_values: ["pending_creatives", "active"]
+            description: "The accepted buy is waiting for library creatives or already active"
 
           - check: field_present
             path: "context"
@@ -518,7 +525,8 @@ phases:
     title: "Adjust bids and budget"
     narrative: |
       The buyer can adjust bids or budgets before activation or in-flight. Here it
-      raises each bid and reallocates package budgets while the buy awaits creatives.
+      raises each bid and reallocates package budgets while the buy awaits library
+      creatives or is already active on a seller that does not require assignment.
 
     steps:
       - id: update_media_buy
@@ -537,7 +545,7 @@ phases:
           Apply the updates and return the modified media buy state:
           - media_buy_id: matches the existing buy
           - affected_packages: full post-update package objects reflecting new bids and budgets
-          - media_buy_status: pending_creatives if lifecycle state is emitted
+          - media_buy_status: retain pending_creatives or active if lifecycle state is emitted
           - Changes are retained for subsequent auction participation
 
         sample_request:

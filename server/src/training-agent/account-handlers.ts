@@ -1079,6 +1079,59 @@ export function resolveAccountIdForRef(
     : undefined;
 }
 
+/**
+ * Whether this principal has provisioned the complete buyer-declared natural
+ * key: synced through `sync_accounts` (failed rows are never stored), seeded
+ * through `comply_test_controller` `seed_account` (which storyboard
+ * `fixtures.accounts` use), restored from a durable reporting binding, or one
+ * of the shared compliance fixture accounts `list_accounts` already exposes.
+ * Matching is on the canonical account scope, so brand domain, brand_id,
+ * countries, operator, operator_unit.id, currency, timezone, and sandbox must
+ * all agree. See docs/accounts/overview.mdx "Account references before
+ * provisioning".
+ */
+export async function isNaturalAccountRefProvisioned(
+  principal: string | undefined,
+  ref: AccountRef,
+): Promise<boolean> {
+  const scope = accountScopeFromRef(ref);
+  const sameScope = (
+    brand: { domain: string; brand_id?: string; countries?: string[] },
+    operator: string,
+    operatorUnit: OperatorUnit | undefined,
+    currency: string | undefined,
+    sandbox: boolean,
+    timezone: string | undefined,
+  ): boolean => {
+    try {
+      return accountKey(brand, operator, operatorUnit, currency, sandbox, timezone) === scope;
+    } catch {
+      return false;
+    }
+  };
+  for (const account of accountsForPrincipal(principal)) {
+    if (sameScope(
+      account.brand,
+      account.operator,
+      account.operatorUnit,
+      account.currency,
+      account.sandbox,
+      account.timezone,
+    )) return true;
+  }
+  for (const fixture of getComplianceAccounts()) {
+    if (sameScope(
+      fixture.brand,
+      fixture.operator,
+      fixture.operator_unit,
+      fixture.currency,
+      fixture.sandbox === true,
+      fixture.timezone,
+    )) return true;
+  }
+  return (await resolveReportingAccountDurably(principal, ref)) !== undefined;
+}
+
 /** Resolve the immutable currency of a currency-bound advertiser account. */
 export function resolveAccountCurrencyForRef(
   sessionKey: string,

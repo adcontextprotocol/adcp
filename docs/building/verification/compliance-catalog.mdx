@@ -140,6 +140,10 @@ Specialisms are grouped below by parent protocol.
 
 The `sales-*` specialisms are not mutually exclusive — a hybrid platform with both a guaranteed direct desk and an auction floor should claim both `sales-guaranteed` and `sales-non-guaranteed`. Follow the steps below to resolve your claim.
 
+<Note>
+The current 3.x media-buy protocol baseline uses non-guaranteed fixtures in its core flow and several inherited scenarios. Some workflows require an immediately issued `media_buy_id`; others assert immediate preflight rejection or are capability-gated. A guaranteed-only seller can pass the `sales-guaranteed` approval storyboard yet still lack a complete media-buy grade. A versioned, delivery-mode-aware baseline must preserve synchronous checks for non-guaranteed buys and add task completion and readback for guaranteed buys.
+</Note>
+
 <Warning>
 **`sales-proposal-mode` is deprecated in 3.1.** Do not claim it for new agents. Existing agents that declare it must drop it entirely and replace it with `sales-guaranteed` + `media_buy.supports_proposals: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823).
 </Warning>

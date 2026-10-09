@@ -891,6 +891,8 @@ The declared actor encodes the concrete value exactly as specified. Callers must
 
 ### Template Syntax
 
+Creative URL assets and their trackers retain byte-preserved ad-server placeholders such as `[CACHEBUSTER]`, `${GDPR}`, `%%CACHEBUSTER%%`, `%%PATTERN:url%%`, and `%%CLICK_URL_UNESC%%` on the undeclared 3.x compatibility path. Accepting a token spelling does not assign meaning or establish a resolver; declared occurrences follow the capability and substitution contracts above. Percent-encoding a placeholder's delimiters prevents the downstream ad server or player from recognizing it.
+
 AdCP macro-bearing URLs are not RFC 6570 templates. Plain URLs retain ordinary absolute HTTP(S) URI validation. For structural validation, verifiers mask recognized token lexical forms (`{NAME}`, `${NAME}`, `[NAME]`, and `%%NAME%%`) with an RFC 3986 unreserved sentinel and validate the resulting absolute HTTP(S) URI. This masking applies whether the occurrence is declared or travels on the undeclared 3.x compatibility path; it assigns no meaning, actor, or encoding and does not change the original bytes. RFC 6570 operators (`{+SKU}`, `{#SKU}`, `{?SKU}`, and similar forms) have no special expansion meaning. Processing is literal token replacement only when an applicable declaration or the explicit legacy helper authorizes it.
 
 ## Implementation Notes for Sales Agents

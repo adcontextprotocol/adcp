@@ -4,6 +4,9 @@ title: "Canonical formats and deprecated named-format compatibility"
 category: media_buy_seller
 summary: "Validates canonical product formats and the optional, explicitly deprecated named-format compatibility projection."
 track: products
+requires:
+  - controller
+
 introduced_in: "3.1"
 required_tools:
   - get_products
@@ -693,6 +696,44 @@ phases:
               path: "products[0].format_ids[*]"
             match_keys: [agent_url, id]
             on_out_of_scope: fail
+
+      - id: provision_test_kit_account
+        title: "Provision the account for the test-kit credential"
+        narrative: |
+          The next step authenticates with the test kit's API key, a different
+          buyer principal from the one controller seeding ran under. A natural
+          key resolves on discovery only after that caller provisions it
+          (accounts overview: Account references before provisioning), so the
+          test-kit caller syncs the same account first.
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: true
+        expected: |
+          Provision the natural key for the test-kit caller.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "compliance-media_buy_seller_canonical_formats-a323283f"
+              billing: "operator"
+              payment_terms: "net_30"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_canonical_formats_provision_test_kit_account"
+          context:
+            correlation_id: "canonical_formats--provision_test_kit_account"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "The seller provisions the account for the test-kit caller"
 
       - id: get_seeded_divergent_product
         title: "Flag divergent dual-emission"

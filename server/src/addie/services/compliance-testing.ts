@@ -1,4 +1,5 @@
 import { complianceRunProvenance, type ComplianceRunProvenance } from '../../compliance/run-provenance.js';
+import { createHostedWebhookReceiverLease } from '../../services/hosted-webhook-receiver.js';
 /**
  * Compliance testing — thin adapter over @adcp/sdk's compliance module.
  *
@@ -21,6 +22,7 @@ import {
   type TrackResult,
   type AdvisoryObservation,
   type SampleBrief,
+  type TestOptions,
 } from '@adcp/sdk/testing';
 import {
   hostedComplianceTarget,
@@ -56,6 +58,16 @@ import type {
 
 const logger = createLogger('addie-compliance-testing');
 export const HOSTED_TARGET_DISCOVERY_TIMEOUT_MS = 30_000;
+
+/** Pin selected targets; bootstrap discovery must not inherit the SDK's version. */
+export function hostedCapabilityDiscoveryOptions(
+  options: TestOptions,
+  target?: HostedComplianceTarget,
+): TestOptions {
+  return withSdkSafeTransport(target
+    ? withHostedTestOptions({ ...options, versionEnvelope: 'auto' }, target)
+    : { ...options, adcpVersion: undefined, versionEnvelope: 'major-only' });
+}
 
 export interface ComplianceTargetSelection {
   target: HostedComplianceTarget;
@@ -267,12 +279,33 @@ export async function comply(
     resolveTestKit: storyboardId => getTestKitForStoryboard(storyboardId, hostedComplianceOptions(target)),
     secrets: mintedSecrets,
   });
-  const rawResult = await sdkComply(
-    agentUrl,
-    withSdkSafeTransport(
-      withHostedComplianceRunOptions({ ...safeOptions, routeStoryboard }, target, authDefaults.probeTask, authDefaults.apiKey),
-    ),
-  );
+  // Current 3.1 grading treats outbound webhook coverage as conditional. The
+  // public receiver is opt-in while the versioned mandatory profile is being
+  // prepared; if ingress is unavailable, retain the current grading contract
+  // and log the platform gap rather than attributing it to the seller.
+  let receiverLease;
+  if (process.env.HOSTED_COMPLIANCE_WEBHOOK_RECEIVER_ENABLED === 'true' && !safeOptions.webhook_receiver) {
+    try {
+      receiverLease = await createHostedWebhookReceiverLease();
+    } catch (error) {
+      logger.warn({ err: error, agentUrl }, 'Hosted webhook receiver unavailable; webhook storyboards may be not applicable');
+    }
+  }
+  let rawResult: ComplianceResult;
+  try {
+    rawResult = await sdkComply(
+      agentUrl,
+      withSdkSafeTransport(
+        withHostedComplianceRunOptions({
+          ...safeOptions,
+          routeStoryboard,
+          ...(receiverLease ? { webhook_receiver: receiverLease.options } : {}),
+        }, target, authDefaults.probeTask, authDefaults.apiKey),
+      ),
+    );
+  } finally {
+    await receiverLease?.release();
+  }
   const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { hosted_provenance: ComplianceRunProvenance }).hosted_provenance =
@@ -340,9 +373,7 @@ export async function selectComplianceTargetForAgentSelection(
     // gets a chance to report supported_versions.
     const discovery = await discoverCapabilitiesWithDeadline(
       agentUrl,
-      compatibleSeededTarget
-        ? withHostedTestOptions(options, compatibleSeededTarget)
-        : options,
+      hostedCapabilityDiscoveryOptions(options, compatibleSeededTarget),
     );
     const target = mode === 'canonical'
       ? selectCanonicalHostedComplianceTargetForProfile(discovery.profile, fallback)

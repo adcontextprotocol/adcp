@@ -24,6 +24,7 @@ vi.mock("../../src/addie/mcp/member-tools.js", () => ({
   createMemberToolHandlers: () => new Map(),
 }));
 import { CHAT_TOOL, MCP_CHAT_LIMITS, handleChatTool } from "../../src/mcp/chat-tool.js";
+import { ModelConfig } from '../../src/config/models.js';
 
 describe("MCP chat input limits", () => {
   beforeEach(() => { processMessage.mockReset(); geminiMessage.mockReset(); });
@@ -32,7 +33,7 @@ describe("MCP chat input limits", () => {
   it.each(['gemini', 'sonnet'])('routes MCP responses using global %s policy and retains anonymous cost scope', async provider => {
     vi.stubEnv('ADDIE_RESPONSE_PROVIDER', provider);
     vi.stubEnv('ADDIE_ANTHROPIC_API_KEY', 'unused'); vi.stubEnv('GEMINI_API_KEY', 'unused');
-    const model = provider === 'gemini' ? 'gemini-3.7-flash' : 'claude-sonnet-5';
+    const model = provider === 'gemini' ? 'gemini-3.7-flash' : ModelConfig.primary;
     const selected = provider === 'gemini' ? geminiMessage : processMessage;
     selected.mockResolvedValue({ text: 'MCP answer', tools_used: [], tool_executions: [], model_execution: {
       source: 'provider', requested_provider: provider === 'gemini' ? 'google' : 'anthropic', requested_model: model,

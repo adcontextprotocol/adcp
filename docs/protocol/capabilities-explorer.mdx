@@ -31,6 +31,7 @@ Version negotiation, idempotency contract, build identifier.
 - **`supported_versions`** — release-precision strings (e.g. `"3.0"`, `"3.1"`). Authoritative for buyer-side release pinning.
 - **`major_versions`** — DEPRECATED in favor of `supported_versions`; sellers MUST keep emitting through 3.x.
 - **`build_version`** — full semver build identifier; advisory metadata for buyer-side incident triage.
+- **`implementation`** — optional since 3.3; self-reported SDK packages, exact versions, and integrated server components. See [implementation metadata](/docs/protocol/get_adcp_capabilities#implementation). This does not establish approval or verification.
 - **`idempotency`** — discriminated union (`IdempotencySupported` / `IdempotencyUnsupported`) declaring replay semantics. **A declaration here is a commitment** — sellers that declare `supported: true` are probed by the conformance runner.
 - **`capability_changes`** — freshness metadata and optional `capabilities.changed` invalidation webhooks for cached capability documents.
 
@@ -103,6 +104,7 @@ Property and creative governance capabilities.
 - **`property_features`** — what the governance agent does with property lists.
 - **`creative_features`** — what the governance agent does for creative review.
 - **`aggregation_window_days`** — how long the agent aggregates governance events.
+- **`supports_budget_periods`** — whether the agent enforces `budget.periods` on campaign plans.
 
 [Propose an extension to `governance`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+governance+capability:+%3Cflag%3E&body=Schema+location:+%60.governance%60&labels=rfc,capabilities,governance)
 

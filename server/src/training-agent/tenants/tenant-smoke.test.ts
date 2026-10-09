@@ -140,6 +140,32 @@ async function callTenantTool(
   return response.json() as Promise<Record<string, unknown>>;
 }
 
+let provisionRpcId = 9_000;
+
+/**
+ * Provision a natural-key account for the calling principal the way a
+ * conformant buyer would: sync_accounts before discovery. Discovery and
+ * negotiation tasks reject unprovisioned natural keys with ACCOUNT_NOT_FOUND,
+ * and matching is exact on the full key (including sandbox), so callers must
+ * pass the identical ref they later send to discovery.
+ */
+async function provisionAccount(
+  url: string,
+  account: Record<string, unknown>,
+  token = 'test-token',
+): Promise<void> {
+  provisionRpcId += 1;
+  const response = await callTenantTool(url, provisionRpcId, 'sync_accounts', {
+    accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
+    idempotency_key: `tenant-smoke-provision-${provisionRpcId}`,
+  }, token) as {
+    result?: { structuredContent?: { accounts?: Array<{ action?: string; account_id?: string }> } };
+  };
+  const row = response.result?.structuredContent?.accounts?.[0];
+  expect(row?.account_id, JSON.stringify(response)).toBeDefined();
+  expect(row?.action, JSON.stringify(response)).not.toBe('failed');
+}
+
 async function listTenantTools(url: string, id: number): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
     method: 'POST',
@@ -834,6 +860,7 @@ describe('tenant routing smoke', () => {
       expect(threeZeroCapabilities.result?.structuredContent?.media_buy?.proposal_refinement).toBeUndefined();
       expect(threeZeroCapabilities.result?.structuredContent?.media_buy?.acceptance_policy_discovery).toBeUndefined();
 
+      await provisionAccount(url, { brand: { domain: 'buyer.example' }, operator: 'buyer.example' });
       const requested = await callTenantTool(url, 4, 'request_proposals', {
         adcp_version: '3.2-rc.7',
         adcp_major_version: 3,
@@ -1191,6 +1218,7 @@ describe('tenant routing smoke', () => {
         brand: { domain: 'tenant-native-buy.example' },
         operator: 'tenant-native-buy.example',
       };
+      await provisionAccount(url, account);
       const listed = await callTenantTool(url, 2, 'list_products', {
         account,
         criteria: { targeting_overlay: { geo_countries: ['US'] } },
@@ -1411,6 +1439,7 @@ describe('tenant routing smoke', () => {
         brand: { domain: 'tenant-release-pin.example' },
         operator: 'tenant-release-pin.example',
       };
+      await provisionAccount(url, account);
       const listed = await callTenantTool(url, 4, 'list_products', {
         adcp_version: '3.2',
         account,
@@ -1527,6 +1556,7 @@ describe('tenant routing smoke', () => {
         return approved!.governance_context as string;
       };
 
+      await provisionAccount(salesUrl, account);
       const listed = structured(await callTenantTool(salesUrl, 101, 'list_products', {
         account,
         fields: ['pricing_options'],
@@ -1759,6 +1789,7 @@ describe('tenant routing smoke', () => {
         },
       });
 
+      await provisionAccount(url, account);
       const listed = await callTenantTool(url, 72, 'list_products', {
         account,
         criteria: { product_ids: [productId] },
@@ -2153,6 +2184,7 @@ describe('tenant routing smoke', () => {
               features?: { inline_creative_management?: boolean };
               supported_optimization_metrics?: string[];
               vendor_metric_optimization?: { supported_targets?: string[] };
+              conversion_tracking?: { supported_targets?: string[] };
             };
             creative?: {
               supported_formats?: Array<{ capability_id?: string; operations?: string[] }>;
@@ -2168,12 +2200,13 @@ describe('tenant routing smoke', () => {
         ?.filter(format => format.operations?.includes('preview'))
         .map(format => format.capability_id) ?? [];
       const previewRouteIds = creative?.preview?.routes?.map(route => route.capability_id) ?? [];
-      expect(body.result?.structuredContent?.adcp_version).toBe('3.2-rc.7');
+      expect(body.result?.structuredContent?.adcp_version).toBe('3.2');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
       expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
+      expect(mediaBuy?.conversion_tracking?.supported_targets).toEqual(['cost_per']);
       expect(previewCapabilityIds.length).toBeGreaterThan(0);
       expect(previewRouteIds).toEqual(previewCapabilityIds);
       expect(creative?.preview?.routes?.every(route => (
@@ -2267,6 +2300,12 @@ describe('tenant routing smoke', () => {
         expect.objectContaining({ task_id: taskId, task_type: 'create_media_buy', status: 'submitted' }),
       ]);
 
+      const beforeApproval = payload(await callTenantTool(url, 51, 'get_media_buys', {
+        account,
+        media_buy_ids: [completion.media_buy_id],
+      }));
+      expect(beforeApproval?.media_buys).toEqual([]);
+
       const signalsUrl = `${baseUrl}/signals/mcp`;
       await initializeTenant(signalsUrl);
       const salesAccountId = `synthetic_${createHash('sha256')
@@ -2280,12 +2319,17 @@ describe('tenant routing smoke', () => {
       }));
       expect(crossTenantRead).toMatchObject({ tasks: [] });
 
-      const completed = payload(await callTenantTool(url, 7, 'comply_test_controller', {
-        account,
-        scenario: 'force_task_completion',
-        params: { task_id: taskId, result: completion },
-      }));
-      expect(completed, JSON.stringify(completed)).toMatchObject({ success: true, current_state: 'completed' });
+      const rivalCompletion = { ...completion, media_buy_id: 'mb_training_async_lifecycle_rival' };
+      const completionAttempts = await Promise.all([completion, rivalCompletion].map((result, index) =>
+        callTenantTool(url, 7 + index, 'comply_test_controller', {
+          account,
+          scenario: 'force_task_completion',
+          params: { task_id: taskId, result },
+        }).then(payload)));
+      expect(completionAttempts.filter(attempt => attempt?.success)).toHaveLength(1);
+      const actualCompletion = completionAttempts[0]?.success ? completion : rivalCompletion;
+      const rejectedCompletion = completionAttempts[0]?.success ? rivalCompletion : completion;
+      expect(completionAttempts.find(attempt => attempt?.success)).toMatchObject({ current_state: 'completed' });
 
       const terminalRead = payload(await callTenantTool(url, 8, 'get_task_status', {
         account,
@@ -2296,8 +2340,22 @@ describe('tenant routing smoke', () => {
         task_id: taskId,
         task_type: 'create_media_buy',
         status: 'completed',
-        result: completion,
+        result: actualCompletion,
       });
+
+      const approvedBuy = payload(await callTenantTool(url, 52, 'get_media_buys', {
+        account,
+        media_buy_ids: [actualCompletion.media_buy_id, rejectedCompletion.media_buy_id],
+      }));
+      expect(approvedBuy?.media_buys).toEqual([
+        expect.objectContaining({
+          media_buy_id: actualCompletion.media_buy_id,
+          status: actualCompletion.media_buy_status,
+          packages: expect.arrayContaining([
+            expect.objectContaining({ package_id: actualCompletion.packages[0].package_id }),
+          ]),
+        }),
+      ]);
 
       const terminalList = payload(await callTenantTool(url, 9, 'list_tasks', {
         account,
@@ -2337,6 +2395,7 @@ describe('tenant routing smoke', () => {
         params: { arm: 'submitted', task_id: taskId },
       }))).toMatchObject({ success: true });
 
+      await provisionAccount(url, account);
       expect(payload(await callTenantTool(url, 11, 'get_signals', {
         account,
         discovery_mode: 'brief',
@@ -2368,6 +2427,7 @@ describe('tenant routing smoke', () => {
         params: { arm: 'submitted', task_id: taskId },
       }))).toMatchObject({ success: true });
 
+      await provisionAccount(url, otherAccount);
       expect(payload(await callTenantTool(url, 15, 'get_signals', {
         account: otherAccount,
         discovery_mode: 'brief',
@@ -2462,7 +2522,12 @@ describe('tenant routing smoke', () => {
       const accountA = {
         brand: { domain: 'task-owner-a.example' },
         operator: 'pinnacle-agency.example',
+        operator_unit: { id: 'unit-a' },
         sandbox: true,
+      };
+      const accountAOtherUnit = {
+        ...accountA,
+        operator_unit: { id: 'unit-b' },
       };
       const accountB = {
         brand: { domain: 'task-owner-b.example' },
@@ -2539,6 +2604,11 @@ describe('tenant routing smoke', () => {
         success: false,
         error: 'NOT_FOUND',
       });
+      expect(await complete(ownerA, accountAOtherUnit, 'mb_cross_unit_attack')).toMatchObject({
+        status: 'failed',
+        success: false,
+        error: 'NOT_FOUND',
+      });
       expect(await read(ownerA, accountA)).toMatchObject({ status: 'submitted' });
 
       const ownerACompletion = await complete(ownerA, accountA, 'mb_owner_a_account_a');
@@ -2577,6 +2647,7 @@ describe('tenant routing smoke', () => {
         scenario: 'force_get_signals_arm',
         params: { arm: 'submitted', task_id: taskId },
       }, token))).toMatchObject({ success: true });
+      await provisionAccount(url, account, token);
       expect(payload(await callTenantTool(url, 31, 'get_signals', {
         account,
         discovery_mode: 'brief',
@@ -2587,7 +2658,9 @@ describe('tenant routing smoke', () => {
       // Simulate a credential that authenticates but has no registered buyer
       // agent. The router must remove the forged internal owner before the
       // comply adapter sees the request.
-      resolveSpy.mockResolvedValueOnce(null);
+      // Both the router and the SDK may resolve this credential during one
+      // request. Keep every lookup unresolved for the forged request.
+      resolveSpy.mockResolvedValue(null);
       const keyId = createHash('sha256').update(token).digest('hex').slice(0, 32);
       const attack = payload(await callTenantTool(url, 32, 'comply_test_controller', {
         account,
@@ -2601,6 +2674,7 @@ describe('tenant routing smoke', () => {
       }, token));
 
       expect(attack).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      resolveSpy.mockRestore();
       expect(payload(await callTenantTool(url, 33, 'get_task_status', {
         account,
         task_id: taskId,
@@ -2788,6 +2862,13 @@ describe('tenant routing smoke', () => {
     try {
       const url = `${baseUrl}/sales/mcp`;
       await initializeTenant(url);
+      for (const domain of [
+        'legacy-product-facade.example',
+        'legacy-product-wire.example',
+        'canonical-product-wire.example',
+      ]) {
+        await provisionAccount(url, { brand: { domain }, operator: 'pinnacle-agency.example' });
+      }
       const body = await callTenantTool(url, 2, 'get_products', {
         adcp_version: '3.1',
         idempotency_key: 'dual-product-shape-default-0001',
@@ -4268,6 +4349,7 @@ describe('tenant routing smoke', () => {
         brand: { domain: 'tenant-products-idempotency.example' },
         operator: 'tenant-products-idempotency.example',
       };
+      await provisionAccount(url, account);
       const payload = {
         idempotency_key: 'tenant-products-idempotency-0001',
         adcp_version: '3.2-rc.7',
@@ -4550,6 +4632,7 @@ describe('tenant routing smoke', () => {
       expect(directive.result?.content?.[0]?.text)
         .not.toBe(JSON.stringify(directive.result?.structuredContent));
 
+      await provisionAccount(url, account);
       const key = 'tenant-products-advisory-replay-0001';
       const first = await callTenantTool(url, 4, 'get_products', {
         idempotency_key: key,
@@ -4631,6 +4714,7 @@ describe('tenant routing smoke', () => {
       }) as { result?: { structuredContent?: { success?: boolean } } };
       expect(directive.result?.structuredContent?.success).toBe(true);
 
+      await provisionAccount(url, account);
       const rejected = await callTenantTool(url, 92, 'get_products', {
         adcp_version: '3.2-rc.7',
         adcp_major_version: 3,
@@ -4670,6 +4754,7 @@ describe('tenant routing smoke', () => {
         brand: { domain: 'tenant-products-finalize.example' },
         operator: 'tenant-products-finalize.example',
       };
+      await provisionAccount(url, account);
       const brief = await callTenantTool(url, 2, 'get_products', {
         idempotency_key: 'tenant-products-brief-finalize-0001',
         buying_mode: 'brief',

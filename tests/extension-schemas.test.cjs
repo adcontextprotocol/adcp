@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { validateExtensionNamespace } = require('../scripts/build-schemas.cjs');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 const EXTENSIONS_DIR = path.join(SCHEMA_BASE_DIR, 'extensions');
@@ -333,15 +334,16 @@ async function runTests() {
   });
 
   // Test 10: Reserved namespaces should be rejected by build script validation
-  await test('Reserved namespaces are documented', async () => {
+  await test('Reserved namespaces require the canonical AdCP-owned entry', async () => {
     // These namespaces are reserved in scripts/build-schemas.cjs
     const RESERVED_NAMESPACES = ['adcp', 'core', 'protocol', 'schema', 'meta', 'ext', 'context'];
 
-    // Verify none of the reserved namespaces exist as extension files
+    // Vendor entries cannot claim a reserved namespace. The canonical
+    // AdCP-owned entry is validated by the same rule used in discovery.
     for (const reserved of RESERVED_NAMESPACES) {
       const reservedPath = path.join(EXTENSIONS_DIR, `${reserved}.json`);
       if (fs.existsSync(reservedPath)) {
-        throw new Error(`Reserved namespace "${reserved}" should not exist as an extension file`);
+        validateExtensionNamespace(reserved, JSON.parse(fs.readFileSync(reservedPath, 'utf8')));
       }
     }
     return true;
