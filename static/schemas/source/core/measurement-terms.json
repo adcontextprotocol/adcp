@@ -13,11 +13,13 @@
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Vendor whose measurement of the billing metric is authoritative for invoicing (e.g., { domain: 'campaignmanager.google.com' } for buyer's DCM, { domain: 'admanager.google.com' } for seller's GAM)."
         },
-        "counting_sources": {
+        "counting_mechanisms": {
           "type": "array",
-          "description": "What the billing metric named by `vendor` is counted from: `vendor` says who counts, this says how. Lists only sources whose events enter the billed count; cross-check sources MUST NOT be listed, and the merge rule for several sources is described in the seller's methodology. Billing count only (per-row provenance is `vendor_metric_values[].measurement_provenance`). A set: order carries no meaning and values MUST NOT repeat. A claim enforced through the contract (`vendor`, `max_variance_percent`, `makegood_policy`), not a conformance probe. Absence means undeclared, never a default source, and a seller that omits `billing_measurement` declares nothing. On a product it is the seller's default; on a package request, the buyer's proposed term (the seller MAY accept, adjust, or reject with `TERMS_REJECTED`); on a confirmed package, the agreed term. A seller (or its ad server) that is itself the named `vendor` SHOULD declare it; buyer-attested and third-party vendors MAY omit it.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "What the billing metric named by `vendor` is counted from: `vendor` says who counts, this says how. Not `measurement_source`, which names the provider. Lists only mechanisms whose events enter the billed count; cross-check mechanisms MUST NOT be listed, and the merge rule for several mechanisms is described in the seller's methodology. Billing count only (per-row provenance is `vendor_metric_values[].measurement_provenance`). A set: order carries no meaning and values MUST NOT repeat. A claim enforced through the contract (`vendor`, `max_variance_percent`, `makegood_policy`), not a conformance probe. Absence means undeclared, never a default source, and a seller that omits `billing_measurement` declares nothing. On a product it is the seller's default; on a package request, the buyer's proposed term (the seller MAY accept, adjust, or reject with `TERMS_REJECTED`); on a confirmed package, the agreed term. A seller (or its ad server) that is itself the named `vendor` SHOULD declare it; buyer-attested and third-party vendors MAY omit it.",
           "items": {
-            "$ref": "/schemas/enums/measurement-source-type.json"
+            "$ref": "/schemas/enums/collection-mechanism.json"
           },
           "minItems": 1,
           "uniqueItems": true,
@@ -31,7 +33,7 @@
         },
         "measurement_window": {
           "type": "string",
-          "description": "Which measurement maturation stage the billing metric is reconciled against. References a window_id from the product's reporting_capabilities.measurement_windows. Examples: 'c7' for broadcast TV guarantees (live + 7 days DVR), 'final' for DOOH after IVT/fraud-check processing, 'post_sivt' for digital after sophisticated invalid-traffic filtering, 'downloads_30d' for podcast. When absent, billing is based on the seller's standard reporting without windowed maturation.",
+          "description": "Which measurement maturation stage the billing metric is reconciled against. When present, MUST reference a window_id declared in the product's reporting_capabilities.measurement_windows. A seller MUST NOT advertise a window (or other term value) in a product's measurement_terms that it would reject with TERMS_REJECTED when a buyer replays those terms unchanged on create_media_buy. Examples: 'c7' for broadcast TV guarantees (live + 7 days DVR), 'final' for DOOH after IVT/fraud-check processing, 'post_sivt' for digital after sophisticated invalid-traffic filtering, 'downloads_30d' for podcast. When absent, billing is based on the seller's standard reporting without windowed maturation.",
           "examples": [
             "live",
             "c3",

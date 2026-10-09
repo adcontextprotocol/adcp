@@ -72,4 +72,6 @@ effective targeting with cleared dimensions omitted and never carries `null`.
 
 A completed purchase MAY include `warnings[]` for non-blocking observations at commitment, such as a material inventory shortfall forecast. Each warning identifies its package through the returned `media_buy_id` and `purchase_bindings[].package_id`; a continuing condition is also readable as an indicator through [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). The seller may instead return `input-required` before commitment. Warnings never appear on failed or submitted arms.
 
+A submitted arm MAY carry `expected_confirmation_at` (added in 3.3) when confirmation depends on a scheduled event such as a booking round or manual review window; buyers SHOULD schedule a status check for that time instead of polling tightly. It is an estimate, not a commitment. See [Expected confirmation time](/docs/media-buy/task-reference/create_media_buy#expected-confirmation-time).
+
 The accepted snapshot records the published terms the buyer purchased. It does not imply that every direct product is non-guaranteed: discovery mode, buyer composition, and delivery guarantee are independent dimensions.

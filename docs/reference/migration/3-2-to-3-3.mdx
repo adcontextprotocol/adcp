@@ -13,7 +13,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 
 3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
-Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). Everything else is an optional declaration or a clarification.
+Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). One change loosens a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib). Everything else is an optional declaration or a clarification.
 
 For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3). For prerelease artifacts and SDK timing, use the [3.3 beta program](/docs/reference/3-3-beta).
 
@@ -27,8 +27,9 @@ For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/w
 | 4 | Buyers | Send `adcp_version: "3.3-beta.N"` only after exact capability discovery; never silently move between beta pins. |
 | 5 | Sellers that provision accounts lazily | Move provisioning off discovery tasks. |
 | 6 | Signing and verifying implementations | Check agent resolution and pinned keys against the list below. |
-| 7 | Sellers with a catalog intake | Optionally declare `media_buy.features.catalog_ingestion`. |
-| 8 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
+| 7 | Verifiers that fetch brand.json | Raise the brand.json body cap from 256 KiB to 2 MiB; leave JWKS and capabilities caps unchanged. |
+| 8 | Sellers with a catalog intake | Optionally declare `media_buy.features.catalog_ingestion`. |
+| 9 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
 
 ## Required to claim 3.3 behavior
 
@@ -59,6 +60,16 @@ Request signing, webhook signing, governance JWS `iss`, designated-task response
 - Cached or onboarding mappings must be confirmed against the agent's `brand_json_url` and re-confirmed within the brand.json cache lifetime.
 
 TMP keeps its own publisher-key model. Verifiers take the publishers that apply from their own record of the media buy, never from the payload.
+
+### Brand JSON size cap rises to 2 MiB
+
+The brand.json body cap rises from 256 KiB to 2 MiB (2,097,152 bytes) on every fetch path: the AgenticAdvertising.org registry's live read, and the signing trust-root fetches in [`security.mdx`](/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url) (rights-holder resolution, designated-task response signing, and `brand_json_url` key discovery). Real brand houses with visual guidelines, colorways, and localized names exceed 256 KiB, so the old cap made them unverifiable. The cap applies to brand.json only. `MAX_JWKS_BYTES` and `MAX_CAPABILITIES_BYTES` are unchanged.
+
+**This loosens a limit, so interop is asymmetric.** A verifier still enforcing 256 KiB rejects a brand.json between 256 KiB and 2 MiB with `request_signature_brand_json_malformed` (or `webhook_signature_key_unknown` on the webhook surface), even though a 3.3 verifier accepts it.
+
+**Verifiers.** Raise the brand.json cap to 2 MiB, and keep the mitigations that make the larger cap safe: count bytes while the body streams and abort the connection once the cap is exceeded (never buffer then check, and never read past 2 MiB); apply the cap to decoded bytes when the response is content-encoded; keep the 5 s connect and 10 s total deadlines (the total covers reading the body); enforce a nesting depth of 32 while strict-parsing; run cheap checks before the fetch and bound concurrent trust-root fetches; and keep the success-cache lifetime bounded by the JWKS revocation polling interval with negative caching at or under 60 s. Revalidating with `ETag` and single-flighting concurrent fetches keep the larger body from being refetched on every request. SDKs that hard-clamp brand.json to 256 KiB need a release before their verifiers accept the larger size; check your SDK's changelog.
+
+**Operators.** A brand.json SHOULD stay under 2 MiB. While counterparties may still be on 3.2 verifiers, an operator whose brand.json carries `agents[]` or signing keys and needs to verify with them SHOULD keep that file under 256 KiB, for example by pointing `identity.brand_json_url` at a small Brand Agent variant that carries only the agent entries, until those peers upgrade.
 
 ## Clarifications
 

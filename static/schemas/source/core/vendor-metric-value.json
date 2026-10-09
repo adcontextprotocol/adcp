@@ -65,21 +65,23 @@
     },
     "measurement_provenance": {
       "type": "object",
-      "description": "Optional source provenance for this row: which collection mechanisms built the value and whether the vendor deduplicated across them. Row-level because a vendor's metrics draw on different sources; `source_types` is the union across the row's aggregation scope. Not a `qualifier` key: it does not partition rows in the `(vendor, metric_id, qualifier)` join. Buyers MAY filter or group on its keys; readers MUST ignore unknown keys. When absent, provenance is unspecified, never an implicit source; see the vendor's `methodology_url`. Open per DR-0009; vendor-specific detail belongs in `breakdown`.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Optional provenance for this row (not `measurement_source`, which names the provider): which collection mechanisms built the value and whether the vendor deduplicated across them. Row-level because a vendor's metrics draw on different mechanisms; `mechanisms` is the union across the row's aggregation scope. Not a `qualifier` key: it does not partition rows in the `(vendor, metric_id, qualifier)` join. Buyers MAY filter or group on its keys; readers MUST ignore unknown keys. When absent, provenance is unspecified, never an implicit source; see the vendor's `methodology_url`. Open per DR-0009; vendor-specific detail belongs in `breakdown`.",
       "properties": {
-        "source_types": {
+        "mechanisms": {
           "type": "array",
-          "description": "Mechanisms whose events enter this row's value; not every mechanism the vendor operates, and not cross-check sources. A set: order carries no meaning and values MUST NOT repeat.",
-          "items": { "$ref": "/schemas/enums/measurement-source-type.json" },
+          "description": "Mechanisms whose events enter this row's value; not every mechanism the vendor operates, and not cross-check mechanisms. A set: order carries no meaning and values MUST NOT repeat.",
+          "items": { "$ref": "/schemas/enums/collection-mechanism.json" },
           "minItems": 1,
           "uniqueItems": true
         },
         "deduplicated": {
           "type": "boolean",
-          "description": "Whether the vendor deduplicated across all feeds behind the listed `source_types` (if only some, omit and describe in the methodology). `false` means a simple union, so overlap may be double-counted; senders MUST serialize an explicit `false`. Absent means unspecified, never `false`. SHOULD be omitted for a single feed. Says nothing about dedup level (household, person, device)."
+          "description": "Whether the vendor deduplicated across all feeds behind the listed `mechanisms` (if only some, omit and describe in the methodology). `false` means a simple union, so overlap may be double-counted; senders MUST serialize an explicit `false`. Absent means unspecified, never `false`. SHOULD be omitted for a single feed. Says nothing about dedup level (household, person, device)."
         }
       },
-      "required": ["source_types"],
+      "required": ["mechanisms"],
       "additionalProperties": true
     },
     "breakdown": {
@@ -112,7 +114,7 @@
       "unit": "persons",
       "measurable_impressions": 9200000,
       "measurement_provenance": {
-        "source_types": ["set_top_box", "panel"],
+        "mechanisms": ["set_top_box", "panel"],
         "deduplicated": true
       },
       "breakdown": {
