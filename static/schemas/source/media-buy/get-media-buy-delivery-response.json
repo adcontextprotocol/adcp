@@ -398,6 +398,12 @@
                       "description": "Package delivery pace relative to its package-level pacing plan (1.0 = on track, <1.0 = behind, >1.0 = ahead). In seller-optimized mode this is a subordinate diagnostic and may be absent when no package pacing preference exists.",
                       "minimum": 0
                     },
+                    "projection": {
+                      "$ref": "/schemas/core/delivery-projection.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0",
+                      "description": "Optional seller projection of where this package's delivery will end up at flight end. Forward-looking counterpart to the backward-looking `pacing_index`, and the numeric counterpart to the categorical `pacing_risk` indicator on `get_media_buys`. Experimental: sellers that emit it MUST list `media_buy.delivery_projection` in `experimental_features`. An advisory forecast, not a delivery record: it carries no contractual meaning on its own, and any commercial use is governed by the parties' terms. Defined on top-level `by_package[]` rows of GET responses; it is not part of the `windows[].by_package` or exact `reporting_revision_id` contracts, and this field does not define webhook use. Sellers that do not project omit it; absence carries no meaning."
+                    },
                     "pricing_model": {
                       "$ref": "/schemas/enums/pricing-model.json",
                       "description": "The pricing model used for this package (e.g., cpm, cpcv, cpp). Indicates how the package is billed and which metrics are most relevant for optimization."

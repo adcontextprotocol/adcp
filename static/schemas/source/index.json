@@ -530,6 +530,10 @@
           "$ref": "/schemas/core/product-allocation.json",
           "description": "A budget allocation for a specific product within a proposal"
         },
+        "delivery-projection": {
+          "$ref": "/schemas/core/delivery-projection.json",
+          "description": "Advisory seller projection of a package's end-of-flight delivery (projected_impressions, projected_spend, projected_end_state, basis, as_of)"
+        },
         "delivery-forecast": {
           "$ref": "/schemas/core/delivery-forecast.json",
           "description": "Forecasted delivery metrics for a proposal or product allocation"
@@ -1384,6 +1388,14 @@
         "feedback-source": {
           "$ref": "/schemas/enums/feedback-source.json",
           "description": "Source of performance feedback data"
+        },
+        "delivery-projection-end-state": {
+          "$ref": "/schemas/enums/delivery-projection-end-state.json",
+          "description": "Projected end-of-flight state of a package (on_pace, complete, underdelivery, early_exhaustion)"
+        },
+        "delivery-projection-basis": {
+          "$ref": "/schemas/enums/delivery-projection-basis.json",
+          "description": "Class of method behind a delivery projection (trailing_daily_avg, trailing_hourly_avg, platform_model, seller_defined)"
         },
         "forecast-method": {
           "$ref": "/schemas/enums/forecast-method.json",

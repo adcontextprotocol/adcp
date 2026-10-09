@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/delivery-projection-end-state.json",
+  "title": "Delivery Projection End State",
+  "description": "Where a package is projected to land when its delivery ends, judged against the package's binding constraint (whichever of its goal or budget it would reach first). Tolerance and materiality are the seller's own thresholds. `complete` is a projected early finish, unrelated to `delivery_status: completed`. Clients on an older schema version SHOULD tolerate an unrecognized value.",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": [
+    "on_pace",
+    "complete",
+    "underdelivery",
+    "early_exhaustion"
+  ],
+  "enumDescriptions": {
+    "on_pace": "Projected to reach the binding constraint (goal or budget) at flight end, within the seller's tolerance.",
+    "complete": "Projected to reach the binding constraint before flight end, with the undelivered share of the flight below the seller's materiality threshold. A benign early finish.",
+    "underdelivery": "Projected to fall short of the binding constraint at flight end by more than the seller's tolerance.",
+    "early_exhaustion": "Projected to reach the binding constraint before flight end, with the undelivered share of the flight at or above the seller's materiality threshold."
+  }
+}

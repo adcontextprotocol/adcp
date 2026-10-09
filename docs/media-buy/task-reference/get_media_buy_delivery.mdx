@@ -141,7 +141,7 @@ Returns delivery data as per-media-buy rows:
 | `currency` | ISO 4217 denomination for monetary values in this row. Sellers SHOULD populate it when the row has one currency. Every package currency in an AdCP-authored buy MUST match it. Legacy or external mixed-currency buys omit it and report monetary values only at package level. |
 | `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`). In webhook context, may also be `reporting_delayed` or `failed`. Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
 | `totals` | Metrics aggregated within this media buy. Legacy or external mixed-currency buys omit monetary totals such as `spend`. |
-| `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
+| `by_package` | Package-level breakdowns with delivery_status, paused state, pacing_index, and an optional forward-looking `projection` |
 | `daily_breakdown` | Day-by-day delivery for single-currency rows, one row per calendar date in the reporting timezone. Omitted for legacy/external mixed-currency buys because daily rows have no package currency grain. |
 
 See the pinned [3.2.1 schema](https://adcontextprotocol.org/schemas/3.2.1/media-buy/get-media-buy-delivery-response.json) for the released field list, including exact-revision reads.
@@ -716,6 +716,7 @@ The `by_package` array provides per-package delivery details with these key fiel
 
 **Performance**:
 - **`pacing_index`**: Delivery pace (1.0 = on track, below 1.0 = behind, above 1.0 = ahead)
+- **`projection`**: Optional seller projection of where the package is headed by flight end; see [Delivery projection](#delivery-projection)
 - **`rate`**: Effective pricing rate (e.g., CPM)
 - **`pricing_model`**: How the package is billed (cpm, cpcv, cpp, revenue_share, etc.)
 - **`commissionable_value`**: For `revenue_share`, the settled attributed value to which the selected `commission_rate` applies. Verify `spend = round_currency(commissionable_value × commission_rate)`.
@@ -726,6 +727,49 @@ The `by_package` array provides per-package delivery details with these key fiel
 - **`vendor_metric_values`**: Reported values for vendor-defined metrics that the product's `reporting_capabilities.vendor_metrics` declared (proprietary attention, emissions, panel demographics, brand-lift surveys, etc.). Each entry carries `{ vendor, metric_id, value, unit?, measurable_impressions?, measurable_plays?, measurable_play_seconds?, vendor_relationship?, qualifier?, breakdown? }`. The `measurable_impressions` field is the coverage denominator — vendor measurement is rarely 100% of delivery, since vendors only score impressions where their SDK fires or their panel matches. Buyers compute coverage as `measurable_impressions / impressions`. When `measurable_impressions` is absent, coverage is unspecified — buyers MUST NOT compute a coverage rate or assume full coverage. For play-based channels (DOOH, cinema, place-based) where `impressions` is itself modelled from `plays`, the row carries `measurable_plays` (coverage = `measurable_plays / plays`) or `measurable_play_seconds` (coverage = `measurable_play_seconds / dooh_metrics.screen_time_seconds` on screen networks, or against the seller's reported playout seconds on place-based audio) instead; a row SHOULD carry exactly one denominator. `vendor_relationship` (`first_party` / `affiliated` / `third_party`) MAY echo the product's `reporting_capabilities.vendor_metrics[].vendor_relationship` so the row states the seller–vendor relationship without a join back to the product; when present it MUST equal the declared value, and absence is undeclared, never `third_party`. Distinct from the row-level `measurement_source` provider slug used by measured channels (radio, broadcast, OOH). When a declared vendor metric is omitted entirely from this array, infer no measurement happened (no integration). JIC or panel-based co-viewing adjustments, claim reconciliation, confidence intervals, and panel sizes belong here, usually in `breakdown`, rather than in buy-time signal targeting definitions.
 
 **Key Distinction**: `paused` reflects buyer control, while `delivery_status` reflects system reality. A package can be not paused but have `delivery_status: "budget_exhausted"`.
+
+## Delivery projection
+
+<Note>
+**Experimental.** `projection` (`x-status: experimental`) has one production adopter so far, and the `complete` / `early_exhaustion` split is new in this surface. A seller that emits it MUST list `media_buy.delivery_projection` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Per [Experimental status](/docs/reference/experimental-status), the surface MAY change between 3.x releases with notice.
+</Note>
+
+`pacing_index` says how a package's delivery **has** tracked against its plan. `projection` says where it is **going**. Without a standard shape, each buyer re-derives a projection from `daily_breakdown` with its own assumptions, and a seller with better inputs (hourly data, seasonality, inventory availability) has no way to share its own. A seller that projects adds an optional `projection` object to a top-level `by_package[]` row. Here a package with a 1,500,000-impression goal is projected to end at 1,180,000:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/delivery-projection.json",
+  "projected_impressions": 1180000,
+  "projected_spend": 9440.00,
+  "projected_end_state": "underdelivery",
+  "basis": "trailing_daily_avg",
+  "as_of": "2026-10-01T00:00:00Z"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `projected_end_state` | Required. One package-level judgment against the package's binding constraint, whichever of goal or budget it would reach first. `on_pace`: reaches it at flight end, within the seller's tolerance. `complete` (a projected early finish, unrelated to `delivery_status: completed`): reaches it before flight end, with the undelivered share of the flight below the seller's materiality threshold, so it simply finishes early. `early_exhaustion`: reaches it before flight end, with the undelivered share at or above the materiality threshold. `underdelivery`: falls short at flight end by more than tolerance. There is no over-delivery state: a package projected to exceed its constraint is projected to reach it early. |
+| `projected_impressions`, `projected_spend` | Optional supporting numbers. Projected **lifetime** totals when delivery ends, counted from the package's start rather than `reporting_period.start`, so they include delivery already reported and are not comparable to the row's period `impressions` and `spend` unless the period covers the flight to date. Spend is in the package row's `currency`. A seller omits a volume it does not project; a projection with only an end state is valid. |
+| `basis` | Required. The method class: `trailing_daily_avg`, `trailing_hourly_avg`, `platform_model`, or `seller_defined`. It names the class, not the parameters. Window length, model name, and seasonality inputs belong in the projection's `ext`. `basis` is how the projection was sampled or modeled. It is not the commitment tier of [`forecast_method`](https://adcontextprotocol.org/schemas/v3/enums/forecast-method.json) (`estimate`, `modeled`, `guaranteed`), and a projection from actuals carries no delivery commitment at any `basis`. A client on an older schema version treats an unrecognized value like `seller_defined`. |
+| `as_of` | Required. The latest delivery data the projection was computed from. It is independent of `reporting_period` and can precede the response time because reporting lags. |
+
+Tolerance and materiality are the seller's own thresholds, which it SHOULD also use for `pacing_risk` when it emits that indicator. They are not exposed, so buyers should not compare end states across sellers as if the thresholds matched. The projection may be recomputed when a row is superseded by a wider `measurement_window`, and `is_final` describes the actuals, not the projection. Sellers SHOULD omit `projection` for a package whose `delivery_status` is `completed`, `flight_ended`, `goal_met`, or `budget_exhausted`, because the actuals are then the answer. Discovery is by presence on the response; there is no capability flag.
+
+**Advisory, not a record.** Projections are advisory forecasts, not delivery records. They carry no contractual meaning on their own, and any commercial use of a projection is governed by the parties' terms. Reported actuals (`impressions`, `spend`, and the other delivery metrics) remain the delivery record.
+
+**Scope.** `projection` is defined on top-level `by_package[]` rows of this response. It is not part of the `windows[].by_package` contract, exact `reporting_revision_id` reads (whose `reporting_rows` are immutable revision evidence), or the [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) snapshot, and this field does not define webhook use. The latest projection is a property of the buy now, not of a historical window. There is no buy-level roll-up, because no rule exists for aggregating packages whose `projected_end_state` differs. Confidence ranges and delivery-shaping controls are not part of this field. Sellers that do not project omit `projection`, and buyers MUST NOT read its absence as `on_pace`.
+
+**How it composes with `pacing_risk`.** [`pacing_risk`](/docs/media-buy/media-buys/indicators) on `get_media_buys` is the seller's categorical judgment that material over- or under-delivery is projected by flight end absent intervention. `projection` is the numeric counterpart on delivery reporting. They describe the same forward-looking question at different grain and on different reads, and a seller that emits both SHOULD keep them coherent:
+
+| `projection.projected_end_state` | Expected `pacing_risk` on the same package |
+|---|---|
+| `on_pace`, `complete` | Not present |
+| `underdelivery`, `early_exhaustion` | Present when the seller's tolerance treats the gap as material |
+
+A seller MAY emit `projection` without advertising `pacing_risk`, and the reverse. The two share the seller's tolerance, so neither is a substitute for the other and a buyer MUST NOT infer one from the absence of the other. `pacing_risk` also covers over-delivery, which `projection` has no state for beyond early completion. Use `pacing_risk` to decide when to look, and `projection` for the number behind it.
+
+`projection` and `pacing_index` can legitimately disagree. `pacing_index` is measured against the package's pacing plan and may be absent in seller-optimized mode, while the projection is measured against the goal or budget at flight end. A front-loaded plan can show a `pacing_index` of 0.9 on a package that is projected `on_pace`.
 
 ## Creative-Level Metrics
 
