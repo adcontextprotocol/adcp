@@ -19,10 +19,17 @@
  * stable entry becomes the only default and the only `Latest` entry, the old
  * default is demoted, and the line's beta/RC selectors leave the version
  * picker. Their immutable dist/docs snapshots and redirects stay in place.
+ *
+ * Simplified Chinese pages are authored in docs/zh/ and published at
+ * zh/dist/docs/<default-snapshot>/ so Mintlify can treat them as the same
+ * page in another language. Retargeting the default English snapshot also
+ * rewrites that prefix in navigation, redirects, and docs/zh links, and
+ * renames the symlink directory. Non-default versions do not move it.
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
@@ -147,6 +154,82 @@ function pinOpenApiSources(value, releaseVersion) {
 
 function retargetExistingPath(releaseVersion, value) {
   return value.replace(DIST_DOCS_PREFIX_RE, `dist/docs/${releaseVersion}/`);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function singleSnapshotBuild(groups) {
+  const builds = snapshotBuilds(groups);
+  return builds.size === 1 ? [...builds][0] : undefined;
+}
+
+/**
+ * Chinese navigation mirrors the default English snapshot:
+ * dist/docs/<build>/<page> pairs with zh/dist/docs/<build>/<page>.
+ * Only the default line moves that prefix. Archived versions stay put.
+ */
+function retargetZhLanguageGroups(config, previousBuild, nextBuild) {
+  if (!previousBuild || !nextBuild || previousBuild === nextBuild) return;
+  const languages = config.navigation?.languages;
+  if (!Array.isArray(languages)) return;
+  const pattern = new RegExp(`^zh/dist/docs/${escapeRegExp(previousBuild)}/`);
+  const replacement = `zh/dist/docs/${nextBuild}/`;
+  for (const language of languages) {
+    if (!language || language.language === 'en' || !language.groups) continue;
+    language.groups = mapStrings(language.groups, (value) =>
+      pattern.test(value) ? value.replace(pattern, replacement) : value
+    );
+  }
+  if (!Array.isArray(config.redirects)) return;
+  const destinationPattern = new RegExp(`^/zh/dist/docs/${escapeRegExp(previousBuild)}/`);
+  const destinationReplacement = `/zh/dist/docs/${nextBuild}/`;
+  for (const redirect of config.redirects) {
+    if (typeof redirect?.destination !== 'string') continue;
+    if (!destinationPattern.test(redirect.destination)) continue;
+    redirect.destination = redirect.destination.replace(destinationPattern, destinationReplacement);
+  }
+}
+
+export function moveZhSnapshotMirror(repoRoot, previousBuild, nextBuild) {
+  if (!previousBuild || !nextBuild || previousBuild === nextBuild) return false;
+  const from = path.join(repoRoot, 'zh', 'dist', 'docs', previousBuild);
+  const to = path.join(repoRoot, 'zh', 'dist', 'docs', nextBuild);
+  if (!existsSync(from)) return false;
+  if (existsSync(to)) {
+    throw new Error(
+      `Simplified Chinese docs mirror zh/dist/docs/${nextBuild} already exists; ` +
+      `remove it before retargeting from ${previousBuild}`
+    );
+  }
+  renameSync(from, to);
+  return true;
+}
+
+export function rewriteZhSnapshotLinks(repoRoot, previousBuild, nextBuild) {
+  if (!previousBuild || !nextBuild || previousBuild === nextBuild) return [];
+  const root = path.join(repoRoot, 'docs', 'zh');
+  if (!existsSync(root)) return [];
+  const from = `/zh/dist/docs/${previousBuild}/`;
+  const to = `/zh/dist/docs/${nextBuild}/`;
+  const changed = [];
+  const walk = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (!entry.isFile() || (!entry.name.endsWith('.mdx') && !entry.name.endsWith('.md'))) continue;
+      const text = readFileSync(fullPath, 'utf8');
+      if (!text.includes(from)) continue;
+      writeFileSync(fullPath, text.split(from).join(to));
+      changed.push(fullPath);
+    }
+  };
+  walk(root);
+  return changed;
 }
 
 function snapshotPath(releaseVersion, value) {
@@ -636,6 +719,11 @@ function promoteStableLine(config, releaseVersion, majorMinor, snapshotHasPage) 
   // Mintlify requires the default version first.
   setDocsNavigationVersions(config, [promoted, ...remaining]);
 
+  const previousBuild = singleSnapshotBuild(previousDefault.groups);
+  if (previousBuild && previousBuild !== releaseVersion) {
+    retargetZhLanguageGroups(config, previousBuild, releaseVersion);
+  }
+
   // Point clean /docs/* routes at the new default. Aliases for pages that only
   // exist in the old default keep pointing at its immutable snapshot.
   updateDefaultSnapshotAliases(config, [], promoted.groups);
@@ -649,6 +737,10 @@ function promoteStableLine(config, releaseVersion, majorMinor, snapshotHasPage) 
     sourceVersion: sourceEntry.version,
     previousDefault: previousDefault.version,
     retired: sameLinePrereleases.map((entry) => entry.version),
+    translationMirror:
+      previousBuild && previousBuild !== releaseVersion
+        ? { from: previousBuild, to: releaseVersion }
+        : undefined,
   };
 }
 
@@ -679,8 +771,12 @@ export function updateDocsConfig(config, releaseVersion, majorMinor, options = {
       entry.groups = flattenVersionGroups(entry.groups);
     }
     versions[existingIndex] = entry;
+    const previousBuild = entry.default ? singleSnapshotBuild(previousGroups) : undefined;
     if (entry.default) {
       updateDefaultSnapshotAliases(config, previousGroups, entry.groups);
+      if (previousBuild && previousBuild !== releaseVersion) {
+        retargetZhLanguageGroups(config, previousBuild, releaseVersion);
+      }
     }
     updatePrereleaseBanner(config, releaseVersion, majorMinor);
     updateReleaseStoryAliases(config, releaseVersion, snapshotHasPage);
@@ -689,6 +785,10 @@ export function updateDocsConfig(config, releaseVersion, majorMinor, options = {
       config,
       action: 'updated',
       sourceVersion: entry.version,
+      translationMirror:
+        entry.default && previousBuild && previousBuild !== releaseVersion
+          ? { from: previousBuild, to: releaseVersion }
+          : undefined,
     };
   }
 
@@ -843,6 +943,18 @@ function main() {
   writeFileSync(currentLlmsIndexPath, currentLlmsIndex);
   writeFileSync(dockerignorePath, dockerignore);
   writeFileSync(schemaToolsPath, schemaTools);
+
+  if (result.translationMirror) {
+    const repoRoot = path.dirname(path.resolve(docsJsonPath));
+    const { from, to } = result.translationMirror;
+    if (moveZhSnapshotMirror(repoRoot, from, to)) {
+      console.log(`Moved zh/dist/docs/${from} to zh/dist/docs/${to}`);
+    }
+    const rewritten = rewriteZhSnapshotLinks(repoRoot, from, to);
+    if (rewritten.length > 0) {
+      console.log(`Rewrote Simplified Chinese links in ${rewritten.length} file(s)`);
+    }
+  }
 
   for (const warning of result.warnings ?? []) {
     console.warn(`::warning::${warning}`);

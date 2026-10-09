@@ -2190,7 +2190,7 @@
       {
         "language": "zh",
         "banner": {
-          "content": "中文文档目前提供入门指南。协议规范、任务参考和迁移指南仍以英文为准。",
+          "content": "中文覆盖简介、快速开始和第一次集成。任务参考、模式和迁移指南仍以英文为规范。",
           "dismissible": true
         },
         "navbar": {
@@ -2236,7 +2236,7 @@
               "header": "透明度",
               "items": [
                 {
-                  "label": "AI 披露",
+                  "label": "AI 披露（英文）",
                   "href": "/docs/ai-disclosure"
                 },
                 {
@@ -2244,7 +2244,7 @@
                   "href": "https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md"
                 },
                 {
-                  "label": "工作组",
+                  "label": "工作组（英文）",
                   "href": "/docs/community/working-group"
                 }
               ]
@@ -2256,8 +2256,20 @@
           {
             "group": "入门",
             "pages": [
-              "docs/zh/intro",
-              "docs/zh/quickstart"
+              "zh/dist/docs/3.2.3/intro",
+              "zh/dist/docs/3.2.3/quickstart",
+              "zh/dist/docs/3.2.3/glossary"
+            ]
+          },
+          {
+            "group": "第一次集成",
+            "pages": [
+              "zh/dist/docs/3.2.3/building/index",
+              "zh/dist/docs/3.2.3/building/schemas-and-sdks",
+              "zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk",
+              "zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller",
+              "zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent",
+              "zh/dist/docs/3.2.3/protocol/calling-an-agent"
             ]
           }
         ]
@@ -4513,6 +4525,56 @@
     {
       "source": "/docs/accounts/principal-registration-walkthrough",
       "destination": "/dist/docs/3.2.3/accounts/principal-registration-walkthrough",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/intro",
+      "destination": "/zh/dist/docs/3.2.3/intro",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/quickstart",
+      "destination": "/zh/dist/docs/3.2.3/quickstart",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/glossary",
+      "destination": "/zh/dist/docs/3.2.3/glossary",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/index",
+      "destination": "/zh/dist/docs/3.2.3/building/index",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building",
+      "destination": "/zh/dist/docs/3.2.3/building",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/schemas-and-sdks",
+      "destination": "/zh/dist/docs/3.2.3/building/schemas-and-sdks",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/by-layer/L4/choose-your-sdk",
+      "destination": "/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/by-layer/L4/build-a-caller",
+      "destination": "/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/by-layer/L4/build-an-agent",
+      "destination": "/zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/protocol/calling-an-agent",
+      "destination": "/zh/dist/docs/3.2.3/protocol/calling-an-agent",
       "permanent": false
     }
   ],

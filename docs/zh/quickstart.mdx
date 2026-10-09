@@ -7,11 +7,15 @@ description: "AdCP 快速开始：买方五分钟调用公开测试代理，媒�
 
 选择你的路径。买方在五分钟内调用公开测试代理。媒体方和卖方搭建一个买方可以调用的代理。
 
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。本页走完发现产品、处理错误、创建媒体购买和带签名的 webhook。要收成可维护的集成，继续看[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)。英文原文：[Quickstart](/docs/quickstart)。没有中文译本的链接会打开英文规范页面。
+</Info>
+
 <CardGroup cols={2}>
   <Card title="我要调用代理" icon="plug">
     买方一侧。本页其余部分演示如何调用公开测试代理：无需注册，curl 可以直接复制。
   </Card>
-  <Card title="我要搭建代理" icon="server" href="/docs/building/by-layer/L4/build-an-agent">
+  <Card title="我要搭建代理" icon="server" href="/zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent">
     媒体方或卖方一侧。搭建一个买方可以调用的代理。
   </Card>
 </CardGroup>
@@ -27,7 +31,7 @@ export AGENT_URL="https://test-agent.adcontextprotocol.org/sales/mcp"
 
 测试代理按路径区分专业方向：`/sales/mcp` 提供媒体购买工具（本快速开始走这条路径），同级 URL 提供其他专业方向：`/signals/mcp`、`/governance/mcp`、`/creative/mcp`、`/creative-builder/mcp`、`/brand/mcp`。完整租户和工具列表见 [`/.well-known/adagents.json`](https://test-agent.adcontextprotocol.org/.well-known/adagents.json)。
 
-如果需要自己的 API 密钥（按组织隔离，并记录用量），在 [AAO 控制台](https://agenticadvertising.org/dashboard/api-keys) 创建。
+如果需要自己的 API 密钥（按组织隔离，并记录用量），在 [AgenticAdvertising.org 控制台](https://agenticadvertising.org/dashboard/api-keys) 创建。
 
 ## 1. 发现产品
 
@@ -174,7 +178,7 @@ curl -X POST $AGENT_URL \
 { "idempotency": { "supported": true, "replay_ttl_seconds": 86400 } }
 ```
 
-完整重试模型见[安全指南](/docs/building/by-layer/L1/security)，其中包括 `IDEMPOTENCY_CONFLICT`、`IDEMPOTENCY_EXPIRED`，以及 AdCP Verified 代理对 UUID v4 的要求。
+完整重试模型见[安全指南](/docs/building/by-layer/L1/security)（英文规范），其中包括 `IDEMPOTENCY_CONFLICT`、`IDEMPOTENCY_EXPIRED`，以及 AgenticAdvertising.org Verified 代理对 UUID v4 的要求。
 
 **响应**（每次调用的 ID 都会不同）：
 
@@ -244,7 +248,7 @@ console.log(buy.valid_actions);    // ["pause", "cancel", "update_budget", ...]
 }
 ```
 
-在信任载荷之前先验证签名：用[代理解析](/docs/building/by-layer/L1/security#agent-resolution)解析 `keyid`（卖方的 `identity.brand_json_url` 指向它的 `brand.json`，其中有 `agents[].jwks_uri`），只保留与适用的媒体方 `adagents.json` `signing_keys[]` 钉扎相匹配的密钥，按 AdCP webhook 验证清单执行，并用带类型的 `webhook_signature_*` 原因码拒绝未知密钥、过期日期或不匹配的摘要：
+在信任载荷之前先验证签名：用[代理解析](/docs/building/by-layer/L1/security#agent-resolution)（英文规范）解析 `keyid`（卖方的 `identity.brand_json_url` 指向它的 `brand.json`，其中有 `agents[].jwks_uri`），只保留与适用的媒体方 `adagents.json` `signing_keys[]` 钉扎相匹配的密钥，按 AdCP webhook 验证清单执行，并用带类型的 `webhook_signature_*` 原因码拒绝未知密钥、过期日期或不匹配的摘要：
 
 ```typescript
 app.post('/webhooks/adcp/*', async (req, res) => {
@@ -267,11 +271,11 @@ app.post('/webhooks/adcp/*', async (req, res) => {
 });
 ```
 
-完整验证配置见[安全指南](/docs/building/by-layer/L1/security)和 [Webhook 指南](/docs/building/by-layer/L3/webhooks)：必需请求头、被签名覆盖的组件、nonce 与日期窗口，以及合规运行器会执行的负向测试集。
+完整验证配置见[安全指南](/docs/building/by-layer/L1/security)和 [Webhook 指南](/docs/building/by-layer/L3/webhooks)（均为英文规范）：必需请求头、被签名覆盖的组件、nonce 与日期窗口，以及合规运行器会执行的负向测试集。
 
 ## 使用客户端库
 
-上面的例子用原始 HTTP，是为了把过程写清楚。实际使用时，用 AdCP 客户端库处理 SSE 解析、重试和认证：
+上面的例子用原始 HTTP，是为了把过程写清楚。实际使用时，用 AdCP 客户端库处理 SSE 解析、重试和认证。安装与调用形状见[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)，覆盖矩阵见[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)：
 
 ```bash
 npm install @adcp/sdk  # JavaScript/TypeScript
@@ -301,12 +305,20 @@ console.log(result.data.products);
 
 ## 接下来
 
-- **[搭建代理](/docs/building/by-layer/L4/build-an-agent)**：用技能文件和编程代理生成符合故事板的代理
+中文页面：
+
+- **[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)**：把本页的 curl 收成 SDK 集成
+- **[调用代理](/zh/dist/docs/3.2.3/protocol/calling-an-agent)**：幂等、`account` 的 `oneOf`、异步 `submitted`
+- **[搭建代理](/zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent)**：用技能文件和编程代理生成符合故事板的代理
+- **[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)**：语言覆盖和安装命令
+
+仍为英文的规范页面：
+
 - **[验证你的代理](/docs/building/verification/validate-your-agent)**：用故事板和合规检查测试代理
 - **[合规目录](/docs/building/verification/compliance-catalog)**：代理可以声明的领域和专业方向，以及验证每项声明的故事板
 - **[MCP 集成指南](/docs/building/by-layer/L0/mcp-guide)**：传输、会话和认证细节
 - **[A2A 集成指南](/docs/building/by-layer/L0/a2a-guide)**：流式传输、产物和推送通知
-- **[媒体购买生命周期](/docs/media-buy/media-buys/lifecycle)**：状态机、顺序流程、保量交易的 IO 路径，以及创意同步时机
+- **[媒体购买生命周期](/docs/media-buy/media-buys/lifecycle)**：状态机、顺序流程、保证式交易的 IO 路径，以及创意同步时机
 - **[任务参考](/docs/media-buy/task-reference)**：全部任务及可测试示例
 - **[错误处理](/docs/building/operating/transport-errors)**：错误码和恢复策略
 - **[认证](/docs/building/by-layer/L2/authentication)**：生产环境凭据配置

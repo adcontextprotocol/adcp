@@ -83,6 +83,8 @@ function versionEntry(version, build, extra = {}) {
     updateDocsConfig,
     updateDockerignore,
     updateSchemaTools,
+    moveZhSnapshotMirror,
+    rewriteZhSnapshotLinks,
   } = await import('../scripts/update-release-docs-nav.mjs');
 
   test('adds a released snapshot to the Docker build context exactly once', () => {
@@ -1276,7 +1278,7 @@ function versionEntry(version, build, extra = {}) {
     }
   });
 
-  test('updates english versions nested under navigation.languages and leaves translations alone', () => {
+  test('updates english versions nested under navigation.languages and retargets the chinese mirror', () => {
     const config = {
       banner: { content: 'stable' },
       navigation: {
@@ -1291,14 +1293,21 @@ function versionEntry(version, build, extra = {}) {
                 default: true,
                 groups: [{ group: 'Getting Started', pages: ['dist/docs/3.2.1/intro'] }],
               },
+              {
+                version: '3.1',
+                groups: [{ group: 'Getting Started', pages: ['dist/docs/3.1.24/intro'] }],
+              },
             ],
           },
           {
             language: 'zh',
-            groups: [{ group: '入门', pages: ['docs/zh/intro'] }],
+            groups: [{ group: '入门', pages: ['zh/dist/docs/3.2.1/intro'] }],
           },
         ],
       },
+      redirects: [
+        { source: '/docs/zh/intro', destination: '/zh/dist/docs/3.2.1/intro', permanent: false },
+      ],
     };
 
     const result = updateDocsConfig(config, '3.2.2', '3.2', {
@@ -1306,14 +1315,88 @@ function versionEntry(version, build, extra = {}) {
     });
 
     assert.equal(result.action, 'updated');
+    assert.deepEqual(result.translationMirror, { from: '3.2.1', to: '3.2.2' });
     const english = config.navigation.languages.find((entry) => entry.language === 'en');
     const chinese = config.navigation.languages.find((entry) => entry.language === 'zh');
     assert.deepEqual(english.versions[0].groups, [
       { group: 'Getting Started', pages: ['dist/docs/3.2.2/intro'] },
     ]);
-    assert.deepEqual(chinese.groups, [{ group: '入门', pages: ['docs/zh/intro'] }]);
+    assert.deepEqual(chinese.groups, [{ group: '入门', pages: ['zh/dist/docs/3.2.2/intro'] }]);
+    assert.equal(
+      config.redirects.find((redirect) => redirect.source === '/docs/zh/intro').destination,
+      '/zh/dist/docs/3.2.2/intro'
+    );
     assert.equal(config.navigation.versions, undefined);
     assert.match(renderCurrentLlmsIndex(config), /AdCP Current Documentation: 3\.2/);
+
+    const maintenance = updateDocsConfig(config, '3.1.25', '3.1', {
+      snapshotHasPage: () => true,
+    });
+    assert.equal(maintenance.translationMirror, undefined);
+    assert.deepEqual(chinese.groups, [{ group: '入门', pages: ['zh/dist/docs/3.2.2/intro'] }]);
+  });
+
+  test('promoting the default line retargets simplified chinese mirrors', () => {
+    const config = {
+      navigation: {
+        languages: [
+          {
+            language: 'en',
+            default: true,
+            versions: [
+              {
+                version: '3.2',
+                tag: 'Latest',
+                default: true,
+                groups: [{ group: 'Getting Started', pages: ['dist/docs/3.2.3/intro'] }],
+              },
+            ],
+          },
+          {
+            language: 'zh',
+            groups: [{ group: '入门', pages: ['zh/dist/docs/3.2.3/intro'] }],
+          },
+        ],
+      },
+      redirects: [
+        { source: '/docs/zh/intro', destination: '/zh/dist/docs/3.2.3/intro', permanent: false },
+      ],
+    };
+
+    const result = updateDocsConfig(config, '3.3.0', '3.3', { snapshotHasPage: () => true });
+    assert.equal(result.action, 'promoted');
+    const chinese = config.navigation.languages.find((entry) => entry.language === 'zh');
+    assert.deepEqual(chinese.groups, [{ group: '入门', pages: ['zh/dist/docs/3.3.0/intro'] }]);
+    assert.equal(
+      config.redirects.find((redirect) => redirect.source === '/docs/zh/intro').destination,
+      '/zh/dist/docs/3.3.0/intro'
+    );
+    assert.deepEqual(result.translationMirror, { from: '3.2.3', to: '3.3.0' });
+  });
+
+  test('moves the chinese mirror directory and rewrites docs/zh links', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'zh-mirror-'));
+    try {
+      const mirror = path.join(root, 'zh/dist/docs/3.2.3');
+      fs.mkdirSync(mirror, { recursive: true });
+      fs.writeFileSync(path.join(mirror, 'intro.mdx'), 'mirror');
+      fs.mkdirSync(path.join(root, 'docs/zh'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, 'docs/zh/intro.mdx'),
+        'see /zh/dist/docs/3.2.3/quickstart and keep /docs/intro'
+      );
+      assert.equal(moveZhSnapshotMirror(root, '3.2.3', '3.2.4'), true);
+      assert.equal(fs.existsSync(path.join(root, 'zh/dist/docs/3.2.4/intro.mdx')), true);
+      assert.equal(fs.existsSync(path.join(root, 'zh/dist/docs/3.2.3')), false);
+      const rewritten = rewriteZhSnapshotLinks(root, '3.2.3', '3.2.4');
+      assert.equal(rewritten.length, 1);
+      assert.equal(
+        fs.readFileSync(path.join(root, 'docs/zh/intro.mdx'), 'utf8'),
+        'see /zh/dist/docs/3.2.4/quickstart and keep /docs/intro'
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('throws a clear error when navigation.versions is empty', () => {

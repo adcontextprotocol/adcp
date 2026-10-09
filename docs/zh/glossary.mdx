@@ -1,0 +1,80 @@
+---
+title: 术语表
+sidebarTitle: 术语表
+"og:title": "AdCP — 中文术语表"
+description: "简体中文 AdCP 文档的译名表。代理、调用方、媒体购买、套餐与幂等键，在已翻译页面里保持同一写法。"
+---
+
+中文页面使用下面这套译名。协议字段、任务名、错误码和 URL 不翻译。英文是规范文本；本表只统一阅读用语。
+
+<Info>
+新增或修改译名时，先改本页，再改已经翻译的页面。不要在某一页单独换一个近义词。维护方式见[翻译文档](/docs/contributing/translations)。
+</Info>
+
+## 角色
+
+| 英文 | 中文 | 怎么用 |
+| --- | --- | --- |
+| agent | 代理 | AdCP 代理：对外提供任务的一方。不是浏览器的 user agent。 |
+| caller | 调用方 | 调用代理的买方应用，例如 DSP、规划工具或买方程序。 |
+| buyer | 买方 | 购买库存或数据的一方。 |
+| seller | 卖方 | 出售库存的一方。 |
+| publisher | 媒体方 | 拥有媒体资产的发布者。 |
+| operator | 运营方 | 代表品牌执行购买的实体，常见于 `account.operator`。 |
+| principal | 主体 | 已认证、可被审计的参与身份。 |
+| coding agent | 编程代理 | Claude Code、Codex、Cursor、Windsurf 这类写代码的工具。它不是 AdCP 代理。见下文。 |
+
+<a id="coding-agent"></a>
+
+## 编程代理
+
+编程代理指 Claude Code、Codex、Cursor、Windsurf 这类写代码的工具。它不是对外提供 AdCP 任务的代理。搭建卖方代理时，你把技能文件交给编程代理；它生成的那个服务才是 AdCP 代理。
+
+## 交易
+
+| 英文 | 中文 | 怎么用 |
+| --- | --- | --- |
+| media buy | 媒体购买 | 一次投放。字段名 `media_buy_id` 保持英文。 |
+| package | 套餐 | 媒体购买里的一个购买单元。不用「套装」。 |
+| product | 产品 | 卖方目录中可购买的库存产品。 |
+| inventory | 库存 | 可供购买的广告位置或流量。 |
+| brief | 简报 | 用自然语言描述的投放意图。字段名 `brief` 保持英文。 |
+| creative | 创意 | 广告素材，也包括生成创意。 |
+| targeting | 定向 | 对内容、受众或时间的约束。 |
+| guaranteed | 保证式 | 保量、固定价格的交易，相对于程序化竞价。 |
+| programmatic | 程序化 | 通过竞价或私有市场完成的交易。 |
+| proposal | 提案 | 从简报到可执行购买之间、可供审计的方案。 |
+| channel | 渠道 | 例如 CTV、展示、音频。渠道代码保持英文。 |
+| pricing option | 定价选项 | 字段名 `pricing_option_id` 保持英文。 |
+| format | 格式 | 创意或版位格式。格式标识保持英文。 |
+
+## 协议
+
+| 英文 | 中文 | 怎么用 |
+| --- | --- | --- |
+| task | 任务 | 协议任务。任务名（如 `get_products`）不翻译。 |
+| schema | 模式 | 正文里的 JSON Schema。文件名、URL 和 `$schema` 保持英文 schema。 |
+| idempotency key | 幂等键 | 字段名 `idempotency_key` 保持英文。 |
+| webhook | webhook | 代理发出的推送通知。不译成「网络钩子」。 |
+| registry | 注册表 | AgenticAdvertising.org 上的实体与代理目录。 |
+| property | 媒体资产 | `adagents.json` 里代理被授权经营的资产。 |
+| brand | 品牌 | 广告主品牌。`brand.json` 不翻译。 |
+| storyboard | 故事板 | 用来检验代理是否符合协议的脚本化场景。 |
+| conformance | 一致性 | 故事板所测的协议符合程度。 |
+| wire | 线路 | 请求和响应在传输上的形状，区别于 SDK 里的类型。 |
+| payload | 载荷 | 任务的请求或响应正文。 |
+| MCP / A2A | MCP / A2A | 两种传输。不翻译缩写。 |
+| SDK | SDK | 官方客户端与服务端库。 |
+
+## 组织名称
+
+AgenticAdvertising.org 是成员组织。AdCP 是协议。中文页面不使用「AAO」或「ADCP」作为组织或协议的缩写。英文页面里的 **AAO Verified** 在中文里写作 **AgenticAdvertising.org Verified**，后面仍保留 `(Spec)` 与 `(Live)` 这两个限定词。
+
+## 仍使用英文的材料
+
+下列材料保持英文，直到有经过审阅的译本。中文页面会链接过去，并标明它们是规范文本：
+
+- 任务参考与各领域规范（媒体购买、创意、信号、治理、品牌）
+- JSON 模式与协议包
+- 迁移指南和版本说明
+- 安全、webhook、认证等实现剖面的全文

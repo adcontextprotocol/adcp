@@ -1,0 +1,240 @@
+---
+title: 编写调用方
+sidebarTitle: 编写调用方
+description: "买方和需求方应用的客户端指南：安装 SDK、发现代理能力、发起调用、处理异步响应和错误，并读入报告。"
+"og:title": "AdCP — 编写调用方"
+---
+
+如果你在建**买方一侧**（DSP、规划工具、代理式客户端，或任何通过调用 AdCP 代理来规划、购买和报告的应用），从这里开始。调用方的 L0–L3 是几周的处理胶水，不是代理一侧所需的[3–4 个人月](/docs/building/cross-cutting/sdk-stack#why-sdks-matter-more-in-adcp-than-in-eg-http)（英文）。你的语言里的全栈 SDK 承担 L0–L3；你写调用逻辑、响应处理，以及应用如何使用这些数据。
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[Build a caller](/docs/building/by-layer/L4/build-a-caller)。
+</Info>
+
+<Note>
+**规范级参考，和按构建形状写成的指南，是两件事。** 本页带你完成构建。每笔会改变状态的调用都要遵守的线路不变量，在[调用代理](/zh/dist/docs/3.2.3/protocol/calling-an-agent)。上生产前读一遍；调试线路形状时再回来查。
+</Note>
+
+<Tip>
+**对着真实代理试一次。** AgenticAdvertising.org 在 `https://test-agent.adcontextprotocol.org` 运行公开测试代理，按域分开端点：`/sales/mcp`、`/creative/mcp`、`/signals/mcp`、`/governance/mcp`。把客户端指到对应端点，`getAdcpCapabilities()` 不需要认证。先用它确认安装，再指向真实卖方。可复制的 curl 在[快速开始](/zh/dist/docs/3.2.3/quickstart)。
+</Tip>
+
+## 安装 SDK
+
+发出服务器原语的同一批 SDK 也提供调用客户端。装一个，两边都有。
+
+<Tabs>
+<Tab title="JavaScript/TypeScript">
+```bash
+npm install @adcp/sdk
+```
+
+```typescript
+import { createSingleAgentClient } from '@adcp/sdk';
+
+const client = createSingleAgentClient({
+  id: 'sales',
+  name: 'Sales agent',
+  agent_uri: 'https://sales.example.com/mcp',
+  protocol: 'mcp',
+});
+```
+
+要一对多扇出（一个客户端并行驱动许多卖方），改用 `ADCPMultiAgentClient`：调用表面相同，按代理 id 索引。
+
+- [NPM 包](https://www.npmjs.com/package/@adcp/sdk)
+- [GitHub 仓库](https://github.com/adcontextprotocol/adcp-client)
+</Tab>
+<Tab title="Python">
+```bash
+pip install adcp
+```
+
+```python
+from adcp import ADCPClient, AgentConfig, Protocol
+
+client = ADCPClient(AgentConfig(
+    id="sales",
+    agent_uri="https://sales.example.com/mcp",
+    protocol=Protocol.MCP,
+))
+```
+
+- [PyPI 包](https://pypi.org/project/adcp/)
+- [GitHub 仓库](https://github.com/adcontextprotocol/adcp-client-python)
+</Tab>
+<Tab title="Go">
+```bash
+go get github.com/adcontextprotocol/adcp-go/adcp
+```
+
+Go 的调用方表面仍在开发中。当前覆盖见 [adcp-go README](https://github.com/adcontextprotocol/adcp-go)。钉扎哪一个模块版本，见[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)。
+</Tab>
+</Tabs>
+
+## 认证
+
+除了 `get_adcp_capabilities`，大多数代理在响应任何调用之前都要求凭据。SDK 在构造时接受认证：
+
+<Tabs>
+<Tab title="Bearer / API 密钥">
+```typescript
+const client = createSingleAgentClient({
+  id: 'sales',
+  name: 'Sales agent',
+  agent_uri: 'https://sales.example.com/mcp',
+  protocol: 'mcp',
+  auth_token: process.env.ADCP_API_KEY,
+});
+```
+</Tab>
+<Tab title="签名请求（RFC 9421）">
+```typescript
+const client = createSingleAgentClient({
+  id: 'sales',
+  name: 'Sales agent',
+  agent_uri: 'https://sales.example.com/mcp',
+  protocol: 'mcp',
+  signing: { keyId: 'your-key-id', privateKey: /* PEM or KMS handle */ },
+});
+```
+</Tab>
+</Tabs>
+
+如果第一次调用返回 401 / `AUTH_REQUIRED`，凭据没有到达代理。检查构造参数，而不是请求载荷。完整凭据模型见 [L1 安全实现剖面](/docs/building/by-layer/L1/security)（英文）。
+
+## 第一次调用：发现代理
+
+不要先凭记忆点工具名。先问代理它支持什么。
+
+```typescript
+const capabilities = await client.getAdcpCapabilities();
+// → { supported_protocols: [...], adcp_versions: [...], features: {...} }
+```
+
+`get_adcp_capabilities` 返回代理的协议覆盖、AdCP 版本范围和特性标志。用它给调用设门：如果 `supported_protocols` 里没有 `media_buy`，就不要对这个代理调用 `create_media_buy`。完整响应形状见 [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) 参考（英文）。
+
+发现链的其余部分（代理卡片、`tools/list`、`get_schema`）见[调用代理里的发现链](/zh/dist/docs/3.2.3/protocol/calling-an-agent#discovery-chain)。
+
+## 发起调用
+
+客户端上的类型化方法对应 AdCP 任务。SDK 在发送前用内嵌模式校验请求，并把响应解析成类型化的值。
+
+```typescript
+const products = await client.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442046',
+  buying_mode: 'brief',
+  brief: 'Video campaign for pet owners, 18–34, US, $50K monthly',
+});
+
+const buy = await client.createMediaBuy({
+  idempotency_key: crypto.randomUUID(),
+  account: { brand: { domain: 'acme.com' }, operator: 'sales.example' },
+  packages: [/* … */],
+});
+```
+
+第一次调用有两件事值得记住：
+
+- **每个逻辑操作生成一个新的 `idempotency_key`。** 重试时用同一把键，服务器重放同一份响应。失败之后换一把新键，会创建重复的媒体购买。见[幂等规则](/zh/dist/docs/3.2.3/protocol/calling-an-agent#idempotency-replay-vs-new-operation)。
+- **`account` 是可区分的 `oneOf`。** 只选一个变体（来自 `sync_accounts` / `list_accounts` 的 `{account_id}`，或作为自然键的 `{brand, operator}`。`brand.domain` 是买方品牌域，`operator` 是卖方代理的部署主机名或 brand.json 标识），并且只发送该变体的必填字段。把它们合并会两边都失败。见 [`account` 是 `oneOf`](/zh/dist/docs/3.2.3/protocol/calling-an-agent#account-is-oneof--pick-exactly-one-variant)。
+
+## 处理三种响应形状
+
+每个会改变状态的任务返回三种形状之一。要显式处理。
+
+```typescript
+const response = await client.createMediaBuy({/* … */});
+
+if ('errors' in response) {
+  // 错误：不要不改就重试。可修正的失败（校验、oneOf 等）读 response.adcp_error.issues[]
+} else if (response.status === 'submitted') {
+  // 异步：工作已入队，还没有完成。完成载荷稍后到达，优先走 webhook，也可以轮询 AdCP 任务。
+} else {
+  // 同步成功：响应直接带完成载荷。
+  // （例如 response.media_buy_id、response.packages）
+}
+```
+
+SDK 把异步完成引向 webhook。在构造时配置 `webhookUrlTemplate` 和状态变更处理函数；SDK 用卖方的 JWKS 验证入站 webhook，并用与同步响应相同的 `result` 形状调用你的处理函数。见下面的[接收 webhook](#receive-webhooks)。
+
+如果必须轮询而不是用 webhook（例如一次性脚本），调用 AdCP 的轮询表面：卖方公布了 `get_task_status` 就用它，否则在 3.x 里用旧的 AdCP `tasks/get`。线路契约在[调用代理的异步响应](/zh/dist/docs/3.2.3/protocol/calling-an-agent#async-responses-status-submitted-means-queued)。
+
+## 从错误中恢复
+
+响应里出现 `adcp_error` 时，读 `issues[]`，并按 `recovery` 行动：
+
+```typescript
+const { code, recovery, issues } = response.adcp_error;
+
+switch (recovery) {
+  case 'correctable':
+    // 买方修正。按 issues[] 里的 JSON 指针修补，用同一把 idempotency_key 重发
+    // （新键 = 新操作）。
+    break;
+  case 'transient':
+    // 用同一把 idempotency_key 重试。工作如果已经落地，同一把键会重放缓存的响应。
+    break;
+  case 'terminal':
+    // 需要人来处理。不要重试。
+    break;
+}
+```
+
+`issues[]` 才是能动手的部分：每一条有一个 JSON 指针（`pointer`）、一个 Ajv 关键字（`required`、`oneOf`、`enum` 等），并且在 `oneOf` 失败时有 `variants[]`，列出每个变体的必填字段。完整封套和恢复语义见[错误恢复](/zh/dist/docs/3.2.3/protocol/calling-an-agent#error-recovery--read-issues)。
+
+<a id="receive-webhooks"></a>
+
+## 接收 webhook
+
+异步任务可以轮询，也可以注册 webhook。webhook 投递的 `result` 载荷，与带 `include_result: true` 的 AdCP 任务轮询相同。SDK 提供 RFC 9421 webhook 验证器（来自 `@adcp/sdk/signing/server` 的 `createWebhookVerifier`）。它通过卖方的 brand.json 解析密钥，执行重放窗口，并为[webhook 错误分类](/docs/building/by-layer/L1/security#webhook-error-taxonomy)（英文）露出结构化错误。
+
+如果按 [@adcp/sdk README](https://github.com/adcontextprotocol/adcp-client#readme) 给多代理客户端配上 `webhookUrlTemplate` 和状态变更处理函数，入站 webhook 会自动验证并分发到你的处理函数。HTTP 路由只是把请求交给客户端的一行。
+
+无论怎么接线，端点都必须满足的线路要求（被签名覆盖的组件、`content-digest` 的强制执行、去重纪律）见 [L3 — Webhook](/docs/building/by-layer/L3/webhooks#signature-verification)（英文）。
+
+## 读入报告
+
+报告是只读的，调用和响应形状与其他任务相同。拉取你拥有的媒体购买的交付，并按窗口节奏迭代：
+
+```typescript
+const delivery = await client.getMediaBuyDelivery({
+  media_buy_ids: ['mb_123', 'mb_456'],
+  window: { start: '2026-05-01T00:00:00Z', end: '2026-05-02T00:00:00Z' },
+});
+```
+
+支持表现 webhook 的卖方，会通过上面同一个 webhook 接收器推送增量；否则按报告所需的节奏轮询。调用方的 L4（优化、节奏告警、归因连接、仪表盘）是你写在类型化 `delivery` 对象之上的应用代码。
+
+## 你不必自己写的部分
+
+调用方的 L0–L3 之所以只是几周的处理胶水，是因为 SDK 已经交付了：
+
+- **L0**：类型化的请求构建器、响应解析器、对照内嵌模式的校验。
+- **L1**：出站 RFC 9421 签名（按调用）、入站 webhook 验证、密钥轮换。
+- **L2**：代理注册表查找、代理卡片发布、凭据组合。
+- **L3**：异步任务轮询、webhook 接收器、幂等键生成辅助函数、错误恢复分类。
+
+每一层的分解见 [SDK 栈参考](/docs/building/cross-cutting/sdk-stack)（英文）；[服务端与客户端对照表](/docs/building/cross-cutting/sdk-stack#server-vs-client-at-each-layer)是成本不对称的并排视图。
+
+## 接下来
+
+中文页面：
+
+- **[调用代理](/zh/dist/docs/3.2.3/protocol/calling-an-agent)**：规范的线路契约。上生产前读一遍。
+- **[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)**：覆盖矩阵和应安装的包版本。
+- **[快速开始](/zh/dist/docs/3.2.3/quickstart)**：不装 SDK，用 curl 对着公开测试代理走一遍。
+
+仍为英文的规范页面：
+
+- **[模式](/docs/building/by-layer/L0/schemas)**：模式包、类型生成、版本钉扎。
+- **[Webhook](/docs/building/by-layer/L3/webhooks)**：推送通知、签名、重试和可靠性。
+- **[错误处理](/docs/building/by-layer/L3/error-handling)**：错误类别、代码和恢复分类。
+- **[验证你的代理](/docs/building/verification/validate-your-agent)**：调用方线路也有故事板；调用能工作之后跑一遍。
+
+按协议划分的任务参考（英文）：
+
+- [媒体购买任务参考](/docs/media-buy/task-reference/index)
+- [创意任务参考](/docs/creative/task-reference)
+- [信号任务参考](/docs/signals/tasks/get_signals)
+- [品牌协议任务](/docs/brand-protocol)

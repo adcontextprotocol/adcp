@@ -1,0 +1,100 @@
+---
+title: 模式与 SDK
+sidebarTitle: 模式与 SDK
+description: "AdCP 的 JSON 模式和官方 SDK 从这里起步：安装、模式 URL、版本发现，以及未发布模式如何在两个 SDK 里校验。"
+"og:title": "AdCP — 模式与 SDK"
+---
+
+本页指向用 AdCP 构建时的两样基础材料：定义每个请求和响应的 JSON 模式，以及把这些模式变成类型化代码的 SDK。
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[Schemas & SDKs](/docs/building/schemas-and-sdks)。模式文件本身保持英文。
+</Info>
+
+## SDK
+
+AdCP 为 TypeScript、Python 和 Go 提供官方 SDK。每个 SDK 吸收协议层（线路格式、签名、认证、生命周期语义），你只写业务逻辑。
+
+<CardGroup cols={3}>
+  <Card title="TypeScript" icon="js" href="https://www.npmjs.com/package/@adcp/sdk">
+    `npm install @adcp/sdk`
+  </Card>
+  <Card title="Python" icon="python" href="https://pypi.org/project/adcp/">
+    `pip install adcp`
+  </Card>
+  <Card title="Go" icon="golang" href="https://github.com/adcontextprotocol/adcp-go">
+    `go get github.com/adcontextprotocol/adcp-go`
+  </Card>
+</CardGroup>
+
+各语言今天覆盖到哪一层、如何钉扎版本、包如何导出，见[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)。
+
+SDK 背后的分层模型，见英文的 [SDK 栈参考](/docs/building/cross-cutting/sdk-stack)。
+
+## 模式 URL
+
+AdCP 模式发布在 `https://adcontextprotocol.org/schemas/`，使用当前主版本别名：
+
+| 形式 | 示例 | 用途 |
+| --- | --- | --- |
+| **当前主版本** | `https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json` | 把校验器钉在 AdCP 3.x 模式族上 |
+
+模式覆盖每个任务的请求和响应、共享枚举、治理对象、创意格式和信号定义。生产和 CI 使用当前主版本 URL，这样主版本之内链接保持稳定。
+
+线路上的 `adcp_protocol_version` 和模式包版本为什么不是同一件事，见英文的[版本控制与治理](/docs/reference/versioning)。
+
+## adagents.json 里的授权
+
+媒体方在 `adagents.json` 里声明代理端点和授权范围。模式支持六种授权类型：`property_ids`、`property_tags`、`inline_properties`、`publisher_properties`、`signal_ids`、`signal_tags`。每一种限定这个代理被授权经营哪些库存。
+
+授权类型的全文和例子在治理文档的[授权模式](/docs/governance/property/adagents#authorization-patterns)（英文）。
+
+## 在两个 SDK 里校验未发布的模式
+
+改动模式的拉取请求会构建一个确定性的协议包，并让 TypeScript 和 Python 生成器都跑一遍。检查在 `latest.tgz.provenance.json` 里记下三个机器可读的值：协议提交、包的 SHA-256，以及已发布版本标签。因此一次通过的 SDK 作业能够指出它消费的是哪一份协议输入。
+
+对同一仓库里的拉取请求，工作流还会按完整的 head 提交发布一条不可变元组：
+
+```text
+https://adcontextprotocol.org/protocol/pr/<commit-sha>/latest.tgz
+https://adcontextprotocol.org/protocol/pr/<commit-sha>/latest.tgz.sha256
+https://adcontextprotocol.org/protocol/pr/<commit-sha>/latest.tgz.provenance.json
+```
+
+这些包是未签名的开发产物。使用前要核对校验和与来源，并且绝不要把 PR 包用在生产环境。
+
+预览包默认保留 90 天，由每日清理作业删除。维护者可以用仓库变量 `SCHEMA_PR_BUNDLE_RETENTION_DAYS` 调整窗口。对仍然有效的提交，重新运行协议校验工作流可以重建过期的包。
+
+提交协议输入之后，在本地复现该产物：
+
+```bash
+scripts/build-schema-pr-bundle.sh
+```
+
+脚本从 `HEAD` 推导源提交和确定性时间戳，拒绝未提交的包输入，并把同样的三个文件写到 `dist/protocol/`。
+
+创建依赖它的 SDK 拉取请求时：
+
+1. 从协议工作流摘要复制三个产物 URL。
+2. 用该 SDK 仓库支持的本地包输入重新生成，并把来源元数据和生成结果一起提交。
+3. 在依赖方的拉取请求正文里写上完整的协议提交和包 SHA-256。
+4. 协议一侧每次强制推送或变基之后，改用新的 head SHA URL，重新生成，并确认旧提交不再出现在生成的元数据或拉取请求描述里。
+
+预览工作流只由 `static/schemas/source/**` 下的变更触发。一旦触发，TypeScript 和 Python 作业校验的是完整的包，而不只是改过的模式文件。仅限合规源、OpenAPI 注册表或构建工具的变更仍由各自的 CI 覆盖，但不会发布模式预览包。
+
+## 接下来
+
+<CardGroup cols={2}>
+  <Card title="选择 SDK" icon="box" href="/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk">
+    各语言的覆盖矩阵、安装命令和版本钉扎。
+  </Card>
+  <Card title="搭建代理" icon="hammer" href="/zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent">
+    用技能文件逐步搭建卖方代理。
+  </Card>
+  <Card title="编写调用方" icon="phone" href="/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller">
+    买方一侧：发现能力并处理响应。
+  </Card>
+  <Card title="验证你的代理" icon="check" href="/docs/building/verification/validate-your-agent">
+    跑合规套件，核对实现。此页为英文规范。
+  </Card>
+</CardGroup>

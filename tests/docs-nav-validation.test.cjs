@@ -125,7 +125,7 @@ function snapshotMatchesVersionLabel(label, snapshotVersion) {
  */
 const NAV_COVERAGE_ALLOWLIST = new Map([
   ['contributing/', 'Contributor and repository-maintenance guides, not protocol documentation'],
-  ['zh/', 'Simplified Chinese translations. They are published from navigation.languages, not the English version picker.'],
+  ['zh/', 'Simplified Chinese sources. They are published from navigation.languages at zh/dist/docs/<snapshot>/, not from the English version picker.'],
   ['runbooks/', 'Internal AgenticAdvertising.org operations runbooks'],
   ['snippets/', 'Mintlify snippet sources imported into other pages, not standalone pages'],
   ['aao/aao-admins', 'Internal staff reference; the page sets noindex: true'],
@@ -602,8 +602,32 @@ test('simplified chinese navigation publishes translated pages without reusing e
   }
   if (!chinese) throw new Error('Missing zh language');
   const zhPages = collectPages(chinese.groups || []);
-  for (const page of ['docs/zh/intro', 'docs/zh/quickstart']) {
-    if (!zhPages.includes(page)) throw new Error(`zh navigation missing ${page}`);
+  const defaultEnglish = english.versions.find((entry) => entry.default) || english.versions[0];
+  const snapshot = collectPages(defaultEnglish.groups)
+    .map((page) => /^dist\/docs\/([^/]+)\//.exec(page)?.[1])
+    .find(Boolean);
+  if (!snapshot) throw new Error('default English navigation has no dist/docs snapshot');
+  for (const page of [
+    'intro',
+    'quickstart',
+    'glossary',
+    'building/index',
+    'building/schemas-and-sdks',
+    'building/by-layer/L4/choose-your-sdk',
+    'building/by-layer/L4/build-a-caller',
+    'building/by-layer/L4/build-an-agent',
+    'protocol/calling-an-agent',
+  ]) {
+    const published = `zh/dist/docs/${snapshot}/${page}`;
+    if (!zhPages.includes(published)) throw new Error(`zh navigation missing ${published}`);
+    const authored = path.join(rootDir, 'docs/zh', `${page}.mdx`);
+    if (!fs.existsSync(authored)) throw new Error(`Missing authored translation ${authored}`);
+    const mirror = path.join(rootDir, `${published}.mdx`);
+    if (!fs.lstatSync(mirror).isSymbolicLink()) {
+      throw new Error(`${published}.mdx must be a symlink to docs/zh/${page}.mdx`);
+    }
+    const target = fs.readFileSync(mirror, 'utf8');
+    if (!target.startsWith('---')) throw new Error(`${published}.mdx does not resolve to MDX frontmatter`);
   }
   const englishPages = new Set(collectPages(navigation.versions));
   const overlap = zhPages.filter((page) => englishPages.has(page));

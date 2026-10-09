@@ -1,0 +1,232 @@
+---
+title: 搭建代理
+sidebarTitle: 搭建代理
+description: "把编程代理指向 AdCP SDK 的技能文件，在几分钟内生成能通过故事板的代理。本页覆盖安装、选技能和校验。"
+"og:title": "AdCP — 搭建代理"
+---
+
+搭建 AdCP 代理最快的办法，是把编程代理（Claude Code、Codex、Cursor、Windsurf）指向 AdCP SDK 里的一份技能文件。每份技能在 2–8 分钟内产出一个符合协议、并经故事板校验的代理。
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。这里的「编程代理」是写代码的工具，「代理」是它生成的 AdCP 服务。英文原文：[Build an Agent](/docs/building/by-layer/L4/build-an-agent)。
+</Info>
+
+<Note>
+**没有工程团队的媒体方？** 协议符合只是上线的一块。产品管理、接入广告服务器和托管是另外的工作。三条路径（与托管平台合作、自托管现成代理、自己搭建）见**[运营代理](/docs/building/operating/operating-an-agent)**（英文）。
+</Note>
+
+## 安装 SDK
+
+每个 SDK 负责协议符合：模式校验、错误格式、版本协商和响应构建器。你写业务逻辑，不写协议管道。
+
+<Tabs>
+<Tab title="JavaScript/TypeScript">
+```bash
+npm install @adcp/sdk
+```
+
+JS/TS SDK 提供类型化的工具注册、响应构建器和内置的故事板运行器。生产环境里的大多数代理使用这个 SDK。应安装的版本见[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)。
+
+- [NPM 包](https://www.npmjs.com/package/@adcp/sdk)
+- [GitHub 仓库](https://github.com/adcontextprotocol/adcp-client)
+</Tab>
+<Tab title="Python">
+```bash
+pip install adcp
+```
+
+Python SDK 提供同样的能力：子类化 `ADCPHandler`，实现工具，每个返回值都用响应构建器：
+
+```python
+from adcp.server import ADCPHandler, serve
+from adcp.server.responses import capabilities_response
+
+class MySeller(ADCPHandler):
+    async def get_adcp_capabilities(self, params, context=None):
+        return capabilities_response(["media_buy"])
+
+    # ... 实现工具，每个返回值都用响应构建器
+
+serve(MySeller(), name="my-seller")
+```
+
+响应构建器（`adcp.server.responses`）负责模式符合，这样你不必手写原始 JSON。每个工具的返回都用它们。
+
+- [PyPI 包](https://pypi.org/project/adcp/)
+- [GitHub 仓库](https://github.com/adcontextprotocol/adcp-client-python)
+</Tab>
+<Tab title="Go">
+```bash
+go get github.com/adcontextprotocol/adcp-go/adcp
+```
+
+Go SDK 提供类型化的工具注册、响应构建器和合规测试控制器。类型从规范的 AdCP 模式生成。模块版本见[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)。
+
+| 组件 | 导入 |
+| --- | --- |
+| 工具注册 | `adcp.AddTool(server, name, desc, handler)` |
+| HTTP 服务器 | `adcp.Serve(createAgent)` |
+| 响应构建器 | `adcp.ProductsResponse(data)`、`adcp.MediaBuyResponse(data)` |
+| 测试控制器 | `adcp.RegisterTestController(server, store)` |
+
+完整例子见 [Go SDK README](https://github.com/adcontextprotocol/adcp-go)。
+
+响应构建器（`adcp.ProductsResponse()`、`adcp.MediaBuyResponse()` 等）负责模式符合，这样你返回类型化结构，而不是原始 JSON。
+
+- [GitHub 仓库](https://github.com/adcontextprotocol/adcp-go)
+</Tab>
+</Tabs>
+
+<Info>
+**用你自己的语言的 SDK。** JS/TS、Python 和 Go 三个 SDK 都处理模式校验、错误格式和协议协商。为了协议符合，不必改用另一种语言。
+</Info>
+
+## 选择技能
+
+每个 SDK 都带有技能，引导编程代理搭建某一类代理。各 SDK 共通的技能：
+
+- `build-seller-agent`：出售库存的媒体方、SSP 或媒体网络
+- `build-signals-agent`：提供受众分段的 CDP 或数据提供方
+- `build-creative-agent`：渲染创意的广告服务器或 CMP
+- `build-generative-seller-agent`：从简报生成广告的 AI 广告网络
+- `build-retail-media-agent`：由目录驱动创意的零售媒体网络
+
+例如，JS/TS 的卖方技能在 [`adcp-client/skills/build-seller-agent/SKILL.md`](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-seller-agent)。技能的覆盖和命名因语言而异，因为每个 SDK 都包含针对自己技术栈的实现指导。按语言浏览目录：
+
+- **JS/TS**：[adcp-client/skills](https://github.com/adcontextprotocol/adcp-client/tree/main/skills)
+- **Python**：[adcp-client-python/skills](https://github.com/adcontextprotocol/adcp-client-python/tree/main/skills)
+- **Go**：[adcp-go/skills](https://github.com/adcontextprotocol/adcp-go/tree/main/skills)
+
+### 你声明哪个领域和哪些专业方向？
+
+每个代理在 `get_adcp_capabilities` 上声明 `supported_protocols`（领域）和 `specialisms`。每份技能的故事板验证领域基线。若还要声明某个专业方向，代理必须通过该专业方向的故事板。技能到专业方向的对应：
+
+| 技能 | 典型的 `supported_protocols` | 典型的 `specialisms`（选一个或组合） |
+| --- | --- | --- |
+| `build-seller-agent` | `["media_buy", "creative"]` | `sales-guaranteed`、`sales-non-guaranteed`、`sales-dooh` |
+| `build-generative-seller-agent` | `["media_buy", "creative"]` | `creative-generative` 加上 `sales-non-guaranteed` |
+| `build-retail-media-agent` | `["media_buy", "creative"]` | `sales-catalog-driven` |
+| `build-signals-agent` | `["signals"]` | `signal-owned`、`signal-marketplace` |
+| `build-creative-agent` | `["creative"]` | `creative-ad-server`、`creative-template` |
+
+**选择销售专业方向：** 完整决策树在合规目录的[选择销售专业方向](/docs/building/verification/compliance-catalog#choosing-a-sales-specialism)（英文）。速查：
+
+- **`sales-guaranteed`**：IO 审批、固定价格。若支持 RFP/提案流程，设置 `media_buy.supports_proposals: true`；只做直接购买则设为 `false`（或省略）。
+- **`sales-non-guaranteed`**：竞价 / PMP。
+- **`sales-dooh`**：非保证式的数字户外场地和屏幕库存。
+- **`sales-broadcast-tv`**、**`sales-catalog-driven`**、**`sales-social`**：特定渠道，见决策树。
+
+可以声明一个以上。完整分类和每个专业方向的故事板见[合规目录](/docs/building/verification/compliance-catalog)（英文）。
+
+要搭建**品牌权利**代理（许可人才、音乐、素材库）？今天还没有对应技能。见[品牌协议](/docs/brand-protocol)（英文），并在 `brand` 领域下声明 `brand-rights`。
+
+每个领域和专业方向及其故事板、状态（stable、preview、deprecated）都在[合规目录](/docs/building/verification/compliance-catalog)（英文）。
+
+故事板通过后得到 **[AgenticAdvertising.org Verified (Spec)](/docs/building/verification/aao-verified)** 限定（英文页面写作 AAO Verified）。它是在测试模式端点上、对照种子测试数据做的校验。代理开始对着真实生产库存运行之后，可以登记 **(Live)** 限定：对专用合规账户上的真实交付做持续观测。一个代理可以持有 (Spec)、(Live) 或两者。把 AdCP 当作生产基础设施的企业买方会按 (Live) 过滤。
+
+## 搭建这个代理
+
+把编程代理指向你这一类代理的技能文件。在 Claude Code 里：
+
+<Tabs>
+<Tab title="JavaScript/TypeScript">
+```
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports news publisher with guaranteed CTV and OLV inventory.
+```
+</Tab>
+<Tab title="Python">
+```
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client-python/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports news publisher with guaranteed CTV and OLV inventory.
+```
+
+指向 `adcp-client-python` 里你这一类代理的技能。如果那份技能还不在，到 [adcp-client-python/skills](https://github.com/adcontextprotocol/adcp-client-python/tree/main/skills) 找最接近的一份。
+</Tab>
+<Tab title="Go">
+```
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-go/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports publisher.
+```
+</Tab>
+</Tabs>
+
+在 Cursor 或 Windsurf 里，下载技能文件，并把它和提示词一起作为上下文。每份技能会引导编程代理完成：
+
+1. 商业模式决定（卖什么、如何定价、审批流程）
+2. 用正确的模式注册工具
+3. 能通过故事板校验的响应形状
+4. 错误处理和边界情况
+
+上面的提示词保持英文，因为技能文件本身是英文。编程代理读的是技能，不是本页。
+
+## 用故事板校验
+
+<Note>
+故事板运行器需要 Node.js，与代理本身用什么语言无关。
+</Note>
+
+代理跑起来之后，对照对应的故事板校验：
+
+```bash
+# JS/TS 代理
+npx tsx agent.ts &
+npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
+
+# Python 代理
+python agent.py &
+npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
+
+# Go 代理
+go run main.go &
+npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
+```
+
+故事板执行每个必需的工具调用，并校验响应形状。故事板运行器默认使用沙箱模式：代理在所有账户引用上收到 `sandbox: true`，应当返回模拟数据，而不发起真实的平台调用。一次通过表示代理符合协议。
+
+```
+media_buy_seller (9 steps)
+  ✓ get_adcp_capabilities
+  ✓ sync_accounts
+  ✓ get_products
+  ✓ create_media_buy
+  ✓ canonical creative capability declarations
+  ✓ sync_creatives
+  ✓ list_creatives
+  ✓ get_media_buy_delivery
+  ✓ provide_performance_feedback
+  9/9 passed
+```
+
+<Warning>
+**符合协议不等于可以上生产。** 一次通过只说明代理把 AdCP 说对了。上线还需要每个工具调用背后的业务基础设施：产品和定价、接入广告服务器、订单管理、托管，以及通过 `adagents.json` 做的发现注册。完整清单，以及应该合作、自托管还是自己搭建，见**[运营代理](/docs/building/operating/operating-an-agent)**（英文）。
+</Warning>
+
+<Tip>
+每份技能都包含不同商业模式的变体故事板：非保证式、带审批的保证式、提案模式，等等。运行 `npx @adcp/sdk@latest storyboard list` 查看全部故事板。
+</Tip>
+
+完整测试流程（调试失败步骤、跑合规检查、通过 Addie 交互验证）见**[验证你的代理](/docs/building/verification/validate-your-agent)**（英文）。如果代理**包了一层上游平台**（DSP、SSP、零售数据、创意服务器、信号市场），故事板单独抓不到的门面缺陷，见**[用模拟上游夹具验证适配代理](/docs/building/verification/validate-with-mock-fixtures)**（英文）。
+
+## 其他材料
+
+JS/TS SDK 带有同时给人和编程代理看的文档：
+
+| 材料 | JS/TS 位置 | 用途 |
+| --- | --- | --- |
+| 协议规范 | `node_modules/@adcp/sdk/docs/llms.txt` | 一个文件里的完整协议：工具、类型、错误码、示例 |
+| 服务器指南 | `node_modules/@adcp/sdk/docs/guides/BUILD-AN-AGENT.md` | 服务端实现模式 |
+
+Python 和 Go 的对应材料在各自 SDK 的 GitHub 仓库：[adcp-client-python](https://github.com/adcontextprotocol/adcp-client-python) 和 [adcp-go](https://github.com/adcontextprotocol/adcp-go)。
+
+## 接下来
+
+中文页面：
+
+- **[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)**：模式访问、命令行工具和包导出。
+- **[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)**：如果你同时还要写买方客户端。
+
+仍为英文的规范页面：
+
+- **[验证你的代理](/docs/building/verification/validate-your-agent)**：故事板、合规检查，以及构建—校验—修复循环。
+- **[运营代理](/docs/building/operating/operating-an-agent)**：协议层背后是什么，以及合作、自托管还是自己搭建。
+- **[MCP 集成指南](/docs/building/by-layer/L0/mcp-guide)**：传输、会话和认证细节。
+- **[任务生命周期](/docs/building/by-layer/L3/task-lifecycle)**：状态值、转移和轮询。
+- **[错误处理](/docs/building/by-layer/L3/error-handling)**：错误类别、代码和恢复。
