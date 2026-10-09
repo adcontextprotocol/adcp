@@ -1,0 +1,793 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/production-evidence-receipt.json",
+  "title": "Production Evidence Receipt",
+  "description": "Claims payload of a dated, scoped, issuer-signed statement about what an AdCP implementation was observed doing. It is NOT a conformance result, a certification, or a trust decision, and it carries no spend, price, campaign, client, or counterparty identity unless the named party consented. The receipt defines claims only: it is delivered and signed through the existing AttestationReference primitive (claim_type https://adcontextprotocol.org/claims/production-evidence), not through a second signing envelope, and evaluators remain verifier-of-record under their own trust policy. evidence_tier is a ladder, but independence is declared and checkable rather than advisory: the issuer MUST declare every role it played in issuer_counterparty_roles, and at evidence_tier independently_interoperable or above it MUST also declare counterparty_relation and publish an issuance_policy, and a non-empty role declaration requires a structurally independent co-signer. An empty declaration is the issuer's own claim, not proof; evaluators back it with their own accepted-issuer policy. Tiers below conformance_passed (declared, schema_validated) are declarative registry metadata and are not receipts. Experimental in 3.3: shape may change under the experimental-status contract.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "receipt_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "description": "Issuer-scoped identifier of this receipt. Unique only together with the complete issuer identity. Referenced by supersedes on a later receipt.",
+      "x-entity": "production_evidence_receipt"
+    },
+    "claim_type": {
+      "type": "string",
+      "const": "https://adcontextprotocol.org/claims/production-evidence",
+      "description": "Claim vocabulary URI. Binds the payload to the AttestationReference that delivers it."
+    },
+    "issuer": {
+      "$ref": "/schemas/core/attestation-issuer.json",
+      "description": "The party that observed the activity and signs this receipt. The identity is a claim; evaluators match it against their own trust policy."
+    },
+    "subject": {
+      "$ref": "/schemas/core/attestation-subject.json",
+      "description": "The implementation the receipt is about. Normally an agent subject (the observed endpoint); a brand subject covers an operator. The issuer MUST NOT be the subject at evidence_tier independently_interoperable or above."
+    },
+    "adcp_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(-[a-z0-9]+(\\.[0-9]+)?)?$",
+      "description": "Release-precision AdCP version observed on the wire (for example 3.2 or 3.3-beta.1). The receipt is evidence for this release only."
+    },
+    "build_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Optional exact build_version the subject reported in get_adcp_capabilities at observation time."
+    },
+    "transport": {
+      "type": "string",
+      "enum": [
+        "mcp",
+        "a2a"
+      ],
+      "description": "Transport over which the activity was observed. A receipt for one transport says nothing about the other."
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "sandbox",
+        "controlled_pilot",
+        "production"
+      ],
+      "description": "Where the observed activity ran. sandbox is account-flagged test traffic; controlled_pilot is real systems under a bounded, pre-agreed pilot; production is ordinary live traffic. Constrained by evidence_tier."
+    },
+    "evidence_tier": {
+      "type": "string",
+      "enum": [
+        "conformance_passed",
+        "sandbox_interoperable",
+        "independently_interoperable",
+        "production_transacted",
+        "production_delivered_reconciled"
+      ],
+      "enumDescriptions": {
+        "conformance_passed": "The subject passed the AdCP storyboard conformance harness for the stated version and transport against a sandbox or test deployment.",
+        "sandbox_interoperable": "The subject completed the stated tasks against a counterparty implementation in sandbox. The counterparty may be the issuer's own or the protocol team's.",
+        "independently_interoperable": "The subject interoperated with a counterparty implementation that is not the subject's, not the protocol team's, and declared independent in counterparty_relation, in sandbox or a controlled pilot. Subject to the independence rules.",
+        "production_transacted": "At least one production MediaBuy was accepted by the subject through the stated task set. Subject to the independence rules. Production alone does not establish an independent counterparty; read counterparty_relation.",
+        "production_delivered_reconciled": "A production MediaBuy reached non-zero delivery, reporting was read back, and reconciliation completed. Subject to the independence rules."
+      },
+      "description": "Position on the evidence ladder. Ordered as listed. This is evidence about what was observed, not a grade, and it is separate from conformance grading (AAO Verified)."
+    },
+    "channels": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "/schemas/enums/channels.json"
+      },
+      "description": "Channels in which the observed activity occurred. The claim does not extend to unlisted channels."
+    },
+    "tasks_exercised": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "maxLength": 128
+      },
+      "description": "Canonical AdCP task names the subject successfully completed during the observation. The claim covers exactly this set."
+    },
+    "lifecycle_stages_reached": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "capabilities_read",
+          "products_discovered",
+          "media_buy_accepted",
+          "delivery_non_zero",
+          "reporting_read_back",
+          "reconciliation_completed"
+        ]
+      },
+      "description": "Lifecycle stages the observed activity reached. Stages are facts about the observation, not weights."
+    },
+    "observation": {
+      "type": "object",
+      "description": "Coarse temporal and volume scope of the observation. Exact counts are deliberately not representable.",
+      "properties": {
+        "first_observed_date": {
+          "type": "string",
+          "format": "date",
+          "description": "UTC calendar date of the first observation. Day granularity on purpose: exact timestamps combined with a coarse band could identify a transaction in a counterparty's logs."
+        },
+        "last_observed_date": {
+          "type": "string",
+          "format": "date",
+          "description": "UTC calendar date of the last observation. MUST NOT be before first_observed_date or after the date of issued_at."
+        },
+        "activity_band": {
+          "type": "string",
+          "enum": [
+            "1_to_10",
+            "11_to_100",
+            "101_to_1000",
+            "over_1000"
+          ],
+          "description": "Coarse band of distinct transactions observed at the stated tier. Bands avoid disclosing volume while keeping one-off runs distinguishable from sustained activity."
+        }
+      },
+      "required": [
+        "first_observed_date",
+        "last_observed_date",
+        "activity_band"
+      ],
+      "additionalProperties": false
+    },
+    "capability_response_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Optional digest of the get_adcp_capabilities response the issuer observed, so a later reader can tell which declaration the evidence was gathered against."
+    },
+    "audit_record_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Digest of the issuer's private audit record for this observation. The record itself is retained by the issuer and disclosed only under the consent in publication; the digest lets an auditor later prove which record this receipt summarizes."
+    },
+    "counterparty_relation": {
+      "type": "string",
+      "enum": [
+        "independent",
+        "affiliated",
+        "unknown"
+      ],
+      "enumDescriptions": {
+        "independent": "The counterparty(ies) the subject transacted or interoperated with are not the subject's operator, affiliates, or accounts it controls, and not the protocol team.",
+        "affiliated": "At least one counterparty is the subject's operator, an affiliate, or an account it controls (for example a self-buy).",
+        "unknown": "The issuer cannot determine the relationship."
+      },
+      "description": "The issuer's determination of how the subject relates to the counterparty it interoperated or transacted with. REQUIRED at independently_interoperable and above. independently_interoperable requires independent. Production tiers may carry affiliated or unknown, which publication surfaces MUST show, so a self-buy cannot masquerade as independent production use."
+    },
+    "issuer_counterparty_roles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/EvidencePartyRole"
+      },
+      "description": "REQUIRED. Every role the issuer played relative to the subject or the observed transactions. An empty array is the issuer's own assertion that it played none of them. It is a claim, not proof: an evaluator MUST NOT treat an empty array at independently_interoperable or above as established independence unless its own accepted-issuer policy records the issuer as a non-participant or the digest-pinned issuance_policy enumerates the issuer's roles and relationships. Omission is not equivalent to empty. Evaluators MUST NOT infer independence from issuer reputation."
+    },
+    "co_signers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "description": "An additional issuer that independently endorses this receipt's claims payload.",
+        "properties": {
+          "counterparty_roles": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/definitions/EvidencePartyRole"
+            },
+            "description": "Roles the co-signer declares, with the semantics of issuer_counterparty_roles. A co-signer satisfies the independence requirement only when this array is empty. This copy is a hint: the co-signer's verified credential MUST itself carry its counterparty_roles, and evaluators MUST use the credential's roles, not this copy."
+          },
+          "attestation": {
+            "allOf": [
+              {
+                "$ref": "/schemas/core/attestation-reference.json"
+              },
+              {
+                "properties": {
+                  "claim_type": {
+                    "const": "https://adcontextprotocol.org/claims/production-evidence-endorsement"
+                  },
+                  "subject": {
+                    "properties": {
+                      "type": {
+                        "const": "resource"
+                      },
+                      "resource_type": {
+                        "const": "https://adcontextprotocol.org/claims/subjects/production-evidence-receipt"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "resource_type",
+                      "content_digest"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Presentation of the co-signer's own credential. claim_type is a separate endorsement claim so an auditor's own receipt cannot be replayed as an endorsement. The subject is a resource subject: namespace is the receipt issuer's origin, id is this receipt_id, and content_digest is sha256: plus lowercase-hex SHA-256 of UTF8(JCS(this receipt minus co_signers)). The co-signer therefore endorses exactly the issuer's claims, and adding co-signers never changes what is endorsed. attestation.issuer identifies the co-signer. The evaluator verifies the credential exactly as it would any attestation and MUST recompute the digest."
+          }
+        },
+        "required": [
+          "counterparty_roles",
+          "attestation"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Independent endorsements of this receipt, at most 8 because each is resolved and verified. Required when evidence_tier is independently_interoperable or above and issuer_counterparty_roles is non-empty, and at least one entry MUST have empty counterparty_roles. The same principal MUST NOT appear twice, and no co-signer may be the issuer, the subject, or the same principal as either.",
+      "maxItems": 8,
+      "uniqueItems": true
+    },
+    "issuance_policy": {
+      "type": "object",
+      "description": "The conflict-of-interest, appeal, and revocation policy the issuer operated under. REQUIRED at evidence_tier independently_interoperable or above. The policy MUST be published before the first receipt it governs is issued.",
+      "properties": {
+        "uri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+          "description": "HTTPS location of the published policy."
+        },
+        "content_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "Digest of the exact policy bytes in force at issuance, so a later policy change cannot rewrite what governed this receipt."
+        }
+      },
+      "required": [
+        "uri",
+        "content_digest"
+      ],
+      "additionalProperties": false
+    },
+    "publication": {
+      "type": "object",
+      "description": "What the subject agreed to make public. Nothing beyond the fields of this receipt is public by default.",
+      "properties": {
+        "visibility": {
+          "type": "string",
+          "enum": [
+            "private",
+            "public_projection"
+          ],
+          "enumDescriptions": {
+            "private": "Disclosed only to the subject and parties it authorizes.",
+            "public_projection": "The subject approved this receipt as a public projection of a richer private record."
+          }
+        },
+        "subject_consent": {
+          "type": "object",
+          "properties": {
+            "consented_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "consent_digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "description": "Digest of the issuer-retained consent record."
+            }
+          },
+          "required": [
+            "consented_at",
+            "consent_digest"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "visibility"
+      ],
+      "if": {
+        "properties": {
+          "visibility": {
+            "const": "public_projection"
+          }
+        },
+        "required": [
+          "visibility"
+        ]
+      },
+      "then": {
+        "required": [
+          "subject_consent"
+        ]
+      },
+      "additionalProperties": false
+    },
+    "named_parties": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "party": {
+            "$ref": "/schemas/core/attestation-issuer.json",
+            "description": "Identity of a party other than the subject named in the claim."
+          },
+          "consent": {
+            "type": "object",
+            "properties": {
+              "consented_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "consent_digest": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "consented_at",
+              "consent_digest"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "party",
+          "consent"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Other parties this receipt names. Absent by default: a receipt does not identify counterparties. A named party requires that party's own consent; the issuer retains the consent record and a receipt naming a party without it is invalid."
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the issuer signed the receipt."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "After this instant the receipt MUST NOT be relied on. Receipts are dated evidence, not standing status. MUST be after issued_at."
+    },
+    "supersedes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "x-entity": "production_evidence_receipt"
+      },
+      "description": "receipt_id values, scoped to the same issuer, that this receipt replaces. A superseded receipt is no longer current even before its expires_at. Revocation uses the attestation credential's own issuer-bound status, not this field."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "receipt_id",
+    "claim_type",
+    "issuer",
+    "subject",
+    "adcp_version",
+    "transport",
+    "environment",
+    "evidence_tier",
+    "channels",
+    "tasks_exercised",
+    "lifecycle_stages_reached",
+    "observation",
+    "audit_record_digest",
+    "issuer_counterparty_roles",
+    "publication",
+    "issued_at",
+    "expires_at"
+  ],
+  "allOf": [
+    {
+      "description": "conformance_passed and sandbox_interoperable are sandbox evidence.",
+      "if": {
+        "properties": {
+          "evidence_tier": {
+            "enum": [
+              "conformance_passed",
+              "sandbox_interoperable"
+            ]
+          }
+        },
+        "required": [
+          "evidence_tier"
+        ]
+      },
+      "then": {
+        "properties": {
+          "environment": {
+            "const": "sandbox"
+          }
+        }
+      }
+    },
+    {
+      "description": "independently_interoperable is sandbox or controlled-pilot evidence; production tiers need production.",
+      "if": {
+        "properties": {
+          "evidence_tier": {
+            "const": "independently_interoperable"
+          }
+        },
+        "required": [
+          "evidence_tier"
+        ]
+      },
+      "then": {
+        "properties": {
+          "environment": {
+            "enum": [
+              "sandbox",
+              "controlled_pilot"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "evidence_tier": {
+            "enum": [
+              "production_transacted",
+              "production_delivered_reconciled"
+            ]
+          }
+        },
+        "required": [
+          "evidence_tier"
+        ]
+      },
+      "then": {
+        "properties": {
+          "environment": {
+            "const": "production"
+          },
+          "lifecycle_stages_reached": {
+            "contains": {
+              "const": "media_buy_accepted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "evidence_tier": {
+            "const": "production_delivered_reconciled"
+          }
+        },
+        "required": [
+          "evidence_tier"
+        ]
+      },
+      "then": {
+        "properties": {
+          "lifecycle_stages_reached": {
+            "allOf": [
+              {
+                "contains": {
+                  "const": "delivery_non_zero"
+                }
+              },
+              {
+                "contains": {
+                  "const": "reporting_read_back"
+                }
+              },
+              {
+                "contains": {
+                  "const": "reconciliation_completed"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Independence applies from independently_interoperable upward: a published policy and a counterparty_relation are required, and the issuer cannot declare itself the subject's operator or affiliate.",
+      "if": {
+        "properties": {
+          "evidence_tier": {
+            "enum": [
+              "independently_interoperable",
+              "production_transacted",
+              "production_delivered_reconciled"
+            ]
+          }
+        },
+        "required": [
+          "evidence_tier"
+        ]
+      },
+      "then": {
+        "required": [
+          "issuance_policy",
+          "counterparty_relation"
+        ],
+        "properties": {
+          "issuer_counterparty_roles": {
+            "items": {
+              "enum": [
+                "transaction_counterparty",
+                "network_intermediary"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A non-empty role declaration at independently_interoperable or above requires an independent co-signer.",
+      "if": {
+        "properties": {
+          "evidence_tier": {
+            "enum": [
+              "independently_interoperable",
+              "production_transacted",
+              "production_delivered_reconciled"
+            ]
+          },
+          "issuer_counterparty_roles": {
+            "minItems": 1
+          }
+        },
+        "required": [
+          "evidence_tier",
+          "issuer_counterparty_roles"
+        ]
+      },
+      "then": {
+        "required": [
+          "co_signers"
+        ],
+        "properties": {
+          "co_signers": {
+            "contains": {
+              "properties": {
+                "counterparty_roles": {
+                  "maxItems": 0
+                }
+              },
+              "required": [
+                "counterparty_roles"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "independently_interoperable requires an independent counterparty.",
+      "if": {
+        "properties": {
+          "evidence_tier": {
+            "const": "independently_interoperable"
+          }
+        },
+        "required": [
+          "evidence_tier"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counterparty_relation": {
+            "const": "independent"
+          }
+        }
+      }
+    },
+    {
+      "description": "Lifecycle stages must be backed by the tasks that produce them.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "lifecycle_stages_reached": {
+                "contains": {
+                  "const": "media_buy_accepted"
+                }
+              }
+            },
+            "required": [
+              "lifecycle_stages_reached"
+            ]
+          },
+          "then": {
+            "properties": {
+              "tasks_exercised": {
+                "contains": {
+                  "const": "create_media_buy"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "lifecycle_stages_reached": {
+                "contains": {
+                  "const": "delivery_non_zero"
+                }
+              }
+            },
+            "required": [
+              "lifecycle_stages_reached"
+            ]
+          },
+          "then": {
+            "properties": {
+              "tasks_exercised": {
+                "contains": {
+                  "const": "get_media_buy_delivery"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "receipt_id": "per_01JEVID0042",
+      "claim_type": "https://adcontextprotocol.org/claims/production-evidence",
+      "issuer": {
+        "type": "origin",
+        "origin": "https://relay-network.example"
+      },
+      "subject": {
+        "type": "agent",
+        "agent_url": "https://sales.pinnacle-media.example/adcp"
+      },
+      "adcp_version": "3.2",
+      "build_version": "3.2.1",
+      "transport": "mcp",
+      "environment": "production",
+      "evidence_tier": "production_transacted",
+      "channels": [
+        "display",
+        "olv"
+      ],
+      "tasks_exercised": [
+        "get_adcp_capabilities",
+        "get_products",
+        "create_media_buy"
+      ],
+      "lifecycle_stages_reached": [
+        "capabilities_read",
+        "products_discovered",
+        "media_buy_accepted"
+      ],
+      "observation": {
+        "first_observed_date": "2026-09-02",
+        "last_observed_date": "2026-09-30",
+        "activity_band": "1_to_10"
+      },
+      "capability_response_digest": "sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "audit_record_digest": "sha256:5b6e8f7a4c3d2e1f00112233445566778899aabbccddeeff0011223344556677",
+      "issuer_counterparty_roles": [
+        "network_intermediary"
+      ],
+      "co_signers": [
+        {
+          "counterparty_roles": [],
+          "attestation": {
+            "issuer": {
+              "type": "origin",
+              "origin": "https://audit-co.example"
+            },
+            "claim_type": "https://adcontextprotocol.org/claims/production-evidence-endorsement",
+            "subject": {
+              "type": "resource",
+              "resource_type": "https://adcontextprotocol.org/claims/subjects/production-evidence-receipt",
+              "namespace": "https://relay-network.example",
+              "id": "per_01JEVID0042",
+              "content_digest": "sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+            },
+            "locator": {
+              "type": "issuer_credential_id",
+              "credential_id": "cred_01JEVCO0042",
+              "resolver_id": "primary"
+            }
+          }
+        }
+      ],
+      "issuance_policy": {
+        "uri": "https://relay-network.example/evidence-policy/v1",
+        "content_digest": "sha256:c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00"
+      },
+      "publication": {
+        "visibility": "public_projection",
+        "subject_consent": {
+          "consented_at": "2026-10-01T09:30:00Z",
+          "consent_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      },
+      "issued_at": "2026-10-02T00:00:00Z",
+      "expires_at": "2027-04-02T00:00:00Z",
+      "supersedes": [
+        "per_01JEVID0031"
+      ],
+      "counterparty_relation": "independent"
+    },
+    {
+      "receipt_id": "per_01JEVID0007",
+      "claim_type": "https://adcontextprotocol.org/claims/production-evidence",
+      "issuer": {
+        "type": "agent",
+        "agent_url": "https://compliance.runner.example/adcp"
+      },
+      "subject": {
+        "type": "agent",
+        "agent_url": "https://buy.nova-brands.example/adcp"
+      },
+      "adcp_version": "3.2",
+      "transport": "a2a",
+      "environment": "sandbox",
+      "evidence_tier": "conformance_passed",
+      "channels": [
+        "display"
+      ],
+      "tasks_exercised": [
+        "get_products",
+        "create_media_buy"
+      ],
+      "lifecycle_stages_reached": [
+        "capabilities_read",
+        "products_discovered",
+        "media_buy_accepted"
+      ],
+      "observation": {
+        "first_observed_date": "2026-09-20",
+        "last_observed_date": "2026-09-20",
+        "activity_band": "1_to_10"
+      },
+      "audit_record_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "issuer_counterparty_roles": [],
+      "publication": {
+        "visibility": "private"
+      },
+      "issued_at": "2026-09-20T11:00:00Z",
+      "expires_at": "2026-12-20T11:00:00Z"
+    }
+  ],
+  "definitions": {
+    "EvidencePartyRole": {
+      "type": "string",
+      "enum": [
+        "subject_operator",
+        "subject_affiliate",
+        "issuer_affiliate",
+        "transaction_counterparty",
+        "network_intermediary",
+        "compensated_by_issuer_or_subject"
+      ],
+      "enumDescriptions": {
+        "subject_operator": "The party operates the subject implementation.",
+        "subject_affiliate": "The party is owned by, controls, or is under common control with the subject's operator, or has a revenue-share or exclusive commercial arrangement with it.",
+        "issuer_affiliate": "The party is owned by, controls, or is under common control with the receipt issuer, or has a revenue-share or exclusive commercial arrangement with it. Meaningful for co-signers; an issuer does not declare itself.",
+        "transaction_counterparty": "The party was a party (buyer, seller, or their agent) to the observed transactions.",
+        "network_intermediary": "The party carried, routed, brokered, or observed the transactions as a commercial intermediary. A party that observes AdCP calls because they pass through its infrastructure is a network_intermediary, whatever its neutrality policy.",
+        "compensated_by_issuer_or_subject": "The party is paid by the receipt issuer or the subject for this endorsement or for the observation it covers. Fees from a neutral pool or a pre-published schedule that neither the issuer nor the subject controls do not count."
+      }
+    }
+  }
+}
