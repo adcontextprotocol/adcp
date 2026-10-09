@@ -54,10 +54,14 @@ The media-buy `daily_budget_cap` is a hard aggregate ceiling and does not alloca
 
 Success returns the MediaBuy identity and an `accepted_proposal` snapshot. Its typed `commercial_terms` preserve the exact feed and pricing versions, product and format selections, catalogs, budgets, targeting, flight, billing, and reporting commitments; `terms_digest` binds that envelope for governance and audit. The separate `purchase_bindings[]` maps each zero-based purchase position to its seller-assigned `package_id`, which SDKs use for later creative assignment without placing execution IDs inside the immutable digest. The seller creates this snapshot even though the buyer did not negotiate first, giving every MediaBuy the same commercial history for later [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals).
 
+Buyers never author definition pins; a `buy_products` request carrying `definition_pins` is rejected with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request). When any purchase references a publisher-catalog format option, publisher-catalog placement, `adagents.json` collection, or data-provider signal, the seller, for callers negotiating AdCP 3.3 or later, resolves each definition and writes the seller-authored `commercial_terms.definition_pins[]` into the accepted snapshot in the same atomic commit as the MediaBuy (see [Definition pins](/docs/media-buy/specification#definition-pins)). `terms_digest` covers the pins, and later pin drift is detected by re-verifying them, not by `terms_digest`.
+
 An optional buyer-supplied `name` is persisted and echoed on the completed
 commitment and subsequent [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys)
 reads. It is operational display metadata outside `accepted_proposal` and is
 not covered by `terms_digest`.
+
+To receive scheduled reports, a `reporting_webhook` registered on this task needs a buyer-supplied `operation_id` (see [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks)); sellers MUST NOT send `media_buy_delivery` reports to a registration that omits it.
 
 Each purchase uses request-only `ProductPurchaseInput`. Its
 `targeting_overlay` has three states per dimension: omission inherits the
@@ -67,5 +71,7 @@ The accepted proposal uses strict `ProductPurchase`; it records the resolved
 effective targeting with cleared dimensions omitted and never carries `null`.
 
 A completed purchase MAY include `warnings[]` for non-blocking observations at commitment, such as a material inventory shortfall forecast. Each warning identifies its package through the returned `media_buy_id` and `purchase_bindings[].package_id`; a continuing condition is also readable as an indicator through [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). The seller may instead return `input-required` before commitment. Warnings never appear on failed or submitted arms.
+
+A submitted arm MAY carry `expected_confirmation_at` (added in 3.3) when confirmation depends on a scheduled event such as a booking round or manual review window; buyers SHOULD schedule a status check for that time instead of polling tightly. It is an estimate, not a commitment. See [Expected confirmation time](/docs/media-buy/task-reference/create_media_buy#expected-confirmation-time).
 
 The accepted snapshot records the published terms the buyer purchased. It does not imply that every direct product is non-guaranteed: discovery mode, buyer composition, and delivery guarantee are independent dimensions.

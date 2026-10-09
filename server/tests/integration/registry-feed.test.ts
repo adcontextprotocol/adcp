@@ -3,10 +3,26 @@ import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { CatalogEventsDatabase, type WriteEventInput } from '../../src/db/catalog-events-db.js';
 import type { Pool } from 'pg';
+import { randomUUID } from 'node:crypto';
+import { uuidv7 } from '../../src/db/uuid.js';
 
 describe('Registry Feed Integration Tests', () => {
   let pool: Pool;
   let eventsDb: CatalogEventsDatabase;
+  const runId = randomUUID().replaceAll('-', '');
+  const namespace = `fixture_${runId}`;
+  const nearNamespace = `fixturex${runId}`; // Must not match the literal underscore.
+  const foreignNamespace = `foreign_${runId}`;
+  const actor = `feed-fixture:${runId}`;
+
+  async function writeForeignTypePressure() {
+    return eventsDb.writeEvents([
+      { event_type: `${foreignNamespace}.property.created`, entity_type: 'property', entity_id: 'foreign-property', actor },
+      { event_type: `${foreignNamespace}.agent.discovered`, entity_type: 'agent', entity_id: 'foreign-agent', actor },
+      { event_type: `${nearNamespace}.property.created`, entity_type: 'property', entity_id: 'underscore-decoy-property', actor },
+      { event_type: `${nearNamespace}.agent.discovered`, entity_type: 'agent', entity_id: 'underscore-decoy-agent', actor },
+    ]);
+  }
 
   beforeAll(async () => {
     pool = initializeDatabase({
@@ -17,20 +33,14 @@ describe('Registry Feed Integration Tests', () => {
   });
 
   afterAll(async () => {
-    // Scope cleanup to this file's fixtures so parallel runs of
-    // sibling integration tests (e.g. registry-feed-authorization.test.ts,
-    // which writes events via DB triggers with actor like 'trigger:%')
-    // don't trample our seed and vice versa.
-    await pool.query(`DELETE FROM catalog_events WHERE actor LIKE 'test%'`);
+    // Delete only this run's exact owned actor, including pressure decoys.
+    await pool.query('DELETE FROM catalog_events WHERE actor = $1', [actor]);
     await closeDatabase();
   });
 
   beforeEach(async () => {
-    // Scope cleanup to this file's fixtures so parallel runs of
-    // sibling integration tests (e.g. registry-feed-authorization.test.ts,
-    // which writes events via DB triggers with actor like 'trigger:%')
-    // don't trample our seed and vice versa.
-    await pool.query(`DELETE FROM catalog_events WHERE actor LIKE 'test%'`);
+    // Delete only this run's exact owned actor, including pressure decoys.
+    await pool.query('DELETE FROM catalog_events WHERE actor = $1', [actor]);
   });
 
   // ── Write & Read Round-trip ──────────────────────────────────────
@@ -42,7 +52,7 @@ describe('Registry Feed Integration Tests', () => {
         entity_type: 'property',
         entity_id: 'rid-001',
         payload: { source: 'test' },
-        actor: 'test:integration',
+        actor,
       });
 
       expect(eventId).toBeTruthy();
@@ -54,29 +64,29 @@ describe('Registry Feed Integration Tests', () => {
       // Filter to this file's events; concurrent test files writing
       // events via DB triggers (actor='trigger:*') could otherwise
       // interleave.
-      const ours = feed.events.filter(e => e.actor.startsWith('test'));
+      const ours = feed.events.filter(e => e.actor === actor);
       expect(ours).toHaveLength(1);
       expect(ours[0].event_id).toBe(eventId);
       expect(ours[0].event_type).toBe('property.created');
       expect(ours[0].entity_id).toBe('rid-001');
       expect(ours[0].payload).toEqual({ source: 'test' });
-      expect(ours[0].actor).toBe('test:integration');
+      expect(ours[0].actor).toBe(actor);
     });
 
     it('writes multiple events in a transaction', async () => {
       const inputs: WriteEventInput[] = [
-        { event_type: 'test.multi_agent_discovered', entity_type: 'agent', entity_id: 'url-1', actor: 'test' },
-        { event_type: 'test.multi_agent_discovered', entity_type: 'agent', entity_id: 'url-2', actor: 'test' },
-        { event_type: 'test.multi_authorization_granted', entity_type: 'authorization', entity_id: 'a:b', actor: 'test' },
+        { event_type: `${namespace}.agent.discovered`, entity_type: 'agent', entity_id: 'url-1', actor },
+        { event_type: `${namespace}.agent.discovered`, entity_type: 'agent', entity_id: 'url-2', actor },
+        { event_type: `${namespace}.authorization.granted`, entity_type: 'authorization', entity_id: 'a:b', actor },
       ];
 
       const ids = await eventsDb.writeEvents(inputs);
       expect(ids).toHaveLength(3);
 
-      const feed = await eventsDb.queryFeed(null, ['test.multi_*']);
+      const feed = await eventsDb.queryFeed(null, [`${namespace}.*`]);
       if ('error' in feed) throw new Error(feed.message);
-      const ours = feed.events.filter(e => e.actor === 'test');
-      expect(ours).toHaveLength(3);
+      expect(feed.events).toHaveLength(3);
+      expect(feed.events.map(event => event.event_id)).toEqual([...ids].sort());
     });
   });
 
@@ -84,20 +94,20 @@ describe('Registry Feed Integration Tests', () => {
 
   describe('cursor pagination', () => {
     it('paginates through events using cursor', async () => {
-      // Write 5 events
+      // Write 5 owned events plus matching entity types under other namespaces.
+      const seededIds: string[] = [];
       for (let i = 0; i < 5; i++) {
-        await eventsDb.writeEvent({
-          event_type: 'property.created',
+        seededIds.push(await eventsDb.writeEvent({
+          event_type: `${namespace}.property.created`,
           entity_type: 'property',
           entity_id: `rid-${i}`,
-          actor: 'test',
-        });
+          actor,
+        }));
       }
+      await writeForeignTypePressure();
 
-      // Filter to property.created so concurrent test files (e.g. the
-      // CAA trigger tests writing authorization.* events) can't change
-      // our pagination counts.
-      const pcOnly = ['property.created'];
+      // The SQL type predicate must isolate this run; keep raw pagination results.
+      const pcOnly = [`${namespace}.property.created`];
 
       // Page 1: first 2
       const page1 = await eventsDb.queryFeed(null, pcOnly, 2);
@@ -126,25 +136,27 @@ describe('Registry Feed Integration Tests', () => {
       ];
       const uniqueIds = new Set(allIds);
       expect(uniqueIds.size).toBe(5);
+      expect(allIds).toEqual([...seededIds].sort());
     });
 
     it('returns events in UUID v7 order (creation time)', async () => {
+      await writeForeignTypePressure();
       for (let i = 0; i < 3; i++) {
         await eventsDb.writeEvent({
-          event_type: 'property.created',
+          event_type: `${namespace}.property.created`,
           entity_type: 'property',
           entity_id: `ordered-${i}`,
-          actor: 'test',
+          actor,
         });
         // Small delay to ensure distinct timestamps
         await new Promise(r => setTimeout(r, 5));
       }
 
-      // Filter to property.created so concurrent CAA trigger writes
-      // don't drift the assertion indices.
-      const feed = await eventsDb.queryFeed(null, ['property.created']);
+      // The exact run type excludes foreign and underscore near-match decoys.
+      const feed = await eventsDb.queryFeed(null, [`${namespace}.property.created`]);
       if ('error' in feed) throw new Error(feed.message);
 
+      expect(feed.events).toHaveLength(3);
       expect(feed.events[0].entity_id).toBe('ordered-0');
       expect(feed.events[1].entity_id).toBe('ordered-1');
       expect(feed.events[2].entity_id).toBe('ordered-2');
@@ -154,50 +166,49 @@ describe('Registry Feed Integration Tests', () => {
   // ── Type Glob Filtering ─────────────────────────────────────────
 
   describe('type glob filtering', () => {
+    let seededIds: string[];
     beforeEach(async () => {
-      await eventsDb.writeEvents([
-        { event_type: 'property.created', entity_type: 'property', entity_id: 'p1', actor: 'test' },
-        { event_type: 'property.updated', entity_type: 'property', entity_id: 'p2', actor: 'test' },
-        { event_type: 'property.merged', entity_type: 'property', entity_id: 'p3', actor: 'test' },
-        { event_type: 'agent.discovered', entity_type: 'agent', entity_id: 'a1', actor: 'test' },
-        { event_type: 'authorization.granted', entity_type: 'authorization', entity_id: 'z1', actor: 'test' },
+      seededIds = await eventsDb.writeEvents([
+        { event_type: `${namespace}.property.created`, entity_type: 'property', entity_id: 'p1', actor },
+        { event_type: `${namespace}.property.updated`, entity_type: 'property', entity_id: 'p2', actor },
+        { event_type: `${namespace}.property.merged`, entity_type: 'property', entity_id: 'p3', actor },
+        { event_type: `${namespace}.agent.discovered`, entity_type: 'agent', entity_id: 'a1', actor },
+        { event_type: `${namespace}.authorization.granted`, entity_type: 'authorization', entity_id: 'z1', actor },
       ]);
+      await writeForeignTypePressure();
     });
 
-    // queryFeed has no actor filter (by design — the public feed contract
-    // doesn't expose actor). The catalog_events table is shared with the
-    // background crawler and other test files that write non-`test%` events,
-    // so each assertion below filters to this file's actor before counting.
-    // Matches the pattern at lines 57 and 78 above.
-    const ours = (events: { actor: string }[]) =>
-      events.filter(e => e.actor.startsWith('test'));
-
     it('filters by exact event type', async () => {
-      const feed = await eventsDb.queryFeed(null, ['property.created']);
+      const feed = await eventsDb.queryFeed(null, [`${namespace}.property.created`]);
       if ('error' in feed) throw new Error(feed.message);
-      const seeded = ours(feed.events);
-      expect(seeded).toHaveLength(1);
-      expect(seeded[0].event_type).toBe('property.created');
+      expect(feed.events).toHaveLength(1);
+      expect(feed.events[0].event_type).toBe(`${namespace}.property.created`);
     });
 
     it('filters by glob pattern', async () => {
-      const feed = await eventsDb.queryFeed(null, ['property.*']);
+      const feed = await eventsDb.queryFeed(null, [`${namespace}.property.*`]);
       if ('error' in feed) throw new Error(feed.message);
-      const seeded = ours(feed.events);
-      expect(seeded).toHaveLength(3);
-      expect(seeded.every(e => e.event_type.startsWith('property.'))).toBe(true);
+      expect(feed.events).toHaveLength(3);
+      expect(feed.events.every(e => e.event_type.startsWith(`${namespace}.property.`))).toBe(true);
     });
 
     it('combines multiple type filters with OR', async () => {
-      const feed = await eventsDb.queryFeed(null, ['property.*', 'agent.*']);
+      const feed = await eventsDb.queryFeed(null, [`${namespace}.property.*`, `${namespace}.agent.*`]);
       if ('error' in feed) throw new Error(feed.message);
-      expect(ours(feed.events)).toHaveLength(4);
+      expect(feed.events).toHaveLength(4);
+      const expectedTypes = [
+        `${namespace}.property.created`, `${namespace}.property.updated`,
+        `${namespace}.property.merged`, `${namespace}.agent.discovered`,
+      ];
+      const expected = seededIds.slice(0, 4).map((id, index) => ({ id, type: expectedTypes[index] }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      expect(feed.events.map(event => ({ id: event.event_id, type: event.event_type }))).toEqual(expected);
     });
 
     it('returns empty for non-matching type', async () => {
-      const feed = await eventsDb.queryFeed(null, ['nonexistent.*']);
+      const feed = await eventsDb.queryFeed(null, [`${namespace}.nonexistent.*`]);
       if ('error' in feed) throw new Error(feed.message);
-      expect(ours(feed.events)).toHaveLength(0);
+      expect(feed.events).toHaveLength(0);
       expect(feed.has_more).toBe(false);
     });
   });
@@ -208,7 +219,7 @@ describe('Registry Feed Integration Tests', () => {
     it('returns empty events with null cursor when no events exist', async () => {
       // Filter to a never-emitted event_type so concurrent test files
       // writing to catalog_events can't make this assertion racy.
-      const feed = await eventsDb.queryFeed(null, ['nonexistent.never_emitted']);
+      const feed = await eventsDb.queryFeed(null, [`${namespace}.nonexistent.never_emitted`]);
       if ('error' in feed) throw new Error(feed.message);
       expect(feed.events).toHaveLength(0);
       expect(feed.cursor).toBeNull();
@@ -224,15 +235,15 @@ describe('Registry Feed Integration Tests', () => {
       await pool.query(
         `INSERT INTO catalog_events (event_id, event_type, entity_type, entity_id, payload, actor, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, NOW() - INTERVAL '100 days')`,
-        ['00000000-0000-7000-8000-000000000001', 'old.event', 'test', 'old-1', '{}', 'test']
+        [uuidv7(), `${namespace}.old.event`, 'test', 'old-1', '{}', actor]
       );
 
       // Insert a recent event
       await eventsDb.writeEvent({
-        event_type: 'recent.event',
+        event_type: `${namespace}.recent.event`,
         entity_type: 'test',
         entity_id: 'recent-1',
-        actor: 'test',
+        actor,
       });
 
       const deleted = await eventsDb.cleanup(90);
@@ -241,10 +252,10 @@ describe('Registry Feed Integration Tests', () => {
       expect(deleted).toBeGreaterThanOrEqual(1);
 
       // Recent event should still exist among any concurrent writes.
-      const feed = await eventsDb.queryFeed(null, ['recent.event']);
+      const feed = await eventsDb.queryFeed(null, [`${namespace}.recent.event`]);
       if ('error' in feed) throw new Error(feed.message);
       expect(feed.events).toHaveLength(1);
-      expect(feed.events[0].event_type).toBe('recent.event');
+      expect(feed.events[0].event_type).toBe(`${namespace}.recent.event`);
     });
   });
 });

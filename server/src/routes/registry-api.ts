@@ -13,7 +13,7 @@ import { withStoryboardSkipDetails } from '../compliance/storyboard-skip-details
 
 import { Router } from "express";
 import { once } from "node:events";
-import type { Request, RequestHandler } from "express";
+import type { Request, RequestHandler, Response } from "express";
 import { z } from "zod";
 import escapeHtml from "escape-html";
 import {
@@ -196,7 +196,7 @@ import {
   type SdkAuth,
 } from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
-import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
+import { isOAuthOwnerReauthorizationError, isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase, validateAuthTokenChars } from "../db/agent-context-db.js";
 import { normalizeBasicAuthForStorage } from "../utils/basic-auth-credentials.js";
 import { sdkSafeFetch, withSdkSafeTransport } from "../utils/sdk-safe-fetch.js";
@@ -8318,6 +8318,26 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     }
   }
 
+  /** Keep owner issuer failures visible before SDK endpoint discovery flattens them. */
+  async function ownerSdkAuthOrChallenge(
+    auth: Parameters<typeof adaptAuthForSdk>[0], orgId: string, agentUrl: string,
+    userId: string, res: Response, tokenEndpointLabel: string,
+  ): Promise<SdkAuth | undefined | null> {
+    try {
+      return await adaptAuthForSdk(auth, { tokenEndpointLabel, ownerDiscoveryUrl: agentUrl });
+    } catch (error) {
+      if (!isOAuthOwnerReauthorizationError(error)) throw error;
+      const agentContextId = await ensureAgentContextId(orgId, agentUrl, userId);
+      res.status(422).json({
+        error: 'Saved OAuth credentials require an explicit owner sign-in. A changed authorization server requires independently trusted client configuration.',
+        needs_oauth: true,
+        oauth_fresh: true,
+        ...(agentContextId && { agent_context_id: agentContextId }),
+      });
+      return null;
+    }
+  }
+
   router.put("/registry/agents/:encodedUrl/lifecycle", ...complianceWriteMiddleware, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
@@ -8863,7 +8883,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           response_time_ms: Date.now() - complianceStart,
           success: true,
         });
-        if (complyResult.overall_status === 'auth_required') {
+        if (complyResult.overall_status === 'auth_required' || isOAuthOwnerReauthorizationError(complyResult.agent_profile?.capabilities_probe_error)) {
           complianceSummary = {
             ran: false,
             test_session_id: request.test_session_id,
@@ -9749,7 +9769,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
     try {
       const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
-      const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `test-agent:${agentUrl}` });
+      const sdkAuth = await ownerSdkAuthOrChallenge(auth, orgId, agentUrl, req.user.id, res, `test-agent:${agentUrl}`);
+      if (sdkAuth === null) return;
       const probeAuth = authForSdkDiscoveryProbe(sdkAuth);
 
       let profile;
@@ -9769,6 +9790,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           return res.status(422).json({
             error: "This agent requires OAuth authorization. Connect via OAuth to run storyboards.",
             needs_oauth: true,
+            oauth_fresh: isOAuthOwnerReauthorizationError(probeStep.error),
             ...(agentContextId && { agent_context_id: agentContextId }),
           });
         }
@@ -9915,7 +9937,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
 
         const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
-        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard-step:${agentUrl}` });
+        const sdkAuth = await ownerSdkAuthOrChallenge(auth, orgId, agentUrl, req.user.id, res, `run-storyboard-step:${agentUrl}`);
+        if (sdkAuth === null) return;
         const runTarget = await selectComplianceTargetForAgent(
           agentUrl,
           {
@@ -9975,6 +9998,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
             adcp_version: runTarget.version,
             ...result,
             needs_oauth: true,
+            oauth_fresh: isOAuthOwnerReauthorizationError(result.error),
             ...(agentContextId && { agent_context_id: agentContextId }),
           });
         }
@@ -10052,7 +10076,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
 
         const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
-        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard:${agentUrl}` });
+        const sdkAuth = await ownerSdkAuthOrChallenge(auth, orgId, agentUrl, req.user.id, res, `run-storyboard:${agentUrl}`);
+        if (sdkAuth === null) return;
 
         const complyOptions = {
           timeout_ms: 90_000,
@@ -10083,11 +10108,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
         const complyResult = await comply(agentUrl, complyOptions, runTarget);
 
-        if (complyResult.overall_status === 'auth_required') {
+        if (complyResult.overall_status === 'auth_required' || isOAuthOwnerReauthorizationError(complyResult.agent_profile?.capabilities_probe_error)) {
           const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
           return res.status(422).json({
             error: "Agent requires OAuth authorization. Connect via OAuth to run this storyboard.",
             needs_oauth: true,
+            oauth_fresh: isOAuthOwnerReauthorizationError(complyResult.agent_profile?.capabilities_probe_error),
             ...(agentContextId && { agent_context_id: agentContextId }),
           });
         }
@@ -10227,7 +10253,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
 
         const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
-        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard-compare:${agentUrl}` });
+        const sdkAuth = await ownerSdkAuthOrChallenge(auth, orgId, agentUrl, req.user.id, res, `run-storyboard-compare:${agentUrl}`);
+        if (sdkAuth === null) return;
         const storyboardIds = [req.params.storyboardId];
         const userComplyOptions = {
           timeout_ms: 90_000,
@@ -10249,11 +10276,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           }, runTarget),
         ]);
 
-        if (userResult.overall_status === 'auth_required') {
+        if (userResult.overall_status === 'auth_required' || isOAuthOwnerReauthorizationError(userResult.agent_profile?.capabilities_probe_error)) {
           const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
           return res.status(422).json({
             error: "Agent requires OAuth authorization. Connect via OAuth to compare against the reference agent.",
             needs_oauth: true,
+            oauth_fresh: isOAuthOwnerReauthorizationError(userResult.agent_profile?.capabilities_probe_error),
             ...(agentContextId && { agent_context_id: agentContextId }),
           });
         }

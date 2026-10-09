@@ -443,7 +443,7 @@
         },
         "spot": {
           "type": "object",
-          "description": "Request a spot-level as-run airing log for broadcast TV, radio, or other scheduled inventory. Rows are ordered by aired_at ascending. When limit is omitted, sellers SHOULD return the complete log for the requested reporting period.",
+          "description": "Request a spot-level as-run airing log for broadcast TV, radio, or other scheduled inventory. Rows are ordered ascending by aired_at, or by scheduled_at for rows without aired_at. Rows are selected for the reporting period by that same timestamp. Because the order is ascending, a limit truncates the latest rows first, which for a log that includes scheduled rows are the planned ones; scope the request with reporting_period instead of relying on limit. When limit is omitted, sellers SHOULD return the complete log for the requested reporting period.",
           "properties": {
             "limit": {
               "type": "integer",

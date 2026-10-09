@@ -259,9 +259,9 @@ describe('wrapper contract', () => {
     // 3.2 GA: stable 3.2 wins over 3.1, and a 3.2 prerelease pin stays on
     // that prerelease instead of being upgraded to the GA bundle.
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).requested).toBe('3.2');
-    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe('3.2.2');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe('3.2.3');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.2-rc.7']).version).toBe('3.2.0-rc.7');
-    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe('3.2.2');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe('3.2.3');
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe('3.1.24');
 
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
@@ -288,7 +288,8 @@ describe('wrapper contract', () => {
     expect(hostedComplianceTarget('3.1').version).toBe('3.1.24');
     expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
     expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
-    expect(hostedComplianceTarget('3.2').version).toBe('3.2.2');
+    expect(hostedComplianceTarget('3.2').version).toBe('3.2.3');
+    expect(hostedComplianceTarget('3.2.2').version).toBe('3.2.2');
     expect(hostedComplianceTarget('3.2-rc').version).toBe('3.2.0-rc.7');
     expect(() => hostedComplianceTarget('3.2.0')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1.12')).toThrow(/not available from a published/);

@@ -5,6 +5,9 @@ protocol: governance
 category: governance_spend_authority
 summary: "Governance agent approves a media buy with conditions. Buyer re-checks after meeting the conditions."
 track: campaign_governance
+requires:
+  - controller
+
 required_tools:
   - sync_plans
   - check_governance

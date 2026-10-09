@@ -4,6 +4,8 @@ title: "Seller applies deterministic product filters in every buying mode"
 category: media_buy_seller
 summary: "Verifies schema-valid get_products filters affect brief curation, wholesale feeds, and refinement instead of silently no-oping."
 track: media_buy
+requires:
+  - controller
 
 required_tools:
   - get_products

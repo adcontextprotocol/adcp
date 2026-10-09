@@ -15,6 +15,11 @@
       "format": "date-time",
       "description": "Last date/time to cancel without penalty (ISO 8601). Cancellations after this point may incur fees per the seller's terms."
     },
+    "change_cutoff": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last date/time at which a change to or stop of this installment (creative swap, pause, cancellation instruction) still takes operational effect: broadcast traffic/log close, OOH posting-cycle lock, print issue close, cinema reel lock. Distinct from `cancellation_deadline` (penalty-free cancel window; a cancellation after `change_cutoff` may still be billed even if within terms) and `booking_deadline` (new bookings). When both are present, `change_cutoff` SHOULD NOT precede `booking_deadline`. Absent means the seller makes no statement."
+    },
     "material_deadlines": {
       "type": "array",
       "description": "Stages for creative material submission. Items MUST be in chronological order by due_at (earliest first). Typical pattern: 'draft' for raw materials the seller will process, 'final' for production-ready assets. Print example: draft artwork then press-ready PDF. Influencer example: talking points then approved script.",

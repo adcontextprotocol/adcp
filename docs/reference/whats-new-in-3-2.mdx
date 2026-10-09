@@ -176,7 +176,7 @@ See the [compliance catalog](/docs/building/verification/compliance-catalog#choo
 - **Account settings.** Sellers declare account time zones and currency modes.
 - **Cache invalidation.** `capabilities.changed` and `account.status_changed` tell caches when to refresh.
 - **Account change feed (experimental).** `list_account_changes` is an optional, capability-gated feed of material changes to a shared account, including changes made outside your own calls. It ships as experimental feature `account.change_feed` while [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810) is open.
-- **Authenticated principals (experimental).** `sync_principal` and `get_principal` hold a caller's standing relationship with a seller: caller-level webhooks with a one-call kill switch, reusable reporting destinations, and declarations of which async versions, signing algorithms, and experimental features the caller can consume. Principal configuration never grants advertiser-account authority.
+- **Authenticated principals (experimental).** `sync_principal` and `get_principal` hold a caller's standing relationship with a seller: caller-level webhooks with a one-call kill switch, reusable reporting destinations, and declarations of which async versions, signing algorithms, and experimental features the caller can consume. Principal configuration never grants advertiser-account authority. Follow the buyer-side flow in [Set up your buyer agent with a seller](/docs/accounts/principal-registration-walkthrough).
 
 ### Creative: one traceable path from brief to replay
 

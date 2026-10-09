@@ -4,6 +4,9 @@ title: "Schema compliance — signals protocol"
 category: schema_validation
 summary: "Validates that signals agent responses conform to AdCP schemas with all required fields present and correctly typed."
 track: core
+requires:
+  - controller
+
 required_tools:
   - get_signals
 
