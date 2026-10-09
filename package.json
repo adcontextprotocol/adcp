@@ -152,7 +152,7 @@
     "test:registry": "vitest run server/tests --exclude 'server/tests/simulation/**'",
     "test:simulation": "vitest run server/tests/simulation/scenarios --pool forks --poolOptions.forks.singleFork --testTimeout 120000",
     "test:docker": "docker compose -f docker-compose.test.yml up --build --abort-on-container-exit",
-    "test:docs-nav": "node tests/docs-nav-validation.test.cjs",
+    "test:docs-nav": "node tests/docs-nav-validation.test.cjs && node --test --test-timeout=30000 tests/smoke-docs-index-runtime.test.cjs",
     "test:owned-links": "node --test --test-force-exit --test-timeout=30000 tests/check-owned-links.test.cjs",
     "test:release-docs-nav": "node --test --test-force-exit --test-timeout=30000 tests/update-release-docs-nav.test.cjs",
     "test:rewrite-dist-redirect-links": "node --test --test-force-exit --test-timeout=30000 tests/rewrite-dist-redirect-links.test.cjs",

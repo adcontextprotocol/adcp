@@ -633,12 +633,14 @@ test('simplified chinese navigation publishes translated pages without reusing e
     const published = `zh/dist/docs/${snapshot}/${page}`;
     if (!zhPages.includes(published)) throw new Error(`zh navigation missing ${published}`);
     const authored = path.join(rootDir, 'docs/zh', `${page}.mdx`);
-    if (!fs.existsSync(authored)) throw new Error(`Missing authored translation ${authored}`);
     const mirror = path.join(rootDir, `${published}.mdx`);
-    if (!fs.lstatSync(mirror).isSymbolicLink()) {
+    // readlink fails for non-links; verify the intended source without a
+    // separate metadata check followed by reading through a mutable link.
+    const linkTarget = fs.readlinkSync(mirror);
+    if (path.resolve(path.dirname(mirror), linkTarget) !== authored) {
       throw new Error(`${published}.mdx must be a symlink to docs/zh/${page}.mdx`);
     }
-    const target = fs.readFileSync(mirror, 'utf8');
+    const target = fs.readFileSync(authored, 'utf8');
     if (!target.startsWith('---')) throw new Error(`${published}.mdx does not resolve to MDX frontmatter`);
   }
   const englishPages = new Set(collectPages(navigation.versions));
