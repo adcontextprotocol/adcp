@@ -4,6 +4,8 @@
   "title": "Delivery Projection Basis",
   "description": "The class of method a seller used to project a package's end-of-flight delivery. Names the method class, not its parameters: the trailing window length, model name, or seasonality inputs belong in the projection's `ext`. Values MAY be added in later minor releases; a client on an older schema version SHOULD treat a value it does not recognize like `seller_defined`.",
   "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "enum": [
     "trailing_daily_avg",
     "trailing_hourly_avg",

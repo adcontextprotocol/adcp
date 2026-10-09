@@ -1389,6 +1389,10 @@
           "$ref": "/schemas/enums/feedback-source.json",
           "description": "Source of performance feedback data"
         },
+        "delivery-projection-end-state": {
+          "$ref": "/schemas/enums/delivery-projection-end-state.json",
+          "description": "Projected end-of-flight state of a package (on_pace, complete, underdelivery, early_exhaustion)"
+        },
         "delivery-projection-basis": {
           "$ref": "/schemas/enums/delivery-projection-basis.json",
           "description": "Class of method behind a delivery projection (trailing_daily_avg, trailing_hourly_avg, platform_model, seller_defined)"

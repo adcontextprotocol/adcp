@@ -53,7 +53,7 @@ Do not put assignment-specific fatigue or approval on the creative root. One cre
 | `pacing_risk` | Package | Material over- or under-delivery is projected by flight end absent intervention |
 | `budget_constrained` | Media buy or package | Budget or a spend cap materially limits otherwise eligible delivery |
 
-`pacing_risk` is the categorical forward-looking judgment on `get_media_buys`; its numeric counterpart is the optional `projection` on `get_media_buy_delivery` `by_package[]` rows, and `pacing_index` is the backward-looking measure. See [Delivery projection](/docs/media-buy/task-reference/get_media_buy_delivery#delivery-projection).
+`pacing_risk` is the categorical forward-looking judgment on `get_media_buys`; its numeric counterpart is the optional, [experimental](/docs/reference/experimental-status) `projection` on `get_media_buy_delivery` `by_package[]` rows, and `pacing_index` is the backward-looking measure. See [Delivery projection](/docs/media-buy/task-reference/get_media_buy_delivery#delivery-projection).
 
 The negotiated AdCP release defines these broad meanings, not a universal algorithm. Provider scores, thresholds, evaluation windows, native labels, suggested actions, deep links, and upstream attribution remain in namespaced `ext`. A generic action dispatcher is intentionally absent; applying a recommendation still uses normal AdCP authorization, governance, idempotency, and readback.
 

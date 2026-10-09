@@ -49,14 +49,20 @@ test('projection is an optional ref on top-level by_package rows only', () => {
 test('projection requires end state, basis, and as_of; volumes are optional', () => {
   const core = readSchema('/schemas/core/delivery-projection.json');
   assert.deepEqual(core.required, ['projected_end_state', 'basis', 'as_of']);
-  assert.deepEqual(core.properties.projected_end_state.enum, ['on_pace', 'complete', 'underdelivery', 'early_exhaustion']);
+  assert.equal(core.properties.projected_end_state.$ref, '/schemas/enums/delivery-projection-end-state.json');
+  assert.deepEqual(readSchema('/schemas/enums/delivery-projection-end-state.json').enum, [
+    'on_pace',
+    'complete',
+    'underdelivery',
+    'early_exhaustion',
+  ]);
   assert.equal(core.properties.basis.$ref, '/schemas/enums/delivery-projection-basis.json');
 });
 
 test('enumDescriptions cover exactly the enum values', () => {
   const basis = readSchema('/schemas/enums/delivery-projection-basis.json');
   assert.deepEqual(Object.keys(basis.enumDescriptions).sort(), [...basis.enum].sort());
-  const state = readSchema('/schemas/core/delivery-projection.json').properties.projected_end_state;
+  const state = readSchema('/schemas/enums/delivery-projection-end-state.json');
   assert.deepEqual(Object.keys(state.enumDescriptions).sort(), [...state.enum].sort());
 });
 
@@ -110,11 +116,33 @@ test('a delivery response with and without projection both validate', async () =
   assert.ok(!validate(response([{ ...pkg, projection: { ...projection, basis: 'ml_forecast' } }])));
 });
 
+test('projection surface is experimental, versioned, and registered', () => {
+  const row = deliveryRowSchema().properties.projection;
+  const files = [
+    readSchema('/schemas/core/delivery-projection.json'),
+    readSchema('/schemas/enums/delivery-projection-basis.json'),
+    readSchema('/schemas/enums/delivery-projection-end-state.json'),
+    row,
+  ];
+  for (const schema of files) {
+    assert.equal(schema['x-status'], 'experimental');
+    assert.equal(schema['x-added-in'], '3.3.0');
+  }
+  const registry = fs.readFileSync(path.join(__dirname, '../docs/reference/experimental-status.mdx'), 'utf8');
+  assert.match(registry, /^\| `media_buy\.delivery_projection` \|/m);
+  const basis = readSchema('/schemas/core/delivery-projection.json').properties.basis.description;
+  assert.match(basis, /forecast-method\.json/);
+});
+
 test('projection schemas are registered in the schema index', () => {
   const index = readSchema('/schemas/index.json');
   assert.equal(index.schemas.core.schemas['delivery-projection'].$ref, '/schemas/core/delivery-projection.json');
   assert.equal(
     index.schemas.enums.schemas['delivery-projection-basis'].$ref,
     '/schemas/enums/delivery-projection-basis.json'
+  );
+  assert.equal(
+    index.schemas.enums.schemas['delivery-projection-end-state'].$ref,
+    '/schemas/enums/delivery-projection-end-state.json'
   );
 });

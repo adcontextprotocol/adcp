@@ -2,8 +2,10 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/delivery-projection.json",
   "title": "Delivery Projection",
-  "description": "A seller's forward-looking projection of where one package's delivery will end up at the end of its flight, given the delivery reported so far. It is the numeric counterpart to the categorical `pacing_risk` indicator on `get_media_buys` and the forward counterpart to the backward-looking `pacing_index`. **Advisory only**: a projection is an advisory forecast, not a delivery record. It carries no contractual meaning on its own, and any commercial use of it is governed by the parties' terms. Reported actuals remain the delivery record, and `is_final` on the enclosing row does not make a projection final. This is the post-purchase counterpart to the pre-purchase `delivery-forecast.json`, which is a spend-to-delivery curve rather than a projection from actuals. Sellers that do not project omit the whole object; buyers MUST NOT read absence as 'on pace' or as any other state.",
+  "description": "A seller's forward-looking projection of where one package's delivery will end up at the end of its flight, given the delivery reported so far. It is the numeric counterpart to the categorical `pacing_risk` indicator on `get_media_buys` and the forward counterpart to the backward-looking `pacing_index`. **Advisory only**: a projection is an advisory forecast, not a delivery record. It carries no contractual meaning on its own, and any commercial use of it is governed by the parties' terms. Reported actuals remain the delivery record, and `is_final` on the enclosing row does not make a projection final. Experimental (x-status: experimental): sellers that emit a projection MUST list `media_buy.delivery_projection` in `experimental_features`; per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice. This is the post-purchase counterpart to the pre-purchase `delivery-forecast.json`, which is a spend-to-delivery curve rather than a projection from actuals. Sellers that do not project omit the whole object; buyers MUST NOT read absence as 'on pace' or as any other state.",
   "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "properties": {
     "projected_impressions": {
       "type": "number",
@@ -16,24 +18,12 @@
       "description": "Projected lifetime spend for the package when its delivery ends, on the same lifetime basis as `projected_impressions`. Denominated in the package row's own `currency` (not the media-buy row currency) and, for `revenue_share`, computed the same way as the row's `spend`. Omit when the seller does not project spend."
     },
     "projected_end_state": {
-      "type": "string",
-      "enum": [
-        "on_pace",
-        "complete",
-        "underdelivery",
-        "early_exhaustion"
-      ],
-      "description": "The package-level judgment of where delivery lands, measured against the package's binding constraint: whichever of its goal or budget the package would reach first. The two projected totals are supporting numbers and are not classified independently. `on_pace`: the package is projected to reach the binding constraint at flight end, within the seller's tolerance. `complete`: the package is projected to reach it before flight end, with the undelivered share of the flight below the seller's materiality threshold, so it simply finishes early. `early_exhaustion`: the package is projected to reach it before flight end, with the undelivered share of the flight at or above the materiality threshold. `underdelivery`: the package is projected to fall short of the binding constraint at flight end by more than the seller's tolerance. There is no over-delivery state: a package projected to exceed its constraint is projected to reach it early. Tolerance and materiality are the seller's own thresholds, which it SHOULD also use for the `pacing_risk` indicator when it emits that indicator. They are not exposed, so buyers SHOULD NOT compare end states across sellers as if the thresholds matched. `complete` is a projected early finish, unrelated to `delivery_status: completed`. Clients on an older schema version SHOULD tolerate an unrecognized value.",
-      "enumDescriptions": {
-        "on_pace": "Projected to reach the binding constraint (goal or budget) at flight end, within the seller's tolerance.",
-        "complete": "Projected to reach the binding constraint before flight end, with the undelivered share of the flight below the seller's materiality threshold. A benign early finish.",
-        "underdelivery": "Projected to fall short of the binding constraint at flight end by more than the seller's tolerance.",
-        "early_exhaustion": "Projected to reach the binding constraint before flight end, with the undelivered share of the flight at or above the seller's materiality threshold."
-      }
+      "$ref": "/schemas/enums/delivery-projection-end-state.json",
+      "description": "The package-level judgment of where delivery lands, measured against the package's binding constraint: whichever of its goal or budget the package would reach first. The two projected totals are supporting numbers and are not classified independently. `on_pace`: the package is projected to reach the binding constraint at flight end, within the seller's tolerance. `complete`: the package is projected to reach it before flight end, with the undelivered share of the flight below the seller's materiality threshold, so it simply finishes early. `early_exhaustion`: the package is projected to reach it before flight end, with the undelivered share of the flight at or above the materiality threshold. `underdelivery`: the package is projected to fall short of the binding constraint at flight end by more than the seller's tolerance. There is no over-delivery state: a package projected to exceed its constraint is projected to reach it early. Tolerance and materiality are the seller's own thresholds, which it SHOULD also use for the `pacing_risk` indicator when it emits that indicator. They are not exposed, so buyers SHOULD NOT compare end states across sellers as if the thresholds matched. `complete` is a projected early finish, unrelated to `delivery_status: completed`. Clients on an older schema version SHOULD tolerate an unrecognized value."
     },
     "basis": {
       "$ref": "/schemas/enums/delivery-projection-basis.json",
-      "description": "The class of method the seller used. Parameters of the method (window length, model name) go in `ext`. Clients on an older schema version SHOULD treat a value they do not recognize like `seller_defined`."
+      "description": "The class of method the seller used. Parameters of the method (window length, model name) go in `ext`. Clients on an older schema version SHOULD treat a value they do not recognize like `seller_defined`. `basis` names how the projection was sampled or modeled; it is not the commitment tier of `enums/forecast-method.json` (`estimate`, `modeled`, `guaranteed`), which describes how firmly a pre-purchase forecast is backed. A projection from actuals carries no delivery commitment at any `basis`."
     },
     "as_of": {
       "type": "string",
