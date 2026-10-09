@@ -10,7 +10,7 @@
     "v3": "3.2.3",
     "v3.2": "3.2.3",
     "v3.1": "3.1.27",
-    "v3.0": "3.0.27",
+    "v3.0": "3.0.28",
     "v2": "2.5.3",
     "v2.5": "2.5.3"
   },
@@ -21,7 +21,7 @@
   "latest_by_minor": {
     "3.2": "3.2.3",
     "3.1": "3.1.27",
-    "3.0": "3.0.27",
+    "3.0": "3.0.28",
     "2.5": "2.5.3"
   },
   "versions": [
@@ -507,6 +507,14 @@
       "superseded_by": "3.1.0",
       "path": "/schemas/3.1.0-beta.7/",
       "index": "/schemas/3.1.0-beta.7/index.json"
+    },
+    {
+      "version": "3.0.28",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.28/",
+      "index": "/schemas/3.0.28/index.json"
     },
     {
       "version": "3.0.27",
