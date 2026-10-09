@@ -92,9 +92,12 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // minute-resolution dayparts add the start_time/end_time pair, its one-of-two
 // exclusion, and the time_granularity requirement to the shared daypart
 // graph carried by every targeting-bearing task (+2,087 bytes measured,
-// 443.3 → 445.4 KiB), bounded at 446 KiB.
+// 443.3 → 445.4 KiB), bounded at 446 KiB. Media-buy lineage adds
+// predecessor_media_buy_id and the shared lineage reason enum to
+// create_media_buy and buy_products, measured at 456,822 bytes (446.1 KiB) and
+// bounded at 447 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 446,
+  'media-buy': 447,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

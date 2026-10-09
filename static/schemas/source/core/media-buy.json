@@ -131,6 +131,19 @@
       "$ref": "/schemas/core/context.json",
       "description": "Opaque media-buy-level correlation data echoed unchanged from the create_media_buy request. Sellers MUST include persisted context on read surfaces such as get_media_buys when the media buy was created through AdCP with context, so buyers can reconcile seller-assigned media_buy_id values with their own tracking state. Sellers MAY omit context for media buys created outside AdCP or created without context. Sellers MUST NOT parse this object for business logic."
     },
+    "predecessor_media_buy_id": {
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "type": "string",
+      "x-entity": "media_buy",
+      "description": "Media buy this one succeeds, as set at creation. Same seller and account; the predecessor carries no reverse link and may no longer be retrievable. Sellers MUST echo it for buys created with it. Experimental in AdCP 3.3 (`media_buy.lineage`)."
+    },
+    "lineage_reason": {
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "$ref": "/schemas/enums/media-buy-lineage-reason.json",
+      "description": "Why this buy succeeds its predecessor. Present whenever `predecessor_media_buy_id` is."
+    },
     "invoice_recipient": {
       "$ref": "/schemas/core/business-entity.json",
       "description": "Per-buy override for who receives the invoice. When provided, the seller invoices this entity instead of the account's default billing_entity. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
@@ -161,7 +174,9 @@
   },
   "dependencies": {
     "accepted_proposal_id": ["accepted_proposal_terms_digest"],
-    "accepted_proposal_terms_digest": ["accepted_proposal_id"]
+    "accepted_proposal_terms_digest": ["accepted_proposal_id"],
+    "predecessor_media_buy_id": ["lineage_reason"],
+    "lineage_reason": ["predecessor_media_buy_id"]
   },
   "allOf": [
     {
