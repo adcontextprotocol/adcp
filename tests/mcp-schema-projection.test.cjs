@@ -94,7 +94,7 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // graph carried by every targeting-bearing task (+2,087 bytes measured,
 // 443.3 → 445.4 KiB), bounded at 446 KiB. Media-buy lineage adds
 // predecessor_media_buy_id and the shared lineage reason enum to
-// create_media_buy and buy_products, measured at 456,794 bytes (446.1 KiB) and
+// create_media_buy and buy_products, measured at 456,822 bytes (446.1 KiB) and
 // bounded at 447 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
   'media-buy': 447,
