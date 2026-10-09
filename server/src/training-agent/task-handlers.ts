@@ -2031,6 +2031,76 @@ function canonicalReportingTimezone(value: unknown): string | undefined {
   }
 }
 
+const DAYPART_CLOCK_TIME = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;
+const DAYPART_GRANULARITY_RANK = { hour: 0, quarter_hour: 1, minute: 2 } as const;
+type DaypartTimeGranularity = keyof typeof DAYPART_GRANULARITY_RANK;
+
+/** Shape errors for an entry's whole-hour vs HH:MM window fields, relative to
+ * the entry path. These are INVALID_REQUEST; capability matching never sees
+ * them. */
+function daypartWindowErrors(entry: Record<string, unknown>): Array<{ field: string; message: string }> {
+  const hasHour = entry.start_hour !== undefined || entry.end_hour !== undefined;
+  const hasTime = entry.start_time !== undefined || entry.end_time !== undefined;
+  if (hasHour && hasTime) {
+    return [{ field: '', message: 'start_hour/end_hour and start_time/end_time are mutually exclusive' }];
+  }
+  if (hasTime) {
+    const errors: Array<{ field: string; message: string }> = [];
+    for (const key of ['start_time', 'end_time'] as const) {
+      const clock = entry[key];
+      if (typeof clock !== 'string' || !DAYPART_CLOCK_TIME.test(clock)) {
+        errors.push({ field: `.${key}`, message: `${key}: must be a 24-hour HH:MM clock time` });
+      }
+    }
+    if (errors.length === 0 && entry.start_time === entry.end_time) {
+      errors.push({ field: '.end_time', message: 'end_time: must differ from start_time' });
+    }
+    return errors;
+  }
+  if (!hasHour) {
+    return [{ field: '', message: 'a window requires start_hour/end_hour or start_time/end_time' }];
+  }
+  const errors: Array<{ field: string; message: string }> = [];
+  for (const key of ['start_hour', 'end_hour'] as const) {
+    if (!Number.isInteger(entry[key])) {
+      errors.push({ field: `.${key}`, message: `${key}: required with its pair and must be an integer` });
+    }
+  }
+  return errors;
+}
+
+/** Finest granularity a validated entry needs. Whole-hour windows and HH:00
+ * clock times need hour; :15/:30/:45 need quarter_hour; anything else minute. */
+function daypartEntryGranularity(entry: Record<string, unknown>): DaypartTimeGranularity {
+  let needed: DaypartTimeGranularity = 'hour';
+  for (const key of ['start_time', 'end_time'] as const) {
+    const clock = entry[key];
+    if (typeof clock !== 'string') continue;
+    const minutes = Number(clock.slice(3));
+    if (minutes % 15 !== 0) return 'minute';
+    if (minutes !== 0) needed = 'quarter_hour';
+  }
+  return needed;
+}
+
+/** Granularity a support or requirement object names. Omission means hour; an
+ * unrecognized value is undefined so matching fails closed. */
+function daypartDeclaredGranularity(source: unknown): DaypartTimeGranularity | undefined {
+  if (!isRecord(source) || source.time_granularity === undefined) return 'hour';
+  return typeof source.time_granularity === 'string'
+    && Object.hasOwn(DAYPART_GRANULARITY_RANK, source.time_granularity)
+    ? source.time_granularity as DaypartTimeGranularity
+    : undefined;
+}
+
+/** True when the support object honors at least the required granularity. */
+function daypartGranularityAtLeast(support: unknown, requirement: unknown): boolean {
+  const supported = daypartDeclaredGranularity(support);
+  const required = daypartDeclaredGranularity(requirement);
+  return supported !== undefined && required !== undefined
+    && DAYPART_GRANULARITY_RANK[supported] >= DAYPART_GRANULARITY_RANK[required];
+}
+
 function validateDaypartTargets(value: unknown, pathLabel: string): TaskError[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length === 0) {
@@ -2056,6 +2126,13 @@ function validateDaypartTargets(value: unknown, pathLabel: string): TaskError[] 
         code: 'INVALID_REQUEST',
         message: `${entryPath}.timezone: must be inventory_local, UTC, or a valid IANA timezone identifier`,
         field: `${entryPath}.timezone`,
+      });
+    }
+    for (const windowError of daypartWindowErrors(entry)) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${entryPath}${windowError.field}: ${windowError.message}`,
+        field: `${entryPath}${windowError.field}`,
       });
     }
   }
@@ -2174,6 +2251,8 @@ interface ReportingCapabilitiesView {
   vendor_metrics?: VendorMetricRefView[];
   available_metrics?: string[];
   supports_format_breakdown?: boolean;
+  supports_property_breakdown?: boolean;
+  supports_installment_property_breakdown?: boolean;
 }
 
 function deterministicTimeBasedViews(impressions: number): Array<Record<string, unknown>> {
@@ -2249,6 +2328,52 @@ function formatDeliveryBreakdown(
     by_format_truncated: rows.length > limit,
     by_format_sorted_by: appliedSort,
     by_format_sort_direction: appliedDirection,
+  };
+}
+
+/**
+ * Property-grain breakdowns echo only rows injected through
+ * comply_test_controller simulate_delivery. They are never derived from
+ * catalog eligibility or publisher_properties: absent injected rows, the
+ * array is empty.
+ */
+function injectedRowsBreakdown(
+  field: 'by_property' | 'by_installment_property',
+  injectedRows: Array<Record<string, unknown>> | undefined,
+  dimension: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!dimension) return {};
+  const rows = injectedRows ?? [];
+  const requestedSort = typeof dimension.sort_by === 'string' ? dimension.sort_by : 'spend';
+  const requestedDirection = dimension.sort_direction === 'asc' ? 'asc' : 'desc';
+  // The reference seller sorts on flat row metrics only; a metric it does not
+  // carry at this grain (for example nested viewability) falls back to spend,
+  // which delivery-breakdown-controls.json permits.
+  const hasMetric = (row: Record<string, unknown>, metric: string) => (
+    typeof row[metric] === 'number' && Number.isFinite(row[metric])
+  );
+  // Fall back to spend only when no row reports the requested metric; rows
+  // lacking it order last regardless of direction.
+  const appliedSort = rows.some(row => hasMetric(row, requestedSort)) ? requestedSort : 'spend';
+  const appliedDirection = appliedSort === requestedSort ? requestedDirection : 'desc';
+  const ordered = structuredClone(rows).sort((left, right) => {
+    const leftHas = hasMetric(left, appliedSort);
+    const rightHas = hasMetric(right, appliedSort);
+    if (!leftHas || !rightHas) return Number(rightHas) - Number(leftHas);
+    const a = left[appliedSort] as number;
+    const b = right[appliedSort] as number;
+    return appliedDirection === 'asc' ? a - b : b - a;
+  });
+  const limit = typeof dimension.limit === 'number' && Number.isInteger(dimension.limit) && dimension.limit >= 1
+    ? dimension.limit
+    : 25;
+  return {
+    [field]: ordered.slice(0, limit),
+    [`${field}_truncated`]: ordered.length > limit,
+    // Injected rows are exempt from threshold suppression.
+    [`${field}_suppressed`]: false,
+    [`${field}_sorted_by`]: appliedSort,
+    [`${field}_sort_direction`]: appliedDirection,
   };
 }
 
@@ -7586,7 +7711,11 @@ function overlaySupportContains(
   if (support === true) {
     if (capabilityField === 'daypart_targets' && isRecord(requirement)) {
       const modes = requirement.timezone_modes;
-      return Array.isArray(modes) && modes.every(mode => mode === 'inventory_local');
+      return (
+        Array.isArray(modes)
+          ? modes.every(mode => mode === 'inventory_local')
+          : modes === undefined && requirement.time_granularity !== undefined
+      ) && daypartDeclaredGranularity(requirement) === 'hour';
     }
     return true;
   }
@@ -7603,6 +7732,11 @@ function overlaySupportContains(
     // or a containing frequency_cap_support after seller-wide inheritance.
     if (field === 'frequency_cap_support') {
       return packageFrequencyCapRequirementMatches({ overlay_support: support }, requiredValue);
+    }
+    // Time granularity is ordered, not a subset: finer support satisfies a
+    // coarser requirement, and an omitted support value means hour.
+    if (capabilityField === 'daypart_targets' && field === 'time_granularity') {
+      return daypartGranularityAtLeast(support, requirement);
     }
     return support[field] !== undefined
       && overlaySupportContains(support[field], requiredValue, field);
@@ -7631,17 +7765,23 @@ function concreteTargetingSupported(field: string, support: unknown, value: unkn
     && (
       !Array.isArray(value)
       || value.length === 0
-      || value.some(entry => !isRecord(entry) || !isValidDaypartTimezone(entry.timezone))
+      || value.some(entry => (
+        !isRecord(entry)
+        || !isValidDaypartTimezone(entry.timezone)
+        || daypartWindowErrors(entry).length > 0
+      ))
     )
   ) {
-    // Input validation owns malformed and unknown-zone errors; capability
+    // Input validation owns malformed, mixed-form, and unknown-zone errors; capability
     // matching must not turn them into UNSUPPORTED_FEATURE.
     return true;
   }
   if (support === true) {
     if (field !== 'daypart_targets') return true;
     return Array.isArray(value) && value.every(entry => (
-      isRecord(entry) && (entry.timezone === undefined || entry.timezone === 'inventory_local')
+      isRecord(entry)
+      && (entry.timezone === undefined || entry.timezone === 'inventory_local')
+      && daypartEntryGranularity(entry) === 'hour'
     ));
   }
   if (!isRecord(support)) return false;
@@ -7712,8 +7852,14 @@ function concreteTargetingSupported(field: string, support: unknown, value: unkn
     }
     if (field === 'daypart_targets') {
       const timezoneModes = support.timezone_modes;
+      const supportedGranularity = daypartDeclaredGranularity(support);
       return Array.isArray(timezoneModes) && value.every(entry => {
         if (!isRecord(entry)) return false;
+        // Never round a clock time to a coarser boundary: reject instead.
+        if (
+          supportedGranularity === undefined
+          || DAYPART_GRANULARITY_RANK[daypartEntryGranularity(entry)] > DAYPART_GRANULARITY_RANK[supportedGranularity]
+        ) return false;
         const timezone = entry.timezone ?? 'inventory_local';
         if (typeof timezone !== 'string') return false;
         const mode = timezone === 'inventory_local' ? 'inventory_local' : 'iana';
@@ -11733,6 +11879,55 @@ async function handleGetProductsUnlocked(
             allocation_percentage: allocationPercentage,
             rationale: 'Selected explicitly by the compact lifecycle request.',
             pricing_option_id: product.pricing_options[0].pricing_option_id,
+          })) as Proposal['allocations'],
+        } as Proposal];
+      }
+    } else if (
+      proposals.length === 0
+      && !exactProductIds?.size
+      && seededProductIds(session).size > 0
+      && products.length > 0
+    ) {
+      // Brief/criteria-only request_proposals (no explicit product_ids) in a
+      // controller-seeded session. `products` is only guaranteed to be
+      // seeded-only when required_media_buy_support/media_buy_frequency_cap
+      // scoping ran in applyDiscoveryTargeting; a plain brief can still pull
+      // in real catalog products that scored well against keyword matching.
+      // Filter explicitly to seeded fixtures before building the proposal —
+      // mirrors the exactProductIds branch above, but for the criteria-driven
+      // path the typed-negotiation storyboards exercise (adcp#7796).
+      const seededIds = seededProductIds(session);
+      const fixtureProducts = products.filter(product => (
+        seededIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
+      ));
+      // One proposal carries one budget currency, so fixtures priced in
+      // different currencies cannot share it; leave proposals empty and let
+      // the existing rejection path answer.
+      const fixtureCurrencies = new Set(
+        fixtureProducts.map(product => product.pricing_options[0]?.currency ?? 'USD'),
+      );
+      if (fixtureProducts.length > 0 && fixtureCurrencies.size === 1) {
+        const allocationPercentage = 100 / fixtureProducts.length;
+        const sortedProductIds = fixtureProducts.map(product => product.product_id).sort();
+        proposals = [{
+          proposal_id: `fixture_match_${createHash('sha256').update(sortedProductIds.join('\0')).digest('hex').slice(0, 16)}`,
+          name: 'Fixture-matched product proposal',
+          description: 'Deterministic proposal generated from controller-seeded fixtures matching the requested criteria.',
+          brief_alignment: typeof brief === 'string'
+            ? brief
+            : 'Matches seeded fixtures satisfying the requested campaign criteria.',
+          total_budget_guidance: {
+            min: 1_000,
+            recommended: 1_000,
+            currency: fixtureProducts[0].pricing_options[0]?.currency ?? 'USD',
+          },
+          allocations: fixtureProducts.map(product => ({
+            product_id: product.product_id,
+            allocation_percentage: allocationPercentage,
+            rationale: 'Seeded fixture product matching the requested campaign criteria.',
+            ...(product.pricing_options[0] && {
+              pricing_option_id: product.pricing_options[0].pricing_option_id,
+            }),
           })) as Proposal['allocations'],
         } as Proposal];
       }
@@ -16604,6 +16799,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const formatDimension = isRecord(req.reporting_dimensions?.format)
     ? req.reporting_dimensions.format
     : undefined;
+  const propertyDimension = isRecord(req.reporting_dimensions?.property)
+    ? req.reporting_dimensions.property
+    : undefined;
+  const installmentPropertyDimension = isRecord(req.reporting_dimensions?.installment_property)
+    ? req.reporting_dimensions.installment_property
+    : undefined;
 
   const mediaBuyPaused = mb.status === 'paused';
   const simulatedPackages = mb.packages.filter(pkg => (
@@ -16940,9 +17141,21 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     }
 
     const formatBreakdown = formatDeliveryBreakdown(product, packageDeliveryMetrics, formatDimension);
+    // Injected rows are single-package scoped; a multi-package buy has none,
+    // so a requested breakdown is an empty array rather than a guess.
+    const injectedRows = mb.packages.length === 1 ? simDelivery : undefined;
+    const injectedPropertyBreakdown = {
+      ...(reporting?.supports_property_breakdown === true
+        ? injectedRowsBreakdown('by_property', injectedRows?.propertyDelivery, propertyDimension)
+        : {}),
+      ...(reporting?.supports_installment_property_breakdown === true
+        ? injectedRowsBreakdown('by_installment_property', injectedRows?.installmentPropertyDelivery, installmentPropertyDimension)
+        : {}),
+    };
     const packageMetricsWithBreakdown = {
       ...packageDeliveryMetrics,
       ...formatBreakdown,
+      ...injectedPropertyBreakdown,
     };
     return {
       package_id: pkg.packageId,
@@ -19479,7 +19692,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       : []),
     ...((ctx.tenantId === 'sales' || ctx.tenantId == null) ? ['measurement.core'] : []),
     ...(!isThreeZeroResponse && (ctx.tenantId === 'sales' || ctx.tenantId == null)
-      ? ['media_buy.audience_activation', 'media_buy.product_identity']
+      ? ['media_buy.audience_activation', 'media_buy.product_identity', 'media_buy.daypart_granularity']
       : []),
   ];
   const supportedCreativeFormats = includeThreeOneFields(ctx)
@@ -19561,6 +19774,13 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       features: {
         inline_creative_management: true,
         catalog_management: true,
+        // Rollups for the per-product flags. The training agent honors them
+        // by echoing property rows injected via comply_test_controller; it
+        // never derives property delivery from catalog eligibility.
+        ...(!isThreeZeroResponse && {
+          supports_property_breakdown: true,
+          supports_installment_property_breakdown: true,
+        }),
         // Canonical bidding the agent preserves: fixed media-buy cost_per.
         // The outcome_target planner answers cost targets inside this
         // profile; create_media_buy rejects canonical policies outside it.

@@ -1296,7 +1296,8 @@
               "type": "string",
               "enum": ["inventory_hold", "terms_only"],
               "x-added-in": "3.3.0",
-              "description": "What a successful finalize commits. inventory_hold (the default when absent): the seller reserves inventory for the committed proposal and reports its hold expiry; hold_unavailable and hold-driven batch_aborted are possible outcomes. terms_only: the seller commits commercial terms without placing an inventory hold — reservation is owned by the requesting side (delegated composition, where the requester owns the sellable catalog) — and the seller MUST NOT return hold_unavailable or a hold-driven batch_aborted. Buyers integrating a terms_only seller perform their own availability control at acceptance. Because committed meant inventory reserved before this field existed, a terms_only seller MUST NOT return a committed proposal to a caller whose adcp_version is below 3.3; it fails the request at task level with UNSUPPORTED_FEATURE."
+              "x-status": "experimental",
+              "description": "Experimental (media_buy.delegated_composition). What a successful finalize commits. inventory_hold (the default when absent): the seller reserves inventory for the committed proposal and reports its hold expiry; hold_unavailable and hold-driven batch_aborted are possible outcomes. terms_only: the seller commits commercial terms without placing an inventory hold — reservation is owned by the requesting side (delegated composition, where the requester owns the sellable catalog) — and the seller MUST NOT return hold_unavailable or a hold-driven batch_aborted. Buyers integrating a terms_only seller perform their own availability control at acceptance. Because committed meant inventory reserved before this field existed, a terms_only seller MUST NOT return a committed proposal to a caller whose adcp_version is below 3.3; it fails the request at task level with UNSUPPORTED_FEATURE."
             },
             "max_alternatives": {
               "type": "integer",
@@ -1363,7 +1364,8 @@
         "supports_exclusive_product_ids": {
           "type": "boolean",
           "x-added-in": "3.3.0",
-          "description": "Declares that this seller honors criteria.product_ids_exclusive: when a request sets it, the listed product_ids are the complete composable universe, and every proposal purchase, echoed product, and seller-selected signal resolves within them — a brief unsatisfiable within the universe returns rejected (request_proposals) or constraint_unsatisfiable (refine_proposals), never off-universe results. Refinements inherit the universe and may only narrow it. Buyers MUST NOT send the flag unless this is true. Sellers that do not declare this capability MUST NOT silently ignore the flag on request_proposals or refine_proposals; they reject the request at task level with UNSUPPORTED_FEATURE. Primary use is delegated composition, where the requesting platform owns the sellable catalog and the responding agent supplies only the composition judgment.",
+          "x-status": "experimental",
+          "description": "Experimental (media_buy.delegated_composition). Declares that this seller honors criteria.product_ids_exclusive: when a request sets it, the listed product_ids are the complete composable universe, and every proposal purchase, echoed product, and seller-selected signal resolves within them — a brief unsatisfiable within the universe returns rejected (request_proposals) or constraint_unsatisfiable (refine_proposals), never off-universe results. Refinements inherit the universe and may only narrow it. Buyers MUST NOT send the flag unless this is true. Sellers that do not declare this capability MUST NOT silently ignore the flag on request_proposals or refine_proposals; they reject the request at task level with UNSUPPORTED_FEATURE. Primary use is delegated composition, where the requesting platform owns the sellable catalog and the responding agent supplies only the composition judgment.",
           "default": false
         },
         "outcome_target": {
@@ -2821,7 +2823,7 @@
         },
         "required_for": {
           "type": "array",
-          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Every operation listed MUST also appear in `supported_for`; see `x-adcp-validation`.",
+          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. A transport-specific rename of an operation is not a valid entry (MCP tools and the AdCP A2A profile use the operation name verbatim, so those names coincide with it) — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Over MCP the verifier matches the tools/call params.name; over A2A it matches the skill of the sole DataPart of the message (SendMessage, SendStreamingMessage, message/send, message/stream, and the HTTP+JSON and gRPC equivalents). The A2A profile uses the AdCP operation name verbatim as skill, so that is the same name space. A request that does not resolve to exactly one operation is rejected with request_body_malformed; see docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Every operation listed MUST also appear in `supported_for`; see `x-adcp-validation`.",
           "items": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9_]*$"
@@ -2897,6 +2899,19 @@
           "x-adcp-validation": {
             "subset_of": "request_signing.protocol_methods_supported_for",
             "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
+          }
+        },
+        "operation_sources": {
+          "type": "array",
+          "description": "Transport bindings from which this verifier resolves the AdCP operation name it matches against supported_for, warn_for, and required_for. 'mcp_tools_call' resolves from the decoded params.name of a JSON-RPC tools/call request. 'a2a_invocation_skill' resolves from the decoded skill of the sole DataPart of an A2A message (SendMessage, SendStreamingMessage, message/send, message/stream, and the HTTP+JSON and gRPC equivalents), and commits the verifier to the fail-closed and skill-to-handler binding rules and the hardening clauses in docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a for every A2A version and binding the endpoint serves. A verifier MUST list a source only if it implements that source's rules and passes its conformance vectors, including the hardening tier, and a present array MUST list every source the verifier supports. Absent means a verifier that has not declared this: a counterparty MUST NOT infer that required_for is enforced over A2A. The field is self-attested and informational; buyers SHOULD sign any operation listed in required_for regardless of it. It never changes the protocol_methods_* namespace, which matches the JSON-RPC method only.",
+          "items": {
+            "type": "string",
+            "enum": ["mcp_tools_call", "a2a_invocation_skill"]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "x-adcp-validation": {
+            "spec": "docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a"
           }
         }
       },

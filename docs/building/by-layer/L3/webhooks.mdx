@@ -270,7 +270,9 @@ This inner result object is valid delivery-report content, but it is **not valid
 
 The top-level `status` is the async webhook status (`completed`, `failed`, `working`, and so on). The nested `media_buy_deliveries[].status` is the media buy lifecycle or reporting state (`active`, `paused`, `reporting_delayed`, and so on). Do not collapse the two fields.
 
-For delivery-report data events such as `scheduled`, `final`, `delayed`, `adjusted`, and `window_update`, `notification_id` is absent by design; dedupe the transport event with `idempotency_key`. The `aggregated_totals` field is API-only for `get_media_buy_delivery` responses and must not be emitted in reporting webhook result payloads.
+For delivery-report data events such as `scheduled`, `final`, `delayed`, `adjusted`, and `window_update`, `notification_id` is absent by design; dedupe the transport event with `idempotency_key`. The `aggregated_totals` field is API-only for `get_media_buy_delivery` responses. Senders MUST NOT emit it in reporting webhook result payloads. Receivers MUST ignore `aggregated_totals` if present in a webhook result and MUST NOT treat it as authoritative, but MUST NOT reject the payload for carrying it. A request-scoped rollup has no defined meaning in a push event, so reconcile totals from `get_media_buy_delivery` or from the per-delivery rows.
+
+AdCP schemas are open by policy ([DR-0009](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0009-additional-properties-default-true.md)), so a prose MUST NOT on a field that is absent from the schema is normative even though schema validation will not flag it. Conformance is meant to grade it through storyboards rather than schema validation.
 
 Signatures and content digests are computed over the exact raw JSON bytes sent as this full envelope. Re-serializing just the `result` object, adding whitespace, or changing field order before verification changes the bytes and breaks signature validation.
 

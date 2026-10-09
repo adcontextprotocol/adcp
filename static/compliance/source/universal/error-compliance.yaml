@@ -4,6 +4,9 @@ title: "Error handling and compliance"
 category: error_compliance
 summary: "Validates that agents return properly structured AdCP errors with correct codes, recovery hints, and transport bindings."
 track: error_handling
+requires:
+  - controller
+
 required_tools:
   - get_products
 

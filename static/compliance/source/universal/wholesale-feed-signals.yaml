@@ -4,6 +4,9 @@ title: "Wholesale signals feed versioning"
 category: marketplace_catalog
 summary: "Validates get_signals wholesale feed versioning: bootstrap responses carry wholesale_feed_version/cache_scope and matching if_wholesale_feed_version probes return unchanged without signal rows."
 track: signals
+requires:
+  - controller
+
 introduced_in: "3.1"
 
 requires_capability:

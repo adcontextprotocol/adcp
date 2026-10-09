@@ -4,6 +4,9 @@ title: "Legacy package correlation fallback without product_id"
 category: media_buy_seller
 summary: "Models the mixed-seller compatibility path where a legacy package response omits product_id and buyers correlate by package context.buyer_ref."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_media_buys
 

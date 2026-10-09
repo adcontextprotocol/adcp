@@ -4,6 +4,9 @@ title: "End-to-end metric accountability through the media buy lifecycle"
 category: media_buy_seller
 summary: "Buyer requires specific reporting metrics at discovery; seller filters products to those that can deliver; delivery report exposes any gaps via missing_metrics."
 track: reporting
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy

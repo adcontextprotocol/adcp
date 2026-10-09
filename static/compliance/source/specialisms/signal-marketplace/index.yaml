@@ -5,6 +5,9 @@ protocol: signals
 category: signal_marketplace
 summary: "Signal agent that resells third-party data provider signals with verifiable provider-published provenance."
 track: signals
+requires:
+  - controller
+
 required_tools:
   - get_signals
   - activate_signal

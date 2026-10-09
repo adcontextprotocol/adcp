@@ -55,6 +55,10 @@ that clears the root cap; supplying `criteria.media_buy_frequency_cap` replaces 
 
 ## Binding the product universe with product_ids_exclusive
 
+<Note>
+Experimental (`media_buy.delegated_composition`): sellers that implement this declare the feature id in `experimental_features`, and the shape may change in 3.x with the notice described in [Experimental status](/docs/reference/experimental-status).
+</Note>
+
 By default `criteria.product_ids` is a candidate hint: the seller may compose over other products it deems fit. Setting `criteria.product_ids_exclusive: true` makes the listed products the **complete composable universe** for the request and every refinement of the resulting proposals:
 
 - Every purchase in every returned proposal, and every product echoed alongside the proposals, MUST reference a listed `product_id` that resolves for the calling account. A listed ID the seller cannot resolve is outside the universe; the seller never substitutes another product for it.

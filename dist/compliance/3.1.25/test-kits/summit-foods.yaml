@@ -1,0 +1,125 @@
+# Summit Foods — CPG Advertiser Test Kit
+#
+# Entity definition: fictional-entities.yaml → advertisers[summit_foods]
+#
+# Organic food / CPG brand that buys retail media inventory on ShopGrid.
+#
+# This brand is registered as a sandbox brand in AgenticAdvertising.org (AAO).
+# Agents resolve summitfoods.example via the standard AAO brand resolution path.
+# AAO returns the brand.json below but excludes sandbox brands from production
+# brand discovery results.
+
+id: summit_foods
+name: "Summit Foods"
+description: "Organic food CPG brand for retail media storyboard testing"
+sandbox: true
+
+# security_baseline auth fixture — see acme-outdoor.yaml for semantics.
+auth:
+  api_key: "demo-summit-foods-v1"
+  probe_task: list_creatives
+
+brand:
+  house:
+    domain: "summitfoods.example"
+    name: "Summit Foods"
+  brand_id: "summit_foods"
+  names:
+    - en: "Summit Foods"
+  description: "Organic pantry staples made from ingredients you can pronounce. From farm to shelf, nothing artificial."
+  industry: "cpg"
+  keller_type: "master"
+  logos:
+    - url: "https://test-assets.adcontextprotocol.org/summit-foods/logo-primary.png"
+      orientation: "horizontal"
+      background: "light-bg"
+      variant: "primary"
+      width: 400
+      height: 100
+    - url: "https://test-assets.adcontextprotocol.org/summit-foods/logo-icon.png"
+      orientation: "square"
+      background: "transparent-bg"
+      variant: "icon"
+      width: 200
+      height: 200
+  colors:
+    primary: "#33691E"
+    secondary: "#F9A825"
+    accent: "#BF360C"
+    background: "#FAFAF5"
+    text: "#1B1B1B"
+  fonts:
+    heading:
+      family: "Nunito"
+      weight: 700
+      url: "https://fonts.googleapis.com/css2?family=Nunito:wght@700"
+    body:
+      family: "Nunito"
+      weight: 400
+      url: "https://fonts.googleapis.com/css2?family=Nunito"
+  tone:
+    voice: "Honest and approachable. We talk like a farmer at a market stall — proud of the product, plain about what's in it."
+    attributes:
+      - "transparent"
+      - "approachable"
+      - "earthy"
+    dos:
+      - "Name specific ingredients and sourcing"
+      - "Use plain language over marketing speak"
+      - "Emphasize taste alongside health"
+    donts:
+      - "Use 'clean eating' or diet-culture language"
+      - "Make unsubstantiated health claims"
+      - "Position as premium or exclusive — Summit Foods is everyday food"
+
+assets:
+  images:
+    - id: "hero_300x250"
+      url: "https://test-assets.adcontextprotocol.org/summit-foods/hero-300x250.jpg"
+      width: 300
+      height: 250
+      mime_type: "image/jpeg"
+      description: "Medium rectangle hero — product lineup on kitchen counter"
+
+    - id: "hero_728x90"
+      url: "https://test-assets.adcontextprotocol.org/summit-foods/hero-728x90.jpg"
+      width: 728
+      height: 90
+      mime_type: "image/jpeg"
+      description: "Leaderboard hero — harvest field with Summit Foods packaging"
+
+    - id: "hero_320x50"
+      url: "https://test-assets.adcontextprotocol.org/summit-foods/hero-320x50.jpg"
+      width: 320
+      height: 50
+      mime_type: "image/jpeg"
+      description: "Mobile banner hero — close-up of organic granola bar"
+
+    - id: "hero_160x600"
+      url: "https://test-assets.adcontextprotocol.org/summit-foods/hero-160x600.jpg"
+      width: 160
+      height: 600
+      mime_type: "image/jpeg"
+      description: "Wide skyscraper hero — vertical pantry shelf with Summit products"
+
+    - id: "hero_master"
+      url: "https://test-assets.adcontextprotocol.org/summit-foods/hero-master.jpg"
+      width: 1200
+      height: 628
+      mime_type: "image/jpeg"
+      description: "Master hero image — high-res breakfast spread with Summit products"
+
+  text:
+    headlines:
+      - "Organic. Honest. Delicious."
+      - "Ingredients You Can Pronounce"
+      - "From Our Farm to Your Shelf"
+    descriptions:
+      - "Organic pantry staples made with five ingredients or fewer. Summit Foods — real food for real kitchens."
+      - "No fillers, no artificial anything. Just honest food that tastes like food should."
+    cta:
+      - "Shop Now"
+      - "Find in Store"
+      - "Try the Sampler"
+
+  click_url: "https://summitfoods.example/shop"

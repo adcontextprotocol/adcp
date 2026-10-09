@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-overlay-requirements.json",
   "title": "Targeting Overlay Requirements",
-  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: where a field permits a boolean form, a requirement value of true matches product support true or any valid positive support object, and product support true satisfies every protocol-valid structured requirement except daypart_targets, where true promises inventory_local only. Otherwise, structured product support must contain the structured requirement. For geo_regions and geo_regions_exclude, every requested country must exist; requested all_values requires supported all_values; and requested values must be a subset of supported values unless support declares all_values. For geo_places and geo_places_exclude, every requested system and country key must exist and each requested place-type and system-version array must be a subset of the corresponding product array. Include and exclude fields match independently. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching. Legacy frequency_cap: true matches only the unchanged broad declaration. frequency_cap_support matches either legacy true or a containing structured declaration; an empty object requests either positive form. A requirement carries at most one of the two.",
+  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: where a field permits a boolean form, a requirement value of true matches product support true or any valid positive support object, and product support true satisfies every protocol-valid structured requirement except daypart_targets, where true promises inventory_local and whole-hour granularity only. daypart_targets time_granularity is ordered rather than a subset: support matches when its granularity is at least as fine as the requirement (hour < quarter_hour < minute). Otherwise, structured product support must contain the structured requirement. For geo_regions and geo_regions_exclude, every requested country must exist; requested all_values requires supported all_values; and requested values must be a subset of supported values unless support declares all_values. For geo_places and geo_places_exclude, every requested system and country key must exist and each requested place-type and system-version array must be a subset of the corresponding product array. Include and exclude fields match independently. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching. Legacy frequency_cap: true matches only the unchanged broad declaration. frequency_cap_support matches either legacy true or a containing structured declaration; an empty object requests either positive form. A requirement carries at most one of the two.",
   "type": "object",
   "definitions": {
     "required": { "type": "boolean", "const": true },
@@ -68,7 +68,7 @@
         },
         {
           "type": "object",
-          "description": "Require later package-level daypart selection using each listed timezone mode. Structured product support must contain every requested mode. For backward compatibility, daypart_targets support true satisfies inventory_local requirements only and does not satisfy requirements for iana.",
+          "description": "Require later package-level daypart selection using each listed timezone mode and/or a minimum time granularity. Structured product support must contain every requested mode and declare a time_granularity at least as fine as the requested one (an omitted support granularity is hour). A requirement object carries at least one of timezone_modes and time_granularity; an omitted timezone_modes places no timezone-mode requirement. For backward compatibility, daypart_targets support true satisfies inventory_local, hour-granularity requirements only and does not satisfy requirements for iana, quarter_hour, or minute.",
           "properties": {
             "timezone_modes": {
               "type": "array",
@@ -82,13 +82,23 @@
               "items": { "$ref": "/schemas/core/iana-timezone.json" },
               "minItems": 1,
               "uniqueItems": true
+            },
+            "time_granularity": {
+              "$ref": "/schemas/enums/daypart-time-granularity.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "Experimental in AdCP 3.3. Minimum time-of-day resolution that must remain selectable after discovery. Product support matches when its declared time_granularity is this value or finer."
             }
           },
-          "required": ["timezone_modes"],
+          "anyOf": [
+            { "required": ["timezone_modes"] },
+            { "required": ["time_granularity"] }
+          ],
           "allOf": [
             {
               "if": { "required": ["iana_timezones"] },
               "then": {
+                "required": ["timezone_modes"],
                 "properties": {
                   "timezone_modes": {
                     "contains": { "const": "iana" }

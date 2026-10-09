@@ -6,7 +6,7 @@ description: "Profile for a requesting platform that owns the sellable catalog a
 
 In **delegated composition** a platform acts as the AdCP buyer while a seller-operated composition agent acts as the seller for the proposal lifecycle only. The platform brings the demand, owns the sellable catalog, and executes the resulting media buys. The composer supplies merchandising judgment: brief in, proposals out, negotiation through [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals).
 
-This page is the single reading path for the topology. It assembles capabilities defined elsewhere and adds no wire fields of its own. It is a **bootstrap** profile: composition and negotiation are standardized, acceptance is not yet (see [Open items](#open-items)). The two capabilities are independently useful and are not limited to composers, since any seller that holds no inventory can declare `terms_only`.
+This page is the single reading path for the topology. Everything on it is [experimental](/docs/reference/experimental-status) under the feature id `media_buy.delegated_composition`: a seller that implements `product_ids_exclusive` or `terms_only` declares that id in `experimental_features`. It assembles capabilities defined elsewhere and adds no wire fields of its own. It is a **bootstrap** profile: composition and negotiation are standardized, acceptance is not yet (see [Open items](#open-items)). The two capabilities are independently useful and are not limited to composers, since any seller that holds no inventory can declare `terms_only`.
 
 ## Capabilities
 

@@ -272,8 +272,8 @@ assert.strictEqual(
 );
 assert.strictEqual(
   releaseCheckout.with.ref,
-  '${{ needs.verify-release.outputs.target_commit }}',
-  'The release job must check out the validated release target.'
+  '${{ github.sha }}',
+  'The release job must use the current tested checkout while RELEASE_SHA preserves the validated original release target.'
 );
 
 const artifactCheckout = releaseJob.steps.find(
@@ -289,7 +289,7 @@ assert.strictEqual(
 );
 assert.strictEqual(
   artifactCheckout.with.ref,
-  '${{ needs.verify-release.outputs.target_commit }}',
+  '${{ github.sha }}',
   'The credential refresh must preserve the validated release checkout.'
 );
 assert.strictEqual(
@@ -321,8 +321,8 @@ assert.strictEqual(
   workflowConfig.jobs.release.steps.find(
     step => step.name === 'Require human approval for committed release artifacts'
   ).run,
-  'node scripts/check-release-state.cjs approval',
-  'Committed release publication must use the permission and merge-provenance gate.'
+  'set -euo pipefail\nnode scripts/check-release-state.cjs committed "${{ steps.release-artifacts.outputs.version }}"\nnode scripts/check-release-state.cjs approval\n',
+  'Committed release publication must verify the original artifact surface before the permission and merge-provenance gate.'
 );
 
 assert(
