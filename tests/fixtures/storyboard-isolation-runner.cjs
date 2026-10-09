@@ -48,6 +48,17 @@ const result = {
   },
 };
 
+if (storyboardId === 'creative_ad_server') {
+  result.summaries[0].passed = result.totals.passed = 6;
+  if (process.env.FIXTURE_CREATIVE_ERROR === '1') {
+    result.summaries[0].passed = result.totals.passed = 4;
+    result.summaries[0].failed = result.totals.failed = 1;
+    result.summaries[0].skipped = result.totals.skipped = 1;
+    result.summaries[0].has_error = true;
+    result.totals.clean = 0;
+  }
+}
+
 function spawnHangingDescendant() {
   const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
     stdio: 'ignore',
@@ -119,7 +130,7 @@ if (storyboardId === 'hang') {
   console.log(`ADCP_STORYBOARD_RESULT ${JSON.stringify(result)}`);
   process.exit(0);
 } else {
-  console.log(`  ${storyboardId.padEnd(40)} ✓ 1P / 0S / 0N/A`);
+  console.log(`  ${storyboardId.padEnd(40)} ${result.totals.clean ? '✓' : '✗'} ${result.totals.passed}P / ${result.totals.failed}F / ${result.totals.skipped}S / 0N/A`);
   console.log(`ADCP_STORYBOARD_RESULT ${JSON.stringify(result)}`);
   process.exit(0);
 }
