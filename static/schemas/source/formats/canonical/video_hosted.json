@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/formats/canonical/video_hosted.json",
   "title": "Canonical Format: Hosted Video",
-  "description": "Direct video file (mp4/webm/mov) hosted by the buyer. Slot: `video_main` (video asset, file or hosted URL), optional `headline`, `brand_name`, `cta`, `companion_banner`, `landing_page_url`. Tracking model: IAB Open Measurement SDK + external impression/click/quartile pixels via universal_macros. Orientation is a parameter (vertical 9:16 / horizontal 16:9 / square 1:1); slot shape includes optional `brand_name` (typical for vertical short-form) and optional `companion_banner` (typical for horizontal instream). Distinct from `video_vast` (VAST tag, inherent VAST event tracking) — receivers fire impression and click pixels at delivery time.",
+  "description": "Direct video file (mp4/webm/mov, or mxf for broadcast delivery) hosted by the buyer. Slot: `video_main` (video asset, file or hosted URL), optional `headline`, `brand_name`, `cta`, `companion_banner`, `landing_page_url`. Tracking model: IAB Open Measurement SDK + external impression/click/quartile pixels via universal_macros. Orientation is a parameter (vertical 9:16 / horizontal 16:9 / square 1:1); slot shape includes optional `brand_name` (typical for vertical short-form) and optional `companion_banner` (typical for horizontal instream). Distinct from `video_vast` (VAST tag, inherent VAST event tracking) — receivers fire impression and click pixels at delivery time.",
   "allOf": [
     { "$ref": "/schemas/formats/canonical/_base.json" },
     {
@@ -57,7 +57,8 @@
     },
     "video_codecs": {
       "type": "array",
-      "items": { "type": "string", "enum": ["h264", "h265", "vp8", "vp9", "av1", "prores"] }
+      "items": { "type": "string", "enum": ["h264", "h265", "vp8", "vp9", "av1", "prores", "mpeg2", "avc_intra", "xavc"] },
+      "description": "Accepted video codecs. `mpeg2`, `avc_intra`, and `xavc` are broadcast mezzanine codec families: `mpeg2` covers MPEG-2 video (typically 4:2:2 in broadcast delivery, as in XDCAM HD422), `avc_intra` is AVC-Intra (H.264 intra-only), and `xavc` is XAVC (H.264 Intra / Long GOP). These are distinct from `h264`: a product that accepts `h264` does not thereby accept them. Wrapper is declared via `containers` and bitrate via the bitrate fields; chroma subsampling and profile are not encoded in the slug."
     },
     "audio_codecs": {
       "type": "array",
@@ -65,7 +66,35 @@
     },
     "containers": {
       "type": "array",
-      "items": { "type": "string", "enum": ["mp4", "webm", "mov"] }
+      "items": { "type": "string", "enum": ["mp4", "webm", "mov", "mxf"] },
+      "description": "Accepted container formats. `mxf` (SMPTE Material Exchange Format) is the delivery wrapper for broadcast television spots."
+    },
+    "loudness": {
+      "type": "object",
+      "x-status": "experimental",
+      "description": "Audio loudness delivery requirement for the video asset's audio track, typical for broadcast television. Experimental in AdCP 3.3: shape may change in a 3.x release with notice per docs/reference/experimental-status. Field semantics match `loudness_lufs`, `loudness_tolerance_db`, and `true_peak_dbfs` on `audio_hosted`, plus a named `standard`. The numeric fields are the values a receiver checks; `standard` is a label for the requirement and does not imply numeric values when they are omitted. Sellers that populate this object MUST list `creative.broadcast_loudness` in `experimental_features`.",
+      "properties": {
+        "target_lufs": {
+          "type": "number",
+          "description": "Target integrated loudness in LUFS/LKFS (typical: -23 for EBU R128, -24 for ATSC A/85). Negative values."
+        },
+        "tolerance_db": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Permitted deviation from `target_lufs` in dB (LU) (typical: 0.5 for EBU R128, 2 for ATSC A/85)."
+        },
+        "max_true_peak_dbfs": {
+          "type": "number",
+          "description": "Maximum true-peak level in dBTP/dBFS (typical: -1 for EBU R128, -2 for ATSC A/85)."
+        },
+        "standard": {
+          "type": "string",
+          "enum": ["ebu_r128", "atsc_a85", "custom"],
+          "description": "Loudness standard the requirement follows. `ebu_r128` is EBU R 128 (Europe), `atsc_a85` is ATSC A/85 (US), `custom` is a seller-defined requirement carried by the numeric fields."
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": true
     },
     "min_bitrate_kbps": { "type": "integer", "minimum": 1 },
     "max_bitrate_kbps": { "type": "integer", "minimum": 1 },

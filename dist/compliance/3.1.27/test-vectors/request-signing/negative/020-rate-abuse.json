@@ -1,0 +1,34 @@
+{
+  "name": "Per-keyid replay cache entry cap exceeded (abuse or misconfigured signer)",
+  "spec_reference": "#verifier-checklist-requests step 9a (per-keyid cap; before crypto verify) and #transport-replay-dedup",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"NEW_NONCE_AFTER_CAP_________\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:U51PJzU9nMJxMAH_u-UDpSecT5SQX1-deSnWE3XpFo-BLT2_2h5FgMltntNCW05chhmFnjZEzkRmaYKeU0UUBw:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_ref": ["test-ed25519-2026"],
+  "test_harness_state": {
+    "$comment": "Pre-populate the replay cache to the per-keyid cap for test-ed25519-2026. Harness simulates the cap by setting a flag or populating with N placeholder entries where N is the verifier's configured cap. The exact mechanism is verifier-implementation-specific; what the vector asserts is the rejection behavior when the cap is hit.",
+    "replay_cache_per_keyid_cap_hit": {
+      "keyid": "test-ed25519-2026"
+    }
+  },
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_rate_abuse",
+    "failed_step": "9a"
+  },
+  "requires_contract": "rate_abuse",
+  "$comment": "When the per-keyid replay cache has reached its configured cap (recommended: 1M entries), new signatures from that keyid MUST be rejected with request_signature_rate_abuse — not silently evict, not accept. Silent eviction creates replay windows exactly when under attack. The nonce in this vector is fresh (never seen); the rejection is due to the cap, not replay. Verifiers SHOULD alert operators on this condition as a compromised-key or misconfigured-signer signal. The cap check is step 9a of the verifier checklist and runs BEFORE crypto verify (step 10) to prevent amplified Ed25519/ECDSA work on an abusive signer — same rationale as revocation (step 9). Black-box runners target the cap declared in test-kits/signed-requests-runner.yaml → stateful_vector_contract.rate_abuse (grading_target_per_keyid_cap_requests: 100); agents MAY lower their production cap for the test-kit counterparty only. Implementations that defer the cap check until after crypto verify will fail this vector because the committed Signature bytes are a placeholder copied from positive/001 and do not verify cryptographically against this vector's own signature base (different nonce in @signature-params, different body); a crypto-first verifier will return request_signature_invalid instead of request_signature_rate_abuse. Graders SHOULD surface this specific mismatch (_invalid where _rate_abuse was expected) in operator-facing diagnostics as a step-ordering bug (still a graded FAIL) rather than as a generic vector failure — the vector is deliberately designed as a step-ordering canary and a verifier that runs crypto before the per-keyid cap is exploitable (an abusive signer forces Ed25519/ECDSA verify per request), which is the very failure mode the step-9a-before-step-10 ordering exists to prevent."
+}
