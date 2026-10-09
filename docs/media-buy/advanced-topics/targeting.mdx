@@ -78,6 +78,29 @@ When the buyer wants package-level control over specific selectable signals that
 
 Products can also expose `included_signals` for signals already bundled into or planned into the product. Those signals are descriptive product metadata, not package-level targeting controls, and buyers do not echo them in `signal_targeting_groups`.
 
+## Rejected targeting dimensions
+
+{/* Links use /schemas/latest/ because this schema is not yet in any released version; update to the v3 alias after the next release. */}
+
+A seller MUST NOT silently drop a targeting dimension it does not support for the selected product, or one it previously accepted and has since removed. The create or update fails before any mutation with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), `error.recovery: "correctable"`, and `error.field` pointing at the targeting path. Details SHOULD follow [`error-details/unsupported-targeting-dimension.json`](https://adcontextprotocol.org/schemas/latest/error-details/unsupported-targeting-dimension.json):
+
+```json
+{
+  "code": "UNSUPPORTED_FEATURE",
+  "message": "age_band is no longer supported; use demographics",
+  "recovery": "correctable",
+  "field": "packages[0].targeting_overlay.age_band",
+  "details": {
+    "unsupported_dimension": "age_band",
+    "deprecated": true,
+    "replacement_dimension": "demographics",
+    "supported_dimensions": ["demographics", "geo_metros"]
+  }
+}
+```
+
+`age_band` is an illustrative removed dimension, not a field in the current schema. `unsupported_dimension` is the only required detail. `deprecated: true` marks a dimension that was accepted before and has since been removed (it is now rejected, not merely discouraged), and `replacement_dimension` names its successor. `supported_dimensions` echoes only what the caller could already read from `get_adcp_capabilities` or the product's `overlay_support`. `product_id` and `package_index` locate the rejection in multi-package requests. A buyer that sees `replacement_dimension` translates the value and resubmits; the seller never remaps it on the buyer's behalf.
+
 ## Daypart timezone semantics
 
 Every `daypart_targets` entry uses either `inventory_local` or a concrete IANA timezone identifier:
