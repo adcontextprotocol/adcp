@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/proposal-refinement.json",
   "title": "Proposal Refinement",
-  "description": "Fork an immutable proposal or finalize a draft into a held committed snapshot. Revising with structured criteria, typed boundaries, product changes, requested alternatives, and/or a semantic ask creates one or more new drafts; finalizing changes no terms. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged. A revised product mix must support the resulting root frequency cap; because omitted criteria inherit, clearing the cap is explicit through remove_media_buy_frequency_cap.",
+  "description": "Fork an immutable proposal, finalize a draft into a held committed snapshot, or extend a committed hold into a new committed snapshot. Revising with structured criteria, typed boundaries, product changes, requested alternatives, and/or a semantic ask creates one or more new drafts; finalizing and extending a hold change no terms. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged. A revised product mix must support the resulting root frequency cap; because omitted criteria inherit, clearing the cap is explicit through remove_media_buy_frequency_cap.",
   "type": "object",
   "properties": {
     "proposal_id": {
@@ -12,8 +12,8 @@
     },
     "action": {
       "type": "string",
-      "enum": ["revise", "finalize"],
-      "description": "revise creates a new draft snapshot with changed commercial terms. finalize MUST target a draft; it creates a new committed snapshot without changing terms and reserves inventory until its expires_at."
+      "enum": ["revise", "finalize", "extend_hold"],
+      "description": "revise creates a new draft snapshot with changed commercial terms. finalize MUST target a draft; it creates a new committed snapshot without changing terms and reserves inventory until its expires_at. extend_hold (experimental, media_buy.hold_extension) MUST target a committed, unexpired proposal; it creates a new committed successor with the same commercial_terms and terms_digest and a later expires_at, and the hold transfers to it. Buyers MUST NOT send extend_hold unless the seller declares media_buy.proposal_refinement.hold_extension."
     },
     "change_kind": {
       "type": "string",
@@ -102,6 +102,23 @@
   "oneOf": [
     {
       "properties": { "action": { "type": "string", "const": "finalize" } },
+      "required": ["action"],
+      "not": {
+        "anyOf": [
+          { "required": ["change_kind"] },
+          { "required": ["constraints"] },
+          { "required": ["product_changes"] },
+          { "required": ["alternatives"] },
+          { "required": ["ask"] },
+          { "required": ["criteria"] },
+          { "required": ["remove_media_buy_frequency_cap"] }
+        ]
+      }
+    },
+    {
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "properties": { "action": { "type": "string", "const": "extend_hold" } },
       "required": ["action"],
       "not": {
         "anyOf": [
