@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.1.28
+
+### Patch Changes
+
+- 003d238: Stop the universal read-tool idempotency storyboard from sending a creative-only `type` filter to media-buy agents on 3.1.x.
+- 733df5e: Fix webhook-emission compliance setup to discover and bind a real product and
+  pricing option before create_media_buy, waiting for asynchronous discovery to
+  complete when needed. Replace unresolved test-kit schema
+  references with explicit request and response schema paths and complete the
+  trigger samples so conformance validation cannot silently skip these requests.
+- 733df5e: Give all 37 routed request-signing conformance vectors operation-valid bodies so payload parsing can reach the signature verifier. Preserve every intended negative outcome, capability, URL and signature parameter. Recompute truthful digests and test signatures only for the two body-bound fixtures using the existing published fixture key and maintained wire encoding; no signing policy or release assets change (#7959, #7567).
+
 ## 3.1.27
 
 ### Patch Changes
