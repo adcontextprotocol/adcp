@@ -15,8 +15,13 @@
           { "$ref": "/schemas/core/publisher-property-selector.json" },
           { "not": { "required": ["publisher_domains"] } }
         ]
-      },
-      "minItems": 1
+      }
+    },
+    "property_coverage": {
+      "$ref": "/schemas/core/property-coverage.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental in AdCP 3.3. Whether publisher_properties is an exhaustive coverage boundary; absent means complete. Sellers returning this field MUST list media_buy.property_coverage in experimental_features on get_adcp_capabilities."
     },
     "channels": { "type": "array", "items": { "$ref": "/schemas/enums/channels.json" }, "uniqueItems": true },
     "video_placement_types": { "type": "array", "items": { "$ref": "/schemas/enums/video-placement-type.json" }, "minItems": 1, "uniqueItems": true },
@@ -137,6 +142,29 @@
     "targeting_resolution": ["expires_at"]
   },
   "allOf": [
+    {
+      "description": "Property roster disclosure. An undisclosed product carries an empty publisher_properties array and cannot offer property inclusion targeting; every other product (complete, partial, or no property_coverage) carries at least one publisher property when the field is returned.",
+      "if": {
+        "properties": {
+          "property_coverage": {
+            "properties": { "disclosure": { "const": "undisclosed" } },
+            "required": ["disclosure"]
+          }
+        },
+        "required": ["property_coverage"]
+      },
+      "then": {
+        "properties": {
+          "publisher_properties": { "maxItems": 0 },
+          "overlay_support": { "not": { "required": ["property_list"] } }
+        }
+      },
+      "else": {
+        "properties": {
+          "publisher_properties": { "minItems": 1 }
+        }
+      }
+    },
     {
       "description": "Collection inclusion support requires selectable product collections.",
       "if": {

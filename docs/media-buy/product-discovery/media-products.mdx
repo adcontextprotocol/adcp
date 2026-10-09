@@ -17,7 +17,8 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `product_id` (string, required): Opaque buyable identifier. Non-custom wholesale IDs remain stable for the same logical offer within seller and declared cache scope, including across reads and webhooks. Custom IDs remain stable only within their issuing discovery/refinement lineage.
 - `name` (string, required)
 - `description` (string, required)
-- `publisher_properties` (list[PublisherPropertySelector], required): Publisher properties covered by this product. See [Property Targeting](#property-targeting).
+- `publisher_properties` (list[PublisherPropertySelector], required): Publisher properties covered by this product. Always present; at least one entry unless `property_coverage.disclosure` is `undisclosed`, in which case it is an empty array. See [Property coverage](#property-coverage) and [Property Targeting](#property-targeting).
+- `property_coverage` (object, optional, experimental): Whether `publisher_properties` is an exhaustive coverage boundary. `property_coverage.disclosure` is `complete`, `partial`, or `undisclosed`; absent means `complete`. See [Property coverage](#property-coverage).
 - `channels` (list[MediaChannel], optional in 3.x): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD explicitly declare at least one channel on every product. Products inherit from their properties' `supported_channels` but may narrow the scope; product channels SHOULD be a subset of the union of those property channels. See [Media channel taxonomy](/docs/reference/media-channel-taxonomy).
 - `video_placement_types` (list[string], optional): Declared video placement types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions with AdCP-native names: `instream`, `accompanying_content`, `interstitial`, and `standalone`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `audio_distribution_types` (list[string], optional): Declared audio distribution types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 `audio.feed` definitions with AdCP-native names: `music_streaming_service`, `fm_am_broadcast`, `podcast`, `catch_up_radio`, `web_radio`, `video_game`, and `text_to_speech`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
@@ -699,9 +700,67 @@ Category exclusivity works for multi-collection bundles where the publisher sepa
 }
 ```
 
+### Property coverage
+
+**Experimental** (`media_buy.property_coverage`). New in AdCP 3.3: schemas carry `x-status: experimental` and `x-added-in: "3.3.0"`, and sellers returning `property_coverage` MUST list `media_buy.property_coverage` in `experimental_features` on `get_adcp_capabilities`. The shape may change between 3.x releases with notice; see [Experimental status](/docs/reference/experimental-status). Marking it experimental does not weaken the schema: an empty `publisher_properties` is reachable only with `disclosure: "undisclosed"`.
+
+`publisher_properties` describes the properties on which a product may deliver. Most products can name every one of them. Audience-network, exchange, and other run-of-network products often cannot: the roster is unavailable to the seller, incomplete, or changes faster than it can be published. `property_coverage.disclosure` lets a seller say which of these a product is, instead of publishing a list buyers would read as exhaustive.
+
+| `disclosure` | `publisher_properties` | Meaning |
+|--------------|------------------------|---------|
+| `complete` (or `property_coverage` absent) | At least one selector | The list is exhaustive. Delivery outside it is non-conformant. |
+| `partial` | At least one selector | The list names properties the seller knows are included. Each listed selector is an exact, true statement about its publisher; the omission is whole additional entries. The list is explicitly non-exhaustive and is **not** a delivery-containment guarantee. |
+| `undisclosed` | Empty array (`[]`) | The seller discloses no property roster. The product may still be buyable; buyers apply their own policy to opaque inventory. |
+
+**Rules**
+
+1. **Absence is `complete`.** A product without `property_coverage` behaves exactly as it did before the field existed. An omitted roster never means `undisclosed`, so an empty `publisher_properties` without `disclosure: "undisclosed"` is invalid.
+2. **No false containment.** Buyers MUST NOT infer that a `partial` or `undisclosed` product's `publisher_properties` bounds delivery, and MUST NOT treat a `partial` list as an authorization or brand-suitability guarantee for the whole product. Brand-safety and governance logic SHOULD treat `partial` as opaque for suitability decisions. Sellers MUST NOT declare `complete` on a product that delivers outside its list.
+3. **No operator-domain substitution.** A network or operator domain MUST NOT stand in for third-party publisher properties. Third-party inventory stays publisher-owned and authorized through each publisher's `adagents.json`; list only properties whose publisher authorizes the selling agent. A seller that can name some properties declares `partial`; one that can name none declares `undisclosed`.
+4. **Disclosure and targetability are orthogonal.** `property_coverage` says what the seller tells buyers about the roster. `property_targeting_allowed` and `overlay_support` say what buyers may select. A complete roster may be untargetable. An `undisclosed` product cannot offer inclusion targeting over properties it does not name: it MUST NOT set `property_targeting_allowed: true` or declare `overlay_support.property_list`. A seller that can match buyer-supplied property identifiers internally MAY declare `overlay_support.property_list_exclude` on any disclosure state. On a `partial` product, inclusion targeting selects among the listed properties only, and the seller MUST reject (not ignore) targeting entries it cannot resolve.
+5. **Discovery matching.** Consumers MUST branch on `property_coverage` before testing whether a buyer's property list contains a product's `publisher_properties`. An empty array under `undisclosed` is an unknown roster, not an empty set, so a containment test over it is not vacuously true. A `partial` list never satisfies an all-or-nothing containment test, because the unlisted remainder is unknown. A product with no property that can match an inclusion list is ineligible and the seller omits it from the response. A seller omits an `undisclosed` or `partial` product from exclusion-list discovery unless it can apply the exclusion to the whole product. The seller still returns the request's other products; it does not fail the call for one opaque product. When a `create_media_buy` or `update_media_buy` overlay carries a `property_list` or `property_list_exclude` the product cannot apply, the seller MUST reject it with `UNSUPPORTED_FEATURE` and MUST NOT accept and ignore it.
+6. **List application receipts.** For a `partial` or `undisclosed` product, `list_applications` counts are computed over the disclosed roster only (empty for `undisclosed`). A zero-match exclusion receipt there means no disclosed property matched; it is not evidence about undisclosed inventory, and buyers MUST NOT read it as containment.
+7. **Projection.** When `fields` on `list_products` includes `publisher_properties`, the seller MUST also return `property_coverage` for any `partial` or `undisclosed` product, so a returned list is never read as complete.
+8. **Delivery is separate.** Discovery-time disclosure does not decide what delivery reporting later discloses, and delivery rows never make a discovery roster `complete`. A product that declares `supports_property_breakdown: true` reports delivered properties after the fact in `by_property` within `by_package` on `get_media_buy_delivery`, `undisclosed` products included; this is the reconciliation surface for opaque inventory. Rows are subject to `by_property_suppressed` and `by_property_truncated`, so a seller that withholds rows says so rather than implying the list is complete. A seller that does not disclose delivered properties omits `by_property` and does not declare `supports_property_breakdown`; buyers MUST NOT infer delivery containment from that absence.
+9. **Configured products.** A configured product (`is_custom: true`) whose targeting resolution narrows an `undisclosed` or `partial` product to a concrete roster MAY declare `complete`. It MUST carry its own configured `product_id`.
+10. **Unknown values.** Consumers MUST treat a `disclosure` value they do not recognize as `undisclosed`.
+
+**Emission gate.** A product that loosens `publisher_properties` is not safe for a buyer that predates this field: it rejects `[]`, and it reads a `partial` list as exhaustive. On a request-bound discovery response (`get_products`, `list_products`, `request_proposals`), a seller MUST return a `partial` or `undisclosed` product only when the request carries an explicit `adcp_version` of `3.3` or later; otherwise it MUST omit the product. It MUST NOT downgrade a `partial` product to a bare list. Surfaces with no per-buyer version pin, such as wholesale feeds and webhooks, are not defined by this release. Sellers SHOULD emit `property_coverage: { "disclosure": "complete" }` explicitly to 3.3+ buyers; older buyers ignore it and read it correctly.
+
+Treat `partial` and `undisclosed` as trust and policy inputs. Buyers MAY refuse them outright, cap spend on them, or accept them only with exclusion support and post-delivery reporting. Sellers SHOULD pair an `undisclosed` product with `overlay_support.property_list_exclude` where they can honor it, and describe the inventory (`channels`, `description`, `forecast`, `pricing_options`) so buyers can evaluate it. DOOH is the existing precedent for aggregate disclosure when a full roster is impractical: `dooh_inventory_summary` states a network product's footprint as counts, not a list, and may sit beside or instead of per-placement locations. `property_coverage` does the same job for the publisher-property roster, but states only how complete the list is, not a count.
+
+**Fully opaque network product**:
+```json
+{
+  "product_id": "acme_network_run_of_network",
+  "name": "Acme Audience Network — Run of Network",
+  "description": "Mobile app inventory across the Acme audience network",
+  "publisher_properties": [],
+  "property_coverage": { "disclosure": "undisclosed" },
+  "overlay_support": { "property_list_exclude": true }
+}
+```
+
+**Partially disclosed product**:
+```json
+{
+  "product_id": "acme_network_featured",
+  "name": "Acme Audience Network — Featured Publishers",
+  "description": "Featured publishers plus additional network inventory",
+  "publisher_properties": [
+    { "publisher_domain": "news.example.com", "selection_type": "all" }
+  ],
+  "property_coverage": { "disclosure": "partial" }
+}
+```
+
+<Note>
+**Migrating SDKs.** Dropping the unconditional `minItems: 1` from `publisher_properties` changes generated types for every product, including `complete` ones: a TypeScript non-empty tuple becomes `T[]`, and a Pydantic `min_length` is dropped. SDKs MUST NOT assume `publisher_properties[0]` exists, and MUST check `property_coverage.disclosure` before using the list as a delivery boundary.
+</Note>
+
 ### Property Targeting
 
-The `property_targeting_allowed` flag indicates whether buyers can filter a product to a subset of its `publisher_properties` when using property list filtering via `get_products`.
+The `property_targeting_allowed` flag indicates whether buyers can filter a product to a subset of its `publisher_properties` when using property list filtering via `get_products`. The rules below apply to products whose [property coverage](#property-coverage) is `complete`; disclosure and targetability are independent, so a `complete` roster may be untargetable. For `partial` and `undisclosed` products, branch on `property_coverage` first.
 
 #### Behavior
 
