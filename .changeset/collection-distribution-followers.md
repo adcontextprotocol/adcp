@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add experimental `distribution[].followers` to `core/collection-distribution.json`, so a creator or show card can carry the platform-reported follower or subscriber count. It reuses `core/audience-size.json` (range, `precision`, `as_of`; the field description overrides its people wording to accounts), with `precision: approximate` for platform-rounded counts. The count is of accounts, not de-duplicated people, and is display and comparison only: it is not a targeting predicate and MUST NOT be summed across distribution entries. Sellers serving or relaying it MUST list `media_buy.collection_cards` in `experimental_features`; the feature id is added to the experimental status table. Creator audience composition and average views per installment need no schema change: `collections-and-installments.mdx` now documents them as product `audience_evidence` (`seller_declared`, `observed`, platform-audience baseline) and the forecast's `views` metric.

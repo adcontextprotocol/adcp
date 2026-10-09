@@ -37,6 +37,12 @@
         "additionalProperties": false
       },
       "minItems": 1
+    },
+    "followers": {
+      "$ref": "/schemas/core/audience-size.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental in AdCP 3.3. Platform-reported number of follower or subscriber accounts for this collection on publisher_domain (the audience-size wording about people does not apply). Counts accounts, not de-duplicated people, so buyers MUST NOT sum it across distribution entries or read it as reach. Use precision 'approximate' when the platform rounds publicly (for example, public subscriber counts); as_of is the time the platform's count was read. Display and comparison only: this is not a targeting predicate and does not size a buyable audience. A seller serving or relaying it MUST list media_buy.collection_cards in experimental_features on get_adcp_capabilities."
     }
   },
   "required": ["publisher_domain"],
