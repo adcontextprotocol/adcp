@@ -61,7 +61,7 @@ digest. A private canonicalization document binds that exact schema and the
 vectors. The GCS path requires canonical inspection and a consumer receipt;
 it makes no official advertising finality claim.
 
-Migration 619 installs the published production composer's Core, finality
+Migration 620 installs the published production composer's Core, finality
 writer fence, Managed Delivery, notification/outbox/activity, object inventory
 and installation-authority SQL in `training_reporting_gcs`. Core and Managed
 use the **same** pool on the application primary. Host tables freeze source
@@ -78,7 +78,7 @@ finished. Do not clear the reporting schema to repair a failed deployment.
 
 Before merging or staging the image, a DBA must provision the isolated schema
 on the application primary, owned by the actual application database role.
-Migration 619 checks that prerequisite and creates its tables using the ordinary
+Migration 620 checks that prerequisite and creates its tables using the ordinary
 application credential. The runtime needs no database-wide `CREATE` privilege
 or DBA credential. Use a separate operator connection for this one-time setup;
 replace the role placeholder with the verified application login:

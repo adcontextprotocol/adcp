@@ -26,7 +26,7 @@ describe('recommend_storyboards capability probe version', () => {
 
     const options = mocks.discovery.mock.calls[0][1];
     expect(options.adcpVersion).toMatch(/^3\.1/);
-    expect(options.versionEnvelope).toBeUndefined();
+    expect(options.versionEnvelope).toBe('auto');
   });
 
   it('sends only the major when no compliance_target is given', async () => {

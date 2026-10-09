@@ -1,6 +1,7 @@
 import { AuthenticationRequiredError } from '@adcp/sdk';
+import { OAuthError } from '@adcp/sdk/auth';
 import type { AgentContextDatabase } from '../../db/agent-context-db.js';
-import { isOAuthRequiredErrorMessage } from './oauth-error-detection.js';
+import { isOAuthOwnerReauthorizationError, isOAuthRequiredErrorMessage } from './oauth-error-detection.js';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('agent-oauth-prompt');
@@ -12,6 +13,8 @@ function getBaseUrl(): string {
 }
 
 export interface OAuthPromptOptions {
+  /** Original typed/flattened auth failure; only owner failures choose fresh sign-in. */
+  authorizationError?: unknown;
   /** AdCP task name for auto-retry after authorization (e.g. 'get_products'). */
   pendingTask?: string;
   /** AdCP task params for auto-retry after authorization. */
@@ -35,6 +38,7 @@ export async function buildAgentOAuthAuthorizeUrl(
   options: OAuthPromptOptions = {},
 ): Promise<string | null> {
   if (!organizationId) return null;
+  if (options.authorizationError !== undefined && !isOAuthRequiredError(options.authorizationError)) return null;
   try {
     const parsed = new URL(agentUrl);
     let agentContext = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
@@ -50,6 +54,7 @@ export async function buildAgentOAuthAuthorizeUrl(
     }
 
     const params = new URLSearchParams({ agent_context_id: agentContext.id });
+    if (isOAuthOwnerReauthorizationError(options.authorizationError)) params.set('fresh', '1');
     if (options.pendingTask) {
       params.set('pending_task', options.pendingTask);
       // PII in this URL leaks to browser history, the IdP referer, and any
@@ -90,6 +95,7 @@ export async function buildAgentOAuthAuthorizeUrl(
  */
 export function isOAuthRequiredError(error: unknown): boolean {
   if (error instanceof AuthenticationRequiredError) return true;
+  if (error instanceof OAuthError) return isOAuthOwnerReauthorizationError(error);
   if (error instanceof Error) return isOAuthRequiredErrorMessage(error.message);
   if (typeof error === 'string') return isOAuthRequiredErrorMessage(error);
   return false;

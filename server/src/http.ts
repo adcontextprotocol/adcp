@@ -197,7 +197,8 @@ import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notif
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
 import { AgentContextDatabase } from "./db/agent-context-db.js";
 import { getWebMemberContext } from "./addie/member-context.js";
-import { buildAgentOAuthAuthorizeUrl } from "./routes/helpers/agent-oauth-prompt.js";
+import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from "./routes/helpers/agent-oauth-prompt.js";
+import { isOAuthOwnerReauthorizationError } from "./routes/helpers/oauth-error-detection.js";
 import {
   buildNativeErrorRedirect,
   consumeNativePendingAuth,
@@ -10016,11 +10017,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       } catch (error) {
         // Auth-required is an expected agent state, not a system error. Log
         // at warn so it doesn't page #aao-errors via the pino → posthog hook.
-        if (error instanceof AuthenticationRequiredError) {
-          logger.warn({ url, hasOAuth: error.hasOAuth }, 'Agent requires authentication');
+        if (isOAuthRequiredError(error)) {
+          const hasOAuth = isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth);
+          logger.warn({ url, hasOAuth: hasOAuth }, 'Agent requires authentication');
 
           let oauth_authorize_url: string | undefined;
-          if (error.hasOAuth) {
+          if (hasOAuth) {
             const userId = req.user?.id;
             if (userId) {
               try {
@@ -10031,7 +10033,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                     url,
                     orgId,
                     new AgentContextDatabase(),
-                    { returnTo: '/profile/edit' },
+                    { returnTo: '/profile/edit', authorizationError: error },
                   );
                   if (authorizeUrl) oauth_authorize_url = authorizeUrl;
                 }
@@ -10043,10 +10045,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
           return res.status(401).json({
             error: 'authentication_required',
-            message: error.hasOAuth
+            message: hasOAuth
               ? 'This agent requires OAuth authorization.'
               : 'This agent requires authentication. Save an auth token to continue.',
-            needs_oauth: error.hasOAuth,
+            needs_oauth: hasOAuth,
             ...(oauth_authorize_url && { oauth_authorize_url }),
           });
         }

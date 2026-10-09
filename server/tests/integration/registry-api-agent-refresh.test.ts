@@ -1437,6 +1437,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     await db.saveOAuthTokens(context.id, {
       access_token: accessToken,
       refresh_token: 'refresh-token-do-not-use-in-prod',
+      issuer: 'https://issuer.example.test',
     });
 
     try {
