@@ -68,7 +68,7 @@ Each `honored[]` entry selects one exact tracker/event combination. It is not a 
 
 | Branch | Required identity | Important restrictions |
 |---|---|---|
-| `pixel_tracker` | `event`, `method: img` | `event: custom` requires a nonempty `custom_event_name`. JavaScript tracker execution is not supported by the 3.2 contract. |
+| `pixel_tracker` | `event`, `method: img` | `event: custom` requires a nonempty `custom_event_name`. JavaScript tracker execution is not supported by the 3.2 contract. From 3.3 the shared event enum also includes the playback events `start`, `first_quartile`, `midpoint`, `third_quartile` and `complete`, valid on `video_hosted` and `audio_hosted`: list the ones the seller fires, and under `complete: true` a buyer reads any unlisted one as not fired (for example, a FreeWheel-backed seller has no `start`). |
 | `vast_tracker` | `vast_versions[]`, `vast_event`, `target` | `progress` requires `offset`; other events forbid it. The event/target pair must be valid in every listed version. |
 | `daast_tracker` | `daast_versions[]`, `daast_event`, `target` | `progress` requires `offset`; other events forbid it. The event/target pair must be valid in every listed version. |
 

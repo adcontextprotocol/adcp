@@ -83,9 +83,9 @@ Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model
 | `html5` | Interactive HTML5 banner (zip asset) | MRAID + OM-SDK + click-tag macro + backup image |
 | `display_tag` | Third-party JS/iframe tag URL | Opaque to seller |
 | `image_carousel` | Multi-card swipe (polymorphic image/video items) | Per-card pixels + carousel engagement |
-| `video_hosted` | Direct video file, orientation parameter | OM-SDK + external impression/click/quartile trackers |
+| `video_hosted` | Direct video file, orientation parameter | OM-SDK + external impression/click trackers + playback `pixel_tracker` events (`start`, `first_quartile`, `midpoint`, `third_quartile`, `complete`; 3.3) |
 | `video_vast` | VAST tag (URL or inline XML), VAST 2-4.x | Inherent VAST events |
-| `audio_hosted` | Direct audio file (or host-read produced via build_creative) | Standard audio impression/completion |
+| `audio_hosted` | Direct audio file (or host-read produced via build_creative) | Impression, playback (`start`, quartiles, `complete`; 3.3) and companion-click pixels |
 | `audio_vast` | VAST audio tag (URL or inline XML); 4.1+ recommended, older versions only when seller-declared | Inherent VAST audio events |
 | `audio_daast` | DAAST tag | Inherent DAAST events |
 | `sponsored_placement` | Retail-media catalog-driven (Amazon SP, Criteo SP, CitrusAd SP) — REQUIRES `source_catalog` slot. Not for IAB in-feed native, content-recommendation, or PMax-style algorithmic surfaces. | Per-item catalog-keyed events |

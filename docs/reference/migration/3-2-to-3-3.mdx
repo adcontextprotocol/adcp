@@ -11,7 +11,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 **3.3 is in its beta cycle.** Keep production traffic pinned to `"3.2"` while validating 3.3 in staging. See the [3.3 beta program](/docs/reference/3-3-beta) for artifact and SDK timing.
 </Warning>
 
-3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
+3.3 is a minor release over 3.2. 3.3 adds optional fields, one optional capability object, and five `pixel_tracker` playback event values. No stable field, enum value, or task is removed, renamed, or deprecated. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A 3.2 validator rejects the new playback `pixel_tracker` events, so send them only to a peer that advertises 3.3. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
 Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). One change loosens a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib). Everything else is an optional declaration or a clarification.
 
@@ -31,6 +31,7 @@ For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/w
 | 8 | Sellers with a catalog intake | Optionally declare `media_buy.features.catalog_ingestion`. |
 | 9 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
 | 10 | Reliable Reporting buyers | Stop relying on exact reads of older superseded snapshots; persist any snapshot rows you need. |
+| 11 | Buyers and sellers of hosted video or audio | Optionally move playback trackers from `event: custom` to the new `pixel_tracker` playback events. |
 
 ## Required to claim 3.3 behavior
 
@@ -129,6 +130,37 @@ Optional. Agents can report `adcp.implementation.sdks[]` with a package `name`, 
 ### Catalog ingestion declarations
 
 Optional. A seller declares `media_buy.features.catalog_ingestion` with accepted catalog types, `ingestion_modes` (`feed_url`, `inline_items`), feed formats, content identifier types, `max_inline_items_per_request`, and `item_status_reporting` (`per_item` or `feed_level`). `accepted_catalog_types`, `ingestion_modes`, and `item_status_reporting` are required. `supported_feed_formats` is required whenever `feed_url` is listed, and an empty array means no external formats. `max_inline_items_per_request` is valid only when `inline_items` is listed. `supported_content_id_types` is optional: absent means unknown, empty means none of the named types. Declaring it requires `catalog_management: true`; a legacy boolean-only `catalog_management` declaration stays valid. A declaring seller MUST reject an unlisted catalog type, ingestion mode, or feed format, and an explicit `content_id_type` outside a declared `supported_content_id_types` list, with `UNSUPPORTED_FEATURE` before mutation, including on `dry_run`. Inline items beyond `max_inline_items_per_request` fail with `INVALID_REQUEST`. Under `per_item` reporting, terminal results for created, updated, or unchanged catalogs, and discovery-only reads, carry one `item_issues` entry per item, so the unique `item_id` count equals `item_count`. Use a fresh `idempotency_key` for each current read, because replays are historical snapshots, and dry-run statuses are previews. Buyers treat an absent declaration as unknown, not unrestricted. See [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs#ingestion-compatibility).
+
+### Hosted video and audio playback trackers
+
+Optional. The `pixel_tracker` `event` enum gains `start`, `first_quartile`, `midpoint`, `third_quartile` and `complete`, with the same meaning as the VAST events of the same name, spelled in snake_case. They apply to `video_hosted` and `audio_hosted` and are ignored on formats with no playback timeline, as `viewable_video_50` is. `complete` means played to the end whether or not audio was on; `audible_video_complete` remains the audio-on variant. Tracker execution selectors share the enum, so a seller with a [tracker execution contract](/docs/creative/tracker-execution-contracts) declares which of them it fires. See [Pixel tracker asset](/docs/creative/asset-types#pixel-tracker-asset) for the event definitions and a non-normative Google Ad Manager and FreeWheel mapping.
+
+**Buyers sending to 3.2 sellers.** A 3.2 schema rejects the new values, so do not send them yet. Send each as `event: custom` with `custom_event_name` set to the 3.3 value:
+
+```json
+{
+  "asset_type": "pixel_tracker",
+  "event": "first_quartile",
+  "method": "img",
+  "url": "https://measurement.example.com/q1?cid={CREATIVE_ID}"
+}
+```
+
+becomes, on 3.2:
+
+```json
+{
+  "asset_type": "pixel_tracker",
+  "event": "custom",
+  "custom_event_name": "first_quartile",
+  "method": "img",
+  "url": "https://measurement.example.com/q1?cid={CREATIVE_ID}"
+}
+```
+
+An SDK talking to a seller that does not advertise 3.3 MAY make this rewrite itself. Sellers can recognize those names now, and moving to 3.3 is a rename of `event`. A seller with no tracker execution contract silently skips a custom event it does not recognize, so confirm the seller maps the names before relying on them for measurement.
+
+**Downgrade to 3.0.x sellers.** An SDK that downgrades `pixel_tracker` to the v1 `tracker_pixel` shape drops these trackers, including the `event: custom` interim form above, and emits `PIXEL_TRACKER_LOSSY_DOWNGRADE`. It never emits them as `impression_tracker`, because a quartile URL fired at impression time would count every impression as a quartile view.
 
 ### DOOH location and venue summary
 
