@@ -707,6 +707,7 @@
                           "inventory_shortfall_forecast",
                           "pacing_risk",
                           "budget_constrained",
+                          "flight_extension_opportunity",
                           "scale_budget_opportunity"
                         ]
                       }
@@ -721,6 +722,7 @@
                               "inventory_shortfall_forecast",
                               "pacing_risk",
                               "budget_constrained",
+                              "flight_extension_opportunity",
                               "scale_budget_opportunity"
                             ]
                           }

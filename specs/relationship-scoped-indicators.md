@@ -63,7 +63,7 @@ The seller is the assertion source. Native/relayed/derived methodology, provider
 | `inventory_shortfall_forecast` | Package |
 | `pacing_risk` | Package |
 | `budget_constrained` | Media buy or package |
-| `flight_extension_opportunity` | Media buy |
+| `flight_extension_opportunity` | Media buy or package |
 | `scale_budget_opportunity` | Media buy or package |
 
 `flight_extension_opportunity` and `scale_budget_opportunity` are seller-asserted opportunities, not authorization: a buyer applies one, if at all, through `update_media_buy` and normal governance, and rationale or a suggested change belongs in namespaced `ext`. A seller MUST NOT emit either type unless it advertises it in `supported_indicator_types`. `scale_budget_opportunity` and `budget_constrained` are not mutually exclusive.

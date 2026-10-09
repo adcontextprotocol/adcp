@@ -768,25 +768,22 @@ describe('relationship-scoped indicators', () => {
       indicators_as_of: '2026-08-04T12:00:00Z',
       indicators: [{ type: 'scale_budget_opportunity' }]
     }]));
-    // control: the same package shape with a package-level type is valid, so the
-    // negative cases below fail only because of the indicator type
-    assertValid(validateGetMediaBuys, buy({}, [{
-      package_id: 'pkg_1',
-      indicator_types_evaluated: ['scale_budget_opportunity'],
-      indicators_as_of: '2026-08-04T12:00:00Z',
-      indicators: []
-    }]));
-    // flight_extension_opportunity is media-buy only
+    // both opportunity types are valid on a package
+    for (const type of ['flight_extension_opportunity', 'scale_budget_opportunity']) {
+      assertValid(validateGetMediaBuys, buy({}, [{
+        package_id: 'pkg_1',
+        indicator_types_evaluated: [type],
+        indicators_as_of: '2026-08-04T12:00:00Z',
+        indicators: [{ type }]
+      }]));
+    }
+    // a package-level type outside the package enum is still rejected, so the
+    // positive cases above are not passing vacuously
     assert.equal(validateGetMediaBuys(buy({}, [{
       package_id: 'pkg_1',
-      indicator_types_evaluated: ['flight_extension_opportunity'],
+      indicator_types_evaluated: ['creative_fatigue'],
       indicators_as_of: '2026-08-04T12:00:00Z',
-      indicators: [{ type: 'flight_extension_opportunity' }]
-    }])), false);
-    assert.equal(validateGetMediaBuys(buy({}, [{
-      package_id: 'pkg_1',
-      indicator_types_evaluated: ['flight_extension_opportunity'],
-      indicators_as_of: '2026-08-04T12:00:00Z'
+      indicators: [{ type: 'creative_fatigue' }]
     }])), false);
     // neither opportunity type is valid on a package-creative assignment
     assert.equal(validateListCreatives({
