@@ -35,6 +35,8 @@ Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. T
 
 `@adcp/sdk@15.2.0` is on the npm `latest` dist-tag and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`) and the buyer-side consumer module (`@adcp/sdk/reporting/consumer`). The production composer (`@adcp/sdk/reporting/service`) and private GCS adapter (`@adcp/sdk/reporting/gcs`) require application-specific provisioning and rollout validation. Python `adcp==8.0.0` embeds the final 3.2 schemas. Final 3.2 support for Go is planned as a follow-up release; check the [adcp-go releases](https://github.com/adcontextprotocol/adcp-go/releases).
 
+SDK 15 tightens OAuth issuer binding and provider/storage defaults. Before upgrading an existing integration, follow the [SDK 15 OAuth migration and owner recovery guide](https://github.com/adcontextprotocol/adcp-client/blob/68614aa0ce84046c78d76dda9721ffbf9328639a/docs/migration-oauth-issuer-bindings.md).
+
 Integrations that stay on 3.1 keep using the 3.1 lines: `@adcp/sdk` 13.x (npm `adcp-3.1` dist-tag) and `adcp` 7.x. The [SDK version map](/docs/reference/migration/3-1-to-3-2#sdk-versions-for-3-2) lists the 3.1 and 3.2 line for each language and each SDK's upgrade guide.
 
 <Note>

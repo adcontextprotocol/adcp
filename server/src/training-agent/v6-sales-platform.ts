@@ -494,6 +494,10 @@ export const TRAINING_SALES_CAPABILITIES = {
     language: true,
     keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
     negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
+    // Seller-wide rollups; Product.overlay_support is authoritative. Mirrors
+    // handleGetAdcpCapabilities.
+    property_list: true,
+    property_list_exclude: true,
   },
   audience_targeting: {
     supported_identifier_types: ['hashed_email' as const],

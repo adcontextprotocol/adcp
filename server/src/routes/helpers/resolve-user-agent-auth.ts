@@ -78,6 +78,7 @@ export async function resolveUserAgentAuth(
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
             ...(tokens.expires_at && { expires_at: tokens.expires_at.toISOString() }),
+            ...(tokens.issuer !== undefined && { issuer: tokens.issuer }),
           },
         };
 
@@ -87,6 +88,7 @@ export async function resolveUserAgentAuth(
           oauth.client = {
             client_id: client.client_id,
             ...(client.client_secret && { client_secret: client.client_secret }),
+            ...(client.issuer !== undefined && { issuer: client.issuer }),
           };
         }
         return oauth;

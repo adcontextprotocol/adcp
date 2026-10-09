@@ -5,7 +5,7 @@
 DO $schema_precondition$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'training_reporting_gcs') THEN
-    RAISE EXCEPTION 'Provision training_reporting_gcs for the application role before migration 619';
+    RAISE EXCEPTION 'Provision training_reporting_gcs for the application role before migration 620';
   END IF;
   IF NOT has_schema_privilege(current_user, 'training_reporting_gcs', 'USAGE')
     OR NOT has_schema_privilege(current_user, 'training_reporting_gcs', 'CREATE') THEN
