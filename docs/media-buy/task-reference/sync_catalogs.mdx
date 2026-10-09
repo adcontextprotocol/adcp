@@ -16,7 +16,7 @@ Manage buyer-provided catalog feeds on a seller account. Sync product feeds, inv
 
 ## Who calls whom
 
-The **buyer** calls `sync_catalogs` on the **seller** to push catalog feeds to the seller's account. The seller validates items, runs content policy checks, and returns per-item approval status.
+The **buyer** calls `sync_catalogs` on the **seller** to push catalog feeds to the seller's account. The seller validates items and runs content policy checks. Its optional `catalog_ingestion` capability declares whether the result reports every item's status or confirms only feed registration.
 
 ```mermaid
 sequenceDiagram
@@ -55,6 +55,31 @@ Sync a product feed:
 }
 ```
 
+## Ingestion compatibility
+
+Before pushing a feed or inline items, inspect
+[`media_buy.features.catalog_ingestion`](/docs/protocol/get_adcp_capabilities#catalog_ingestion)
+in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Check the catalog type, source mode (`feed_url` for
+`url`, `inline_items` for `items`), feed format, and any declared identifier
+types. For inline items, the advertised `max_inline_items_per_request` counts
+items across **all** catalogs in the request. Product `catalog_types` still
+determines which products can serve the accepted catalog.
+
+Sellers declaring ingestion details MUST reject unlisted types, modes, feed
+formats, or explicitly supplied identifier types outside their declared list
+with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature)
+before mutation, even in a dry run. An inline batch exceeding the advertised
+limit fails with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request)
+before mutation. These restrictions do not introduce source requirements for
+discovery-only calls or references to existing catalogs, and availability
+operations retain their separate capability gate.
+
+A seller declaring only `catalog_management: true` remains valid. Missing
+`catalog_ingestion`, identifier support, or an inline limit means unknown;
+probe with `dry_run: true` when needed. Native AdCP offering feeds omit
+`feed_format`, while external feeds use a listed format. `custom` continues
+to require the existing buyer-supplied `feed_field_mappings`.
+
 ## Request parameters
 
 | Parameter | Type | Required | Description |
@@ -63,7 +88,7 @@ Sync a product feed:
 | `catalogs` | Catalog[] | No | Catalog feeds to sync (max 50). Omit for an availability-only call; omit with both availability arrays for discovery mode. |
 | `item_availability_updates` | CatalogItemAvailabilityUpdate[] | No | Immediate revision-guarded suppress/restore operations for items in buyer-managed catalogs. |
 | `item_availability_queries` | CatalogItemAvailabilityRef[] | No | Read current availability and `overlay_revision`. Queries run after updates in a mixed request. |
-| `catalog_ids` | string[] | No | Limit sync scope to specific catalog IDs. Others on the account are unaffected. |
+| `catalog_ids` | string[] | No | Limit catalog sync or discovery results to specific catalog IDs. Others on the account are unaffected. |
 | `delete_missing` | boolean | No | When true, buyer-managed catalogs not in this sync are removed. Does not affect seller-managed catalogs. Requires `catalogs` to be present. Default: false. |
 | `dry_run` | boolean | No | Preview changes without applying. Default: false. |
 | `validation_mode` | string | No | `"strict"` (default) rejects the whole operation before mutation on any entry error. `"lenient"` processes valid entries and returns positionally matched failed results for invalid item references. |
@@ -201,7 +226,7 @@ Each catalog in the `catalogs` array is a [Catalog](/docs/creative/catalogs#the-
 | `catalogs[].items_approved` | integer | Items approved by platform |
 | `catalogs[].items_pending` | integer | Items awaiting review |
 | `catalogs[].items_rejected` | integer | Items rejected |
-| `catalogs[].item_issues` | object[] | Per-item rejection reasons |
+| `catalogs[].item_issues` | object[] | Per-item statuses and reasons. Complete coverage, including approved and pending items, when `catalog_ingestion.item_status_reporting` is `per_item`; otherwise may contain only issues |
 | `catalogs[].next_fetch_at` | datetime | Next scheduled feed fetch (URL-based catalogs) |
 | `item_availability_updates` | object[] | Positionally matched acknowledgements for every requested availability update |
 | `item_availability_updates[].request_index` | integer | Zero-based request position |
@@ -241,6 +266,62 @@ when both the suppression state and expiry already match the request.
 | `errors` | Error[] | Operation-level errors (auth failure, service unavailable) |
 
 Responses use discriminated unions — a synchronous success has `status: "completed"`, always contains `catalogs` (an empty array for an availability-only call), and may contain update or state results; an operation-level failure contains `errors` instead.
+
+### Item status reporting
+
+When `media_buy.features.catalog_ingestion.item_status_reporting` is `per_item`,
+terminal results for created, updated, or unchanged catalogs MUST contain
+exactly one `item_issues` entry for every item in the resulting catalog, using its canonical
+`item_id` and a `catalog-item-status` value. This includes discovery-only reads
+of accessible buyer-managed catalogs. The number of unique item IDs MUST equal
+`item_count`; buyers MUST reject incomplete reports or duplicate IDs.
+For example, this result includes
+an approved item and an item still awaiting review:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-response.json",
+  "status": "completed",
+  "catalogs": [
+    {
+      "catalog_id": "product-feed",
+      "action": "updated",
+      "item_count": 2,
+      "items_approved": 1,
+      "items_pending": 1,
+      "item_issues": [
+        { "item_id": "SKU-12345", "status": "approved" },
+        { "item_id": "SKU-67890", "status": "pending" }
+      ]
+    }
+  ]
+}
+```
+
+Aggregate counts and a sparse issues list cannot prove each item's status.
+Buyers wait for the terminal result of asynchronous ingestion and check item
+statuses before launching a buy that depends on those items. A completed sync
+can still contain pending or rejected items, and dry-run results are previews.
+To poll an item still pending review, make a discovery-only call with a fresh
+`idempotency_key` and optionally `catalog_ids` to scope the read:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
+  "idempotency_key": "f6ca32d4-4567-49ab-8901-234567890abc",
+  "account": { "account_id": "acct_acmecorp" },
+  "catalog_ids": ["product-feed"]
+}
+```
+
+With `per_item`, the seller MUST return complete current item statuses without
+re-ingestion or restarting review. Use a new key for every current read;
+replayed responses are historical snapshots. Approval describes review status
+at that instant; availability overlays and seller serving controls still apply.
+
+`feed_level` confirms registration without complete item outcomes or a guarantee
+of which feed revision was fetched. It cannot prove that every item is live.
+Sellers without the ingestion declaration retain their existing reporting behavior.
 
 ### Availability update response
 

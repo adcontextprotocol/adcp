@@ -1,10 +1,12 @@
 id: media_buy_seller/metric_container_subsumption
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.2"
 title: "Container-subsumption evaluation for metric set operations"
 category: media_buy_seller
 summary: "Verifies a container token (e.g. viewability) subsumes its leaf identities (e.g. viewable_rate) for required_metrics filtering and requested_metrics carrier selection, and that a leaf never subsumes a sibling leaf."
 track: reporting
+requires:
+  - controller
 
 required_tools:
   - get_products
@@ -66,10 +68,15 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+# The container-declaring product is non_guaranteed so sales-non-guaranteed-only
+# sellers can run this scenario (#7765); the leaf-declaring sibling is
+# guaranteed instead, and the discovery filter uses non_guaranteed, so the
+# disambiguation the scenario grades (leaf excluded by delivery_type, not by
+# required_metrics) is unchanged. Fixed-price, so the create needs no bid.
 fixtures:
   products:
     - product_id: "metric_subsumption_container_product"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["streaming_audio"]
       format_options:
         - format_option_id: "metric_subsumption_audio_spot"
@@ -82,7 +89,7 @@ fixtures:
           - clicks
           - viewability
     - product_id: "metric_subsumption_leaf_product"
-      delivery_type: "non_guaranteed"
+      delivery_type: "guaranteed"
       channels: ["streaming_audio"]
       format_options:
         - format_option_id: "metric_subsumption_audio_spot"
@@ -141,8 +148,8 @@ phases:
       follows the container-subsumption rule in
       `enums/available-metric.json` — a product declaring the `viewability`
       container satisfies a requirement for the `viewable_rate` leaf."
-      `delivery_type: "guaranteed"` isolates the container-declaring
-      product from its non_guaranteed leaf-declaring sibling so the match
+      `delivery_type: "non_guaranteed"` isolates the container-declaring
+      product from its guaranteed leaf-declaring sibling so the match
       is deterministic.
     steps:
       - id: get_products_required_viewable_rate
@@ -158,7 +165,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["streaming_audio"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_metrics: ["viewable_rate"]
           account: &buyer_account
             brand:
@@ -169,7 +176,7 @@ phases:
         expected: |
           Return the product declaring the `viewability` container even
           though the filter names the `viewable_rate` leaf — container
-          subsumption, not literal set membership. The non_guaranteed
+          subsumption, not literal set membership. The guaranteed
           leaf-declaring product is excluded by delivery_type, keeping the
           match deterministic.
         context_outputs:
@@ -194,7 +201,7 @@ phases:
             description: "The leaf-shaped filter did not collapse the product's declared metrics to an empty set (format.json reported_metrics: mixed container/leaf declarations do not produce an empty intersection)"
           - check: field_absent
             path: "products[1]"
-            description: "The non_guaranteed leaf-declaring product is excluded by delivery_type, not by required_metrics"
+            description: "The guaranteed leaf-declaring product is excluded by delivery_type, not by required_metrics"
 
   - id: requested_metrics_leaf_to_carrier
     title: "requested_metrics narrows delivery to the resolved carrier"

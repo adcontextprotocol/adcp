@@ -4,6 +4,9 @@ title: "Native in-feed creative lifecycle"
 category: creative
 summary: "End-to-end native_in_feed conformance: format discovery, full 12-slot asset bundle submission with pixel trackers, per-constraint validation rejection paths, and feed-rendered preview."
 track: creative
+requires:
+  - controller
+
 required_tools:
   - sync_creatives
 

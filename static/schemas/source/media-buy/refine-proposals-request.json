@@ -5,6 +5,7 @@
   "description": "Create draft revisions or finalize draft proposals into held committed snapshots. Each result receives a new proposal_id and every source remains unchanged.",
   "x-tool-summary": "Revise draft proposals or finalize them into committed, inventory-held snapshots.",
   "type": "object",
+  "allOf": [{ "$ref": "/schemas/core/version-envelope.json" }],
   "x-mutates-state": true,
   "x-operation-family": "refine_proposals",
   "x-added-in": "3.2.0",

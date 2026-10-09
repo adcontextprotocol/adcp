@@ -47,7 +47,7 @@ The first contract permits one translation hop followed by value resolution; `tr
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/assets/display-tag-asset.json",
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.1/core/assets/display-tag-asset.json",
   "asset_type": "display_tag",
   "delivery_type": "tag_url",
   "url": "https://ads.acme-example.com/render?cb=[CACHEBUSTING]&click=%%ACME_CLICK_ESC2%%&gdpr={GDPR}&consent={GDPR_CONSENT}&gpp={GPP_STRING}&player=[PLAYERSTATE]&unknown=%%VENDOR_TOKEN%%",
@@ -212,7 +212,7 @@ Compatibility matches dialect family, namespace, revision, exact dialect semanti
 - `unsupported` — no compatible resolver/capability exists; or
 - `ambiguous` — the declaration does not establish one safe meaning.
 
-A required `unsupported` or `ambiguous` token fails with `MACRO_RESOLUTION_FAILED`. Its `error.details` MUST conform to [`error-details/macro-resolution-failed.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.1/error-details/macro-resolution-failed.json). Results include the asset pointer, declaration ID, requested encoding, structured reason, and advertised encoding candidates.
+A required `unsupported` or `ambiguous` token fails with `MACRO_RESOLUTION_FAILED`. Its `error.details` MUST conform to [`error-details/macro-resolution-failed.json`](https://adcontextprotocol.org/schemas/3.2.1/error-details/macro-resolution-failed.json). Results include the asset pointer, declaration ID, requested encoding, structured reason, and advertised encoding candidates.
 
 ## Relationship to existing macro surfaces
 
@@ -890,6 +890,8 @@ Do not URL-encode the placeholder token itself. Supply raw values to the actor n
 The declared actor encodes the concrete value exactly as specified. Callers must not pre-encode values, and downstream actors must not add an undeclared pass.
 
 ### Template Syntax
+
+Creative URL assets and their trackers retain byte-preserved ad-server placeholders such as `[CACHEBUSTER]`, `${GDPR}`, `%%CACHEBUSTER%%`, `%%PATTERN:url%%`, and `%%CLICK_URL_UNESC%%` on the undeclared 3.x compatibility path. Accepting a token spelling does not assign meaning or establish a resolver; declared occurrences follow the capability and substitution contracts above. Percent-encoding a placeholder's delimiters prevents the downstream ad server or player from recognizing it.
 
 AdCP macro-bearing URLs are not RFC 6570 templates. Plain URLs retain ordinary absolute HTTP(S) URI validation. For structural validation, verifiers mask recognized token lexical forms (`{NAME}`, `${NAME}`, `[NAME]`, and `%%NAME%%`) with an RFC 3986 unreserved sentinel and validate the resulting absolute HTTP(S) URI. This masking applies whether the occurrence is declared or travels on the undeclared 3.x compatibility path; it assigns no meaning, actor, or encoding and does not change the original bytes. RFC 6570 operators (`{+SKU}`, `{#SKU}`, `{?SKU}`, and similar forms) have no special expansion meaning. Processing is literal token replacement only when an applicable declaration or the explicit legacy helper authorizes it.
 

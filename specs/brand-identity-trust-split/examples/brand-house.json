@@ -1,0 +1,19 @@
+{
+  "$schema": "https://trustjson.org/schemas/v1/trust.json",
+  "last_updated": "2026-09-30T00:00:00Z",
+  "exclusive_grants": true,
+  "grants": [
+    {
+      "grantee": "pinnacle-agency.example",
+      "scopes": ["adcp:media_buying", "adcp:creative_generation"],
+      "countries": ["US", "CA"],
+      "valid_until": "2027-06-30T00:00:00Z",
+      "profiles": { "adcp": { "brands": ["nova_cola", "nova_snacks"] } }
+    },
+    {
+      "grantee": "sentinel-governance.example",
+      "scopes": ["adcp:governance"],
+      "agents": [{ "url": "https://gov.sentinel-governance.example/t/7f3a9c" }]
+    }
+  ]
+}

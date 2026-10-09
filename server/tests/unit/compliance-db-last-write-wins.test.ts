@@ -168,6 +168,17 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     expect(upsert).toBeDefined();
   });
 
+  const SKIPPED_STEP = {
+    step_id: 'check_delivery',
+    title: 'Check delivery',
+    task: 'get_media_buy_delivery',
+    reason: 'prerequisite_failed',
+    detail: 'Skipped: a prerequisite did not pass',
+    blocked_by_step_id: 'create_buy',
+    blocked_by_step_title: 'Create media buy',
+    blocked_by_reason: 'failed',
+  };
+
   it('full-suite compliance writes prune disappeared storyboard rows before upsert', async () => {
     const statusRow = { rows: [{ status: 'passing', previous_status: 'passing' }] };
     const client = makeTransactionClient([
@@ -198,6 +209,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
           first_failed_step_title: 'Create media buy',
           first_failed_step_task: 'create_media_buy',
           first_failure_message: 'Expected media_buy_id',
+          skipped_steps: [SKIPPED_STEP],
         },
       ],
     });
@@ -230,7 +242,9 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
       'heartbeat',
       null,
       null,
+      [JSON.stringify([SKIPPED_STEP])],
     ]);
+    expect(client.query.mock.calls[insertIndex][0]).toContain('skipped_steps_jsonb = EXCLUDED.skipped_steps_jsonb');
   });
 
   it('zero-row authoritative compliance writes clear all materialized storyboard rows', async () => {
@@ -475,6 +489,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     const [sql, params] = mockedQuery.mock.calls[0];
     expect(sql).not.toContain('agent_compliance_step_diagnostics');
     expect(sql).toContain('NULL::jsonb AS first_failure_validations_jsonb');
+    expect(sql).toContain('s.skipped_steps_jsonb AS skipped_steps');
     expect(params).toEqual([AGENT_URL, null, null, true]);
   });
 
@@ -516,7 +531,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     expect(sql).toContain('observations_json');
     expect(sql).toContain('dry_run = FALSE');
     expect(sql).toContain('ORDER BY tested_at DESC');
-    expect(params).toEqual([AGENT_URL]);
+    expect(params).toEqual([AGENT_URL, null]);
   });
 
   it('getComplianceHistory excludes dry-run diagnostic rows by default', async () => {
@@ -545,6 +560,16 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     });
 
     await expect(db.getLatestObservations(AGENT_URL)).resolves.toEqual([]);
+  });
+
+  it('pins dashboard observations to the verdict run when another org publishes later', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ observations_json: [{ category: 'test', severity: 'warning', message: 'own run' }] }], rowCount: 1, fields: [] });
+
+    await db.getLatestObservations(AGENT_URL, RUN_ID);
+
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('id = $2::uuid');
+    expect(params).toEqual([AGENT_URL, RUN_ID]);
   });
 
   it('getStoryboardStatusCounts can gate merged rows against the latest run inside the same SQL statement', async () => {

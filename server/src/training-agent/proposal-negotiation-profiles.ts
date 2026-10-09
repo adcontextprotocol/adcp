@@ -528,6 +528,7 @@ export function evaluateTrainingProposal(
     !constraints &&
     !evaluation.refinement.product_changes &&
     !evaluation.refinement.criteria &&
+    refinementRecord.remove_media_buy_frequency_cap !== true &&
     !evaluation.refinement.alternatives &&
     !evaluation.refinement.change_kind
   ) {

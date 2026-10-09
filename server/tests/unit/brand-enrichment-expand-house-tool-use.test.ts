@@ -2,11 +2,12 @@
  * Pins the Anthropic tool_use contract for brand-enrichment.expandHouse:
  *   - Ships the discover_sub_brands tool with input_schema (keller_type
  *     enum bounds returned brands to {sub_brand, endorsed})
- *   - Forces the tool via tool_choice
+ *   - Forces the tool via tool_choice where the model allows it
  *   - Reads tool_use.input directly (no JSON.parse, no fence stripping)
  *   - Defensive throw when the model returns no tool_use block
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { forcedToolChoice, ModelConfig } from '../../src/config/models.js';
 
 const mocks = vi.hoisted(() => ({
   anthropicCreate: vi.fn(),
@@ -122,7 +123,10 @@ describe('expandHouse: tool_use contract', () => {
       'sub_brand',
       'endorsed',
     ]);
-    expect(call.tool_choice).toEqual({ type: 'tool', name: 'discover_sub_brands' });
+    // Forced where the primary model allows it; Sonnet 5.5-class models reject
+    // forced tool use, so the prompt steers toward the tool instead.
+    expect(call.tool_choice).toEqual(forcedToolChoice(ModelConfig.primary, 'discover_sub_brands').tool_choice);
+    expect(JSON.stringify(call.messages)).toContain('calling the discover_sub_brands tool');
   });
 
   it('reads tool_use.input directly and seeds each discovered brand', async () => {

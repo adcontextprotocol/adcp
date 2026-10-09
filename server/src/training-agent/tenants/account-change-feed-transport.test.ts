@@ -142,6 +142,7 @@ describe('v6 /sales/mcp account change cursor recovery', () => {
     const creativeId = randomUUID();
     const capabilities = (await callTool(server.baseUrl, bearer, 20, 'get_adcp_capabilities', { adcp_version })).result?.structuredContent;
     expect(capabilities?.account?.change_feed?.supported).toBe(true);
+    expect(capabilities?.experimental_features).toContain('account.change_feed');
     expect(capabilities?.creative?.has_creative_library).toBe(true);
     const initial = (await callTool(server.baseUrl, bearer, 21, 'list_account_changes', {
       adcp_version, account, starting_position: 'latest',

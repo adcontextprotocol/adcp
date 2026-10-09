@@ -12,6 +12,8 @@
 
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
+import canonicalize from 'canonicalize';
+import { createHash } from 'node:crypto';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('addie-schema-tools');
@@ -21,48 +23,90 @@ import { ToolError } from '../tool-error.js';
 const SCHEMA_HOST = 'https://adcontextprotocol.org';
 
 // Keep schema selection aligned with the frozen releases exposed in docs.json.
-// Legacy aliases remain available for callers that already use them.
-export const DOCS_SCHEMA_RELEASES = Object.freeze({
-  '3.1': '3.1.24',
-  '3.2-rc': '3.2.0-rc.6',
-  '3.2-beta': '3.2.0-beta.11',
+// scripts/update-release-docs-nav.mjs regenerates this block from docs.json in
+// navigation order, so the first entry is always the docs default (docs.json
+// requires the default version first). Legacy aliases remain available for
+// callers that already use them.
+export const DOCS_SCHEMA_RELEASES: Readonly<Record<string, string>> = Object.freeze({
+  '3.2': '3.2.3',
+  '3.1': '3.1.27',
   '3.0': '3.0.26',
   '2.5': '2.5.3',
 });
 
-const PREVIEW_RELEASE_LINE = '3.2';
-export function buildPreviewSchemaRouting(
+const STABLE_SELECTOR_RE = /^(\d+)\.(\d+)$/;
+const PRERELEASE_SELECTOR_RE = /^(\d+\.\d+)-([0-9a-z]+)$/i;
+
+/** The docs default release line: the first stable entry in docs.json order. */
+export function resolveDefaultSchemaSelector(
   releases: Readonly<Record<string, string>>,
-  releaseLine: string,
-): { selectors: string[]; current: string; aliases: Record<string, string> } {
-  const selectors = Object.keys(releases).filter(
-    (selector) => selector.startsWith(`${releaseLine}-`),
-  );
-  const current = selectors[0];
-  if (!current) {
-    throw new Error(`DOCS_SCHEMA_RELEASES must contain a ${releaseLine} prerelease`);
+): string {
+  const selector = Object.keys(releases).find((key) => STABLE_SELECTOR_RE.test(key));
+  if (!selector) {
+    throw new Error('DOCS_SCHEMA_RELEASES must contain a stable release line');
   }
-  const aliases = Object.fromEntries(
-    selectors.flatMap((selector) => {
-      const channel = selector.slice(releaseLine.length + 1);
-      const entries = [
-        [selector, selector],
-        [`${releaseLine} ${channel}`, selector],
-      ];
-      if (selector === current) entries.push([releaseLine, current]);
-      entries.push([releases[selector], selector]);
-      return entries;
-    }),
-  );
-  return { selectors, current, aliases };
+  return selector;
 }
 
-const previewSchemaRouting = buildPreviewSchemaRouting(
-  DOCS_SCHEMA_RELEASES,
-  PREVIEW_RELEASE_LINE,
-);
-const PREVIEW_SCHEMA_SELECTORS = previewSchemaRouting.selectors;
-const CURRENT_PREVIEW_SELECTOR = previewSchemaRouting.current;
+/**
+ * Route prerelease channel selectors (`3.2-rc`, `3.2 rc`, exact artifact).
+ * The bare release line (`3.2`) points at the newest channel for that line
+ * (the first one listed) only while no stable entry for the line exists; once
+ * the stable line ships, `3.2` must resolve to it. Having no prerelease at all
+ * is a valid state (between minor cycles), not an error.
+ */
+export function buildPreviewSchemaRouting(
+  releases: Readonly<Record<string, string>>,
+): { selectors: string[]; aliases: Record<string, string> } {
+  const selectors: string[] = [];
+  const aliases: Record<string, string> = {};
+  const linesWithPreview = new Set<string>();
+  for (const selector of Object.keys(releases)) {
+    const match = PRERELEASE_SELECTOR_RE.exec(selector);
+    if (!match) continue;
+    const [, releaseLine, channel] = match;
+    selectors.push(selector);
+    aliases[selector] = selector;
+    aliases[`${releaseLine} ${channel}`] = selector;
+    if (!linesWithPreview.has(releaseLine) && !(releaseLine in releases)) {
+      aliases[releaseLine] = selector;
+    }
+    linesWithPreview.add(releaseLine);
+    aliases[releases[selector]] = selector;
+  }
+  return { selectors, aliases };
+}
+
+/**
+ * Build every accepted `version` selector, in the order surfaced to callers.
+ * Stable lines accept their label and exact artifact; the docs default also
+ * owns the moving `stable`/`current`/`latest`/`v3` aliases.
+ */
+export function buildSchemaVersionAliases(
+  releases: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const defaultSelector = resolveDefaultSchemaSelector(releases);
+  const preview = buildPreviewSchemaRouting(releases);
+  const aliases: Record<string, string> = {};
+  for (const [selector, release] of Object.entries(releases)) {
+    if (STABLE_SELECTOR_RE.test(selector)) {
+      aliases[selector] = selector;
+      if (selector === defaultSelector) {
+        for (const alias of ['stable', 'current', 'latest', 'v3']) aliases[alias] = selector;
+      }
+      aliases[release] = selector;
+    } else if (PRERELEASE_SELECTOR_RE.test(selector)) {
+      for (const [alias, target] of Object.entries(preview.aliases)) {
+        if (target === selector) aliases[alias] = target;
+      }
+    }
+  }
+  if ('2.5' in releases) aliases['2.5 (archived)'] = '2.5';
+  aliases.v2 = 'v2';
+  aliases['2.6'] = '2.6';
+  aliases['2.6.0'] = '2.6.0';
+  return aliases;
+}
 
 const SCHEMA_BASE_URLS: Record<string, string> = {
   ...Object.fromEntries(
@@ -76,28 +120,15 @@ const SCHEMA_BASE_URLS: Record<string, string> = {
   '2.6.0': `${SCHEMA_HOST}/schemas/2.6.0`,
 };
 
-const DEFAULT_VERSION = '3.1';
+export const DEFAULT_SCHEMA_VERSION = resolveDefaultSchemaSelector(DOCS_SCHEMA_RELEASES);
+const DEFAULT_VERSION = DEFAULT_SCHEMA_VERSION;
 
 // Public documentation selectors resolve to frozen schema snapshots. Keep the
 // legacy v2/2.6 selectors intact, but do not let v3 or "latest" drift away
 // from the stable documentation release.
-const SCHEMA_VERSION_ALIASES: Readonly<Record<string, string>> = Object.freeze({
-  '3.1': '3.1',
-  stable: '3.1',
-  current: '3.1',
-  latest: '3.1',
-  v3: '3.1',
-  [DOCS_SCHEMA_RELEASES['3.1']]: '3.1',
-  ...previewSchemaRouting.aliases,
-  '3.0': '3.0',
-  [DOCS_SCHEMA_RELEASES['3.0']]: '3.0',
-  '2.5': '2.5',
-  '2.5 (archived)': '2.5',
-  [DOCS_SCHEMA_RELEASES['2.5']]: '2.5',
-  v2: 'v2',
-  '2.6': '2.6',
-  '2.6.0': '2.6.0',
-});
+const SCHEMA_VERSION_ALIASES: Readonly<Record<string, string>> = Object.freeze(
+  buildSchemaVersionAliases(DOCS_SCHEMA_RELEASES),
+);
 
 export const SCHEMA_VERSION_OPTIONS = Object.freeze(Object.keys(SCHEMA_VERSION_ALIASES));
 
@@ -121,6 +152,9 @@ const HISTORICAL_PRERELEASE_RANGES: Readonly<
 > = Object.freeze({
   '3.0': Object.freeze({ beta: [1, 3] as const, rc: [1, 3] as const }),
   '3.1': Object.freeze({ beta: [0, 7] as const, rc: [1, 15] as const }),
+  // Applies once the 3.2 channel selectors retire at GA; until then the live
+  // 3.2-beta / 3.2-rc selectors own these documents.
+  '3.2': Object.freeze({ beta: [0, 11] as const, rc: [0, 7] as const }),
 });
 
 /**
@@ -145,9 +179,7 @@ function resolveInferredSchemaVersion(requested: string): string {
     const historicalRange = HISTORICAL_PRERELEASE_RANGES[canonical]?.[
       prereleaseKind as 'beta' | 'rc'
     ];
-    const frozenVersion = DOCS_SCHEMA_RELEASES[
-      canonical as keyof typeof DOCS_SCHEMA_RELEASES
-    ];
+    const frozenVersion = DOCS_SCHEMA_RELEASES[canonical];
     const frozenPrerelease = frozenVersion?.match(
       new RegExp(`^${releaseLine.replace('.', '\\.')}\\.0-${prereleaseKind}\\.(\\d+)$`)
     );
@@ -166,9 +198,7 @@ function resolveInferredSchemaVersion(requested: string): string {
   const patchMatch = selector.match(/^(\d+\.\d+)\.(\d+)$/);
   if (patchMatch) {
     const [, releaseLine, patchNumberText] = patchMatch;
-    const frozenVersion = DOCS_SCHEMA_RELEASES[
-      releaseLine as keyof typeof DOCS_SCHEMA_RELEASES
-    ];
+    const frozenVersion = DOCS_SCHEMA_RELEASES[releaseLine];
     const frozenMatch = frozenVersion?.match(/^(\d+\.\d+)\.(\d+)$/);
     if (
       frozenMatch
@@ -493,12 +523,13 @@ const VERSION_CHANGES: Record<string, string[]> = {
 
 function schemaVersionTable(): string {
   const rows = Object.entries(DOCS_SCHEMA_RELEASES).map(([selector, release]) => {
+    const defaultMajor = DEFAULT_VERSION.split('.')[0];
     const note = selector === DEFAULT_VERSION
       ? 'Current stable schema snapshot'
-      : selector.startsWith(`${PREVIEW_RELEASE_LINE}-`)
+      : PRERELEASE_SELECTOR_RE.test(selector)
         ? `${selector.endsWith('-rc') ? 'RC' : 'Beta'} docs snapshot`
-        : selector === '3.0'
-          ? 'Previous 3.x snapshot'
+        : selector.split('.')[0] === defaultMajor
+          ? `Previous ${defaultMajor}.x snapshot`
           : 'Archived snapshot';
     return `| ${selector} | ${SCHEMA_BASE_URLS[selector]} | ${note} (${release}) |`;
   });
@@ -531,7 +562,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         version: {
           type: 'string',
           description:
-            'Schema version to use. Omission means stable 3.1; use 3.2 for the current preview. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
+            'Schema version to use. Omission means stable 3.2; pass 3.1 or 3.0 for an earlier stable release. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
         },
       },
       required: ['json'],
@@ -553,7 +584,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Schema version. Match search_docs; omission means stable 3.1 and 3.2 selects the current preview. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
+          description: 'Schema version. Match search_docs; omission means stable 3.2. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
         },
         property: {
           type: 'string',
@@ -574,7 +605,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
       properties: {
         version: {
           type: 'string',
-          description: 'Optional schema version. Defaults to stable 3.1.',
+          description: 'Optional schema version. Defaults to stable 3.2.',
         },
       },
     },
@@ -598,7 +629,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         },
         to_version: {
           type: 'string',
-          description: 'Target version to compare to (default: stable 3.1)',
+          description: 'Target version to compare to (default: stable 3.2)',
         },
       },
       required: ['schema_path'],
@@ -645,7 +676,7 @@ export function formatSchemaJson(
 /**
  * Create handlers for schema tools
  */
-export function createSchemaToolHandlers(): Map<
+export function createSchemaToolHandlers(options: { includeSourceIntegrity?: boolean } = {}): Map<
   string,
   (input: Record<string, unknown>) => Promise<string>
 > {
@@ -658,6 +689,26 @@ export function createSchemaToolHandlers(): Map<
       throw new ToolError('json must be a non-null object, not an array or primitive value.');
     }
     const jsonObj = json as Record<string, unknown>;
+    let integrity = 'Source integrity: unverified. Only the supplied JSON object was validated; do not claim the original upload was transferred unchanged. For original-file validation, use validate_json_file with a real download reference or validate the original file programmatically against the published schema and label that as local validation.';
+    if (input.expected_json_sha256 !== undefined) {
+      const expected = input.expected_json_sha256;
+      if (typeof expected !== 'string' || !/^[a-fA-F0-9]{64}$/.test(expected)) {
+        throw new ToolError('expected_json_sha256 must be a 64-character hexadecimal SHA-256 of the original parsed JSON canonicalized using RFC 8785; it is not the raw file checksum.');
+      }
+      let canonical: string;
+      try {
+        const serialized = canonicalize(jsonObj);
+        if (typeof serialized !== 'string') throw new Error('Not serializable JSON');
+        canonical = serialized;
+      } catch {
+        throw new ToolError('The JSON cannot be canonicalized using RFC 8785. No source integrity or schema validation was confirmed.');
+      }
+      const actual = createHash('sha256').update(canonical, 'utf8').digest('hex');
+      if (actual !== expected.toLowerCase()) {
+        throw new ToolError('JSON integrity mismatch: the received object does not match expected_json_sha256. Schema validation was not run. Do not retry by replacing the source checksum with a checksum of the reconstructed argument; transfer the unchanged parsed JSON programmatically or use original-file validation.');
+      }
+      integrity = `Source integrity: the received JSON matches the client-provided RFC 8785 SHA-256 (${actual}). This checks parsed JSON content against the supplied checksum, not the original file's bytes or provenance.`;
+    }
     let schemaPath = input.schema_path as string | undefined;
     let requestedVersion = input.version;
 
@@ -692,7 +743,7 @@ export function createSchemaToolHandlers(): Map<
       if (result.valid) {
         return `✅ **Valid!** The JSON validates successfully against ${schemaUrl}
 
-The provided JSON conforms to the AdCP ${version} ${schemaPath} schema.`;
+The provided JSON conforms to the AdCP ${version} ${schemaPath} schema.${options.includeSourceIntegrity === false ? '' : `\n\n${integrity}`}`;
       }
 
       const errorList = result.errors.map((e) => `- ${e}`).join('\n');
@@ -700,7 +751,7 @@ The provided JSON conforms to the AdCP ${version} ${schemaPath} schema.`;
 
 ${errorList}
 
-**Tip:** Use \`get_schema\` to see the exact schema definition and understand what fields are expected.`;
+**Tip:** Use \`get_schema\` to see the exact schema definition and understand what fields are expected.${options.includeSourceIntegrity === false ? '' : `\n\n${integrity}`}`;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new ToolError(`Failed to validate: ${message}

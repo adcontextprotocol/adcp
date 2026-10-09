@@ -416,10 +416,11 @@ function totalsFromEnvelope(envelope, storyboardId) {
   const countFields = ['passed', 'failed', 'skipped', 'not_applicable'];
   const expectedSummaryIdSets = storyboardId === 'signed_requests'
     ? [
-        // Current AdCP 3.2 runs only the required-digest profile. Frozen 3.0
-        // compatibility runs retain all three legacy profile variants.
+        // Current AdCP 3.2 runs only the required-digest 3.2-profile route.
+        // Frozen 3.0 compatibility runs retain all three legacy digest
+        // variants, with required coverage on the legacy-profile route.
         ['signed_requests-strict-required'],
-        ['signed_requests-strict', 'signed_requests-strict-required', 'signed_requests-strict-forbidden'],
+        ['signed_requests-strict', 'signed_requests-strict-required-legacy', 'signed_requests-strict-forbidden'],
       ]
     : [[storyboardId]];
   const expectedSummaryIds = expectedSummaryIdSets.find(expectedIds => (

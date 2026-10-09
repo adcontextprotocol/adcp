@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { disableAdaptiveThinking, GeminiModelConfig } from '../../src/config/models.js';
+import {
+  disableAdaptiveThinking,
+  forcedToolChoice,
+  GeminiModelConfig,
+  supportsForcedToolChoice,
+} from '../../src/config/models.js';
 
 describe('disableAdaptiveThinking', () => {
   it.each([
@@ -12,7 +17,15 @@ describe('disableAdaptiveThinking', () => {
     expect(disableAdaptiveThinking(model)).toEqual({ thinking: { type: 'disabled' } });
   });
 
+  it.each(['claude-sonnet-5-5', 'claude-sonnet-5-5-20261001'])(
+    'uses between_tools on %s, which rejects disabled thinking',
+    (model) => {
+      expect(disableAdaptiveThinking(model)).toEqual({ thinking: { type: 'between_tools' } });
+    },
+  );
+
   it.each([
+    'claude-opus-5-5',
     'claude-fable-5',
     'claude-mythos-5',
     'claude-mythos-preview',
@@ -23,6 +36,24 @@ describe('disableAdaptiveThinking', () => {
   ])('omits unsupported thinking configuration for %s', (model) => {
     expect(disableAdaptiveThinking(model)).toEqual({});
   });
+});
+
+describe('forcedToolChoice', () => {
+  it.each(['claude-sonnet-5', 'claude-haiku-4-5', 'claude-opus-5', 'claude-sonnet-5-20260601'])(
+    'forces the tool on %s',
+    (model) => {
+      expect(supportsForcedToolChoice(model)).toBe(true);
+      expect(forcedToolChoice(model, 'classify_brand')).toEqual({ tool_choice: { type: 'tool', name: 'classify_brand' } });
+    },
+  );
+
+  it.each(['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1', 'claude-mythos-5-1', 'claude-sonnet-5-5-20261001'])(
+    'falls back to auto on %s, which rejects forced tool use',
+    (model) => {
+      expect(supportsForcedToolChoice(model)).toBe(false);
+      expect(forcedToolChoice(model, 'classify_brand')).toEqual({ tool_choice: { type: 'auto' } });
+    },
+  );
 });
 
 describe('GeminiModelConfig', () => {

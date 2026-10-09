@@ -1,3 +1,5 @@
+import { extractSlackMessageContent, type SlackMessageContent } from './slack-message-content.js';
+
 /**
  * Analyze human messages in a thread and return a response-calibration hint.
  *
@@ -283,7 +285,7 @@ export function isDirectedAtAddie(
  * The router uses this to understand thread topic and context.
  */
 export function buildThreadSummaryForRouter(
-  messages: Array<{ user?: string; text?: string; ts: string }>,
+  messages: Array<SlackMessageContent & { user?: string; ts: string }>,
   botUserId: string,
   currentEventTs: string,
   currentUserId?: string,
@@ -292,13 +294,13 @@ export function buildThreadSummaryForRouter(
   const MAX_LINE_LENGTH = 600;
 
   return messages
-    .filter(msg => msg.ts !== currentEventTs && (msg.text || '').trim().length > 0)
+    .filter(msg => msg.ts !== currentEventTs && extractSlackMessageContent(msg).trim().length > 0)
     .slice(-MAX_SUMMARY_MESSAGES)
     .map(msg => {
       const speaker = msg.user === botUserId ? 'Addie'
         : msg.user === currentUserId ? 'You'
         : 'User';
-      const text = (msg.text || '')
+      const text = extractSlackMessageContent(msg)
         .replace(/<@[A-Z0-9]+>/g, '@someone')
         .replace(/\[system\]/gi, '')
         .replace(/\[user\]/gi, '')

@@ -1478,7 +1478,7 @@ export function publishReportingCoreLifecycleProbeRows(
     dimensions?: Record<string, string | number | boolean | null>;
     metrics?: Record<string, string | number | boolean | null>;
   }>,
-  revisionMetadata: Partial<Pick<ReportingRevision, 'created_at' | 'observed_at' | 'control_totals'>> = {},
+  revisionMetadata: Partial<Pick<ReportingRevision, 'reporting_revision_id' | 'created_at' | 'observed_at' | 'control_totals'>> = {},
 ): { reporting_revision_id: string; row_count: number; revision_content_sha256: string } {
   const ledger = ledgerFor(principal, accountId);
   const first = [...ledger.configs.values()][0];
@@ -1498,6 +1498,44 @@ export function publishReportingCoreLifecycleProbeRows(
   ledger.publishedRevisions.set(obligation, revision);
   ledger.version += 1;
   return { reporting_revision_id: revision.reporting_revision_id, row_count: revision.row_count, revision_content_sha256: revision.revision_content_sha256 };
+}
+
+/**
+ * The fixed two-row Core vector that `reporting_core_lifecycle_probe`
+ * `publish_nonempty` commits. `reporting-core.yaml` pins every byte of it
+ * (identity, totals, periods, dimensions, metrics) and the RFC 8785/JCS
+ * binding digest literally, and has shipped that vector since 3.2.0-rc.1,
+ * because the runner has no check that recomputes a digest from captured
+ * values. The revision identity is therefore part of the vector, not derived
+ * from the caller's account or obligation.
+ */
+export const REPORTING_CORE_NONEMPTY_VECTOR = {
+  reporting_revision_id: 'reporting-revision.ecc62efa00946aa1e2788ad9',
+  rows: [
+    {
+      period_start: '2026-08-01T00:00:00.000Z', period_end: '2026-08-01T01:00:00.000Z', impressions: 2,
+      dimensions: { media_buy_id: 'media-buy-core-001', package_id: 'package-core-001', country: 'US' },
+      metrics: { impressions: 2, clicks: 1 },
+    },
+    {
+      period_start: '2026-08-01T00:00:00.000Z', period_end: '2026-08-01T01:00:00.000Z', impressions: 3,
+      dimensions: { media_buy_id: 'media-buy-core-002', package_id: 'package-core-002', country: 'CA' },
+      metrics: { impressions: 3, clicks: 0 },
+    },
+  ],
+};
+
+/** Commit {@link REPORTING_CORE_NONEMPTY_VECTOR} for the prepared Core obligation. */
+export function publishReportingCoreLifecycleProbeVector(
+  principal: string | undefined,
+  accountId: string,
+): { reporting_revision_id: string; row_count: number; revision_content_sha256: string } {
+  return publishReportingCoreLifecycleProbeRows(
+    principal,
+    accountId,
+    structuredClone(REPORTING_CORE_NONEMPTY_VECTOR.rows),
+    { reporting_revision_id: REPORTING_CORE_NONEMPTY_VECTOR.reporting_revision_id },
+  );
 }
 
 /**
@@ -2365,6 +2403,45 @@ function zonedToUtc(target: ZonedParts, timeZone: string): number {
     candidate += targetMs - Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute, actual.second);
   }
   return candidate;
+}
+
+/**
+ * Instant at which a YYYY-MM-DD calendar date begins in a reporting timezone.
+ * get_media_buy_delivery start_date/end_date are calendar dates in the
+ * product's reporting_capabilities.timezone, so their reporting_period bounds
+ * are the first instant of that local day, not UTC midnight. When local
+ * midnight does not exist (a DST gap at 00:00, e.g. America/Santiago on
+ * 2026-09-06), the day starts at the transition instant. Returns an invalid
+ * Date for a malformed or out-of-range date (e.g. 2026-02-30). The caller
+ * must pass a timezone Intl accepts.
+ */
+export function reportingDayStart(date: string, timeZone: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return new Date(Number.NaN);
+  const [year, month, day] = match.slice(1).map(Number);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth) return new Date(Number.NaN);
+  const target = year * 10_000 + month * 100 + day;
+  const localDate = (ms: number) => {
+    const parts = zonedParts(ms, timeZone);
+    return parts.year * 10_000 + parts.month * 100 + parts.day;
+  };
+  const candidate = zonedToUtc({ year, month, day, hour: 0, minute: 0, second: 0 }, timeZone);
+  const parts = zonedParts(candidate, timeZone);
+  if (localDate(candidate) === target && parts.hour === 0 && parts.minute === 0 && parts.second === 0) {
+    return new Date(candidate);
+  }
+  // Local midnight falls in a DST gap: find the first second whose local date
+  // is the requested date. Offsets change by at most a few hours, so the
+  // previous local day is before lo and the requested day has begun by hi.
+  let lo = candidate - 6 * HOUR_MS;
+  let hi = candidate + 6 * HOUR_MS;
+  while (hi - lo > 1000) {
+    const mid = lo + Math.floor((hi - lo) / 2000) * 1000;
+    if (localDate(mid) >= target) hi = mid;
+    else lo = mid;
+  }
+  return new Date(hi);
 }
 
 function civilDayStart(ms: number, timeZone: string): number {

@@ -709,15 +709,17 @@ describe('WorkOS webhook vs sync-users deletion', () => {
       updated_at: new Date().toISOString(),
     }));
     await entered;
-    let deletionSettled = false;
-    const deletion = deleteIdentityCredential(PRIMARY, 'workos_webhook')
-      .finally(() => { deletionSettled = true; });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const deletionWasBlocked = !deletionSettled;
-    releaseSideEffects();
-    const [eventResponse, deletionResult] = await within(Promise.all([staleUserEvent, deletion]));
+    // Post-commit side effects are still held, so deletion can only settle if
+    // it does not wait on them. A generous deadline instead of a fixed sleep
+    // keeps slow runners from failing a deletion that is merely slow.
+    let deletionResult: Awaited<ReturnType<typeof deleteIdentityCredential>>;
+    try {
+      deletionResult = await within(deleteIdentityCredential(PRIMARY, 'workos_webhook'));
+    } finally {
+      releaseSideEffects();
+    }
+    const eventResponse = await within(staleUserEvent);
 
-    expect(deletionWasBlocked).toBe(false);
     expect(eventResponse.status).toBe(200);
     expect(deletionResult.deleted).toBe(true);
     expect((await pool.query(`SELECT 1 FROM users WHERE workos_user_id = $1`, [PRIMARY])).rows).toEqual([]);
@@ -800,15 +802,15 @@ describe('WorkOS webhook vs sync-users deletion', () => {
         WHERE workos_user_id = $1 AND workos_organization_id = $2`,
       [PRIMARY, ORG],
     )).rows;
-    let deletionSettled = false;
-    const deletion = deleteIdentityCredential(PRIMARY, 'workos_webhook')
-      .finally(() => { deletionSettled = true; });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const deletionWasBlocked = !deletionSettled;
-    releasePostWrite();
-    const [eventResponse, deletionResult] = await within(Promise.all([staleMembershipEvent, deletion]));
+    // As above: deletion must settle while post-commit work is still held.
+    let deletionResult: Awaited<ReturnType<typeof deleteIdentityCredential>>;
+    try {
+      deletionResult = await within(deleteIdentityCredential(PRIMARY, 'workos_webhook'));
+    } finally {
+      releasePostWrite();
+    }
+    const eventResponse = await within(staleMembershipEvent);
 
-    expect(deletionWasBlocked).toBe(false);
     expect(membershipWhileLocked).toEqual([{ role: 'admin' }]);
     expect(eventResponse.status).toBe(200);
     expect(deletionResult.deleted).toBe(true);

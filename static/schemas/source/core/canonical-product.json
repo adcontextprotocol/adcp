@@ -25,11 +25,28 @@
     "social_placement_surfaces": { "type": "array", "items": { "$ref": "/schemas/enums/social-placement-surface.json" }, "minItems": 1, "uniqueItems": true },
     "format_options": { "type": "array", "items": { "$ref": "/schemas/core/canonical-format-option.json" }, "minItems": 1 },
     "placements": { "type": "array", "items": { "$ref": "/schemas/core/canonical-placement.json" } },
+    "collections": {
+      "type": "array",
+      "description": "Collections available in this product, each referencing collections declared in an adagents.json by domain and explicit collection_ids. The domain-only bulk-grant selector form is for authorization scoping, not product composition. A selected-mode collection_selection names collections from this set.",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/collection-selector.json" },
+          { "required": ["collection_ids"] }
+        ]
+      },
+      "minItems": 1
+    },
+    "collection_targeting_allowed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list or targeting_overlay.collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match)."
+    },
     "delivery_type": { "$ref": "/schemas/enums/delivery-type.json" },
     "exclusivity": { "$ref": "/schemas/enums/exclusivity.json" },
     "pricing_options": { "type": "array", "items": { "$ref": "/schemas/core/canonical-pricing-option.json" }, "minItems": 1 },
     "forecast": { "$ref": "/schemas/core/canonical-delivery-forecast.json" },
     "reporting_capabilities": { "$ref": "/schemas/core/canonical-reporting-capabilities.json" },
+    "dooh_inventory_summary": { "$ref": "/schemas/core/dooh-inventory-summary.json" },
     "measurement_terms": {
       "$ref": "/schemas/core/canonical-measurement-terms.json",
       "description": "Default billing measurement and makegood terms inherited by a direct purchase unless a negotiated proposal replaces them."
@@ -57,6 +74,14 @@
       "x-status": "experimental",
       "x-added-in": "3.2.0",
       "description": "Experimental product-scoped identity and reach-measurement facts. See Product.identity for the cross-object delivery and frequency-cap rules."
+    },
+    "execution_requirements": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/product-execution-requirement.json" },
+      "minItems": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.2.0",
+      "description": "Experimental account resources a package on this product needs before it can be created. See Product.execution_requirements for completeness, binding, and rejection rules."
     },
     "audience_evidence": {
       "type": "array",
@@ -88,7 +113,15 @@
       "minItems": 1
     },
     "brief_relevance": { "type": "string" },
-    "expires_at": { "type": "string", "format": "date-time" },
+    "targeting_resolution": {
+      "$ref": "/schemas/core/product-targeting-resolution.json",
+      "description": "Discovery-time targeting resolution bound to this configured product. modifications sparsely disclose product-specific differences from criteria.targeting_overlay; absence means exact acceptance of the structured overlay. Request-level brief interpretation is returned once on the response-root targeting_resolution. Selecting product_id accepts the disclosed modifications; pricing and forecast MUST reflect them. Requires expires_at."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Expiration of a request-specific configured offer. Canonical products have no is_custom flag; expires_at is what marks an offer as request-specific. After it, the buyer rediscovers."
+    },
     "allowed_actions": {
       "type": "array",
       "items": { "$ref": "/schemas/core/canonical-product-action.json" },
@@ -100,7 +133,42 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["product_id", "name"],
+  "dependencies": {
+    "targeting_resolution": ["expires_at"]
+  },
   "allOf": [
+    {
+      "description": "Collection inclusion support requires selectable product collections.",
+      "if": {
+        "properties": {
+          "overlay_support": { "required": ["collection_list"] }
+        },
+        "required": ["overlay_support"]
+      },
+      "then": {
+        "properties": {
+          "collection_targeting_allowed": { "const": true }
+        },
+        "required": ["collection_targeting_allowed"]
+      }
+    },
+    {
+      "description": "A compact product that requires a catalog must declare the catalog types it accepts.",
+      "if": {
+        "properties": {
+          "execution_requirements": {
+            "contains": {
+              "properties": { "kind": { "const": "catalog" } },
+              "required": ["kind"]
+            }
+          }
+        },
+        "required": ["execution_requirements"]
+      },
+      "then": {
+        "required": ["catalog_types"]
+      }
+    },
     {
       "description": "A compact product that declares identity absence cannot promise identifier-backed frequency-cap execution.",
       "if": {

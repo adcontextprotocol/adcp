@@ -1,8 +1,16 @@
+import fs from 'node:fs';
+import { createHash } from 'node:crypto';
+import canonicalize from 'canonicalize';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   createSchemaToolHandlers,
   buildPreviewSchemaRouting,
+  buildSchemaVersionAliases,
+  DEFAULT_SCHEMA_VERSION,
   DOCS_SCHEMA_RELEASES,
+  resolveDefaultSchemaSelector,
   extractRegistryPaths,
   findClosestSchema,
   formatSchemaJson,
@@ -12,14 +20,20 @@ import {
   type SchemaRegistry,
 } from '../../../src/addie/mcp/schema-tools.js';
 
+const PRERELEASE_SELECTOR = /^\d+\.\d+-[0-9a-z]+$/i;
+const LINE_32_CANONICAL = '3.2' in DOCS_SCHEMA_RELEASES
+  ? '3.2'
+  : Object.keys(DOCS_SCHEMA_RELEASES).find((selector) => selector.startsWith('3.2-'))!;
+
 describe('schema version selection', () => {
   it('promotes the newest prerelease channel while preserving explicit beta routing', () => {
     const routing = buildPreviewSchemaRouting({
+      '3.1': '3.1.24',
       '3.2-rc': '3.2.0-rc.0',
       '3.2-beta': '3.2.0-beta.12',
-    }, '3.2');
+    });
 
-    expect(routing.current).toBe('3.2-rc');
+    expect(routing.selectors).toEqual(['3.2-rc', '3.2-beta']);
     expect(routing.aliases).toMatchObject({
       '3.2': '3.2-rc',
       '3.2 rc': '3.2-rc',
@@ -29,33 +43,84 @@ describe('schema version selection', () => {
     });
   });
 
+  it('defaults to the first stable line, which mirrors the docs.json default', () => {
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+    const docsConfig = JSON.parse(fs.readFileSync(path.join(repoRoot, 'docs.json'), 'utf8')) as {
+      navigation: { versions: Array<{ version: string; default?: boolean }> };
+    };
+    const labels = docsConfig.navigation.versions.map(
+      ({ version }) => version.replace(/\s*\(archived\)\s*$/i, ''),
+    );
+    const docsDefault = docsConfig.navigation.versions.find((entry) => entry.default);
+
+    expect(Object.keys(DOCS_SCHEMA_RELEASES)).toEqual(labels);
+    expect(DEFAULT_SCHEMA_VERSION).toBe(docsDefault?.version);
+  });
+
+  describe('after a stable minor GA retires its preview selectors', () => {
+    const gaReleases = Object.freeze({
+      '3.2': '3.2.1',
+      '3.1': '3.1.24',
+      '3.0': '3.0.26',
+      '2.5': '2.5.3',
+    });
+
+    it('loads without any prerelease line and routes every moving alias to the new stable line', () => {
+      expect(buildPreviewSchemaRouting(gaReleases)).toEqual({ selectors: [], aliases: {} });
+      expect(resolveDefaultSchemaSelector(gaReleases)).toBe('3.2');
+
+      const aliases = buildSchemaVersionAliases(gaReleases);
+      expect(aliases).toMatchObject({
+        '3.2': '3.2',
+        '3.2.1': '3.2',
+        stable: '3.2',
+        current: '3.2',
+        latest: '3.2',
+        v3: '3.2',
+        '3.1': '3.1',
+        '3.1.24': '3.1',
+        '3.0': '3.0',
+        '2.5 (archived)': '2.5',
+        v2: 'v2',
+      });
+      expect(aliases).not.toHaveProperty('3.2-rc');
+      expect(aliases).not.toHaveProperty('3.2 rc');
+    });
+
+    it('never lets a lingering preview shadow the stable line', () => {
+      const aliases = buildSchemaVersionAliases({
+        '3.2': '3.2.1',
+        '3.2-rc': '3.2.0-rc.7',
+        '3.1': '3.1.24',
+      });
+
+      expect(aliases['3.2']).toBe('3.2');
+      expect(aliases['3.2 rc']).toBe('3.2-rc');
+      expect(aliases['3.2.0-rc.7']).toBe('3.2-rc');
+      expect(aliases.stable).toBe('3.2');
+    });
+
+    it('rejects a release map without a stable line', () => {
+      expect(() => resolveDefaultSchemaSelector({ '3.2-rc': '3.2.0-rc.7' }))
+        .toThrow('DOCS_SCHEMA_RELEASES must contain a stable release line');
+    });
+  });
+
   it('accepts every public docs release and defaults its guidance to stable', () => {
-    expect(Object.keys(DOCS_SCHEMA_RELEASES)).toEqual([
-      '3.1',
-      '3.2-rc',
-      '3.2-beta',
-      '3.0',
-      '2.5',
-    ]);
+    // The release set is pinned to docs.json by the test above; here every
+    // entry, whatever the current snapshot, must be selectable.
     expect(SCHEMA_VERSION_OPTIONS).toEqual(expect.arrayContaining([
-      '3.1',
       'stable',
       'current',
       'latest',
       'v3',
-      DOCS_SCHEMA_RELEASES['3.1'],
-      '3.2-rc',
-      '3.2 rc',
       '3.2',
-      DOCS_SCHEMA_RELEASES['3.2-rc'],
-      '3.2-beta',
-      '3.2 beta',
-      DOCS_SCHEMA_RELEASES['3.2-beta'],
-      '3.0',
-      DOCS_SCHEMA_RELEASES['3.0'],
-      '2.5',
+      ...Object.entries(DOCS_SCHEMA_RELEASES).flatMap(([selector, artifact]) => [
+        selector,
+        artifact,
+        ...(PRERELEASE_SELECTOR.test(selector) ? [selector.replace('-', ' ')] : []),
+      ]),
       '2.5 (archived)',
-      DOCS_SCHEMA_RELEASES['2.5'],
       'v2',
       '2.6',
       '2.6.0',
@@ -67,7 +132,12 @@ describe('schema version selection', () => {
     }
 
     const getSchema = SCHEMA_TOOLS.find((tool) => tool.name === 'get_schema');
-    expect(getSchema?.input_schema.properties.version.description).toContain('stable 3.1');
+    // The hand-written default in the tool description must name the docs
+    // default that DEFAULT_SCHEMA_VERSION actually resolves to.
+    for (const toolName of ['validate_json', 'get_schema', 'list_schemas']) {
+      const tool = SCHEMA_TOOLS.find((candidate) => candidate.name === toolName);
+      expect(tool?.input_schema.properties.version.description).toContain(`stable ${DEFAULT_SCHEMA_VERSION}`);
+    }
   });
 });
 
@@ -105,6 +175,72 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('inline JSON source integrity', () => {
+  const original = {
+    $schema: 'https://adcontextprotocol.org/schemas/3.2.1/adagents.json',
+    ext: { reproduction_padding: Array(500).fill('x'.repeat(60)) },
+    authoritative_location: 'https://publisher.example.com/adagents.json',
+  };
+  const sourceHash = createHash('sha256').update(canonicalize(original)!).digest('hex');
+  const validator = () => createSchemaToolHandlers().get('validate_json')!;
+
+  it.each([510, 650])('rejects the browser-observed reconstruction of 500 entries as %i before fetching a schema', async (count) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const reconstructed = { ...original, ext: { reproduction_padding: Array(count).fill('x'.repeat(60)) } };
+    await expect(validator()({ json: reconstructed, expected_json_sha256: sourceHash }))
+      .rejects.toThrow('JSON integrity mismatch');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts original parsed content despite whitespace and object key order changes', async () => {
+    const source = '{\n"ext":{"label":"café","b":[3,2,1],"a":1},"authoritative_location":"https://publisher.example.com/adagents.json"\n}';
+    const expectedCanonical = '{"authoritative_location":"https://publisher.example.com/adagents.json","ext":{"a":1,"b":[3,2,1],"label":"café"}}';
+    const expected = createHash('sha256').update(expectedCanonical, 'utf8').digest('hex');
+    const parsed = JSON.parse(source);
+    const received = { authoritative_location: parsed.authoritative_location, ext: { a: 1, b: parsed.ext.b, label: parsed.ext.label } };
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ type: 'object' }) })));
+    const result = await validator()({ json: received, schema_path: 'core/integrity-unchanged.json', expected_json_sha256: expected.toUpperCase() });
+    expect(result).toMatch(/^✅ \*\*Valid!\*\* The JSON validates successfully against /);
+    expect(result).toContain(`client-provided RFC 8785 SHA-256 (${expected})`);
+    expect(result).toContain("not the original file's bytes or provenance");
+  });
+
+  it.each(['', 'a'.repeat(63), 'g'.repeat(64), 123, null])('rejects malformed source checksums: %s', async (expected) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(validator()({ json: original, expected_json_sha256: expected }))
+      .rejects.toThrow('64-character hexadecimal SHA-256');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects raw-file SHA-256 rather than mistaking it for a parsed JSON checksum', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const rawHash = createHash('sha256').update(JSON.stringify(original, null, 2) + '\n').digest('hex');
+    await expect(validator()({ json: original, expected_json_sha256: rawHash }))
+      .rejects.toThrow('JSON integrity mismatch');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([{ value: Infinity }, { value: '\ud800' }])('fails closed if guarded JSON cannot be canonicalized: %j', async (json) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(validator()({ json, expected_json_sha256: sourceHash }))
+      .rejects.toThrow('No source integrity or schema validation was confirmed');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, { required: ['missing'] }])('preserves checksum-free callers while marking both schema outcomes as source-unverified: %j', async (schema) => {
+    const schemaPath = schema.required ? 'core/integrity-legacy-invalid.json' : 'core/integrity-legacy-valid.json';
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ type: 'object', ...schema }) })));
+    const result = await validator()({ json: {}, schema_path: schemaPath });
+    expect(result).toMatch(schema.required ? /^❌ \*\*Invalid\.\*\*/ : /^✅ \*\*Valid!\*\*/);
+    expect(result).toContain('Source integrity: unverified');
+    expect(result).toContain('Only the supplied JSON object was validated');
+  });
+});
+
 describe('schema handler version resolution', () => {
   it.each([{ json: [] }, { json: [1] }, { json: 'text' }, { json: 42 }, { json: true }, { json: null }])(
     'rejects top-level arrays and scalar JSON before fetching a schema: $json', async ({ json }) => {
@@ -117,30 +253,30 @@ describe('schema handler version resolution', () => {
     },
   );
 
+  // Derived from the current docs release set so the matrix survives
+  // release-docs snapshots (3.2-beta/3.2-rc retire when 3.2 goes GA).
+  const selectorFor = (canonical: string) => ({ canonical, artifact: DOCS_SCHEMA_RELEASES[canonical] });
   const publicSelectors: Array<{
     selector?: string;
     canonical: string;
     artifact: string;
   }> = [
-    { canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: '3.1', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: 'stable', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: 'current', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: 'latest', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: 'v3', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: DOCS_SCHEMA_RELEASES['3.1'], canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
-    { selector: '3.2-rc', canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
-    { selector: '3.2 rc', canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
-    { selector: '3.2', canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
-    { selector: DOCS_SCHEMA_RELEASES['3.2-rc'], canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
-    { selector: '3.2-beta', canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
-    { selector: '3.2 beta', canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
-    { selector: DOCS_SCHEMA_RELEASES['3.2-beta'], canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
-    { selector: '3.0', canonical: '3.0', artifact: DOCS_SCHEMA_RELEASES['3.0'] },
-    { selector: DOCS_SCHEMA_RELEASES['3.0'], canonical: '3.0', artifact: DOCS_SCHEMA_RELEASES['3.0'] },
-    { selector: '2.5', canonical: '2.5', artifact: DOCS_SCHEMA_RELEASES['2.5'] },
-    { selector: '2.5 (archived)', canonical: '2.5', artifact: DOCS_SCHEMA_RELEASES['2.5'] },
-    { selector: DOCS_SCHEMA_RELEASES['2.5'], canonical: '2.5', artifact: DOCS_SCHEMA_RELEASES['2.5'] },
+    selectorFor(DEFAULT_SCHEMA_VERSION),
+    ...['stable', 'current', 'latest', 'v3'].map((selector) => ({
+      selector,
+      ...selectorFor(DEFAULT_SCHEMA_VERSION),
+    })),
+    ...Object.entries(DOCS_SCHEMA_RELEASES).flatMap(([canonical, artifact]) => [
+      { selector: canonical, ...selectorFor(canonical) },
+      { selector: artifact, ...selectorFor(canonical) },
+      ...(PRERELEASE_SELECTOR.test(canonical)
+        ? [{ selector: canonical.replace('-', ' '), ...selectorFor(canonical) }]
+        : []),
+    ]),
+    // The bare 3.2 line is the stable 3.2 entry once it exists, otherwise its
+    // newest (first-listed) prerelease channel.
+    { selector: '3.2', ...selectorFor(LINE_32_CANONICAL) },
+    { selector: '2.5 (archived)', ...selectorFor('2.5') },
   ];
 
   it('fetches the exact frozen snapshot for the default and every public docs selector', async () => {
@@ -213,10 +349,10 @@ describe('schema handler version resolution', () => {
     const result = await validateJson!({
       json: { $schema: `https://adcontextprotocol.org/schemas/latest/${schemaPath}` },
     });
-    const expectedUrl = `https://adcontextprotocol.org/schemas/${DOCS_SCHEMA_RELEASES['3.1']}/${schemaPath}`;
+    const expectedUrl = `https://adcontextprotocol.org/schemas/${DOCS_SCHEMA_RELEASES[DEFAULT_SCHEMA_VERSION]}/${schemaPath}`;
 
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(expectedUrl);
-    expect(result).toContain(`AdCP 3.1 ${schemaPath} schema`);
+    expect(result).toContain(`AdCP ${DEFAULT_SCHEMA_VERSION} ${schemaPath} schema`);
   });
 
   it('maps older pinned $schema snapshots to their frozen release line', async () => {
@@ -234,7 +370,10 @@ describe('schema handler version resolution', () => {
     const cases = [
       ['3.1.4', DOCS_SCHEMA_RELEASES['3.1']],
       ['3.1.0-rc.15', DOCS_SCHEMA_RELEASES['3.1']],
-      ['3.2.0-beta.1', DOCS_SCHEMA_RELEASES['3.2-beta']],
+      // While the 3.2 channel selectors are live they own these documents;
+      // after GA they fold into the stable 3.2 snapshot.
+      ['3.2.0-beta.1', DOCS_SCHEMA_RELEASES['3.2-beta'] ?? DOCS_SCHEMA_RELEASES['3.2']],
+      ['3.2.0-rc.7', DOCS_SCHEMA_RELEASES['3.2-rc'] ?? DOCS_SCHEMA_RELEASES['3.2']],
       ['3.0.18', DOCS_SCHEMA_RELEASES['3.0']],
       ['3.0.0-rc.2', DOCS_SCHEMA_RELEASES['3.0']],
       ['2.5.1', DOCS_SCHEMA_RELEASES['2.5']],

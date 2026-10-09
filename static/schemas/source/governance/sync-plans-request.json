@@ -96,6 +96,47 @@
                   },
                   "additionalProperties": false
                 }
+              },
+              "periods": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 366,
+                "description": "Optional budget partition across time. `budget.allocations` partitions the budget by purchase type; `periods` partitions it by time window (monthly or quarterly flights, a launch burst followed by a sustain phase, money that must be spent before a fiscal close). Each period runs from `start` up to but not including `end`. Periods sit inside `flight` and do not overlap; adjacent periods MAY share a boundary, and delivery at the boundary belongs to the later period. `amount` values are denominated in `budget.currency` and sum to at most `budget.total`; any remainder is unallocated and cannot be committed to a dated action until the buyer assigns it to a period. When present, the governance agent derives the period that contains a dated action's whole flight, denies the action when none does or when the commitment would exceed the period's `amount`, and returns the matched `budget_period_id` on `check_governance`. The existing flight, `budget.total`, and `budget.allocations` checks still apply. A commitment without dates counts against `budget.total` and its purchase-type allocation only. When absent, behavior is unchanged: equivalent to one period covering the whole flight with the whole budget. At most 366 periods (enough for a daily split of a year). A re-sync is rejected with `VALIDATION_ERROR` when it leaves an existing dated commitment outside every period or sets a period's `amount` below what is already committed to it. See the sync_plans task reference for the normative encoding rules.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "budget_period_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[A-Za-z0-9_.:-]+$",
+                      "description": "Identifier for this period, unique within the plan and stable across syncs. Buyers MAY echo it as `budget_period_id` on `check_governance` to assert which period a buy belongs to.",
+                      "x-entity": "governance_budget_period"
+                    },
+                    "start": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Period start (ISO 8601), inclusive."
+                    },
+                    "end": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Period end (ISO 8601), exclusive. MUST be later than `start`."
+                    },
+                    "amount": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Maximum budget committed to dated actions whose flight falls in this period, in `budget.currency`."
+                    }
+                  },
+                  "required": [
+                    "budget_period_id",
+                    "start",
+                    "end",
+                    "amount"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "required": [

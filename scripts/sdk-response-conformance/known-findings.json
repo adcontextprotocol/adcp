@@ -1,20 +1,20 @@
 [
   {
-    "sdk": {"package":"@adcp/sdk","version":"14.0.0-rc.40"},
+    "sdk": {"package":"@adcp/sdk","version":"14.2.0"},
     "protocol": {
-      "version": "3.2.0-rc.3",
-      "wire_selector": "3.2-rc.3",
-      "sha256": "fe6f93f08c580b74e58b9edecb6d2f01888c75de73a1114d0333d88f32e3bb01",
-      "manifest": "dist/schemas/3.2.0-rc.3/manifest.json"
+      "version": "3.2.1",
+      "wire_selector": "3.2",
+      "sha256": "dc2cd5fdabf02c12c0c8cc25e5df6d00904c01f34c0bbdc1d7a4eb19f5dc38ce",
+      "manifest": "dist/schemas/3.2.1/manifest.json"
     },
     "summary": {
-      "cases": 124,
-      "dispatched": 124,
+      "cases": 125,
+      "dispatched": 125,
       "skipped": 0,
       "cases_with_findings": 1,
-      "schema_valid": 123,
+      "schema_valid": 124,
       "schema_invalid": 1,
-      "semantics_passed": 124,
+      "semantics_passed": 125,
       "manifest_tools": 78,
       "advertised_tools": 3,
       "tools_with_fixtures": 2,

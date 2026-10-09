@@ -28,21 +28,59 @@ export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
  */
 export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
 
-/** Current published candidate schema bundle shipped by the server. */
-export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-rc.3' as const;
+/**
+ * Newest 3.2 schema bundle the server ships (release-precision wire value).
+ * @adcp/sdk 14.0.0 ships the 3.2 GA bundle (3.2.1, wire value `'3.2'`), so
+ * the current version is the release line itself; the release-line pin below
+ * derives from it.
+ */
+export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2' as const;
+
+type AdcpReleaseLine<V extends string> = V extends `${infer Major}.${infer Minor}-${string}`
+  ? `${Major}.${Minor}`
+  : V;
+
+function adcpReleaseLine<V extends string>(version: V): AdcpReleaseLine<V> {
+  return version.replace(/-.*$/, '') as AdcpReleaseLine<V>;
+}
+
+/**
+ * Release-precision line (`MAJOR.MINOR`) of the current bundle. It is
+ * advertised in `supported_versions` and served exactly, so a GA `"3.2"` pin
+ * is answered from the newest 3.2 bundle. Without it the resolver would
+ * downshift `"3.2"` to 3.1, because release pins never downshift onto a
+ * prerelease (docs/reference/versioning.mdx).
+ */
+export const TRAINING_AGENT_CURRENT_ADCP_RELEASE = adcpReleaseLine(TRAINING_AGENT_CURRENT_ADCP_VERSION);
 /** First released schema checkpoint containing get_reporting_status. */
 export const REPORTING_STATUS_ADCP_VERSION = '3.2-beta.10' as const;
 /** First candidate checkpoint containing Reliable Reporting 1.0. */
 export const RELIABLE_REPORTING_ADCP_VERSION = '3.2-rc.1' as const;
 
-/** Release checkpoints the reference training agent can serve. */
-export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = [
+/**
+ * Last 3.2 release candidate. @adcp/sdk 14.0.0 packages only the 3.2 GA
+ * schema bundle, so the training agent registers the committed
+ * dist/schemas/3.2.0-rc.7 bundle itself (schema-compat.ts) to keep exact
+ * `"3.2-rc.7"` pins served on SDK-dispatched tools.
+ */
+export const TRAINING_AGENT_RETAINED_RC_ADCP_VERSION = '3.2-rc.7' as const;
+
+/**
+ * Release checkpoints the reference training agent can serve, oldest first.
+ * `'3.2-rc.7'` stays listed as an exact prerelease pin after the GA bump so
+ * pinned docs, snapshots and learner scripts keep resolving during the
+ * transition. Deduplicated so the GA bump (current === release line) leaves a
+ * single `'3.2'` entry.
+ */
+export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS: readonly string[] = Object.freeze([...new Set<string>([
   '3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6',
   '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14',
   '3.1-rc.15', '3.1', SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION,
-  '3.2-rc.0',
+  // Explicit, not redundant: keeps the exact rc.7 pin listed after the GA bump.
+  '3.2-rc.0', TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
-] as const;
+  TRAINING_AGENT_CURRENT_ADCP_RELEASE,
+])]);
 export const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0' as const;
 
 export const PROPOSAL_NEGOTIATION_PROFILES = [
@@ -88,6 +126,43 @@ export function supportsSellerGovernanceDiscovery(servedVersion: string | undefi
   return atLeastAdcpVersion(servedVersion, SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION);
 }
 
+/** First served checkpoint whose media-buy features carry the structured
+ * bidding_policy capability object (older bundles only allow booleans). */
+export const BIDDING_POLICY_CAPABILITY_ADCP_VERSION = '3.2-beta.6' as const;
+
+export function supportsBiddingPolicyCapability(servedVersion: string | undefined): boolean {
+  return atLeastAdcpVersion(servedVersion, BIDDING_POLICY_CAPABILITY_ADCP_VERSION);
+}
+
+/** The canonical bidding policies the training agent preserves, advertised as
+ * media_buy.features.bidding_policy on 3.2 responses:
+ * - media-buy scope, fixed allocation: cost_per (cap, target), the policy the
+ *   outcome_target planner answers cost targets with;
+ * - package scope, fixed allocation: bid_amount and max_bid, which the agent
+ *   has long accepted on buy_products purchases, preserves on readback, and
+ *   submits as the package bid on auction-priced options (a max_bid is bid
+ *   at its ceiling).
+ * create_media_buy and buy_products reject canonical policies outside it. */
+export const TRAINING_BIDDING_POLICY_CAPABILITY = {
+  media_buy: {
+    fixed: {
+      modes: ['cost_per'],
+      cost_per_strengths: ['cap', 'target'],
+    },
+  },
+  package: {
+    fixed: {
+      modes: ['bid_amount', 'max_bid'],
+    },
+  },
+} as const;
+
+/** Event-goal target kinds the training agent binds, advertised as
+ * media_buy.conversion_tracking.supported_targets on 3.1+ responses. cost_per
+ * is the criteria.outcome_target cost target the planner binds to an event
+ * source; the planner rejects an event-goal cost target when it is absent. */
+export const TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS = ['cost_per'] as const;
+
 /** Reliable Reporting 1.0 is available only from its matching RC.1 candidate. */
 export function supportsReliableReporting(servedVersion: string | undefined): boolean {
   return atLeastAdcpVersion(servedVersion, RELIABLE_REPORTING_ADCP_VERSION);
@@ -132,6 +207,21 @@ export interface TrainingContext {
    * mapping. Never populate this from request arguments or principal text.
    */
   authenticatedAgentUrl?: string;
+  /**
+   * Set when the caller authenticated to the governance tenant with a minted
+   * sandbox governance-agent credential (governance-agent-credentials.ts).
+   * `agentUrl` equals `authenticatedAgentUrl`; `nonce` scopes the credential
+   * to the plans of one hosted run. Server-derived only.
+   */
+  governanceAgentCredential?: Readonly<{ agentUrl: string; nonce: string }>;
+  /**
+   * Set when the caller authenticated to the governance tenant with a minted
+   * hosted-grader credential (governance-agent-credentials.ts). `agentUrl` is
+   * the fixed hosted-grader buyer agent and equals `authenticatedAgentUrl`;
+   * `nonce` scopes the credential to the plans of one hosted run.
+   * Server-derived only.
+   */
+  hostedGraderCredential?: Readonly<{ agentUrl: string; nonce: string }>;
   /** Exact trusted partition used by the SDK task registry. */
   taskRegistryScope?: Readonly<{ registryNamespace: string; accountId: string; ownerScope: string }>;
   /** Validated wire input before SDK account extraction; used only to verify
@@ -172,6 +262,13 @@ export interface TrainingContext {
    * `/mcp-strict-required` uses `'required'`; `/mcp-strict-forbidden` uses `'forbidden'`.
    */
   digestMode?: 'either' | 'required' | 'forbidden';
+  /**
+   * Route verifies under the AdCP 3.0/3.1 legacy request-signing profile even
+   * though its digest mode is `'required'` (`/mcp-strict-required-legacy`).
+   * Such a route advertises only pre-3.2 releases. Set only by the trusted
+   * route, never from request input.
+   */
+  legacySigningProfile?: boolean;
 }
 
 export interface ShowSpecial {
@@ -336,6 +433,10 @@ export interface ComplyDeliveryAccumulator {
   plays?: number;
   /** Latest DOOH delivery detail block injected by simulate_delivery. */
   doohMetrics?: Record<string, unknown>;
+  /** Property-grain rows injected by simulate_delivery; echoed verbatim as by_property. */
+  propertyDelivery?: Array<Record<string, unknown>>;
+  /** Installment x property rows injected by simulate_delivery; echoed verbatim as by_installment_property. */
+  installmentPropertyDelivery?: Array<Record<string, unknown>>;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
   conversionValue?: number;
@@ -498,6 +599,9 @@ export interface SessionState {
   /** Caller-scoped agent-level capability-change subscribers. Values retain
    * write-only credentials; read responses redact them. */
   agentNotificationConfigs: Map<string, Record<string, unknown>>;
+  /** Caller-scoped principal documents (reporting destinations, declarations)
+   * keyed by the stable caller key. See principal.ts. */
+  principalConfigurations: Map<string, Record<string, unknown>>;
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
   signalActivations: Map<string, SignalActivationState>;
@@ -930,6 +1034,20 @@ export interface GovernanceDelegation {
   expiresAt?: string;
 }
 
+/** One `budget.periods[]` entry: a half-open `[start, end)` window with its own amount. */
+export interface GovernanceBudgetPeriod {
+  budgetPeriodId: string;
+  start: string;
+  end: string;
+  amount: number;
+}
+
+/** Resolved flight of a dated governed action, as half-open `[start, end)`. */
+export interface GovernanceActionFlight {
+  start: string;
+  end: string;
+}
+
 export interface GovernancePlanState {
   planId: string;
   /** Authenticated buyer agent that synchronized and owns this plan. */
@@ -946,6 +1064,8 @@ export interface GovernancePlanState {
     accountingMode: 'gross_commitment' | 'verified_net_cost';
     perSellerMaxPct?: number;
     allocations?: Record<string, { amount?: number; maxPct?: number }>;
+    /** Time partition of the budget, sorted by start. Absent when the plan has no periods. */
+    periods?: GovernanceBudgetPeriod[];
   };
   humanReviewRequired: boolean;
   humanReviewAutoFlippedBy: string[];
@@ -1033,6 +1153,12 @@ export interface GovernanceCheckState {
   /** Budget approved from the governance agent's own evaluated input. */
   authorizedBudget?: number;
   authorizedCurrency?: string;
+  /** Flight the approved action was evaluated against; recorded on the ledger at settlement. */
+  authorizedFlight?: GovernanceActionFlight;
+  /** Budget period derived for this check; echoed as `budget_period_id`. */
+  budgetPeriodId?: string;
+  /** media_buy_id this check was bound to (modification payload or planned_delivery). */
+  mediaBuyId?: string;
   phase?: string;
   findings: GovernanceFinding[];
   conditions?: GovernanceCondition[];
@@ -1092,6 +1218,10 @@ export interface GovernanceOutcomeState {
   sellerReference?: string;
   outcomeType: 'completed' | 'failed' | 'delivery';
   committedBudget: number;
+  /** Flight of the settled action; places its commitment in a budget period. */
+  flight?: GovernanceActionFlight;
+  /** media_buy_id the settled action was bound to, when a check carried one. */
+  mediaBuyId?: string;
   /** Caller-reported amount retained for reconciliation, never ledger authority. */
   reportedCommittedBudget?: number;
   idempotencyKey?: string;

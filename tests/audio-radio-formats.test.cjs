@@ -230,15 +230,20 @@ test('audio-only DOOH example preserves venue context and canonical audio semant
   assert.equal(audioDistributionTypes.enum.includes('in_venue_stream'), false);
 });
 
-test('radio guide is present in the 3.2 beta documentation navigation', () => {
+test('radio guide is present in every 3.2 documentation navigation', () => {
+  // Selectors come from docs.json: 3.2-beta/3.2-rc before GA, 3.2 after the
+  // release-docs snapshot retires the preview channels.
   const docsConfig = readJson(path.join(ROOT, 'docs.json'));
-  const betaNavigation = docsConfig.navigation.versions.find(
-    version => version.version === '3.2-beta'
+  const line32Navigations = docsConfig.navigation.versions.filter(
+    version => /^3\.2(?:-|$)/.test(version.version)
   );
 
-  assert.ok(betaNavigation, '3.2-beta navigation must exist');
-  assert.match(
-    JSON.stringify(betaNavigation),
-    /dist\/docs\/3\.2\.0-beta\.\d+\/creative\/channels\/radio/
-  );
+  assert.ok(line32Navigations.length > 0, 'docs.json must expose a 3.2 navigation');
+  for (const navigation of line32Navigations) {
+    assert.match(
+      JSON.stringify(navigation),
+      /"dist\/docs\/3\.2\.[^/"]+\/creative\/channels\/radio"/,
+      `${navigation.version} navigation must include the radio guide`
+    );
+  }
 });

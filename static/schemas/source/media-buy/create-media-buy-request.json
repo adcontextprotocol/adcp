@@ -139,7 +139,7 @@
           "$ref": "/schemas/core/budget-allocation.json"
         }
       ],
-      "description": "How budget is allocated across explicit packages. Omit for legacy fixed allocation. In proposal mode the committed proposal supplies this configuration and callers MUST omit it here."
+      "description": "How budget is allocated across explicit packages. Omission means fixed allocation (legacy-compatible). Buyer agents SHOULD send budget_allocation explicitly ({mode: \"fixed\"} or seller_optimized) rather than rely on omission, and when the principal's instruction does not determine whether the budget is one shared pool across packages or split per package, SHOULD ask the principal rather than guess. seller_optimized requires advertised media_buy.features.seller_optimized_budget; inside it, package budget caps, min_spend_target, and package pacing each require their own advertised sub-capability (seller_optimized_package_budgets, seller_optimized_min_spend_targets, seller_optimized_package_pacing), otherwise the request is rejected with UNSUPPORTED_FEATURE before any over-subscription validation. In proposal mode the committed proposal supplies this configuration and callers MUST omit it here."
     },
     "packages": {
       "type": "array",
@@ -218,7 +218,7 @@
     },
     "pacing": {
       "$ref": "/schemas/enums/pacing.json",
-      "description": "Aggregate pacing strategy for the media-buy budget across the media-buy flight. This controls how much the buy spends over time. Package pacing is subordinate and influences which package receives the aggregate spend; package pacing MUST NOT cause aggregate delivery to exceed this strategy. Defaults to even when total_budget is present. When executing a proposal that carries pacing, omit this field or send the identical value; the seller MUST reject a conflicting override with TERMS_REJECTED."
+      "description": "Aggregate pacing strategy for the media-buy budget across the media-buy flight. This controls how much the buy spends over time. Package pacing is subordinate and influences which package receives the aggregate spend; package pacing MUST NOT cause aggregate delivery to exceed this strategy. Defaults to even when total_budget is present. When executing a proposal that carries pacing, omit this field or send the identical value; the seller MUST reject a conflicting override with TERMS_REJECTED. In a seller-optimized buy, a seller declaring media_buy.features.seller_optimized_budget MUST accept omission and `even`; it MAY reject `asap` or `front_loaded` with UNSUPPORTED_FEATURE (error.field `pacing`) before any provider mutation and MUST NOT silently coerce them to `even`. Pacing carried by the seller's own committed proposal is not subject to that rejection. Fixed-allocation semantics are unchanged."
     },
     "bidding": {
       "allOf": [
@@ -257,7 +257,7 @@
         "authentication": {
           "type": "object",
           "deprecated": true,
-          "description": "Legacy authentication configuration for webhook delivery (A2A-compatible). Opts the receiver into Bearer or HMAC-SHA256 signing. Both schemes are deprecated; the preferred signing profile for new integrations is RFC 9421, where the seller signs with a key published at its brand.json agents[] entry and the buyer verifies against the seller's JWKS — no shared secret crosses the wire (see docs/building/implementation/security.mdx#webhook-callbacks). This field is required in AdCP 3.x; the requirement is removed in AdCP 4.0 when the default RFC 9421 path becomes the only path.",
+          "description": "Legacy authentication configuration for webhook delivery (A2A-compatible). Opts the receiver into Bearer or HMAC-SHA256 signing. Both schemes are deprecated; the preferred signing profile for new integrations is RFC 9421, where the seller signs with a key published at its brand.json agents[] entry and the buyer verifies against the seller's JWKS — no shared secret crosses the wire (see docs/building/by-layer/L1/security.mdx#webhook-callbacks). This field is required in AdCP 3.x; the requirement is removed in AdCP 4.0 when the default RFC 9421 path becomes the only path.",
           "properties": {
             "schemes": {
               "type": "array",

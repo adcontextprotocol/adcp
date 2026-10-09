@@ -26,6 +26,64 @@
     return;
   }
 
+  // Standalone standard sites (brandjson.org, trustjson.org) get neutral
+  // chrome: the standard's own wordmark and links, with AgenticAdvertising.org
+  // credited as steward rather than as the site owner.
+  if (window.__ADCP_SITE__ === 'brandjson' || window.__ADCP_SITE__ === 'trustjson') {
+    renderStandaloneChrome(window.__ADCP_SITE__);
+    return;
+  }
+
+  function renderStandaloneChrome(site) {
+    const sites = {
+      brandjson: {
+        name: 'brand.json',
+        links: [
+          { href: '/builder', label: 'Builder' },
+          { href: '/spec', label: 'Specification' },
+          { href: '/schemas/v3/brand.json', label: 'Schema' },
+          { href: 'https://github.com/adcontextprotocol/adcp', label: 'GitHub' },
+        ],
+      },
+      trustjson: {
+        name: 'trust.json',
+        links: [
+          { href: 'https://github.com/adcontextprotocol/adcp/issues/7809', label: 'RFC' },
+          { href: 'https://github.com/adcontextprotocol/adcp/pull/7819', label: 'Draft spec' },
+          { href: 'https://github.com/adcontextprotocol/adcp', label: 'GitHub' },
+        ],
+      },
+    };
+    const cfg = sites[site];
+    const style = `
+      .std-site-nav { position: fixed; top: 0; left: 0; right: 0; height: var(--nav-height); z-index: 100;
+        display: flex; align-items: center; justify-content: space-between; padding: 0 var(--space-5);
+        background: var(--color-bg-card); border-bottom: 1px solid var(--color-border); }
+      .std-site-nav a { color: var(--color-text-secondary); text-decoration: none; font-size: var(--text-sm); }
+      .std-site-nav a:hover { color: var(--color-text); }
+      .std-site-wordmark { font-family: var(--font-mono); font-weight: var(--font-bold); font-size: var(--text-lg); color: var(--color-text) !important; }
+      .std-site-links { display: flex; gap: var(--space-5); }
+      .std-site-footer { border-top: 1px solid var(--color-border); padding: var(--space-6) var(--space-5); background: var(--color-bg-card);
+        text-align: center; color: var(--color-text-muted); font-size: var(--text-sm); }
+      .std-site-footer a { color: var(--color-text-secondary); }
+      @media (max-width: 640px) { .std-site-links { gap: var(--space-3); } }
+    `;
+    const links = cfg.links.map(l => `<a href="${l.href}">${l.label}</a>`).join('');
+    const navHTML = `<nav class="std-site-nav" aria-label="${cfg.name}"><a class="std-site-wordmark" href="/">${cfg.name}</a><div class="std-site-links">${links}</div></nav>`;
+    const footerHTML = `<footer class="std-site-footer">${cfg.name} is an open standard stewarded by <a href="https://agenticadvertising.org">AgenticAdvertising.org</a>.</footer>`;
+    function mount() {
+      document.head.insertAdjacentHTML('beforeend', `<style>${style}</style>`);
+      const navPlaceholder = document.getElementById('adcp-nav');
+      if (navPlaceholder) navPlaceholder.outerHTML = navHTML;
+      else document.body.insertAdjacentHTML('afterbegin', navHTML);
+      const footerPlaceholder = document.getElementById('adcp-footer');
+      if (footerPlaceholder) footerPlaceholder.outerHTML = footerHTML;
+      else if (!document.querySelector('footer')) document.body.insertAdjacentHTML('beforeend', footerHTML);
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+    else mount();
+  }
+
   function escapeHtml(str) {
     if (!str) return '';
     const div = document.createElement('div');

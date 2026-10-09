@@ -10,6 +10,8 @@ const CERTIFICATION_CONTEXT = /\b(?:certification|capstone|credential|certificat
 const COMPLETION = /\b(?:completed?|concludes?|concluded|finished|mastered|passed|earned|certified|awarded|issued|done|locked in|in the books|wrapped up|wraps? up|you(?:'re| are) through)\b/gi;
 const CREDENTIAL = /\b(?:credential|certificate|badge|certified|certification)\b/i;
 const ESCALATION_CLAIM = /\b(?:I(?:'ve| have| just| will|'ll| am going to|'m going to|'m| am)?|we(?:'ve| have| will|'ll| are going to|'re going to|'re| are)?)\s+(?:(?:will|have|already|just)\s+)?(flag(?:ged|ging)?|escalat(?:e|ed|ing)|notif(?:y|ied|ying)|rais(?:e|ed|ing)|fil(?:e|ed|ing)|creat(?:e|ed|ing)|open(?:ed|ing)?|send(?:ing)?|sent|pass(?:ed|ing)?|forward(?:ed|ing)?|hand(?:ed|ing)?|contact(?:ed|ing)?|reach(?:ed|ing)? out)\b/i;
+const RESOLUTION_CLAIM = /\b(?:I(?:'ve| have| just)?\s+(?:resolved|closed)\s+(?:the\s+)?(?:escalation|ticket|support request)|(?:escalation|ticket|support request)(?: #?\d+)?\s+(?:(?:has been|was|is|marked as)\s+)?(?:resolved|closed|wont_do))\b/gi;
+const USER_NOTIFICATION_CLAIM = /\b(?:I(?:'ve| have| just)?\s+(?:notified|emailed)|(?:user|requester|member)\s+(?:has been|was|is)\s+(?:notified|emailed))\b/i;
 const SUPPORT_OBJECT = /\b(?:ticket|support request|team|admins?|support|github issue)\b/i;
 const SUPPORT_DESTINATION = /\b(?:ticket|support request|github issue)\b|\b(?:for|to|with)\s+(?:(?:the|our|your|support)\s+){0,2}(?:team|admins?|support)\b/i;
 const PASSIVE_ESCALATION = /\b(?:(?:team|admins?) (?:has been|have been|will be|is being|was|were) (?:notified|alerted)|(?:ticket|support request|escalation)(?: #\d+)? (?:has been |was |is |will be )?(?:created|filed|opened|raised|saved)|(?:this|it|issue|request|problem|bug) (?:has been|was|will be|is being) (?:flagged|escalated|forwarded|passed|sent))\b/gi;
@@ -125,13 +127,18 @@ function hasOnlyGenericCredentialReferences(text: string): boolean {
   });
 }
 
-function supportReceipt(executions: readonly ToolExecution[]): { id: number; notified: boolean } | null {
+function supportReceipt(executions: readonly ToolExecution[], operation: 'create' | 'resolve'): { id: number; notified: boolean; status?: 'resolved' | 'wont_do'; channel?: 'email' | 'slack' } | null {
   for (const execution of [...executions].reverse()) {
-    if (execution.tool_name !== 'escalate_to_admin' || execution.is_error) continue;
+    if (execution.tool_name !== (operation === 'create' ? 'escalate_to_admin' : 'resolve_escalation') || execution.is_error) continue;
     try {
       const receipt = JSON.parse(execution.result);
       if (receipt?.success === true && Number.isSafeInteger(receipt.escalation_id) && receipt.escalation_id > 0
         && typeof receipt.notification_sent === 'boolean') {
+        if (operation === 'resolve') {
+          if (receipt.status !== 'resolved' && receipt.status !== 'wont_do') continue;
+          if (receipt.notification_sent && !['email', 'slack'].includes(receipt.notification_channel)) continue;
+          return { id: receipt.escalation_id, notified: receipt.notification_sent, status: receipt.status, channel: receipt.notification_channel };
+        }
         return { id: receipt.escalation_id, notified: receipt.notification_sent };
       }
     } catch { /* Legacy prose is not a persisted receipt. */ }
@@ -214,13 +221,18 @@ function enforceProseOutcomeClaims(
   conversationContext: string,
 ): { text: string; reason: string | null } {
   const evidence = certificationEvidence(executions);
-  const support = supportReceipt(executions);
+  const support = supportReceipt(executions, 'create');
+  const resolution = supportReceipt(executions, 'resolve');
+  const savedSupport = support
+    ? `Support request #${support.id} is saved.${support.notified ? ' The team notification was sent.' : ' I could not confirm a team notification.'}`
+    : DIRECT_SUPPORT;
   const certificationContext = CERTIFICATION_CONTEXT.test(conversationContext)
     || executions.some(execution => CERTIFICATION_TOOLS.has(execution.tool_name));
   const reasons = new Set<string>();
   let certificationReplaced = false;
   let certificationRendered = false;
   let supportReplaced = false;
+  let resolutionReplaced = false;
   // Separate independent clauses before binding objects to predicates. A next
   // module mentioned in a membership/next-step clause is not a completed one.
   const parts = text.split(/((?<=[.!?])\s+|\n+|;\s*|,\s*(?=(?:but|so)\b)|\s+(?=and (?:module\s+)?[A-Z]{1,2}\d{1,2}\s+(?:requires|needs)\b))/);
@@ -229,10 +241,35 @@ function enforceProseOutcomeClaims(
     if (index % 2 === 1) { output.push(part); continue; }
     const plain = part.replace(/\[([^\[\]\n]*)\]\([^\[\]\s()]+\)/g, '$1')
       .replace(/[*_`]/g, '').replace(/[’‘]/g, "'");
+    const resolutionClaim = [...plain.matchAll(RESOLUTION_CLAIM)].some(match => {
+      const prefix = plain.slice(0, match.index);
+      return !/\b(?:no|not|never)\s+(?:(?:a|the|any)\s+)?$/i.test(prefix)
+        && !/\b(?:can't|cannot|couldn't|haven't|have not)\s+(?:confirm|verify|say)\s+(?:(?:that|whether)\s+)?(?:(?:the|a)\s+)?$/i.test(prefix)
+        && !/\b(?:not sure|unclear)\s+(?:(?:that|whether|if)\s+)?(?:(?:the|a)\s+)?$/i.test(prefix)
+        && !/(?:^|[,;:]\s*)\s*(?:if|whether|when|once|until)\s+(?:(?:the|a)\s+)?$/i.test(prefix);
+    });
+    const userNotification = USER_NOTIFICATION_CLAIM.test(plain)
+      && /\b(?:user|requester|member)\b/i.test(plain)
+      && (resolution !== null || /\b(?:escalation|ticket|support request)\b/i.test(`${conversationContext}\n${plain}`));
+    if (userNotification && !resolutionClaim && !resolution && support) {
+      // A creation receipt confirms the saved request/team notification, not
+      // notification of the requester. Preserve that independent success.
+      if (!supportReplaced) output.push(savedSupport);
+      output.push(' I could not confirm a notification to the user.');
+      supportReplaced = true;
+      reasons.add('Unconfirmed support notification');
+      continue;
+    }
+    if (resolutionClaim || userNotification) {
+      if (!resolutionReplaced) output.push(resolution
+        ? `Escalation #${resolution.id} is marked as ${resolution.status}.${resolution.notified ? ` The user notification was sent via ${resolution.channel === 'email' ? 'email' : 'Slack DM'}.` : ' I could not confirm a user notification.'}`
+        : "I haven't confirmed a saved resolution or user notification for this escalation.");
+      if (!resolution) reasons.add('Unconfirmed support resolution');
+      resolutionReplaced = true;
+      continue;
+    }
     if (hasSupportClaim(plain, `${conversationContext}\n${text}${support ? '\nSupport request receipt.' : ''}`)) {
-      if (!supportReplaced) output.push(support
-        ? `Support request #${support.id} is saved.${support.notified ? ' The team notification was sent.' : ' I could not confirm a team notification.'}`
-        : DIRECT_SUPPORT);
+      if (!supportReplaced) output.push(savedSupport);
       supportReplaced = true;
       if (!support) reasons.add('Unconfirmed support escalation');
       continue;
@@ -271,5 +308,5 @@ function enforceProseOutcomeClaims(
     }
     output.push(part);
   }
-  return { text: reasons.size > 0 || supportReplaced || certificationRendered ? output.join('') : text, reason: [...reasons].join('; ') || null };
+  return { text: reasons.size > 0 || supportReplaced || resolutionReplaced || certificationRendered ? output.join('') : text, reason: [...reasons].join('; ') || null };
 }

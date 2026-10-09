@@ -20,7 +20,12 @@ import {
   type AccountStore,
 } from '@adcp/sdk/server';
 import { handleGetSignals, handleActivateSignal } from './task-handlers.js';
-import { syncAccountsUpsert } from './v6-account-helpers.js';
+import {
+  syncAccountsUpsert,
+  accountRefForResolution,
+  assertDiscoveryAccountProvisioned,
+  isIdentitylessControllerRef,
+} from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { taskRegistryScopeFromContext } from './task-registry-scope.js';
@@ -45,60 +50,76 @@ export interface TrainingMeta {
  * inside handlers. v6 requires `accounts.resolve()` on every request, so we
  * synthesize an Account from the wire reference (or from auth for no-account
  * tools like `provide_performance_feedback` / `list_creative_formats`).
+ * An unprovisioned natural key on `get_signals` is ACCOUNT_NOT_FOUND — see
+ * `assertDiscoveryAccountProvisioned`.
  */
-const trainingAccounts: AccountStore<TrainingMeta> = {
-  resolution: 'explicit',
-  resolve: async (ref, ctx) => {
-    const principal = ctx?.authInfo?.clientId;
-    const authInfo = {
-      kind: 'api_key' as const,
-      ...(principal && { principal }),
-    };
-    if (ref == null) {
+function trainingAccountStore(
+  { enforceDiscoveryProvisioning }: { enforceDiscoveryProvisioning: boolean },
+): AccountStore<TrainingMeta> {
+  return {
+    resolution: 'explicit',
+    resolve: async (ref, ctx) => {
+      const principal = ctx?.authInfo?.clientId;
+      const authInfo = {
+        kind: 'api_key' as const,
+        ...(principal && { principal }),
+      };
+      if (ref == null) {
+        return {
+          id: 'public_sandbox',
+          name: 'Public Sandbox',
+          status: 'active',
+          mode: 'sandbox',
+          ctx_metadata: {},
+          sandbox: true,
+          authInfo: principal ? authInfo : { kind: 'public' as const },
+        };
+      }
+      const toolName = (ctx as { toolName?: string } | undefined)?.toolName;
+      if (isIdentitylessControllerRef(ref, toolName)) return null;
+      const canonical = canonicalizeAccountRef(accountRefForResolution(ref, toolName));
+      if (enforceDiscoveryProvisioning) {
+        await assertDiscoveryAccountProvisioned(canonical, toolName, principal);
+      }
+      const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
+        ? { account_id: canonical.account_id }
+        : {
+            brand: canonical.brand,
+            operator: canonical.operator,
+            ...(canonical.operator_unit && { operator_unit: canonical.operator_unit }),
+            ...(canonical.currency && { currency: canonical.currency }),
+            ...(canonical.timezone && { timezone: canonical.timezone }),
+            ...(canonical.sandbox && { sandbox: true }),
+          };
+      const brandDomain = canonical.kind === 'natural' ? canonical.brand.domain : undefined;
+      const operator = canonical.kind === 'natural' ? canonical.operator : undefined;
+      const id = canonical.kind === 'account_id'
+        ? canonical.account_id
+        : syntheticAccountIdFromRef(accountRef);
       return {
-        id: 'public_sandbox',
-        name: 'Public Sandbox',
+        id,
+        name: brandDomain ?? id,
         status: 'active',
         mode: 'sandbox',
-        ctx_metadata: {},
-        sandbox: true,
-        authInfo: principal ? authInfo : { kind: 'public' as const },
-      };
-    }
-    const canonical = canonicalizeAccountRef(ref);
-    const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
-      ? { account_id: canonical.account_id }
-      : {
-          brand: canonical.brand,
-          operator: canonical.operator,
-          ...(canonical.operator_unit && { operator_unit: canonical.operator_unit }),
-          ...(canonical.currency && { currency: canonical.currency }),
-          ...(canonical.timezone && { timezone: canonical.timezone }),
-          ...(canonical.sandbox && { sandbox: true }),
-        };
-    const brandDomain = canonical.kind === 'natural' ? canonical.brand.domain : undefined;
-    const operator = canonical.kind === 'natural' ? canonical.operator : undefined;
-    const id = canonical.kind === 'account_id'
-      ? canonical.account_id
-      : syntheticAccountIdFromRef(accountRef);
-    return {
-      id,
-      name: brandDomain ?? id,
-      status: 'active',
-      mode: 'sandbox',
-      ...(brandDomain != null && { brand: { domain: brandDomain } }),
-      ...(operator && { operator }),
-      ctx_metadata: {
-        account_ref: accountRef,
-        brand_domain: brandDomain,
+        ...(brandDomain != null && { brand: { domain: brandDomain } }),
         ...(operator && { operator }),
-      },
-      sandbox: true,
-      authInfo,
-    };
-  },
-  upsert: syncAccountsUpsert,
-};
+        ctx_metadata: {
+          account_ref: accountRef,
+          brand_domain: brandDomain,
+          ...(operator && { operator }),
+        },
+        sandbox: true,
+        authInfo,
+      };
+    },
+    upsert: syncAccountsUpsert,
+  };
+}
+
+const trainingAccounts = trainingAccountStore({ enforceDiscoveryProvisioning: true });
+/** The frozen AdCP 3.0 compatibility surface predates the provisioning rule
+ * and exposes no account fixture seeding, so it keeps the synthetic posture. */
+const trainingAccountsThreeZeroCompat = trainingAccountStore({ enforceDiscoveryProvisioning: false });
 
 /**
  * Translate a v5 handler return value into a v6-shaped response.
@@ -194,7 +215,9 @@ export class TrainingPlatform implements DecisioningPlatform<TrainingConfig, Tra
 
   statusMappers = {};
 
-  accounts: AccountStore<TrainingMeta> = trainingAccounts;
+  get accounts(): AccountStore<TrainingMeta> {
+    return this.storyboardCompat?.version === '3.0' ? trainingAccountsThreeZeroCompat : trainingAccounts;
+  }
 
   agentRegistry = trainingBuyerAgentRegistry;
 

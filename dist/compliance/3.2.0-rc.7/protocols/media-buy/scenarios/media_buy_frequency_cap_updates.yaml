@@ -1,0 +1,432 @@
+id: media_buy_seller/media_buy_frequency_cap_updates
+version: "1.0.0"
+title: "Seller replaces, clears, and guards a MediaBuy frequency cap after creation"
+category: media_buy_seller
+summary: "Verifies update_media_buy_frequency_cap availability, root-cap replacement and null clearing without touching package caps, atomic rejection of new_packages that cannot join the shared counter, the resulting-state rule for clearing a cap while adding packages, and ACTION_NOT_ALLOWED once the package mix can no longer change the root cap."
+track: media_buy
+
+requires_capability:
+  path: media_buy.aggregate_frequency_capping
+  present: true
+
+required_tools:
+  - sync_accounts
+  - get_products
+  - create_media_buy
+  - control_media_buy
+  - update_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  media_buy_frequency_cap_readback proves a seller accepts and reads back a
+  root cap. This scenario covers the live-buy half of the contract. A root
+  cap is a distinct field from package targeting state: replacing it through
+  control_media_buy leaves an independent package cap untouched, clearing it
+  with null leaves the buy uncapped, and neither change resets the shared
+  counter. Whether a live buy can change the cap now is decided by
+  update_media_buy_frequency_cap in available_actions.
+
+  Adding a package whose product does not participate in the shared counter
+  is rejected atomically with UNSUPPORTED_FEATURE while the root cap is in
+  force. The check applies to the state the request would produce, so one
+  update that clears the cap and adds the same package succeeds and adds it
+  uncapped. Once a non-participating product is part of the buy, the root cap
+  can no longer change. A seller that omits update_media_buy_frequency_cap
+  from available_actions returns ACTION_NOT_ALLOWED before any capability
+  check; a seller that still advertises the action rejects the incompatible
+  mix with UNSUPPORTED_FEATURE. Either code is conformant.
+
+  The seller must support mid-flight package additions (new_packages through
+  update_media_buy); the addition steps exercise the root-cap rule, not the
+  add_packages right itself.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities: [sells_media, supports_non_guaranteed, frequency_capping]
+  examples:
+    - "Platforms that let a buyer tighten or lift a campaign-wide impression cap mid-flight"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency"
+
+prerequisites:
+  description: "The runner seeds two products that participate in a mutable shared counter (one also accepting independent package caps) and one product without aggregate participation. The seller must accept mid-flight package additions through update_media_buy.new_packages."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "frequency_cap_shared_display_q3"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      overlay_support:
+        frequency_cap: true
+      media_buy_support:
+        frequency_cap: true
+        frequency_cap_constraints:
+          mutable_fields: ["max_impressions"]
+          supported_control_modes: ["max_impressions"]
+          supported_per_units: ["individuals"]
+          max_impressions_constraints:
+            minimum: 1
+            maximum: 10
+          window_constraints:
+            - unit: "campaign"
+              allowed_intervals: [1]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params: { width: 300, height: 250 }
+    - product_id: "frequency_cap_shared_companion_q3"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      media_buy_support:
+        frequency_cap: true
+        frequency_cap_constraints:
+          mutable_fields: ["max_impressions"]
+          supported_control_modes: ["max_impressions"]
+          supported_per_units: ["individuals"]
+          max_impressions_constraints:
+            minimum: 1
+            maximum: 10
+          window_constraints:
+            - unit: "campaign"
+              allowed_intervals: [1]
+      format_options:
+        - format_option_id: "display_300x250_companion"
+          format_kind: "image"
+          params: { width: 300, height: 250 }
+    - product_id: "frequency_cap_unshared_display_q3"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "display_300x250_unshared"
+          format_kind: "image"
+          params: { width: 300, height: 250 }
+  pricing_options:
+    - product_id: "frequency_cap_shared_display_q3"
+      pricing_option_id: "shared_auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.00
+    - product_id: "frequency_cap_shared_companion_q3"
+      pricing_option_id: "shared_companion_auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.25
+    - product_id: "frequency_cap_unshared_display_q3"
+      pricing_option_id: "unshared_auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.10
+
+phases:
+  - id: setup
+    title: "Establish account and discover products with a mutable shared counter"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand: { domain: "acmeoutdoor.example" }
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_updates_sync"
+        context_outputs:
+          - name: account_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: response_schema
+          - check: field_present
+            path: "accounts[0].account_id"
+
+      - id: discover_mutable_shared_products
+        title: "Require participation with a mutable root cap"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_updates_products"
+          buying_mode: "brief"
+          brief: "Display inventory for a two-package buy whose shared cap may change mid-flight."
+          required_media_buy_support:
+            frequency_cap: true
+            frequency_cap_constraints:
+              mutable_fields: ["max_impressions"]
+              supported_per_units: ["individuals"]
+          account:
+            account_id: "$context.account_id"
+        validations:
+          - check: response_schema
+          - check: field_contains
+            path: "products[*].product_id"
+            value: "frequency_cap_shared_display_q3"
+          - check: field_contains
+            path: "products[*].product_id"
+            value: "frequency_cap_shared_companion_q3"
+          - check: array_length
+            path: "products"
+            value: 2
+            description: "Only the two participating products whose root cap can change are returned; the non-participating fixture is excluded"
+          - check: field_contains
+            path: "products[*].media_buy_support.frequency_cap_constraints.mutable_fields[*]"
+            value: "max_impressions"
+            description: "media_buy_support is returned because required_media_buy_support was requested"
+
+  - id: create_and_replace
+    title: "Create a capped buy, then replace the root cap"
+    narrative: |
+      The first package also carries its own independent cap of 5 so the
+      later root-cap changes can prove that field location decides scope:
+      the package counter is neither replaced nor cleared by root changes.
+    steps:
+      - id: create_capped_media_buy
+        title: "Create two packages under one root cap"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand: { domain: "acmeoutdoor.example" }
+          account: { account_id: "$context.account_id" }
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          frequency_cap:
+            max_impressions: 3
+            per: "individuals"
+            window: { interval: 1, unit: "campaign" }
+          packages:
+            - product_id: "frequency_cap_shared_display_q3"
+              pricing_option_id: "shared_auction_cpm"
+              budget: 7500
+              bid_price: 3.00
+              targeting_overlay:
+                frequency_cap:
+                  max_impressions: 5
+                  per: "individuals"
+                  window: { interval: 1, unit: "campaign" }
+            - product_id: "frequency_cap_shared_companion_q3"
+              pricing_option_id: "shared_companion_auction_cpm"
+              budget: 7500
+              bid_price: 3.00
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_updates_create"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+          - name: capped_package_id
+            path: "packages[0].package_id"
+          - name: companion_package_id
+            path: "packages[1].package_id"
+          - name: media_buy_revision
+            path: "revision"
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "frequency_cap.max_impressions"
+            value: 3
+            description: "The accepted root cap is echoed at the response root"
+          - check: field_value
+            path: "packages[0].targeting_overlay.frequency_cap.max_impressions"
+            value: 5
+            description: "The package cap is echoed at its own location"
+
+      - id: read_root_cap_action
+        title: "Read the root-cap action and both caps"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_ids: ["$context.media_buy_id"]
+        validations:
+          - check: response_schema
+          - check: field_contains
+            path: "media_buys[0].available_actions[*].action"
+            value: "update_media_buy_frequency_cap"
+            description: "Every active package's product can change the root cap, so the buy advertises the action"
+          - check: field_value
+            path: "media_buys[0].frequency_cap.max_impressions"
+            value: 3
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.frequency_cap.max_impressions"
+            value: 5
+
+      - id: replace_root_cap
+        title: "Replace the root cap through control_media_buy"
+        task: control_media_buy
+        schema_ref: "media-buy/control-media-buy-request.json"
+        response_schema_ref: "media-buy/control-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/control_media_buy"
+        stateful: true
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_id: "$context.media_buy_id"
+          revision: "$context.media_buy_revision"
+          frequency_cap:
+            max_impressions: 2
+            per: "individuals"
+            window: { interval: 1, unit: "campaign" }
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_updates_replace"
+        context_outputs:
+          - name: media_buy_revision_after_replace
+            path: "revision"
+        validations:
+          - check: response_schema
+          - check: field_present
+            path: "revision"
+            description: "The replacement is a mutating revision"
+
+      - id: read_replaced_root_cap
+        title: "Read back the replaced root cap and the untouched package cap"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_ids: ["$context.media_buy_id"]
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "media_buys[0].frequency_cap.max_impressions"
+            value: 2
+            description: "The root cap was replaced exactly, not clamped"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.frequency_cap.max_impressions"
+            value: 5
+            description: "The independent package cap is unchanged by the root replacement"
+
+  - id: guard_and_clear
+    title: "Guard the shared counter, then clear it while adding a package"
+    steps:
+      - id: reject_non_participating_package
+        title: "Reject adding a product that cannot join the root cap"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_id: "$context.media_buy_id"
+          revision: "$context.media_buy_revision_after_replace"
+          new_packages:
+            - product_id: "frequency_cap_unshared_display_q3"
+              pricing_option_id: "unshared_auction_cpm"
+              budget: 5000
+              bid_price: 3.00
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_updates_reject_add"
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+
+      - id: read_after_rejected_add
+        title: "Rejected addition left the buy unchanged"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_ids: ["$context.media_buy_id"]
+        validations:
+          - check: response_schema
+          - check: array_length
+            path: "media_buys[0].packages"
+            value: 2
+            description: "The whole update was rejected before any mutation"
+          - check: field_value
+            path: "media_buys[0].frequency_cap.max_impressions"
+            value: 2
+
+      - id: clear_root_cap_and_add_package
+        title: "Clear the root cap and add the same product in one update"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        stateful: true
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_id: "$context.media_buy_id"
+          revision: "$context.media_buy_revision_after_replace"
+          frequency_cap: null
+          new_packages:
+            - product_id: "frequency_cap_unshared_display_q3"
+              pricing_option_id: "unshared_auction_cpm"
+              budget: 5000
+              bid_price: 3.00
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_updates_clear_add"
+        context_outputs:
+          - name: media_buy_revision_after_clear
+            path: "revision"
+        validations:
+          - check: response_schema
+          - check: field_absent
+            path: "frequency_cap"
+            description: "A cleared root cap is omitted from the update response"
+
+      - id: read_uncapped_buy
+        title: "Read back the uncapped buy with three packages"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_ids: ["$context.media_buy_id"]
+        validations:
+          - check: response_schema
+          - check: field_absent
+            path: "media_buys[0].frequency_cap"
+            description: "The buy is uncapped after the null clear"
+          - check: array_length
+            path: "media_buys[0].packages"
+            value: 3
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.frequency_cap.max_impressions"
+            value: 5
+            description: "Clearing the root cap does not touch the package counter"
+
+      - id: reject_root_cap_with_non_participating_mix
+        title: "Reject a new root cap once the mix cannot share a counter"
+        task: control_media_buy
+        schema_ref: "media-buy/control-media-buy-request.json"
+        response_schema_ref: "media-buy/control-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/control_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_id: "$context.media_buy_id"
+          revision: "$context.media_buy_revision_after_clear"
+          frequency_cap:
+            max_impressions: 3
+            per: "individuals"
+            window: { interval: 1, unit: "campaign" }
+          idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_updates_reject_recap"
+        validations:
+          - check: error_code
+            allowed_values: ["ACTION_NOT_ALLOWED", "UNSUPPORTED_FEATURE"]
+            description: "The root cap can no longer change: ACTION_NOT_ALLOWED when update_media_buy_frequency_cap is omitted from available_actions, UNSUPPORTED_FEATURE when the seller still advertises it and rejects the mix"

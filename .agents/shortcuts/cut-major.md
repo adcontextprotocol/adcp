@@ -22,11 +22,15 @@ Land a single PR that:
   `whats-new-*.mdx`. **Do NOT hand-write a `## 3.0.0` section in
   `CHANGELOG.md`** — `changeset version` owns that file. Hand-writing it
   creates a duplicate header when the action regenerates the release PR.
-- Updates `docs.json` banner + default version.
-- Updates Mintlify navigation so the stable version label is the final release
-  (`3.0`, `3.1`, etc.), not the RC/beta selector. After the docs snapshot PR
-  lands, the stable selector points at the final `dist/docs/<version>/`
-  snapshot.
+- Updates the `docs.json` banner to GA wording. The default version flip is
+  automated: when the stable release publishes, `release-docs.yml` runs
+  `scripts/update-release-docs-nav.mjs <X.Y.N> <X.Y>`. For a line newer than
+  the current default it makes `X.Y` the only default and only `Latest`
+  entry, pinned to `dist/docs/<X.Y.N>/`; demotes the previous default; removes
+  the `X.Y-rc` / `X.Y-beta` selectors from the picker (their snapshots and
+  redirects stay); repoints clean `/docs/*` aliases; regenerates
+  `llms-current.md`; and rewrites Addie's `DOCS_SCHEMA_RELEASES` from
+  `docs.json`. Review that snapshot PR rather than flipping by hand.
 - Removes any "use N-1 for production" banners.
 - Removes GA-facing RC/beta wording from release notes, versions, what's-new,
   and migration pages. Keep prerelease guidance only in prerelease archive or
@@ -38,18 +42,28 @@ After #1 merges, `changesets/action` regenerates the `changeset-release/main`
 branch and opens/updates the Version Packages PR (title drops the `(rc)`
 suffix, target version is `3.0.0`).
 
-**Audit the consumed changesets** before merge:
+**Audit the consumed changesets** before merge. Run this on the pre-exit
+`main` (before the Version Packages merge deletes them). In exit mode,
+Changesets consumes both the pending `.changeset/*.md` files **and** every
+changeset archived in `.changeset/pre/*.md` during the beta/RC cuts, so the
+audit must cover both:
 
 ```bash
-for f in .changeset/*.md; do
-  name=$(basename "$f" .md)
+for f in .changeset/*.md .changeset/pre/*.md; do
+  [ -e "$f" ] || continue
+  name=${f#.changeset/}; name=${name%.md}
   [ "$name" = "README" ] && continue
   if grep -q '"adcontextprotocol"' "$f" 2>/dev/null; then
     bump=$(grep '"adcontextprotocol"' "$f" | head -1 | sed 's/.*: *//' | tr -d ' ')
     echo "$bump $name"
+  else
+    echo "EMPTY $name"
   fi
 done | sort
 ```
+
+Entries print as `pre/<name>` when they come from the archive. `EMPTY` entries
+carry no protocol bump and still land in the changelog; review them too.
 
 Any changeset describing **website, admin, billing, newsletter, digest, Addie,
 server-infra, migration-only, or operational work** should not exist at all.

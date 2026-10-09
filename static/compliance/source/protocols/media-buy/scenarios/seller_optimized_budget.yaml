@@ -1,9 +1,11 @@
 id: media_buy_seller/seller_optimized_budget
-version: "1.0.0"
+version: "1.1.1"
 title: "Seller accepts and persists a seller-optimized budget across packages"
 category: media_buy_seller
-summary: "Verifies that a seller advertising seller_optimized_budget accepts and persists a shared total with cross-package goals, package caps, a soft minimum-spend target, and two-level pacing. When media-buy cost caps are also advertised, verifies that the control binds to the allocation goal."
+summary: "Verifies that a seller advertising seller_optimized_budget accepts and persists the core shared-budget contract (shared total, cross-package goals, media-buy pacing, allocation echo). Package caps, minimum-spend targets, and package pacing are graded only when their own sub-capability is advertised, and must be rejected with UNSUPPORTED_FEATURE before any over-subscription validation when it is not."
 track: media_buy
+requires:
+  - controller
 
 requires_capability:
   path: media_buy.features.seller_optimized_budget
@@ -19,9 +21,25 @@ invariants:
 
 narrative: |
   A seller-optimized buy has one hard media-buy total and multiple eligible
-  packages. Package budgets are optional hard caps rather than reserved
-  allocations; min_spend_target is a soft preference. The seller allocates
-  the shared total continuously against budget_allocation.optimization_goals.
+  packages. The seller allocates the shared total continuously against
+  budget_allocation.optimization_goals and paces the buy at media-buy level.
+
+  The core phases use only that contract: omitted or even media-buy pacing
+  (a core seller MAY reject asap or front_loaded with UNSUPPORTED_FEATURE, so
+  those values are not graded) and no package budgets, minimum-spend targets,
+  or package pacing. Those package controls are separate
+  sub-capabilities (seller_optimized_package_budgets,
+  seller_optimized_min_spend_targets, seller_optimized_package_pacing). Each
+  has a positive phase gated on its own declaration and two negative phases,
+  one for an explicit false and one for an omitted declaration (exactly one
+  runs for a seller), that require UNSUPPORTED_FEATURE rather than a silent
+  drop. The negative requests are deliberately over-subscribed: an undeclared
+  control is rejected with UNSUPPORTED_FEATURE before any over-subscription
+  validation, and INVALID_REQUEST over-subscription checks apply only to
+  declared controls. The aggregate minimum-spend check is therefore gated on
+  seller_optimized_min_spend_targets; a minimum above its own package cap is
+  graded by media_buy_seller/seller_optimized_min_spend_target_exceeds_package_cap,
+  which needs both package budgets and minimum-spend targets.
 
   The scenario verifies the configuration boundary rather than an internal
   optimizer algorithm: acceptance, aggregate budget and pacing echo, package
@@ -29,7 +47,9 @@ narrative: |
   delivery behavior and does not mutate package caps or the buy revision.
   An optional phase for sellers advertising media-buy cost caps verifies that
   the outcome-cost control binds to the allocation goal, not independently to
-  unrelated package-local goals.
+  unrelated package-local goals. Proposal-derived package pacing is graded by
+  media_buy_seller/seller_optimized_proposal_package_pacing, which needs both
+  proposal support and the package-pacing sub-capability.
 
 agent:
   interaction_model: media_buy_seller
@@ -133,19 +153,20 @@ phases:
             description: "At least two products are available for cross-package allocation"
 
   - id: create_shared_budget_buy
-    title: "Create a seller-optimized buy"
+    title: "Create a seller-optimized buy with only core controls"
     steps:
       - id: create_media_buy_with_shared_budget
-        title: "Delegate allocation across two packages"
+        title: "Delegate allocation across two uncapped packages"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
-          Accept the shared $100,000 total. Echo seller_optimized allocation,
-          even aggregate pacing, and the package constraints without replacing
-          them with seller-generated fixed allocations.
+          Accept the shared $100,000 total across two packages that carry no
+          package budgets, minimum-spend targets, or package pacing. Echo
+          seller_optimized allocation and even aggregate pacing without
+          replacing them with seller-generated fixed allocations.
         sample_request:
           account:
             brand:
@@ -166,12 +187,8 @@ phases:
           packages:
             - product_id: "shared_budget_prospecting"
               pricing_option_id: "prospecting_cpm"
-              budget: 70000
-              min_spend_target: 20000
             - product_id: "shared_budget_retargeting"
               pricing_option_id: "retargeting_cpm"
-              budget: 60000
-              pacing: "front_loaded"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#seller_optimized_budget_create_shared_budget_buy"
@@ -196,10 +213,6 @@ phases:
             path: "pacing"
             value: "even"
             description: "Response preserves aggregate pacing"
-          - check: field_value
-            path: "packages[0].min_spend_target"
-            value: 20000
-            description: "Response preserves the soft package minimum-spend target"
 
   - id: read_shared_budget_buy
     title: "Verify durable allocation configuration"
@@ -211,7 +224,7 @@ phases:
         response_schema_ref: "media-buy/get-media-buys-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buys"
         stateful: true
-        expected: "Return the accepted shared total, allocation mode, pacing, and package constraints unchanged."
+        expected: "Return the accepted shared total, allocation mode, and aggregate pacing unchanged."
         sample_request:
           account:
             brand:
@@ -238,10 +251,6 @@ phases:
             path: "media_buys[0].pacing"
             value: "even"
             description: "Read preserves aggregate pacing"
-          - check: field_value
-            path: "media_buys[0].packages[0].min_spend_target"
-            value: 20000
-            description: "Read preserves the package minimum-spend target"
 
   - id: reject_mixed_currency_shared_buy
     title: "Reject a pricing option outside the media-buy currency"
@@ -287,54 +296,12 @@ phases:
             value: "TERMS_REJECTED"
             description: "Seller enforces the single media-buy currency before mutation"
 
-  - id: reject_package_minimum_exceeds_budget
-    title: "Reject a package minimum-spend target that exceeds its own budget"
-    steps:
-      - id: create_oversubscribed_package_minimum
-        title: "Reject min_spend_target greater than the package budget"
-        task: create_media_buy
-        schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
-        doc_ref: "/media-buy/task-reference/create_media_buy"
-        stateful: false
-        expect_error: true
-        negative_path: payload_well_formed
-        expected: |
-          Reject before mutation because the prospecting package carries a
-          min_spend_target (80000) that exceeds its own budget (70000).
-        sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-          brand:
-            domain: "acmeoutdoor.example"
-          total_budget:
-            amount: 100000
-            currency: "USD"
-          budget_allocation:
-            mode: "seller_optimized"
-            optimization_goals:
-              - kind: "metric"
-                metric: "clicks"
-                priority: 1
-          packages:
-            - product_id: "shared_budget_prospecting"
-              pricing_option_id: "prospecting_cpm"
-              budget: 70000
-              min_spend_target: 80000
-            - product_id: "shared_budget_retargeting"
-              pricing_option_id: "retargeting_cpm"
-          start_time: "asap"
-          end_time: "2099-06-30T23:59:59Z"
-          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_min_exceeds_package"
-        validations:
-          - check: error_code
-            value: "INVALID_REQUEST"
-            description: "Seller rejects a min_spend_target that exceeds the package budget before mutation"
-
   - id: reject_aggregate_minimum_exceeds_total
     title: "Reject package minimums that collectively exceed the total budget"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.seller_optimized_min_spend_targets
+      equals: true
     steps:
       - id: create_oversubscribed_aggregate_minimum
         title: "Reject sum(min_spend_target) greater than total_budget"
@@ -348,6 +315,8 @@ phases:
         expected: |
           Reject before mutation because the package minimum-spend targets
           (60000 + 50000 = 110000) collectively exceed total_budget (100000).
+          Graded only for sellers that declare minimum-spend targets; an
+          undeclared control is rejected with UNSUPPORTED_FEATURE instead.
         sample_request:
           account:
             brand:
@@ -418,10 +387,8 @@ phases:
           packages:
             - product_id: "shared_budget_prospecting"
               pricing_option_id: "prospecting_cpm"
-              budget: 70000
             - product_id: "shared_budget_retargeting"
               pricing_option_id: "retargeting_cpm"
-              budget: 60000
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#seller_optimized_budget_cost_cap"
@@ -516,6 +483,599 @@ phases:
                 automatic: true
             description: "Readback preserves the package-authored automatic policy"
 
+  - id: package_budgets
+    title: "Honor package budget caps"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.seller_optimized_package_budgets
+      equals: true
+    steps:
+      - id: create_shared_buy_with_package_budgets
+        title: "Cap both packages above the combined total"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Accept hard package caps (70000 and 60000) whose sum exceeds the
+          shared total. The caps are ceilings, not reserved allocations, and
+          are echoed unchanged.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          pacing: "even"
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              budget: 70000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              budget: 60000
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_package_budgets"
+        context_outputs:
+          - name: package_budgets_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_value
+            path: "budget_allocation.mode"
+            value: "seller_optimized"
+            description: "Response preserves delegated allocation mode"
+          - check: field_contains
+            path: "packages[*]"
+            value:
+              product_id: "shared_budget_prospecting"
+              budget: 70000
+            description: "Response preserves the prospecting package cap"
+
+      - id: read_shared_buy_with_package_budgets
+        title: "Read back package budget caps"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: "Return the accepted package budget caps unchanged."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.package_budgets_media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "shared_budget_prospecting"
+              budget: 70000
+            description: "Readback preserves the prospecting package cap"
+
+  - id: min_spend_targets
+    title: "Honor a package minimum-spend target"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.seller_optimized_min_spend_targets
+      equals: true
+    steps:
+      - id: create_shared_buy_with_min_spend_targets
+        title: "Set a soft minimum on the retargeting package"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Accept a soft minimum-spend target (20000) on an uncapped
+          retargeting package and echo it unchanged. The target sits on the
+          second package because a conformance runner may author a package
+          cap on the first package of every create request; a target on that
+          package could then exceed its own cap, which is graded by
+          media_buy_seller/seller_optimized_min_spend_target_exceeds_package_cap.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          pacing: "even"
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              min_spend_target: 20000
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_min_spend_targets"
+        context_outputs:
+          - name: min_spend_targets_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_value
+            path: "budget_allocation.mode"
+            value: "seller_optimized"
+            description: "Response preserves delegated allocation mode"
+          - check: field_contains
+            path: "packages[*]"
+            value:
+              product_id: "shared_budget_retargeting"
+              min_spend_target: 20000
+            description: "Response preserves the soft package minimum-spend target"
+
+      - id: read_shared_buy_with_min_spend_targets
+        title: "Read back package minimum-spend targets"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: "Return the accepted package minimum-spend targets unchanged."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.min_spend_targets_media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "shared_budget_retargeting"
+              min_spend_target: 20000
+            description: "Readback preserves the package minimum-spend target"
+
+  - id: package_pacing
+    title: "Honor subordinate package pacing"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.seller_optimized_package_pacing
+      equals: true
+    steps:
+      - id: create_shared_buy_with_package_pacing
+        title: "Front-load the retargeting package under even aggregate pacing"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Accept even aggregate pacing with a subordinate front-loaded
+          retargeting package and echo both levels unchanged.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          pacing: "even"
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              pacing: "front_loaded"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_package_pacing"
+        context_outputs:
+          - name: package_pacing_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_value
+            path: "budget_allocation.mode"
+            value: "seller_optimized"
+            description: "Response preserves delegated allocation mode"
+          - check: field_contains
+            path: "packages[*]"
+            value:
+              product_id: "shared_budget_retargeting"
+              pacing: "front_loaded"
+            description: "Response preserves subordinate package pacing on the intended product"
+
+      - id: read_shared_buy_with_package_pacing
+        title: "Read back package pacing"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: "Return the accepted package pacing unchanged."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.package_pacing_media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "shared_budget_retargeting"
+              pacing: "front_loaded"
+            description: "Readback preserves subordinate package pacing on the intended product"
+
+  - id: reject_package_budgets_explicitly_disabled
+    title: "Reject package budget caps when seller_optimized_package_budgets is false"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.seller_optimized_package_budgets
+      equals: false
+    steps:
+      - id: submit_package_budgets_explicitly_disabled
+        title: "Submit package budget caps without the sub-capability"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation because a package budget cap in a
+          seller-optimized buy requires seller_optimized_package_budgets. The
+          prospecting minimum (70000) also exceeds its cap (65000), but the
+          undeclared cap is rejected with UNSUPPORTED_FEATURE before any
+          over-subscription validation. The seller MUST NOT drop the cap or
+          treat it as a fixed allocation.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              budget: 65000
+              min_spend_target: 70000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_reject_package_budgets_explicitly_disabled"
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Seller rejects unadvertised package budget caps instead of silently dropping them"
+
+  - id: reject_package_budgets_not_advertised
+    title: "Reject package budget caps when seller_optimized_package_budgets is absent"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.seller_optimized_package_budgets
+      present: false
+    steps:
+      - id: submit_package_budgets_not_advertised
+        title: "Submit package budget caps without the sub-capability"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation because a package budget cap in a
+          seller-optimized buy requires seller_optimized_package_budgets. The
+          prospecting minimum (70000) also exceeds its cap (65000), but the
+          undeclared cap is rejected with UNSUPPORTED_FEATURE before any
+          over-subscription validation. The seller MUST NOT drop the cap or
+          treat it as a fixed allocation.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              budget: 65000
+              min_spend_target: 70000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_reject_package_budgets_not_advertised"
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Seller rejects unadvertised package budget caps instead of silently dropping them"
+
+  - id: reject_min_spend_targets_explicitly_disabled
+    title: "Reject package minimum-spend targets when seller_optimized_min_spend_targets is false"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.seller_optimized_min_spend_targets
+      equals: false
+    steps:
+      - id: submit_min_spend_targets_explicitly_disabled
+        title: "Submit package minimum-spend targets without the sub-capability"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation because a package min_spend_target requires
+          seller_optimized_min_spend_targets. The minimums (70000 + 40000)
+          also over-subscribe the 100000 total, but the undeclared control is
+          rejected with UNSUPPORTED_FEATURE before any over-subscription
+          validation. The seller MUST NOT drop the targets and accept the rest
+          of the buy.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              min_spend_target: 70000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              min_spend_target: 40000
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_reject_min_spend_targets_explicitly_disabled"
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Seller rejects unadvertised package minimum-spend targets instead of silently dropping them"
+
+  - id: reject_min_spend_targets_not_advertised
+    title: "Reject package minimum-spend targets when seller_optimized_min_spend_targets is absent"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.seller_optimized_min_spend_targets
+      present: false
+    steps:
+      - id: submit_min_spend_targets_not_advertised
+        title: "Submit package minimum-spend targets without the sub-capability"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation because a package min_spend_target requires
+          seller_optimized_min_spend_targets. The minimums (70000 + 40000)
+          also over-subscribe the 100000 total, but the undeclared control is
+          rejected with UNSUPPORTED_FEATURE before any over-subscription
+          validation. The seller MUST NOT drop the targets and accept the rest
+          of the buy.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              min_spend_target: 70000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              min_spend_target: 40000
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_reject_min_spend_targets_not_advertised"
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Seller rejects unadvertised package minimum-spend targets instead of silently dropping them"
+
+  - id: reject_package_pacing_explicitly_disabled
+    title: "Reject package pacing when seller_optimized_package_pacing is false"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.seller_optimized_package_pacing
+      equals: false
+    steps:
+      - id: submit_package_pacing_explicitly_disabled
+        title: "Submit package pacing without the sub-capability"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation because package pacing that differs from the
+          media-buy pacing requires seller_optimized_package_pacing. The
+          seller MUST NOT drop the package pacing and fall back to media-buy
+          pacing alone.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          pacing: "even"
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              pacing: "asap"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_reject_package_pacing_explicitly_disabled"
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Seller rejects unadvertised package pacing instead of silently dropping them"
+
+  - id: reject_package_pacing_not_advertised
+    title: "Reject package pacing when seller_optimized_package_pacing is absent"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.seller_optimized_package_pacing
+      present: false
+    steps:
+      - id: submit_package_pacing_not_advertised
+        title: "Submit package pacing without the sub-capability"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation because package pacing that differs from the
+          media-buy pacing requires seller_optimized_package_pacing. The
+          seller MUST NOT drop the package pacing and fall back to media-buy
+          pacing alone.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          pacing: "even"
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              pacing: "asap"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_reject_package_pacing_not_advertised"
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Seller rejects unadvertised package pacing instead of silently dropping them"
+
   - id: execute_seller_optimized_proposal
     title: "Execute a committed seller-optimized proposal"
     depends_on: [setup]
@@ -524,19 +1084,20 @@ phases:
       equals: true
     steps:
       - id: get_seller_optimized_proposal
-        title: "Request a shared-budget proposal with two-level pacing"
+        title: "Request a shared-budget proposal with aggregate pacing"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: true
         expected: |
-          Return a seller-optimized proposal with aggregate even pacing and a
-          subordinate front-loaded pacing term on the second allocation.
+          Return a seller-optimized proposal with aggregate even pacing. Only
+          core terms are graded here; proposal-derived package pacing is
+          graded by seller_optimized_proposal_package_pacing.
         sample_request:
           idempotency_key: "$generate:uuid_v4#seller_optimized_budget_execute_seller_optimized_proposal_get_seller_optimized_proposal"
           buying_mode: "brief"
-          brief: "Propose a $100,000 shared display budget across prospecting and retargeting, optimize allocation for clicks, pace the buy evenly, and front-load retargeting."
+          brief: "Propose a $100,000 shared display budget across prospecting and retargeting, optimize allocation for clicks, and pace the buy evenly."
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -555,12 +1116,6 @@ phases:
             path: "proposals[0].pacing"
             value: "even"
             description: "Proposal preserves aggregate pacing"
-          - check: field_contains
-            path: "proposals[0].allocations[*]"
-            value:
-              product_id: "shared_budget_retargeting"
-              pacing: "front_loaded"
-            description: "Proposal expresses subordinate pacing on the intended product"
 
       - id: finalize_seller_optimized_proposal
         title: "Commit the shared-budget proposal"
@@ -600,12 +1155,6 @@ phases:
             path: "proposals[0].pacing"
             value: "even"
             description: "Finalization preserves aggregate pacing"
-          - check: field_contains
-            path: "proposals[0].allocations[*]"
-            value:
-              product_id: "shared_budget_retargeting"
-              pacing: "front_loaded"
-            description: "Finalization preserves product-specific subordinate pacing"
 
       - id: create_from_seller_optimized_proposal
         title: "Execute the shared-budget proposal"
@@ -615,9 +1164,8 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
-          Create packages from the committed constraints, preserve the shared
-          allocation goals and aggregate pacing, and translate allocation
-          pacing to package pacing.
+          Create packages from the committed proposal and preserve the shared
+          allocation goals and aggregate pacing.
         sample_request:
           account:
             brand:
@@ -646,12 +1194,6 @@ phases:
             path: "pacing"
             value: "even"
             description: "Execution preserves aggregate pacing"
-          - check: field_contains
-            path: "packages[*]"
-            value:
-              product_id: "shared_budget_retargeting"
-              pacing: "front_loaded"
-            description: "Execution derives package pacing for the intended product"
 
       - id: read_seller_optimized_proposal_buy
         title: "Read back the proposal-derived shared buy"
@@ -660,7 +1202,7 @@ phases:
         response_schema_ref: "media-buy/get-media-buys-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buys"
         stateful: true
-        expected: "Return the proposal-derived allocation and pacing configuration unchanged."
+        expected: "Return the proposal-derived allocation and aggregate pacing unchanged."
         sample_request:
           account:
             brand:
@@ -675,9 +1217,7 @@ phases:
             path: "media_buys[0].budget_allocation.mode"
             value: "seller_optimized"
             description: "Readback preserves shared allocation"
-          - check: field_contains
-            path: "media_buys[0].packages[*]"
-            value:
-              product_id: "shared_budget_retargeting"
-              pacing: "front_loaded"
-            description: "Readback preserves product-matched proposal pacing"
+          - check: field_value
+            path: "media_buys[0].pacing"
+            value: "even"
+            description: "Readback preserves aggregate proposal pacing"

@@ -529,6 +529,7 @@
     let allAgents = [];
     let filters = { type: 'all', status: 'all', compliance: 'all', search: '' };
     let isLoading = true;
+    let loadError = null;
 
     function escapeHtml(str) {
         if (!str) return '';
@@ -544,6 +545,22 @@
         } catch {
             return null;
         }
+    }
+
+    // The registry list is public. A stale or unusable session cookie makes the
+    // server answer 401 instead of treating the caller as anonymous, so retry
+    // without credentials rather than rendering an empty registry.
+    async function fetchRegistryAgents(query) {
+        const url = `/api/registry/agents?${query}`;
+        let response = await fetch(url);
+        if (response.status === 401) {
+            response = await fetch(url, { credentials: 'omit' });
+        }
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data.agents)) {
+            throw new Error(data.error || `Request failed (${response.status})`);
+        }
+        return data.agents;
     }
 
     function agentToolCount(agent) {
@@ -568,9 +585,7 @@
 
     async function loadAllAgents() {
         try {
-            const response = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true&compliance=true');
-            const data = await response.json();
-            const agents = data.agents || data;
+            const agents = await fetchRegistryAgents('health=true&properties=true&capabilities=true&compliance=true');
 
             allAgents = agents.map(agent => {
                 const hasPropertyError = agent.propertiesError && agent.propertiesError.length > 0;
@@ -592,6 +607,7 @@
             renderAgents();
         } catch (error) {
             console.error('Failed to load agents:', error);
+            loadError = error;
             isLoading = false;
             renderAgents();
         }
@@ -630,6 +646,11 @@
 
         if (isLoading) {
             container.innerHTML = renderLoadingSkeleton(4);
+            return;
+        }
+
+        if (loadError) {
+            container.innerHTML = `<div class="error-text">Failed to load agents: ${escapeHtml(loadError.message)}. Try reloading the page.</div>`;
             return;
         }
 
@@ -884,9 +905,7 @@
             const [type, ...nameParts] = agentId.split('/');
             const name = nameParts.join('/');
 
-            const capsResp = await fetch('/api/registry/agents?health=true&capabilities=true&properties=true&compliance=true');
-            const capsData = await capsResp.json();
-            const allAgents = capsData.agents || [];
+            const allAgents = await fetchRegistryAgents('health=true&capabilities=true&properties=true&compliance=true');
 
             const agentWithCaps =
                 allAgents.find(a => {
@@ -1136,9 +1155,7 @@
     async function fetchTools(agent) {
         const section = document.getElementById('tools-section');
         try {
-            const response = await fetch('/api/registry/agents?health=true&capabilities=true');
-            const data = await response.json();
-            const allAgents = data.agents || data;
+            const allAgents = await fetchRegistryAgents('health=true&capabilities=true');
             const agentWithCaps = allAgents.find(a => a.url === agent.url);
 
             const toolCount = agentToolCount(agentWithCaps);

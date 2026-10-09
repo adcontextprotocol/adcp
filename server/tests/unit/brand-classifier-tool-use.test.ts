@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { BrandfetchEnrichmentResult } from '../../src/services/brandfetch.js';
+import { forcedToolChoice, ModelConfig } from '../../src/config/models.js';
 
 const mocks = vi.hoisted(() => ({
   anthropicCreate: vi.fn(),
@@ -76,7 +77,10 @@ describe('classifyBrand: tool_use contract', () => {
     const schema = call.tools[0].input_schema;
     expect(schema.properties.keller_type.enum).toEqual(['master', 'sub_brand', 'endorsed', 'independent']);
     expect(schema.properties.confidence.enum).toEqual(['high', 'medium', 'low']);
-    expect(call.tool_choice).toEqual({ type: 'tool', name: 'classify_brand' });
+    // Forced where the primary model allows it; Sonnet 5.5-class models reject
+    // forced tool use, so the prompt steers toward the tool instead.
+    expect(call.tool_choice).toEqual(forcedToolChoice(ModelConfig.primary, 'classify_brand').tool_choice);
+    expect(JSON.stringify(call.messages)).toContain('calling the classify_brand tool');
   });
 
   it('reads tool_use.input directly into the classification result', async () => {

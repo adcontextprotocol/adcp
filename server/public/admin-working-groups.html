@@ -411,6 +411,15 @@
         <form id="groupForm" onsubmit="saveGroup(event)" autocomplete="off">
           <input type="hidden" id="groupId">
 
+          <!-- The site-admin group's settings and leaders are server-owned; its
+               membership is managed only through the audited grant/revoke
+               actions in the Members section below. -->
+          <div id="protectedGroupNotice" style="display: none; margin-bottom: var(--space-4); padding: var(--space-4); background: var(--color-bg-subtle); border-radius: var(--rounded); color: var(--color-text-secondary); font-size: var(--text-sm);">
+            This is the AgenticAdvertising.org site-admin group. Its settings and leaders can't be edited.
+            Grant or revoke site-admin access in the Members section; each change is saved immediately and recorded in the audit history.
+          </div>
+
+          <div id="groupSettingsSection">
           <div class="form-group">
             <label>Name</label>
             <input type="text" id="name" required placeholder="e.g., Protocol Development" oninput="updateGatheringSlug()">
@@ -566,6 +575,7 @@
               <div id="leaderResults" class="user-search-results"></div>
             </div>
           </div>
+          </div><!-- /groupSettingsSection -->
 
           <!-- Members Section (only visible when editing) -->
           <div id="membersSection" style="display: none;">
@@ -926,6 +936,27 @@
     function updateMembersSectionVisibility() {
       const membersSection = document.getElementById('membersSection');
       membersSection.style.display = editingGroup ? 'block' : 'none';
+      applyProtectedGroupMode();
+    }
+
+    // The aao-admin group grants platform administration. The server refuses
+    // generic PUTs for it (leaders become members, which would bypass the
+    // audited grant flow), so its modal is membership-only: settings and
+    // leaders are hidden and disabled, and Save just closes the modal because
+    // grant/revoke already saved each change.
+    function isProtectedGroup(group) {
+      return !!group && group.slug === 'aao-admin';
+    }
+
+    function applyProtectedGroupMode() {
+      const isProtected = isProtectedGroup(editingGroup);
+      const settings = document.getElementById('groupSettingsSection');
+      settings.style.display = isProtected ? 'none' : '';
+      settings.querySelectorAll('input, select, textarea, button').forEach((el) => {
+        el.disabled = isProtected;
+      });
+      document.getElementById('protectedGroupNotice').style.display = isProtected ? 'block' : 'none';
+      document.getElementById('saveBtn').textContent = isProtected ? 'Done' : 'Save';
     }
 
     // Current leaders in the form
@@ -1311,7 +1342,8 @@
     function updateSlackSyncVisibility() {
       const syncSection = document.getElementById('slackSyncSection');
       const hasSlackChannel = editingGroup && editingGroup.slack_channel_id;
-      syncSection.style.display = hasSlackChannel ? 'block' : 'none';
+      // Site-admin membership only changes through the audited grant/revoke flow.
+      syncSection.style.display = hasSlackChannel && !isProtectedGroup(editingGroup) ? 'block' : 'none';
     }
 
     // Load interest records for a committee
@@ -1649,6 +1681,12 @@
     // Save group
     async function saveGroup(event) {
       event.preventDefault();
+
+      if (isProtectedGroup(editingGroup)) {
+        closeModal();
+        loadGroups();
+        return;
+      }
 
       const id = document.getElementById('groupId').value;
       const committeeType = document.getElementById('committeeType').value;

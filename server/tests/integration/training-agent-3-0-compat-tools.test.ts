@@ -18,11 +18,12 @@ vi.mock('../../src/logger.js', () => ({
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
 const { createTrainingAgentServer } = await import('../../src/training-agent/task-handlers.js');
 const { stopSessionCleanup } = await import('../../src/training-agent/state.js');
-const { TRAINING_AGENT_CURRENT_ADCP_VERSION } = await import('../../src/training-agent/types.js');
+const { TRAINING_AGENT_CURRENT_ADCP_RELEASE } = await import('../../src/training-agent/types.js');
 
 const COMPAT_CTX = { mode: 'open' as const, storyboardCompat: { version: '3.0' as const } };
 const AUTH = 'Bearer compat-tools-token';
-const CURRENT_ADCP_VERSION = TRAINING_AGENT_CURRENT_ADCP_VERSION;
+// Unpinned split tools default to the highest advertised 3.x release.
+const CURRENT_ADCP_RELEASE = TRAINING_AGENT_CURRENT_ADCP_RELEASE;
 
 async function simulateListTools(server: ReturnType<typeof createTrainingAgentServer>): Promise<string[]> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
@@ -225,7 +226,7 @@ describe('training-agent 3.0 compat tool visibility', () => {
         manifest: validImageManifest,
         targets: [{ kind: 'canonical', id: 'image' }],
       });
-      expect(unpinned.adcp_version).toBe(CURRENT_ADCP_VERSION);
+      expect(unpinned.adcp_version).toBe(CURRENT_ADCP_RELEASE);
       expect(unpinned.results).toEqual([
         { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
       ]);

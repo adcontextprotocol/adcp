@@ -19,7 +19,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logger.js';
-import { disableAdaptiveThinking, ModelConfig } from '../config/models.js';
+import { disableAdaptiveThinking, ModelConfig, forcedToolChoice } from '../config/models.js';
 import type { KellerType } from '../types.js';
 import type { BrandfetchEnrichmentResult } from './brandfetch.js';
 import { canonicalizeBrandDomain } from './identifier-normalization.js';
@@ -128,10 +128,10 @@ export async function classifyBrand(
           },
         },
       ],
-      tool_choice: { type: 'tool', name: 'classify_brand' },
+      ...forcedToolChoice(ModelConfig.primary, 'classify_brand'),
       messages: [{
         role: 'user',
-        content: `${CLASSIFY_PROMPT}\n\nBrand data:\n${brandContext}`,
+        content: `${CLASSIFY_PROMPT}\n\nBrand data:\n${brandContext}\n\nRecord your answer by calling the classify_brand tool.`,
       }],
     });
 

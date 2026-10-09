@@ -204,7 +204,7 @@ npx @adcp/sdk@latest \
 | `name` | string | No | Human-readable shared label for trafficking UI display and buyer-seller communication (maximum 255 characters). Sellers persist and echo it unchanged; it is not a purchase-order, reconciliation, or identity key. |
 | `idempotency_key` | string | No | Unique key for safe retries. If a request with the same key and account has already been processed, the seller returns the existing media buy. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `context` | object | No | Opaque correlation data echoed unchanged in the response. Use for internal tracking, trace IDs, or other caller-specific identifiers. |
-| `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration |
+| `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration. Include a buyer-supplied `operation_id` ([Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks)); sellers MUST NOT send reports to a registration that omits it. |
 | `artifact_webhook` | object | No | Content-artifact delivery configuration established with the buy. This compatibility field has no compact purchase or later control equivalent; adapters MUST NOT silently discard it. |
 
 \* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
@@ -230,11 +230,11 @@ An unexpired `committed` proposal carries an inventory hold and cannot be reject
 | `format_kind` | CanonicalFormatKind | No | Direct canonical selector. Pair with enough `params` to satisfy the product declaration and omit `format_option_refs`. |
 | `format_ids` | FormatID[] | Deprecated | Named-format compatibility selector accepted from older 3.x peers. New buyers MUST NOT emit it. Receivers normalize it and equivalence-check it against every co-present canonical route. |
 | `params` | object | No | Parameters for the direct canonical selector in `format_kind`. Follows the selected canonical's parameter vocabulary. Requires `format_kind`; `params` alone is schema-invalid. For fixed-size image selectors, `width` and `height` must co-occur. A broad selector such as `{format_kind: "image"}` does not satisfy a product whose `format_options[]` fixes both dimensions; sellers reject under-specified direct selectors with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). |
-| `budget` | number | Conditional | Hard lifetime package spend cap in the media-buy currency. Required in fixed mode. Optional in seller-optimized mode; it remains a ceiling, not a current or reserved allocation. |
-| `min_spend_target` | number | No | Soft lifetime package spend target in the media-buy currency for seller-optimized allocation. The seller should attempt to reach it, but it is not a billing or delivery guarantee. |
+| `budget` | number | Conditional | Hard lifetime package spend cap in the media-buy currency. Required in fixed mode. Optional in seller-optimized mode; it remains a ceiling, not a current or reserved allocation, and requires `media_buy.features.seller_optimized_package_budgets`. |
+| `min_spend_target` | number | No | Soft lifetime package spend target in the media-buy currency for seller-optimized allocation. Requires `media_buy.features.seller_optimized_min_spend_targets`. The seller should attempt to reach it, but it is not a billing or delivery guarantee. |
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
-| `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
+| `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"`. In seller-optimized mode, package pacing that differs from the media-buy `pacing` requires `media_buy.features.seller_optimized_package_pacing`; omit it unless that capability is advertised. |
 | `daily_budget_cap` | number | No | Optional hard package-level spend ceiling per calendar day, subordinate to any aggregate media-buy `daily_budget_cap`. It is a package constraint, not a reserved daily allocation; seller-optimized packages may omit it. All daily caps on the buy use the media-buy cap timezone. |
 | `bidding` | BiddingPolicy | No | Complete package-authored bidding override. Use `{automatic: true}` to explicitly override a media-buy policy with provider automatic bidding. Omit to inherit. This is replacement inheritance, not a field-by-field merge. |
 | `bid_price` | number | No | **Deprecated in 3.2.** Use `bidding.bid_amount` or `bidding.max_bid`. A package cannot supply both representations. |
@@ -251,6 +251,8 @@ An unexpired `committed` proposal carries an inventory hold and cannot be reject
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with [`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected), or adjusts. When omitted, product's `measurement_terms` apply. |
 | `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed performance standards (viewability, IVT, completion rate, brand safety, attention score). Overrides product defaults. Seller accepts, rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `performance_standards` apply. |
 | `committed_metrics` | object[] | No | Buyer's proposed reporting contract — metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms`/`performance_standards`: each entry tags `scope: "standard"` (with `metric_id` from the closed enum) or `scope: "vendor"` (with `vendor` BrandRef + vendor's `metric_id`, and optionally `methodology_version` to pin the vendor catalog's methodology version). Request-side entries do NOT carry `committed_at` — that timestamp is stamped by the seller on accept. Seller accepts (echoes on response with `committed_at`), rejects with `TERMS_REJECTED`, or normalizes (echoes a different but compatible list). When omitted, the seller decides what to commit based on the product's `available_metrics` plus any `required_metrics` filter the buyer passed at discovery. |
+
+**Replaying advertised measurement terms.** A seller MUST NOT advertise, in a product's `measurement_terms`, a `measurement_window` (or other term value) that it would reject with [`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected) when a buyer replays those terms unchanged here. The window MUST reference a `window_id` declared in the product's `reporting_capabilities.measurement_windows`. Rejecting buyer-modified terms remains allowed. See [`get_products`](/docs/media-buy/task-reference/get_products#advertise-only-what-you-accept).
 
 For `targeting_overlay.geo_places` and `geo_places_exclude`, create-time values
 must be within the selected Product's corresponding `overlay_support` tuple.
@@ -398,7 +400,20 @@ There is no proposal-specific acceptance webhook. Proposal execution that needs 
 | `status` | Literal `"submitted"` — discriminates this shape from the sync success branch, which uses `media_buy_status` for lifecycle state. |
 | `task_id` | Handle the buyer polls with `get_task_status` on the A2A profile (or the advertised AdCP polling task on MCP), or receives on webhook callbacks. |
 | `message` | Optional human-readable explanation (e.g., "Awaiting IO signature from sales team"). |
+| `expected_confirmation_at` | Optional ISO 8601 date-time estimate of when the seller expects to confirm (added in 3.3). See [Expected confirmation time](#expected-confirmation-time). |
 | `errors` | Optional advisory warnings (non-blocking). Terminal failures belong in the Error Response. |
+
+#### Expected confirmation time
+
+Some confirmations are tied to a scheduled event rather than to processing time: a published booking round that closes and then confirms on a fixed date, a weekly review window, or a monthly IO cycle. A buyer polling `get_task_status` cannot tell a task that will resolve in minutes from one that will not resolve for two weeks.
+
+- A seller SHOULD set `expected_confirmation_at` when confirmation depends on a scheduled event such as a booking round or a manual review window, and omit it when it has no basis for an estimate.
+- A buyer SHOULD schedule a status check for that time instead of polling tightly. It MAY still poll or accept the completion webhook earlier, since the seller can confirm sooner.
+- It is an estimate, not a commitment. The task status is authoritative: a buyer MUST NOT treat a passed `expected_confirmation_at` as a failure or cancel the request because of it.
+- The value is a point-in-time estimate from the response that carried it. A seller whose schedule slips MAY re-emit a revised `expected_confirmation_at` on a later `submitted` webhook. A seller SHOULD NOT send a timestamp in the past, and a buyer MUST NOT read one as meaningful.
+- It is not an expiry. Deadlines that close a request window (for example the booking deadline on an installment) are separate fields on the product or installment.
+
+For [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), the estimate MAY fall after the proposal's `expires_at`: acceptance consumes the hold, so the estimate describes confirmation, not the hold. [`buy_products`](/docs/media-buy/task-reference/buy_products) and `accept_proposal` carry the same optional field on their submitted arms. The shared compact envelope used by [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals), [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy), [`request_proposals`](/docs/media-buy/task-reference/request_proposals), and [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) does not, because those tasks do not confirm a purchase. [`get_products`](/docs/media-buy/task-reference/get_products) and [`get_signals`](/docs/signals/tasks/get_signals) submitted envelopes carry a separate `estimated_completion`, which estimates when a search finishes processing; `expected_confirmation_at` instead names the scheduled event that confirms a purchase.
 
 **Note**: Responses are mutually exclusive across these three shapes. Dispatch on `status` first: `"submitted"` → async envelope, otherwise check `errors` before accessing success fields.
 
@@ -889,6 +904,7 @@ const result = await testAgent.createMediaBuy({
   end_time: endDate.toISOString(),
   reporting_webhook: {
     url: 'https://buyer.example.com/webhooks/reporting',
+    operation_id: 'op_reporting_001',
     authentication: {
       schemes: ['Bearer'],
       credentials: 'secret_token_xyz_minimum_32_chars'
@@ -938,6 +954,7 @@ async def create_with_reporting():
         end_time=end_date.isoformat().replace('+00:00', 'Z'),
         reporting_webhook={
             'url': 'https://buyer.example.com/webhooks/reporting',
+            'operation_id': 'op_reporting_001',
             'authentication': {
                 'schemes': ['Bearer'],
                 'credentials': 'secret_token_xyz_minimum_32_chars'
@@ -1037,7 +1054,7 @@ asyncio.run(execute_proposal())
 
 When executing a proposal:
 - For fixed allocation, the publisher converts exact allocation percentages to package budgets using `total_budget`
-- For seller-optimized allocation, the publisher preserves the shared allocation goals and converts minimum/maximum percentage constraints to package targets/caps
+- For seller-optimized allocation, the publisher preserves the shared allocation goals and converts minimum/maximum percentage constraints to package targets/caps (a seller only issues those constraints, and allocation pacing, when it advertises the matching package-control capability)
 - Allocation-level pacing becomes subordinate package pacing; aggregate proposal pacing becomes media-buy pacing
 - Packages are created automatically based on the proposal's allocations
 - All other fields (brand, start_time, end_time, etc.) work the same as manual mode
@@ -1137,6 +1154,7 @@ Common errors and resolutions:
 | [`CONFLICTING_SELECTORS`](/docs/building/verification/compliance-catalog#error-code-conflicting-selectors) | Co-present, resolvable package format selector routes select different product format contracts | Emit one canonical selector route, or correct the required legacy projection so it selects the same contract under the canonical v2-narrows-v1 comparison. |
 | [`BUDGET_TOO_LOW`](/docs/building/verification/compliance-catalog#error-code-budget-too-low) | Budget below product minimum | Increase budget or choose different product |
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Targeting constraints or a submitted `creative_id` violate seller/product business rules | Follow `error.field` and `error.message`; broaden targeting criteria or use a different package-scoped `creative_id` as indicated |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) with `details.unmet_requirements[]` | A package does not bind an event source or catalog its product declares in the experimental `execution_requirements` | Bind the resource at `error.field` (`optimization_goals[].event_sources[]` or `catalogs[]`); for `reason: "not_found"`, register it through [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) or [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) first. See [Product execution requirements](/docs/media-buy/specification#product-execution-requirements-experimental) |
 | [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) | Brand/product violates policy | Review publisher's content policies |
 | [`INVALID_PRICING_OPTION`](/docs/building/verification/compliance-catalog#error-code-invalid-pricing-option) | pricing_option_id not found | Use ID from product's `pricing_options` |
 | [`CREATIVE_LOCALE_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-creative-locale-not-accepted) | An assigned library creative has no materialized locale variant accepted by an in-scope format option, or its `serve_default` points outside that option's eligible set | Read `format_options[].locale_policy`, supply a matching source/target variant, narrow placement scope, choose another option, or change the default policy |
@@ -1251,6 +1269,10 @@ The media buy has one currency. Every selected pricing option MUST declare that 
 
 AdCP supports fixed package budgets and media-buy-level shared budgets. `budget_allocation.mode` makes the interpretation explicit; omission preserves the legacy fixed behavior.
 
+<Note>
+**Choosing an allocation mode.** Omitting `budget_allocation` still means fixed allocation, but buyer agents SHOULD send it explicitly: `{"mode": "fixed"}` or a `seller_optimized` block. If the principal's instruction does not settle whether the budget is one shared pool across packages or split per package (for example, "spend $100k across these two products"), the buyer agent SHOULD ask the principal rather than guess.
+</Note>
+
 | Field | Level | Type | Controls |
 |-------|-------|------|----------|
 | `total_budget.amount` + `total_budget.currency` | Media buy | TotalBudget | Hard aggregate lifetime spend cap. Required for proposals and seller-optimized allocation. |
@@ -1303,7 +1325,19 @@ Seller-optimized allocation is a nested optimization:
 
 All package constraints and canonical bidding amounts in a seller-optimized buy use `total_budget.currency`, and every selected pricing option MUST declare that currency. This one-currency rule also applies to fixed AdCP-authored buys; packages requiring another denomination belong in a separate media buy. Every participating product MUST support the primary cross-package optimization goal. Sellers reject incompatible product combinations, currencies, pricing terms, or delivery constraints with [`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected) or [`BIDDING_PLACEMENT_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-bidding-placement-conflict) and identify the incompatible package.
 
-Package caps may sum above the media-buy total; that headroom is what permits dynamic allocation. Minimum-spend targets must sum to no more than the total; sellers MUST reject over-subscribed aggregate minimums with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) before any provider mutation. If package caps cannot collectively spend the total, the seller rejects the request as infeasible. Sellers advertising this behavior declare `media_buy.features.seller_optimized_budget: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
+Package caps may sum above the media-buy total; that headroom is what permits dynamic allocation. Minimum-spend targets must sum to no more than the total; sellers advertising `seller_optimized_min_spend_targets` MUST reject over-subscribed aggregate minimums with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) before any provider mutation, and sellers also advertising `seller_optimized_package_budgets` reject a `min_spend_target` above its own package `budget` the same way. If package caps cannot collectively spend the total, the seller rejects the request as infeasible.
+
+Capability declarations in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) are layered. `media_buy.features.seller_optimized_budget: true` covers the core contract: the shared `total_budget`, seller allocation across packages, media-buy-level `pacing`, and allocation echo on read surfaces. Each package control in a seller-optimized buy has its own sub-capability, meaningful only alongside the parent:
+
+| Package control | Sub-capability |
+|-----------------|----------------|
+| `packages[].budget` (hard cap) | `seller_optimized_package_budgets` |
+| `packages[].min_spend_target` | `seller_optimized_min_spend_targets` |
+| `packages[].pacing` (when it differs from media-buy `pacing`) | `seller_optimized_package_pacing` |
+
+Media-buy `pacing` is part of the core contract only for `even`. A seller declaring `seller_optimized_budget` MUST accept omitted `pacing` (which defaults to `even` when `total_budget` is present) and `pacing: "even"`. It MAY reject `asap` or `front_loaded` with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) (`error.field` set to `pacing`) before any provider mutation, and MUST NOT silently coerce them to `even`. Fixed-allocation pacing is unchanged.
+
+A seller that declares the parent but not a given sub-capability MUST reject a seller-optimized request carrying that package control with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before any over-subscription validation or provider mutation, and MUST NOT silently drop or coerce it. Over-subscription `INVALID_REQUEST` checks apply only to declared controls, so a core-only seller that receives an over-subscribed `min_spend_target` returns `UNSUPPORTED_FEATURE`.
 
 Continuous allocation decisions inside an accepted seller-optimized buy are delivery behavior. They do not mutate package caps, increment the media-buy revision, create history entries, or constitute separate `reallocate_budget` actions.
 
@@ -1348,7 +1382,7 @@ Continuous allocation decisions inside an accepted seller-optimized buy are deli
 }
 ```
 
-The package caps total $130,000, creating room for the seller to allocate the $100,000 shared total toward the better-performing package. The first package has a soft $20,000 minimum-spend target; neither package has a reserved allocation.
+The package caps total $130,000, creating room for the seller to allocate the $100,000 shared total toward the better-performing package. The first package has a soft $20,000 minimum-spend target; neither package has a reserved allocation. Because this request uses package caps, a minimum-spend target, and package pacing, the seller must advertise all three sub-capabilities. A seller that advertises only `seller_optimized_budget` accepts the same allocation with the package `budget`, `min_spend_target`, and `pacing` fields omitted.
 
 #### Daily budget cap
 
@@ -1569,6 +1603,18 @@ const response = await session.call('create_media_buy',
       }
     ]
   }
+}
+```
+
+**Submitted response with a scheduled confirmation:** a seller whose confirmation follows a scheduled event also returns `expected_confirmation_at`, so the buyer can check at that time instead of polling:
+
+```json
+{
+  "$schema": "/schemas/media-buy/create-media-buy-response.json",
+  "status": "submitted",
+  "task_id": "task_abc124",
+  "message": "Pinnacle Media confirms orders for the November airing month on 20 October.",
+  "expected_confirmation_at": "2026-10-20T12:00:00Z"
 }
 ```
 

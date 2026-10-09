@@ -7,6 +7,7 @@ import { CatalogEventsDatabase } from './catalog-events-db.js';
 import { ComplianceRefreshLeaseLostError } from './compliance-refresh-requests-db.js';
 import { AgentQualityEvaluationLeaseLostError } from './agent-quality-evaluation-db.js';
 import type { VerificationProfileRoleAssessmentInput } from '../services/verification-profile-assessment.js';
+import { isComplianceRefreshAccessFailure, type ComplianceRefreshWriteGuard } from '../services/compliance-refresh-authorization.js';
 
 const logger = baseLogger.child({ module: 'compliance-db' });
 const catalogEventsDb = new CatalogEventsDatabase();
@@ -86,6 +87,7 @@ export interface AgentRegistryMetadata {
   badge_requalification_generation: string;
   monitoring_paused: boolean;
   check_interval_hours: number;
+  compliance_inconclusive_streak: number;
   monitoring_paused_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -169,6 +171,8 @@ export interface AgentComplianceStatus {
   last_run_id: string | null;
   /** triggered_by of the most recent non-dry-run in agent_compliance_runs */
   last_triggered_by: TriggeredBy | null;
+  /** Organization that authorized the run providing the current verdict. */
+  last_run_org_id?: string | null;
   /** tracks_json from the most recent non-dry-run, used for current-run UI details */
   track_details_json?: TrackSummaryEntry[] | null;
   provenance_json?: ComplianceRunProvenance | null;
@@ -242,6 +246,24 @@ export interface StoryboardStatusEntry {
   first_failed_step_task?: string | null;
   first_failure_message?: string | null;
   first_failure_validations_jsonb?: unknown;
+  /** First few cascaded prerequisite skips with runner reason/detail (adcp#7798). */
+  skipped_steps?: StoryboardSkippedStep[] | null;
+}
+
+/**
+ * One cascaded prerequisite skip inside a storyboard. `detail` is redacted,
+ * length-capped runner/agent text; `blocked_by_*` names the nearest earlier
+ * step in the same storyboard that did not pass (the likely prerequisite).
+ */
+export interface StoryboardSkippedStep {
+  step_id: string | null;
+  title: string | null;
+  task: string | null;
+  reason: string | null;
+  detail: string | null;
+  blocked_by_step_id: string | null;
+  blocked_by_step_title: string | null;
+  blocked_by_reason: string | null;
 }
 
 /**
@@ -360,6 +382,7 @@ interface BadgeGradingGuard {
 // =====================================================
 
 export class ComplianceDatabase {
+  constructor(private readonly beforeCanonicalWrite?: ComplianceRefreshWriteGuard) {}
 
   // ----- Registry Metadata -----
 
@@ -514,6 +537,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, agentUrl);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${agentUrl}`],
@@ -569,6 +593,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, agentUrl);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${agentUrl}`],
@@ -661,6 +686,7 @@ export class ComplianceDatabase {
         await client.query("SELECT set_config('lock_timeout', '2000ms', true)");
         await client.query("SELECT set_config('idle_in_transaction_session_timeout', '5000ms', true)");
       }
+      await this.beforeCanonicalWrite?.(client, input.agent_url);
 
       // Profile selection and authoritative evidence publication share this
       // lock. A selection can therefore only commit against the latest fully
@@ -747,7 +773,8 @@ export class ComplianceDatabase {
           `SELECT storyboard_id, requested_compliance_target, adcp_version, status,
                   steps_passed, steps_total, failure_count, skipped_count,
                   first_failed_step_id, first_failed_step_title,
-                  first_failed_step_task, first_failure_message
+                  first_failed_step_task, first_failure_message,
+                  skipped_steps_jsonb AS skipped_steps
              FROM agent_storyboard_status
             WHERE agent_url = $1 AND run_id = $2
             ORDER BY storyboard_id`,
@@ -942,6 +969,7 @@ export class ComplianceDatabase {
           VALUES ($1, CASE WHEN $7 = 'owner_test' THEN NULL ELSE NOW() + INTERVAL '12 hours' END)
           ON CONFLICT (agent_url) DO UPDATE SET
             next_compliance_check_at = NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours),
+            compliance_inconclusive_streak = 0,
             requeued_at = NULL
           -- $7 is TriggeredBy (compliance-db.ts): the TypeScript union is the
           -- compile-time guard on this value space. A new TriggeredBy member
@@ -1055,6 +1083,8 @@ export class ComplianceDatabase {
             const sbFirstFailedStepTitles = input.storyboard_statuses.map(s => s.first_failed_step_title ?? null);
             const sbFirstFailedStepTasks = input.storyboard_statuses.map(s => s.first_failed_step_task ?? null);
             const sbFirstFailureMessages = input.storyboard_statuses.map(s => s.first_failure_message ?? null);
+            const sbSkippedSteps = input.storyboard_statuses.map(s =>
+              s.skipped_steps?.length ? JSON.stringify(s.skipped_steps) : null);
 
             await client.query(
               `INSERT INTO agent_storyboard_status (
@@ -1062,6 +1092,7 @@ export class ComplianceDatabase {
                 last_passed_at, last_failed_at, run_id,
                 steps_passed, steps_total, failure_count, skipped_count,
                 first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
+                skipped_steps_jsonb,
                 triggered_by, requested_compliance_target, adcp_version, updated_at
               )
               SELECT
@@ -1070,9 +1101,10 @@ export class ComplianceDatabase {
                 CASE WHEN sb_status IN ('failing', 'partial') THEN NOW() ELSE NULL END,
                 $4, sb_passed, sb_total, sb_failures, sb_skips,
                 sb_first_failed_step_id, sb_first_failed_step_title, sb_first_failed_step_task, sb_first_failure_message,
+                sb_skipped_steps::jsonb,
                 $13, $14, $15, NOW()
-              FROM unnest($2::text[], $3::text[], $5::int[], $6::int[], $7::int[], $8::int[], $9::text[], $10::text[], $11::text[], $12::text[])
-                AS t(sb_id, sb_status, sb_passed, sb_total, sb_failures, sb_skips, sb_first_failed_step_id, sb_first_failed_step_title, sb_first_failed_step_task, sb_first_failure_message)
+              FROM unnest($2::text[], $3::text[], $5::int[], $6::int[], $7::int[], $8::int[], $9::text[], $10::text[], $11::text[], $12::text[], $16::text[])
+                AS t(sb_id, sb_status, sb_passed, sb_total, sb_failures, sb_skips, sb_first_failed_step_id, sb_first_failed_step_title, sb_first_failed_step_task, sb_first_failure_message, sb_skipped_steps)
               ON CONFLICT (agent_url, storyboard_id) DO UPDATE SET
                 status = EXCLUDED.status,
                 last_tested_at = NOW(),
@@ -1093,6 +1125,7 @@ export class ComplianceDatabase {
                 first_failed_step_title = EXCLUDED.first_failed_step_title,
                 first_failed_step_task = EXCLUDED.first_failed_step_task,
                 first_failure_message = EXCLUDED.first_failure_message,
+                skipped_steps_jsonb = EXCLUDED.skipped_steps_jsonb,
                 triggered_by = EXCLUDED.triggered_by,
                 requested_compliance_target = EXCLUDED.requested_compliance_target,
                 adcp_version = EXCLUDED.adcp_version,
@@ -1113,6 +1146,7 @@ export class ComplianceDatabase {
                 input.triggered_by ?? 'heartbeat',
                 input.requested_compliance_target ?? null,
                 input.adcp_version ?? null,
+                sbSkippedSteps,
               ],
             );
           }
@@ -1154,7 +1188,8 @@ export class ComplianceDatabase {
       `SELECT storyboard_id, requested_compliance_target, adcp_version, status,
               steps_passed, steps_total, failure_count, skipped_count,
               first_failed_step_id, first_failed_step_title,
-              first_failed_step_task, first_failure_message
+              first_failed_step_task, first_failure_message,
+              skipped_steps_jsonb AS skipped_steps
          FROM agent_storyboard_status
         WHERE agent_url = $1 AND run_id = $2
         ORDER BY storyboard_id`,
@@ -1169,12 +1204,12 @@ export class ComplianceDatabase {
     const result = await query(
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
               r.id AS last_run_id,
-              r.triggered_by AS last_triggered_by,
+              r.triggered_by AS last_triggered_by, r.triggered_org_id AS last_run_org_id,
               r.tracks_json AS track_details_json, r.provenance_json
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT id, triggered_by, tracks_json, provenance_json FROM agent_compliance_runs
+         SELECT id, triggered_by, triggered_org_id, tracks_json, provenance_json FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false AND is_authoritative = true
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
@@ -1188,14 +1223,14 @@ export class ComplianceDatabase {
     const result = await query(
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
               r.id AS last_run_id,
-              r.triggered_by AS last_triggered_by,
+              r.triggered_by AS last_triggered_by, r.triggered_org_id AS last_run_org_id,
               r.tracks_json AS track_details_json, r.provenance_json,
               COALESCE(sb_counts.passing, 0)::int AS storyboards_passing,
               COALESCE(sb_counts.total, 0)::int AS storyboards_total
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT id, triggered_by, tracks_json, provenance_json FROM agent_compliance_runs
+         SELECT id, triggered_by, triggered_org_id, tracks_json, provenance_json FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false AND is_authoritative = true
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
@@ -1292,6 +1327,29 @@ export class ComplianceDatabase {
        WHERE agent_url = $1 AND ($2::uuid IS NULL OR id = $2::uuid)
        ORDER BY tested_at DESC LIMIT 1`,
       [agentUrl, runId ?? null],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /** Owner audit lookup. A URL can belong to several organizations. */
+  async getComplianceRunForOrg(agentUrl: string, orgId: string, runId?: string): Promise<ComplianceRun | null> {
+    const result = await query<ComplianceRun>(
+      `SELECT * FROM agent_compliance_runs
+       WHERE agent_url = $1 AND triggered_org_id = $2
+         AND ($3::uuid IS NULL OR id = $3::uuid)
+       ORDER BY tested_at DESC LIMIT 1`,
+      [agentUrl, orgId, runId ?? null],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /** Latest persisted assessment for an owner organization (null is operator-only). */
+  async getLatestComplianceAttempt(agentUrl: string, orgId: string | null): Promise<ComplianceRun | null> {
+    const result = await query<ComplianceRun>(
+      `SELECT * FROM agent_compliance_runs
+       WHERE agent_url = $1 AND ($2::text IS NULL OR triggered_org_id = $2) AND dry_run = FALSE
+       ORDER BY tested_at DESC LIMIT 1`,
+      [agentUrl, orgId],
     );
     return result.rows[0] ?? null;
   }
@@ -1447,16 +1505,38 @@ export class ComplianceDatabase {
   /**
    * Release an in-progress heartbeat lock without publishing a verdict.
    *
-   * Schedule another attempt on the normal cadence without changing the last
-   * authoritative timestamp. A manual requeue (NULL) must win over deferral.
+   * Schedule another attempt without changing the last authoritative timestamp.
+   * Repeated inconclusive checks back off from the configured interval to at
+   * most 48 hours. A manual requeue (NULL) must win over deferral.
    */
-  async deferComplianceCheckAfterInconclusiveTarget(agentUrl: string): Promise<boolean> {
+  async deferComplianceCheckAfterInconclusiveTarget(
+    agentUrl: string,
+    options: { exponentialBackoff?: boolean } = {},
+  ): Promise<boolean> {
     const result = await query(
       `UPDATE agent_registry_metadata
-       SET next_compliance_check_at = NOW() + make_interval(hours => check_interval_hours)
+       SET next_compliance_check_at = NOW() + make_interval(hours =>
+             CASE WHEN $2::boolean THEN
+               GREATEST(check_interval_hours, LEAST(48, check_interval_hours * (1 << LEAST(compliance_inconclusive_streak, 3))))
+             ELSE check_interval_hours END),
+           compliance_inconclusive_streak = CASE WHEN $2::boolean
+             THEN LEAST(compliance_inconclusive_streak + 1, 4)
+             ELSE compliance_inconclusive_streak END
        WHERE agent_url = $1
          AND next_compliance_check_at > NOW()`,
-      [agentUrl],
+      [agentUrl, options.exponentialBackoff ?? false],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  /** Retry soon after an execution fence or global suite slot is busy. */
+  async deferComplianceCheckAfterContention(agentUrl: string, expectedLockUntil: Date): Promise<boolean> {
+    const result = await query(
+      `UPDATE agent_registry_metadata
+       SET next_compliance_check_at = NOW() + INTERVAL '5 minutes'
+       WHERE agent_url = $1 AND next_compliance_check_at = $2::timestamptz
+         AND next_compliance_check_at > NOW()`,
+      [agentUrl, expectedLockUntil],
     );
     return (result.rowCount ?? 0) > 0;
   }
@@ -1469,14 +1549,16 @@ export class ComplianceDatabase {
    * Forward-compat: unknown codes/severities are preserved verbatim — callers
    * MUST NOT validate or filter notice.code / notice.severity values.
    */
-  async getLatestNotices(agentUrl: string): Promise<NoticeEntry[]> {
+  async getLatestNotices(agentUrl: string, runId?: string | null): Promise<NoticeEntry[]> {
+    if (runId === null) return [];
     const result = await query(
       `SELECT notices_json
        FROM agent_compliance_runs
        WHERE agent_url = $1 AND dry_run = FALSE AND is_authoritative = TRUE
+         AND ($2::uuid IS NULL OR id = $2::uuid)
        ORDER BY tested_at DESC
        LIMIT 1`,
-      [agentUrl],
+      [agentUrl, runId ?? null],
     );
     const raw = result.rows[0]?.notices_json;
     if (!Array.isArray(raw)) return [];
@@ -1488,14 +1570,16 @@ export class ComplianceDatabase {
    * run. These are fresh per-run observations from the runner (for example
    * best-practice advisories); consumers must not merge them with older runs.
    */
-  async getLatestObservations(agentUrl: string): Promise<unknown[]> {
+  async getLatestObservations(agentUrl: string, runId?: string | null): Promise<unknown[]> {
+    if (runId === null) return [];
     const result = await query(
       `SELECT observations_json
        FROM agent_compliance_runs
        WHERE agent_url = $1 AND dry_run = FALSE AND is_authoritative = TRUE
+         AND ($2::uuid IS NULL OR id = $2::uuid)
        ORDER BY tested_at DESC
        LIMIT 1`,
-      [agentUrl],
+      [agentUrl, runId ?? null],
     );
     const raw = result.rows[0]?.observations_json;
     if (!Array.isArray(raw)) return [];
@@ -1506,7 +1590,7 @@ export class ComplianceDatabase {
 
   /**
    * Find agents that are due for a compliance check based on their lifecycle stage.
-   * Joins federated agents (from discovered_agents + member profiles) with metadata and status.
+   * Joins current discovered and owner-registered agents with metadata and status.
    * Respects owner-configured check_interval_hours and monitoring_paused.
    */
   async getAgentsDueForCheck(limit: number = 10): Promise<Array<{
@@ -1516,19 +1600,16 @@ export class ComplianceDatabase {
     /** Total due before LIMIT; repeated on each selected row for one-query telemetry. */
     eligible_backlog: number;
   }>> {
-    // `known_agents` unions every source the heartbeat is allowed to test:
-    //
-    // - `discovered_agents` — crawler-discovered via adagents.json on a
-    //   publisher domain.
-    // - `agent_registry_metadata` — explicit registration / lifecycle-stage
-    //   write. Most member-registered agents land a row here via the
-    //   write-side seed in member-agents.ts and the save_agent MCP handler.
-    // - `member_profiles.agents` (JSONB) — defense-in-depth: any agent the
-    //   owner registered through Addie or the REST surface, even if the
-    //   metadata-row seed failed (the seed is best-effort with a warn-log
-    //   on failure). Without this third leg of the union, an agent that
-    //   slipped past the seed would stay `unknown` forever — the same
-    //   class of bug as the operator-endpoint visibility miss.
+    // Metadata is scheduling/configuration state, not proof that an agent is
+    // still registered. Backfills and old discovery probes left metadata-only
+    // rows behind after owners removed agents or discovery records expired.
+    // Keep owner-registered and actively badged agents on their configured
+    // cadence, including a badge holder whose registry source disappeared;
+    // public badges must not lose their only scheduled reassessment path.
+    // Discovery-only agents require a publisher authorization refreshed within
+    // 30 days. They get at least 48 hours between completed grades; a requeue
+    // bypasses the cadence floor. Inconclusive runs have bounded backoff in
+    // deferComplianceCheckAfterInconclusiveTarget().
     //
     // Explicit owner requeues are served first (oldest requeue wins), then
     // the regular cadence by last authoritative check. Without that, an agent
@@ -1538,17 +1619,34 @@ export class ComplianceDatabase {
     // never-checked agents land in a stable order across heartbeat runs.
     const result = await query(
       `WITH known_agents AS (
-        SELECT agent_url FROM discovered_agents
-        UNION
-        SELECT agent_url FROM agent_registry_metadata
-        UNION
-        SELECT (a->>'url') AS agent_url
-        FROM member_profiles, jsonb_array_elements(agents) a
-        WHERE a->>'url' IS NOT NULL
+        SELECT agent_url, BOOL_OR(is_member_registered) AS is_member_registered,
+          BOOL_OR(has_active_badge) AS has_active_badge
+        FROM (
+          SELECT agent_url, FALSE AS is_member_registered, FALSE AS has_active_badge
+          FROM discovered_agents d
+          WHERE (d.expires_at IS NULL OR d.expires_at > NOW())
+            AND EXISTS (
+              SELECT 1 FROM agent_publisher_authorizations auth
+              WHERE auth.agent_url = d.agent_url
+                AND auth.source IN ('adagents_json', 'aao_hosted')
+                AND GREATEST(auth.discovered_at, auth.last_validated) >= NOW() - INTERVAL '30 days'
+            )
+          UNION ALL
+          SELECT (a->>'url') AS agent_url, TRUE AS is_member_registered, FALSE AS has_active_badge
+          FROM member_profiles, jsonb_array_elements(agents) a
+          WHERE a->>'url' IS NOT NULL
+          UNION ALL
+          SELECT agent_url, FALSE AS is_member_registered, TRUE AS has_active_badge
+          FROM agent_verification_badges
+          WHERE status IN ('active', 'degraded')
+        ) sources
+        GROUP BY agent_url
       ),
       due_agents AS (
         SELECT
           ka.agent_url,
+          ka.is_member_registered,
+          ka.has_active_badge,
           COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
           s.last_checked_at,
           m.requeued_at
@@ -1560,7 +1658,8 @@ export class ComplianceDatabase {
           AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
           AND COALESCE(m.monitoring_paused, FALSE) = FALSE
           AND (m.next_compliance_check_at IS NULL OR m.next_compliance_check_at < NOW())
-
+          AND (ka.is_member_registered OR ka.has_active_badge OR m.requeued_at IS NOT NULL
+            OR s.last_checked_at IS NULL OR s.last_checked_at < NOW() - INTERVAL '48 hours')
       )
       SELECT
         agent_url,
@@ -1568,7 +1667,8 @@ export class ComplianceDatabase {
         last_checked_at,
         COUNT(*) OVER()::int AS eligible_backlog
       FROM due_agents
-      ORDER BY requeued_at ASC NULLS LAST, last_checked_at ASC NULLS FIRST, agent_url ASC
+      ORDER BY requeued_at ASC NULLS LAST, is_member_registered DESC, has_active_badge DESC,
+        last_checked_at ASC NULLS FIRST, agent_url ASC
       LIMIT $1`,
       [limit],
     );
@@ -1610,7 +1710,13 @@ export class ComplianceDatabase {
       `INSERT INTO agent_registry_metadata (agent_url, check_interval_hours)
        VALUES ($1, $2)
        ON CONFLICT (agent_url) DO UPDATE SET
-         check_interval_hours = $2, next_compliance_check_at = NULL,
+          check_interval_hours = $2,
+         next_compliance_check_at = CASE
+           WHEN agent_registry_metadata.check_interval_hours IS DISTINCT FROM $2 THEN NULL
+           ELSE agent_registry_metadata.next_compliance_check_at END,
+         compliance_inconclusive_streak = CASE
+           WHEN agent_registry_metadata.check_interval_hours IS DISTINCT FROM $2 THEN 0
+           ELSE agent_registry_metadata.compliance_inconclusive_streak END,
          updated_at = NOW()`,
       [agentUrl, intervalHours],
     );
@@ -1620,7 +1726,8 @@ export class ComplianceDatabase {
     await query(
       `INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at, requeued_at)
        VALUES ($1, NULL, NOW())
-       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NULL, requeued_at = NOW()`,
+       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NULL,
+         compliance_inconclusive_streak = 0, requeued_at = NOW()`,
       [agentUrl],
     );
   }
@@ -1649,7 +1756,9 @@ export class ComplianceDatabase {
     first_failed_step_task: string | null;
     first_failure_message: string | null;
     first_failure_validations_jsonb: unknown;
+    skipped_steps: StoryboardSkippedStep[] | null;
     triggered_by: string | null;
+    run_org_id: string | null;
   }>> {
     const diagnosticsSelect = options.includeDiagnostics === false
       ? 'NULL::jsonb AS first_failure_validations_jsonb'
@@ -1679,12 +1788,15 @@ export class ComplianceDatabase {
          ORDER BY tested_at DESC
          LIMIT 1
        )
-       SELECT storyboard_id, requested_compliance_target, adcp_version, status, last_tested_at, last_passed_at, last_failed_at,
-              steps_passed, steps_total, failure_count, skipped_count,
-              first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
+       SELECT s.storyboard_id, s.requested_compliance_target, s.adcp_version, s.status, s.last_tested_at, s.last_passed_at, s.last_failed_at,
+              s.steps_passed, s.steps_total, s.failure_count, s.skipped_count,
+              s.first_failed_step_id, s.first_failed_step_title, s.first_failed_step_task, s.first_failure_message,
               ${diagnosticsSelect},
-              triggered_by
+              -- Cheap denormalized column; owner gating happens in the serializer.
+              s.skipped_steps_jsonb AS skipped_steps,
+              s.triggered_by, run_owner.triggered_org_id AS run_org_id
        FROM agent_storyboard_status s
+       LEFT JOIN agent_compliance_runs run_owner ON run_owner.id = s.run_id
        ${diagnosticsJoin}
        WHERE s.agent_url = $1
          AND ($2::uuid IS NULL OR s.run_id = $2::uuid)
@@ -1768,6 +1880,8 @@ export class ComplianceDatabase {
     first_failed_step_task: string | null;
     first_failure_message: string | null;
     first_failure_validations_jsonb: unknown;
+    skipped_steps: StoryboardSkippedStep[] | null;
+    run_org_id: string | null;
   }>>> {
     if (agentUrls.length === 0) return new Map();
 
@@ -1792,8 +1906,11 @@ export class ComplianceDatabase {
        SELECT s.agent_url, s.storyboard_id, s.requested_compliance_target, s.adcp_version, s.status, s.last_tested_at, s.last_passed_at,
               s.steps_passed, s.steps_total, s.failure_count, s.skipped_count,
               s.first_failed_step_id, s.first_failed_step_title, s.first_failed_step_task, s.first_failure_message,
-              first_failure_diag.failed_validations_jsonb AS first_failure_validations_jsonb
+              first_failure_diag.failed_validations_jsonb AS first_failure_validations_jsonb,
+              s.skipped_steps_jsonb AS skipped_steps,
+              run_owner.triggered_org_id AS run_org_id
        FROM agent_storyboard_status s
+       LEFT JOIN agent_compliance_runs run_owner ON run_owner.id = s.run_id
        LEFT JOIN latest_run_flags lf ON lf.agent_url = s.agent_url
        LEFT JOIN LATERAL (
          SELECT d.failed_validations_jsonb
@@ -1823,6 +1940,8 @@ export class ComplianceDatabase {
       first_failed_step_id: string | null; first_failed_step_title: string | null;
       first_failed_step_task: string | null; first_failure_message: string | null;
       first_failure_validations_jsonb: unknown;
+      skipped_steps: StoryboardSkippedStep[] | null;
+      run_org_id: string | null;
     }>>();
     for (const row of result.rows) {
       if (!map.has(row.agent_url)) map.set(row.agent_url, []);
@@ -1844,8 +1963,13 @@ export class ComplianceDatabase {
    * access token as a bearer so callers surface a clear 401 from the agent
    * rather than sending no Authorization header at all.
    */
-  async resolveOwnerAuth(agentUrl: string): Promise<ResolvedOwnerAuth | undefined> {
+  async resolveOwnerAuth(
+    agentUrl: string,
+    checkpoint?: () => Promise<void>,
+    onResolvedOrg?: (orgId: string) => void,
+  ): Promise<ResolvedOwnerAuth | undefined> {
     try {
+      await checkpoint?.();
       const result = await query(
         `SELECT ac.organization_id,
                 ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type,
@@ -1876,8 +2000,13 @@ export class ComplianceDatabase {
         [agentUrl, JSON.stringify([{ url: agentUrl }])],
       );
 
+      await checkpoint?.();
       const row = result.rows[0];
       if (!row) return undefined;
+      const resolved = <T extends ResolvedOwnerAuth>(auth: T): T => {
+        onResolvedOrg?.(row.organization_id);
+        return auth;
+      };
 
       // Prefer static token when available
       if (row.auth_token_encrypted) {
@@ -1885,13 +2014,13 @@ export class ComplianceDatabase {
 
         if (row.auth_type === 'basic') {
           const basic = decodeBasicCredentials(token);
-          if (basic) return basic;
+          if (basic) return resolved(basic);
           logger.warn(
             { agentUrl, orgId: row.organization_id },
             'Ignoring malformed saved Basic auth credentials while resolving owner auth',
           );
         } else {
-          return { type: 'bearer', token };
+          return resolved({ type: 'bearer', token });
         }
       }
 
@@ -1907,7 +2036,7 @@ export class ComplianceDatabase {
           : undefined;
 
         if (!refreshToken) {
-          return { type: 'bearer', token: accessToken };
+          return resolved({ type: 'bearer', token: accessToken });
         }
 
         const tokens: { access_token: string; refresh_token: string; expires_at?: string } = {
@@ -1930,7 +2059,7 @@ export class ComplianceDatabase {
           }
           oauth.client = client;
         }
-        return oauth;
+        return resolved(oauth);
       }
 
       if (
@@ -1984,11 +2113,12 @@ export class ComplianceDatabase {
             'Dropped unrecognized oauth_cc_auth_method from agent_context',
           );
         }
-        return { type: 'oauth_client_credentials', credentials };
+        return resolved({ type: 'oauth_client_credentials', credentials });
       }
 
       return undefined;
     } catch (error) {
+      if (isComplianceRefreshAccessFailure(error)) throw error;
       logger.warn({ err: error, agentUrl }, 'Could not resolve owner auth');
       return undefined;
     }
@@ -2020,6 +2150,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, badge.agent_url);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${badge.agent_url}`],
@@ -2222,10 +2353,11 @@ export class ComplianceDatabase {
     expectedGeneration?: string,
     gradingGuard?: BadgeGradingGuard,
   ): Promise<boolean> {
-    if (expectedGeneration !== undefined) {
+    if (expectedGeneration !== undefined || this.beforeCanonicalWrite) {
       const client = await getClient();
       try {
         await client.query('BEGIN');
+        await this.beforeCanonicalWrite?.(client, agentUrl);
         await client.query(
           'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
           [`verification-badge:${agentUrl}`],
@@ -2241,7 +2373,7 @@ export class ComplianceDatabase {
                verification_token = NULL, token_expires_at = NULL, updated_at = NOW()
            WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
              AND status IN ('active', 'degraded')
-             AND COALESCE((
+             AND ($5::bigint IS NULL OR COALESCE((
                SELECT badge_requalification_generation
                FROM agent_registry_metadata WHERE agent_url = $1
              ), 0) = $5::bigint
@@ -2336,6 +2468,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, agentUrl);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${agentUrl}`],
@@ -2485,10 +2618,11 @@ export class ComplianceDatabase {
     expectedGeneration?: string,
     gradingGuard?: BadgeGradingGuard,
   ): Promise<boolean> {
-    if (expectedGeneration !== undefined) {
+    if (expectedGeneration !== undefined || this.beforeCanonicalWrite) {
       const client = await getClient();
       try {
         await client.query('BEGIN');
+        await this.beforeCanonicalWrite?.(client, agentUrl);
         await client.query(
           'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
           [`verification-badge:${agentUrl}`],
@@ -2504,7 +2638,7 @@ export class ComplianceDatabase {
                verification_token = NULL, token_expires_at = NULL, updated_at = NOW()
            WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
              AND status = 'active'
-             AND COALESCE((
+             AND ($4::bigint IS NULL OR COALESCE((
                SELECT badge_requalification_generation
                FROM agent_registry_metadata WHERE agent_url = $1
              ), 0) = $4::bigint

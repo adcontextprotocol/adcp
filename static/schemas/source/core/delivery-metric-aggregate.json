@@ -29,7 +29,8 @@
                   "viewed_seconds_histogram",
                   "quartile_data",
                   "time_based_views",
-                  "dooh_metrics"
+                  "dooh_metrics",
+                  "print_metrics"
                 ]
               }
             }
