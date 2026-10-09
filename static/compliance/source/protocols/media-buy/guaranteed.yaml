@@ -6,6 +6,8 @@ protocol: media-buy
 category: media_buy_seller
 summary: "Baseline for sellers that sell only guaranteed inventory: guaranteed discovery, a submitted create, controller-forced task completion, readback, and delivery reporting."
 track: media_buy
+requires:
+  - controller
 
 # Replaces the non-guaranteed media_buy_seller baseline for sellers that declare
 # media_buy.supported_delivery_types without non_guaranteed. Default-both and
@@ -19,9 +21,10 @@ required_tools:
   - create_media_buy
   - get_task_status
 
-# comply_test_controller is deliberately NOT a storyboard-level required tool: the two
-# forced-approval steps carry `requires_tool`, so a missing controller grades those
-# steps `missing_test_controller` instead of making the whole storyboard `missing_tool`.
+# comply_test_controller is deliberately NOT in required_tools. The storyboard declares
+# `requires: [controller]`, so a seller without a test controller receives a single
+# storyboard-level `missing_test_controller` skip (not a storyboard-wide `missing_tool`);
+# the forced-approval steps also carry `requires_tool` as a backstop.
 
 # Cross-step assertion (adcp#2664): reject resource status transitions that are
 # not on the spec lifecycle graph.
@@ -43,10 +46,10 @@ narrative: |
 
   The sandbox controller must support force_create_media_buy_arm and force_task_completion
   so this test does not depend on a human signing an IO during the runner's timeout
-  window. If the controller does not expose them, the first forced approval step skips with
-  missing_test_controller and the steps that depend on forced state skip behind it
-  (prerequisite_failed). That is a coverage gap: the skipped assertions do not prove the
-  guaranteed approval lifecycle, so such a run does not fail but is not a complete grade.
+  window. If the controller does not expose them, the storyboard grades a single
+  storyboard-level missing_test_controller skip (requires: [controller]). That is a
+  coverage gap, not a failure: the skipped assertions do not prove the guaranteed approval lifecycle, so such
+  a run is not a complete grade.
 
   This baseline is a reduced-coverage profile, not equivalence with media_buy_seller.
   The inherited scenarios gated on non_guaranteed grade not_applicable, which means no

@@ -21,7 +21,7 @@ on non-guaranteed fixtures, is gated on `non_guaranteed` being declared. A
 seller that declares a set without it is graded on the sibling baseline
 `media_buy_seller_guaranteed` (submitted create, controller-forced completion,
 `get_task_status` polling, `get_media_buys` readback, delivery reporting). A run
-whose approval controller is missing grades those steps `missing_test_controller`
+whose approval controller is missing grades a single storyboard-level `missing_test_controller` skip
 and is not a complete grade.
 
 ## Rationale

@@ -1,14 +1,17 @@
 id: media_buy_seller/installment_property_delivery_reporting
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.3"
 title: "Seller reports delivery by installment and property from injected rows"
 category: media_buy_seller
 summary: "Verifies reporting_dimensions.installment_property returns only controller-injected installment-by-property rows, keeps collection-owner and host-property domains distinct, and echoes truncation, suppression, and applied-sort companions; gated on the seller-wide supports_installment_property_breakdown rollup."
 track: reporting
 
-requires_capability:
-  path: media_buy.features.supports_installment_property_breakdown
-  equals: true
+requires_all_capabilities:
+  - path: media_buy.features.supports_installment_property_breakdown
+    equals: true
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 requires:
   - controller

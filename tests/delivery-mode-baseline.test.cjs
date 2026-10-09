@@ -111,6 +111,7 @@ test('base baseline is gated on non_guaranteed and the guaranteed baseline on it
   // The new baseline reuses the proven guaranteed lifecycle and must keep the
   // missing-controller coverage-gap wording.
   assert.match(guaranteed.narrative, /missing_test_controller/);
+  assert.deepEqual(guaranteed.requires, ['controller']);
   assert.match(guaranteed.narrative, /not a complete grade/);
   for (const stepId of ['get_products_unfiltered', 'get_products_non_guaranteed_empty', 'force_submitted_buy', 'create_media_buy', 'get_submitted_task', 'force_task_completion', 'get_completed_task']) {
     const found = guaranteed.phases.flatMap(p => p.steps).some(step => step.id === stepId);
@@ -175,7 +176,7 @@ test('every added non_guaranteed gate is tagged TEMPORARY so it is removed with 
     }
   };
   walk(PROTOCOL_DIR);
-  assert.ok(gates >= 36);
+  assert.ok(gates >= 38);
   assert.deepEqual(missing, []);
 });
 
@@ -235,7 +236,7 @@ test('every value gate whose path has a source schema default resolves that defa
  * (not applicable) or `no_phases` (selected).
  */
 async function gateOutcome(storyboard, rawCapabilities) {
-  const tools = ['get_adcp_capabilities', ...(storyboard.required_tools ?? [])];
+  const tools = ['get_adcp_capabilities', 'comply_test_controller', ...(storyboard.required_tools ?? [])];
   const result = await runStoryboard(
     'https://agent.example/mcp',
     { ...storyboard, prerequisites: undefined, fixtures: undefined, phases: [] },
@@ -310,7 +311,7 @@ test('gates select the right baseline per declaration, and an undeclared seller 
   });
 });
 
-test('a missing approval controller grades the forced steps missing_test_controller, not the whole storyboard missing_tool', async () => {
+test('a missing approval controller grades one storyboard-level missing_test_controller skip, not a failure or missing_tool', async () => {
   const guaranteed = loadByIdFromProtocolDir().get('media_buy_seller_guaranteed');
   assert.ok(!guaranteed.required_tools.includes('comply_test_controller'));
   const forced = guaranteed.phases.flatMap(p => p.steps).filter(step => step.task === 'comply_test_controller');
@@ -333,16 +334,11 @@ test('a missing approval controller grades the forced steps missing_test_control
       },
     }),
   });
+  assert.equal(result.failed_count, 0);
+  assert.equal(result.overall_passed, true);
+  assert.equal(result.passed_count, 0);
   const steps = result.phases.flatMap(phase => phase.steps);
-  const byId = id => steps.find(step => (step.step_id ?? step.id) === id);
-  // The first forced step is the gap itself. Steps that depend on forced state are skipped by the
-  // runner's cascade (prerequisite_failed, or missing_tool for the later forced step): a coverage
-  // gap that does not fail the run and is not a complete grade.
-  assert.equal(byId('force_submitted_buy').skip_reason, 'missing_test_controller');
-  for (const id of ['create_media_buy', 'get_submitted_task', 'force_task_completion', 'get_completed_task', 'get_media_buys_approved', 'get_delivery']) {
-    const step = byId(id);
-    assert.ok(step && step.skipped, `${id} is skipped, not failed`);
-    assert.ok(['missing_test_controller', 'missing_tool', 'prerequisite_failed'].includes(step.skip_reason), `${id}: ${step.skip_reason}`);
-  }
-  assert.ok(!result.phases.some(phase => phase.phase_id === 'missing_tool'), 'the storyboard is not skipped wholesale for a missing tool');
+  assert.ok(steps.length >= 1 && steps.every(step => step.skipped));
+  assert.ok(steps.every(step => step.skip_reason === 'missing_test_controller'),
+    JSON.stringify(steps.map(step => [step.skip_reason, step.skip?.reason])));
 });
