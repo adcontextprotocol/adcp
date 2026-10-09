@@ -17,7 +17,9 @@
     "background_music",
     "editorial",
     "commercial",
-    "ai_generated_image"
+    "ai_generated_image",
+    "paid_amplification",
+    "content_reuse"
   ],
   "enumDescriptions": {
     "likeness": "Visual representation of a person's appearance, including AI-generated imagery",
@@ -31,6 +33,8 @@
     "background_music": "Use of music as background audio in advertising",
     "editorial": "Use in editorial or informational contexts",
     "commercial": "Use in commercial advertising and promotional contexts",
-    "ai_generated_image": "License to produce AI-generated still imagery derived from the rights holder's IP (brand assets, character designs, talent likeness). Distinct from likeness/voice by output modality — a get_rights query filtered on ai_generated_image returns rights whose pricing options cover image generation, regardless of the underlying IP category."
+    "ai_generated_image": "License to produce AI-generated still imagery derived from the rights holder's IP (brand assets, character designs, talent likeness). Distinct from likeness/voice by output modality — a get_rights query filtered on ai_generated_image returns rights whose pricing options cover image generation, regardless of the underlying IP category.",
+    "paid_amplification": "The brand runs the creator's published content as paid media from the creator's identity, for example Spark Ads, Partnership Ads or YouTube partnerships",
+    "content_reuse": "The brand republishes the content from its own identity on its owned or paid channels"
   }
 }

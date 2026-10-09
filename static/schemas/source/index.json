@@ -2746,6 +2746,10 @@
           "$ref": "/schemas/brand/rights-pricing-option.json",
           "description": "Pricing option for licensable rights"
         },
+        "rights-scope": {
+          "$ref": "/schemas/brand/rights-scope.json",
+          "description": "What a rights grant covers — uses, grant window, and exclusivity — shared by rights-terms and media-buy purchases"
+        },
         "rights-terms": {
           "$ref": "/schemas/brand/rights-terms.json",
           "description": "Terms returned with a rights grant — coverage, restrictions, revocation, and credentials"

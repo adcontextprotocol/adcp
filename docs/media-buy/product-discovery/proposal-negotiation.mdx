@@ -456,6 +456,38 @@ When cancellation requires agreement, fork the accepted snapshot with `change_ki
 
 Both successors must be finalized and accepted. Direct [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) cancellation is reserved for rights already granted by the accepted terms. When Sam stops pursuing a draft instead, [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) records terminal feedback; it does not mutate the proposal into another state.
 
+### Rights in the purchase
+
+**Experimental (`media_buy.purchase_rights`).** A creator or influencer purchase can carry the rights that make the deal worth doing: whether the brand may run the creator's post as paid media, how it may reuse the content, for how long, and whether competitors are excluded. A purchase declares them in an optional `rights[]` array. Each entry is a [`brand/rights-scope.json`](https://adcontextprotocol.org/schemas/latest/brand/rights-scope.json): `uses`, `start_date`, `end_date`, and `exclusivity`. That is the same scope shape `acquire_rights` returns in `rights-terms`, without the rights-agent pricing fields.
+
+```json
+{
+  "product_id": "creator_video_series",
+  "pricing_option_id": "flat_rate_usd",
+  "pricing": { "...": "resolved pricing, which covers the rights" },
+  "start_time": "2026-11-01T00:00:00Z",
+  "end_time": "2027-01-31T23:59:59Z",
+  "rights": [
+    {
+      "uses": ["paid_amplification", "content_reuse"],
+      "start_date": "2026-11-01",
+      "end_date": "2027-01-31",
+      "exclusivity": { "scope": "competing_beverage_brands", "countries": ["US"] }
+    }
+  ]
+}
+```
+
+- **Bound by the digest.** `rights[]` sits inside `commercial_terms.purchases[]`, so `terms_digest` covers it and [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) binds it with the price. Verify it in step 3 like any other purchase term.
+- **Priced in the purchase.** There is no separate rights `pricing_option_id` or `amount`. The purchase's `pricing` is the price for media and rights together.
+- **The media seller is the grantor.** It warrants that it holds, or will procure, the rights it lists, for example as the creator's agent or network, or by obtaining the creator's platform authorization. A rights agent and `acquire_rights` are not involved.
+- **Seller-authored.** `rights[]` appears in seller proposals and accepted terms. `buy_products` input must match a published offer, which carries no rights, so `product-purchase-input.json` does not accept it and a buyer has no typed way to request or counter rights in 3.3. Product-level rights offers are a later path.
+- **Dates.** `start_date` and `end_date` are calendar dates. The purchase's flight SHOULD fall inside them.
+- **Exclusivity is per purchase.** It applies to the buy it appears on, not to the product.
+- **Two new uses.** `paid_amplification` is the brand running the creator's published content as paid media from the creator's identity (Spark Ads, Partnership Ads, YouTube partnerships). `content_reuse` is the brand republishing the content from its own identity. A rights price differs between the two, which is why `commercial` alone is not enough.
+
+Acceptance mints no rights grant in 3.3. At serving time, amplification runs on a `published_post` asset; see [published-post reference creatives](/docs/creative/published-post-reference-creatives). `rights[]` is the contract. `reference_authorization` is the seller's runtime evidence of the platform authorization, and the two are independent: the window in `rights[]` is contractual in 3.3 and no field enforces it, so the platform authorization SHOULD cover it. Attested grants that a `rights-constraint` can cite are planned for 3.4 ([#5543](https://github.com/adcontextprotocol/adcp/issues/5543)). Sellers that emit `rights[]` MUST list `media_buy.purchase_rights` in `experimental_features`.
+
 ## Seller implementation
 
 ### Compose a proposal specialist behind the sales agent
