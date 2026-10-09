@@ -19,6 +19,10 @@ concurrency:
   # `scripts/ipr/check-and-record.mjs`.
   group: adcp-ipr-signature-write
   cancel-in-progress: false
+  # cancel-in-progress: false alone still permits only one pending run, so a
+  # burst evicts pending checks for unrelated PRs. `queue: max` keeps up to
+  # 100 pending runs so each PR's check still runs.
+  queue: max
 
 jobs:
   check:
