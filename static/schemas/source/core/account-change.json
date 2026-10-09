@@ -35,7 +35,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "description": "Open resource-type name such as account, media_buy, package, creative, creative_assignment, delivery_report, audience, event_source, catalog, or account_financials.",
+          "description": "Open resource-type name such as account, media_buy, package, creative, creative_assignment, delivery_report, audience, event_source, catalog, account_financials, or invoice.",
           "minLength": 1,
           "maxLength": 100,
           "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
