@@ -7,7 +7,9 @@ name: Claude Issue Triage
 #
 # Both issue comments and PR comments are routed to the same routine; the
 # payload's `is_pr` flag and `pr` block tell the routine which context it's
-# in so it can pick the right response (issue triage vs PR-feedback fix).
+# in so it can pick the right response (issue triage vs read/respond
+# PR-feedback). Triage is routing-only: it never creates branches, edits
+# code, opens/updates PRs, or pushes commits.
 #
 # The issue/PR body is fetched fresh and passed as *data* (fenced, size-
 # capped) — the routine's prompt treats anything inside the fence as
@@ -303,7 +305,7 @@ jobs:
 
           nudge_note=""
           if [ "$EVENT_KIND" = "manual" ]; then
-            nudge_note="MANUAL NUDGE: @${COMMENTER} requested triage via /triage ${ARGS}. Treat as an explicit request; skip already-engaged check. Honor any modifier (execute / clarify / defer) in the args."
+            nudge_note="MANUAL NUDGE: @${COMMENTER} requested triage via /triage ${ARGS}. Treat as an explicit request; skip already-engaged check. Triage is routing-only: never create branches, edit implementation code, open or update PRs, or push commits. Honor any modifier (execute / clarify / defer) in the args; execute is a backward-compatible intake alias that yields a Ready-to-implement brief or the relevant defer/flag outcome and grants no code or PR execution."
           fi
 
           # Filter goes through a heredoc-fed temp file so apostrophes,
@@ -323,7 +325,7 @@ jobs:
             (if $is_pr == "true" then
               "is_pr: true\n" +
               "pr: " + $pr_block + "\n" +
-              "MODE: PR-feedback. Treat new comment as actionable feedback on the PR diff. Follow the `MODE: PR-feedback` rules in .agents/routines/triage-prompt.md. If the comment requests a fix, apply it as a follow-up commit on the PR head branch — do not open a new PR. If the comment asks a question or challenges a design choice, answer it in ONE coherent reply comment: lean compose/defer over inventing precedence/MUST/SHOULD rules, finalize your synthesis before posting, and if you must revise a prior answer, EDIT it rather than posting a correction/addendum. If the comment is conversational with no action implied, post a short acknowledgement and stop.\n"
+              "MODE: PR-feedback (read/respond only). Follow the `MODE: PR-feedback` rules in .agents/routines/triage-prompt.md. Never push commits, edit the PR branch, or open a new PR. If the comment requests a fix, reply with a scoped handoff brief linked to this existing PR; do not imply the routine will push the fix. If the comment asks a question or challenges a design choice, answer it in ONE coherent reply comment: lean compose/defer over inventing precedence/MUST/SHOULD rules, finalize your synthesis before posting, and if you must revise a prior answer, EDIT it rather than posting a correction/addendum. If the comment is conversational with no action implied, post a short acknowledgement and stop.\n"
             else
               "is_pr: false\n" +
               "Current milestone: " + (if $current_milestone == "" then "none" else $current_milestone end) + "\n" +
