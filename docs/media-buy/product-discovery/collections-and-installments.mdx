@@ -392,9 +392,12 @@ Episodes can carry booking, cancellation, and material submission deadlines. The
 |-------|------|-------------|
 | `booking_deadline` | datetime | Last date/time to book a placement in this installment |
 | `cancellation_deadline` | datetime | Last date/time to cancel without penalty |
+| `change_cutoff` | datetime | Last date/time at which a change to or stop of this installment still takes operational effect |
 | `material_deadlines` | array | Ordered stages for creative material submission |
 
 Deadlines MUST be chronologically ordered: `booking_deadline` ≤ `cancellation_deadline` ≤ each `material_deadlines[n].due_at` (ascending by array index) ≤ the installment's `scheduled_at`. Buyer agents SHOULD reject installments where deadlines violate this ordering.
+
+`change_cutoff` is the operational lock for changes: broadcast traffic/log close, OOH posting-cycle lock, print issue close, or cinema reel lock. A creative swap, pause, or cancellation instruction received after it may not take effect. It is distinct from `cancellation_deadline`, which is the penalty-free cancel window: a cancellation after `change_cutoff` may still be billed even if it falls within terms. It is also distinct from `booking_deadline`, which governs new bookings. When both are present, `change_cutoff` SHOULD NOT precede `booking_deadline`. If `change_cutoff` is absent, the seller makes no statement about when changes stop taking effect. The ordering above does not constrain `change_cutoff` relative to `cancellation_deadline` or `material_deadlines`.
 
 Each material deadline has:
 
