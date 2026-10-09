@@ -341,6 +341,16 @@
         return state.agentUrl;
       }
 
+      // Prefer the registered agent name over the URL hostname once it loads.
+      function renderAgentName(verification) {
+        const name = verification && typeof verification.agent_name === "string"
+          ? verification.agent_name.trim()
+          : "";
+        if (!name) return;
+        document.title = `${name} - Agent registry profile`;
+        document.getElementById("agentTitle").textContent = name;
+      }
+
       function renderShell() {
         let title = state.agentUrl || "Unknown agent";
         try {
@@ -487,6 +497,7 @@
 
           renderBadges(verification);
           renderCompliance(compliance, verification);
+          renderAgentName(verification);
         } catch (error) {
           document.getElementById("statusRow").innerHTML = pill(
             "Load failed",

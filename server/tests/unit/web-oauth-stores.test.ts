@@ -26,6 +26,7 @@ function makeFlow(overrides: Partial<PendingWebFlow> = {}): PendingWebFlow {
     resource: 'https://agent.example.com/mcp',
     scope: 'mcp.read',
     authorizationServerUrl: 'https://agent.example.com',
+    authorizationServerIssuer: 'https://agent.example.com',
     clientInformation: { client_id: 'client-1' },
     createdAt: now,
     expiresAt,
@@ -78,9 +79,40 @@ describe('AgentOAuthPendingFlowStore', () => {
     expect(consumed!.agentUrl).toBe(flow.agentUrl);
     expect(consumed!.resource).toBe(flow.resource);
     expect(consumed!.scope).toBe(flow.scope);
+    expect(consumed!.authorizationServerIssuer).toBe(flow.authorizationServerIssuer);
     expect(consumed!.carry).toEqual(flow.carry);
     expect(consumed!.expiresAt).toBeInstanceOf(Date);
     expect(consumed!.expiresAt.toISOString()).toBe(flow.expiresAt.toISOString());
+  });
+
+  it('encrypts a confidential client secret and preserves its issuer/resource binding', async () => {
+    const secret = 'synthetic-confidential-owner-secret';
+    const flow = makeFlow({ clientInformation: {
+      client_id: 'client-1', client_secret: secret, issuer: 'https://agent.example.com',
+    }, resourceOverrideSnapshot: null });
+    mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 1, command: 'INSERT', oid: 0, fields: [] });
+    await store.put(flow);
+    const data = JSON.parse(String(mockedQuery.mock.calls[0][1]![1]));
+    expect(JSON.stringify(data)).not.toContain(secret);
+    expect(data.clientInformation).not.toHaveProperty('client_secret');
+    expect(data.clientSecretEncrypted).toBeTypeOf('string');
+    mockedQuery.mockResolvedValueOnce({ rows: [{ data }], rowCount: 1, command: 'DELETE', oid: 0, fields: [] });
+    const restored = await store.consume(flow.state);
+    expect(restored?.clientInformation).toEqual(flow.clientInformation);
+    expect(restored).toHaveProperty('resourceOverrideSnapshot', null);
+  });
+
+  it('refuses historical unstamped pending flows rather than inferring the issuer', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ data: { authorizationServerUrl: 'https://agent.example.com',
+      clientInformation: { client_id: 'legacy-client' } } }], rowCount: 1, command: 'DELETE', oid: 0, fields: [] });
+    await expect(store.consume('legacy')).rejects.toThrow(/start sign-in again/);
+  });
+
+  it('refuses a plaintext confidential secret in historical pending JSON', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ data: { authorizationServerIssuer: 'https://agent.example.com',
+      clientInformation: { client_id: 'legacy-client', client_secret: 'synthetic-secret' } } }],
+    rowCount: 1, command: 'DELETE', oid: 0, fields: [] });
+    await expect(store.consume('legacy')).rejects.toThrow(/start sign-in again/);
   });
 
   it('put throws when carry.organization_id is missing — verifier salt is required', async () => {
@@ -112,6 +144,7 @@ describe('AgentOAuthPendingFlowStore', () => {
       codeVerifierIv: 'fake',
       redirectUri: 'https://app.example.com/api/oauth/agent/callback',
       authorizationServerUrl: 'https://agent.example.com',
+      authorizationServerIssuer: 'https://agent.example.com',
       clientInformation: { client_id: 'client-1' },
       createdAt: '2026-05-07T10:00:00Z',
       expiresAt: '2026-05-07T10:10:00Z',

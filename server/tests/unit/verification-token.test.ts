@@ -67,6 +67,8 @@ describe('verification-token', () => {
         role: 'sales',
         verified_specialisms: ['media_buy_seller', 'media_buy_non_guaranteed'],
         verification_modes: ['spec'],
+        grading_profile: 'spec',
+        first_failing_spec_at: '2026-09-16T10:00:00.000Z',
         protocol_version: '3.0.0',
       });
 
@@ -81,8 +83,66 @@ describe('verification-token', () => {
       expect(claims!.role).toBe('sales');
       expect(claims!.verified_specialisms).toEqual(['media_buy_seller', 'media_buy_non_guaranteed']);
       expect(claims!.verification_modes).toEqual(['spec']);
+      expect(claims!.grading_profile).toBe('spec');
+      expect(claims!.first_failing_spec_at).toBe('2026-09-16T10:00:00.000Z');
       expect(claims!.protocol_version).toBe('3.0.0');
       expect(claims!.iss).toBe('https://aao.org');
+    });
+
+    it('normalizes a valid historical claim-less token to Legacy', async () => {
+      const privatePem = Buffer.from(process.env.AAO_VERIFICATION_PRIVATE_KEY!, 'base64').toString('utf8');
+      const privateKey = await jose.importPKCS8(privatePem, 'EdDSA');
+      const historical = await new jose.SignJWT({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+      })
+        .setProtectedHeader({ alg: 'EdDSA', kid: 'aao-verification-1' })
+        .setIssuer('https://aao.org')
+        .setAudience('aao-verification')
+        .setSubject('https://example.com/mcp')
+        .setIssuedAt()
+        .setExpirationTime('30d')
+        .sign(privateKey);
+
+      const claims = await verifyVerificationToken(historical);
+      expect(claims?.grading_profile).toBe('legacy');
+    });
+
+    it('rejects unknown and Sandbox grading claims', async () => {
+      for (const gradingProfile of ['sandbox', 'future']) {
+        const signed = await signVerificationToken({
+          agent_url: 'https://example.com/mcp',
+          role: 'sales',
+          verified_specialisms: ['media_buy_seller'],
+          verification_modes: ['spec'],
+          grading_profile: gradingProfile as never,
+        });
+        expect(signed).toBeNull();
+      }
+    });
+
+    it('rejects a malformed Strict Spec failure clock', async () => {
+      expect(await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        grading_profile: 'legacy',
+        first_failing_spec_at: 'not-a-timestamp',
+      })).toBeNull();
+    });
+
+    it('rejects a parseable but non-canonical Strict Spec failure clock', async () => {
+      expect(await signVerificationToken({
+        agent_url: 'https://example.com/mcp',
+        role: 'sales',
+        verified_specialisms: ['media_buy_seller'],
+        verification_modes: ['spec'],
+        grading_profile: 'spec',
+        first_failing_spec_at: '2026-09-16',
+      })).toBeNull();
     });
 
     it('round-trips a token with both spec and live modes', async () => {

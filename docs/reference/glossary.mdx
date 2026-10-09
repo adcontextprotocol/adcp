@@ -92,7 +92,7 @@ An organization that owns and publishes audience or contextual data (e.g., Polk,
 The domain where a data provider publishes adagents.json `signals[]` definitions (e.g., `polk.com`). Used in `signal_ref` objects to reference provider-published signals: `{ "scope": "data_provider", "data_provider_domain": "polk.com", "signal_id": "likely_tesla_buyers" }`.
 
 **Daypart**
-Specific time-of-day segment for time-based advertising, commonly used in DOOH (e.g., morning_commute, evening_prime, overnight).
+Specific time-of-day segment for time-based advertising, commonly used in DOOH (e.g., morning_commute, evening_prime, overnight). In targeting, a `daypart_targets` entry names days of week and a whole-hour or (experimental) `HH:MM` window; see [Targeting](/docs/media-buy/advanced-topics/targeting#minute-resolution-dayparts-experimental).
 
 **Delegation Type** (`delegation_type`)
 Field in adagents.json that describes the commercial relationship between a publisher and an authorized agent: `direct` (publisher treats this as their direct sales path), `delegated` (agent manages monetization on the publisher's behalf), or `ad_network` (inventory sold through a network/package). Corresponds to `relationship` in brand.json for bilateral verification.
@@ -211,6 +211,9 @@ The AI capability that allows audience discovery through conversational descript
 **Offer** (TMP)
 A buyer's response to a TMP context match request. Ranges from simple activation (`package_id` only, for GAM key-value targeting) to rich proposals with brand, price, summary, and inline creative manifest (for AI assistants and dynamic surfaces). See [TMP Specification](/docs/trusted-match/specification).
 
+**Operator**
+The entity that drives buys for a brand: an agency, a trading desk, or the brand's own team. It's identified by domain. On a buyer-declared account (`require_operator_auth: false`), the operator is part of the account's natural key. The buyer supplies it in the payload: `accounts[].operator` on `sync_accounts`, `account.operator` on later calls. It isn't derived from the authenticated caller, because one agent can act for many operators. When `require_operator_auth` is `true`, the operator authenticates with the seller directly and the account is referenced by `account_id`. The word also shows up in "the agent's operator," meaning whoever publishes the brand.json that lists an agent in `agents[]` and its signing keys. That entity helps identify the caller. It isn't the account operator, and the two often differ. See [Seller walkthrough: buyer-declared accounts](/docs/building/by-layer/L2/accounts-and-agents#seller-walkthrough-buyer-declared-accounts).
+
 **Optimization Goal**
 A single entry in a package's `optimization_goals` array. Three kinds: `kind: "event"` (optimize for advertiser-tracked conversion events via an `event_sources` array of source-type pairs, with optional `cost_per`, `per_ad_spend`, or `maximize_value` target), `kind: "metric"` (optimize for a seller-native delivery metric — clicks, views, completed views, engagements, etc. — with optional `cost_per` or `threshold_rate` target), and `kind: "vendor_metric"` (optimize for a vendor-attested metric bound to a specific measurement vendor via `(vendor, metric_id)` — attention, panel-based brand lift, emissions, retail-media partner metrics — with optional `cost_per` or `threshold_rate` target). Event goals with `per_ad_spend` or `maximize_value` targets require `value_field` on event source entries. When the seller supports `multi_source_event_dedup` (declared in `get_adcp_capabilities`), they deduplicate by `event_id` across sources; otherwise buyers should use a single event source per goal. Vendor_metric goals require a matching `committed_metrics` entry on the same package — optimization without committed reporting is unverifiable and is rejected at the wire level. When multiple goals are present, `priority` (1 = highest) controls which the seller treats as primary.
 
@@ -263,7 +266,7 @@ Milestones in video ad viewing: Q1 (25% viewed), Q2 (50% viewed), Q3 (75% viewed
 The number or percentage of unique individuals exposed to an advertisement at least once during a campaign.
 
 **Relationship** (brand.json field)
-Field on brand.json properties declaring how the brand relates to a property: `owned` (default), `direct`, `delegated`, or `ad_network`. Delegated and network values align with `delegation_type` in adagents.json; `owned` is a brand.json-only ownership claim. Non-owned properties create bilateral verification — the operator declares the relationship in brand.json, the publisher confirms by authorizing the operator's agent in adagents.json. The AdCP equivalent of sellers.json.
+Field on brand.json properties declaring how the brand relates to a property: `owned` (default), `direct`, `delegated`, or `ad_network`. Direct, delegated, and network values align with `delegation_type` in adagents.json; `owned` is a brand.json-only ownership claim. Non-owned properties create bilateral verification — the operator declares the relationship in brand.json, the publisher confirms by authorizing the operator's agent in adagents.json. The AdCP equivalent of sellers.json.
 
 **Resolution Model**
 Product-level signal targeting rule that tells buyers how selected signals are applied. `direct_targeting` means selected signals behave like targeting predicates on the package inventory. `seller_planned` means selected signals are planning inputs the seller resolves against product-specific inventory, timing, availability, reach, or pacing constraints.

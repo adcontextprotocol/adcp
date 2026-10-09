@@ -238,16 +238,56 @@ export function getStrictForbiddenRequestSigningCapability(): VerifierCapability
   return strictForbiddenCapability;
 }
 
+/** Route-selection fields that determine a strict route's signing posture. */
+export interface SigningRouteContext {
+  strict?: boolean;
+  digestMode?: 'either' | 'required' | 'forbidden';
+  legacySigningProfile?: boolean;
+}
+
 /**
  * Select the right `VerifierCapability` for a training-agent context. The
  * default (`!ctx.strict`) is the sandbox capability. Strict routes use
  * `digestMode` to pick among `'either'` / `'required'` / `'forbidden'`.
  */
-export function selectSigningCapability(ctx: { strict?: boolean; digestMode?: 'either' | 'required' | 'forbidden' }): VerifierCapability {
+export function selectSigningCapability(ctx: SigningRouteContext): VerifierCapability {
   if (!ctx.strict) return getRequestSigningCapability();
   if (ctx.digestMode === 'required') return getStrictRequiredRequestSigningCapability();
   if (ctx.digestMode === 'forbidden') return getStrictForbiddenRequestSigningCapability();
   return getStrictRequestSigningCapability();
+}
+
+/** Trusted pin for the AdCP 3.2 request-signing profile (RFC 8941 sf-binary only). */
+export const CURRENT_REQUEST_SIGNING_PROFILE_VERSION = '3.2' as const;
+/** Trusted pin for the AdCP 3.0/3.1 legacy request-signing profile (Base64URL sf-binary). */
+export const LEGACY_REQUEST_SIGNING_PROFILE_VERSION = '3.1' as const;
+export type RequestSigningProfileVersion =
+  | typeof CURRENT_REQUEST_SIGNING_PROFILE_VERSION
+  | typeof LEGACY_REQUEST_SIGNING_PROFILE_VERSION;
+
+/**
+ * Request-signing profile a strict route verifies under. The profile is a
+ * property of the route, never of the request: the spec selects the
+ * `Signature` / `Content-Digest` encoding from the trusted negotiated
+ * endpoint profile, and a 3.2 verifier MUST NOT retry a Base64URL token
+ * through the legacy decoder (security.mdx, request-profile binary value
+ * encoding). A body-declared `adcp_version` is signer-controlled and is not
+ * read until after verification, so it cannot choose the parser.
+ *
+ * - `/mcp-strict-required` is the only strict route that advertises 3.2
+ *   (3.2 requires content-digest coverage), so it pins the 3.2 profile.
+ * - `/mcp-strict` (`either`), `/mcp-strict-forbidden`, and
+ *   `/mcp-strict-required-legacy` advertise only 3.0/3.1 releases and pin the
+ *   legacy profile, which is where 3.0/3.1 signers belong.
+ *
+ * `signingCompatibleReleaseVersions` in task-handlers.ts derives the route's
+ * advertised `supported_versions` from this same function, so the verifier
+ * pin and the advertisement cannot drift apart.
+ */
+export function requestSigningProfileVersion(ctx: SigningRouteContext): RequestSigningProfileVersion | undefined {
+  if (!ctx.strict) return undefined;
+  if (ctx.digestMode === 'required' && !ctx.legacySigningProfile) return CURRENT_REQUEST_SIGNING_PROFILE_VERSION;
+  return LEGACY_REQUEST_SIGNING_PROFILE_VERSION;
 }
 
 /**
@@ -329,7 +369,10 @@ export function stopReplayCacheSweeper(): void {
   }
 }
 
-function buildAuthenticatorWithCapability(capability: VerifierCapability): Authenticator {
+function buildAuthenticatorWithCapability(
+  capability: VerifierCapability,
+  adcpVersion: RequestSigningProfileVersion,
+): Authenticator {
   const keys = loadTestJwks();
   const jwks = new StaticJwksResolver(keys);
   const replayStore = getReplayStore();
@@ -349,6 +392,11 @@ function buildAuthenticatorWithCapability(capability: VerifierCapability): Authe
     jwks,
     replayStore,
     revocationStore,
+    // Trusted endpoint pin (see requestSigningProfileVersion). The SDK
+    // parses `Signature` / `Content-Digest` strictly as RFC 8941 Base64 under
+    // a 3.2 pin, so `profile-3.2/negative/001-base64url-sf-binary` fails at
+    // checklist step 1 with `request_signature_header_malformed`.
+    adcpVersion,
     // Express mounts the router at `/api/training-agent`, so `req.url` is
     // `/mcp` when the authenticator runs — but the signer signed the full
     // path. Reconstruct from `originalUrl` when present.
@@ -372,17 +420,29 @@ function buildAuthenticatorWithCapability(capability: VerifierCapability): Authe
  *  `InMemoryReplayStore` — sharing one store lets a nonce consumed on `/mcp`
  *  falsely fire `request_signature_replayed` on `/mcp-strict` (#3338). */
 export function buildStrictRequestSigningAuthenticator(): Authenticator {
-  return buildAuthenticatorWithCapability(getStrictRequestSigningCapability());
+  return buildStrictRouteRequestSigningAuthenticator({ strict: true, digestMode: 'either' });
 }
 
-/** Authenticator for `/mcp-strict-required`: enforces `covers_content_digest='required'`. */
+/** Authenticator for `/mcp-strict-required`: enforces `covers_content_digest='required'`
+ *  under the AdCP 3.2 signing profile. */
 export function buildStrictRequiredRequestSigningAuthenticator(): Authenticator {
-  return buildAuthenticatorWithCapability(getStrictRequiredRequestSigningCapability());
+  return buildStrictRouteRequestSigningAuthenticator({ strict: true, digestMode: 'required' });
+}
+
+/** Authenticator for `/mcp-strict-required-legacy`: enforces
+ *  `covers_content_digest='required'` under the AdCP 3.0/3.1 signing profile,
+ *  for legacy signers and the frozen 3.0 conformance vectors. */
+export function buildStrictRequiredLegacyRequestSigningAuthenticator(): Authenticator {
+  return buildStrictRouteRequestSigningAuthenticator({ strict: true, digestMode: 'required', legacySigningProfile: true });
 }
 
 /** Authenticator for `/mcp-strict-forbidden`: enforces `covers_content_digest='forbidden'`. */
 export function buildStrictForbiddenRequestSigningAuthenticator(): Authenticator {
-  return buildAuthenticatorWithCapability(getStrictForbiddenRequestSigningCapability());
+  return buildStrictRouteRequestSigningAuthenticator({ strict: true, digestMode: 'forbidden' });
+}
+
+function buildStrictRouteRequestSigningAuthenticator(ctx: SigningRouteContext & { strict: true }): Authenticator {
+  return buildAuthenticatorWithCapability(selectSigningCapability(ctx), requestSigningProfileVersion(ctx)!);
 }
 
 function headerFirst(value: string | string[] | undefined): string | undefined {

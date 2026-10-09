@@ -221,7 +221,7 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
     await seedOrgWithoutProfile(orgId, 'Acme First-Agent Co');
 
     const res = await request(app)
-      .post('/api/me/agents')
+      .post('/api/me/agents').query({ org: orgId })
       .send({ url: 'https://agent.example.com/mcp', type: 'sales', visibility: 'private' });
 
     expect(res.status).toBe(201);
@@ -245,13 +245,13 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
     await seedOrgWithoutProfile(orgId);
 
     const first = await request(app)
-      .post('/api/me/agents')
+      .post('/api/me/agents').query({ org: orgId })
       .send({ url: 'https://agent-1.example.com/mcp', type: 'sales', visibility: 'private' });
     expect(first.status).toBe(201);
     expect(first.body.profile_auto_created).toBe(true);
 
     const second = await request(app)
-      .post('/api/me/agents')
+      .post('/api/me/agents').query({ org: orgId })
       .send({ url: 'https://agent-2.example.com/mcp', type: 'sales', visibility: 'private' });
     expect(second.status).toBe(201);
     expect(second.body.profile_auto_created).toBeUndefined();
@@ -262,12 +262,12 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
     await seedOrgWithoutProfile(orgId);
 
     const first = await request(app)
-      .post('/api/me/agents')
+      .post('/api/me/agents').query({ org: orgId })
       .send({ url: 'https://agent.example.com/mcp', type: 'sales', visibility: 'private', name: 'v1' });
     expect(first.status).toBe(201);
 
     const second = await request(app)
-      .post('/api/me/agents')
+      .post('/api/me/agents').query({ org: orgId })
       .send({ url: 'https://agent.example.com/mcp', type: 'sales', visibility: 'private', name: 'v2' });
 
     expect(second.status).toBe(200);
@@ -280,7 +280,7 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
     await seedOrgWithoutProfile(orgId);
 
     const res = await request(app)
-      .patch('/api/me/agents/' + encodeURIComponent('https://agent.example.com/mcp'))
+      .patch('/api/me/agents/' + encodeURIComponent('https://agent.example.com/mcp')).query({ org: orgId })
       .send({ name: 'renamed' });
 
     // PATCH should still 404 — auto-bootstrap is intentionally limited to
@@ -289,140 +289,15 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
     expect(res.status).toBe(404);
   });
 
-  describe('org auto-bootstrap (caller has zero memberships)', () => {
-    it('auto-creates a corporate org for a fresh user with a corporate email', async () => {
-      userOverride.email = `fresh@boot-corp.test`;
-      userOverride.firstName = 'Fresh';
-      userOverride.lastName = 'User';
-
-      const res = await request(app)
-        .post('/api/me/agents')
+  describe('implicit org bootstrap containment', () => {
+    it.each(['fresh@boot-corp.test', 'solo@freemail.test'])('denies implicit creation from %s without local changes', async (email) => {
+      userOverride.email = email;
+      const before = (await pool.query('SELECT * FROM organization_memberships WHERE workos_user_id = $1', [USER_ID])).rows;
+      const res = await request(app).post('/api/me/agents')
         .send({ url: 'https://agent.boot-corp.test/mcp', type: 'sales', visibility: 'private' });
-
-      expect(res.status).toBe(201);
-      expect(res.body.org_auto_created).toBe(true);
-      expect(res.body.profile_auto_created).toBe(true);
-      expect(res.body.agent.url).toBe('https://agent.boot-corp.test/mcp');
-
-      // Org row should be corporate (is_personal = false), name derived from
-      // domain root with leading-cap.
-      const orgRow = await pool.query<{
-        workos_organization_id: string;
-        name: string;
-        is_personal: boolean;
-        membership_tier: string | null;
-      }>(
-        `SELECT o.workos_organization_id, o.name, o.is_personal, o.membership_tier
-         FROM organizations o
-         JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
-         WHERE om.workos_user_id = $1`,
-        [USER_ID],
-      );
-      expect(orgRow.rowCount).toBe(1);
-      expect(orgRow.rows[0].is_personal).toBe(false);
-      expect(orgRow.rows[0].name).toBe('Boot-corp');
-      // Tier MUST be NULL — Stripe webhook is the only writer.
-      expect(orgRow.rows[0].membership_tier).toBeNull();
-
-      // Domain should be email-verified.
-      const domainRow = await pool.query<{ domain: string; verified: boolean }>(
-        `SELECT domain, verified FROM organization_domains WHERE workos_organization_id = $1`,
-        [orgRow.rows[0].workos_organization_id],
-      );
-      expect(domainRow.rows.find((r) => r.domain === 'boot-corp.test')).toBeDefined();
-      expect(domainRow.rows.find((r) => r.domain === 'boot-corp.test')!.verified).toBe(true);
-    });
-
-    it('auto-bootstraps a personal workspace for a fresh free-email user but rejects the agent registration (no hostname claim)', async () => {
-      // Pre-#4499-MVP this auto-bootstrap succeeded silently with an
-      // unverified agent registered on whatever hostname the caller
-      // supplied. With the hardened gate (security review on PR #4648),
-      // orgs with zero verified domains hard-reject — the org is
-      // still auto-bootstrapped (resolveOrAutoBootstrapOrg fires before
-      // the gate) but the agent registration returns 400
-      // no_verified_domains. The user gets a personal workspace they
-      // can use for everything else; they just can't register agents
-      // until they verify a domain.
-      userOverride.email = `solo+${Date.now()}@gmail.com`;
-      userOverride.firstName = 'Solo';
-      userOverride.lastName = 'Founder';
-
-      const res = await request(app)
-        .post('/api/me/agents')
-        .send({ url: 'https://agent.solo.test/mcp', type: 'sales', visibility: 'private' });
-
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('unverified_hostname');
-      expect(res.body.reason).toBe('no_verified_domains');
-
-      // The org bootstrap still fired — failure was on the agent
-      // registration step, not on org creation.
-      const orgRow = await pool.query<{ workos_organization_id: string; name: string; is_personal: boolean }>(
-        `SELECT o.workos_organization_id, o.name, o.is_personal
-         FROM organizations o
-         JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
-         WHERE om.workos_user_id = $1`,
-        [USER_ID],
-      );
-      expect(orgRow.rowCount).toBe(1);
-      expect(orgRow.rows[0].is_personal).toBe(true);
-      expect(orgRow.rows[0].name).toBe("Solo Founder's Workspace");
-
-      // No member profile should exist either — the gate fires after
-      // profile auto-bootstrap, so a failed agent registration on a
-      // brand-new org should NOT leave a half-built profile. Pin this
-      // so a future regression doesn't silently strand orphan profiles.
-      const profile = await memberDb.getProfileByOrgId(
-        orgRow.rows[0].workos_organization_id,
-      );
-      expect(profile).toBeNull();
-    });
-
-    it('does NOT auto-bootstrap when caller already has a membership — registers against the derived primary org instead of forking', async () => {
-      // resolvePrimaryOrganization derives from organization_memberships when
-      // users.primary_organization_id is null, so a user with any membership
-      // already resolves to that org. Auto-bootstrap is gated on a truly
-      // empty membership set; a stale `users` row never causes a silent
-      // fork.
-      const existingOrgId = `${TEST_PREFIX}_existing`;
-      await pool.query(
-        `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
-         VALUES ($1, $2, false, NOW(), NOW())
-         ON CONFLICT (workos_organization_id) DO NOTHING`,
-        [existingOrgId, 'Already Owned'],
-      );
-      // Verified domain matching the agent URL — required by the
-      // hostname gate. email_domain is no longer trusted (see #4648).
-      await pool.query(
-        `INSERT INTO organization_domains
-           (workos_organization_id, domain, verified, source, created_at, updated_at)
-         VALUES ($1, 'no-fork.test', true, 'test', NOW(), NOW())
-         ON CONFLICT (domain) DO NOTHING`,
-        [existingOrgId],
-      );
-      await pool.query(
-        `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
-         VALUES ($1, $2, 'owner', $3, NOW(), NOW())
-         ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
-        [USER_ID, existingOrgId, `${USER_ID}@example.com`],
-      );
-
-      const res = await request(app)
-        .post('/api/me/agents')
-        .send({ url: 'https://agent.no-fork.test/mcp', type: 'sales', visibility: 'private' });
-
-      expect(res.status).toBe(201);
-      // Profile auto-bootstrap fires (no profile yet on the existing org)
-      // but org auto-bootstrap MUST NOT fire — the agent must land on the
-      // already-owned org, not a fresh fork.
-      expect(res.body.org_auto_created).toBeUndefined();
-      expect(res.body.profile_auto_created).toBe(true);
-
-      const orgRow = await pool.query<{ workos_organization_id: string }>(
-        `SELECT workos_organization_id FROM member_profiles WHERE workos_organization_id = $1`,
-        [existingOrgId],
-      );
-      expect(orgRow.rowCount).toBe(1);
+      expect(res.body.error).toBe('explicit_organization_required');
+      expect((await pool.query('SELECT * FROM organization_memberships WHERE workos_user_id = $1', [USER_ID])).rows).toEqual(before);
     });
   });
 });

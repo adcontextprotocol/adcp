@@ -9,6 +9,9 @@
 (function () {
   'use strict';
 
+  // Standalone standard sites have no registry sub-navigation.
+  if (window.__ADCP_SITE__) return;
+
   var path = window.location.pathname;
   var params = new URLSearchParams(window.location.search);
   var tab = params.get('tab');

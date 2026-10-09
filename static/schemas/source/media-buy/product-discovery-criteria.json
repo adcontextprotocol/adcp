@@ -34,7 +34,8 @@
     },
     "outcome_target": {
       "allOf": [{ "$ref": "/schemas/media-buy/outcome-target.json" }],
-      "x-adcp-schema-uri": "/schemas/media-buy/outcome-target.json"
+      "x-adcp-schema-uri": "/schemas/media-buy/outcome-target.json",
+      "description": "Reverse-forecast planning input for sellers declaring media_buy.outcome_target: a metric, event, or vendor_metric goal plus a volume, a cost target, or both, answered on proposals. Inert on list_products for every seller. See outcome-target.json."
     },
     "acceptance_context": {
       "$ref": "/schemas/media-buy/acceptance-context.json",

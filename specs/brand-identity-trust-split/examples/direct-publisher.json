@@ -1,0 +1,12 @@
+{
+  "$schema": "https://trustjson.org/schemas/v1/trust.json",
+  "last_updated": "2026-09-30T00:00:00Z",
+  "agents": [
+    {
+      "url": "https://ads.streamhaus.example/mcp",
+      "roles": ["adcp:sales"],
+      "protocols": ["mcp"],
+      "jwks_uri": "https://ads.streamhaus.example/.well-known/jwks.json"
+    }
+  ]
+}

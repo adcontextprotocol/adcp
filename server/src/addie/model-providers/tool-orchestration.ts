@@ -7,7 +7,12 @@ import {
   type FileReadResult,
 } from '../mcp/url-tools.js';
 import { ToolError } from '../tool-error.js';
-import { isSideEffectTool, sideEffectReplayKey } from '../side-effect-claims.js';
+import { jsonValidationReceipt, REPEATED_JSON_VALIDATION } from '../json-validation-evidence.js';
+import {
+  hasDurableHandlerOutcome,
+  isSideEffectToolCall,
+  sideEffectReplayKey,
+} from '../side-effect-claims.js';
 import { githubIssueReceiptFromHandlerResult, type GithubIssueCreationReceipt } from '../github-issue-receipt.js';
 import {
   isToolResultError,
@@ -56,6 +61,7 @@ export interface ToolExecutionPolicyRequest {
 
 export interface ToolExecutionPolicyDecision {
   allowed: boolean;
+  reason?: 'github_confirmation_required';
 }
 
 /** Fail closed: only an explicit `{ allowed: true }` dispatches a handler. */
@@ -72,7 +78,11 @@ export interface ToolExecution {
   duration_ms: number;
   sequence: number;
   blocked_by_policy?: true;
+  /** A deterministic validation failure was reused without another handler call. */
+  reused_result?: true;
   normalized_result?: ToolResultPresentation;
+  /** A normal return from an allowlisted local mutation handler settled its reservation. */
+  durable_outcome?: 'known';
   /** Present only when the application handler produced a verified GitHub receipt. */
   github_issue_receipt?: GithubIssueCreationReceipt;
 }
@@ -87,6 +97,10 @@ export interface AddieToolExecutorOptions {
   executionMode: AddieExecutionMode;
   policy?: ToolExecutionPolicy;
   notificationContext?: ToolExecutionNotificationContext;
+  /** An intentionally empty executable surface with its own rejection signal. */
+  expectedEmptySurface?: 'final_answer_boundary';
+  /** Content-free observer for a call rejected at that expected boundary. */
+  onExpectedBoundaryRejection?: () => void;
   /**
    * Persists an unknown-outcome intent immediately before a live mutation.
    * A production mutation is never dispatched if this durable handshake is
@@ -249,8 +263,93 @@ export class AddieToolExecutionLedger {
     }
     turnResults.push(event.executed.result);
     this.completedExecutions.push(event.executed.execution);
+    this.markRecoveredErrors(event.executed.execution);
     this.pendingCustomSequence = null;
   }
+
+  private markRecoveredErrors(latest: ToolExecution): void {
+    const recoveryIdentity = toolRecoveryIdentity(latest);
+    if (latest.is_error || !recoveryIdentity) return;
+    for (const prior of this.completedExecutions) {
+      if (
+        prior === latest
+        || !prior.is_error
+        || !prior.normalized_result
+        || toolRecoveryIdentity(prior) !== recoveryIdentity
+      ) continue;
+      prior.normalized_result.telemetry = {
+        ...prior.normalized_result.telemetry,
+        recovered_by_later_success: true,
+      };
+    }
+  }
+}
+
+/**
+ * Correlate a correction with the exact AdCP target rather than merely the
+ * task name. Generic calls keep the idempotency key under `params`, while the
+ * typed get_products wrapper exposes it at the top level; the tuple keeps both
+ * surfaces interoperable without allowing one agent's success to mask another
+ * agent's failure.
+ */
+function toolRecoveryIdentity(execution: ToolExecution): string | null {
+  const operation = execution.normalized_result?.telemetry?.operation;
+  if (!operation) return null;
+  const parameters = execution.parameters;
+  const nestedParams = parameters.params;
+  const nested = nestedParams && typeof nestedParams === 'object' && !Array.isArray(nestedParams)
+    ? nestedParams as Record<string, unknown>
+    : undefined;
+  const agentUrl = typeof parameters.agent_url === 'string' ? parameters.agent_url : null;
+  const idempotencyKey = typeof parameters.idempotency_key === 'string'
+    ? parameters.idempotency_key
+    : typeof nested?.idempotency_key === 'string' ? nested.idempotency_key : null;
+  return JSON.stringify([operation, agentUrl, idempotencyKey]);
+}
+
+/**
+ * Containment is an observation of continued work, not operation recovery or
+ * proof that the user's request was fulfilled. Only a validation rejection
+ * followed by a successful AdCP read against the same literal agent target
+ * qualifies, and only when the turn produced a complete, usable answer.
+ * Transport/auth/mutation ambiguity and unrelated successes remain unresolved.
+ */
+export function countContainedToolErrors(
+  executions: readonly ToolExecution[],
+  hasCompleteAnswer: boolean,
+): number {
+  if (!hasCompleteAnswer) return 0;
+  return executions.filter((failed, index) => {
+    const presentation = failed.normalized_result;
+    const agentUrl = failed.parameters.agent_url;
+    if (
+      !failed.is_error
+      || failed.blocked_by_policy
+      || presentation?.status !== 'invalid_input'
+      || presentation.telemetry?.error_category !== 'validation'
+      || presentation.telemetry.recovered_by_later_success === true
+      || !isAdcpExecution(failed)
+      || typeof agentUrl !== 'string'
+      || !agentUrl.trim()
+    ) return false;
+    return executions.slice(index + 1).some(later => (
+      !later.is_error
+      && !later.blocked_by_policy
+      && later.normalized_result?.status === 'ok'
+      && later.parameters.agent_url === agentUrl
+      && isAdcpExecution(later)
+      && /^(?:get|list)_/.test(later.normalized_result.telemetry?.operation ?? '')
+      && !isSideEffectToolCall(later.tool_name, later.parameters)
+    ));
+  }).length;
+}
+
+function isAdcpExecution(execution: ToolExecution): boolean {
+  const operation = execution.normalized_result?.telemetry?.operation;
+  if (!operation) return false;
+  return (execution.tool_name === 'call_adcp_task' && execution.parameters.task === operation)
+    || (execution.tool_name === 'call_adcp_get_products' && operation === 'get_products')
+    || (execution.tool_name === 'get_adcp_capabilities' && operation === 'get_adcp_capabilities');
 }
 
 /**
@@ -585,6 +684,7 @@ export function createAddieToolExecutor(
 ): AddieToolExecutor {
   const registry = new Map<string, RegisteredTool>();
   const dispatchedSideEffects = new Set<string>();
+  const validationFailures = new Map<string, NormalizedToolResult>();
   for (const sourceDefinition of tools) {
     const definition = snapshotDefinition(sourceDefinition);
     registry.set(definition.name, {
@@ -609,12 +709,19 @@ export function createAddieToolExecutor(
     const registered = registry.get(call.name);
     if (!registered?.handler) {
       const definitionPresent = Boolean(registered?.definition);
-      const invariantEvent = definitionPresent
-        ? 'addie_declared_tool_missing_handler'
-        : 'addie_undeclared_tool_call';
-      const invariantMessage = definitionPresent
-        ? 'Addie: Declared request tool is missing an executable handler'
-        : 'Addie: Model requested a tool outside the executable request surface';
+      const expectedBoundaryRejection = !definitionPresent
+        && options.expectedEmptySurface === 'final_answer_boundary';
+      if (expectedBoundaryRejection) options.onExpectedBoundaryRejection?.();
+      const invariantEvent = expectedBoundaryRejection
+        ? 'addie_final_answer_tool_call_rejected'
+        : definitionPresent
+          ? 'addie_declared_tool_missing_handler'
+          : 'addie_undeclared_tool_call';
+      const invariantMessage = expectedBoundaryRejection
+        ? 'Addie: Model requested a tool at the tool-disabled final-answer boundary'
+        : definitionPresent
+          ? 'Addie: Declared request tool is missing an executable handler'
+          : 'Addie: Model requested a tool outside the executable request surface';
       const invariantContext = {
         event: invariantEvent,
         toolName: call.name,
@@ -630,7 +737,7 @@ export function createAddieToolExecutor(
       } else {
         logger.debug(invariantContext, invariantMessage);
       }
-      if (operationalExecution) {
+      if (operationalExecution && !expectedBoundaryRejection) {
         notifyToolError({
           // Keep provider/model-controlled tool names out of Slack rendering
           // and use a stable key so arbitrary names cannot bypass throttling.
@@ -652,6 +759,7 @@ export function createAddieToolExecutor(
         options.executionMode,
         normalized,
         Date.now() - startTime,
+        expectedBoundaryRejection,
       );
     }
 
@@ -678,7 +786,7 @@ export function createAddieToolExecutor(
     // A provider continuation or recovery must never submit an identical
     // mutation twice. Record before dispatch so an ambiguous transport error
     // is also fail-closed rather than silently retried.
-    const sideEffectKey = (isSideEffectTool(call.name) || registered.definition.replaySafety === 'mutation')
+    const sideEffectKey = (isSideEffectToolCall(call.name, call.input) || registered.definition.replaySafety === 'mutation')
       ? sideEffectReplayKey(call.name, call.input)
       : null;
     if (sideEffectKey && dispatchedSideEffects.has(sideEffectKey)) {
@@ -691,6 +799,7 @@ export function createAddieToolExecutor(
     }
 
     let allowed = !isIsolatedExecution(options.executionMode);
+    let policyReason: ToolExecutionPolicyDecision['reason'];
     if (options.policy) {
       try {
         const decision = await options.policy({
@@ -701,6 +810,7 @@ export function createAddieToolExecutor(
           executionMode: options.executionMode,
         });
         allowed = decision?.allowed === true;
+        policyReason = decision?.reason;
       } catch {
         logger.warn(
           { toolName: call.name, executionMode: options.executionMode },
@@ -710,12 +820,27 @@ export function createAddieToolExecutor(
       }
     }
     if (!allowed) {
+      const confirmationRequired = call.name === 'create_github_issue' && policyReason === 'github_confirmation_required';
+      const confirmationHelp = 'No GitHub issue was created. Show the draft with draft_github_issue, then ask the user to reply in a separate message with only "Create it" or "Yes". If they request edits or add other instructions, update and show the draft again before asking for confirmation.';
       const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
         status: 'access_denied',
-        model_context: BLOCKED_TOOL_RESULT,
-        user_summary: 'This tool action was blocked by execution policy.',
+        model_context: confirmationRequired ? `${BLOCKED_TOOL_RESULT}. ${confirmationHelp}` : BLOCKED_TOOL_RESULT,
+        user_summary: confirmationRequired ? confirmationHelp : 'This tool action was blocked by execution policy.',
       }));
       return failureResult(call, sequence, options.executionMode, normalized, 0, true);
+    }
+
+    // This executor belongs to one model turn. Never cache successful results,
+    // transport failures, or arbitrary tool errors, and always check policy.
+    const validationKey = call.name === 'validate_json' ? sideEffectReplayKey(call.name, call.input) : null;
+    const previousValidation = validationKey ? validationFailures.get(validationKey) : undefined;
+    if (previousValidation) {
+      const reused = failureResult(call, sequence, options.executionMode, {
+        ...previousValidation,
+        model_context: `${previousValidation.model_context}\n\n${REPEATED_JSON_VALIDATION}`,
+      }, 0);
+      reused.execution.reused_result = true;
+      return reused;
     }
 
     if (sideEffectKey) {
@@ -790,6 +915,7 @@ export function createAddieToolExecutor(
             duration_ms: durationMs,
             sequence,
             normalized_result: presentation,
+            ...(hasDurableHandlerOutcome(call.name) && { durable_outcome: 'known' as const }),
           },
         };
       }
@@ -812,6 +938,12 @@ export function createAddieToolExecutor(
             user_summary: 'GitHub issue creation was not confirmed.',
           }))
         : handlerNormalized;
+      if (validationKey && jsonValidationReceipt({
+        tool_name: call.name, parameters: call.input, result: normalized.model_context,
+        is_error: isToolResultError(normalized.status),
+      })?.valid === false) {
+        validationFailures.set(validationKey, normalized);
+      }
       const presentation = recordedPresentation(options.executionMode, normalized);
       const isError = isToolResultError(normalized.status);
       const modelResult = renderToolResultForModel(call.name, normalized);
@@ -843,6 +975,7 @@ export function createAddieToolExecutor(
           duration_ms: durationMs,
           sequence,
           normalized_result: presentation,
+          ...(hasDurableHandlerOutcome(call.name) && { durable_outcome: 'known' as const }),
           ...(githubIssueReceipt && { github_issue_receipt: githubIssueReceipt }),
         },
       };

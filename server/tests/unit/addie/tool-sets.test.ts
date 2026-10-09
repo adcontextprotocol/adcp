@@ -190,13 +190,13 @@ describe('getToolsForSets', () => {
 
   it('keeps AdCP task operations and saved-agent management separate with an exact hidden alias', () => {
     expect(ADCP_TASK_OPERATION_TOOLS).toEqual([
-      'ask_about_adcp_task', 'call_adcp_task', 'get_adcp_capabilities',
+      'ask_about_adcp_task', 'call_adcp_task', 'call_adcp_get_products', 'get_adcp_capabilities',
     ]);
     expect(ADCP_AGENT_MANAGEMENT_TOOLS).toEqual([
       'save_agent', 'list_saved_agents', 'remove_saved_agent', 'setup_test_agent',
     ]);
     expect(ADCP_OPERATIONS_TOOLS).toEqual([
-      'ask_about_adcp_task', 'call_adcp_task', 'get_adcp_capabilities',
+      'ask_about_adcp_task', 'call_adcp_task', 'call_adcp_get_products', 'get_adcp_capabilities',
       'save_agent', 'list_saved_agents', 'remove_saved_agent', 'setup_test_agent',
     ]);
     expect(TOOL_SETS.adcp_operations.tools).toEqual(ADCP_OPERATIONS_TOOLS);
@@ -555,8 +555,8 @@ describe('getToolsForSets', () => {
   describe('certification workflow', () => {
     it('keeps overview, learning, and assessment workflows bounded', () => {
       expect(CERTIFICATION_OVERVIEW_TOOLS).toHaveLength(5);
-      expect(CERTIFICATION_LEARNING_TOOLS).toHaveLength(10);
-      expect(CERTIFICATION_ASSESSMENT_TOOLS).toHaveLength(9);
+      expect(CERTIFICATION_LEARNING_TOOLS).toHaveLength(11);
+      expect(CERTIFICATION_ASSESSMENT_TOOLS).toHaveLength(10);
       expect(CERTIFICATION_OVERVIEW_TOOLS).toContain('list_certification_tracks');
       expect(CERTIFICATION_OVERVIEW_TOOLS).not.toContain('start_certification_module');
       expect(CERTIFICATION_LEARNING_TOOLS).toContain('get_build_phase_instructions');
@@ -1003,8 +1003,8 @@ describe('getToolsForSets', () => {
       ['publishing_review', 4],
       ['publishing_promotion', 2],
       ['certification_overview', 5],
-      ['certification_learning', 10],
-      ['certification_assessment', 9],
+      ['certification_learning', 11],
+      ['certification_assessment', 10],
       ['github', 4],
       ['illustrations', 1],
       ['knowledge', 3],

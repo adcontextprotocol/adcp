@@ -1,9 +1,12 @@
 id: creative/evaluator_auth
-version: "1.0.2"
+version: "1.0.3"
 title: "Creative evaluator authentication boundary"
 category: creative
 summary: "Verifies that build_creative evaluator pointers use the verifier allowlist, keep credentials out of payloads, and invoke accepted evaluator agents through get_creative_features."
 track: creative
+requires:
+  - controller
+
 introduced_in: "3.1"
 required_tools:
   - build_creative
@@ -54,6 +57,7 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The creative agent advertises `creative.supports_evaluator: true`, lists
     `creative.evaluator` in `experimental_features`, exposes at least one
@@ -67,6 +71,29 @@ prerequisites:
     raw upstream-traffic attestation only proves that the accepted endpoint was
     called with a get_creative_features-shaped payload.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_e44b6d944895"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_evaluator_auth-1e409e0c"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_1c827e515112"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_evaluator_auth-1e409e0c"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -151,7 +178,7 @@ phases:
             value: true
             description: "Creative evaluator support is declared"
           - check: field_contains
-            path: "experimental_features"
+            path: "experimental_features[*]"
             value: "creative.evaluator"
             description: "Experimental evaluator feature id is declared"
           - check: field_present
@@ -208,6 +235,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_evaluator_auth-1e409e0c"
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -271,6 +300,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_evaluator_auth-1e409e0c"
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -335,6 +366,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_evaluator_auth-1e409e0c"
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -411,6 +444,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_evaluator_auth-1e409e0c"
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -521,6 +556,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_evaluator_auth-1e409e0c"
           brand:
             domain: "acmeoutdoor.example"
           context:

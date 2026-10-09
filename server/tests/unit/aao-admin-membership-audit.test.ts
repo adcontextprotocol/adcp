@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  poolQuery: vi.fn(),
   clientQuery: vi.fn(),
   release: vi.fn(),
 }));
 
 vi.mock('../../src/db/client.js', () => ({
-  query: vi.fn(),
+  query: mocks.poolQuery,
   getPool: () => ({
     connect: vi.fn().mockResolvedValue({ query: mocks.clientQuery, release: mocks.release }),
   }),
@@ -14,6 +15,27 @@ vi.mock('../../src/db/client.js', () => ({
 
 vi.mock('../../src/addie/services/journey-computation.js', () => ({
   computeJourneyStage: vi.fn(),
+}));
+
+vi.mock('../../src/db/identity-db.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/db/identity-db.js')>()),
+  withActiveCredentialEventMutation: async (
+    _workosUserId: string,
+    mutation: (client: { query: typeof mocks.clientQuery }) => Promise<unknown>,
+  ) => {
+    const client = { query: mocks.clientQuery };
+    await client.query('BEGIN');
+    try {
+      const value = await mutation(client);
+      await client.query('COMMIT');
+      mocks.release();
+      return { applied: true, value };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      mocks.release();
+      throw error;
+    }
+  },
 }));
 
 import { WorkingGroupDatabase } from '../../src/db/working-group-db.js';
@@ -25,6 +47,12 @@ function queryResult(rows: unknown[] = [], rowCount = rows.length) {
 describe('AAO site-admin membership audit transaction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.poolQuery.mockImplementation((sql: string) => {
+      if (sql.includes('FROM slack_user_mappings')) {
+        return Promise.resolve(queryResult([{ workos_user_id: 'user_canonical' }]));
+      }
+      throw new Error(`Unexpected pool SQL: ${sql}`);
+    });
     mocks.clientQuery.mockImplementation((sql: string) => {
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return Promise.resolve(queryResult());
       if (sql.includes('SELECT id FROM working_groups')) return Promise.resolve(queryResult([{ id: 'wg_aao_admin' }]));
@@ -74,6 +102,7 @@ describe('AAO site-admin membership audit transaction', () => {
   });
 
   it('rolls the membership write back when the audit insert fails', async () => {
+    mocks.poolQuery.mockResolvedValue(queryResult());
     mocks.clientQuery.mockImplementation((sql: string) => {
       if (sql.includes('INSERT INTO aao_admin_access_events')) return Promise.reject(new Error('audit storage unavailable'));
       if (sql === 'BEGIN' || sql === 'ROLLBACK') return Promise.resolve(queryResult());
@@ -95,6 +124,7 @@ describe('AAO site-admin membership audit transaction', () => {
   });
 
   it('rolls an active-membership delete back when its revoke audit insert fails', async () => {
+    mocks.poolQuery.mockResolvedValue(queryResult());
     mocks.clientQuery.mockImplementation((sql: string) => {
       if (sql.includes('INSERT INTO aao_admin_access_events')) return Promise.reject(new Error('audit storage unavailable'));
       if (sql === 'BEGIN' || sql === 'ROLLBACK') return Promise.resolve(queryResult());

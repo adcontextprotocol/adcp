@@ -75,6 +75,26 @@
     }
     .agent-compliance-card:last-child { margin-bottom: 0; }
 
+    .agent-latest-attempt {
+      margin: var(--space-3) 0;
+      padding: var(--space-3);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+    .agent-latest-attempt--incomplete {
+      border-color: var(--color-warning-border, var(--color-border));
+      background: var(--color-warning-bg);
+    }
+    .agent-latest-attempt-title {
+      color: var(--color-text-heading);
+      font-weight: var(--font-semibold);
+      margin-bottom: var(--space-1);
+    }
+    .agent-latest-attempt a { display: inline-block; margin-top: var(--space-1); }
+
     .agent-compliance-header {
       display: flex;
       align-items: center;
@@ -231,6 +251,48 @@
     .agent-verification-panel-empty .agent-verification-header {
       color: var(--color-text-muted);
     }
+    .verification-panel-actions {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-2);
+      font-weight: normal;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .verification-version-toggle {
+      border: 0;
+      background: none;
+      color: var(--color-primary-700);
+      cursor: pointer;
+      font: inherit;
+      padding: 0;
+      text-decoration: underline;
+    }
+    .verification-version-toggle:hover { color: var(--color-primary-800); }
+    .verification-version-toggle:focus-visible {
+      outline: 2px solid var(--color-primary-500);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    .verification-badge-group {
+      padding: var(--space-2) 0;
+      border-bottom: 1px dashed var(--color-success-200, #a7f3d0);
+    }
+    .verification-badge-group:last-child { border-bottom: none; }
+    .verification-role-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-2);
+      margin-bottom: var(--space-1);
+      color: var(--color-text-primary);
+      font-size: var(--text-xs);
+    }
+    .verification-role-header span { color: var(--color-text-muted); }
+    .verification-badge-group .verification-badge-row {
+      padding-left: var(--space-3);
+      border-bottom: none;
+    }
     .verification-badge-row {
       display: flex;
       flex-direction: column;
@@ -239,6 +301,9 @@
       border-bottom: 1px dashed var(--color-success-200, #a7f3d0);
     }
     .verification-badge-row:last-child { border-bottom: none; }
+    .agent-verification-panel.verification-latest-only .verification-badge-row.is-older-version {
+      display: none;
+    }
     .verification-badge-row-top {
       display: flex;
       align-items: center;
@@ -272,6 +337,48 @@
       text-decoration: underline;
     }
     .verification-embed-toggle:hover { color: var(--color-primary-700); }
+    .grading-profile-comparison {
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+      border-top: var(--border-1) solid var(--color-border);
+    }
+    .grading-profile-comparison-header {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      margin-bottom: var(--space-2);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .grading-profile-comparison-header strong { color: var(--color-text-primary); }
+    .grading-profile-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-2);
+    }
+    .grading-profile-card {
+      padding: var(--space-2);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
+      font-size: var(--text-xs);
+    }
+    .grading-profile-card--selected { border-color: var(--color-primary-600); }
+    .grading-profile-name { font-weight: var(--font-semibold); color: var(--color-text-primary); }
+    .grading-profile-status { display: block; margin: var(--space-1) 0; font-weight: var(--font-semibold); }
+    .grading-profile-status--passing { color: var(--color-success-fg); }
+    .grading-profile-status--failing { color: var(--color-error-600); }
+    .grading-profile-status--partial,
+    .grading-profile-status--unavailable { color: var(--color-text-muted); }
+    .grading-profile-note { margin-top: var(--space-2); color: var(--color-text-muted); font-size: var(--text-xs); }
+    .grading-profile-provenance { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-secondary); }
+    .grading-profile-provenance dl { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-2); }
+    .grading-profile-provenance dt { font-weight: var(--font-semibold); }
+    .grading-profile-provenance dd { margin: 0; overflow-wrap: anywhere; }
+    @media (max-width: 700px) {
+      .grading-profile-grid { grid-template-columns: 1fr; }
+    }
     .verification-embed-drawer {
       display: none;
       flex-direction: column;
@@ -1204,6 +1311,7 @@
       // (#2804). A second 429 on the same agent freezes the card with
       // "you've refreshed too quickly" guidance instead of looping.
       autoRetriedAgents: new Set(),
+      activeRefreshPolls: new Set(),
     };
 
     // Retry-aware fetch. Retries once on 429 (rate-limited) and transient
@@ -1242,16 +1350,23 @@
     // Fetches compliance + history + auth for a single agent. Always returns
     // an object — on failure, loadError is populated so the renderer can
     // distinguish "server says unknown" from "we couldn't load".
-    async function fetchAgentState(agent, organizationId) {
+    async function fetchAgentState(agent, organizationId, onPartial) {
       const encoded = encodeURIComponent(agent.url);
       const orgQuery = organizationId ? `?org=${encodeURIComponent(organizationId)}` : '';
       const endpoints = [
-        `/api/registry/agents/${encoded}/compliance`,
+        `/api/registry/agents/${encoded}/compliance${orgQuery}`,
         `/api/registry/agents/${encoded}/compliance/history?limit=10`,
         `/api/registry/agents/${encoded}/auth-status${orgQuery}`,
       ];
-      const settled = await Promise.allSettled(
-        endpoints.map(u => fetchWithRetry(u, { credentials: 'include' })),
+      // Start all three requests together, but do not make the fast history
+      // and auth projections wait for the heavier compliance card response.
+      // A partial render keeps owner actions reachable even if compliance is
+      // slow or eventually crosses the page-level request budget.
+      const settledRequests = endpoints.map(u =>
+        fetchWithRetry(u, { credentials: 'include' }).then(
+          value => ({ status: 'fulfilled', value }),
+          reason => ({ status: 'rejected', reason }),
+        )
       );
 
       const parseOrError = async (s, source) => {
@@ -1294,11 +1409,22 @@
         }
       };
 
-      const [statusResult, historyResult, authResult] = await Promise.all([
-        parseOrError(settled[0], 'compliance'),
-        parseOrError(settled[1], 'history'),
-        parseOrError(settled[2], 'auth'),
+      const [historyResult, authResult] = await Promise.all([
+        settledRequests[1].then(s => parseOrError(s, 'history')),
+        settledRequests[2].then(s => parseOrError(s, 'auth')),
       ]);
+
+      if (typeof onPartial === 'function') {
+        onPartial({
+          url: agent.url,
+          status: null,
+          history: historyResult.data,
+          authStatus: authResult.data,
+          loadError: null,
+        });
+      }
+
+      const statusResult = await settledRequests[0].then(s => parseOrError(s, 'compliance'));
 
       // Only the compliance endpoint determines the primary card state.
       // History and auth errors are logged but don't block rendering.
@@ -1382,11 +1508,9 @@
         // 60-agent list over a slow connection that's the difference
         // between "instant" and "dead for 14 seconds."
         //
-        // A shared `cancelled` flag lets workers stop hammering the
-        // network if the user navigates away or the 15s ceiling
-        // fires. Workers always harvest results into the shared
-        // complianceMap, even after cancellation — a late success
-        // that arrived before cancel is still useful.
+        // Stop starting new requests after 15s, while allowing in-flight
+        // requests to update their cards when they finish. A compliance
+        // response can take longer than the page-level wait under load.
         const AGENT_FETCH_CONCURRENCY = 6;
         const FETCH_TIMEOUT_MS = 15_000;
         const agentCompliance = new Map();
@@ -1403,14 +1527,16 @@
 
         if (agents.length > 0) {
           const queue = agents.slice();
-          const cancellation = { cancelled: false };
+          let stopStartingRequests = false;
           async function worker() {
-            while (!cancellation.cancelled && queue.length > 0) {
+            while (!stopStartingRequests && queue.length > 0) {
               const agent = queue.shift();
               if (!agent) break;
               try {
-                const state = await fetchAgentState(agent, currentOrgId);
-                if (cancellation.cancelled) break;
+                const state = await fetchAgentState(agent, currentOrgId, partialState => {
+                  agentCompliance.set(partialState.url, partialState);
+                  swapAgentCard(partialState.url);
+                });
                 agentCompliance.set(state.url, state);
                 swapAgentCard(state.url);
               } catch (err) {
@@ -1421,14 +1547,15 @@
           const workerCount = Math.min(AGENT_FETCH_CONCURRENCY, agents.length);
           const workers = Promise.all(Array.from({ length: workerCount }, worker));
           const timeout = new Promise(resolve => setTimeout(() => {
-            cancellation.cancelled = true;
+            stopStartingRequests = true;
             resolve(null);
           }, FETCH_TIMEOUT_MS));
           const completed = await Promise.race([workers, timeout]);
           if (completed === null) {
-            console.warn('Agent compliance fetch timed out after 15s; in-flight workers cancelled, rendering with partial data');
+            console.warn('Agent compliance fetch exceeded 15s; in-flight workers will continue updating their cards');
           }
         }
+        void resumePendingAgentRefreshes(agents);
 
       } catch (err) {
         console.error('Agents page load error:', err);
@@ -1664,7 +1791,7 @@
       const skipped = finiteCount(statusInfo.skipped_count);
       const parts = [];
       if (failures > 0) parts.push(pluralizeCount(failures, 'failure'));
-      if (skipped > 0) parts.push(pluralizeCount(skipped, 'skipped'));
+      if (skipped > 0) parts.push(pluralizeCount(skipped, 'skipped', 'skipped'));
       return parts.join(', ');
     }
 
@@ -1719,7 +1846,8 @@
       if (!hasFailureDetail && skipped === 0) return '';
 
       const issueSummary = storyboardIssueSummary(statusInfo);
-      const summary = issueSummary ? `Show failure details (${issueSummary})` : 'Show failure details';
+      const summaryLabel = failures > 0 ? 'Show failure details' : 'Show skip details';
+      const summary = issueSummary ? `${summaryLabel} (${issueSummary})` : summaryLabel;
       let html = '<details class="storyboard-map-drilldown">';
       html += '<summary>' + escapeHtml(summary) + '</summary>';
       if (hasFailureDetail) {
@@ -1750,12 +1878,74 @@
         html += '</div>';
       }
       if (skipped > 0) {
-        html += '<div class="storyboard-map-detail-row">';
-        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--skip">Blocked after earlier failure</span>';
-        html += '<span class="storyboard-map-detail-title">' + escapeHtml(pluralizeCount(skipped, 'step')) + ' skipped after an earlier step failed</span>';
-        html += '</div>';
+        html += storyboardSkippedStepsHtml(statusInfo, skipped);
       }
       html += '</details>';
+      return html;
+    }
+
+    const STORYBOARD_SKIP_REASON_LABELS = {
+      prerequisite_failed: 'Prerequisite step did not pass',
+      controller_seeding_failed: 'Test controller seeding failed',
+      missing_tool: 'Required tool not advertised',
+      not_applicable: 'Not applicable',
+      unresolved_substitution: 'Context variable unresolved',
+    };
+
+    function storyboardSkipReasonLabel(reason) {
+      if (!reason) return '';
+      const label = STORYBOARD_SKIP_REASON_LABELS[reason];
+      return label ? `${label} (${reason})` : reason;
+    }
+
+    // Skip evidence comes from runner output and may echo third-party agent
+    // text: every field goes through escapeHtml.
+    function storyboardSkippedStepsHtml(statusInfo, skipped) {
+      const steps = Array.isArray(statusInfo.skipped_steps)
+        ? statusInfo.skipped_steps.filter(step => step && typeof step === 'object')
+        : [];
+      if (steps.length === 0) {
+        // Rows recorded before skip evidence was persisted, or a viewer
+        // without owner diagnostics.
+        let html = '<div class="storyboard-map-detail-row">';
+        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--skip">Skipped</span>';
+        html += '<span class="storyboard-map-detail-title">' + escapeHtml(pluralizeCount(skipped, 'step')) + ' skipped because a prerequisite step did not pass</span>';
+        html += '<div class="storyboard-map-detail-message">Step-level skip details were not recorded for this run. Re-test to capture which step was skipped and why.</div>';
+        html += '</div>';
+        return html;
+      }
+      const shown = steps.slice(0, 3);
+      let html = '';
+      for (const step of shown) {
+        const title = step.title || step.step_id || 'Skipped step';
+        const meta = [step.title ? step.step_id : null, step.task].filter(Boolean).join(' · ');
+        html += '<div class="storyboard-map-detail-row">';
+        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--skip">Skipped</span>';
+        html += '<span class="storyboard-map-detail-title">' + escapeHtml(title) + '</span>';
+        if (meta) html += '<div>' + escapeHtml(meta) + '</div>';
+        if (step.reason) {
+          html += '<div class="storyboard-map-detail-message">Reason: ' + escapeHtml(storyboardSkipReasonLabel(step.reason)) + '</div>';
+        }
+        if (step.blocked_by_step_id || step.blocked_by_step_title) {
+          const blocker = step.blocked_by_step_title && step.blocked_by_step_id && step.blocked_by_step_title !== step.blocked_by_step_id
+            ? `${step.blocked_by_step_title} (${step.blocked_by_step_id})`
+            : step.blocked_by_step_title || step.blocked_by_step_id;
+          const outcome = step.blocked_by_reason === 'failed'
+            ? 'failed'
+            : step.blocked_by_reason ? 'skipped: ' + storyboardSkipReasonLabel(step.blocked_by_reason) : 'did not pass';
+          html += '<div class="storyboard-map-detail-message">Earlier step that did not pass: ' + escapeHtml(blocker) + ' — ' + escapeHtml(outcome) + '</div>';
+        } else {
+          html += '<div class="storyboard-map-detail-message">No earlier failing step was recorded in this storyboard; see the runner detail.</div>';
+        }
+        if (step.detail) {
+          html += '<div class="storyboard-map-detail-message">' + escapeHtml(step.detail) + '</div>';
+        }
+        html += '</div>';
+      }
+      const remaining = Math.max(0, skipped - shown.length);
+      if (remaining > 0) {
+        html += '<div class="storyboard-map-detail-message">Showing ' + escapeHtml(pluralizeCount(shown.length, 'skipped step')) + '; ' + escapeHtml(pluralizeCount(remaining, 'more skipped step')) + ' remain.</div>';
+      }
       return html;
     }
 
@@ -1867,6 +2057,45 @@
       return lines.join('\n');
     }
 
+    // The public verdict and history include only complete authoritative runs.
+    // Show the newest owner-visible attempt separately so a timed-out run does
+    // not leave owners thinking monitoring stopped at the older verdict date.
+    function renderLatestComplianceAttempt(attempt, agentUrl, orgId) {
+      if (!attempt?.id || !attempt?.tested_at) return '';
+
+      const authoritative = attempt.is_authoritative === true && attempt.completeness === 'complete';
+      const label = attempt.completeness === 'timed_out' ? 'Timed out'
+        : attempt.completeness === 'complete' ? (authoritative ? 'Complete' : 'Diagnostic only')
+        : 'Incomplete';
+      const testedDate = new Date(attempt.tested_at);
+      const testedAt = Number.isNaN(testedDate.getTime()) ? 'time unavailable' : testedDate.toLocaleString();
+      const source = attempt.triggered_by === 'owner_test' ? 'your test'
+        : attempt.triggered_by === 'heartbeat' ? 'heartbeat'
+        : attempt.triggered_by === 'manual' ? 'manual'
+        : attempt.triggered_by === 'webhook' ? 'webhook'
+        : 'compliance check';
+      const completed = attempt.storyboards_completed;
+      const total = attempt.storyboards_total;
+      const coverage = Number.isInteger(completed) && Number.isInteger(total) && total > 0
+        ? ` · ${completed}/${total} storyboards completed`
+        : '';
+      const target = attempt.requested_compliance_target
+        ? ` · AdCP ${escapeHtml(String(attempt.requested_compliance_target))}`
+        : '';
+      const blocker = typeof attempt.first_blocker === 'string' && attempt.first_blocker
+        ? `<div>First blocker: ${escapeHtml(attempt.first_blocker)}</div>`
+        : '';
+      const diagnosticsUrl = `/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/diagnostics?run_id=${encodeURIComponent(attempt.id)}${orgId ? `&org=${encodeURIComponent(orgId)}` : ''}`;
+
+      return `<div class="agent-latest-attempt${authoritative ? '' : ' agent-latest-attempt--incomplete'}">
+        <div class="agent-latest-attempt-title">Latest attempt: ${label}</div>
+        <div>${escapeHtml(testedAt)} · ${escapeHtml(source)}${target}${escapeHtml(coverage)}</div>
+        ${blocker}
+        ${authoritative ? '' : '<div>This attempt did not update the public result.</div>'}
+        <a href="${escapeHtml(diagnosticsUrl)}" target="_blank" rel="noopener">View run diagnostics (JSON)</a>
+      </div>`;
+    }
+
     function renderAgentsSection(agents, complianceMap, orgId) {
       if (!agents || agents.length === 0) {
         return `
@@ -1895,7 +2124,17 @@
         const authInfo = data?.authStatus;
         const loadError = data?.loadError;
         const hasData = cs && cs.status && cs.status !== 'unknown';
+        const hasPartialData = Boolean(data && !cs);
         const hasAuth = authInfo?.has_auth;
+        const refreshAvailability = cs?.refresh_availability;
+        const refreshUnavailable = refreshAvailability?.available === false;
+        const refreshButtonLabel = refreshUnavailable ? 'Recheck paused' : 'Recheck &amp; retest';
+        const refreshButtonState = refreshUnavailable
+          ? ` disabled data-refresh-paused="true" title="${escapeHtml(refreshAvailability.notice)}"`
+          : '';
+        const refreshNoticeHtml = refreshUnavailable
+          ? `<div class="agent-refresh-result" style="font-size:var(--text-xs);margin-top:var(--space-2);padding:var(--space-2) var(--space-3);border-radius:6px;background:var(--color-warning-bg);color:var(--color-warning-fg);">${escapeHtml(refreshAvailability.notice)} ${escapeHtml(refreshAvailability.alternative_description)}${refreshAvailability.tracking_issue ? ` <a href="${escapeHtml(refreshAvailability.tracking_issue)}" target="_blank" rel="noopener">Tracking issue</a>` : ''}</div>`
+          : '';
 
         const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
 
@@ -2001,23 +2240,30 @@
               <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
                 <span class="agent-status-dot agent-status-dot--unknown"></span>
                 <span class="agent-hostname">${escapeHtml(hostname)}</span>
-                <span class="agent-status-label" style="color: var(--color-text-secondary);">not yet checked</span>
+                <span class="agent-status-label" style="color: var(--color-text-secondary);">${hasPartialData ? 'loading compliance…' : 'not yet checked'}</span>
               </div>
             </div>
             ${hasAuth
               ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : authInfo?.auth_type === 'oauth_client_credentials' ? ' via OAuth client credentials' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
               : buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}
+            ${renderLatestComplianceAttempt(cs?.latest_attempt, agent.url, orgId)}
             ${visibilitySelectorHtml}
             ${renderVerificationPanel(null, agent.url, hasAuth)}
             <div class="agent-meta-row">
               <span></span>
               <div class="agent-meta-row-actions">
-                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-detect supported AdCP versions, refresh registry status, and run compliance now">Recheck &amp; retest</button>
+                ${hasAuth ? `<button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">Update auth</button>` : ''}
+                ${hasPartialData ? `<button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">History</button>` : ''}
+                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}"${refreshButtonState || ' title="Re-detect supported AdCP versions, refresh registry status, and run compliance now"'}>${refreshButtonLabel}</button>
+                ${hasPartialData ? `<button class="agent-requeue-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Mark this agent eligible for a future scheduled compliance heartbeat. This is not a human refresh and has no guaranteed start time.">Requeue comply</button>` : ''}
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
                 <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
               </div>
             </div>
+            ${refreshNoticeHtml}
+            ${hasAuth ? `<div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">${buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}</div>` : ''}
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
+            ${hasPartialData ? `<div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>` : ''}
           </div>`;
         }
 
@@ -2111,6 +2357,7 @@
             </div>
             ${cs.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
             ${storyboardSummary}
+            ${renderLatestComplianceAttempt(cs.latest_attempt, agent.url, orgId)}
             ${clickableTrackPills ? '<div class="agent-tracks" title="' + escapeHtml(complianceStatusTitle) + '">' + clickableTrackPills + '</div>' : ''}
             <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
             ${sparkline}
@@ -2141,12 +2388,13 @@
                 <button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">${hasAuth ? 'Update auth' : 'Connect agent'}</button>
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">History</button>
                 <button class="agent-requests-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Requests</button>
-                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-detect supported AdCP versions, refresh registry status, and rerun the full compliance suite">Recheck &amp; retest</button>
-                <button class="agent-requeue-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Queue this agent for the next scheduled compliance heartbeat (runs within ~1 hour).">Requeue comply</button>
+                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}"${refreshButtonState || ' title="Re-detect supported AdCP versions, refresh registry status, and rerun the full compliance suite"'}>${refreshButtonLabel}</button>
+                <button class="agent-requeue-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Mark this agent eligible for a future scheduled compliance heartbeat. This is not a human refresh and has no guaranteed start time.">Requeue comply</button>
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}" title="Run the full storyboard compliance suite against this agent.">Test</button>
                 <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
               </div>
             </div>
+            ${refreshNoticeHtml}
             <div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">
               ${buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}
             </div>
@@ -2222,6 +2470,167 @@
           <div class="compliance-notices-label">Notices</div>
           ${noticesHtml}
         </div>`;
+    }
+
+    function renderGradingProfileComparisons(cs) {
+      const comparisons = Array.isArray(cs?.grading_profile_comparisons)
+        ? cs.grading_profile_comparisons
+        : [];
+      if (comparisons.length === 0) return '';
+
+      const profileNames = ['legacy', 'spec', 'sandbox'];
+      const profileLabels = {
+        legacy: 'Legacy grading',
+        spec: 'Strict Spec grading',
+        sandbox: 'Sandbox grading preview',
+      };
+      return comparisons.map(comparison => {
+        const version = typeof comparison.compliance_bundle_version === 'string'
+          ? comparison.compliance_bundle_version
+          : 'version unavailable';
+        if (!comparison.profiles || comparison.availability === 'pending' || comparison.availability === 'temporarily_unavailable') {
+          return `<div class="grading-profile-comparison">
+            <div class="grading-profile-comparison-header"><strong>Agent-wide grading preview</strong></div>
+            <div class="grading-profile-note">${escapeHtml(comparison.unavailable_reason || 'Comparison evidence is unavailable. Legacy remains authoritative.')}</div>
+          </div>`;
+        }
+        const assessedAt = comparison.assessed_at ? new Date(comparison.assessed_at) : null;
+        const freshness = assessedAt && !Number.isNaN(assessedAt.getTime())
+          ? `${comparison.stale ? 'Stale · ' : ''}${timeAgo(assessedAt)}`
+          : 'Assessment time unavailable';
+        const selected = comparison.selected_profile || 'legacy';
+        const profiles = comparison.profiles && typeof comparison.profiles === 'object'
+          ? comparison.profiles
+          : {};
+        const cards = profileNames.map(name => {
+          const profile = profiles[name] || {};
+          // Freshness applies to the complete comparison, not an individual
+          // profile. Fail closed if an older or inconsistent API response
+          // happens to retain a passing per-profile status on a stale row.
+          const available = comparison.availability !== 'stale'
+            && profile.available !== false
+            && typeof profile.status === 'string';
+          const status = available ? profile.status : 'unavailable';
+          const statusLabel = status === 'passing' ? 'Passed'
+            : status === 'failing' ? 'Failed'
+            : status === 'partial' ? 'Incomplete'
+            : 'Unavailable';
+          const selectedClass = selected === name ? ' grading-profile-card--selected' : '';
+          const assessmentId = typeof profile.assessment_id === 'string' ? profile.assessment_id : '';
+          const publicEffect = ['unchanged', 'issue', 'restore', 'regrade', 'degrade', 'revoke'].includes(profile.public_effect)
+            ? profile.public_effect
+            : '';
+          const effectLabels = {
+            unchanged: 'No immediate public badge change is expected.',
+            issue: 'The public badge will be issued if the remaining eligibility checks pass.',
+            restore: 'The public badge will return to active.',
+            regrade: 'The public badge will keep its lifecycle status and show the newly selected grading profile.',
+            degrade: 'The public badge will enter its degraded grace period.',
+            revoke: 'The public badge will be revoked immediately.',
+          };
+          const graceDeadline = typeof profile.grace_deadline === 'string' ? profile.grace_deadline : '';
+          const parsedDeadline = graceDeadline ? new Date(graceDeadline) : null;
+          const deadlineLabel = parsedDeadline && !Number.isNaN(parsedDeadline.getTime())
+            ? ` Grace deadline: ${parsedDeadline.toLocaleString()}.`
+            : '';
+          const publicEffectCopy = publicEffect
+            ? `${effectLabels[publicEffect]}${deadlineLabel}`
+            : '';
+          const canSelect = comparison.scope === 'badge'
+            && comparison.selection_enabled === true
+            && profile.selectable === true
+            && selected !== name
+            && (name === 'legacy' || name === 'spec');
+          const selectButton = canSelect ? `<button type="button" class="btn btn-secondary grading-profile-select"
+            data-agent-url="${escapeHtml(String(cs.agent_url || ''))}"
+            data-role="${escapeHtml(String(comparison.role || ''))}"
+            data-adcp-version="${escapeHtml(String(comparison.adcp_version || ''))}"
+            data-profile="${escapeHtml(name)}"
+            data-assessment-id="${escapeHtml(assessmentId)}"
+            data-revision="${escapeHtml(String(comparison.selection_revision ?? 0))}"
+            data-status="${escapeHtml(status)}"
+            data-public-effect="${escapeHtml(publicEffect)}"
+            data-public-impact="${escapeHtml(publicEffectCopy || comparison.public_impact || '')}"
+            data-grace-deadline="${escapeHtml(graceDeadline)}"
+            onclick="selectGradingProfileFromComparison(this)">${name === 'legacy' ? 'Revert to Legacy grading' : 'Use Strict Spec grading'}</button>` : '';
+          return `<div class="grading-profile-card${selectedClass}">
+            <span class="grading-profile-name">${escapeHtml(profileLabels[name])}${selected === name ? ' · Current' : ''}</span>
+            <span class="grading-profile-status grading-profile-status--${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
+            <span>${escapeHtml(profile.explanation || 'No explanation available.')}</span>
+            ${publicEffectCopy ? `<span class="grading-profile-note"><strong>Public badge effect:</strong> ${escapeHtml(publicEffectCopy)}</span>` : ''}
+            ${!available && profile.observed_status ? `<span class="grading-profile-note">Historical observation: ${escapeHtml(profile.observed_status)}</span>` : ''}
+            ${selectButton}
+          </div>`;
+        }).join('');
+        const evidence = comparison.evidence && typeof comparison.evidence === 'object' ? comparison.evidence : {};
+        const sourceRun = comparison.source_run_id || 'Unavailable';
+        const policy = comparison.evaluator_policy_version || 'Unavailable';
+        const target = comparison.requested_compliance_target || 'Unavailable';
+        const sourceTestedAt = comparison.source_tested_at ? new Date(comparison.source_tested_at) : null;
+        const testedLabel = sourceTestedAt && !Number.isNaN(sourceTestedAt.getTime())
+          ? sourceTestedAt.toLocaleString()
+          : 'Unavailable';
+        return `<div class="grading-profile-comparison">
+          <div class="grading-profile-comparison-header">
+            <strong>${comparison.scope === 'badge'
+              ? `${escapeHtml(String(comparison.role || 'Unknown role'))} · AdCP ${escapeHtml(String(comparison.adcp_version || version))}`
+              : `Agent-wide grading preview · ${escapeHtml(version)}`}</strong>
+            <span>${escapeHtml(freshness)}</span>
+          </div>
+          <div class="grading-profile-grid">${cards}</div>
+          <details class="grading-profile-provenance">
+            <summary>Evidence and provenance</summary>
+            <dl>
+              <dt>Source run</dt><dd><code>${escapeHtml(sourceRun)}</code></dd>
+              <dt>Evaluator policy</dt><dd><code>${escapeHtml(policy)}</code></dd>
+              <dt>Requested target</dt><dd>${escapeHtml(target)}</dd>
+              <dt>Source tested</dt><dd>${escapeHtml(testedLabel)}</dd>
+              <dt>Evidence</dt><dd>${escapeHtml(String(evidence.selected_storyboard_count ?? 0))} storyboards; ${escapeHtml(String(evidence.observed_failure_count ?? 0))} observed failures; ${escapeHtml(String(evidence.flat_failure_count ?? 0))} run-level failure records; ${escapeHtml(String(evidence.controller_gap_phase_count ?? 0))} controller-gap phases; ${escapeHtml(String(evidence.sandbox_unresolved_bundle_count ?? 0))} unresolved Sandbox bundles</dd>
+            </dl>
+          </details>
+          <div class="grading-profile-note">${comparison.scope === 'badge'
+            ? 'Evidence modes (Spec/Live) are separate from the grading profile. Selecting a profile does not contact the agent or enqueue a compliance run; a database-backed job retries only the badge and token projection. Offline JWT copies can remain valid for up to 30 days; the registry is the real-time authority.'
+            : 'Agent-wide preview only—not an exact badge-role grade. Legacy still controls the public registry and badge. Comparing profiles does not contact the agent.'}</div>
+        </div>`;
+      }).join('');
+    }
+
+    async function selectGradingProfileFromComparison(button) {
+      const profile = button.dataset.profile;
+      const status = button.dataset.status;
+      const label = profile === 'spec' ? 'Strict Spec grading' : 'Legacy grading';
+      const effect = button.dataset.publicEffect;
+      const impact = button.dataset.publicImpact || (status === 'passing'
+        ? 'The current evidence passes. The server will determine the resulting public badge state.'
+        : 'The current evidence is non-passing. The server will determine the resulting public badge state.');
+      const action = profile === 'legacy' ? 'Revert to' : 'Select';
+      if (!window.confirm(`${action} ${label} for ${button.dataset.role} at AdCP ${button.dataset.adcpVersion}?\n\n${impact}\n\nThis changes only this exact role and version and does not contact the agent. Offline JWT copies can remain valid for up to 30 days; check the registry for real-time status.`)) return;
+      button.disabled = true;
+      try {
+        const response = await fetch(`/api/registry/agents/${encodeURIComponent(button.dataset.agentUrl)}/grading-profile`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            organization_id: pageState.orgId,
+            role: button.dataset.role,
+            adcp_version: button.dataset.adcpVersion,
+            selected_profile: profile,
+            assessment_id: button.dataset.assessmentId,
+            expected_revision: Number(button.dataset.revision),
+            acknowledge_public_impact: effect === 'degrade' || effect === 'revoke' || (!effect && status !== 'passing'),
+            idempotency_key: crypto.randomUUID(),
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not update grading profile');
+        if (payload.token_refresh === 'scheduled') {
+          alert('The grading profile was saved. The registry is authoritative now; refreshed offline JWTs were durably scheduled.');
+        }
+        window.location.reload();
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Could not update grading profile');
+        button.disabled = false;
+      }
     }
 
     function renderVerificationPanel(cs, agentUrl, hasAuth) {
@@ -2361,6 +2770,7 @@
             </div>
             ${declaredHtml}
             <div class="verification-eligibility-hint">${hint}</div>
+            ${typeof renderGradingProfileComparisons === 'function' ? renderGradingProfileComparisons(cs) : ''}
             ${buildNoticesSectionHtml(cs)}
           </div>`;
       }
@@ -2384,10 +2794,51 @@
       const ADCP_VERSION_SHAPE_RE = /^[1-9][0-9]*\.[0-9]+$/;
 
       const distinctRoleCount = new Set(badges.map(b => b.role)).size;
+      const hasParallelVersions = distinctRoleCount < badges.length;
+      const latestOnlyByDefault = badges.length >= 5 && hasParallelVersions;
+      const panelHash = Array.from(agentUrl).reduce(
+        (hash, char) => ((hash * 31) + char.charCodeAt(0)) >>> 0,
+        2166136261,
+      ).toString(36);
+      const panelId = `verification-panel-${panelHash}`;
 
-      const rowsHtml = badges.map((badge, idx) => {
+      const parsedVersion = (badge) => {
+        if (typeof badge.adcp_version !== 'string' || !ADCP_VERSION_SHAPE_RE.test(badge.adcp_version)) return null;
+        return badge.adcp_version.split('.').map(Number);
+      };
+      const compareBadgeVersions = (left, right) => {
+        const leftVersion = parsedVersion(left.badge);
+        const rightVersion = parsedVersion(right.badge);
+        if (leftVersion && rightVersion) {
+          const width = Math.max(leftVersion.length, rightVersion.length);
+          for (let i = 0; i < width; i += 1) {
+            const delta = (rightVersion[i] || 0) - (leftVersion[i] || 0);
+            if (delta !== 0) return delta;
+          }
+        } else if (leftVersion) {
+          return -1;
+        } else if (rightVersion) {
+          return 1;
+        }
+        return left.originalIndex - right.originalIndex;
+      };
+
+      // Preserve the API's role order, but always put the newest semantic
+      // version first within a role. Numeric comparison matters here: 3.10
+      // must sort above 3.2 rather than below it as a string would.
+      const badgesByRole = new Map();
+      badges.forEach((badge, originalIndex) => {
+        const role = String(badge.role || 'unknown');
+        const group = badgesByRole.get(role) || [];
+        group.push({ badge, originalIndex });
+        badgesByRole.set(role, group);
+      });
+      badgesByRole.forEach(group => group.sort(compareBadgeVersions));
+
+      const renderBadgeRow = ({ badge, originalIndex }, grouped, isLatestVersion) => {
         const protocol = PROTOCOL_LABELS[badge.role] || badge.role;
         const qualifier = formatModes(badge.verification_modes) || 'Spec';
+        const gradingLabel = badge.grading_profile === 'spec' ? 'Strict Spec grading' : 'Legacy grading';
         const verifiedAt = badge.verified_at ? new Date(badge.verified_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
         const specialisms = (badge.verified_specialisms || []).slice().sort();
         // Defensive: the DB CHECK constraint and JWT signer regex
@@ -2427,8 +2878,13 @@
         const versionSegment = adcpVersion
           ? ` ${adcpVersion}`
           : (badge.adcp_version ? ' (unversioned)' : '');
-        const altText = `AAO Verified ${protocol} Agent${versionSegment} (${qualifier})`;
-        const labelStrong = `${protocol} Agent${versionSegment} (${qualifier})`;
+        const altText = `AAO Verified ${protocol} Agent${versionSegment} (${qualifier}) · ${gradingLabel}`;
+        const versionLabel = adcpVersion
+          ? `AdCP ${adcpVersion}`
+          : (badge.adcp_version ? 'Unversioned' : 'Legacy version');
+        const labelStrong = grouped
+          ? `${versionLabel} (${qualifier}) · ${gradingLabel}`
+          : `${protocol} Agent${versionSegment} (${qualifier}) · ${gradingLabel}`;
         const htmlEmbed = `<a href="${registryUrl}" target="_blank" rel="noopener noreferrer"><img src="${badgeSvgUrl}" alt="${altText}" loading="lazy" height="20" /></a>`;
         const mdEmbed = `[![${altText}](${badgeSvgUrl})](${registryUrl})`;
 
@@ -2437,10 +2893,10 @@
         // an already-expanded drawer. 'unv' for malformed-version
         // rows so two malformed badges don't collide on 'any'.
         const versionForId = adcpVersion ?? (badge.adcp_version ? 'unv' : 'any');
-        const drawerId = `verification-embed-${badge.role}-${versionForId}-${idx}`;
+        const drawerId = `verification-embed-${badge.role}-${versionForId}-${originalIndex}`;
 
         return `
-          <div class="verification-badge-row">
+          <div class="verification-badge-row ${isLatestVersion ? 'is-latest-version' : 'is-older-version'}">
             <div class="verification-badge-row-top">
               <span class="verification-badge-svg"><img src="${escapeHtml(versionedBadgeUrl)}" alt="${escapeHtml(altText)}" /></span>
               <span class="verification-badge-meta">
@@ -2474,6 +2930,22 @@
               </div>
             </div>
           </div>`;
+      };
+
+      const rowsHtml = Array.from(badgesByRole.entries()).map(([role, group]) => {
+        if (group.length === 1) return renderBadgeRow(group[0], false, true);
+        const protocol = PROTOCOL_LABELS[role] || role;
+        const versionRows = group
+          .map((entry, index) => renderBadgeRow(entry, true, index === 0))
+          .join('');
+        return `
+          <section class="verification-badge-group" aria-label="${escapeHtml(protocol)} Agent badges">
+            <div class="verification-role-header">
+              <strong>${escapeHtml(protocol)} Agent</strong>
+              <span>${group.length} versions</span>
+            </div>
+            ${versionRows}
+          </section>`;
       }).join('');
 
       // Header count: "1 badge" / "N badges" / "N badges across M roles"
@@ -2485,13 +2957,20 @@
       const badgeCountSummary = badges.length === 1
         ? '1 badge'
         : `${badges.length} badges${distinctRoleCount < badges.length ? ` across ${distinctRoleCount} role${distinctRoleCount === 1 ? '' : 's'}` : ''}`;
+      const versionToggle = latestOnlyByDefault
+        ? `<button type="button" class="verification-version-toggle" data-panel-id="${panelId}" aria-controls="${panelId}" aria-expanded="false">Show all versions</button>`
+        : '';
 
       return `
-        <div class="agent-verification-panel">
+        <div class="agent-verification-panel${latestOnlyByDefault ? ' verification-latest-only' : ''}" id="${panelId}">
           <div class="agent-verification-header">
             <span>AAO Verified</span>
-            <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">${badgeCountSummary}</span>
+            <span class="verification-panel-actions">
+              <span>${badgeCountSummary}</span>
+              ${versionToggle}
+            </span>
           </div>
+          ${typeof renderGradingProfileComparisons === 'function' ? renderGradingProfileComparisons(cs) : ''}
           ${rowsHtml}
           ${buildNoticesSectionHtml(cs)}
         </div>`;
@@ -2622,6 +3101,18 @@
 
     // Verification panel — toggle embed-code drawers and copy snippets.
     document.addEventListener('click', function(e) {
+      const versionToggle = e.target.closest('.verification-version-toggle');
+      if (versionToggle) {
+        const panelId = versionToggle.dataset.panelId;
+        const panel = panelId ? document.getElementById(panelId) : null;
+        if (panel) {
+          const latestOnly = panel.classList.toggle('verification-latest-only');
+          versionToggle.setAttribute('aria-expanded', String(!latestOnly));
+          versionToggle.textContent = latestOnly ? 'Show all versions' : 'Show latest only';
+        }
+        return;
+      }
+
       const toggle = e.target.closest('.verification-embed-toggle');
       if (toggle) {
         const drawerId = toggle.dataset.drawerId;
@@ -3168,7 +3659,8 @@
         const returnTo = window.location.pathname + window.location.search + window.location.hash;
         window.location.href = '/api/oauth/agent/start'
           + '?agent_context_id=' + encodeURIComponent(agentContextId)
-          + '&return_to=' + encodeURIComponent(returnTo);
+          + '&return_to=' + encodeURIComponent(returnTo)
+          + (btn.dataset.oauthFresh === 'true' ? '&fresh=1' : '');
       } catch (err) {
         btn.disabled = false;
         btn.textContent = originalLabel;
@@ -3297,14 +3789,75 @@
       swapAgentCard(agentUrl);
     }
 
+    function refreshStorageKey(agentUrl) {
+      return `adcp:agent-refresh:${pageState.orgId || ''}:${agentUrl}`;
+    }
+
+    function pendingRefreshUrl(agentUrl) {
+      try {
+        const statusUrl = sessionStorage.getItem(refreshStorageKey(agentUrl));
+        const prefix = `/api/registry/agents/${encodeURIComponent(agentUrl)}/refreshes/`;
+        return statusUrl?.startsWith(prefix) && /^[0-9a-f-]{36}$/.test(statusUrl.slice(prefix.length))
+          ? statusUrl : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function rememberRefresh(agentUrl, statusUrl) {
+      try { sessionStorage.setItem(refreshStorageKey(agentUrl), statusUrl); } catch { /* private storage unavailable */ }
+    }
+
+    function forgetRefresh(agentUrl) {
+      try { sessionStorage.removeItem(refreshStorageKey(agentUrl)); } catch { /* private storage unavailable */ }
+    }
+
+    async function resumePendingAgentRefreshes(agents) {
+      for (const agent of agents) {
+        const statusUrl = pendingRefreshUrl(agent.url);
+        if (!statusUrl || pageState.activeRefreshPolls.has(agent.url)) continue;
+        pageState.activeRefreshPolls.add(agent.url);
+        const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
+        const card = document.getElementById(cardId);
+        const actionsRow = card?.querySelector('.agent-meta-row-actions');
+        const progress = document.createElement('div');
+        progress.className = 'agent-refresh-result';
+        progress.style.cssText = 'font-size: var(--text-xs); margin-top: var(--space-2); color: var(--color-warning-fg);';
+        progress.textContent = 'Refresh queued or running — checking for the result…';
+        actionsRow?.parentElement?.appendChild(progress);
+        void pollAgentRefresh(statusUrl).then(async operation => {
+          progress.remove();
+          if (operation.status === 'succeeded' || operation.status === 'failed') {
+            forgetRefresh(agent.url);
+            await reloadAgentCardAfterRefresh(agent.url);
+          }
+          const refreshed = document.getElementById(cardId)?.querySelector('.agent-meta-row-actions');
+          if (refreshed?.parentElement) {
+            const message = document.createElement('div');
+            message.className = 'agent-refresh-result';
+            message.style.cssText = 'font-size: var(--text-xs); margin-top: var(--space-2); color: var(--color-text-secondary);';
+            message.textContent = operation.status === 'succeeded' ? buildAgentRefreshSummary(operation.result || {})
+              : operation.status === 'failed' ? (operation.error?.message || operation.error || 'Refresh failed')
+              : 'Refresh is still running. Reload this page later to resume tracking.';
+            refreshed.parentElement.appendChild(message);
+          }
+        }).catch(() => { progress.textContent = 'Refresh status unavailable. Reload this page to retry.'; })
+          .finally(() => pageState.activeRefreshPolls.delete(agent.url));
+      }
+    }
+
     async function pollAgentRefresh(statusUrl, retryAfterSeconds = 5) {
-      const deadline = Date.now() + 16 * 60 * 1000;
+      // A full owner assessment can spend 30 minutes in the runner, plus
+      // queue wait and final badge projection. Keep polling while the owner
+      // page is open. A queued request may wait behind two 35-minute suites;
+      // the status URL is stored in the tab so reloads can resume tracking.
+      const deadline = Date.now() + 3 * 60 * 60 * 1000;
       let delaySeconds = Math.max(1, Number(retryAfterSeconds) || 5);
       while (Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
         const response = await fetch(statusUrl, { credentials: 'include' });
         const data = await response.json().catch(() => ({}));
-        if (response.status === 429) {
+        if (response.status === 429 || response.status === 502 || response.status === 503 || response.status === 504) {
           delaySeconds = Math.max(
             1,
             Number(response.headers.get('Retry-After'))
@@ -3314,9 +3867,10 @@
           );
           continue;
         }
-        if (!response.ok) {
-          return { status: 'failed', error: data.error || `Status check failed (HTTP ${response.status})` };
+        if (response.status === 404) {
+          return { status: 'failed', error: data.error || 'Refresh status was not found' };
         }
+        if (!response.ok) return { status: 'unavailable' };
         if (data.status === 'succeeded' || data.status === 'failed') return data;
         delaySeconds = Math.max(1, Number(response.headers.get('Retry-After')) || 5);
       }
@@ -3333,6 +3887,7 @@
       if (!btn) return;
 
       const agentUrl = btn.dataset.agentUrl;
+      if (pageState.activeRefreshPolls.has(agentUrl)) return;
       const cardId = btn.dataset.cardId;
       const originalLabel = btn.textContent;
       let actionsRow = btn.closest('.agent-meta-row-actions');
@@ -3375,6 +3930,8 @@
         let effectiveStatus = res.status;
 
         if (res.status === 202 && data.status_url) {
+          rememberRefresh(agentUrl, data.status_url);
+          pageState.activeRefreshPolls.add(agentUrl);
           const progress = renderFlash({
             severity: 'warning',
             text: 'Refresh accepted — running compliance checks…',
@@ -3384,10 +3941,13 @@
             res.headers.get('Retry-After'),
           );
           progress?.remove();
+          pageState.activeRefreshPolls.delete(agentUrl);
           if (operation.status === 'succeeded') {
+            forgetRefresh(agentUrl);
             effectiveStatus = 200;
             data = operation.result || {};
           } else if (operation.status === 'failed') {
+            forgetRefresh(agentUrl);
             effectiveStatus = 500;
             data = { error: operation.error?.message || operation.error || 'Refresh failed' };
           } else {
@@ -3421,6 +3981,13 @@
           });
         } else if (effectiveStatus === 502) {
           renderFlash({ severity: 'error', text: data.error || 'Probe failed' });
+        } else if (effectiveStatus === 503 && data.code === 'refresh_authorization_provenance_required') {
+          renderFlash({
+            severity: 'warning',
+            text: data.error || 'Recheck & retest is paused platform-wide until durable requester-authorization provenance is supported.',
+          });
+          btn.dataset.refreshPaused = 'true';
+          btn.title = data.alternative_description || 'Requeue comply is a separate scheduled-heartbeat operation and is not a retry or ETA for this refresh.';
         } else {
           renderFlash({
             severity: 'error',
@@ -3433,8 +4000,10 @@
           text: `Recheck failed: ${err?.message || err}`,
         });
       } finally {
-        btn.disabled = false;
-        btn.textContent = originalLabel;
+        pageState.activeRefreshPolls.delete(agentUrl);
+        const refreshPaused = btn.dataset.refreshPaused === 'true';
+        btn.disabled = refreshPaused;
+        btn.textContent = refreshPaused ? 'Recheck paused' : originalLabel;
       }
     });
 
@@ -3467,7 +4036,7 @@
         if (res.status === 200) {
           flash.style.background = 'var(--color-success-bg)';
           flash.style.color = 'var(--color-success-fg)';
-          flash.textContent = 'Queued — compliance check will run on the next heartbeat cycle (within ~1 hour)';
+          flash.textContent = 'Requeued — this agent is eligible for a future scheduled heartbeat. This does not run Recheck & retest and has no guaranteed start time.';
           actionsRow.parentElement.appendChild(flash);
           setTimeout(() => flash.remove(), 10000);
         } else if (res.status === 429) {
@@ -3711,7 +4280,8 @@
 
       // Shared: render a "Connect via OAuth" prompt when an agent 401s with
       // a WWW-Authenticate: Bearer challenge and no refreshable token is stored.
-      function renderOAuthChallenge(agentUrl, agentContextId, reason) {
+      function renderOAuthChallenge(agentUrl, agentContextId, reason, ownerFresh = false) {
+        if (ownerFresh === true) reason = "Saved OAuth credentials need an explicit owner sign-in. If the authorization server changed, confirm trusted client configuration; saved clients are not rebound automatically.";
         const safeReason = reason
           ? '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(String(reason)) + '</div>'
           : '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">This agent requires OAuth authorization before storyboards can run.</div>';
@@ -3720,7 +4290,8 @@
           '<div style="padding:var(--space-3);background:var(--color-warning-bg);border:1px solid var(--color-warning-border, var(--color-border));border-radius:var(--radius-md);">'
           + '<div style="font-weight:var(--font-semibold);margin-bottom:var(--space-2);">Connect via OAuth</div>'
           + safeReason
-          + '<button class="agent-oauth-challenge-btn" data-agent-url="' + escapeHtml(agentUrl) + '"' + ctxAttr + '>Authorize with agent</button>'
+          + '<button class="agent-oauth-challenge-btn" data-agent-url="' + escapeHtml(agentUrl) + '"' + ctxAttr
+          + (ownerFresh === true ? ' data-oauth-fresh="true">Start a new sign-in</button>' : '>Authorize with agent</button>')
           + '</div>'
         );
       }
@@ -3749,6 +4320,14 @@
         return html;
       }
 
+      function storyboardCatalogUrl(storyboardId, suffix, complianceTarget) {
+        let url = '/api/storyboards/' + encodeURIComponent(storyboardId) + suffix;
+        if (complianceTarget) {
+          url += '?compliance_target=' + encodeURIComponent(complianceTarget);
+        }
+        return url;
+      }
+
       // Shared: render the storyboard map into a panel
       async function renderStoryboardPicker(panel, agentUrl, cardId, agentTracks) {
         panel.style.display = 'block';
@@ -3765,6 +4344,7 @@
             const bundles = Array.isArray(data.bundles) ? data.bundles : [];
             const supportedProtocols = Array.isArray(data.supported_protocols) ? data.supported_protocols : [];
             const specialisms = Array.isArray(data.specialisms) ? data.specialisms : [];
+            const activeComplianceTarget = data.requested_compliance_target || '';
             const storyboardStatusMap = await storyboardStatusMapPromise;
             let html = '';
 
@@ -3833,8 +4413,8 @@
                 html += storyboardDrilldownHtml(knownStatus);
                 html += '</div>';
                 html += '<div class="storyboard-map-actions">';
-                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Preview</button>';
-                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" title="Run step by step">Run</button>';
+                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-compliance-target="' + escapeHtml(activeComplianceTarget) + '">Preview</button>';
+                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-compliance-target="' + escapeHtml(activeComplianceTarget) + '" title="Run step by step">Run</button>';
                 html += '</div>';
                 html += '</div>';
               }
@@ -3848,6 +4428,7 @@
               html += '<div class="storyboard-track-group">';
               html += '<div class="storyboard-track-header"><span>Saved results needing attention</span><span class="storyboard-track-count">' + unmatchedStatuses.length + ' storyboard' + (unmatchedStatuses.length === 1 ? '' : 's') + '</span></div>';
               for (const statusInfo of unmatchedStatuses) {
+                const savedComplianceTarget = statusInfo.requested_compliance_target || activeComplianceTarget;
                 const status = normalizeStoryboardStatus(statusInfo.status);
                 const savedSteps = storyboardStatusSteps(statusInfo);
                 const nextStep = storyboardNextStep(statusInfo);
@@ -3863,8 +4444,8 @@
                 html += storyboardDrilldownHtml(statusInfo);
                 html += '</div>';
                 html += '<div class="storyboard-map-actions">';
-                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(statusInfo.storyboard_id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Preview</button>';
-                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(statusInfo.storyboard_id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" title="Run step by step">Run</button>';
+                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(statusInfo.storyboard_id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-compliance-target="' + escapeHtml(savedComplianceTarget) + '">Preview</button>';
+                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(statusInfo.storyboard_id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" data-compliance-target="' + escapeHtml(savedComplianceTarget) + '" title="Run step by step">Run</button>';
                 html += '</div>';
                 html += '</div>';
               }
@@ -3889,7 +4470,7 @@
           }
 
           if (errBody.needs_oauth) {
-            panel.innerHTML = renderOAuthChallenge(agentUrl, errBody.agent_context_id, errBody.error);
+            panel.innerHTML = renderOAuthChallenge(agentUrl, errBody.agent_context_id, errBody.error, errBody.oauth_fresh === true);
             return;
           }
 
@@ -3971,6 +4552,7 @@
       const pickerItem = e.target.closest('.storyboard-picker-item');
       if (pickerItem) {
         const storyboardId = pickerItem.dataset.storyboardId;
+        const complianceTarget = pickerItem.dataset.complianceTarget;
         const agentUrl = pickerItem.dataset.agentUrl;
         const cardId = pickerItem.dataset.cardId;
         const panel = document.getElementById(cardId + '-storyboard');
@@ -3979,7 +4561,7 @@
         panel.innerHTML = '<em>Loading storyboard...</em>';
 
         try {
-          const res = await fetch('/api/storyboards/' + encodeURIComponent(storyboardId), { credentials: 'include' });
+          const res = await fetch(storyboardCatalogUrl(storyboardId, '', complianceTarget), { credentials: 'include' });
           const data = await res.json();
           const sb = data.storyboard;
           if (!sb) {
@@ -4047,6 +4629,7 @@
       const stepBtn = e.target.closest('.storyboard-step-btn');
       if (stepBtn) {
         const storyboardId = stepBtn.dataset.storyboardId;
+        const complianceTarget = stepBtn.dataset.complianceTarget;
         const agentUrl = stepBtn.dataset.agentUrl;
         const cardId = stepBtn.dataset.cardId;
         const panel = document.getElementById(cardId + '-storyboard');
@@ -4055,7 +4638,7 @@
         // Fetch first step preview
         panel.innerHTML = '<em>Loading first step...</em>';
         try {
-          const res = await fetch('/api/storyboards/' + encodeURIComponent(storyboardId) + '/first-step', { credentials: 'include' });
+          const res = await fetch(storyboardCatalogUrl(storyboardId, '/first-step', complianceTarget), { credentials: 'include' });
           const data = await res.json();
           if (!res.ok) { panel.innerHTML = '<em>' + escapeHtml(data.error || 'Failed') + '</em>'; return; }
 
@@ -4099,7 +4682,7 @@
           }
 
           if (result.needs_oauth) {
-            panel.innerHTML = renderOAuthChallenge(agentUrl, result.agent_context_id, result.error);
+            panel.innerHTML = renderOAuthChallenge(agentUrl, result.agent_context_id, result.error, result.oauth_fresh === true);
             return;
           }
 
@@ -4195,7 +4778,7 @@
           progressEl.remove();
 
           if (res.status === 422 && data.needs_oauth) {
-            panel.innerHTML = renderOAuthChallenge(agentUrl, data.agent_context_id, data.error);
+            panel.innerHTML = renderOAuthChallenge(agentUrl, data.agent_context_id, data.error, data.oauth_fresh === true);
             return;
           }
 

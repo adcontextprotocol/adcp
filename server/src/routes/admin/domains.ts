@@ -39,6 +39,10 @@ import {
   assertClaimableBrandDomain,
 } from "../../services/identifier-normalization.js";
 import { invalidateMemberContextCache } from "../../addie/index.js";
+import {
+  verifyAndRefreshWorkosDomain,
+  WorkosDomainOwnershipMismatchError,
+} from "../../services/workos-domain-verification.js";
 
 const slackDb = new SlackDatabase();
 const logger = createLogger("admin-domains");
@@ -1623,21 +1627,32 @@ export function setupDomainRoutes(
         const alreadyVerified = initialState === "verified" || initialState === "legacy_verified";
         if (!alreadyVerified) {
           try {
-            const verified = await workos.organizationDomains.verifyOrganizationDomain(entry.id);
-            verifiedState = String(verified.state);
-          } catch (err: any) {
-            const status = err?.status ?? err?.response?.status;
-            if (status === 400 || status === 422) {
-              const recordName = entry.verificationPrefix
-                ? `${entry.verificationPrefix}.${normalizedDomain}`
+            const outcome = await verifyAndRefreshWorkosDomain({
+              workos,
+              organizationId: orgId,
+              domain: normalizedDomain,
+              domainId: entry.id,
+            });
+            verifiedState = String(outcome.domain.state);
+            if (outcome.status === "pending") {
+              const prefix = outcome.domain.verificationPrefix ?? entry.verificationPrefix;
+              const recordName = prefix
+                ? `${prefix}.${normalizedDomain}`
                 : normalizedDomain;
               return res.status(400).json({
                 error: "still_pending",
                 message: "WorkOS could not find the DNS TXT verification record yet.",
-                state: initialState,
+                state: verifiedState,
                 workos_domain_id: entry.id,
                 dns_record_name: recordName,
-                verification_token: entry.verificationToken ?? null,
+                verification_token: outcome.domain.verificationToken ?? entry.verificationToken ?? null,
+              });
+            }
+          } catch (err: any) {
+            if (err instanceof WorkosDomainOwnershipMismatchError) {
+              return res.status(409).json({
+                error: "domain_ownership_mismatch",
+                message: "The WorkOS domain resource changed ownership during verification. Re-fetch the organization before retrying.",
               });
             }
             throw err;

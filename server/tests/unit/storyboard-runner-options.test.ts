@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   authForStoryboard,
+  multiAgentRoutingForStoryboard,
   testKitOptionsFromKit,
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
@@ -160,5 +161,119 @@ describe('storyboard runner option helpers', () => {
     const kit: LoadedTestKit = { auth: { api_key: 'kit-api-key' } };
 
     expect(() => testKitOptionsFromKit(kit, 'sales')).toThrow(/without auth\.probe_task/);
+  });
+});
+
+describe('multiAgentRoutingForStoryboard', () => {
+  const base = 'http://127.0.0.1:4321/api/training-agent';
+  // Distinct from the routing base so a swap between the two fails.
+  const identityBase = 'https://training-agent.example/api/training-agent';
+  const auth = { type: 'bearer' as const, token: 'storyboard-token' };
+  const governed = {
+    id: 'signal_marketplace/governance_approved',
+    requires: ['multi_agent'],
+    default_agent: 'signals',
+    context: {
+      governance_agent_url: 'https://test-agent.adcontextprotocol.org',
+      signal_agent_url: 'https://test-agent.adcontextprotocol.org/signals',
+    },
+    phases: [
+      { steps: [{ agent: 'signals' }, { agent: 'governance' }, {}] },
+    ],
+  };
+  const input = {
+    storyboard: governed,
+    tenantPath: 'signals',
+    tenantAgentUrl: `${base}/signals/mcp`,
+    trainingAgentBaseUrl: base,
+    serviceIdentityBase: identityBase,
+    auth,
+  };
+
+  it('leaves storyboards without multi_agent on the single-tenant path', () => {
+    expect(multiAgentRoutingForStoryboard({
+      ...input,
+      storyboard: { id: 'signal_marketplace', default_agent: 'signals', phases: [] },
+    })).toEqual({ kind: 'single_agent' });
+  });
+
+  it('routes every agent key to its sibling tenant and keeps default_agent on the tenant under test', () => {
+    expect(multiAgentRoutingForStoryboard(input)).toEqual({
+      kind: 'routed',
+      default_agent: 'signals',
+      agents: {
+        signals: { url: `${base}/signals/mcp`, auth },
+        governance: { url: `${base}/governance/mcp`, auth },
+      },
+      // Only the governed-agent key is overridden; the registered governance
+      // service locator keeps its authored value.
+      context: { signal_agent_url: `${identityBase}/signals` },
+    });
+  });
+
+  it('overrides seller_agent_url with the sales service identity', () => {
+    const routing = multiAgentRoutingForStoryboard({
+      ...input,
+      tenantPath: 'sales',
+      tenantAgentUrl: `${base}/sales/mcp`,
+      storyboard: {
+        id: 'media_buy_seller/governance_conditions',
+        requires: ['multi_agent'],
+        default_agent: 'sales',
+        context: { seller_agent_url: 'https://test-agent.adcontextprotocol.org/sales' },
+        phases: [{ steps: [{ agent: 'governance' }, {}] }],
+      },
+    });
+    expect(routing).toMatchObject({
+      kind: 'routed',
+      default_agent: 'sales',
+      context: { seller_agent_url: `${identityBase}/sales` },
+    });
+  });
+
+  it('returns an empty context override when no governed-agent key is authored', () => {
+    const routing = multiAgentRoutingForStoryboard({
+      ...input,
+      storyboard: { ...governed, context: { governance_agent_url: 'https://test-agent.adcontextprotocol.org' } },
+    });
+    expect(routing).toMatchObject({ kind: 'routed', context: {} });
+  });
+
+  it('strips trailing slashes from the routing and identity bases', () => {
+    const routing = multiAgentRoutingForStoryboard({
+      ...input,
+      trainingAgentBaseUrl: `${base}//`,
+      serviceIdentityBase: `${identityBase}/`,
+    });
+    expect(routing).toMatchObject({
+      kind: 'routed',
+      agents: { governance: { url: `${base}/governance/mcp` } },
+      context: { signal_agent_url: `${identityBase}/signals` },
+    });
+  });
+
+  it('omits auth from every routed agent when the job has none', () => {
+    const routing = multiAgentRoutingForStoryboard({ ...input, auth: undefined });
+    if (routing.kind !== 'routed') throw new Error('expected a routed storyboard');
+    for (const entry of Object.values(routing.agents)) expect(entry).not.toHaveProperty('auth');
+  });
+
+  it('refuses to grade a storyboard from a tenant other than its default_agent', () => {
+    expect(() => multiAgentRoutingForStoryboard({ ...input, tenantPath: 'sales' }))
+      .toThrow(/run it from the signals tenant/);
+  });
+
+  it('refuses agent keys that are not training-agent tenants', () => {
+    expect(() => multiAgentRoutingForStoryboard({
+      ...input,
+      storyboard: { ...governed, phases: [{ steps: [{ agent: 'seller_eu' }] }] },
+    })).toThrow(/not a training-agent tenant/);
+  });
+
+  it('requires a default_agent', () => {
+    expect(() => multiAgentRoutingForStoryboard({
+      ...input,
+      storyboard: { ...governed, default_agent: undefined },
+    })).toThrow(/declares no default_agent/);
   });
 });

@@ -109,32 +109,18 @@ export async function getCurrentUserOrganizations(args: {
   email: string;
   workos: WorkOS | null;
   orgDb: CurrentUserOrgDb;
-  autoLinkByVerifiedDomain: AutoLinkByVerifiedDomain;
+  /** Ignored compatibility dependency; reads never provision membership. */
+  autoLinkByVerifiedDomain?: AutoLinkByVerifiedDomain;
 }): Promise<CurrentUserOrganization[]> {
   if (!args.workos) {
     return getCachedOrganizationsForUser(args.userId);
   }
 
   try {
-    let memberships = await args.workos.userManagement.listOrganizationMemberships({
+    const memberships = await args.workos.userManagement.listOrganizationMemberships({
       userId: args.userId,
       statuses: ['active'],
     });
-
-    try {
-      const linked = await args.autoLinkByVerifiedDomain(args.workos, args.userId, args.email);
-      if (linked) {
-        memberships = await args.workos.userManagement.listOrganizationMemberships({
-          userId: args.userId,
-          statuses: ['active'],
-        });
-      }
-    } catch (error) {
-      logger.warn(
-        { err: error, userId: args.userId },
-        'Auto-link by verified domain failed during /api/me; continuing with existing memberships',
-      );
-    }
 
     return Promise.all(
       memberships.data.map((membership) => resolveCurrentUserOrganization(membership, args.orgDb, args.workos!))

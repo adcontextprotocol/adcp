@@ -5,6 +5,8 @@ title: "Seller exposes create_media_buy tasks through read and list lifecycle to
 category: media_buy_seller
 summary: "Forces create_media_buy into the submitted arm, reconciles the task through get_task_status and list_tasks, completes it deterministically, and verifies the terminal media-buy result."
 track: media_buy
+requires:
+  - controller
 
 # The async arm is optional. Sellers that cannot deterministically exercise it
 # skip this scenario before any state is created.
@@ -58,6 +60,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_37b3bb822135"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_create_media_buy_as-b2f0344d"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "async_lifecycle_video_q3"
       delivery_type: "guaranteed"
@@ -99,6 +112,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_create_media_buy_as-b2f0344d"
             sandbox: true
           scenario: "force_create_media_buy_arm"
           params:
@@ -139,6 +154,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_create_media_buy_as-b2f0344d"
             sandbox: true
           brand:
             domain: "acmeoutdoor.example"
@@ -191,6 +208,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_create_media_buy_as-b2f0344d"
             sandbox: true
           context:
             correlation_id: "create_media_buy_async_lifecycle--get_submitted"
@@ -228,6 +247,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_create_media_buy_as-b2f0344d"
             sandbox: true
           filters:
             task_ids:
@@ -285,6 +306,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_create_media_buy_as-b2f0344d"
             sandbox: true
           scenario: "force_task_completion"
           params:
@@ -333,6 +356,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_create_media_buy_as-b2f0344d"
             sandbox: true
           context:
             correlation_id: "create_media_buy_async_lifecycle--get_completed"
@@ -378,6 +403,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_create_media_buy_as-b2f0344d"
             sandbox: true
           filters:
             task_ids:

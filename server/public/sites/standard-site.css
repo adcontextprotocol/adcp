@@ -1,0 +1,18 @@
+/* Shared layout for standalone standard sites (brandjson.org, trustjson.org).
+   Uses design system variables only - see /design-system.css. */
+body { padding-top: var(--nav-height); background: var(--color-bg-page); color: var(--color-text); font-family: var(--font-sans); }
+.std-hero { padding: var(--space-16) var(--space-5) var(--space-12); text-align: center; background: var(--gradient-primary-dark); color: var(--color-text-on-dark); }
+.std-hero h1 { font-family: var(--font-mono); font-size: var(--text-5xl); font-weight: var(--font-bold); margin: 0 0 var(--space-4); }
+.std-hero p { font-size: var(--text-xl); color: var(--color-text-on-dark-secondary); max-width: 640px; margin: 0 auto var(--space-6); line-height: 1.5; }
+.std-badge { display: inline-block; margin-bottom: var(--space-4); padding: var(--space-1) var(--space-3); border-radius: var(--radius-lg); background: var(--color-warning-100); color: var(--color-text); font-size: var(--text-sm); font-weight: var(--font-semibold); }
+.std-actions { display: flex; gap: var(--space-3); justify-content: center; flex-wrap: wrap; }
+.std-main { max-width: var(--container-md); margin: 0 auto; padding: var(--space-10) var(--space-5); }
+.std-main h2 { font-size: var(--text-2xl); margin: var(--space-10) 0 var(--space-3); color: var(--color-text-heading); }
+.std-main h2:first-child { margin-top: 0; }
+.std-main p, .std-main li { color: var(--color-text-secondary); line-height: 1.6; }
+.std-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); margin-top: var(--space-4); }
+.std-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-5); box-shadow: var(--shadow-sm); }
+.std-card h3 { margin: 0 0 var(--space-2); font-size: var(--text-lg); color: var(--color-text-heading); }
+.std-card p { margin: 0; font-size: var(--text-sm); }
+.std-main pre { background: var(--color-code-bg); border: 1px solid var(--color-code-border); color: var(--color-code-text); border-radius: var(--radius-lg); padding: var(--space-4); overflow-x: auto; font-family: var(--font-mono); font-size: var(--text-sm); }
+.std-main code { font-family: var(--font-mono); }

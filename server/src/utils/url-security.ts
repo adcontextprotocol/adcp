@@ -7,6 +7,17 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('url-security');
 
+/** A non-transient network policy denial, distinct from transport unavailability. */
+export class NetworkPolicyRefusedError extends Error {}
+export function isNetworkPolicyRefusal(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
+    if (current instanceof NetworkPolicyRefusedError) return true;
+    current = current.cause;
+  }
+  return false;
+}
+
 export const SSRF_CONNECT_TIMEOUT_MS = 5_000;
 
 /**
@@ -248,7 +259,7 @@ function unresolvedHostnameError(hostname: string, results: readonly PromiseSett
  */
 export async function validateHostResolution(hostname: string): Promise<void> {
   if (isPrivateHostname(hostname)) {
-    throw new Error('URLs pointing to private or internal networks are not allowed');
+    throw new NetworkPolicyRefusedError('URLs pointing to private or internal networks are not allowed');
   }
 
   // If already an IP literal, the string check above is sufficient
@@ -271,7 +282,7 @@ export async function validateHostResolution(hostname: string): Promise<void> {
 
   for (const address of allAddresses) {
     if (isPrivateHostname(address)) {
-      throw new Error('URL resolved to a private or internal IP address');
+      throw new NetworkPolicyRefusedError('URL resolved to a private or internal IP address');
     }
   }
 }
@@ -390,7 +401,7 @@ export const ssrfSafeLookup: LookupFunction = (
   // Reject private hostname strings before resolving (covers IP literals
   // and hostnames the OS resolver would route to localhost).
   if (isPrivateHostname(hostname)) {
-    callback(new Error('Connection to private or internal address is blocked'), '', 0);
+    callback(new NetworkPolicyRefusedError('Connection to private or internal address is blocked'), '', 0);
     return;
   }
 
@@ -406,7 +417,7 @@ export const ssrfSafeLookup: LookupFunction = (
     const list = (addresses as unknown as LookupAddress[]) ?? [];
     const safe = list.filter((a) => !isPrivateHostname(a.address));
     if (safe.length === 0) {
-      callback(new Error('Hostname resolved to a private or internal IP address'), '', 0);
+      callback(new NetworkPolicyRefusedError('Hostname resolved to a private or internal IP address'), '', 0);
       return;
     }
     // If the caller requested `all`, hand back the filtered list. Otherwise
@@ -452,7 +463,8 @@ const DEFAULT_MAX_REQUEST_BYTES = 64 * 1024;
 
 export type RedirectHostPolicy =
   | 'same-registrable-domain'
-  | 'original-host-and-www';
+  | 'original-host-and-www'
+  | 'same-origin';
 
 export async function safeFetch(
   url: string,
@@ -486,7 +498,8 @@ export async function safeFetch(
   if (
     redirectHostPolicy !== undefined &&
     redirectHostPolicy !== 'same-registrable-domain' &&
-    redirectHostPolicy !== 'original-host-and-www'
+    redirectHostPolicy !== 'original-host-and-www' &&
+    redirectHostPolicy !== 'same-origin'
   ) {
     throw new Error(`Unsupported redirect host policy: ${String(redirectHostPolicy)}`);
   }
@@ -564,6 +577,12 @@ export async function safeFetch(
   for (let i = 0; i < maxRedirects && [301, 302, 303, 307, 308].includes(response.status); i++) {
     const location = response.headers.get('location');
     if (!location) throw new Error('Redirect with no Location header');
+    // Reject an undelegated origin before resolving it, matching authoritative SDK evidence fetches.
+    if (redirectHostPolicy === 'same-origin') {
+      const candidate = new URL(location, currentUrl);
+      if (candidate.origin !== parsedUrl.origin || candidate.username || candidate.password)
+        throw new Error('Refused cross-origin or credential-bearing evidence redirect');
+    }
     // Pre-flight check on the redirect hop, then dial through the same SSRF-safe dispatcher.
     const redirectUrl = await validateRedirectTarget(location, currentUrl);
     if (restrictRedirectHosts) {
@@ -573,6 +592,9 @@ export async function safeFetch(
           `Refused non-HTTPS redirect on restricted fetch: ${currentUrl.host} -> ${redirectUrl.protocol}//${redirectUrl.host}`,
         );
       }
+    }
+    if (redirectHostPolicy === 'same-origin' && redirectUrl.origin !== parsedUrl.origin) {
+      throw new Error(`Refused cross-origin redirect: ${currentUrl.origin} -> ${redirectUrl.origin}`);
     }
     if (redirectHostPolicy === 'same-registrable-domain') {
       // Same registrable domain (eTLD+1), anchored on the ORIGINAL request.

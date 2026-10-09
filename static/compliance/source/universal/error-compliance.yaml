@@ -4,6 +4,9 @@ title: "Error handling and compliance"
 category: error_compliance
 summary: "Validates that agents return properly structured AdCP errors with correct codes, recovery hints, and transport bindings."
 track: error_handling
+requires:
+  - controller
+
 required_tools:
   - get_products
 
@@ -39,10 +42,34 @@ caller:
   example: "Compliance test harness"
 
 prerequisites:
+  controller_seeding: true
   description: |
     No special prerequisites. The storyboard sends intentionally invalid requests
     to test error handling.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_64f71fd1a869"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-error_compliance-efd88869"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_64d8328db500"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-error_compliance-efd88869"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -117,6 +144,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance-efd88869"
           idempotency_key: "$generate:uuid_v4#error-negative-budget"
           start_time: "asap"
           end_time: "2099-05-31T23:59:59Z"
@@ -165,6 +194,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance-efd88869"
           idempotency_key: "$generate:uuid_v4#error-nonexistent-product"
           start_time: "asap"
           end_time: "2099-05-31T23:59:59Z"
@@ -213,6 +244,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance-efd88869"
 
           context:
             correlation_id: "error_compliance--missing_fields"
@@ -253,6 +286,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance-efd88869"
           idempotency_key: "$generate:uuid_v4#error-reversed-dates"
           start_time: "2099-12-31T00:00:00Z"
           end_time: "2099-01-01T00:00:00Z"
@@ -278,16 +313,17 @@ phases:
   - id: error_structure
     title: "Error structure compliance"
     narrative: |
-      Validates that error responses follow the AdCP error structure with required
-      and optional fields.
+      Validates that error responses follow the AdCP 3.2 error structure with
+      required code, message, and recovery fields plus optional retry metadata.
 
     steps:
       - id: validate_error_shape
         title: "Validate error response structure"
         narrative: |
           Trigger an error and inspect the response structure. The adcp_error object
-          must have code and message. Optional fields include recovery, retry_after,
-          field, and suggestion.
+          must have code, message, and recovery. Optional fields include retry_after,
+          field, and suggestion. The shared schema remains permissive for legacy input,
+          but omission of recovery is a 3.2 producer conformance failure.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -300,7 +336,7 @@ phases:
           Error response with:
           - code: a recognized AdCP error code
           - message: human-readable description
-          - recovery: transient, correctable, or terminal (optional)
+          - recovery: transient, correctable, or terminal (required for a 3.2 producer)
 
         sample_request:
           brand:
@@ -309,6 +345,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance-efd88869"
           idempotency_key: "$generate:uuid_v4#error-structure"
           start_time: "2099-12-31T00:00:00Z"
           end_time: "2099-01-01T00:00:00Z"
@@ -369,6 +407,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance-efd88869"
 
           context:
             correlation_id: "error_compliance--unsupported_major_version"
@@ -423,6 +463,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance-efd88869"
 
           context:
             correlation_id: "error_compliance--unsupported_release_version"
@@ -462,6 +504,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance-efd88869"
 
           context:
             correlation_id: "error_compliance--supported_major_version"
@@ -509,6 +553,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance-efd88869"
           idempotency_key: "$generate:uuid_v4#error-transport"
           start_time: "2099-12-31T00:00:00Z"
           end_time: "2099-01-01T00:00:00Z"

@@ -1,9 +1,12 @@
 id: media_buy_seller/revenue_share_pricing
-version: "1.0.0"
+version: "1.0.1"
 title: "Revenue-share pricing and settlement"
 category: media_buy_seller
 summary: "Verifies contingent revenue-share discovery, commitment without a bid, commissionable-value delivery, and formula-checked usage reconciliation."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.1"
 required_tools:
   - sync_accounts
@@ -46,12 +49,16 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+# Fixtures use non_guaranteed so sales-non-guaranteed-only sellers can run this
+# scenario (#7765). Contingent revenue-share pricing sends no bid_price, and
+# is_guarantee_basis on the measurement window is not conditioned on
+# delivery_type (same treatment as billing_finality_delivery in #7754).
 fixtures:
   products:
     - product_id: "affiliate_content_commerce"
       name: "Pinnacle content commerce"
       description: "Performance placements priced on settled attributed purchase value."
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["affiliate"]
       format_ids:
         - id: "display_300x250"

@@ -10,6 +10,11 @@ const test = require('node:test');
 const script = path.join(__dirname, 'npm-ci.mjs');
 // Verbatim npm stderr from main job 104032687845 (2026-09-14), with the
 // checkout path replaced per fixture. No network, installed dependencies or Rust.
+// The 0.9.4 observation is the verbatim fixture; other versions substitute the
+// version in the release URL/filename, as the published installer does.
+function signatureFor(version) {
+  return signature.replaceAll('0.9.4', version);
+}
 const signature = `npm error code 1
 npm error path ROOT/node_modules/@contentauth/c2pa-node
 npm error command failed
@@ -72,6 +77,15 @@ function fixture(t, plan, options = {}) {
   fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, 'npm'), `#!${process.execPath}\n${fakeNpm}`, { mode: 0o700 });
   fs.writeFileSync(path.join(cwd, 'plan.json'), JSON.stringify(plan));
+  // The expected C2PA version comes only from the root lockfile's installed
+  // package entry; fixtures state it explicitly (default 0.9.4, the fixture's).
+  if (options.lockRaw !== undefined) {
+    fs.writeFileSync(path.join(cwd, 'package-lock.json'), options.lockRaw);
+  } else if (options.lock !== null) {
+    fs.writeFileSync(path.join(cwd, 'package-lock.json'), JSON.stringify({
+      packages: { 'node_modules/@contentauth/c2pa-node': { version: options.lock ?? '0.9.4' } },
+    }));
+  }
   // No production environment switch: inject a fake clock through the module API.
   const driver = path.join(cwd, 'driver.mjs');
   fs.writeFileSync(driver, `
@@ -162,7 +176,7 @@ test('exact signature then success: one retry, both complete logs retained priva
   const f = fixture(t, [
     { code: 1, out: large, err: large + signature },
     { out: 'installed\n', err: 'second attempt\n' },
-  ]);
+  ], { lock: '0.9.4' });
   assert.deepEqual(await f.done, { code: 0, signal: null });
   checkCalls(f, 2);
   const logs = f.logs();
@@ -267,7 +281,7 @@ for (const [name, err] of [
   ['workspace fallback without C2PA/download', 'npm error code 1\nnpm error   failed to find a workspace root\n'],
   ['C2PA workspace fallback without download', signature.split('\n').filter(line => !line.includes('Checking for a release')).join('\n')],
   ['different package', signature.replaceAll('@contentauth/c2pa-node', '@example/other')],
-  ['different C2PA version', signature.replaceAll('0.9.4', '0.9.5')],
+  ['different C2PA version than the 0.9.4 lock', signature.replaceAll('0.9.4', '0.9.5')],
   ['successful download then unrelated build error', signature.replace('npm error 🦀', 'npm error Downloaded to ROOT/index.node\nnpm error 🦀')],
   ['additional npm integrity failure', signature + 'npm error code EINTEGRITY\n'],
   ['additional failing package', signature + 'npm error path ROOT/node_modules/other\n'],
@@ -280,6 +294,79 @@ for (const [name, err] of [
     assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-1.stderr.log'), 'utf8'), err.replaceAll('ROOT', f.cwd));
   });
 }
+
+for (const version of ['0.9.4', '0.9.7', '0.9.9']) {
+  test(`locked C2PA ${version}: exact ${version} signature retries once and logs remain complete`, { timeout: 10000 }, async t => {
+    const sig = signatureFor(version);
+    const f = fixture(t, [{ code: 1, err: sig }, { out: 'installed\n' }], { lock: version });
+    assert.deepEqual(await f.done, { code: 0, signal: null });
+    checkCalls(f, 2);
+    assert.ok(sig.includes(`%40${version}/c2pa-node_x86_64-unknown-linux-gnu-v${version}.zip`));
+    assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-1.stderr.log'), 'utf8'), sig.replaceAll('ROOT', f.cwd));
+    assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-2.stdout.log'), 'utf8'), 'installed\n');
+  });
+  test(`locked C2PA ${version}: exact signature twice fails after two installs`, { timeout: 10000 }, async t => {
+    const sig = signatureFor(version);
+    const f = fixture(t, [{ code: 1, err: sig }, { code: 1, err: sig }, { code: 0 }], { lock: version });
+    assert.deepEqual(await f.done, { code: 1, signal: null });
+    checkCalls(f, 2);
+  });
+}
+
+for (const [locked, observed] of [
+  ['0.9.7', '0.9.4'],
+  ['0.9.9', '0.9.7'],
+  ['0.9.7', '0.9.9'],
+  ['0.9.4', '0.9.7'],
+]) {
+  test(`mixed versions: lock ${locked} with ${observed} failure: no retry`, { timeout: 10000 }, async t => {
+    const err = signatureFor(observed);
+    const f = fixture(t, [{ code: 1, err }, { code: 0 }], { lock: locked });
+    assert.deepEqual(await f.done, { code: 1, signal: null });
+    checkCalls(f, 1);
+    assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-1.stderr.log'), 'utf8'), err.replaceAll('ROOT', f.cwd));
+  });
+}
+
+for (const [name, err] of [
+  ['tag from lock, filename from another version', signatureFor('0.9.7').replace('-v0.9.7.zip', '-v0.9.9.zip')],
+  ['filename from lock, tag from another version', signatureFor('0.9.7').replace('%400.9.7/', '%400.9.9/')],
+]) {
+  test(`mixed URL parts (${name}): no retry`, { timeout: 10000 }, async t => {
+    const f = fixture(t, [{ code: 1, err }, { code: 0 }], { lock: '0.9.7' });
+    assert.deepEqual(await f.done, { code: 1, signal: null });
+    checkCalls(f, 1);
+  });
+}
+
+for (const [name, options] of [
+  ['missing lockfile', { lock: null }],
+  ['malformed lockfile JSON', { lockRaw: '{ not json' }],
+  ['lockfile without packages', { lockRaw: '{}' }],
+  ['no installed C2PA entry', { lockRaw: JSON.stringify({ packages: { '': { dependencies: { '@contentauth/c2pa-node': '^0.9.7' } } } }) }],
+  ['nested C2PA entry only', { lockRaw: JSON.stringify({ packages: { 'node_modules/other/node_modules/@contentauth/c2pa-node': { version: '0.9.7' } } }) }],
+  ['non-string version', { lockRaw: JSON.stringify({ packages: { 'node_modules/@contentauth/c2pa-node': { version: 907 } } }) }],
+  ['missing version', { lockRaw: JSON.stringify({ packages: { 'node_modules/@contentauth/c2pa-node': {} } }) }],
+  ['range instead of exact version', { lock: '^0.9.7' }],
+  ['prerelease version', { lock: '0.9.7-beta.1' }],
+  ['leading-zero version', { lock: '0.9.07' }],
+  ['empty version', { lock: '' }],
+  ['version with URL-significant text', { lock: '0.9.7/../../x' }],
+]) {
+  test(`invalid lock metadata (${name}): fail closed, no retry, npm status preserved`, { timeout: 10000 }, async t => {
+    const err = signatureFor('0.9.7');
+    const f = fixture(t, [{ code: 1, err }, { code: 0 }], options);
+    assert.deepEqual(await f.done, { code: 1, signal: null });
+    checkCalls(f, 1);
+    assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-1.stderr.log'), 'utf8'), err.replaceAll('ROOT', f.cwd));
+  });
+}
+
+test('invalid lock metadata does not alter a non-1 npm exit', { timeout: 10000 }, async t => {
+  const f = fixture(t, [{ code: 42, err: signatureFor('0.9.7') }], { lock: null });
+  assert.deepEqual(await f.done, { code: 42, signal: null });
+  checkCalls(f, 1);
+});
 
 test('matching text on stdout cannot classify a different npm stderr failure', { timeout: 10000 }, async t => {
   const f = fixture(t, [{ code: 1, out: signature, err: 'npm error code EINTEGRITY\n' }]);

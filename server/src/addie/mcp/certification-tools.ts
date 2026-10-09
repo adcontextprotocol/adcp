@@ -247,7 +247,7 @@ ${SAGE_VOICE_GUIDANCE}
 - **Media plans already exist.** Never frame campaign plans as a new concept. Say "media plans already exist — campaign governance ties your campaigns to those plans." Buyers already have plans. We're just enforcing them automatically.
 - **Use exact terminology.** There is no "Brand Standards Protocol." The correct terms are: brand.json (identity), content standards (compliance checking), campaign governance (transaction validation). Do not invent protocol names.
 - **NEVER re-ask information the learner already provided.** This is the #1 complaint from real learners. If they said "I work at an audio SSP" do NOT later ask "are you on the buy side or sell side?" If they said "I run programmatic at an agency" do NOT ask "what is your role?" Before asking ANY question about the learner, mentally check: did they already answer this? If yes, reference what they said instead of asking again.
-- **Demo early, but not first.** If the module has demo_scenarios or exercises, run them on turn 2-3 after you know the learner. If a demo fails or is blocked, pivot immediately — describe what the result would look like, or move to the next concept. Never offer the same failed demo twice.
+- **Demo early, but not first.** If the module has demo_scenarios or exercises, run them on turn 2-3 after you know the learner. If a demo fails or is blocked, state the failure and pivot immediately — label any hypothetical result as an illustrative example, or move to the next concept. Never describe a protocol error as a successful demo. Label JSON with ellipses as an abbreviated illustration, not valid executable JSON. Never offer the same failed demo twice.
 - **NEVER reference content you haven't shown.** If you mention "these queries," "the items above," or "as you can see," the content MUST appear earlier in the same message. Do not plan to include something, skip it for brevity, then refer to it as if the learner can see it. If the 150-word limit means you can't fit both the content and discussion, show the content first and discuss it next turn.
   - **Before writing any response that discusses a specific item from a prior turn's tool result:** check whether that item is visible in the current message. If not, re-state what matters about it in plain language -- ${PRIOR_TURN_RESTATEMENT_NO_RAW_JSON_RULE} inline, no key-value dumps. This restriction does not apply when a live demo instruction tells you to paste the current tool result verbatim or preserve a code-fenced result. If the re-statement plus your discussion would exceed 150 words, re-state only this turn and discuss next turn.
 
@@ -1391,8 +1391,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'Context Match and Identity Match', url: `${DOCS_BASE}/docs/trusted-match/context-and-identity` },
     { label: 'TMP Router architecture', url: `${DOCS_BASE}/docs/trusted-match/router-architecture` },
     { label: 'Delivery reporting', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_media_buy_delivery` },
-    { label: 'Implementing reporting.core', url: `${DOCS_BASE}/docs/media-buy/reporting-core-implementation-guide` },
-    { label: 'Reporting status and reconciliation', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_reporting_status` },
+    { label: 'Broadcast measurement-window lifecycle', url: `${DOCS_BASE}/docs/media-buy/media-buys/optimization-reporting#measurement-maturation-windows` },
+    { label: 'Reporting Core obligation lifecycle', url: `${DOCS_BASE}/docs/media-buy/reporting-core-implementation-guide#lifecycle-at-a-glance` },
+    { label: 'Reporting obligation fields and reconciliation', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_reporting_status#reliability-model` },
     { label: 'Reporting lifecycle sandbox probe', url: `${DOCS_BASE}/docs/building/by-layer/L3/comply-test-controller#reporting_core_lifecycle_probe` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
     { label: 'Campaign governance — seller perspective', url: `${DOCS_BASE}/docs/governance/campaign` },
@@ -2762,7 +2763,7 @@ export function createCertificationToolHandlers(
           }
 
           const expectedCredential = await getCredentialForModule(capstoneMod.id);
-          const lines: string[] = [CAPSTONE_COMPLETED_PREFIX, ''];
+          const lines: string[] = [CAPSTONE_COMPLETED_PREFIX, `Module ${capstoneMod.id} completed!`, ''];
           lines.push('The capstone was already recorded, so I rechecked module completion and credential issuance.');
 
           try {
@@ -2914,6 +2915,7 @@ export function createCertificationToolHandlers(
         // Mark the capstone module as completed
         try {
           await certDb.completeModule(userId, capstoneMod.id, scores);
+          lines.push(`Module ${capstoneMod.id} completed!`);
         } catch (modError) {
           logger.error({ error: modError, userId, moduleId: capstoneMod.id }, 'Failed to record module completion after attempt passed');
         }
@@ -3074,7 +3076,7 @@ Tell ${codingTool}: "Build a buyer agent using @adcp/sdk that connects to the pu
 
 The SDK handles protocol details — the learner focuses on orchestration logic.
 
-Use the current \`3.2-rc.1\` wire pin with @adcp/sdk@14.0.0-rc.35 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
+Use the current stable \`3.2\` wire pin with @adcp/sdk@15.2.0 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
 
 Reference: ${SDKS_URL}
 
@@ -3089,12 +3091,12 @@ Validate in two parts.
 
 1. Run the compatibility buying workflow against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
-npx @adcp/sdk@14.0.0-rc.35 test-mcp get_products '{"adcp_version":"3.2-rc.1","buying_mode":"brief","brief":"<your campaign brief>"}'
+npx @adcp/sdk@15.2.0 test-mcp get_products '{"adcp_version":"3.2","buying_mode":"brief","brief":"<your campaign brief>"}'
 \`\`\`
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.
 
-2. Validate the 3.2 targeting-aware objectives live with \`list_products\` and \`request_proposals\`: request decomposition, required future targeting support, disclosed modification acceptance/rejection, and effective package readback. First retain a capability response advertising the exact served version and relevant lifecycle tools. Then retain one supported and one unsupported requirement result, the RC.1 request/response envelopes, and the post-purchase package readback. An empty result for the unsupported requirement is evidence only when the same seller returns an eligible product for the supported control request.
+2. Validate the 3.2 targeting-aware objectives live with \`list_products\` and \`request_proposals\`: request decomposition, required future targeting support, disclosed modification acceptance/rejection, and effective package readback. First retain a capability response advertising the exact served version and relevant lifecycle tools. Then retain one supported and one unsupported requirement result, the 3.2 request/response envelopes, and the post-purchase package readback. An empty result for the unsupported requirement is evidence only when the same seller returns an eligible product for the supported control request.
 
 Paste the live output and validation results. We'll verify both the compatibility workflow and the native 3.2 behavior.
 

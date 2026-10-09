@@ -1,4 +1,6 @@
 import { isAuthoritativeComplianceRun } from '../../compliance/run-publication.js';
+import { withStoryboardSkipDetails } from '../../compliance/storyboard-skip-details.js';
+import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../admin-status-lookup.js';
 /**
  * Addie Member Tools
  *
@@ -31,7 +33,10 @@ import { githubIssueCreatedResult } from '../github-issue-receipt.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { isUuid } from '../../utils/uuid.js';
 import { neutralizeAndTruncate, wrapUntrustedInput } from './untrusted-input.js';
-import { formatComplianceDiagnostics } from './compliance-diagnostics.js';
+import {
+  formatComplianceDiagnostics,
+  formatComplianceEvaluationReceipt,
+} from './compliance-diagnostics.js';
 import { coerceStringArray } from './input-coercion.js';
 import {
   isCompleteStoredBasicCredential,
@@ -39,7 +44,6 @@ import {
 } from '../../utils/basic-auth-credentials.js';
 export { normalizeBasicAuthForStorage } from '../../utils/basic-auth-credentials.js';
 import { createEscalation } from '../../db/escalation-db.js';
-import { SlackDatabase } from '../../db/slack-db.js';
 import {
   createAccountLinkCorrelation,
   type AccountLinkOriginInput,
@@ -50,6 +54,7 @@ import {
   getBriefsByVertical,
   SAMPLE_BRIEFS,
   classifyCapabilityResolutionError,
+  classifyCapabilityResolutionErrorWithDeclaredProtocols,
   presentCapabilityResolutionError,
   complianceResultToDbInput,
   loadComplianceIndex,
@@ -57,6 +62,7 @@ import {
   hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
+  hostedCapabilityDiscoveryOptions,
   selectedComplianceTargetMatchesObservedProfile,
   UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
   type ComplyOptions,
@@ -81,6 +87,14 @@ import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { getTestKitForStoryboard } from '../../services/storyboards.js';
 import {
+  hostedGovernanceAgentForRun,
+  hostedGovernanceSecrets,
+  redactHostedGovernanceSecrets,
+  type HostedMultiAgentRouting,
+  hostedMultiAgentRoutingForStoryboard,
+  withHostedMultiAgentRouting,
+} from '../../compliance/hosted-multi-agent-routing.js';
+import {
   hostedComplianceTarget,
   hostedComplianceOptions,
   HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS,
@@ -95,8 +109,8 @@ import {
 import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
 import { resolveUserAgentAuth } from '../../routes/helpers/resolve-user-agent-auth.js';
-import { isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
-import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
+import { isOAuthOwnerReauthorizationError, isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
+import { agentConfigAuthFields, assertOwnerOAuthReady, type SdkAuth } from '../../services/sdk-auth-adapter.js';
 import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
 import {
   findExistingProposalOrFeed,
@@ -110,7 +124,15 @@ import { assertValidBrandDomain, canonicalizeBrandDomain } from '../../services/
 import { isOrgOwnerOfAgent } from '../../services/agent-ownership.js';
 import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
+import { AgentQualityEvaluationDatabase, normalizedEvaluationTracks } from '../../db/agent-quality-evaluation-db.js';
+import {
+  AGENT_QUALITY_EVALUATION_LEASE_MS,
+  AgentQualityEvaluationLease,
+  AgentQualityEvaluationLeaseLostError,
+  formatRunningAgentQualityEvaluation,
+} from '../../services/agent-quality-evaluation-lease.js';
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
+import { deriveVerificationProfileRoleAssessments } from '../../services/verification-profile-assessment.js';
 import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
 import { AgentValidator } from '../../validator.js';
 import {
@@ -137,7 +159,6 @@ import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
 import { resolvePrimaryOrganization } from '../../db/users-db.js';
-import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { checkMilestones } from '../services/journey-computation.js';
 import { PERSONA_LABELS } from '../../config/personas.js';
 import { getRecommendedGroupsForOrg, type GroupRecommendation } from '../services/group-recommendations.js';
@@ -175,7 +196,7 @@ function targetFromInput(input: Record<string, unknown>): ReturnType<typeof host
       ? hostedComplianceTarget(requested.trim())
       : complianceTarget;
   } catch {
-    throw new ToolError('Invalid compliance_target. Use 3.1, 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.');
+    throw new ToolError('Invalid compliance_target. Use 3.2, 3.1, 3.0, 3.2-rc, 3.2-beta, or an exact bundled version.');
   }
 }
 
@@ -232,17 +253,22 @@ function explicitTargetProbeFailureMessage(
 async function explicitTargetOAuthRequiredMessage(
   agentUrl: string,
   organizationId: string | undefined,
+  authorizationError: string,
 ): Promise<string> {
   const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
     agentUrl,
     organizationId,
     agentContextDb,
+    { authorizationError: authorizationError },
   );
   if (authorizeUrl) {
     return (
       `**OAuth authorization required**\n\n` +
       `The agent at \`${agentUrl}\` requires OAuth authentication ` +
       `before I can verify or run the requested compliance target.\n\n` +
+      (isOAuthOwnerReauthorizationError(authorizationError)
+        ? 'A changed authorization server requires independently trusted client configuration; stored clients are not rebound automatically.\n\n'
+        : '') +
       `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
       `After you authorize, retry the diagnostic.`
     );
@@ -252,6 +278,18 @@ async function explicitTargetOAuthRequiredMessage(
     `The agent at \`${agentUrl}\` requires OAuth authentication. ` +
     `An organization is needed to start the OAuth flow — sign in or create one, then retry.`
   );
+}
+
+async function ownerOAuthReadinessPrompt(
+  agentUrl: string, auth: SdkAuth | undefined, organizationId: string | undefined,
+): Promise<string | undefined> {
+  try {
+    await assertOwnerOAuthReady(auth, agentUrl);
+  } catch (error) {
+    if (!isOAuthOwnerReauthorizationError(error)) throw error;
+    return explicitTargetOAuthRequiredMessage(agentUrl, organizationId, (error as Error).message);
+  }
+  return undefined;
 }
 
 function explicitTargetSupportError(
@@ -282,7 +320,7 @@ async function explicitTargetSupportErrorFromAgent(
       }, target)),
     );
     const oauthError = capabilityDiscoveryOAuthError(caps);
-    if (oauthError) return explicitTargetOAuthRequiredMessage(agentUrl, organizationId);
+    if (oauthError) return explicitTargetOAuthRequiredMessage(agentUrl, organizationId, oauthError);
 
     const probeFailure = explicitTargetProbeFailureMessage(input, target, capabilityDiscoveryProbeError(caps));
     if (probeFailure) return probeFailure;
@@ -317,13 +355,51 @@ function formatComplianceTarget(
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
 const complianceDb = new ComplianceDatabase();
+const agentQualityEvaluationDb = new AgentQualityEvaluationDatabase();
 const agentSnapshotDb = new AgentSnapshotDatabase();
 const adagentsValidator = new AgentValidator();
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const orgDb = new OrganizationDatabase();
-const wgDb = new WorkingGroupDatabase();
-const slackDb = new SlackDatabase();
 const brandDb = new BrandDatabase();
+const agentQualityEvaluationOwnerId = [
+  process.env.FLY_MACHINE_ID ?? 'local',
+  process.pid,
+  uuidv4(),
+].join(':');
+
+function effectiveEvaluationAgentUrl(raw: string): string {
+  const parsed = new URL(raw);
+  parsed.hash = '';
+  // Query and path identify the actual endpoint sent to comply(). They may
+  // select different tenants; only fragments are absent from HTTP requests.
+  return parsed.toString();
+}
+
+function evaluationDisplayAgentUrl(raw: string): string {
+  const parsed = new URL(raw);
+  parsed.username = '';
+  parsed.password = '';
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed.toString();
+}
+
+function evaluationAuthScope(resolved: ResolvedAgentAuth, organizationId: string | undefined): string {
+  const publicationScope = `organization:${organizationId ?? 'none'}`;
+  if (resolved.source === 'public') return `public-test-agent:${publicationScope}`;
+  if (resolved.source === 'none') return `anonymous:${publicationScope}`;
+  // The organization is the durable credential authority. The optional
+  // fingerprint represents encrypted-at-rest bytes, never plaintext secret
+  // material, and prevents changed credentials from coalescing with an older
+  // in-flight request.
+  return `${resolved.source}:organization:${organizationId ?? 'none'}:credential:${resolved.credentialFingerprint ?? 'unversioned'}`;
+}
+
+function evaluationTargetIdentity(target: HostedComplianceTarget): string {
+  return target.requested === target.version
+    ? target.version
+    : `${target.requested}->${target.version}`;
+}
 
 /**
  * Known open-source agents and their GitHub repositories.
@@ -422,6 +498,8 @@ interface ResolvedAgentAuth {
   source: 'explicit' | 'saved' | 'oauth' | 'public' | 'none';
   resolvedUrl: string;
   sdkAuth?: SdkAuth;
+  /** Opaque digest of encrypted stored credentials; never secret material. */
+  credentialFingerprint?: string;
 }
 
 /**
@@ -434,6 +512,7 @@ export async function resolveAgentAuth(
   agentUrl: string,
   organizationId: string | undefined,
   explicitToken?: string,
+  captureEvaluationIdentity = false,
 ): Promise<ResolvedAgentAuth> {
   let resolvedUrl = agentUrl;
 
@@ -479,6 +558,22 @@ export async function resolveAgentAuth(
     return { authToken: explicitToken, authType: 'bearer', source: 'explicit', resolvedUrl };
   }
 
+  if (organizationId && captureEvaluationIdentity) {
+    // Admission must not mix credentials from one read with an identity from
+    // another. Errors fail closed instead of silently evaluating anonymously.
+    const snapshot = await agentContextDb.getEvaluationAuthByOrgAndUrl(organizationId, resolvedUrl);
+    if (snapshot) {
+      return {
+        authType: snapshot.auth.type === 'basic' ? 'basic' : 'bearer',
+        source: snapshot.source,
+        resolvedUrl,
+        sdkAuth: snapshot.auth,
+        credentialFingerprint: snapshot.credentialFingerprint,
+      };
+    }
+    return { authType: 'bearer', source: 'none', resolvedUrl };
+  }
+
   if (organizationId) {
     // Check saved auth token
     try {
@@ -490,7 +585,13 @@ export async function resolveAgentAuth(
             'Addie: ignoring malformed saved Basic auth credentials while resolving agent auth',
           );
         } else {
-          return { authToken: savedInfo.token, authType: savedInfo.authType, source: 'saved', resolvedUrl };
+          return {
+            authToken: savedInfo.token,
+            authType: savedInfo.authType,
+            source: 'saved',
+            resolvedUrl,
+            credentialFingerprint: savedInfo.credentialFingerprint,
+          };
         }
       }
     } catch (error) {
@@ -512,10 +613,21 @@ export async function resolveAgentAuth(
         };
       }
       if (sdkAuth?.type === 'oauth_client_credentials') {
-        return { authType: 'bearer', source: 'oauth', resolvedUrl, sdkAuth };
+        return {
+          authType: 'bearer',
+          source: 'oauth',
+          resolvedUrl,
+          sdkAuth,
+        };
       }
       if (sdkAuth?.type === 'bearer') {
-        return { authToken: sdkAuth.token, authType: 'bearer', source: 'oauth', resolvedUrl, sdkAuth };
+        return {
+          authToken: sdkAuth.token,
+          authType: 'bearer',
+          source: 'oauth',
+          resolvedUrl,
+          sdkAuth,
+        };
       }
     } catch (error) {
       logger.debug({ error, agentUrl: resolvedUrl }, 'Could not lookup OAuth token');
@@ -617,25 +729,6 @@ async function inferHostedAuthProbeTask(
   }
 }
 
-async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
-  error: unknown,
-  agentUrl: string,
-  auth: ReturnType<typeof buildAuthOption>,
-): Promise<CapabilityResolutionErrorInfo | undefined> {
-  const initial = classifyCapabilityResolutionError(error);
-  if (initial?.kind !== 'specialism_parent_protocol_missing') return initial;
-
-  try {
-    const caps = await testCapabilityDiscovery(agentUrl, withSdkSafeTransport({
-      ...(auth && { auth }),
-    }));
-    return classifyCapabilityResolutionError(error, caps.profile?.supported_protocols ?? []) ?? initial;
-  } catch (probeError) {
-    logger.warn({ probeError, agentUrl }, 'evaluate_agent_quality: could not reprobe capabilities after resolver error');
-    return initial;
-  }
-}
-
 /**
  * Sanitize a string that came from an untrusted remote agent before it flows
  * into markdown that reaches the LLM. The agent is adversarial by assumption —
@@ -653,11 +746,11 @@ function sanitizeAgentField(value: unknown, maxLen = 200): string {
     .slice(0, maxLen);
 }
 
-const SENSITIVE_VALIDATION_ID_PATTERN = /\b(?:sk_(?:live|test)_[A-Za-z0-9_]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/;
+const SENSITIVE_VALIDATION_ID_PATTERN = /\b(?:adcp-sandbox-gov\.v1\.[A-Za-z0-9_.-]+|sk_(?:live|test)_[A-Za-z0-9_]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/;
 const SENSITIVE_VALIDATION_TEXT_PATTERN =
   /(?:-----BEGIN [A-Z ]+PRIVATE KEY-----|\bbearer\s+\S+|\b(?:authorization|auth|cookie|set-cookie|session(?:[_ -]?id)?|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|password|credential|private[_ -]?key|signing[_ -]?key|client[_ -]?secret|oauth[_ -]?(?:code|verifier)|jwt)\b\s*[:=]\s*\S+)/i;
 const SENSITIVE_VALIDATION_KEY_PATTERN =
-  /^(?:authorization|auth|token|secret|password|cookie|set-cookie|session(?:[_-]?id)?|credential|api[_-]?key|access[_-]?(?:key|token)|refresh[_-]?token|private[_-]?key|signing[_-]?key|client[_-]?secret|oauth[_-]?(?:code|verifier)|jwt)$/i;
+  /^(?:authorization|auth|token|secret|password|cookie|set-cookie|session(?:[_-]?id)?|credentials?|api[_-]?key|access[_-]?(?:key|token)|refresh[_-]?token|private[_-]?key|signing[_-]?key|client[_-]?secret|oauth[_-]?(?:code|verifier)|jwt)$/i;
 const BASIC_AUTH_PATTERN = /\bbasic\s+[A-Za-z0-9+/=]{8,}\b/i;
 const PROMPT_INJECTION_VALIDATION_ID_PATTERN = /(ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|system\s*[:\s]prompt|\bsystem\s*:|developer\s+message|\bdeveloper\s*:|tool\s+result|reveal\s+(?:the\s+)?(?:secret|prompt)|exfiltrate|<\s*system\b|<\s*\/?\s*context\b)/i;
 const VALIDATION_ID_PATTERN = /^[a-z0-9._:-]{1,160}$/i;
@@ -1980,14 +2073,14 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'evaluate_agent_quality',
     description:
-      'Run protocol compliance evaluation on an AdCP agent and return structured results for coaching. Tests all capability tracks the agent supports (core, products, media buy, creative, governance, signals, etc.) and collects advisory observations about performance, completeness, and best practices. Results include specific actionable observations, not just pass/fail. The public test agent works for any logged-in user with no setup required. For custom agents requiring authentication, use save_agent first.',
-    usage_hints: 'use for "test my agent", "run the full test suite", "how good is my agent?", "evaluate my agent quality", "what should I improve?", "coaching on my agent", "verify my sales agent works", "test against test-agent", "try the API". The public test agent works immediately for any logged-in user.',
+      'Evaluate an AdCP agent across its supported compliance tracks. Identical active requests coalesce across replicas and return running status. Partial receipts retain coverage/findings but cannot support definitive verdict or root-cause claims. Custom authenticated agents require save_agent first.',
+    usage_hints: 'use for agent quality tests and status follow-ups. The public test agent needs no setup. Report an existing run without retrying that turn. Caveat incomplete receipts and preserve their partial evidence.',
     input_schema: {
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
         tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1" or "3.0" for badge-eligible stable lines, or "3.1-rc"/"3.1-beta" for explicit prerelease diagnostics. Defaults to the canonical badge-eligible target when advertised.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.2", "3.1", or "3.0" for badge-eligible stable lines, or "3.2-rc"/"3.2-beta" for explicit prerelease diagnostics. Defaults to the canonical badge-eligible target when advertised.' },
       },
       required: ['agent_url'],
       additionalProperties: false,
@@ -2101,7 +2194,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit targets only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.2", "3.1", "3.0", "3.2-rc", or "3.2-beta". Defaults to the canonical badge-eligible target when advertised. Explicit targets only run when the agent advertises support.' },
       },
       required: ['agent_url'],
     },
@@ -2115,7 +2208,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         storyboard_id: { type: 'string', description: 'Storyboard ID (from recommend_storyboards)' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.2", "3.1", "3.0", "3.2-rc", or "3.2-beta". Defaults to 3.0.' },
       },
       required: ['storyboard_id'],
     },
@@ -2131,7 +2224,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
         dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.2", "3.1", "3.0", "3.2-rc", or "3.2-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
       },
       required: ['agent_url', 'storyboard_id'],
     },
@@ -2157,7 +2250,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           additionalProperties: false,
         },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.2", "3.1", "3.0", "3.2-rc", or "3.2-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
       },
       required: ['agent_url', 'storyboard_id', 'step_id'],
     },
@@ -2168,13 +2261,14 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Register an agent in the AgenticAdvertising.org registry on behalf of the current organization, or an explicitly selected active organization via `organization_id` / `organization_name`. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AgenticAdvertising.org members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AgenticAdvertising.org tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent\'s `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AgenticAdvertising.org Registry" section of the rules for the intake script.',
-    usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". When the user opens the conversation with a registration intent and no details, follow the intake script in the rules — do not call save_agent until you have `agent_url`, `type`, and an explicit auth-mode choice.',
+      'Register an agent for the current organization or an explicitly selected active organization (organization_id / organization_name). Appears in /dashboard/agents, initially members_only: visible to paying AgenticAdvertising.org members (Professional, Builder, Member, Leader). Public visibility is a separate dashboard action requiring one of those tiers and a primary brand domain. Require the owner’s declared type and auth-mode choice; never guess type. Capability probes establish verified type separately. Auth: none, encrypted bearer/basic, or OAuth client credentials. Prefer configure_auth_in_dashboard for secure credential entry outside chat. Interactive OAuth uses the agent card’s Authorize flow after saving without credentials. health_check_url provides fallback liveness for authenticated or path-prefixed endpoints; it does not establish capability or compliance. Follow the registration intake rules.',
+    usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". Save the registration before handing off credentials; the dashboard Register agent button opens this chat.',
     input_schema: {
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL' },
         agent_name: { type: 'string', description: 'Agent name' },
+        configure_auth_in_dashboard: { type: 'boolean', description: 'Save the agent registration now and direct the owner to the dashboard authentication form to enter credentials securely. Do not include auth_token, auth_type, or oauth_client_credentials with this option. Existing credentials are preserved. This does not configure or verify authentication.' },
         type: {
           type: 'string',
           enum: ['brand', 'rights', 'measurement', 'governance', 'creative', 'sales', 'buying', 'signals'],
@@ -2515,8 +2609,14 @@ export function createMemberToolHandlers(
   slackUserId?: string,
   certificationModuleContext?: { moduleId?: string },
   accountLinkOrigin?: AccountLinkOriginInput,
+  adminPrincipal?: AAOAdminPrincipal,
 ): Map<string, (input: Record<string, unknown>) => Promise<ToolHandlerResult>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<ToolHandlerResult>>();
+  // Slack hydration maps the actual Slack actor to a WorkOS credential; web
+  // hydration may carry a canonical person and must supply explicit authority.
+  const contentAdminPrincipal = adminPrincipal ?? (slackUserId && memberContext?.workos_user
+    ? { id: memberContext.workos_user.workos_user_id }
+    : null);
 
   // ============================================
   // WORKING GROUPS
@@ -2614,21 +2714,12 @@ export function createMemberToolHandlers(
     }
 
     if (includeMembers) {
-      // Check admin status — try WorkOS user ID first, then fall back to Slack user ID
-      let isAdmin = false;
-      const workosUserId = memberContext?.workos_user?.workos_user_id;
-      const slackUserId = memberContext?.slack_user?.slack_user_id;
-      const adminGroup = await wgDb.getWorkingGroupBySlug('aao-admin');
-      if (adminGroup) {
-        if (workosUserId) {
-          isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
-        } else if (slackUserId) {
-          const mapping = await slackDb.getBySlackUserId(slackUserId);
-          if (mapping?.workos_user_id) {
-            isAdmin = await wgDb.isMember(adminGroup.id, mapping.workos_user_id);
-          }
-        }
-      }
+      // Web authority comes only from this request's authenticated credential.
+      // A canonical WorkOS user or linked Slack account cannot grant the bypass.
+      const { isSlackUserAAOAdmin } = await import('./admin-tools.js');
+      const isAdmin = adminPrincipal
+        ? await isAuthenticatedUserAAOAdmin(adminPrincipal)
+        : slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;
 
       if (group.is_private && !isAdmin) {
         response += `_Member list is only available to admins for private groups._\n`;
@@ -3591,6 +3682,7 @@ export function createMemberToolHandlers(
       {
         id: memberContext.workos_user.workos_user_id,
         email: memberContext.workos_user.email,
+        adminPrincipal: contentAdminPrincipal,
       },
       {
         title,
@@ -3613,6 +3705,14 @@ export function createMemberToolHandlers(
     );
 
     if (!result.success) {
+      if (result.error_code === 'MEMBERSHIP_REQUIRED' || result.error_code === 'COMMITTEE_MEMBERSHIP_REQUIRED') {
+        return {
+          status: 'access_denied',
+          model_context: `Content was not submitted. ${result.error}`,
+          user_summary: `Content was not submitted. ${result.error}`,
+          telemetry: { operation: 'propose_content', error_code: result.error_code, error_category: 'authorization', retryable: false },
+        };
+      }
       if (result.error?.includes('No collection found')) {
         return `Committee "${committeeSlug}" not found. Use list_working_groups to see available committees.`;
       }
@@ -3707,8 +3807,10 @@ export function createMemberToolHandlers(
 
     // Check permission
     const userId = memberContext.workos_user.workos_user_id;
-    const { isWebUserAAOAdmin: checkAdmin } = await import('./admin-tools.js');
-    const userIsAdmin = await checkAdmin(userId);
+    const { isSlackUserAAOAdmin } = await import('./admin-tools.js');
+    const userIsAdmin = adminPrincipal
+      ? await isAuthenticatedUserAAOAdmin(adminPrincipal)
+      : slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;
     if (!userIsAdmin) {
       const authorCheck = await pool.query(
         `SELECT 1 FROM perspectives WHERE id = $1 AND (author_user_id = $2 OR proposer_user_id = $2)
@@ -3867,6 +3969,7 @@ export function createMemberToolHandlers(
     try {
       data = await listMyContentService({
         userId: memberContext.workos_user.workos_user_id,
+        adminPrincipal: contentAdminPrincipal,
         status,
         collection,
         relationship,
@@ -3952,6 +4055,7 @@ export function createMemberToolHandlers(
       {
         id: memberContext.workos_user.workos_user_id,
         email: memberContext.workos_user.email,
+        adminPrincipal: contentAdminPrincipal,
       },
       { committeeSlug }
     );
@@ -4025,6 +4129,7 @@ export function createMemberToolHandlers(
       {
         id: memberContext.workos_user.workos_user_id,
         email: memberContext.workos_user.email,
+        adminPrincipal: contentAdminPrincipal,
       },
       contentId,
       { publishImmediately }
@@ -4065,6 +4170,7 @@ export function createMemberToolHandlers(
       {
         id: memberContext.workos_user.workos_user_id,
         email: memberContext.workos_user.email,
+        adminPrincipal: contentAdminPrincipal,
       },
       contentId,
       reason
@@ -4103,6 +4209,7 @@ export function createMemberToolHandlers(
       {
         id: memberContext.workos_user.workos_user_id,
         email: memberContext.workos_user.email,
+        adminPrincipal: contentAdminPrincipal,
       },
       contentId,
       notes
@@ -4639,7 +4746,9 @@ export function createMemberToolHandlers(
 
   handlers.set('evaluate_agent_quality', async (input) => {
     const agentUrl = input.agent_url as string;
-    const tracks = input.tracks as ComplianceTrack[] | undefined;
+    const normalizedTracks = normalizedEvaluationTracks(input.tracks as ComplianceTrack[] | undefined);
+    const tracks = normalizedTracks.length ? normalizedTracks as ComplianceTrack[] : undefined;
+    let evaluationLease: AgentQualityEvaluationLease | null = null;
     let runTarget = targetFromInput(input);
     let runTargetSelection: ComplianceTargetSelection = {
       target: runTarget,
@@ -4651,21 +4760,17 @@ export function createMemberToolHandlers(
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    // Rate limit. Owner-paced usage hits this nowhere near the default cap,
-    // but a runaway loop (or a script that races the heartbeat to keep the
-    // canonical verdict in a preferred state) is bounded here. comply() takes
-    // 10-60s per run so the natural-rate ceiling is already ~1-2/min; this
-    // adds the hard wall so even in-process retries / a hot debug loop stop.
-    const workosUserId = memberContext?.workos_user?.workos_user_id;
-    const rateCheck = await checkToolRateLimit('evaluate_agent_quality', workosUserId ?? null);
-    if (!rateCheck.ok) {
-      const retrySeconds = Math.max(1, Math.ceil((rateCheck.retryAfterMs ?? 60_000) / 1000));
-      return `Rate limit exceeded on evaluate_agent_quality. Try again in ~${retrySeconds} seconds.`;
-    }
-
     const organizationId = memberContext?.organization?.workos_organization_id;
-    const resolved = await resolveAgentAuth(agentUrl, organizationId);
+    let resolved: ResolvedAgentAuth;
+    try {
+      resolved = await resolveAgentAuth(agentUrl, organizationId, undefined, true);
+    } catch (error) {
+      logger.error({ error, agentUrl: evaluationDisplayAgentUrl(agentUrl) }, 'evaluate_agent_quality: credential snapshot lookup failed');
+      return '**Evaluation temporarily unavailable**\n\nI could not establish the stored credential identity, so no evaluation was started. Please retry shortly.';
+    }
     const authOption = buildAuthOption(resolved);
+    const readinessPrompt = await ownerOAuthReadinessPrompt(resolved.resolvedUrl, authOption, organizationId);
+    if (readinessPrompt) return readinessPrompt;
 
     if (!hasExplicitComplianceTarget(input)) {
       const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(resolved.resolvedUrl);
@@ -4694,20 +4799,175 @@ export function createMemberToolHandlers(
       if (targetError) return targetError;
     }
 
+    const effectiveAgentUrl = effectiveEvaluationAgentUrl(resolved.resolvedUrl);
+    const displayAgentUrl = evaluationDisplayAgentUrl(effectiveAgentUrl);
+    const targetIdentity = evaluationTargetIdentity(runTarget);
+    try {
+      const claim = await agentQualityEvaluationDb.claimOrObserve({
+        agentUrl: effectiveAgentUrl,
+        displayAgentUrl,
+        complianceTarget: targetIdentity,
+        tracks: tracks ?? [],
+        authScope: evaluationAuthScope(resolved, organizationId),
+        ownerId: agentQualityEvaluationOwnerId,
+        leaseMs: AGENT_QUALITY_EVALUATION_LEASE_MS,
+      });
+      // Observations do not create rows, so admissions must be visible in logs
+      // to distinguish coalescing from a lack of duplicate organic requests.
+      // IDs and categorical outcomes suffice; omit URLs and credential identity.
+      logger.info({
+        event: 'agent_quality_evaluation',
+        phase: 'admission',
+        evaluationId: claim.evaluation.id,
+        outcome: claim.owned ? 'owned' : 'coalesced',
+        recoveredExpiredLease: claim.recoveredExpiredLease,
+      }, 'evaluate_agent_quality: admission');
+      if (!claim.owned) return formatRunningAgentQualityEvaluation(claim.evaluation);
+      evaluationLease = new AgentQualityEvaluationLease(
+        agentQualityEvaluationDb,
+        claim.evaluation,
+        error => logger.warn(
+          { error, evaluationId: claim.evaluation.id },
+          'evaluate_agent_quality: lease heartbeat failed',
+        ),
+      );
+      if (claim.recoveredExpiredLease) {
+        logger.warn(
+          { evaluationId: claim.evaluation.id, agentUrl: displayAgentUrl },
+          'evaluate_agent_quality: recovered an expired execution lease',
+        );
+      }
+    } catch (error) {
+      logger.error({ error, agentUrl: displayAgentUrl }, 'evaluate_agent_quality: durable admission failed');
+      return (
+        '**Evaluation temporarily unavailable**\n\n' +
+        'I could not safely establish database-backed execution ownership, so no evaluation was started. Please retry shortly.'
+      );
+    }
+
+    let canonicalPublicationAttempted = false;
+    let canonicalPublication: { runId: string; authoritative: boolean } | undefined;
+    let observedUnconfirmedEvidence: string | undefined;
+    let evaluationFinalized = false;
+    const publicationLogFields = () => ({
+      event: 'agent_quality_evaluation',
+      evaluationId: evaluationLease!.evaluation.id,
+      publication: canonicalPublication
+        ? canonicalPublication.authoritative ? 'canonical_committed' : 'audit_only_committed'
+        : canonicalPublicationAttempted ? 'unconfirmed' : 'not_attempted',
+      canonicalRunId: canonicalPublication?.runId ?? null,
+    });
+    const finalizationUncertainMessage = (error: unknown, observedEvidence?: string): string => {
+      const leaseLost = error instanceof AgentQualityEvaluationLeaseLostError || evaluationLease!.signal.aborted;
+      logger.warn({
+        ...publicationLogFields(),
+        phase: 'finalization',
+        outcome: leaseLost ? 'lease_lost' : 'unconfirmed',
+      }, 'evaluate_agent_quality: finalization unconfirmed');
+      let message = leaseLost
+        ? '**Evaluation ownership changed**\n\nThis worker no longer has a confirmed execution lease.\n\n'
+        : '**Evaluation completion unconfirmed**\n\nThe database completion receipt could not be confirmed. This does not establish that execution ownership changed.\n\n';
+      if (canonicalPublication) {
+        message += `**Saved compliance run:** \`${canonicalPublication.runId}\`. `;
+        message += canonicalPublication.authoritative
+          ? 'The canonical compliance result was already committed. '
+          : 'The partial compliance evidence was already committed as an audit-only run. ';
+        message += 'Completion uncertainty does not undo that saved run; this receipt does not confirm badge updates.\n\n';
+      } else if (canonicalPublicationAttempted) {
+        message += '**Publication status:** A canonical write was attempted, but its commit could not be confirmed.\n\n';
+      } else {
+        message += '**Publication status:** This worker did not submit a canonical compliance write.\n\n';
+      }
+      message += 'Use `get_agent_status` to inspect saved results. Do not automatically start another evaluation in this turn.';
+      if (observedEvidence) {
+        message += `\n\nThe observed evidence below is retained with a non-authoritative receipt; it does not establish the current public compliance state.\n\n${observedEvidence}`;
+      }
+      return message;
+    };
+    const finishCompleted = async (
+      message: string,
+      receiptMetadata: Record<string, unknown>,
+      unconfirmedEvidence?: string,
+    ): Promise<string> => {
+      try {
+        await evaluationLease!.complete(receiptMetadata);
+        evaluationFinalized = true;
+        logger.info({
+          ...publicationLogFields(),
+          phase: 'finalization',
+          outcome: 'completed',
+        }, 'evaluate_agent_quality: completed');
+        return message;
+      } catch (error) {
+        logger.warn({ error, agentUrl: displayAgentUrl }, 'evaluate_agent_quality: completion unconfirmed');
+        return finalizationUncertainMessage(error, unconfirmedEvidence ?? message);
+      }
+    };
+    const finishFailed = async (message: string, failureCode: string): Promise<string> => {
+      try {
+        const recorded = await evaluationLease!.fail(failureCode);
+        if (recorded) {
+          logger.info({
+            ...publicationLogFields(),
+            phase: 'finalization',
+            outcome: 'failed',
+            failureCode,
+          }, 'evaluate_agent_quality: failed');
+        }
+        return recorded ? message : finalizationUncertainMessage(new AgentQualityEvaluationLeaseLostError(), message);
+      } catch (error) {
+        logger.warn({ error, agentUrl: displayAgentUrl }, 'evaluate_agent_quality: failure transition failed');
+        return finalizationUncertainMessage(error, message);
+      }
+    };
+
+    // Coalescing precedes rate limiting so a progress follow-up observes the
+    // live execution instead of consuming quota or receiving a misleading
+    // rate-limit response.
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    let rateCheck: Awaited<ReturnType<typeof checkToolRateLimit>>;
+    try {
+      rateCheck = await checkToolRateLimit('evaluate_agent_quality', workosUserId ?? null);
+    } catch (error) {
+      logger.error({ error }, 'evaluate_agent_quality: rate-limit check failed');
+      return finishFailed(
+        '**Evaluation temporarily unavailable**\n\nThe safety limit could not be verified, so no evaluation was started. Please retry shortly.',
+        'rate_limit_unavailable',
+      );
+    }
+    if (!rateCheck.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rateCheck.retryAfterMs ?? 60_000) / 1000));
+      return finishFailed(
+        `Rate limit exceeded on evaluate_agent_quality. Try again in ~${retrySeconds} seconds.`,
+        'rate_limited',
+      );
+    }
+
     const complyOptions: ComplyOptions = {
-      test_session_id: `quality-eval-${Date.now()}`,
+      test_session_id: `quality-eval-${evaluationLease.evaluation.id}`,
       timeout_ms: HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS,
       auth: authOption,
+      signal: evaluationLease.signal,
     };
     if (tracks) complyOptions.tracks = tracks;
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions, runTarget);
+      observedUnconfirmedEvidence = formatComplianceEvaluationReceipt(result, {
+        authoritative: false,
+        scope: tracks ? `selected tracks: ${tracks.join(', ')}` : 'all applicable tracks selected from live capabilities',
+        timeoutMs: HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS,
+      }) + formatComplianceDiagnostics(result);
       if (!selectedComplianceTargetMatchesObservedProfile(runTargetSelection, result.agent_profile)) {
-        return (
+        return finishCompleted((
           `**Compliance target unavailable**\n\n${UNRESOLVED_COMPLIANCE_TARGET_MESSAGE} ` +
-          `The agent's live profile changed after the diagnostic target was selected; retry the evaluation.`
-        );
+          `The agent's live profile changed after the diagnostic target was selected. ` +
+          `The observed findings below do not establish a verdict for the selected target.\n\n${observedUnconfirmedEvidence}`
+        ), {
+          completeness: result.completeness ?? 'complete',
+          authoritative: false,
+          outcome: 'target_changed',
+        });
       }
       const badgeEligibleAdcpVersions = [
         ...badgeEligibleVersionsForTargetSelection(runTargetSelection, result.agent_profile),
@@ -4725,7 +4985,9 @@ export function createMemberToolHandlers(
       const oauthObs = result.observations.find(o =>
         o.category === 'auth' && /^Agent requires OAuth/i.test(o.message),
       );
-      if (oauthObs) {
+      const ownerOAuthError = isOAuthOwnerReauthorizationError(result.agent_profile?.capabilities_probe_error)
+        ? result.agent_profile?.capabilities_probe_error : undefined;
+      if (oauthObs || ownerOAuthError) {
         logger.warn(
           { agentUrl: resolved.resolvedUrl },
           'evaluate_agent_quality: agent requires authentication',
@@ -4734,22 +4996,27 @@ export function createMemberToolHandlers(
           resolved.resolvedUrl,
           organizationId,
           agentContextDb,
+          { authorizationError: ownerOAuthError },
         );
         if (authorizeUrl) {
-          return (
+          return finishCompleted((
             `**OAuth authorization required**\n\n` +
             `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
             `before quality evaluation can run.\n\n` +
             `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
             `After you authorize, ask me to evaluate it again.`
-          );
+          ), { completeness: result.completeness ?? 'complete', authoritative: false, outcome: 'auth_required' });
         }
-        return (
+        return finishCompleted((
           `**OAuth authorization required**\n\n` +
           `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication. ` +
           `An organization is needed to start the OAuth flow — sign in or create one, then retry.`
-        );
+        ), { completeness: result.completeness ?? 'complete', authoritative: false, outcome: 'auth_required' });
       }
+
+      // Stop promptly after lease loss. Canonical and legacy audit writes also
+      // enforce their own ownership fences inside the persistence transaction.
+      await evaluationLease.assertOwned();
 
       // Record result when the user has an org context for this agent.
       if (organizationId) {
@@ -4774,12 +5041,12 @@ export function createMemberToolHandlers(
             // Skip canonical write if the owner has opted out of compliance monitoring.
             if (!metadata?.compliance_opt_out) {
               const dbInput = {
-                ...complianceResultToDbInput(
+                ...withStoryboardSkipDetails(complianceResultToDbInput(
                   result,
                   resolved.resolvedUrl,
                   metadata?.lifecycle_stage ?? 'production',
                   'owner_test',
-                ),
+                ), result),
                 // Track-filtered evaluations are diagnostic slices, not an
                 // authoritative replacement for every storyboard row.
                 replace_storyboard_statuses: !tracks,
@@ -4791,8 +5058,27 @@ export function createMemberToolHandlers(
                 // prod orgs of one publisher) would conflate their test history.
                 // See migration 490.
                 triggered_org_id: organizationId,
+                // Fence canonical publication to the exact live interactive
+                // execution and make a same-lease replay idempotent.
+                agent_quality_evaluation_id: evaluationLease.evaluation.id,
+                agent_quality_evaluation_lease_token: evaluationLease.evaluation.lease_token,
               };
+              if (isAuthoritativeComplianceRun(dbInput)) {
+                dbInput.grading_profile_assessments = deriveVerificationProfileRoleAssessments({
+                  result,
+                  lifecycleStage: metadata?.lifecycle_stage ?? 'production',
+                  requestedComplianceTarget: dbInput.requested_compliance_target,
+                  storyboardStatuses: dbInput.storyboard_statuses ?? [],
+                });
+              }
+              canonicalPublicationAttempted = true;
               const { run } = await complianceDb.recordComplianceRun(dbInput);
+              canonicalPublication = { runId: run.id, authoritative: isAuthoritativeComplianceRun(dbInput) };
+              logger.info({
+                ...publicationLogFields(),
+                phase: 'publication',
+                outcome: 'committed',
+              }, 'evaluate_agent_quality: publication committed');
               // notifyComplianceChange intentionally omitted: owner test runs are
               // exploratory; compliance-change notifications fire on heartbeat
               // transitions only to prevent iteration-loop spam.
@@ -4802,6 +5088,8 @@ export function createMemberToolHandlers(
               // next page load instead of waiting up to a heartbeat cycle.
               // Verification-change notifications are intentionally skipped —
               // the owner already received the result in their chat response.
+              // The committed run is badge authority: badge mutations fence
+              // source_run_id against the latest authoritative canonical run.
               const declaredSpecialisms = result.agent_profile?.specialisms ?? [];
               if (isAuthoritativeComplianceRun(dbInput) && declaredSpecialisms.length > 0 && dbInput.storyboard_statuses?.length) {
                 try {
@@ -4822,6 +5110,7 @@ export function createMemberToolHandlers(
                     complianceDb,
                     agentUrl: resolved.resolvedUrl,
                     supportedVersions: result.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+                    sourceRunId: run.id,
                   });
                 } catch (badgeError) {
                   logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Unsupported public badge revocation failed after owner_test run');
@@ -4829,21 +5118,13 @@ export function createMemberToolHandlers(
               }
             }
           } catch (error) {
+            if (error instanceof AgentQualityEvaluationLeaseLostError) throw error;
             logger.warn({ error, agentUrl: resolved.resolvedUrl }, 'Could not write owner test result to canonical compliance state');
           }
         } else if (isAgentOwner && writesCanonicalComplianceState && tracks) {
           skippedCanonicalWriteReason = 'tracks';
         } else if (isAgentOwner && result.completeness !== 'timed_out') {
           skippedCanonicalWriteReason = 'target';
-          try {
-            await revokeUnsupportedPublicBadges({
-              complianceDb,
-              agentUrl: resolved.resolvedUrl,
-              supportedVersions: result.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
-            });
-          } catch (badgeError) {
-            logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Unsupported public badge revocation failed after owner_test run');
-          }
         }
 
         // Legacy write to agent_contexts + agent_test_history. Retained ONLY
@@ -4876,9 +5157,12 @@ export function createMemberToolHandlers(
                 triggered_by: 'user',
                 user_id: memberContext?.workos_user?.workos_user_id,
                 agent_profile_json: result.agent_profile,
+                agent_quality_evaluation_id: evaluationLease.evaluation.id,
+                agent_quality_evaluation_lease_token: evaluationLease.evaluation.lease_token,
               });
             }
           } catch (error) {
+            if (error instanceof AgentQualityEvaluationLeaseLostError) throw error;
             logger.debug({ error }, 'Could not record quality evaluation result');
           }
         }
@@ -4902,10 +5186,39 @@ export function createMemberToolHandlers(
       const safeTools = (result.agent_profile.tools || []).map(t => sanitizeAgentField(t, 80)).filter(Boolean);
       output += `**Tools:** ${safeTools.length} (${safeTools.join(', ')})\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
+      if (canonicalPublicationAttempted && !canonicalPublication) {
+        output += '**Publication status:** A canonical write was attempted, but its commit could not be confirmed. Use `get_agent_status` to inspect saved results; do not assume public status or badges changed.\n\n';
+      }
 
-      output += formatComplianceDiagnostics(result);
+      const receiptAuthoritative =
+        (result.completeness ?? 'complete') === 'complete' &&
+        (!canonicalPublicationAttempted || canonicalPublication !== undefined) &&
+        !tracks &&
+        writesCanonicalComplianceState &&
+        result.overall_status !== 'auth_required' &&
+        result.overall_status !== 'unreachable';
+      const receiptScope = tracks?.length
+        ? `selected tracks: ${tracks.join(', ')}`
+        : 'all applicable tracks selected from live capabilities';
+      const diagnostics = formatComplianceDiagnostics(result);
+      const renderReceipt = (authoritative: boolean): string => output + formatComplianceEvaluationReceipt(result, {
+        authoritative,
+        scope: receiptScope,
+        timeoutMs: HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS,
+      }) + diagnostics + (authoritative
+        ? `\nInterpret these authoritative results conversationally. Highlight what's working well, identify the most impactful observed gaps, and suggest concrete next steps.`
+        : `\nMANDATORY RESPONSE CONTRACT: visibly state that this evaluation receipt is incomplete or non-authoritative. Preserve its actual findings and timeout/coverage metadata. Describe failures only as observations from this run, distinguish hypotheses from evidence, and do not claim a definitive overall verdict or root cause.`);
 
-      output += `\nInterpret these results conversationally. Highlight what's working well, identify the most impactful gaps, and suggest concrete next steps.`;
+      const finalOutput = await finishCompleted(renderReceipt(receiptAuthoritative), {
+        completeness: result.completeness ?? 'complete',
+        authoritative: receiptAuthoritative,
+        outcome: result.overall_status,
+        duration_ms: result.total_duration_ms,
+        storyboards_executed: result.storyboards_executed?.length ?? null,
+        tracks_requested: tracks ?? null,
+        canonical_run_id: canonicalPublication?.runId ?? null,
+      }, renderReceipt(false));
+      if (!evaluationFinalized) return finalOutput;
 
       const workosUserIdForRecord = memberContext?.workos_user?.workos_user_id;
       if (workosUserIdForRecord) {
@@ -4934,14 +5247,31 @@ export function createMemberToolHandlers(
         }).catch(err => logger.warn({ err }, 'Could not record agent test run'));
       }
 
-      return output;
+      return finalOutput;
     } catch (error) {
+      if (
+        error instanceof AgentQualityEvaluationLeaseLostError ||
+        evaluationLease.signal.aborted
+      ) {
+        evaluationLease.stop();
+        logger.warn({ agentUrl: resolved.resolvedUrl }, 'evaluate_agent_quality: stopped after losing execution lease');
+        return finalizationUncertainMessage(error, observedUnconfirmedEvidence);
+      }
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      const capsError = await classifyCapabilityResolutionErrorWithDeclaredProtocols(
-        error,
-        resolved.resolvedUrl,
-        authOption,
-      );
+      let capsError: CapabilityResolutionErrorInfo | undefined;
+      try {
+        capsError = await classifyCapabilityResolutionErrorWithDeclaredProtocols(
+          error,
+          resolved.resolvedUrl,
+          authOption,
+          runTarget,
+        );
+      } catch (classificationError) {
+        logger.warn(
+          { classificationError, agentUrl: resolved.resolvedUrl },
+          'evaluate_agent_quality: error classification failed',
+        );
+      }
 
       // Agent-declared strings (specialism id, parent protocol name) reach
       // the LLM via this tool result, so fence them to neutralise markdown /
@@ -4958,43 +5288,43 @@ export function createMemberToolHandlers(
             .filter(Boolean)
             .join(', ');
           const supportedLine = safeSupported || '`(none advertised)`';
-          return (
+          return finishFailed((
             `**Unsupported compliance target.** The selected compliance target resolves to ` +
             `${safeVersion}, but the agent at ${resolved.resolvedUrl} advertises ` +
             `\`adcp.supported_versions\`: ${supportedLine}.\n\n` +
             `Select a compliance target the seller actually supports, then re-run ` +
             `\`evaluate_agent_quality\`.`
-          );
+          ), 'unsupported_adcp_version');
         }
         const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
         if (capsError.kind === 'unrecognized_supported_protocol') {
           const safeDeclared = fenceAgentValue(capsError.declaredProtocol ?? '', 80);
           const safeExpected = fenceAgentValue(capsError.expectedProtocol ?? capsError.parentProtocol ?? '', 80);
-          return (
+          return finishFailed((
             `**Capabilities misconfigured.** The agent at ${resolved.resolvedUrl} declares the ` +
             `${safeSpec} specialism, but \`supported_protocols\` contains the unrecognized ` +
             `value ${safeDeclared}.\n\n` +
             `Use the canonical protocol id ${safeExpected} instead. Protocol ids use underscores, ` +
             `not hyphens. Update the agent's \`get_adcp_capabilities\` response, redeploy, then ` +
             `re-run \`evaluate_agent_quality\`.`
-          );
+          ), 'unrecognized_supported_protocol');
         }
         if (capsError.kind === 'specialism_parent_protocol_missing') {
           const safeParent = fenceAgentValue(capsError.parentProtocol ?? '', 80);
-          return (
+          return finishFailed((
             `**Capabilities misconfigured.** The agent at ${resolved.resolvedUrl} declares the ` +
             `${safeSpec} specialism, but its parent protocol ${safeParent} is missing from ` +
             `\`supported_protocols\`. Every specialism must roll up to a declared protocol.\n\n` +
             `Add the ${safeParent} protocol to the \`supported_protocols\` array in the agent's ` +
             `\`get_adcp_capabilities\` response, redeploy, then re-run \`evaluate_agent_quality\`.`
-          );
+          ), 'specialism_parent_protocol_missing');
         }
-        return (
+        return finishFailed((
           `**Unknown specialism.** The agent declares ${safeSpec}, which isn't in the local ` +
           `compliance cache. Either the cache is stale (re-sync the \`@adcp/sdk\` compliance ` +
           `tarball) or the specialism id is a typo — cross-check against ` +
           `https://adcontextprotocol.org/compliance/latest/index.json.`
-        );
+        ), 'unknown_specialism');
       }
 
       // Auth-required is an expected agent state, not a system error — don't
@@ -5005,25 +5335,42 @@ export function createMemberToolHandlers(
           { agentUrl: resolved.resolvedUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
           'evaluate_agent_quality: agent requires authentication',
         );
-        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+        if (isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth)) {
           const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
             resolved.resolvedUrl,
             organizationId,
             agentContextDb,
+            { authorizationError: error },
           );
           if (authorizeUrl) {
-            return (
+            return finishFailed((
               `**OAuth authorization required**\n\n` +
               `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication.\n\n` +
               `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
               `After you authorize, ask me to evaluate it again.`
-            );
+            ), 'auth_required');
           }
         }
-        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+        return finishFailed(
+          `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`,
+          'auth_required',
+        );
       }
 
       logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: evaluate_agent_quality failed');
+      let failureRecorded: boolean;
+      try {
+        failureRecorded = await evaluationLease.fail('evaluation_failed');
+      } catch (finalizationError) {
+        return finalizationUncertainMessage(finalizationError);
+      }
+      if (!failureRecorded) return finalizationUncertainMessage(new AgentQualityEvaluationLeaseLostError());
+      logger.info({
+        ...publicationLogFields(),
+        phase: 'finalization',
+        outcome: 'failed',
+        failureCode: 'evaluation_failed',
+      }, 'evaluate_agent_quality: failed');
       throw new ToolError(`Failed to evaluate agent quality for ${resolved.resolvedUrl}: ${msg}`);
     }
   });
@@ -5045,12 +5392,15 @@ export function createMemberToolHandlers(
     // protocol baselines and specialism bundles apply — we don't guess from tool
     // lists or ask the member what they're building.
     const authOption = buildAuthOption(resolved);
+    const readinessPrompt = await ownerOAuthReadinessPrompt(resolved.resolvedUrl, authOption, organizationId);
+    if (readinessPrompt) return readinessPrompt;
     let profile: AgentProfile | undefined;
     let discoveryProbeError: string | undefined;
     try {
-      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, withSdkSafeTransport({
-        ...(authOption && { auth: authOption }),
-      }));
+      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, hostedCapabilityDiscoveryOptions(
+        { ...(authOption && { auth: authOption }) },
+        hasExplicitComplianceTarget(input) ? runTarget : undefined,
+      ));
       profile = caps.profile;
       discoveryProbeError = capabilityDiscoveryProbeError(caps);
       if (!hasExplicitComplianceTarget(input)) {
@@ -5071,6 +5421,7 @@ export function createMemberToolHandlers(
           resolved.resolvedUrl,
           organizationId,
           agentContextDb,
+          { authorizationError: probeOAuth },
         );
         if (authorizeUrl) {
           return (
@@ -5396,6 +5747,8 @@ export function createMemberToolHandlers(
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
     const authOption = buildAuthOption(resolved);
+    const readinessPrompt = await ownerOAuthReadinessPrompt(resolved.resolvedUrl, authOption, organizationId);
+    if (readinessPrompt) return readinessPrompt;
 
     if (!hasExplicitComplianceTarget(input)) {
       runTarget = await selectComplianceTargetForAgent(
@@ -5426,20 +5779,47 @@ export function createMemberToolHandlers(
       // authored against; the run-auth bearer substitution no-ops when the
       // kit already carries auth.
       const declaredTestKit = getTestKitForStoryboard(storyboardId, runOptions);
-      const result = await runStoryboard(
-        resolved.resolvedUrl,
-        sb,
-        withSdkSafeTransport(withHostedStoryboardRunOptions({
-          ...(declaredTestKit && { test_kit: declaredTestKit }),
-          ...(authOption && { auth: authOption }),
-        }, runTarget, authProbeTask)),
-      );
+      const storyboardRunOptions = withSdkSafeTransport(withHostedStoryboardRunOptions({
+        ...(declaredTestKit && { test_kit: declaredTestKit }),
+        ...(authOption && { auth: authOption }),
+      }, runTarget, authProbeTask));
+      // adcp#7758 — `requires: [multi_agent]` storyboards route governance
+      // steps to the public governance agent, as the fixed hosted-grader buyer
+      // agent, and everything else to the agent under test, which receives a
+      // per-run seller credential in sync_governance. Unroutable ones are
+      // reported, never sent to the agent. Minted credentials are scrubbed
+      // from the result before it is rendered or logged.
+      let routing: HostedMultiAgentRouting<typeof sb> = { kind: 'single_agent' };
+      let mintedSecrets: string[] = [];
+      if (sb.requires?.includes('multi_agent')) {
+        const governance = hostedGovernanceAgentForRun(resolved.resolvedUrl);
+        if (governance.kind === 'unavailable') {
+          return `**Not runnable here:** ${storyboardId} requires multi_agent: ${governance.reason}`;
+        }
+        routing = hostedMultiAgentRoutingForStoryboard({
+          storyboard: sb,
+          agentUnderTest: { url: resolved.resolvedUrl, ...(authOption && { auth: authOption }) },
+          governance: governance.governance,
+        });
+        if (routing.kind === 'unroutable') {
+          return `**Not runnable here:** ${routing.reason}`;
+        }
+        mintedSecrets = hostedGovernanceSecrets(governance.governance);
+      }
+      const rawResult = routing.kind === 'routed'
+        ? await runStoryboard('', routing.storyboard, withHostedMultiAgentRouting(storyboardRunOptions, routing))
+        : await runStoryboard(resolved.resolvedUrl, sb, storyboardRunOptions);
+      const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
+      const governanceStepIds = new Set(routing.kind === 'routed' ? routing.governance_step_ids : []);
 
       // runStoryboard catches its own throws and surfaces them as step
       // errors. Detect OAuth on the first failing step before rendering a
       // long failure report the user can't act on.
       const oauthStepError = result.phases
         .flatMap(p => p.steps)
+        // Governance-routed steps hit the public governance agent, not the
+        // member's agent; its auth errors must not prompt an OAuth flow here.
+        .filter(s => !governanceStepIds.has(s.step_id))
         .find(s => isOAuthRequiredErrorMessage(s.error))?.error;
       if (oauthStepError) {
         logger.warn(
@@ -5450,6 +5830,7 @@ export function createMemberToolHandlers(
           resolved.resolvedUrl,
           organizationId,
           agentContextDb,
+          { authorizationError: oauthStepError },
         );
         if (authorizeUrl) {
           return (
@@ -5506,7 +5887,8 @@ export function createMemberToolHandlers(
 
         for (const step of phase.steps) {
           const icon = step.skipped ? 'SKIP' : step.passed ? 'PASS' : 'FAIL';
-          output += `- **${step.title}** [${icon}] — \`${step.task}\` (${(step.duration_ms / 1000).toFixed(1)}s)\n`;
+          const servedBy = governanceStepIds.has(step.step_id) ? ' — served by the public governance agent' : '';
+          output += `- **${step.title}** [${icon}] — \`${step.task}\`${servedBy} (${(step.duration_ms / 1000).toFixed(1)}s)\n`;
 
           if (!step.passed && !step.skipped) {
             if (step.error) {
@@ -5547,6 +5929,9 @@ export function createMemberToolHandlers(
         output += `Interpret these results conversationally. For failed steps, explain what the agent should return and suggest specific fixes.`;
       }
       if (dryRun) output += ` This was a dry run — no production state was modified.`;
+      if (governanceStepIds.size > 0) {
+        output += ` Steps served by the public governance agent (${PUBLIC_TEST_AGENT_URLS.governance}) wrote sandbox plan state there; a failure on one of those steps may come from the governance agent rather than the tested agent.`;
+      }
 
       const workosUserIdForStoryboard = memberContext?.workos_user?.workos_user_id;
       if (workosUserIdForStoryboard) {
@@ -5589,6 +5974,8 @@ export function createMemberToolHandlers(
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
     const authOption = buildAuthOption(resolved);
+    const readinessPrompt = await ownerOAuthReadinessPrompt(resolved.resolvedUrl, authOption, organizationId);
+    if (readinessPrompt) return readinessPrompt;
     const contextRefMeta = storyboardContextRefMeta(memberContext, storyboardId, resolved.resolvedUrl);
     const context = resolveStoryboardInputContext(input.context, contextRefMeta);
 
@@ -5668,6 +6055,7 @@ export function createMemberToolHandlers(
           resolved.resolvedUrl,
           organizationId,
           agentContextDb,
+          { authorizationError: result.error },
         );
         if (authorizeUrl) {
           return (
@@ -5902,6 +6290,7 @@ export function createMemberToolHandlers(
           resolved.resolvedUrl,
           organizationId,
           agentContextDb,
+          { authorizationError: briefResults.find(r => isOAuthOwnerReauthorizationError(r.error))?.error ?? briefResults[0].error },
         );
         if (authorizeUrl) {
           return (
@@ -5994,11 +6383,12 @@ export function createMemberToolHandlers(
           { agentUrl: resolved.resolvedUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
           'compare_media_kit: agent requires authentication',
         );
-        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+        if (isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth)) {
           const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
             resolved.resolvedUrl,
             organizationId,
             agentContextDb,
+            { authorizationError: error },
           );
           if (authorizeUrl) {
             return (
@@ -6236,11 +6626,12 @@ export function createMemberToolHandlers(
           { agentUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
           'test_rfp_response: agent requires authentication',
         );
-        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+        if (isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth)) {
           const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
             resolved.resolvedUrl,
             organizationId,
             agentContextDb,
+            { authorizationError: error },
           );
           if (authorizeUrl) {
             return (
@@ -6669,11 +7060,12 @@ export function createMemberToolHandlers(
           { agentUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
           'test_io_execution: agent requires authentication',
         );
-        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+        if (isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth)) {
           const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
             resolved.resolvedUrl,
             organizationId,
             agentContextDb,
+            { authorizationError: error },
           );
           if (authorizeUrl) {
             return (
@@ -7116,11 +7508,20 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to save agents. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
+    const configureAuthInDashboard = input.configure_auth_in_dashboard === true;
+    if (configureAuthInDashboard && ['auth_token', 'auth_type', 'oauth_client_credentials']
+      .some(field => input[field] !== undefined)) {
+      return 'Error: configure_auth_in_dashboard cannot be combined with credentials. Omit auth_token, auth_type, and oauth_client_credentials; enter them on the dashboard instead.';
+    }
+
     const saveOrg = await resolveSaveAgentOrganization(memberContext, input);
     if (!saveOrg.ok) {
       return saveOrg.message;
     }
     const saveOrgId = saveOrg.organizationId;
+    const credentialHandoff = configureAuthInDashboard
+      ? `\n\n**Complete authentication securely:** Open [your agents dashboard](https://agenticadvertising.org/dashboard/agents?org=${encodeURIComponent(saveOrgId)}). On this agent's card, use the authentication form (**Connect agent** or **Update auth**). For OAuth client credentials, choose **OAuth client credentials (machine-to-machine)**, enter the token endpoint, client ID and client secret there, then click **Save credentials**. Bearer/basic credentials also go in that form. Do not paste secrets into chat. This call saved no new credentials and did not verify authentication; any existing credentials are unchanged. Do not click **Register agent** again — that returns to chat.`
+      : '';
     const saveOrgNameForDisplay = saveOrg.organizationName
       ? formatOrgNameForTool(saveOrg.organizationName)
       : '';
@@ -7351,6 +7752,9 @@ export function createMemberToolHandlers(
         context = await agentContextDb.getById(context.id);
 
         const profileStatus = await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
+        if (configureAuthInDashboard && !profileStatus.ok) {
+          return 'Error: Agent connection details were saved, but the registry listing could not be saved. Retry save_agent before entering credentials on the dashboard. No new credentials were saved.';
+        }
 
         let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
         response += `**Organization:** ${saveOrgLabel}\n`;
@@ -7366,6 +7770,7 @@ export function createMemberToolHandlers(
         if (!profileStatus.ok) {
           response += `\n⚠️ Credentials are saved, but I couldn't update your dashboard listing right now (${profileStatus.reason}). The team has been notified.`;
         }
+        if (profileStatus.ok) response += credentialHandoff;
         return response;
       }
 
@@ -7389,6 +7794,9 @@ export function createMemberToolHandlers(
       }
 
       const profileStatus = await ensureAgentInProfile(agentName || new URL(agentUrl).hostname);
+      if (configureAuthInDashboard && !profileStatus.ok) {
+        return 'Error: Agent connection details were saved, but the registry listing could not be saved. Retry save_agent before entering credentials on the dashboard. No new credentials were saved.';
+      }
 
       let response = `✅ Saved agent: **${context?.agent_name || agentUrl}**\n\n`;
       response += `**Organization:** ${saveOrgLabel}\n`;
@@ -7404,7 +7812,8 @@ export function createMemberToolHandlers(
         response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
       }
       if (profileStatus.ok) {
-        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other paying AgenticAdvertising.org members (Professional, Builder, Member, or Leader) can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a paid AgenticAdvertising.org tier). When you test this agent, I'll automatically use the saved credentials.`;
+        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other paying AgenticAdvertising.org members (Professional, Builder, Member, or Leader) can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a paid AgenticAdvertising.org tier). Saved credentials, if configured, will be used when testing.`;
+        response += credentialHandoff;
       } else {
         response += `\n⚠️ The credentials are saved on the backend, but I couldn't add this agent to your dashboard listing right now (${profileStatus.reason}). The team has been notified — please check back shortly, or use the dashboard's manual register flow at https://agenticadvertising.org/dashboard/agents.`;
       }

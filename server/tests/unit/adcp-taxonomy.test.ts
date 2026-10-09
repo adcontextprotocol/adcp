@@ -12,6 +12,7 @@ import {
   getSpecialismStatus,
   SUPPORTED_BADGE_VERSIONS,
   isSupportedBadgeVersion,
+  advertisesStableBadgeLine,
 } from '../../src/services/adcp-taxonomy.js';
 
 function loadJsonEnum(relPath: string): string[] {
@@ -53,8 +54,8 @@ describe('specialism status', () => {
 });
 
 describe('SUPPORTED_BADGE_VERSIONS', () => {
-  it('enables public badge issuance on 3.1 before 3.0', () => {
-    expect(SUPPORTED_BADGE_VERSIONS).toEqual(['3.1', '3.0']);
+  it('enables public badge issuance on 3.2, then 3.1, then 3.0', () => {
+    expect(SUPPORTED_BADGE_VERSIONS).toEqual(['3.2', '3.1', '3.0']);
   });
 
   it('is a non-empty array of MAJOR.MINOR strings', () => {
@@ -76,5 +77,15 @@ describe('SUPPORTED_BADGE_VERSIONS', () => {
     expect(isSupportedBadgeVersion(null)).toBe(false);
     expect(isSupportedBadgeVersion(undefined)).toBe(false);
     expect(isSupportedBadgeVersion('')).toBe(false);
+  });
+});
+
+describe('advertisesStableBadgeLine', () => {
+  it('accepts an exact stable line or numeric patch and rejects prefix lookalikes', () => {
+    expect(advertisesStableBadgeLine('3.1', '3.1')).toBe(true);
+    expect(advertisesStableBadgeLine('3.1.9', '3.1')).toBe(true);
+    expect(advertisesStableBadgeLine('3.1.foo', '3.1')).toBe(false);
+    expect(advertisesStableBadgeLine('3.1.', '3.1')).toBe(false);
+    expect(advertisesStableBadgeLine('3.10', '3.1')).toBe(false);
   });
 });

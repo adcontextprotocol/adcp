@@ -540,6 +540,56 @@ describe('training account change feed', () => {
     expect(webhookMocks.emit.mock.calls[0][0].payload.subscriber_id).toBe('subscriber-1');
   });
 
+  it('wakes the subscriber when the controller addresses the shared account by its synced natural key', async () => {
+    // The storyboard runner addresses comply_test_controller by the brand and
+    // operator that sync_accounts returned, not by the authored account_id.
+    const synced = await handleSyncAccounts({
+      accounts: [{
+        account,
+        notification_configs: [{
+          subscriber_id: 'account-change-runner',
+          url: 'https://runner.example.com/step/account_change_feed',
+          event_types: ['account.change_recorded'],
+          active: true,
+        }],
+      }],
+    }, context) as Record<string, any>;
+    const { brand, operator } = synced.accounts[0];
+    expect(brand).toEqual({ domain: 'luma-outdoor.example' });
+    const seedCreative = (creativeId: string, accountRef: Record<string, unknown>) => handleComplyTestController({
+      account: { ...accountRef, sandbox: true },
+      scenario: 'seed_creative',
+      params: {
+        creative_id: creativeId,
+        fixture: { name: 'Connected platform creative', status: 'approved', format_kind: 'image' },
+      },
+    }, context) as Promise<Record<string, any>>;
+
+    webhookMocks.emit.mockClear();
+    const creativeId = 'cr_natural_key_wakeup';
+    expect((await seedCreative(creativeId, { brand, operator })).success).toBe(true);
+
+    expect(webhookMocks.emit).toHaveBeenCalledTimes(1);
+    const [delivery] = webhookMocks.emit.mock.calls[0];
+    expect(delivery.notificationType).toBe('account.change_recorded');
+    expect(delivery.payload).toMatchObject({
+      subscriber_id: 'account-change-runner',
+      account_id: account.account_id,
+      resource: { type: 'creative', resource_id: creativeId },
+      action: 'created',
+    });
+    expect(delivery.payload.notification_id).toBe(delivery.payload.change_id);
+
+    // A natural key for a different brand names no account the buyer synced,
+    // so it must not wake the shared account's subscriber.
+    webhookMocks.emit.mockClear();
+    expect((await seedCreative('cr_foreign_brand', {
+      brand: { domain: 'acmeoutdoor.example' },
+      operator,
+    })).success).toBe(true);
+    expect(webhookMocks.emit).not.toHaveBeenCalled();
+  });
+
   it('records an AdCP creative mutation once and suppresses an unchanged replay', async () => {
     const creative = {
       creative_id: 'cr_adcp_change_once',

@@ -82,6 +82,53 @@ describe('stream tool checkpoints', () => {
     expect(checkpoint.tool_calls).toEqual([expect.objectContaining({ result_status: 'ok' })]);
   });
 
+  it('persists safe structured AdCP classification and recovery metadata', () => {
+    const checkpoint = buildToolResultCheckpoint({
+      threadId: 'thread-1',
+      execution: {
+        ...execution,
+        tool_name: 'call_adcp_task',
+        is_error: true,
+        normalized_result: {
+          status: 'recoverable_error',
+          user_summary: 'Temporarily unavailable.',
+          source: 'structured',
+          telemetry: {
+            operation: 'get_products', error_code: 'ECONNRESET', error_category: 'transport',
+            retryable: true, retry_after_ms: 250, attempts: 2, recovered_by_later_success: false,
+          },
+        },
+      },
+      requestedModel: 'gemini-3.8-flash',
+      requestedProvider: 'google',
+    });
+    expect(checkpoint.tool_calls).toEqual([expect.objectContaining({
+      operation: 'get_products', error_code: 'ECONNRESET', error_category: 'transport',
+      retryable: true, retry_after_ms: 250, attempts: 2, recovered_by_later_success: false,
+    })]);
+  });
+
+  it('persists a known local handler outcome alongside an error result', () => {
+    const checkpoint = buildToolResultCheckpoint({
+      threadId: 'thread-1',
+      execution: {
+        ...execution,
+        tool_name: 'complete_certification_module',
+        result: 'NOT COMPLETED: Module C3 — missing evidence.',
+        is_error: true,
+        durable_outcome: 'known',
+        normalized_result: { status: 'error', user_summary: 'Module not completed.', source: 'legacy' },
+      },
+      requestedModel: 'claude-sonnet-5',
+    });
+
+    expect(checkpoint.tool_calls).toEqual([expect.objectContaining({
+      is_error: true,
+      result_status: 'error',
+      durable_outcome: 'known',
+    })]);
+  });
+
   it('preserves a typed GitHub receipt for the same client-request retry', () => {
     const checkpoint = buildToolResultCheckpoint({
       threadId: 'thread-1',
@@ -177,6 +224,27 @@ describe('stream tool checkpoints', () => {
 
     expect(await policy(request)).toEqual({ allowed: false });
     expect(delegate).not.toHaveBeenCalled();
+  });
+
+  it('allows an exact retry after a known certification gate rejection', async () => {
+    const delegate = vi.fn().mockReturnValue({ allowed: true });
+    const input = { module_id: 'C3', scores: { protocol_fluency: 87 } };
+    const policy = blockCheckpointedToolReplays([{
+      name: 'complete_certification_module',
+      input,
+      result: 'NOT COMPLETED: Module C3 — missing evidence.',
+      is_error: true,
+      result_status: 'error',
+      durable_outcome: 'known',
+    }], delegate)!;
+    const request = {
+      toolName: 'complete_certification_module',
+      input,
+      executionMode: 'production' as const,
+    };
+
+    expect(await policy(request)).toEqual({ allowed: true });
+    expect(delegate).toHaveBeenCalledWith(request);
   });
 
   it('leaves failed read-only checkpoints retryable through the existing policy', async () => {

@@ -106,6 +106,11 @@ function mockWorkos(domains: ReturnType<typeof domainEntry>[]) {
     },
     organizationDomains: {
       verifyOrganizationDomain: vi.fn(),
+      getOrganizationDomain: vi.fn().mockImplementation(async (id: string) => {
+        const entry = domains.find((candidate) => candidate.id === id);
+        if (!entry) throw Object.assign(new Error("not found"), { status: 404 });
+        return { ...entry, organizationId: ORG_ID };
+      }),
     },
   } as unknown as WorkOS;
 }

@@ -41,7 +41,7 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **property_identifier_catalog** — resolve_catalog, browse_catalog, dispute_catalog_entry
 - **agent_storyboards** — recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step
 - **agent_conformance** — issue_conformance_token, run_conformance_against_my_agent
-- **adcp_task_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities
+- **adcp_task_operations** — ask_about_adcp_task, call_adcp_task, call_adcp_get_products, get_adcp_capabilities
 - **adcp_agent_management** — save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
 - **sponsored_intelligence_discovery** — get_si_availability, list_si_agents, connect_to_si_agent
 - **sponsored_intelligence_session** — send_to_si_agent, end_si_session, get_si_session_status
@@ -84,8 +84,8 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **outreach_contact_management** *(admin only)* — send_outreach, lookup_person, get_account, create_contact
 - **collaboration** — send_member_dm
 - **certification_overview** — list_certification_tracks, get_certification_module, get_learner_progress, check_credentials, set_my_name
-- **certification_learning** — start_certification_module, complete_certification_module, get_learner_progress, checkpoint_teaching_progress, get_build_phase_instructions, save_learner_feedback, set_my_name, check_credentials, find_membership_products, call_adcp_task
-- **certification_assessment** — get_learner_progress, test_out_modules, start_certification_exam, complete_certification_exam, checkpoint_teaching_progress, set_my_name, check_credentials, find_membership_products, call_adcp_task
+- **certification_learning** — start_certification_module, complete_certification_module, get_learner_progress, checkpoint_teaching_progress, get_build_phase_instructions, save_learner_feedback, set_my_name, check_credentials, find_membership_products, call_adcp_task, call_adcp_get_products
+- **certification_assessment** — get_learner_progress, test_out_modules, start_certification_exam, complete_certification_exam, checkpoint_teaching_progress, set_my_name, check_credentials, find_membership_products, call_adcp_task, call_adcp_get_products
 
 ### Always available
 
@@ -106,6 +106,7 @@ research_domain, diagnose_signin_block, list_invites_for_org, resend_invite, rev
 export const ADDIE_TOOL_NAMES = [
   "ask_about_adcp_task",
   "call_adcp_task",
+  "call_adcp_get_products",
   "get_adcp_capabilities",
   "query_admin_analytics",
   "list_pending_invoices",

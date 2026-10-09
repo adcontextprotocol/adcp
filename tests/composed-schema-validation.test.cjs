@@ -566,6 +566,69 @@ function testTypedDiscriminatedUnion(
   }
 }
 
+const VERSION_ENVELOPE_REF = '/schemas/core/version-envelope.json';
+
+// Request schemas that predate or sit outside the version-envelope convention.
+// This list is a ratchet: do not add to it. New request schemas MUST compose
+// core/version-envelope.json via a root allOf (issue #7892).
+const VERSION_ENVELOPE_EXEMPT_REQUESTS = new Map([
+  ['trusted-match/context-match-request.json', '3.1 holdover: inlines adcp_version (strict privacy boundary)'],
+  ['trusted-match/identity-match-request.json', '3.1 holdover: inlines adcp_version (strict privacy boundary)'],
+  ['brand/search-brands-request.json', 'pre-3.2 request with no version fields'],
+  ['creative/validate-input-request.json', 'pre-3.2 request with no version fields'],
+  ['core/get-geo-place-resolution-request.json', 'shared request component with no version fields'],
+  ['core/pagination-request.json', 'shared pagination component, not a task request']
+]);
+
+function listRequestSchemaFiles(dir = SCHEMA_BASE_DIR) {
+  const files = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    // Generated mcp/2026-07-28/** tool schemas are self-contained by
+    // construction (MCP tool input schemas cannot carry external $refs), so
+    // inlining there is correct. Skip it if it ever appears under source/.
+    if (entry.isDirectory()) {
+      if (entry.name !== 'mcp') files.push(...listRequestSchemaFiles(full));
+    } else if (entry.name.endsWith('-request.json')) {
+      files.push(full);
+    }
+  }
+  return files;
+}
+
+function versionEnvelopeCompositionErrors() {
+  const errors = [];
+  const seenExempt = new Set();
+  for (const file of listRequestSchemaFiles()) {
+    const rel = path.relative(SCHEMA_BASE_DIR, file).split(path.sep).join('/');
+    const schema = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const composesEnvelope = Array.isArray(schema.allOf) &&
+      schema.allOf.some((arm) => arm && arm.$ref === VERSION_ENVELOPE_REF);
+    if (VERSION_ENVELOPE_EXEMPT_REQUESTS.has(rel)) {
+      seenExempt.add(rel);
+      if (composesEnvelope) errors.push(`${rel}: now composes the envelope, remove it from the exemption list`);
+      continue;
+    }
+    if (!composesEnvelope) {
+      errors.push(`${rel}: root allOf must $ref ${VERSION_ENVELOPE_REF}`);
+      continue;
+    }
+    // draft-07 does not evaluate properties across allOf, so a strict root
+    // must keep the envelope fields declared locally.
+    if (schema.additionalProperties === false) {
+      for (const field of ['adcp_version', 'adcp_major_version']) {
+        if (schema.properties?.[field]?.$ref !== `${VERSION_ENVELOPE_REF}#/properties/${field}`) {
+          errors.push(`${rel}: additionalProperties:false root must declare ${field} as a $ref to the envelope property`);
+        }
+      }
+    }
+  }
+  for (const rel of VERSION_ENVELOPE_EXEMPT_REQUESTS.keys()) {
+    if (!seenExempt.has(rel)) errors.push(`${rel}: stale exemption (file no longer exists)`);
+  }
+  return errors;
+}
+
 async function runTests() {
   log('Testing Composed Schema Validation (allOf patterns)', 'info');
   log('====================================================');
@@ -3815,6 +3878,109 @@ async function runTests() {
     },
     'sync_accounts returns canonical identity and revision while a desired transition awaits approval'
   );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-001' },
+        revision: 4,
+        name: 'Acme — Social',
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts settings-update-mode results echo account instead of requiring brand/operator'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-unreachable' },
+        action: 'failed',
+        errors: [{ code: 'ACCOUNT_NOT_FOUND', message: 'Account does not exist or is not accessible.' }]
+      }]
+    },
+    'sync_accounts settings-update-mode failed results are representable without a resolvable brand/operator tuple, and without an invented status'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        brand: { domain: 'acme-corp.com' },
+        operator: 'acme-corp.com',
+        action: 'failed',
+        status: 'rejected',
+        errors: [{ code: 'BILLING_NOT_SUPPORTED', message: 'Operator billing is not supported.' }]
+      }]
+    },
+    'sync_accounts failed results may still report status when the account was reached and its lifecycle state is known'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-unreachable' },
+        action: 'failed'
+      }]
+    },
+    'sync_accounts failed results are rejected without errors'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-001' },
+        revision: 4,
+        action: 'updated'
+      }]
+    },
+    'sync_accounts non-failed results are rejected without status'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'acct-social-001' },
+        brand: { domain: 'nova-brands.com' },
+        operator: 'pinnacle-media.com',
+        revision: 4,
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts results are rejected when both account and brand/operator are present — the discriminator is mutually exclusive'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { brand: { domain: 'nova-athletics.example' }, operator: 'pinnacle-media.example' },
+        revision: 2,
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts settings-update-mode results accept a natural-key account reference'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account_id: 'acct-social-001',
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts results with neither account nor brand+operator are rejected — the flat legacy account_id alone does not satisfy the identity discriminator'
+  );
   await testSchemaRejection(
     '/schemas/core/account.json',
     {
@@ -4038,7 +4204,8 @@ async function runTests() {
           blockers: ['The requested operator identity conflicts with another account']
         },
         action: 'failed',
-        status: 'active'
+        status: 'active',
+        errors: [{ code: 'ACCOUNT_IDENTITY_CONFLICT', message: 'The requested operator identity conflicts with another account.' }]
       }]
     },
     'blocked identity previews identify the blocking resource impact'
@@ -4328,6 +4495,7 @@ async function runTests() {
     idempotency_key: 'buy-products-clean-0001',
     account: { account_id: 'account-clean-1' },
     brand: { domain: 'buyer.example' },
+    name: 'Acme direct display buy',
     feed_version: 'feed-version-1',
     pricing_version: 'pricing-version-1',
     purchases: [{
@@ -4361,7 +4529,8 @@ async function runTests() {
       idempotency_key: 'accept-proposal-0001',
       account: { account_id: 'account-clean-1' },
       proposal_id: 'proposal-committed-1',
-      proposal_terms_digest: `sha256:${'A'.repeat(43)}`
+      proposal_terms_digest: `sha256:${'A'.repeat(43)}`,
+      name: 'Acme accepted proposal buy'
     },
     'accept_proposal needs only the committed proposal and execution identity'
   );
@@ -4439,6 +4608,7 @@ async function runTests() {
     {
       status: 'completed',
       media_buy_id: 'media-buy-1',
+      name: 'Acme direct display buy',
       revision: 1,
       accepted_proposal: {
         proposal_id: 'accepted-proposal-1',
@@ -5169,6 +5339,35 @@ async function runTests() {
     'get_products filters.signal_targeting accepts deprecated signal_id during SignalRef migration window'
   );
   await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'refine',
+      refine: [
+        {
+          scope: 'proposal',
+          proposal_id: 'proposal-123',
+          action: 'finalize'
+        }
+      ],
+      idempotency_key: '550e8400-e29b-41d4-a716-446655440000'
+    },
+    'Legacy get_products finalization accepts an idempotency key'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'refine',
+      refine: [
+        {
+          scope: 'proposal',
+          proposal_id: 'proposal-123',
+          action: 'finalize'
+        }
+      ]
+    },
+    'Legacy get_products finalization remains valid without an idempotency key throughout 3.x'
+  );
+  await testSchemaValidation(
     '/schemas/core/wholesale-feed-event.json',
     {
       event_id: '018f4f28-6b5d-7f50-9d57-111111111111',
@@ -5426,7 +5625,8 @@ async function runTests() {
             agent_url: 'https://ads.agency.example.com',
             role: 'media-buy',
             verified_specialisms: ['sales-catalog-driven'],
-            adcp_version: '3.1.0-beta.5'
+            adcp_version: '3.1.0-beta.5',
+            grading_profile: 'spec'
           },
           actor: 'pipeline:compliance-heartbeat',
           created_at: '2026-03-31T10:02:30.000Z'
@@ -5439,7 +5639,8 @@ async function runTests() {
           payload: {
             agent_url: 'https://ads.agency.example.com',
             role: 'media-buy',
-            reason: 'media_buy track failing'
+            reason: 'media_buy track failing',
+            grading_profile: 'spec'
           },
           actor: 'pipeline:compliance-heartbeat',
           created_at: '2026-03-31T10:02:45.000Z'
@@ -7384,6 +7585,59 @@ async function runTests() {
       description
     );
   }
+  log('');
+
+  // Version envelope composition (#7892, #7919)
+  log('Version envelope composition:', 'info');
+  totalTests++;
+  const envelopeErrors = versionEnvelopeCompositionErrors();
+  if (envelopeErrors.length === 0) {
+    log('  \u2713 Every request schema composes core/version-envelope.json via root allOf', 'success');
+    passedTests++;
+  } else {
+    log('  \u2717 Request schemas not composing core/version-envelope.json:', 'error');
+    for (const error of envelopeErrors) log(`      ${error}`, 'error');
+    failedTests++;
+  }
+  await testSchemaValidation(
+    '/schemas/media-buy/decline-proposals-request.json',
+    {
+      adcp_version: '3.2',
+      adcp_major_version: 3,
+      idempotency_key: 'decline-proposals-envelope-0001',
+      declines: [{ proposal_id: 'proposal-1', reason: 'inventory_fit' }]
+    },
+    'Strict compact request accepts envelope fields alongside allOf composition'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/decline-proposals-request.json',
+    {
+      adcp_version: '03.2',
+      idempotency_key: 'decline-proposals-envelope-0001',
+      declines: [{ proposal_id: 'proposal-1', reason: 'inventory_fit' }]
+    },
+    'Strict compact request still rejects a malformed adcp_version'
+  );
+  await testSchemaValidation(
+    '/schemas/core/compact-task-submitted.json',
+    { adcp_version: '3.2', status: 'submitted', task_id: 'task_123', message: 'Queued' },
+    'Compact submitted arm accepts version and protocol envelope fields'
+  );
+  await testSchemaRejection(
+    '/schemas/core/compact-task-submitted.json',
+    { adcp_version: '3.2.1', status: 'submitted', task_id: 'task_123' },
+    'Compact submitted arm rejects a malformed adcp_version'
+  );
+  await testSchemaRejection(
+    '/schemas/core/compact-task-submitted.json',
+    { status: 'completed', task_id: 'task_123' },
+    'Compact submitted arm rejects non-submitted status'
+  );
+  await testSchemaRejection(
+    '/schemas/core/compact-task-submitted.json',
+    { status: 'submitted', task_id: 'task_123', task_status: 'submitted' },
+    'Compact submitted arm rejects the legacy task_status field via protocol-envelope'
+  );
   log('');
 
   // Print results

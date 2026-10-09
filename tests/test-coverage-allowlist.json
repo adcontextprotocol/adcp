@@ -1,0 +1,17 @@
+{
+  "$comment": "Test files that CI intentionally does not run. tests/test-coverage-registration.test.cjs fails on any test file CI does not reach unless it is listed here, and on entries that are stale (the file is gone or CI now runs it). A path ending in /** covers every test file under that directory. Every entry needs a reason.",
+  "entries": [
+    {
+      "path": "tests/snippet-validation.test.cjs",
+      "reason": "Executes documentation snippets against the live hosted test agent (test-agent.adcontextprotocol.org), so it depends on the network and on that deployment, and it currently fails. Run it on demand with `npm run test:snippets` or `node tests/snippet-validation.test.cjs --file <doc>`."
+    },
+    {
+      "path": "server/tests/simulation/**",
+      "reason": "Simulation scenarios need a real Postgres (DATABASE_URL) and a single forked worker. Run them on demand with `npm run test:simulation`."
+    },
+    {
+      "path": "tests/e2e/**",
+      "reason": "Playwright smoke scripts that drive a running app through dev login (TARGET_URL). Run them manually with `node tests/e2e/<name>.smoke.js` against a local server."
+    }
+  ]
+}

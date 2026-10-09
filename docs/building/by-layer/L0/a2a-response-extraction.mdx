@@ -11,7 +11,7 @@ This page defines the normative algorithm for extracting AdCP response data from
 The rules on this page layer AdCP-specific semantics onto A2A. Non-AdCP A2A agents do not enforce them and should not be expected to produce conforming output.
 
 - **Single-artifact invariant.** AdCP tasks produce one artifact containing all output parts. Clients read from `artifacts[0]`. If a seller needs multiple distinct deliverables, they should be modeled as separate tasks — not multiple artifacts.
-- **Last-DataPart authority.** When multiple DataParts appear in one artifact (typical during streaming), the last one is authoritative. Earlier DataParts are superseded progress snapshots.
+- **Last-DataPart authority.** When multiple DataParts appear in one artifact (typical during streaming), the last one is authoritative. Earlier DataParts are superseded progress snapshots. This rule governs response extraction only; it does not apply to inbound invocation messages (see [Last-DataPart Authority](#last-datapart-authority)).
 - **First-DataPart for interim.** When multiple DataParts appear in `status.message.parts`, the first is used — interim updates are single-event snapshots, not accumulated.
 - **Wrapper rejection.** A DataPart whose `.data` is `{ response: {...} }` (single key named `response`) is treated as a framework-wrapper bug, not a valid payload.
 - **Two status layers.** `task.status.state` is the A2A transport lifecycle; the extracted DataPart is the complete AdCP response and carries its own `status`. They normally align, but a structured AdCP business rejection uses A2A `completed` with DataPart `status: "rejected"` because the transport call succeeded.
@@ -154,7 +154,7 @@ function extractFromMessage(task) {
 
 ## Last-DataPart Authority
 
-For final states, the **last** DataPart in `artifacts[0].parts[]` is authoritative. During streaming, intermediate DataParts may contain stale progress data that gets superseded by the final result:
+For final states, the **last** DataPart in `artifacts[0].parts[]` is authoritative. During streaming, intermediate DataParts may contain stale progress data that gets superseded by the final result. This rule applies to **responses** only. It does not apply to inbound invocation messages: one carrying more than one DataPart of any shape MUST be rejected, never resolved by taking the last. See the [profile specification](/docs/building/by-layer/L0/a2a-profile-extension#invocation-message).
 
 ```json
 {
@@ -261,7 +261,7 @@ Client libraries that implement this spec MUST:
 1. **Unwrap A2A 1.0 stream envelopes.** A single-key object with key `task`, `message`, `statusUpdate`, or `artifactUpdate` is a `StreamResponse` wrapper — unwrap to the inner object before applying the rest of the algorithm. Bare objects pass through unchanged.
 2. **Accept both A2A 1.0 and v0.3 wire shapes.** Normalize `status.state` before comparison (strip `TASK_STATE_` prefix, lowercase, underscores to hyphens). Detect DataParts by field presence (`data` is a non-null object), not by `kind`.
 3. **Branch on normalized state.** Final states (`completed`, `failed`, `canceled`, `rejected`) use artifacts; interim states (`working`, `submitted`, `input-required`, `auth-required`) use `status.message.parts`.
-4. **Use last DataPart for final states.** Skip DataParts with null, non-object, or array `.data`.
+4. **Use last DataPart for final states.** Skip DataParts with null, non-object, or array `.data`. Response extraction only; this does not apply to inbound invocation messages.
 5. **Use first DataPart for interim states.**
 6. **Detect and reject wrappers.** Single-key `{response: {...}}` payloads are bugs.
 7. **Fall back gracefully.** If artifacts are empty for a final state, check `status.message.parts`.

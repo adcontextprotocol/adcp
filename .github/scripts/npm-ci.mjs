@@ -1,17 +1,31 @@
 #!/usr/bin/env node
-// CI-only, Linux x64: one normal npm ci retry for the observed 0.9.4 failure.
+// CI-only, Linux x64: one normal npm ci retry for the C2PA release-download/workspace fallback failure of the lockfile's version.
 import { spawn } from 'node:child_process';
 import { randomInt } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
-import { createReadStream, mkdtempSync, openSync, closeSync, writeFileSync } from 'node:fs';
+import { createReadStream, mkdtempSync, openSync, closeSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
+// The only version that may match is the one the root lockfile installs. Any
+// missing, unreadable or non-exact-semver metadata yields null (no retry).
+function lockedC2paVersion() {
+  try {
+    const lock = JSON.parse(readFileSync(join(process.cwd(), 'package-lock.json'), 'utf8'));
+    const version = lock?.packages?.['node_modules/@contentauth/c2pa-node']?.version;
+    return typeof version === 'string' && /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(version) ? version : null;
+  } catch {
+    return null;
+  }
+}
+
 async function matchesFailure(log) {
+  const version = lockedC2paVersion();
+  if (!version) return false;
   const root = join(process.cwd(), 'node_modules/@contentauth/c2pa-node');
   // Match npm's contiguous stderr error block, including the package path,
   // exact release/version/platform, download-to-build transition and manifest.
@@ -22,7 +36,7 @@ async function matchesFailure(log) {
     'npm error command failed',
     'npm error command sh -c node scripts/postinstall.cjs',
     "npm error Detected { arch: 'x64', platform: 'linux' }",
-    'npm error Checking for a release at: https://github.com/contentauth/c2pa-js/releases/download/%40contentauth%2Fc2pa-node%400.9.4/c2pa-node_x86_64-unknown-linux-gnu-v0.9.4.zip',
+    `npm error Checking for a release at: https://github.com/contentauth/c2pa-js/releases/download/%40contentauth%2Fc2pa-node%40${version}/c2pa-node_x86_64-unknown-linux-gnu-v${version}.zip`,
     'npm error 🦀 Building Rust...',
     `npm error ERROR: Error: Command failed: npx cargo-cp-artifact -nc "${root}/dist/index.node" -- cargo build --message-format=json-render-diagnostics --release --manifest-path="${root}/Cargo.toml"`,
     `npm error error: failed to parse manifest at \`${root}/Cargo.toml\``,
@@ -121,7 +135,7 @@ export async function runNpmCi({ jitter = randomInt, sleep = delay } = {}) {
       if (!Number.isInteger(milliseconds) || milliseconds < 1000 || milliseconds > 5000) {
         throw new RangeError('CI install retry delay must be between 1000 and 5000 ms.');
       }
-      console.error(`Known C2PA 0.9.4 download/workspace fallback failure; waiting ${milliseconds} ms before retry.`);
+      console.error(`Known locked C2PA download/workspace fallback failure; waiting ${milliseconds} ms before retry.`);
       try {
         await sleep(milliseconds, undefined, { signal: backoff.signal });
       } catch (error) {

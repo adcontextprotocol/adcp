@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ComplianceResult } from '@adcp/sdk/testing';
-import { deriveVerificationProfileShadowAssessment } from '../../src/services/verification-profile-shadow.js';
+import {
+  deriveVerificationProfileShadowAssessment,
+  sandboxProfileAssessmentReasons,
+  type VerificationProfileShadowAssessment,
+} from '../../src/services/verification-profile-shadow.js';
 
 function resultWith(
   scenarios: Array<{
@@ -520,6 +524,10 @@ describe('deriveVerificationProfileShadowAssessment', () => {
     const assessment = deriveVerificationProfileShadowAssessment(result, 'production', 'passing');
 
     expect(assessment.unattributed_failure_count).toBe(0);
+    expect(assessment.flat_failure_count).toBe(1);
+    expect(sandboxProfileAssessmentReasons(assessment)).toContain(
+      '1 run-level failure record',
+    );
     expect(assessment.proposed_spec_status).toBe('failing');
     expect(assessment.proposed_sandbox_status).toBe('failing');
   });
@@ -544,6 +552,7 @@ describe('deriveVerificationProfileShadowAssessment', () => {
     const assessment = deriveVerificationProfileShadowAssessment(result, 'production', 'passing');
 
     expect(assessment.unattributed_failure_count).toBe(1);
+    expect(assessment.flat_failure_count).toBe(1);
     expect(assessment.unattributed_flat_failure_count).toBe(1);
     expect(assessment.unexplained_phase_failure_count).toBe(0);
     expect(assessment.proposed_spec_status).toBe('failing');
@@ -560,6 +569,7 @@ describe('deriveVerificationProfileShadowAssessment', () => {
     const assessment = deriveVerificationProfileShadowAssessment(result, 'production', 'failing');
 
     expect(assessment.unattributed_failure_count).toBe(1);
+    expect(assessment.flat_failure_count).toBe(0);
     expect(assessment.unattributed_flat_failure_count).toBe(0);
     expect(assessment.unexplained_phase_failure_count).toBe(1);
   });
@@ -604,5 +614,67 @@ describe('deriveVerificationProfileShadowAssessment', () => {
     const assessment = deriveVerificationProfileShadowAssessment(result, 'production', 'passing');
 
     expect(assessment.selected_storyboard_count).toBe(1);
+  });
+});
+
+describe('sandboxProfileAssessmentReasons', () => {
+  const passingAssessment = (): VerificationProfileShadowAssessment => ({
+    policy_version: 'verification-profiles-v3',
+    current_public_status: 'passing',
+    proposed_spec_status: 'passing',
+    proposed_sandbox_status: 'passing',
+    sandbox_eligible: true,
+    recommended_profile: 'spec',
+    run_complete: true,
+    bundle_evidence_present: true,
+    selected_storyboard_count: 1,
+    applicable_phase_count: 1,
+    controller_gap_phase_count: 0,
+    controller_gap_step_count: 0,
+    controller_cascade_step_count: 0,
+    observed_failure_count: 0,
+    sandbox_observable_failure_count: 0,
+    non_controller_gap_step_count: 0,
+    controller_missing_storyboard_count: 0,
+    other_missing_storyboard_count: 0,
+    mixed_controller_failure_phase_count: 0,
+    failing_bundle_count: 0,
+    incomplete_bundle_count: 0,
+    sandbox_unresolved_bundle_count: 0,
+    unattributed_failure_count: 0,
+    flat_failure_count: 0,
+    unattributed_flat_failure_count: 0,
+    unexplained_phase_failure_count: 0,
+    sandbox_unresolved_executed_bundle_count: 0,
+    sandbox_unresolved_missing_tools_bundle_count: 0,
+    sandbox_unresolved_unknown_bundle_count: 0,
+  });
+
+  it.each([
+    ['sandbox_observable_failure_count', 1, '1 production-observable failure'],
+    ['flat_failure_count', 1, '1 run-level failure record'],
+    ['unattributed_flat_failure_count', 1, '1 unattributed run-level failure'],
+    ['failing_bundle_count', 1, '1 failing evidence bundle'],
+    ['run_complete', false, 'the source run is incomplete'],
+    ['bundle_evidence_present', false, 'bundle evidence is missing'],
+    ['applicable_phase_count', 0, 'no applicable phases were observed'],
+    ['sandbox_unresolved_bundle_count', 1, '1 unresolved evidence bundle'],
+    ['non_controller_gap_step_count', 1, '1 non-controller evidence gap'],
+    ['other_missing_storyboard_count', 1, '1 storyboard missing for reasons other than the controller'],
+    ['mixed_controller_failure_phase_count', 1, '1 mixed controller/failure phase'],
+    ['current_public_status', 'partial', 'the public outcome is partial without a controller-only explanation'],
+  ] as const)('explains the %s evaluator gate', (field, value, expected) => {
+    const assessment = passingAssessment();
+    Object.assign(assessment, { [field]: value });
+    expect(sandboxProfileAssessmentReasons(assessment)).toContain(expected);
+  });
+
+  it('does not call a public partial unexplained when a controller-only gap explains it', () => {
+    const assessment = passingAssessment();
+    assessment.current_public_status = 'partial';
+    assessment.controller_gap_phase_count = 1;
+    expect(sandboxProfileAssessmentReasons(assessment)).not.toContain(
+      'the public outcome is partial without a controller-only explanation',
+    );
   });
 });

@@ -4,6 +4,9 @@ title: "Seller honors property_list targeting on create and update"
 category: media_buy_seller
 summary: "Verifies that a seller accepts PropertyListReference in package targeting on create_media_buy AND update_media_buy, with parity between both paths."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy
@@ -41,11 +44,25 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The seller must accept PropertyListReference in package targeting on both
     create_media_buy and update_media_buy. List contents come from
     test-kits/acme-outdoor.yaml → inventory_targets.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_97e857c8de74"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_inventory_list_targ-1b0f7b4a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
 
 phases:
   - id: discover_product
@@ -75,6 +92,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inventory_list_targ-1b0f7b4a"
             sandbox: true
 
           context:
@@ -122,6 +141,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inventory_list_targ-1b0f7b4a"
             sandbox: true
           idempotency_key: "$generate:uuid_v4#inventory_list_targeting_create_buy"
           start_time: "asap"
@@ -177,6 +198,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inventory_list_targ-1b0f7b4a"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
@@ -216,6 +239,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inventory_list_targ-1b0f7b4a"
             sandbox: true
           media_buy_id: "$context.media_buy_id"
           packages:
@@ -264,6 +289,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inventory_list_targ-1b0f7b4a"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"

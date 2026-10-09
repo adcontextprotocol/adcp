@@ -5,6 +5,8 @@ title: "Seller discovers audience activation paths honestly"
 category: media_buy_seller
 summary: "Verifies capability and product declarations, vendor-constrained matching, OR semantics, omitted-field wildcards, and exclusion of undeclared products."
 track: media_buy
+requires:
+  - controller
 
 requires_capability:
   path: experimental_features
@@ -49,6 +51,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_318d91a983be"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_audience_activation-1e750a5a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "audience_activation_inline_dataset"
       delivery_type: "guaranteed"
@@ -145,6 +158,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_audience_activation-1e750a5a"
             sandbox: true
         validations:
           - check: response_schema
@@ -180,6 +195,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_audience_activation-1e750a5a"
             sandbox: true
         validations:
           - check: response_schema
@@ -208,6 +225,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_audience_activation-1e750a5a"
             sandbox: true
         validations:
           - check: response_schema
@@ -237,6 +256,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_audience_activation-1e750a5a"
             sandbox: true
         validations:
           - check: response_schema

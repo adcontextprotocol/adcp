@@ -509,6 +509,56 @@
       "pullRequestNo": 2861,
       "comment_id": 5602338499,
       "comment_url": "https://github.com/adcontextprotocol/adcp-client/pull/2861#issuecomment-5602338499"
+    },
+    {
+      "name": "idemidenko",
+      "id": 13537987,
+      "created_at": "2026-09-22T11:09:08Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 7646,
+      "comment_id": 5775385884,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7646#issuecomment-5775385884"
+    },
+    {
+      "name": "otsybizov",
+      "id": 40855970,
+      "created_at": "2026-09-24T19:33:00Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 7685,
+      "comment_id": 5820848574,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7685#issuecomment-5820848574"
+    },
+    {
+      "name": "therevoltingx",
+      "id": 191371,
+      "created_at": "2026-09-25T18:53:46Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 7691,
+      "comment_id": 5837894291,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7691#issuecomment-5837894291"
+    },
+    {
+      "name": "moeloubani",
+      "id": 4263363,
+      "created_at": "2026-09-25T19:37:54Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 7692,
+      "comment_id": 5838452475,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7692#issuecomment-5838452475"
+    },
+    {
+      "name": "arielagor",
+      "id": 174922647,
+      "created_at": "2026-10-04T08:34:00Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 7914,
+      "comment_id": 5978148032,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7914#issuecomment-5978148032"
     }
   ]
 }

@@ -141,40 +141,64 @@ describe('Self-Service Delete Workspace', () => {
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', ['org_member_only']);
   });
 
-  describe('DELETE /api/organizations/:orgId', () => {
-    // Handler returns 403 Access denied for non-existent orgs: membership check runs
-    // before existence check, so callers cannot enumerate org IDs by probing deletions.
-    it('should return 403 when the requesting user has no membership in the org', async () => {
-      const response = await request(app)
-        .delete('/api/organizations/org_nonexistent')
-        .send({ confirmation: 'Some Name' })
-        .expect(403);
+  // #6827: self-service deletion is contained. Every request reaching the route
+  // gets one stable temporary-unavailable response before provider, database,
+  // cache, notification or audit work. These cases keep the original fixtures so
+  // the former decision inputs (confirmation text, payment history, active
+  // subscription, non-owner role, unknown organization) are proven not to change
+  // the outcome and not to mutate stored rows.
+  describe('DELETE /api/organizations/:orgId (contained)', () => {
+    const unavailable = {
+      error: 'organization_deletion_unavailable',
+      message: 'Organization deletion is temporarily unavailable.',
+    };
 
-      expect(response.body.error).toBe('Access denied');
+    beforeEach(() => {
+      workosMocks.deleteOrganization.mockClear();
     });
 
-    it('should require confirmation to delete', async () => {
+    async function expectContained(orgId: string, body: unknown) {
       const response = await request(app)
-        .delete(`/api/organizations/${TEST_ORG_ID}`)
-        .send({})
-        .expect(400);
+        .delete(`/api/organizations/${orgId}`)
+        .send(body as object)
+        .expect(503);
 
-      expect(response.body.error).toBe('Confirmation required');
-      expect(response.body.requires_confirmation).toBe(true);
-      expect(response.body.organization_name).toBe('Self Delete Test Org');
+      expect(response.body).toEqual(unavailable);
+      expect(workosMocks.deleteOrganization).not.toHaveBeenCalled();
+      return response;
+    }
+
+    async function orgRow(orgId: string) {
+      const result = await pool.query(
+        'SELECT to_jsonb(o) AS row FROM organizations o WHERE workos_organization_id = $1',
+        [orgId]
+      );
+      return result.rows[0]?.row ?? null;
+    }
+
+    it('returns the same response for an organization the caller does not belong to', async () => {
+      // No membership lookup runs, so the response cannot be used to enumerate
+      // organization IDs and cannot be distinguished from the owner response.
+      await expectContained('org_nonexistent', { confirmation: 'Some Name' });
     });
 
-    it('should reject wrong confirmation name', async () => {
-      const response = await request(app)
-        .delete(`/api/organizations/${TEST_ORG_ID}`)
-        .send({ confirmation: 'Wrong Name' })
-        .expect(400);
+    it('returns the contained response without confirmation and leaves the row intact', async () => {
+      const before = await orgRow(TEST_ORG_ID);
+      const response = await expectContained(TEST_ORG_ID, {});
 
-      expect(response.body.error).toBe('Confirmation required');
+      // No organization name, confirmation prompt or other org data is disclosed.
+      expect(response.body).not.toHaveProperty('organization_name');
+      expect(response.body).not.toHaveProperty('requires_confirmation');
+      expect(await orgRow(TEST_ORG_ID)).toEqual(before);
     });
 
-    it('should prevent deletion of organization with payment history', async () => {
-      // Create org with payment history
+    it('returns the contained response for a wrong confirmation name', async () => {
+      const before = await orgRow(TEST_ORG_ID);
+      await expectContained(TEST_ORG_ID, { confirmation: 'Wrong Name' });
+      expect(await orgRow(TEST_ORG_ID)).toEqual(before);
+    });
+
+    it('returns the contained response for an organization with payment history', async () => {
       const PAID_ORG_ID = 'org_self_delete_paid';
       await pool.query(
         `INSERT INTO organizations (workos_organization_id, name, stripe_customer_id, created_at, updated_at)
@@ -182,15 +206,14 @@ describe('Self-Service Delete Workspace', () => {
          ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, stripe_customer_id = $3`,
         [PAID_ORG_ID, 'Paid Org', 'cus_paid']
       );
-
-      // Add a revenue event
       await pool.query(
         `INSERT INTO revenue_events (workos_organization_id, revenue_type, amount_paid, currency, paid_at)
          VALUES ($1, $2, $3, $4, NOW())`,
         [PAID_ORG_ID, 'subscription_initial', 2999, 'usd']
       );
 
-      // Override the WorkOS membership mock so this test's user owns PAID_ORG_ID.
+      // Owning PAID_ORG_ID no longer changes anything, but keep the fixture
+      // faithful to the authority the contained route used to accept.
       workosMocks.listOrganizationMemberships.mockImplementation(({ organizationId }: { organizationId: string }) => {
         if (organizationId === PAID_ORG_ID) {
           return Promise.resolve({
@@ -206,41 +229,27 @@ describe('Self-Service Delete Workspace', () => {
         return Promise.resolve({ data: [] });
       });
 
-      const response = await request(app)
-        .delete(`/api/organizations/${PAID_ORG_ID}`)
-        .send({ confirmation: 'Paid Org' })
-        .expect(400);
+      const before = await orgRow(PAID_ORG_ID);
+      const response = await expectContained(PAID_ORG_ID, { confirmation: 'Paid Org' });
 
-      expect(response.body.error).toBe('Cannot delete paid workspace');
-      expect(response.body.has_payments).toBe(true);
+      // The payment-history verdict is no longer disclosed either.
+      expect(response.body).not.toHaveProperty('has_payments');
+      expect(await orgRow(PAID_ORG_ID)).toEqual(before);
 
-      // Verify org still exists
-      const checkResult = await pool.query(
-        'SELECT 1 FROM organizations WHERE workos_organization_id = $1',
+      const revenue = await pool.query(
+        'SELECT COUNT(*)::int AS count FROM revenue_events WHERE workos_organization_id = $1',
         [PAID_ORG_ID]
       );
-      expect(checkResult.rows.length).toBe(1);
+      expect(revenue.rows[0].count).toBe(1);
     });
 
-    it('should successfully delete unpaid organization with correct confirmation', async () => {
-      const response = await request(app)
-        .delete(`/api/organizations/${TEST_ORG_ID}`)
-        .send({ confirmation: 'Self Delete Test Org' })
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.deleted_org_id).toBe(TEST_ORG_ID);
-
-      // Verify org is deleted
-      const checkResult = await pool.query(
-        'SELECT 1 FROM organizations WHERE workos_organization_id = $1',
-        [TEST_ORG_ID]
-      );
-      expect(checkResult.rows.length).toBe(0);
+    it('does not delete an unpaid organization even with the exact confirmation', async () => {
+      const before = await orgRow(TEST_ORG_ID);
+      await expectContained(TEST_ORG_ID, { confirmation: 'Self Delete Test Org' });
+      expect(await orgRow(TEST_ORG_ID)).toEqual(before);
     });
 
-    it('should cascade delete related member profiles', async () => {
-      // Create a member profile for the test org
+    it('does not cascade into related member profiles', async () => {
       await pool.query(
         `INSERT INTO member_profiles (workos_organization_id, display_name, slug, created_at, updated_at)
          VALUES ($1, $2, $3, NOW(), NOW())
@@ -248,29 +257,16 @@ describe('Self-Service Delete Workspace', () => {
         [TEST_ORG_ID, 'Test Profile', 'test-profile-self-delete']
       );
 
-      // Verify profile exists
-      const beforeResult = await pool.query(
-        'SELECT 1 FROM member_profiles WHERE workos_organization_id = $1',
-        [TEST_ORG_ID]
-      );
-      expect(beforeResult.rows.length).toBe(1);
+      await expectContained(TEST_ORG_ID, { confirmation: 'Self Delete Test Org' });
 
-      // Delete the organization
-      await request(app)
-        .delete(`/api/organizations/${TEST_ORG_ID}`)
-        .send({ confirmation: 'Self Delete Test Org' })
-        .expect(200);
-
-      // Verify profile is cascade deleted
       const afterResult = await pool.query(
         'SELECT 1 FROM member_profiles WHERE workos_organization_id = $1',
         [TEST_ORG_ID]
       );
-      expect(afterResult.rows.length).toBe(0);
+      expect(afterResult.rows.length).toBe(1);
     });
 
-    it('should reject non-owner attempting to delete', async () => {
-      // Create org where user is only a member
+    it('returns the contained response for a non-owner member', async () => {
       const MEMBER_ORG_ID = 'org_member_only';
       await pool.query(
         `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
@@ -279,19 +275,15 @@ describe('Self-Service Delete Workspace', () => {
         [MEMBER_ORG_ID, 'Member Only Org']
       );
 
-      const response = await request(app)
-        .delete(`/api/organizations/${MEMBER_ORG_ID}`)
-        .send({ confirmation: 'Member Only Org' })
-        .expect(403);
+      const before = await orgRow(MEMBER_ORG_ID);
+      const response = await expectContained(MEMBER_ORG_ID, { confirmation: 'Member Only Org' });
 
-      expect(response.body.error).toBe('Insufficient permissions');
+      // A member and an owner are indistinguishable here; neither is permitted.
+      expect(response.body.error).not.toBe('Insufficient permissions');
+      expect(await orgRow(MEMBER_ORG_ID)).toEqual(before);
     });
 
-    // OrganizationDatabase.getSubscriptionInfo reads subscription_status from the DB row;
-    // mocking the stripe-client import has no effect. Seed the column directly.
-    // No stripe_customer_id needed: without it, getSubscriptionInfo returns localInfo
-    // (built from subscription_status) without ever consulting Stripe.
-    it('should prevent deletion of organization with active subscription', async () => {
+    it('returns the contained response for an organization with an active subscription', async () => {
       const SUB_ORG_ID = 'org_self_delete_sub';
       await pool.query(
         `INSERT INTO organizations (workos_organization_id, name, subscription_status, created_at, updated_at)
@@ -315,21 +307,11 @@ describe('Self-Service Delete Workspace', () => {
         return Promise.resolve({ data: [] });
       });
 
-      const response = await request(app)
-        .delete(`/api/organizations/${SUB_ORG_ID}`)
-        .send({ confirmation: 'Subscribed Org' })
-        .expect(400);
+      const before = await orgRow(SUB_ORG_ID);
+      const response = await expectContained(SUB_ORG_ID, { confirmation: 'Subscribed Org' });
 
-      expect(response.body.error).toBe('Cannot delete workspace with active subscription');
-      expect(response.body.has_active_subscription).toBe(true);
-      expect(response.body.subscription_status).toBe('active');
-
-      // Verify org still exists
-      const checkResult = await pool.query(
-        'SELECT 1 FROM organizations WHERE workos_organization_id = $1',
-        [SUB_ORG_ID]
-      );
-      expect(checkResult.rows.length).toBe(1);
+      expect(response.body).not.toHaveProperty('subscription_status');
+      expect(await orgRow(SUB_ORG_ID)).toEqual(before);
     });
   });
 });

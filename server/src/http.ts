@@ -1,8 +1,12 @@
+import { respondToAdminAuthorizationError } from './auth/admin-authorization-response.js';
 import express from "express";
 import cookieParser from "cookie-parser";
 import DOMPurify from "isomorphic-dompurify";
 import { Marked } from "marked";
 import { csrfProtection } from "./middleware/csrf.js";
+import { restoreClientIp } from "./middleware/client-ip.js";
+import { createHostedWebhookReceiverRouter } from "./routes/hosted-webhook-receiver.js";
+import { chatRequestCorrelation } from "./middleware/chat-request-correlation.js";
 import { slowResponseTracker } from "./middleware/slow-response.js";
 import { requestMetrics } from "./middleware/request-metrics.js";
 import escapeHtml from "escape-html";
@@ -27,7 +31,9 @@ import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { renderLegalMarkdown } from "./legal-markdown.js";
-import { closeDatabase, getPool, healthCheck } from "./db/client.js";
+import { closeDatabase, getPool, healthCheck, type HealthCheckDiagnostics } from "./db/client.js";
+import { ComplianceDatabase } from "./db/compliance-db.js";
+import { ComplianceRefreshRequestsDatabase } from "./db/compliance-refresh-requests-db.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
 import { sdkSafeFetch, withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { jsonBodyLimitForPath } from './utils/json-body-limit.js';
@@ -48,27 +54,36 @@ import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
 import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
-import { BrandDatabase, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
+import { BrandDatabase, HostedBrandConflictError, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
+import { isDomainControlVerified, publicBrandJsonManifest } from "./services/brand-trust-fields.js";
+import { getStandaloneSite, resolveStandaloneRequest, type StandaloneSite } from "./standalone-sites.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
 import { brandJsonCacheControl } from "./services/brand-resolution-cache-policy.js";
+import { createStaticAssetVersioner } from "./utils/static-asset-versions.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
+import { cancelJoinRequestForExactCredential, toPublicMembershipMutationError } from "./services/organization-membership-mutation.js";
+import { getOrganizationAuthorizationUserId } from "./auth/organization-principal.js";
 import { SlackDatabase } from "./db/slack-db.js";
-import { autoLinkByVerifiedDomain } from "./db/membership-db.js";
 import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
+import { assertIdentityConsolidationAllowed } from "./db/identity-mutation-policy.js";
+import {
+  upsertWorkosUserInCredentialEvent,
+  withCredentialCreationEventMutation,
+} from "./db/identity-db.js";
 import { hasActiveSlackLink } from "./utils/slack-linkage.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
 import { decodeHtmlEntities } from "./utils/html-entities.js";
-import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, resolvePageSession, type PageSession, type PageSessionUser, switchSessionOrganization, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter, agentCardValidationRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
 import { sendNewsletterConfirmation } from "./notifications/email.js";
@@ -105,7 +120,7 @@ import {
 import { invalidateMembershipCache, findClaimableProspectOrgForDomain } from "./db/org-filters.js";
 import * as relationshipDb from "./db/relationship-db.js";
 import * as personEvents from "./db/person-events-db.js";
-import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
+import { isAuthenticatedUserAAOAdmin } from "./addie/admin-status-lookup.js";
 import { resolveWebUserAAOAdminAccess } from "./addie/admin-status-lookup.js";
 import { isBreakGlassAdminEmail } from "./auth/admin-access.js";
 import { createSlackRouter } from "./routes/slack.js";
@@ -159,10 +174,14 @@ import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createNetworkHealthApiRouter } from "./routes/network-health.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
+import { createBrandImportRouter } from "./routes/brand-import.js";
+import { createJsonValidationRouter } from "./routes/json-validation.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
+import { initializeTrainingGcsReporting, getTrainingGcsReporting, drainTrainingGcsReporting, stopTrainingGcsReporting } from './training-agent/gcs-reporting.js';
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
+import { createHostedGraderHostRouter, HOSTED_GRADER_HOSTNAME } from "./training-agent/hosted-grader.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -171,14 +190,15 @@ import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { resolveEscalationsForPerspective } from "./db/escalation-db.js";
 import { serveHtmlWithMetaTags, injectMetaTagsIntoHtml, enrichUserWithMembership, enrichUserWithAdmin } from "./utils/html-config.js";
 import { complete, isLLMConfigured } from "./utils/llm.js";
-import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
+import { notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { BansDatabase } from "./db/bans-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notifyRegistryBan } from "./notifications/registry.js";
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
 import { AgentContextDatabase } from "./db/agent-context-db.js";
 import { getWebMemberContext } from "./addie/member-context.js";
-import { buildAgentOAuthAuthorizeUrl } from "./routes/helpers/agent-oauth-prompt.js";
+import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from "./routes/helpers/agent-oauth-prompt.js";
+import { isOAuthOwnerReauthorizationError } from "./routes/helpers/oauth-error-detection.js";
 import {
   buildNativeErrorRedirect,
   consumeNativePendingAuth,
@@ -607,7 +627,7 @@ const ARTICLE_MARKDOWN_SANITIZE_CONFIG = {
   ],
   ALLOWED_ATTR: ['href', 'src', 'alt', 'title'],
   ALLOW_DATA_ATTR: false,
-  ALLOWED_URI_REGEXP: /^(?:https:|\/(?!\/)|#)/i,
+  ALLOWED_URI_REGEXP: /^(?:https?:|\/(?!\/)|#)/i,
 };
 
 function renderArticleMarkdown(markdown: string | null, cacheKey: string): string {
@@ -777,14 +797,6 @@ Llms-txt: ${baseUrl}/llms.txt
 `;
 }
 
-function isPendingWorkOSMembershipError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const candidate = error as { code?: unknown; message?: unknown };
-  return candidate.code === 'cannot_reactivate_pending_organization_membership' ||
-    (typeof candidate.message === 'string' &&
-      candidate.message.includes('Pending organization memberships cannot be reactivated'));
-}
-
 /**
  * Consecutive failed DB health probes on this machine. A single transient
  * connect timeout — common during a rolling deploy or a Managed Postgres
@@ -799,6 +811,7 @@ function isPendingWorkOSMembershipError(error: unknown): boolean {
 let consecutiveDbHealthFailures = 0;
 let dbHealthAlerted = false;
 const HEALTH_DB_ALERT_THRESHOLD = 3;
+const HEALTH_DB_SLOW_LOG_MS = 1000;
 
 /**
  * Validate slug format and check against reserved keywords
@@ -1148,75 +1161,35 @@ function getCsrfScriptVersion(): string {
 }
 
 /**
- * Get user info from request for HTML config injection.
- * Checks dev mode first, then WorkOS session.
- * If session is refreshed, updates the cookie in the response.
+ * Resolve the page session for HTML config injection.
+ * Checks dev mode first, then WorkOS session. Refreshed sessions update the
+ * cookie; a cookie WorkOS definitively rejects is cleared.
  */
-async function getUserFromRequest(
-  req: express.Request,
-  res?: express.Response
-): Promise<{ id?: string; email: string; firstName?: string | null; lastName?: string | null } | null> {
+async function getPageSession(req: express.Request, res: express.Response): Promise<PageSession> {
   // Check dev mode first
   if (isDevModeEnabled()) {
     const devUser = getDevUser(req);
     if (devUser) {
-      return devUser;
+      return { user: devUser, cleared: false };
     }
   }
 
-  // Then check WorkOS session
-  const sessionCookie = req.cookies?.['wos-session'];
-  // codeql[js/user-controlled-bypass] - session cookie is verified cryptographically by WorkOS sealed session
-  if (sessionCookie && AUTH_ENABLED && workos) {
-    try {
-      const session = workos.userManagement.loadSealedSession({
-        sessionData: sessionCookie,
-        cookiePassword: WORKOS_COOKIE_PASSWORD,
-      });
+  if (!AUTH_ENABLED) return { user: null, cleared: false };
+  return resolvePageSession(req, res);
+}
 
-      // Try to authenticate with the current session
-      let authResult = await session.authenticate();
+/** Get user info from request for HTML config injection. */
+async function getUserFromRequest(
+  req: express.Request,
+  res: express.Response
+): Promise<PageSessionUser | null> {
+  return (await getPageSession(req, res)).user;
+}
 
-      // If authentication failed (e.g., expired token), try to refresh
-      if (!authResult.authenticated || !authResult.user) {
-        try {
-          const refreshResult = await session.refresh({
-            cookiePassword: WORKOS_COOKIE_PASSWORD,
-          });
-
-          if (refreshResult.authenticated && refreshResult.sealedSession) {
-            // Update the cookie with the refreshed session
-            if (res) {
-              res.cookie('wos-session', refreshResult.sealedSession, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
-                path: '/',
-                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-              });
-            }
-
-            // Re-authenticate with the new session
-            const newSession = workos.userManagement.loadSealedSession({
-              sessionData: refreshResult.sealedSession,
-              cookiePassword: WORKOS_COOKIE_PASSWORD,
-            });
-            authResult = await newSession.authenticate();
-          }
-        } catch {
-          // Refresh failed - continue without user
-        }
-      }
-
-      if (authResult.authenticated && authResult.user) {
-        return authResult.user;
-      }
-    } catch {
-      // Session invalid or expired - continue without user
-    }
-  }
-
-  return null;
+/** Marks pages served on a standalone standard site so nav.js renders neutral chrome. */
+function standaloneSiteScript(res: express.Response): string {
+  const site = res.locals.standaloneSite as StandaloneSite | undefined;
+  return site ? `\n<script>window.__ADCP_SITE__=${JSON.stringify(site)};</script>` : '';
 }
 
 function stripLegacyBrandContext(manifest: Record<string, unknown>): Record<string, unknown> {
@@ -1226,6 +1199,12 @@ function stripLegacyBrandContext(manifest: Record<string, unknown>): Record<stri
 
 export class HTTPServer {
   private app: express.Application;
+  /** Adds ?v=<content hash> to shared JS/CSS references so deploys bypass day-long caches. */
+  private versionStaticAssets = createStaticAssetVersioner(
+    process.env.NODE_ENV === 'production'
+      ? path.join(__dirname, "../server/public")
+      : path.join(__dirname, "../public"),
+  );
   private server: Server | null = null;
   private isWorker: boolean = false;
   private complianceRefreshQueue: ComplianceRefreshQueue | null = null;
@@ -1318,6 +1297,22 @@ export class HTTPServer {
     // Trust the first proxy (Fly.io) for accurate client IP detection
     // Required for express-rate-limit and other middleware that use req.ip
     this.app.set('trust proxy', 1);
+    this.app.use(restoreClientIp);
+
+    // The hosted-grader buyer brand host serves only its brand.json and a
+    // governance-only JWKS (adcp#7758). Mounted first so no app-wide route,
+    // in particular Addie's request-signing JWKS, is served on that origin.
+    const hostedGraderHostRouter = createHostedGraderHostRouter();
+    this.app.use((req, res, next) => {
+      // Fail closed: match the raw Host header as well as req.hostname, which
+      // `trust proxy` derives from X-Forwarded-Host, so a forwarded-host
+      // header cannot get app-wide routes (or Addie's JWKS) served here.
+      const rawHost = (req.headers.host ?? '').toLowerCase().replace(/:\d+$/, '');
+      if (rawHost === HOSTED_GRADER_HOSTNAME || req.hostname === HOSTED_GRADER_HOSTNAME) {
+        return hostedGraderHostRouter(req, res, next);
+      }
+      next();
+    });
 
     // Serve JSON schemas (aliases + static files + discovery) before body-parsing,
     // cookie, and CSRF middleware so these high-traffic reads stay cheap.
@@ -1328,11 +1323,45 @@ export class HTTPServer {
     mountComplianceRoutes(this.app, path.join(distPath, 'compliance'));
     mountProtocolRoutes(this.app, path.join(distPath, 'protocol'));
 
+    // Standalone standard sites (brandjson.org, trustjson.org) expose only
+    // their own pages, schemas, and public read APIs. See standalone-sites.ts.
+    this.app.use(async (req, res, next) => {
+      const site = getStandaloneSite(req.hostname);
+      if (!site) return next();
+      res.locals.standaloneSite = site;
+      const decision = resolveStandaloneRequest(site, req.hostname, req.method, req.path, req.originalUrl);
+      switch (decision.kind) {
+        case 'pass':
+          return next();
+        case 'rewrite':
+          req.url = decision.url;
+          return next();
+        case 'page':
+          return this.serveHtmlWithConfig(req, res, decision.file);
+        case 'redirect':
+          return res.redirect(decision.status, decision.location);
+        case 'text':
+          res.setHeader('Content-Type', decision.contentType);
+          res.setHeader('Cache-Control', 'public, max-age=300');
+          return res.send(decision.body);
+        case 'not_found':
+          return res.status(404).type('text/plain').send('Not found');
+      }
+    });
+
+    // Run-scoped callback URLs carry a bearer token in the path. Handle them
+    // before generic request telemetry (which records raw paths), JSON parsing,
+    // cookies, and CSRF. The relay emits no token-bearing request logs.
+    this.app.use('/api/compliance-receiver', createHostedWebhookReceiverRouter());
+
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);
 
     // Capture request duration metrics for all API calls
     this.app.use(requestMetrics);
+
+    // Include parser, CSRF and authentication rejections in chat support traces.
+    this.app.use('/api/addie/chat', chatRequestCorrelation);
 
     // Use JSON parser for all routes EXCEPT those that need raw body for signature verification
     // Limit increased to 10MB to support base64-encoded logo uploads in member profiles
@@ -1536,14 +1565,17 @@ export class HTTPServer {
         if (this.bridgeIfNeeded(req, res)) return;
 
         html = await this.injectHomepageMemberCount(html);
+        html = this.versionStaticAssets(html);
 
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
-        const user = await getUserFromRequest(req, res);
+        const session = await getPageSession(req, res);
+        if (this.rebridgeIfSessionCleared(req, res, session)) return;
+        const user = session.user;
         await enrichUserWithMembership(user);
         await enrichUserWithAdmin(user);
 
         // Inject config
-        const configScript = getAppConfigScript(user);
+        const configScript = getAppConfigScript(user) + standaloneSiteScript(res);
 
         // Inject before </head>
         if (html.includes('</head>')) {
@@ -1690,11 +1722,26 @@ export class HTTPServer {
     if (!req.headers.cookie && !isTopLevelDocumentNavigation) return false;
 
     if (this.isAdcpDomain(req) && !req.cookies?.['wos-session'] && !req.cookies?.['bridge-checked']) {
-      const currentUrl = `https://${req.hostname}${req.originalUrl}`;
-      res.redirect(`https://agenticadvertising.org/auth/bridge?return_to=${encodeURIComponent(currentUrl)}`);
+      this.redirectThroughBridge(req, res);
       return true;
     }
     return false;
+  }
+
+  // The AdCP cookie is a copy of the AAO session, and either copy can rotate
+  // the shared refresh token. When WorkOS rejects the AdCP copy, bridge once
+  // more to pick up the current AAO session. The return marker stops a loop
+  // when the AAO session is dead too.
+  private rebridgeIfSessionCleared(req: express.Request, res: express.Response, session: PageSession): boolean {
+    if (!session.cleared || !this.isAdcpDomain(req)) return false;
+    if (req.query?.[HTTPServer.BRIDGE_CHECK_PARAM] === '1') return false;
+    this.redirectThroughBridge(req, res);
+    return true;
+  }
+
+  private redirectThroughBridge(req: express.Request, res: express.Response): void {
+    const currentUrl = `https://${req.hostname}${req.originalUrl}`;
+    res.redirect(`https://agenticadvertising.org/auth/bridge?return_to=${encodeURIComponent(currentUrl)}`);
   }
 
   private async injectHomepageMemberCount(html: string, memberDb = new MemberDatabase()): Promise<string> {
@@ -1727,14 +1774,17 @@ export class HTTPServer {
       if (this.bridgeIfNeeded(req, res)) return;
 
       // Get user from session (if authenticated), passing res to update cookie if session is refreshed
-      const user = await getUserFromRequest(req, res);
+      const session = await getPageSession(req, res);
+      if (this.rebridgeIfSessionCleared(req, res, session)) return;
+      const user = session.user;
       await enrichUserWithMembership(user);
       await enrichUserWithAdmin(user);
 
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
       html = await this.injectHomepageMemberCount(html);
-      const configScript = getAppConfigScript(user);
+      html = this.versionStaticAssets(html);
+      const configScript = getAppConfigScript(user) + standaloneSiteScript(res);
 
       // Inject before </head>
       if (html.includes('</head>')) {
@@ -1933,7 +1983,8 @@ export class HTTPServer {
         }
 
         const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
-        const publicManifest = stripLegacyBrandContext(manifest);
+        // Trust fields are published only for domain-attested rows.
+        const publicManifest = publicBrandJsonManifest(brand, stripLegacyBrandContext(manifest));
         const brandJson: Record<string, unknown> =
           typeof publicManifest.$schema === 'string' && publicManifest.$schema.startsWith('https://')
             ? { ...publicManifest }
@@ -2069,6 +2120,10 @@ export class HTTPServer {
 
       return serveApprovedLogoAsset(domain, id, res);
     });
+
+    // Brand-book import for the brand.json builder (stateless, anonymous-capable)
+    this.app.use('/api', createBrandImportRouter());
+    this.app.use('/api', createJsonValidationRouter());
 
     // Mount brand logo routes (upload, list, review)
     this.app.use('/api', createBrandLogoRouter({ brandDb: this.brandDb, bansDb: this.bansDb }));
@@ -2737,6 +2792,7 @@ export class HTTPServer {
           ? path.join(__dirname, '../server/public/dashboard.html')
           : path.join(__dirname, '../public/dashboard.html');
         let html = await fs.readFile(dashboardPath, 'utf-8');
+        html = this.versionStaticAssets(html);
 
         // Replace template variables with environment values
         html = html
@@ -2777,6 +2833,7 @@ export class HTTPServer {
           ? path.join(__dirname, `../server/public/${filename}`)
           : path.join(__dirname, `../public/${filename}`);
         let html = await fs.readFile(pagePath, 'utf-8');
+        html = this.versionStaticAssets(html);
 
         // Replace template variables (for billing page with Stripe)
         html = html
@@ -3085,11 +3142,14 @@ export class HTTPServer {
       try {
         // Use a dedicated connection (not from the pool) so health checks
         // succeed even when the pool is fully occupied under load.
-        await healthCheck(5000);
+        const health = await healthCheck(5000);
         checks.database = true;
+        if (health?.total_ms >= HEALTH_DB_SLOW_LOG_MS) {
+          logger.warn({ health }, 'Database health check slow');
+        }
         if (dbHealthAlerted) {
           logger.info(
-            { priorFailures: consecutiveDbHealthFailures },
+            { priorFailures: consecutiveDbHealthFailures, health },
             'Database health check recovered',
           );
         }
@@ -3098,6 +3158,9 @@ export class HTTPServer {
       } catch (dbErr) {
         checks.database = false;
         const errMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+        const health = dbErr instanceof Error
+          ? (dbErr as Error & { healthCheckDiagnostics?: HealthCheckDiagnostics }).healthCheckDiagnostics
+          : undefined;
         consecutiveDbHealthFailures++;
         dbError = errMsg;
 
@@ -3110,7 +3173,7 @@ export class HTTPServer {
         if (consecutiveDbHealthFailures === HEALTH_DB_ALERT_THRESHOLD) {
           dbHealthAlerted = true;
           logger.warn(
-            { err: dbErr, consecutiveFailures: consecutiveDbHealthFailures },
+            { err: dbErr, health, consecutiveFailures: consecutiveDbHealthFailures },
             'Database health check alert threshold reached',
           );
           notifySystemError({
@@ -3119,7 +3182,7 @@ export class HTTPServer {
           });
         } else {
           logger.warn(
-            { err: dbErr, consecutiveFailures: consecutiveDbHealthFailures },
+            { err: dbErr, health, consecutiveFailures: consecutiveDbHealthFailures },
             consecutiveDbHealthFailures < HEALTH_DB_ALERT_THRESHOLD
               ? 'Database health check failed (transient, not yet alerting)'
               : 'Database health check remains unavailable',
@@ -3130,13 +3193,20 @@ export class HTTPServer {
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
       checks.chat = isWebChatReady();
+      if (req.path === '/ready') {
+        try {
+          const reporting = getTrainingGcsReporting();
+          if (reporting) checks.reporting = await reporting.probe();
+        } catch { checks.reporting = false; }
+      }
 
       // A listening socket and a reachable database do not mean a new web
       // instance can answer chat. Hold deployment traffic until deferred
       // indexing and tool registration finish. /health remains a DB/liveness
       // probe for workers and operational diagnostics.
       const chatRequired = !!(process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY);
-      const ready = checks.database && (req.path !== '/ready' || !chatRequired || checks.chat);
+      const ready = checks.database && (req.path !== '/ready'
+        || (checks.reporting !== false && (!chatRequired || checks.chat)));
       const status = ready ? "ok" : "unavailable";
       const body: Record<string, unknown> = {
         status,
@@ -3150,8 +3220,24 @@ export class HTTPServer {
     });
 
     // Build job status response for the local machine
-    const getJobStatusPayload = () => {
+    const operationalComplianceDb = new ComplianceDatabase();
+    const operationalRefreshDb = new ComplianceRefreshRequestsDatabase();
+    const getJobStatusPayload = async () => {
       const mem = process.memoryUsage();
+      let complianceOperations: Record<string, unknown>;
+      try {
+        const [refreshRequests, recentRuns] = await Promise.all([
+          operationalRefreshDb.getOperationalSnapshot(),
+          operationalComplianceDb.getRecentOperationalRuns(),
+        ]);
+        complianceOperations = { refreshRequests, recentRuns };
+      } catch (error) {
+        logger.warn({ err: error }, 'Compliance operational snapshot unavailable');
+        complianceOperations = {
+          unavailable: true,
+          error: error instanceof Error ? error.message.substring(0, 200) : String(error).substring(0, 200),
+        };
+      }
       return {
         processRole,
         uptime: Math.round(process.uptime()),
@@ -3160,28 +3246,30 @@ export class HTTPServer {
           heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)}MB`,
           heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)}MB`,
         },
+        scheduler: jobScheduler.getPoolStatus(),
         jobs: jobScheduler.getStatus().map(j => ({
           ...j,
           lastError: j.lastError ? j.lastError.substring(0, 200) : null,
         })),
+        complianceOperations,
       };
     };
 
     // Internal endpoint — no auth, only served on worker machines.
     // The worker's port is not publicly routable (no http_service).
     // Web machines proxy to this over Fly's private WireGuard network.
-    this.app.get("/internal/jobs", (_req, res) => {
+    this.app.get("/internal/jobs", async (_req, res) => {
       if (processRole === 'web') {
         return res.status(404).json({ error: 'Not found' });
       }
-      res.json(getJobStatusPayload());
+      res.json(await getJobStatusPayload());
     });
 
     // Public admin endpoint — requires auth. On web machines, proxies to the
     // worker over Fly's internal DNS so admins always see worker data.
     this.app.get("/api/admin/jobs", requireAuth, requireAdmin, async (_req, res) => {
       if (processRole !== 'web') {
-        return res.json(getJobStatusPayload());
+        return res.json(await getJobStatusPayload());
       }
 
       // Web machine: proxy to worker over Fly internal network
@@ -3201,7 +3289,7 @@ export class HTTPServer {
         }
         return res.json(JSON.parse(text));
       } catch {
-        return res.json({ ...getJobStatusPayload(), jobs: [], workerUnreachable: true });
+        return res.json({ ...await getJobStatusPayload(), jobs: [], workerUnreachable: true });
       }
     });
 
@@ -3274,6 +3362,10 @@ export class HTTPServer {
     // adagents.json builder tool
     this.app.get("/adagents/builder", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'adagents-builder.html');
+    });
+
+    this.app.get("/adagents/validator", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'json-validator-app.html');
     });
 
     // Member Profile UI route - serve member-profile.html at /member-profile
@@ -3426,6 +3518,7 @@ export class HTTPServer {
         ? path.join(__dirname, '../server/public/perspectives/article.html')
         : path.join(__dirname, '../public/perspectives/article.html');
       let html = await fs.readFile(articlePath, 'utf-8');
+      html = this.versionStaticAssets(html);
       html = injectMetaTagsIntoHtml(html, {
         title: article.title,
         description: article.excerpt || article.subtitle || article.title,
@@ -3732,6 +3825,9 @@ export class HTTPServer {
 
         return res.json(brand);
       } catch (error: any) {
+        if (error instanceof HostedBrandConflictError) {
+          return res.status(409).json({ error: 'This brand is already registered. Use PUT /api/brands/hosted/:domain if you manage it.' });
+        }
         logger.error({ error }, 'Failed to create hosted brand');
         return res.status(500).json({ error: 'Failed to create brand' });
       }
@@ -3759,7 +3855,7 @@ export class HTTPServer {
 
         // Check ownership - user must be creator or admin
         const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to update this brand' });
         }
@@ -3774,6 +3870,7 @@ export class HTTPServer {
         const updated = await this.brandDb.updateHostedBrand(brand.id, { brand_json });
         return res.json(updated);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to update hosted brand');
         return res.status(500).json({ error: 'Failed to update brand' });
       }
@@ -3809,7 +3906,7 @@ export class HTTPServer {
 
         // Check ownership - user must be creator or admin
         const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this brand' });
         }
@@ -3817,6 +3914,7 @@ export class HTTPServer {
         await this.brandDb.deleteHostedBrand(brand.id);
         return res.json({ success: true });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to delete hosted brand');
         return res.status(500).json({ error: 'Failed to delete brand' });
       }
@@ -3846,6 +3944,11 @@ export class HTTPServer {
         const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_brand', req.user!.id, domain);
         if (banCheck.banned) {
           return res.status(403).json({ error: 'You are banned from editing this brand', reason: banCheck.ban?.reason });
+        }
+
+        const currentBrand = await this.brandDb.getDiscoveredBrandByDomain(domain);
+        if (currentBrand && isDomainControlVerified(currentBrand)) {
+          return res.status(409).json({ error: 'This brand is managed by its verified owner' });
         }
 
         const { brand, revision_number } = await this.brandDb.editDiscoveredBrand(domain, {
@@ -3934,7 +4037,7 @@ export class HTTPServer {
     // access for moderation and support.
     this.app.post('/api/brands/discovered/:domain/rollback', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         await enrichUserWithMembership(req.user as any);
         if (!isAdmin && !(req.user as any)?.isMember) {
           return res.status(403).json({ error: 'Membership required to roll back brands' });
@@ -3987,6 +4090,7 @@ export class HTTPServer {
 
         return res.json({ brand, revision_number });
       } catch (error: any) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Brand not found during rollback');
           return res.status(404).json({ error: 'Resource not found' });
@@ -4041,7 +4145,7 @@ export class HTTPServer {
     // GET /api/registry/requests - List unresolved registry requests (admin only)
     this.app.get('/api/registry/requests', requireAuth, async (req, res) => {
       try {
-        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        const isAdmin = await isAuthenticatedUserAAOAdmin(req.user!);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4057,6 +4161,7 @@ export class HTTPServer {
         const requests = await this.registryRequestsDb.listUnresolved(entityType, { limit, offset });
         return res.json({ requests, limit, offset });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to list registry requests');
         return res.status(500).json({ error: 'Failed to list registry requests' });
       }
@@ -4065,7 +4170,7 @@ export class HTTPServer {
     // GET /api/registry/requests/stats - Registry request statistics (admin only)
     this.app.get('/api/registry/requests/stats', requireAuth, async (req, res) => {
       try {
-        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        const isAdmin = await isAuthenticatedUserAAOAdmin(req.user!);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4078,6 +4183,7 @@ export class HTTPServer {
         const stats = await this.registryRequestsDb.getStats(entityType);
         return res.json(stats);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to get registry request stats');
         return res.status(500).json({ error: 'Failed to get registry request stats' });
       }
@@ -4174,7 +4280,7 @@ export class HTTPServer {
 
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Access-Control-Allow-Origin', '*');
-        return res.json(brand.brand_json);
+        return res.json(publicBrandJsonManifest(brand, brand.brand_json));
       } catch (error) {
         logger.error({ error }, 'Failed to serve hosted brand.json');
         return res.status(500).json({ error: 'Failed to serve brand' });
@@ -4283,7 +4389,7 @@ export class HTTPServer {
 
         // Check ownership
         const isCreator = property.created_by_user_id && property.created_by_user_id === req.user?.id;
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this property' });
         }
@@ -4291,6 +4397,7 @@ export class HTTPServer {
         await this.propertyDb.deleteHostedProperty(property.id);
         return res.json({ success: true });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to delete hosted property');
         return res.status(500).json({ error: 'Failed to delete property' });
       }
@@ -4412,7 +4519,7 @@ export class HTTPServer {
     // POST /api/properties/hosted/:domain/rollback - Rollback property (admin only)
     this.app.post('/api/properties/hosted/:domain/rollback', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4439,6 +4546,7 @@ export class HTTPServer {
 
         return res.json({ property, revision_number });
       } catch (error: any) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Property not found during rollback');
           return res.status(404).json({ error: 'Resource not found' });
@@ -4492,7 +4600,7 @@ export class HTTPServer {
     // POST /api/registry/edit-bans - Create an edit ban
     this.app.post('/api/registry/edit-bans', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4528,6 +4636,7 @@ export class HTTPServer {
 
         return res.json(ban);
       } catch (error: any) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         if (error?.constraint) {
           return res.status(409).json({ error: 'Ban already exists for this user/scope' });
         }
@@ -4539,7 +4648,7 @@ export class HTTPServer {
     // GET /api/registry/edit-bans - List active edit bans
     this.app.get('/api/registry/edit-bans', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4555,6 +4664,7 @@ export class HTTPServer {
         });
         return res.json({ bans });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to list edit bans');
         return res.status(500).json({ error: 'Failed to list bans' });
       }
@@ -4563,7 +4673,7 @@ export class HTTPServer {
     // DELETE /api/registry/edit-bans/:id - Remove an edit ban
     this.app.delete('/api/registry/edit-bans/:id', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4574,6 +4684,7 @@ export class HTTPServer {
         }
         return res.json({ success: true });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to remove edit ban');
         return res.status(500).json({ error: 'Failed to remove ban' });
       }
@@ -4708,7 +4819,7 @@ export class HTTPServer {
         // Check if user can delete (admin or creator)
         const devUser = getDevUser(req);
         const isDevAdmin = devUser?.isAdmin === true;
-        const isDbAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isDbAdmin = !isDevAdmin && req.user && await isAuthenticatedUserAAOAdmin(req.user);
         const isAdmin = isDevAdmin || isDbAdmin;
         const isCreator = ref.contributed_by_email === req.user?.email;
 
@@ -4719,6 +4830,7 @@ export class HTTPServer {
         await manifestRefsDb.deleteReference(ref.id);
         return res.json({ success: true });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to delete manifest ref');
         return res.status(500).json({ error: 'Failed to delete reference' });
       }
@@ -6983,7 +7095,7 @@ export class HTTPServer {
         const { slug, filename } = req.params;
         const pool = getPool();
         const userId = req.user?.id ?? null;
-        const userIsAdmin = userId ? await isWebUserAAOAdmin(userId) : false;
+        const userIsAdmin = req.user ? await isAuthenticatedUserAAOAdmin(req.user) : false;
 
         const perspResult = await pool.query(
           `SELECT p.id,
@@ -7026,6 +7138,7 @@ export class HTTPServer {
         res.setHeader('Content-Length', asset.file_data.length);
         res.send(asset.file_data);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ err: error, slug: req.params.slug }, 'Serve perspective asset error');
         res.status(500).send('Failed to serve asset');
       }
@@ -7749,25 +7862,27 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         // On INSERT, use WorkOS values — falling back to existing DB / Slack
         // mapping when WorkOS itself has empty names. On UPDATE, preserve
         // user-set names: only fill in names that are currently empty.
-        try {
-          const pool = getPool();
-          const { firstName, lastName } = await resolveUserNameWithFallbacks(
-            pool, user.id, user.firstName, user.lastName,
-          );
-          await pool.query(
-            `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-             ON CONFLICT (workos_user_id) DO UPDATE SET
-               email = EXCLUDED.email,
-               first_name = COALESCE(NULLIF(TRIM(users.first_name), ''), EXCLUDED.first_name),
-               last_name = COALESCE(NULLIF(TRIM(users.last_name), ''), EXCLUDED.last_name),
-               email_verified = EXCLUDED.email_verified,
-               workos_updated_at = EXCLUDED.workos_updated_at,
-               updated_at = NOW()`,
-            [user.id, user.email, firstName, lastName, user.emailVerified, user.createdAt, user.updatedAt]
-          );
-        } catch (upsertError) {
-          logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
+        const pool = getPool();
+        const { firstName, lastName } = await resolveUserNameWithFallbacks(
+          pool, user.id, user.firstName, user.lastName,
+        );
+        const localFinalize = await withCredentialCreationEventMutation(user.id, async (client) => {
+          await upsertWorkosUserInCredentialEvent(client, {
+            id: user.id,
+            email: user.email,
+            firstName,
+            lastName,
+            emailVerified: user.emailVerified,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+          }, 'preserve_existing');
+        });
+        if (!localFinalize.applied) {
+          logger.warn({ userId: user.id }, 'Refused OAuth callback for terminal local credential');
+          return res.status(403).json({
+            error: 'Account unavailable',
+            message: 'This account cannot be authenticated. Contact support if this is unexpected.',
+          });
         }
 
         // Auto-merge duplicate accounts caused by Google email aliases.
@@ -7802,6 +7917,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                 const workosUsers = await workos.userManagement.listUsers({ email: aliasEmail });
                 const match = workosUsers.data.find(u => u.id !== user.id);
                 if (match) {
+                  duplicateAliasEmail = match.email;
+                  // Containment before even creating a local duplicate credential.
+                  assertIdentityConsolidationAllowed();
                   // Insert into local users table so mergeUsers can operate on it
                   await pool.query(
                     `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
@@ -7821,6 +7939,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
             if (existing) {
               duplicateAliasEmail = existing.email;
+              // Refuse before alias claims or WorkOS membership copies. Mailbox
+              // equivalence cannot authorize consolidation (#6827).
+              assertIdentityConsolidationAllowed();
 
               // Claim the alias atomically — UNIQUE(LOWER(email)) prevents
               // two users from claiming the same target concurrently.
@@ -8156,30 +8277,40 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
               if (existingMapping && !existingMapping.workos_user_id) {
                 // Link the Slack user to the newly authenticated WorkOS user
-                await slackDb.mapUser({
+                const mapped = await slackDb.mapUser({
                   slack_user_id: slackUserIdToLink,
                   workos_user_id: user.id,
                   mapping_source: 'user_claimed',
                 });
-                accountLinked = true;
-                accountNewlyLinked = true;
-                logger.info(
-                  { slackUserId: slackUserIdToLink, workosUserId: user.id },
-                  'Auto-linked Slack account after signup'
-                );
+                if (!mapped) {
+                  logger.warn(
+                    { slackUserId: slackUserIdToLink, workosUserId: user.id },
+                    'Skipped Slack account link because the local credential is no longer active',
+                  );
+                } else {
+                  accountLinked = true;
+                  accountNewlyLinked = true;
+                  logger.info(
+                    { slackUserId: slackUserIdToLink, workosUserId: user.id },
+                    'Auto-linked Slack account after signup'
+                  );
+                }
 
-                // Record account linking in the relationship system
-                try {
-                  const { resolvePersonId } = await import('./db/relationship-db.js');
-                  const { recordEvent } = await import('./db/person-events-db.js');
-                  const personId = await resolvePersonId({ slack_user_id: slackUserIdToLink, workos_user_id: user.id });
-                  await recordEvent(personId, 'account_linked', {
-                    channel: 'web',
-                    data: { workos_user_id: user.id },
-                  });
-                  logger.info({ slackUserId: slackUserIdToLink, personId }, 'Recorded account_linked event');
-                } catch (trackingError) {
-                  logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to record account_linked event');
+                // Record account linking only after the lifecycle-fenced map
+                // actually commits.
+                if (mapped) {
+                  try {
+                    const { resolvePersonId } = await import('./db/relationship-db.js');
+                    const { recordEvent } = await import('./db/person-events-db.js');
+                    const personId = await resolvePersonId({ slack_user_id: slackUserIdToLink, workos_user_id: user.id });
+                    await recordEvent(personId, 'account_linked', {
+                      channel: 'web',
+                      data: { workos_user_id: user.id },
+                    });
+                    logger.info({ slackUserId: slackUserIdToLink, personId }, 'Recorded account_linked event');
+                  } catch (trackingError) {
+                    logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to record account_linked event');
+                  }
                 }
 
               } else if (!existingMapping) {
@@ -8386,6 +8517,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       }
     });
 
+
+    // POST /auth/switch-organization - Rebind the WorkOS session to another org
+    // the user belongs to. Client org pickers only change local selection, and
+    // an explicit selector that differs from the session org is rejected.
+    this.app.post('/auth/switch-organization', requireAuth, switchSessionOrganization);
 
     // GET /auth/logout - Clear session and redirect
     this.app.get('/auth/logout', async (req, res) => {
@@ -8622,7 +8758,6 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             email: user.email,
             workos,
             orgDb,
-            autoLinkByVerifiedDomain,
           });
         } catch (error) {
           if (error instanceof CurrentUserOrganizationsUnavailableError) {
@@ -8635,7 +8770,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         // Match requireAdmin: working-group authority with an explicit,
         // environment-managed break-glass fallback.
-        const isAdmin = (await resolveWebUserAAOAdminAccess(user.id, user.email)).isAdmin;
+        const isAdmin = (await resolveWebUserAAOAdminAccess(user)).isAdmin;
         // Check Slack sync status, seat type, and read DB names (user may have
         // set a display name that differs from the WorkOS session values)
         let isLinkedToSlack = false;
@@ -8692,6 +8827,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         res.json(response);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ err: error }, 'Get current user error:');
         res.status(500).json({
           error: 'Failed to get user info',
@@ -8955,7 +9091,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         const { getWebHomeContent, renderHomeHTML, ADDIE_HOME_CSS } = await import('./addie/home/index.js');
 
         const selectedOrganizationId = typeof req.query.org === 'string' ? req.query.org : null;
-        const content = await getWebHomeContent(user.id, selectedOrganizationId);
+        const content = await getWebHomeContent(user, selectedOrganizationId);
 
         // Check if HTML rendering is requested
         const format = req.query.format as string | undefined;
@@ -8967,6 +9103,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           res.json(content);
         }
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ err: error }, 'GET /api/me/addie-home error');
         res.status(500).json({
           error: 'Failed to get Addie home content',
@@ -9020,45 +9157,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       }
     });
 
-    // POST /api/invitations/:invitationId/accept - Accept an invitation
+    // POST /api/invitations/:invitationId/accept - Contained until acceptance
+    // is bound to an exact credential and serialized with membership/audit.
     this.app.post('/api/invitations/:invitationId/accept', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { invitationId } = req.params;
-
-        // Get the invitation to verify it belongs to this user
-        const invitation = await workos!.userManagement.getInvitation(invitationId);
-
-        if (invitation.email.toLowerCase() !== user.email.toLowerCase()) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'This invitation is not for your email address',
-          });
-        }
-
-        if (invitation.state !== 'pending') {
-          return res.status(400).json({
-            error: 'Invalid invitation',
-            message: 'This invitation has already been accepted or has expired',
-          });
-        }
-
-        // Accept the invitation - this creates the membership
-        await workos!.userManagement.acceptInvitation(invitationId);
-
-        logger.info({ userId: user.id, invitationId, orgId: invitation.organizationId }, 'User accepted invitation');
-
-        res.json({
-          success: true,
-          message: 'Invitation accepted successfully',
-          organization_id: invitation.organizationId,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Accept invitation error:');
-        res.status(500).json({
-          error: 'Failed to accept invitation',
-        });
-      }
+      return res.status(403).json({
+        error: 'organization_invitation_acceptance_unavailable',
+        message: 'Self-service invitation acceptance is temporarily unavailable while membership is bound to your exact credential. Ask an organization owner to complete access, or contact support.',
+      });
     });
 
     // GET /api/me/joinable-organizations - Get organizations the user can request to join
@@ -9152,349 +9257,21 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       }
     });
 
-    // POST /api/join-requests - Request to join an organization
-    this.app.post('/api/join-requests', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { organization_id } = req.body;
-
-        if (!organization_id) {
-          return res.status(400).json({
-            error: 'Missing parameter',
-            message: 'organization_id is required',
-          });
-        }
-
-        const joinRequestDb = new JoinRequestDatabase();
-
-        // Check if user is already a member
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: organization_id,
-          statuses: ['active', 'inactive', 'pending'],
-        });
-
-        if (memberships.data.length > 0) {
-          if (memberships.data.some(m => m.status === 'pending')) {
-            return res.status(409).json({
-              error: 'Pending invitation exists',
-              message: 'You already have a pending invitation to this organization. Accept the invitation instead of requesting to join again.',
-            });
-          }
-          return res.status(400).json({
-            error: 'Already a member',
-            message: 'You are already a member of this organization',
-          });
-        }
-
-        // Check if user's email domain is verified for this org - auto-approve if so
-        const userDomain = user.email.split('@')[1]?.toLowerCase();
-        if (userDomain) {
-          const pool = getPool();
-          const verifiedDomainResult = await pool.query(
-            `SELECT domain FROM organization_domains
-             WHERE workos_organization_id = $1 AND verified = true AND LOWER(domain) = $2`,
-            [organization_id, userDomain]
-          );
-
-          if (verifiedDomainResult.rows.length > 0) {
-            // Domain is verified - auto-add user to organization
-            // If org has no admin/owner yet, promote this user to owner
-            const existingMembers = await workos!.userManagement.listOrganizationMemberships({
-              organizationId: organization_id,
-              statuses: ['active', 'inactive', 'pending'],
-              limit: 100,
-            });
-            const hasAdmin = existingMembers.data.some((m) => {
-              const role = m.role?.slug;
-              return role === 'admin' || role === 'owner';
-            });
-            const roleSlug = hasAdmin ? 'member' : 'owner';
-
-            let membership: any;
-            try {
-              membership = await workos!.userManagement.createOrganizationMembership({
-                userId: user.id,
-                organizationId: organization_id,
-                roleSlug,
-              });
-            } catch (membershipError) {
-              if (isPendingWorkOSMembershipError(membershipError)) {
-                return res.status(409).json({
-                  error: 'Pending invitation exists',
-                  message: 'You already have a pending invitation to this organization. Accept the invitation instead of requesting to join again.',
-                });
-              }
-              throw membershipError;
-            }
-
-            // Get org name for response
-            let orgName = 'Organization';
-            try {
-              const org = await workos!.organizations.getOrganization(organization_id);
-              orgName = org.name;
-            } catch {
-              // Org may not exist
-            }
-
-            logger.info({
-              userId: user.id,
-              orgId: organization_id,
-              domain: userDomain,
-              role: roleSlug,
-            }, 'User auto-added to organization via verified domain');
-
-            // Mirror membership locally so it's visible immediately
-            const pool2 = getPool();
-            await pool2.query(`
-              INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
-              VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
-              ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = $4, updated_at = NOW()
-            `, [user.id, organization_id, user.email, roleSlug]);
-
-            // Record audit log
-            await orgDb.recordAuditLog({
-              workos_organization_id: organization_id,
-              workos_user_id: user.id,
-              action: 'member_added',
-              resource_type: 'membership',
-              resource_id: membership.id,
-              details: {
-                user_email: user.email,
-                method: 'verified_domain_auto_join',
-                domain: userDomain,
-                role: roleSlug,
-              },
-            });
-
-            return res.status(201).json({
-              success: true,
-              message: roleSlug === 'owner'
-                ? `You've been added as the owner of ${orgName}`
-                : `You have been added to ${orgName}`,
-              auto_joined: true,
-              membership: {
-                id: membership.id,
-                organization_id: organization_id,
-                organization_name: orgName,
-                role: roleSlug,
-              },
-            });
-          }
-        }
-
-        // Check for existing pending request
-        const existingRequest = await joinRequestDb.getPendingRequest(user.id, organization_id);
-        if (existingRequest) {
-          return res.status(400).json({
-            error: 'Request already pending',
-            message: 'You already have a pending request to join this organization',
-            request_id: existingRequest.id,
-          });
-        }
-
-        // Get user's full details from WorkOS for name
-        let firstName: string | undefined;
-        let lastName: string | undefined;
-        try {
-          const workosUser = await workos!.userManagement.getUser(user.id);
-          firstName = workosUser.firstName || undefined;
-          lastName = workosUser.lastName || undefined;
-        } catch (err) {
-          logger.warn({ err, userId: user.id }, 'Failed to get user details from WorkOS');
-        }
-
-        const joinRequestInput = {
-          workos_user_id: user.id,
-          user_email: user.email,
-          first_name: firstName,
-          last_name: lastName,
-          workos_organization_id: organization_id,
-        };
-
-        // Get org name for response
-        let orgName = 'Organization';
-        try {
-          const org = await workos!.organizations.getOrganization(organization_id);
-          orgName = org.name;
-        } catch {
-          // Org may not exist
-        }
-
-        const createAndAuditJoinRequest = async () => {
-          const request = await joinRequestDb.createRequest(joinRequestInput);
-
-          logger.info({
-            userId: user.id,
-            orgId: organization_id,
-            requestId: request.id,
-          }, 'Join request created');
-
-          await orgDb.recordAuditLog({
-            workos_organization_id: organization_id,
-            workos_user_id: user.id,
-            action: 'join_request_created',
-            resource_type: 'join_request',
-            resource_id: request.id,
-            details: {
-              user_email: user.email,
-              first_name: firstName,
-              last_name: lastName,
-            },
-          });
-
-          return request;
-        };
-
-        // Check if org has any existing members
-        const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
-          organizationId: organization_id,
-          statuses: ['active', 'inactive', 'pending'],
-        });
-
-        // If org has no members (e.g., prospect org) AND user's email domain matches,
-        // auto-approve as owner. Domain check prevents unauthorized org claims.
-        if (orgMemberships.data.length === 0) {
-          const userDomain = user.email.split('@')[1]?.toLowerCase();
-          const pool = getPool();
-          const orgDomainResult = await pool.query(
-            `SELECT domain FROM organization_domains WHERE workos_organization_id = $1
-             UNION
-             SELECT email_domain FROM organizations WHERE workos_organization_id = $1 AND email_domain IS NOT NULL`,
-            [organization_id]
-          );
-          const orgDomains = orgDomainResult.rows.map((r: { domain?: string; email_domain?: string }) =>
-            (r.domain || r.email_domain)?.toLowerCase()
-          );
-
-          if (userDomain && orgDomains.includes(userDomain)) {
-            logger.info({
-              userId: user.id,
-              orgId: organization_id,
-              domain: userDomain,
-            }, 'Ownerless org with matching domain — auto-approving join request as owner');
-
-            // Add user as owner
-            try {
-              await workos!.userManagement.createOrganizationMembership({
-                userId: user.id,
-                organizationId: organization_id,
-                roleSlug: 'owner',
-              });
-            } catch (membershipError) {
-              if (isPendingWorkOSMembershipError(membershipError)) {
-                return res.status(409).json({
-                  error: 'Pending invitation exists',
-                  message: 'You already have a pending invitation to this organization. Accept the invitation instead of requesting to join again.',
-                });
-              }
-              throw membershipError;
-            }
-
-            const request = await createAndAuditJoinRequest();
-
-            // Mark join request as approved
-            await joinRequestDb.approveRequest(request.id, user.id);
-
-            // Record audit log
-            await orgDb.recordAuditLog({
-              workos_organization_id: organization_id,
-              workos_user_id: user.id,
-              action: 'join_request_auto_approved',
-              resource_type: 'join_request',
-              resource_id: request.id,
-              details: {
-                reason: 'First member of ownerless organization with matching email domain',
-                role: 'owner',
-                domain: userDomain,
-              },
-            });
-
-            return res.status(201).json({
-              success: true,
-              message: `You've been added as the owner of ${orgName}`,
-              request: {
-                id: request.id,
-                organization_id: organization_id,
-                organization_name: orgName,
-                status: 'approved',
-                created_at: request.created_at,
-                auto_approved: true,
-              },
-            });
-          }
-
-          logger.info({
-            userId: user.id,
-            orgId: organization_id,
-            userDomain,
-            orgDomains,
-          }, 'Ownerless org but domain mismatch — treating as normal join request');
-        }
-
-        const request = await createAndAuditJoinRequest();
-
-        // Org has members — notify admins via Slack group DM (fire-and-forget)
-        (async () => {
-          try {
-            const adminEmails: string[] = [];
-            for (const membership of orgMemberships.data) {
-              if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
-                try {
-                  const adminUser = await workos!.userManagement.getUser(membership.userId);
-                  if (adminUser.email) {
-                    adminEmails.push(adminUser.email);
-                  }
-                } catch {
-                  // Skip if can't fetch user
-                }
-              }
-            }
-
-            if (adminEmails.length > 0) {
-              await notifyJoinRequest({
-                orgId: organization_id,
-                orgName,
-                adminEmails,
-                requesterEmail: user.email,
-                requesterFirstName: firstName,
-                requesterLastName: lastName,
-              });
-            }
-          } catch (err) {
-            logger.warn({ err, orgId: organization_id }, 'Failed to notify admins of join request');
-          }
-        })();
-
-        res.status(201).json({
-          success: true,
-          message: `Request to join ${orgName} submitted`,
-          request: {
-            id: request.id,
-            organization_id: organization_id,
-            organization_name: orgName,
-            status: request.status,
-            created_at: request.created_at,
-          },
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Create join request error:');
-        res.status(500).json({
-          error: 'Failed to create join request',
-        });
-      }
+    // Neither a pending request nor a domain match may transfer a sibling's
+    // proof to the canonical user. Restore through the explicit consent flow.
+    this.app.post('/api/join-requests', requireAuth, async (_req, res) => {
+      return res.status(403).json({
+        error: 'organization_join_onboarding_unavailable',
+        message: 'Self-service join requests are temporarily unavailable. Ask an organization owner to send a WorkOS invitation, or contact support.',
+      });
     });
 
     // DELETE /api/join-requests/:requestId - Cancel a pending join request
     this.app.delete('/api/join-requests/:requestId', requireAuth, async (req, res) => {
       try {
-        const user = req.user!;
         const { requestId } = req.params;
-
-        const joinRequestDb = new JoinRequestDatabase();
-
-        // Cancel the request (will only work if it belongs to this user and is pending)
-        const cancelled = await joinRequestDb.cancelRequest(requestId, user.id);
+        const actorId = getOrganizationAuthorizationUserId(req.user!);
+        const cancelled = await cancelJoinRequestForExactCredential(req, requestId);
 
         if (!cancelled) {
           return res.status(404).json({
@@ -9503,7 +9280,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           });
         }
 
-        logger.info({ userId: user.id, requestId }, 'Join request cancelled');
+        logger.info({ userId: actorId, requestId }, 'Join request cancelled');
 
         res.json({
           success: true,
@@ -9511,9 +9288,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         });
       } catch (error) {
         logger.error({ err: error }, 'Cancel join request error:');
-        res.status(500).json({
-          error: 'Failed to cancel join request',
-        });
+        const publicError = toPublicMembershipMutationError(error);
+        return res.status(publicError.status).json(publicError.body);
       }
     });
 
@@ -10241,11 +10017,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       } catch (error) {
         // Auth-required is an expected agent state, not a system error. Log
         // at warn so it doesn't page #aao-errors via the pino → posthog hook.
-        if (error instanceof AuthenticationRequiredError) {
-          logger.warn({ url, hasOAuth: error.hasOAuth }, 'Agent requires authentication');
+        if (isOAuthRequiredError(error)) {
+          const hasOAuth = isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth);
+          logger.warn({ url, hasOAuth: hasOAuth }, 'Agent requires authentication');
 
           let oauth_authorize_url: string | undefined;
-          if (error.hasOAuth) {
+          if (hasOAuth) {
             const userId = req.user?.id;
             if (userId) {
               try {
@@ -10256,7 +10033,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                     url,
                     orgId,
                     new AgentContextDatabase(),
-                    { returnTo: '/profile/edit' },
+                    { returnTo: '/profile/edit', authorizationError: error },
                   );
                   if (authorizeUrl) oauth_authorize_url = authorizeUrl;
                 }
@@ -10268,10 +10045,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
           return res.status(401).json({
             error: 'authentication_required',
-            message: error.hasOAuth
+            message: hasOAuth
               ? 'This agent requires OAuth authorization.'
               : 'This agent requires authentication. Save an auth token to continue.',
-            needs_oauth: error.hasOAuth,
+            needs_oauth: hasOAuth,
             ...(oauth_authorize_url && { oauth_authorize_url }),
           });
         }
@@ -10378,6 +10155,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // Global error handler - logger.error() automatically captures to PostHog via error hook
     this.app.use((err: Error & { status?: number; statusCode?: number; type?: string }, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      if (respondToAdminAuthorizationError(err, res)) return;
       const status = err.status || err.statusCode || 500;
 
       // Range Not Satisfiable (416) from static file serving is a client error, not a server issue
@@ -10427,6 +10205,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+    await initializeTrainingGcsReporting();
 
     // Escalate pool-level errors to Slack
     onPoolError(() => {
@@ -10495,6 +10274,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.refreshOnlyBackground = this.options.backgroundServices === 'refresh-only';
     this.isWorker = this.refreshOnlyBackground || processRole !== 'web';
     const isWorker = this.isWorker;
+    if (isWorker && !this.refreshOnlyBackground) getTrainingGcsReporting()?.start();
     logger.info({ isWorker }, 'Process role resolved');
 
     if (this.refreshOnlyBackground) {
@@ -10592,6 +10372,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
    */
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
+    // Stop accepting new connections before draining reporting's coordinated scheduler.
+    const httpDrain = this.server ? new Promise<void>((resolve, reject) => {
+      this.server!.close(error => error ? reject(error) : resolve());
+    }) : Promise.resolve();
+    const drains = Promise.all([httpDrain, drainTrainingGcsReporting()]);
+    // Attach a rejection handler immediately while unrelated services drain.
+    void drains.catch(() => {});
 
     // Only stop background services that were started on this machine
     if (this.isWorker) {
@@ -10632,19 +10419,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     }
 
     // Close HTTP server
-    if (this.server) {
-      await new Promise<void>((resolve, reject) => {
-        this.server!.close((err) => {
-          if (err) {
-            logger.error({ err }, "Error closing HTTP server");
-            reject(err);
-          } else {
-            logger.info("HTTP server closed");
-            resolve();
-          }
-        });
-      });
-    }
+    await drains;
+    await stopTrainingGcsReporting();
 
     // Shutdown PostHog client (flush pending events)
     const { shutdownPostHog } = await import('./utils/posthog.js');

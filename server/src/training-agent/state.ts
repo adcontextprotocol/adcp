@@ -261,12 +261,14 @@ function createSession(): SessionState {
   const now = new Date();
   return {
     agentNotificationConfigs: new Map(),
+    principalConfigurations: new Map(),
     mediaBuys: new Map(),
     governancePlans: new Map(),
     governanceChecks: new Map(),
     governanceOutcomes: new Map(),
     governanceAdjustments: new Map(),
     propertyLists: new Map(),
+    propertyListCache: new Map(),
     collectionLists: new Map(),
     contentStandards: new Map(),
     rightsGrants: new Map(),
@@ -508,6 +510,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     ...fresh,
     ...hydrated,
     agentNotificationConfigs: asMap(hydrated.agentNotificationConfigs, fresh.agentNotificationConfigs),
+    principalConfigurations: asMap(hydrated.principalConfigurations, fresh.principalConfigurations),
     mediaBuys: asMap(hydrated.mediaBuys, fresh.mediaBuys),
     creatives: asMap(hydrated.creatives, fresh.creatives),
     signalActivations: asMap(hydrated.signalActivations, fresh.signalActivations),
@@ -516,6 +519,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     governanceOutcomes: asMap(hydrated.governanceOutcomes, fresh.governanceOutcomes),
     governanceAdjustments: asMap(hydrated.governanceAdjustments, fresh.governanceAdjustments),
     propertyLists: asMap(hydrated.propertyLists, fresh.propertyLists),
+    propertyListCache: asMap(hydrated.propertyListCache, fresh.propertyListCache),
     collectionLists: asMap(hydrated.collectionLists, fresh.collectionLists),
     contentStandards: asMap(hydrated.contentStandards, fresh.contentStandards),
     rightsGrants: asMap(hydrated.rightsGrants, fresh.rightsGrants),
@@ -1000,6 +1004,15 @@ export function findMediaBuyAcrossSessions(mediaBuyId: string): Promise<SessionS
 export function findGovernancePlanAcrossSessions(planId: string): Promise<SessionState | null> {
   return findSessionMatching(s =>
     [...s.governancePlans.values()].some(plan => plan.planId === planId));
+}
+
+/** Delete one caller-owned session without disturbing concurrent sandboxes. */
+export async function clearSession(key: string): Promise<void> {
+  const ctx = requestCtx.getStore();
+  ctx?.sessions.delete(key);
+  ctx?.snapshots.delete(key);
+  knownSessionKeys.delete(key);
+  await getStore().delete(SESSIONS_COLLECTION, key);
 }
 
 /** Clear all sessions (tests only). */

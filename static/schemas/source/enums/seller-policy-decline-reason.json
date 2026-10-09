@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/seller-policy-decline-reason.json",
+  "title": "Seller Policy Decline Reason",
+  "description": "Coarse machine-readable seller-policy reason for declining a requested MediaBuy control shape. The vocabulary identifies the policy dimension without disclosing private thresholds or enforcement logic.",
+  "type": "string",
+  "enum": [
+    "inventory",
+    "share_of_voice",
+    "minimum_commitment",
+    "notice_period",
+    "contract_terms",
+    "frequency_cap",
+    "other"
+  ],
+  "enumDescriptions": {
+    "inventory": "The seller cannot forecast or reserve the requested volume in the requested window.",
+    "share_of_voice": "The requested change would exceed a seller concentration cap, such as an advertiser, category, or section share limit.",
+    "minimum_commitment": "The requested change would take the buy below a product-level or account-level minimum commitment.",
+    "notice_period": "The change is permitted in general but was requested inside a seller notice window.",
+    "contract_terms": "The product permits the right in general, but the right was not negotiated into this buy because of account tier, insertion-order terms, or a buy-level override.",
+    "frequency_cap": "The requested frequency-cap shape is incompatible with the seller's permitted exposure policy.",
+    "other": "Another seller-policy reason; the buyer-safe error message carries the explanation."
+  }
+}

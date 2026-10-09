@@ -267,12 +267,16 @@ else
     # Ratcheted from the first capability-resolved replay. The runner reports
     # declared-scope applicability and quarantines separately from these
     # clean-result-row and passing-step regression floors.
+    # /brand and /governance do not implement validate_input. The corrected
+    # CTV + premium-display gates remove 14 + 18 controller seed passes; all
+    # validator checks previously skipped. Only subtract those 32 false-coverage
+    # steps (115 -> 83, 160 -> 128); retain every clean/other/3.0-compat floor.
     "signals:45:80"
-    "sales:133:632"
-    "governance:47:160"
+    "sales:135:646"
+    "governance:47:128"
     "creative:49:209"
     "creative-builder:50:184"
-    "brand:45:115"
+    "brand:45:83"
     "si:42:50"
   )
 fi
@@ -296,19 +300,27 @@ REQUIRED_CLEAN_CURRENT_SALES=(
   "wholesale_feed_bulk_webhooks"
 )
 REQUIRED_EXACT_CURRENT_SALES=(
-  "media_buy_seller/compact_direct_buy_lifecycle:7:0"
-  "media_buy_seller/compact_product_lifecycle:9:0"
-  "media_buy_seller/declined_proposal_refinement:6:0"
-  "media_buy_seller/declined_proposal_execution:8:0"
-  "media_buy_seller/expired_proposal_execution:8:0"
+  "media_buy_seller/compact_direct_buy_lifecycle:8:0"
+  "media_buy_seller/compact_product_lifecycle:10:0"
+  "media_buy_seller/declined_proposal_refinement:7:0"
+  "media_buy_seller/declined_proposal_execution:9:0"
+  "media_buy_seller/expired_proposal_execution:9:0"
   "media_buy_seller/change_rights_state_projection:8:0"
-  "media_buy_seller/acceptance_policy_discovery:3:0"
+  "media_buy_seller/acceptance_policy_discovery:4:0"
   "media_buy_seller/governance_agent_binding_acceptance:5:0"
-  "media_buy_seller/external_audience_source_binding:8:0"
-  "media_buy_seller/get_products_async:10:0"
+  "media_buy_seller/external_audience_source_binding:9:0"
+  "media_buy_seller/get_products_async:11:0"
+  # requires: [multi_agent] storyboards routed to the governance tenant
+  # (multiAgentRoutingForStoryboard). Exact counts prove the governed calls
+  # executed; a routing regression collapses them to a skipped row.
+  "media_buy_seller/governance_approved:13:0"
+  "media_buy_seller/governance_conditions:12:0"
+  "media_buy_seller/governance_denied:11:0"
+  "media_buy_seller/governance_denied_recovery:9:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"
+  "governance/budget_periods:7:0"
 )
 REQUIRED_CLEAN_CURRENT_SIGNALS=(
   "wholesale_feed_signals"
@@ -321,6 +333,17 @@ REQUIRED_CLEAN_CURRENT_CREATIVE=(
 )
 REQUIRED_CLEAN_CURRENT_CREATIVE_BUILDER=(
   "canonical_format_validate_input"
+)
+# Routed requires: [multi_agent] governance storyboards, one per governed
+# tenant other than sales (see REQUIRED_EXACT_CURRENT_SALES).
+REQUIRED_EXACT_CURRENT_SIGNALS=(
+  "signal_marketplace/governance_approved:7:0"
+)
+REQUIRED_EXACT_CURRENT_BRAND=(
+  "brand_rights/governance_approved:7:0"
+)
+REQUIRED_EXACT_CURRENT_CREATIVE_BUILDER=(
+  "creative_transformers/governance_approved:6:0"
 )
 REQUIRED_CLEAN_CURRENT_SI=(
   "si_baseline"
@@ -466,8 +489,17 @@ for entry in "${TENANTS[@]}"; do
     done
   fi
 
-  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "governance" ]; then
-    for requirement in "${REQUIRED_EXACT_CURRENT_GOVERNANCE[@]}"; do
+  required_exact=()
+  if [ "${FLOOR_SET}" = "current" ]; then
+    case "${tenant}" in
+      governance) required_exact=("${REQUIRED_EXACT_CURRENT_GOVERNANCE[@]}") ;;
+      signals) required_exact=("${REQUIRED_EXACT_CURRENT_SIGNALS[@]}") ;;
+      brand) required_exact=("${REQUIRED_EXACT_CURRENT_BRAND[@]}") ;;
+      creative-builder) required_exact=("${REQUIRED_EXACT_CURRENT_CREATIVE_BUILDER[@]}") ;;
+    esac
+  fi
+  if [ "${#required_exact[@]}" -gt 0 ]; then
+    for requirement in "${required_exact[@]}"; do
       storyboard_id="${requirement%%:*}"
       counts="${requirement#*:}"
       expected_passed="${counts%%:*}"

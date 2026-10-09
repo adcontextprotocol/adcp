@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { deriveVerificationStatus } from '../../src/addie/services/compliance-testing.js';
+import {
+  derivePublicComplianceEligibility,
+  deriveVerificationStatus,
+  ELIGIBILITY_CRITERIA_VERSION,
+} from '../../src/addie/services/compliance-testing.js';
 import type { StoryboardStatusEntry } from '../../src/db/compliance-db.js';
+import { AgentComplianceDetailSchema } from '../../src/schemas/registry.js';
 
 function makeStatus(id: string, status: StoryboardStatusEntry['status']): StoryboardStatusEntry {
   return { storyboard_id: id, status, steps_passed: status === 'passing' ? 5 : 0, steps_total: 5 };
@@ -173,5 +178,122 @@ describe('deriveVerificationStatus', () => {
     expect(result.verified).toBe(true);
     expect(result.roles).toHaveLength(1);
     expect(result.roles[0].role).toBe('media-buy');
+  });
+});
+
+describe('derivePublicComplianceEligibility', () => {
+  it('publishes a versioned agent-level blocker when no specialisms were declared', () => {
+    expect(derivePublicComplianceEligibility([], [])).toEqual({
+      criteria_version: ELIGIBILITY_CRITERIA_VERSION,
+      blockers: [{ code: 'no_declared_specialisms' }],
+      roles: {},
+    });
+  });
+
+  it('preserves failing, partial, and untested as distinct role blockers', () => {
+    const result = derivePublicComplianceEligibility(
+      ['sales-guaranteed', 'sales-non-guaranteed', 'sales-social'],
+      [
+        makeStatus('sales_guaranteed', 'failing'),
+        makeStatus('sales_non_guaranteed', 'partial'),
+      ],
+    );
+
+    expect(result.roles['media-buy']).toEqual({
+      eligible: false,
+      blockers: [
+        { code: 'storyboards_failing' },
+        { code: 'storyboards_partial' },
+        { code: 'storyboards_untested' },
+      ],
+    });
+  });
+
+  it('treats explicit untested and legacy zero-step rows as untested', () => {
+    for (const status of [
+      makeStatus('sales_guaranteed', 'untested'),
+      { ...makeStatus('sales_guaranteed', 'failing'), steps_total: 0 },
+    ]) {
+      expect(derivePublicComplianceEligibility(['sales-guaranteed'], [status]).roles['media-buy'])
+        .toEqual({ eligible: false, blockers: [{ code: 'storyboards_untested' }] });
+    }
+  });
+
+  it('evaluates roles independently and emits no blocker for a passing role', () => {
+    const result = derivePublicComplianceEligibility(
+      ['sales-guaranteed', 'creative-template'],
+      [
+        makeStatus('sales_guaranteed', 'passing'),
+        makeStatus('creative_template', 'partial'),
+      ],
+    );
+
+    expect(result.roles['media-buy']).toEqual({ eligible: true, blockers: [] });
+    expect(result.roles.creative).toEqual({
+      eligible: false,
+      blockers: [{ code: 'storyboards_partial' }],
+    });
+  });
+
+  it('does not invent a role for unknown specialisms and still explains ineligibility', () => {
+    expect(derivePublicComplianceEligibility(['not-a-real-specialism'], [])).toEqual({
+      criteria_version: ELIGIBILITY_CRITERIA_VERSION,
+      blockers: [{ code: 'no_declared_specialisms' }],
+      roles: {},
+    });
+  });
+
+  it('fails closed when a future storyboard status reaches the public projection', () => {
+    const result = derivePublicComplianceEligibility(
+      ['sales-guaranteed'],
+      [{ storyboard_id: 'sales_guaranteed', status: 'future-status', steps_total: 5 }],
+    );
+
+    expect(result.roles['media-buy']).toEqual({
+      eligible: false,
+      blockers: [{ code: 'storyboards_untested' }],
+    });
+  });
+
+  it('publishes a partial role map and keeps membership blockers owner-scoped', () => {
+    const parsed = AgentComplianceDetailSchema.parse({
+      agent_url: 'https://agent.example.com/mcp',
+      status: 'failing',
+      lifecycle_stage: 'production',
+      eligibility: {
+        criteria_version: ELIGIBILITY_CRITERIA_VERSION,
+        blockers: [],
+        roles: {
+          'media-buy': {
+            eligible: false,
+            blockers: [{ code: 'storyboards_partial' }],
+          },
+        },
+      },
+      eligibility_owner: {
+        criteria_version: ELIGIBILITY_CRITERIA_VERSION,
+        eligible: null,
+        blockers: [],
+      },
+    });
+
+    expect(parsed.eligibility?.roles['media-buy']?.blockers).toEqual([
+      { code: 'storyboards_partial' },
+    ]);
+    expect(() => AgentComplianceDetailSchema.parse({
+      agent_url: 'https://agent.example.com/mcp',
+      status: 'failing',
+      lifecycle_stage: 'production',
+      eligibility: {
+        criteria_version: ELIGIBILITY_CRITERIA_VERSION,
+        blockers: [],
+        roles: {
+          'media-buy': {
+            eligible: false,
+            blockers: [{ code: 'membership_tier_ineligible' }],
+          },
+        },
+      },
+    })).toThrow();
   });
 });

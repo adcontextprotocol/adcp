@@ -5,6 +5,8 @@
  * with tool reference always appended from code.
  */
 
+import { enforceOutcomeClaims, outcomeClaimContext } from './outcome-claims.js';
+import { enforceJsonValidationClaims } from './json-validation-evidence.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { createHash, createHmac } from 'node:crypto';
 import { createLogger } from '../logger.js';
@@ -135,6 +137,12 @@ export interface InvocationPreparedSnapshot {
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 8_192;
 const SONNET_5_MAX_OUTPUT_TOKENS = 32_768;
+// Gemini is intentionally iterative. The ordinary wall still catches loops
+// that make no useful progress; successful boundary work may earn a handful of
+// additional tool turns, but never after the processing-time admission closes.
+// A separate tool-disabled turn remains reserved for final synthesis.
+const GEMINI_DIRECT_MAX_PROGRESS_EXTENSIONS = 6;
+const GEMINI_DIRECT_PROGRESS_TIME_BUDGET_MS = 60_000;
 // The Anthropic SDK rejects non-streaming requests whose calculated timeout
 // may exceed ten minutes. Sonnet 5 at 32k crosses that guard; streaming does
 // not, so keep the larger budget there and cap only non-streaming calls.
@@ -328,9 +336,9 @@ export const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTo
   { pattern: /(?:I'?ve\s+|I\s+)?(?:created|generated|sent)\s+(?:a\s+)?payment\s+link/i, expectedTools: ['create_payment_link'] },
   { pattern: /(?:I'?ve\s+|I\s+)?(?:sent|delivered)\s+(?:a\s+)?(?:DM|direct message|notification)/i, expectedTools: ['send_member_dm', 'resolve_escalation'] },
   { pattern: /(?:I'?ve\s+|I\s+)?added\s+\S+(?:\s+\S+){0,5}\s+to\s+the\s+(?:meeting|call|series)/i, expectedTools: ['add_meeting_attendee'] },
-  // Fake-escalation patterns. `escalate_to_admin` is in the always-available
-  // tool set, so claiming an escalation/notification was made without firing
-  // it is the same class of fabrication as the rest. Real GitHub-issue tools
+  // Fake-escalation monitoring complements the receipt-bound delivery guard.
+  // Escalation availability depends on the authenticated surface. Claiming
+  // escalation without a successful receipt is fabrication. Real GitHub-issue tools
   // count too because Addie sometimes describes filing a ticket as creating
   // an issue.
   //
@@ -478,7 +486,7 @@ function githubIssueCreationExecutionPolicy(
     if (
       request.toolName === 'create_github_issue'
       && !mayDispatchGithubIssueCreation(creationRequested, request.executionMode)
-    ) return { allowed: false };
+    ) return { allowed: false, reason: 'github_confirmation_required' };
     return callerPolicy?.(request) ?? { allowed: request.executionMode === 'production' };
   };
 }
@@ -492,6 +500,7 @@ function finalizeAssistantText(
   githubIssueRetryReceipts: readonly GithubIssueRetryReceipt[] = [],
   clientRequestId: string | undefined,
   forceTruncation: boolean = false,
+  conversationContext: string = question,
 ): FinalizedAssistantText {
   // This list is supplied only by the same client-request retry path.
   const retryExecutions = rehydratedGithubIssueRetryExecutions(githubIssueRetryReceipts, clientRequestId);
@@ -516,17 +525,34 @@ function finalizeAssistantText(
       'Addie: Replaced unsupported provider prose after failed source lookups',
     );
   }
+  const outcome = enforceOutcomeClaims(evidenceBoundary.text, toolExecutions, conversationContext);
+  if (outcome.reason) {
+    logger.warn({ event: 'addie_unconfirmed_outcome_replaced', reason: outcome.reason }, 'Addie: Replaced unsupported outcome claim');
+  }
   const processed = applyResponsePipelineWithEmptyMonitoring(
     question,
-    evidenceBoundary.text,
+    outcome.text,
     toolExecutions,
   );
-  const lengthExceeded = processed.text.length > MAX_OUTPUT_LENGTH;
+  // Match receipts to the final rendered candidate after all prose transforms.
+  const validation = enforceJsonValidationClaims(processed.text, toolExecutions);
+  const lengthExceeded = validation.text.length > MAX_OUTPUT_LENGTH;
   const truncated = forceTruncation || lengthExceeded;
+  let delivered = validation;
+  if (truncated) {
+    let contentBudget = MAX_OUTPUT_LENGTH;
+    do {
+      delivered = enforceJsonValidationClaims(formatTruncatedOutput(validation.text, contentBudget), toolExecutions);
+      // Removing a payload can turn its short confirmation into a longer
+      // disclaimer. Reserve that expansion and recheck the newly cut candidate.
+      // The budget strictly decreases; at zero only the continuation cue remains.
+      contentBudget -= Math.max(1, delivered.text.length - MAX_OUTPUT_LENGTH);
+    } while (delivered.text.length > MAX_OUTPUT_LENGTH);
+  }
   return {
-    text: truncated ? formatTruncatedOutput(processed.text) : processed.text,
+    text: delivered.text,
     emptyReason: processed.reason,
-    localReplacementReason: githubIssueOutcome.reason ?? evidenceBoundary.reason,
+    localReplacementReason: githubIssueOutcome.reason ?? evidenceBoundary.reason ?? outcome.reason ?? validation.reason ?? delivered.reason,
     lengthExceeded,
   };
 }
@@ -602,6 +628,233 @@ export interface RequestTools {
 }
 
 /**
+ * The immutable policy label carried by an in-memory direct-replay contract.
+ * This is deliberately separate from evaluator provenance: a digest is useful
+ * for audit, but never establishes authority to replay a production request.
+ */
+export const DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION = 'direct-replay-assembly:v1' as const;
+
+/** Facts authenticated by the Slack/channel assembly before a dormant replay capability is minted. */
+export interface DirectReplayContractFacts {
+  surface: 'slack_channel';
+  isAdmin: boolean;
+  threadId: string;
+  channelPrivacy: 'public';
+  replayPrincipal: string;
+  caseId: string;
+  requestId: string;
+  selectedToolSetNames: readonly string[];
+  selectedToolNames: readonly string[];
+  expiresAt: number;
+  abortSignal?: AbortSignal;
+}
+
+/** Evidence only. None of these values are consulted when admitting a contract. */
+export interface DirectReplayContractAudit {
+  assemblyPolicyVersion: typeof DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION;
+  definitionSha256: string;
+  factsSha256: string;
+}
+
+/**
+ * Opaque in-memory capability. Runtime authority is private WeakMap
+ * membership below; this visible audit shape is intentionally forgeable.
+ */
+export interface DirectReplayContract {
+  readonly audit: DirectReplayContractAudit;
+}
+
+export type DirectReplayContractConsumption =
+  | { admitted: true }
+  | {
+      admitted: false;
+      reason: 'unknown_contract' | 'already_consumed' | 'expired' | 'aborted' | 'assembly_drift';
+    };
+
+type DirectToolRegistryAssembly = ReturnType<typeof assembleAddieRequestTools>;
+
+interface DirectReplayContractRecord {
+  consumed: boolean;
+  assemblyPolicyVersion: typeof DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION;
+  selectedToolSetNames: readonly string[];
+  selectedToolSetsAreCurrent: () => boolean;
+  noProviderToolsAreCurrent: () => boolean;
+  facts: DirectReplayContractFacts;
+  factSnapshot: Omit<DirectReplayContractFacts, 'abortSignal'>;
+  definitionSnapshots: readonly AddieTool[];
+  handlerSlots: ReadonlyMap<string, ToolHandler>;
+  sourceRegistriesAreCurrent: () => boolean;
+  assembleCurrent: () => DirectToolRegistryAssembly;
+}
+
+// No brand, constructor, serialized hash, or public registrar can create
+// membership in this map. A copied audit object is evidence only.
+const directReplayContracts = new WeakMap<object, DirectReplayContractRecord>();
+
+function hasDuplicateNames(tools: readonly AddieTool[]): boolean {
+  const names = new Set<string>();
+  for (const tool of tools) {
+    if (names.has(tool.name)) return true;
+    names.add(tool.name);
+  }
+  return false;
+}
+
+function hasOnlyPlainData(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return true;
+  if (typeof value !== 'object') return false;
+  const object = value as object;
+  if (seen.has(object)) return false;
+  seen.add(object);
+  try {
+    const prototype = Object.getPrototypeOf(object);
+    if (prototype !== Object.prototype && prototype !== null && !Array.isArray(object)) return false;
+    for (const key of Reflect.ownKeys(object)) {
+      if (typeof key !== 'string') return false;
+      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      if (!descriptor || !('value' in descriptor) || !hasOnlyPlainData(descriptor.value, seen)) return false;
+    }
+    return true;
+  } catch {
+    // Proxies and hostile accessors must not become a replay capability.
+    return false;
+  }
+}
+
+function immutableDefinitionSnapshots(definitions: readonly AddieTool[]): readonly AddieTool[] | null {
+  if (!hasOnlyPlainData(definitions)) return null;
+  try {
+    return Object.freeze(definitions.map((definition) => Object.freeze(structuredClone(definition))));
+  } catch {
+    return null;
+  }
+}
+
+function sameDefinitionSnapshots(
+  expected: readonly AddieTool[],
+  actual: readonly AddieTool[],
+): boolean {
+  const snapshots = immutableDefinitionSnapshots(actual);
+  if (!snapshots || snapshots.length !== expected.length) return false;
+  return snapshots.every((snapshot, index) => JSON.stringify(snapshot) === JSON.stringify(expected[index]));
+}
+
+function sameStringList(expected: readonly string[], actual: readonly string[]): boolean {
+  return expected.length === actual.length && expected.every((value, index) => value === actual[index]);
+}
+
+function factsAreCurrent(expected: DirectReplayContractFacts): boolean {
+  return expected.surface === 'slack_channel'
+    && expected.isAdmin === false
+    && expected.channelPrivacy === 'public'
+    && expected.threadId.trim().length > 0
+    && expected.replayPrincipal.trim().length > 0
+    && expected.caseId.trim().length > 0
+    && expected.requestId.trim().length > 0
+    && Number.isSafeInteger(expected.expiresAt)
+    && expected.expiresAt > 0;
+}
+
+function snapshotFacts(facts: DirectReplayContractFacts): Omit<DirectReplayContractFacts, 'abortSignal'> {
+  return Object.freeze({
+    surface: facts.surface,
+    isAdmin: facts.isAdmin,
+    threadId: facts.threadId,
+    channelPrivacy: facts.channelPrivacy,
+    replayPrincipal: facts.replayPrincipal,
+    caseId: facts.caseId,
+    requestId: facts.requestId,
+    selectedToolSetNames: Object.freeze([...facts.selectedToolSetNames]),
+    selectedToolNames: Object.freeze([...facts.selectedToolNames]),
+    expiresAt: facts.expiresAt,
+  });
+}
+
+function sameFacts(
+  expected: Omit<DirectReplayContractFacts, 'abortSignal'>,
+  actual: DirectReplayContractFacts,
+): boolean {
+  return expected.surface === actual.surface
+    && expected.isAdmin === actual.isAdmin
+    && expected.threadId === actual.threadId
+    && expected.channelPrivacy === actual.channelPrivacy
+    && expected.replayPrincipal === actual.replayPrincipal
+    && expected.caseId === actual.caseId
+    && expected.requestId === actual.requestId
+    && expected.expiresAt === actual.expiresAt
+    && sameStringList(expected.selectedToolSetNames, actual.selectedToolSetNames)
+    && sameStringList(expected.selectedToolNames, actual.selectedToolNames);
+}
+
+function contractAudit(
+  definitions: readonly AddieTool[],
+  facts: DirectReplayContractFacts,
+): DirectReplayContractAudit {
+  // These hashes are deliberately never read by consumeDirectReplayContract.
+  // Definition data excludes handlers; function identity is bound by reference.
+  return Object.freeze({
+    assemblyPolicyVersion: DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION,
+    definitionSha256: createHash('sha256').update(JSON.stringify(definitions), 'utf8').digest('hex'),
+    factsSha256: createHash('sha256').update(JSON.stringify({
+      surface: facts.surface,
+      isAdmin: facts.isAdmin,
+      threadId: facts.threadId,
+      channelPrivacy: facts.channelPrivacy,
+      replayPrincipal: facts.replayPrincipal,
+      caseId: facts.caseId,
+      requestId: facts.requestId,
+      selectedToolSetNames: facts.selectedToolSetNames,
+      selectedToolNames: facts.selectedToolNames,
+      expiresAt: facts.expiresAt,
+    }), 'utf8').digest('hex'),
+  });
+}
+
+/**
+ * Consume a capability once. This intentionally does not expose handlers or
+ * dispatch a provider/tool: connecting it to replay is a later, reviewed step.
+ */
+export function consumeDirectReplayContract(
+  contract: unknown,
+  now: number = Date.now(),
+): DirectReplayContractConsumption {
+  if (!contract || typeof contract !== 'object') return { admitted: false, reason: 'unknown_contract' };
+  const record = directReplayContracts.get(contract);
+  if (!record) return { admitted: false, reason: 'unknown_contract' };
+  if (record.consumed) return { admitted: false, reason: 'already_consumed' };
+  // A valid member is consumed before any mutable-state check, so repairing a
+  // changed registry after a failed attempt cannot resurrect the capability.
+  record.consumed = true;
+  if (!Number.isFinite(now) || now >= record.facts.expiresAt) return { admitted: false, reason: 'expired' };
+  if (record.facts.abortSignal?.aborted) return { admitted: false, reason: 'aborted' };
+  if (
+    record.assemblyPolicyVersion !== DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION
+    || !record.noProviderToolsAreCurrent()
+    || !record.selectedToolSetsAreCurrent()
+    || !sameStringList(record.selectedToolSetNames, record.facts.selectedToolSetNames)
+    || !factsAreCurrent(record.facts)
+    || !sameFacts(record.factSnapshot, record.facts)
+  ) {
+    return { admitted: false, reason: 'assembly_drift' };
+  }
+  let current: DirectToolRegistryAssembly;
+  try {
+    current = record.assembleCurrent();
+  } catch {
+    return { admitted: false, reason: 'assembly_drift' };
+  }
+  if (
+    hasDuplicateNames(current.tools)
+    || !record.sourceRegistriesAreCurrent()
+    || !sameStringList(record.facts.selectedToolNames, current.tools.map((tool) => tool.name))
+    || !sameDefinitionSnapshots(record.definitionSnapshots, current.tools)
+    || current.tools.some((tool) => current.handlers.get(tool.name) !== record.handlerSlots.get(tool.name))
+    || current.handlers.size !== record.handlerSlots.size
+  ) return { admitted: false, reason: 'assembly_drift' };
+  return { admitted: true };
+}
+
+/**
  * Result from createUserScopedTools including admin status
  */
 export interface UserScopedToolsResult {
@@ -617,10 +870,22 @@ export interface ProcessMessageOptions {
   directToolSession?: DirectToolSession;
   /** Aggregate settled usage, including calls preceding a failed continuation. */
   onUsageAccounted?: (event: CostEvent) => void;
+  /** Content-free terminal-boundary telemetry for durable experiment accounting. */
+  onTerminalBoundaryEvent?: (
+    event: 'progress_extension' | 'final_answer_opportunity' | 'final_answer_rejected_call',
+  ) => void;
   /** Request-local execution mode. Evaluation, replay, and shadow suppress operational side effects. */
   executionMode?: AddieExecutionMode;
   /** Exclude provider-managed tools such as web search for this request only. */
   disableServerTools?: boolean;
+  /**
+   * Slack's authenticated channel assembly may supply facts for the dormant
+   * direct-replay capability. The capability itself is minted privately only
+   * while this client's normal request assembly resolves definitions/handlers.
+   */
+  directReplayContractFacts?: DirectReplayContractFacts;
+  /** Internal observer for an opaque, already-issued contract; it cannot mint one. */
+  onDirectReplayContract?: (contract: DirectReplayContract) => void;
   /**
    * Exact request-local custom-tool allowlist. When present, global and
    * request-scoped tools outside this list are omitted before prompt sizing,
@@ -761,6 +1026,13 @@ export interface AddieResponse {
   tool_executions: ToolExecution[];
   flagged: boolean;
   flag_reason?: string;
+  /** Partial-output telemetry kept separate from safety/failure flagging. */
+  output_truncation?: {
+    source: 'provider_output_limit' | 'local_character_limit';
+    provider_reason?: string;
+    original_length: number;
+    delivered_length: number;
+  };
   /** Rule IDs that were active for this interaction (for logging/analysis) */
   active_rule_ids?: number[];
   /** Configuration version ID for this interaction */
@@ -842,9 +1114,38 @@ function localModelExecution(
 }
 
 const MAX_ITERATIONS_FALLBACK_TEXT = "I'm having trouble completing that request. Could you try rephrasing?";
+const FINAL_ANSWER_OPPORTUNITY_INSTRUCTION = [
+  '## Final response boundary',
+  'The bounded tool budget is exhausted. Do not request or imply another tool call.',
+  'Answer the user now from the completed results in this turn. Preserve concrete records and action receipts, and state any unfinished work briefly.',
+].join('\n');
+
+type GeminiDirectBoundaryDecision = 'progress' | 'final_answer' | null;
+
+function grantGeminiDirectBoundaryOpportunity(input: Readonly<{
+  enabled: boolean;
+  loop: ModelTurnLoopState;
+  finalAnswerOnly: boolean;
+  madeSuccessfulToolProgress: boolean;
+  hasSuccessfulToolProgress: boolean;
+  processingMs: number;
+}>): GeminiDirectBoundaryDecision {
+  if (!input.enabled || input.finalAnswerOnly || input.loop.hasRemaining) return null;
+  if (
+    input.madeSuccessfulToolProgress
+    && input.processingMs < GEMINI_DIRECT_PROGRESS_TIME_BUDGET_MS
+    && input.loop.grantProgressOpportunity(GEMINI_DIRECT_MAX_PROGRESS_EXTENSIONS)
+  ) return 'progress';
+  if (
+    input.hasSuccessfulToolProgress
+    && input.loop.grantFinalAnswerOpportunity()
+  ) return 'final_answer';
+  return null;
+}
 
 interface TerminalAddieResponseCommon {
   userMessage: string;
+  conversationContext?: string;
   githubIssueCreationRequested: boolean;
   clientRequestId?: string;
   githubIssueRetryReceipts?: readonly GithubIssueRetryReceipt[];
@@ -892,6 +1193,7 @@ function buildTerminalAddieResponse(input: TerminalAddieResponseInput): Terminal
     input.githubIssueRetryReceipts,
     input.clientRequestId,
     input.kind === 'provider' && input.disposition === 'truncated',
+    input.conversationContext,
   );
   const terminalExecutions = [
     ...rehydratedGithubIssueRetryExecutions(input.githubIssueRetryReceipts ?? [], input.clientRequestId),
@@ -900,13 +1202,14 @@ function buildTerminalAddieResponse(input: TerminalAddieResponseInput): Terminal
   const hallucinationReason = input.kind === 'provider' && input.disposition === 'complete'
     ? detectHallucinatedAction(finalized.text, terminalExecutions)
     : null;
-  const flagReason = input.kind === 'max_iterations'
+  const truncationReason = input.kind === 'provider' && input.disposition === 'truncated'
+    ? `Response truncated: ${input.providerResponse.providerFinishReason}`
+    : finalized.lengthExceeded
+      ? 'Output truncated due to length'
+      : null;
+  const failureReason = input.kind === 'max_iterations'
     ? 'Max tool iterations reached'
-    : input.disposition === 'truncated'
-      ? `Response truncated: ${input.providerResponse.providerFinishReason}`
-      : finalized.lengthExceeded
-        ? 'Output truncated due to length'
-        : finalized.localReplacementReason ?? hallucinationReason ?? finalized.emptyReason;
+    : finalized.localReplacementReason ?? hallucinationReason ?? finalized.emptyReason;
 
   let modelExecution: ModelExecution;
   if (finalized.emptyReason) {
@@ -950,8 +1253,20 @@ function buildTerminalAddieResponse(input: TerminalAddieResponseInput): Terminal
       text: finalized.text,
       tools_used: [...input.toolsUsed],
       tool_executions: [...input.toolExecutions],
-      flagged: !!flagReason,
-      flag_reason: flagReason ?? undefined,
+      flagged: !!failureReason,
+      flag_reason: failureReason ?? truncationReason ?? undefined,
+      ...(truncationReason && {
+        output_truncation: {
+          source: input.kind === 'provider' && input.disposition === 'truncated'
+            ? 'provider_output_limit' as const
+            : 'local_character_limit' as const,
+          ...(input.kind === 'provider' && input.disposition === 'truncated'
+            ? { provider_reason: input.providerResponse.providerFinishReason }
+            : {}),
+          original_length: input.rawText.length,
+          delivered_length: finalized.text.length,
+        },
+      }),
       active_rule_ids: undefined,
       config_version_id: input.configVersionId ?? undefined,
       model_execution: modelExecution,
@@ -1299,6 +1614,81 @@ export class AddieClaudeClient {
   }
 
   /**
+   * Mint an opaque, in-memory capability after the exact production registry
+   * merge. This remains private so no caller can register arbitrary
+   * definitions/handlers as production replay authority.
+   */
+  private mintDirectReplayContract(
+    requestTools: RequestTools | undefined,
+    options: ProcessMessageOptions,
+    facts: DirectReplayContractFacts,
+    assembly: DirectToolRegistryAssembly,
+    requestWebSearchEnabled: boolean,
+  ): DirectReplayContract | undefined {
+    const definitionNames = assembly.tools.map((tool) => tool.name);
+    const snapshots = immutableDefinitionSnapshots(assembly.tools);
+    const globalSnapshots = immutableDefinitionSnapshots(this.tools);
+    const requestSnapshots = immutableDefinitionSnapshots(requestTools?.tools ?? []);
+    const selectedSets = options.selectedToolSetNames ?? [];
+    const selectedSetSnapshot = Object.freeze([...selectedSets]);
+    const noProviderTools = options.disableServerTools === true && !requestWebSearchEnabled;
+    if (
+      !snapshots
+      || !globalSnapshots
+      || !requestSnapshots
+      || hasDuplicateNames(assembly.tools)
+      || hasDuplicateNames(this.tools)
+      || hasDuplicateNames(requestTools?.tools ?? [])
+      || (options.executionMode ?? 'production') !== 'production'
+      || !noProviderTools
+      || !factsAreCurrent(facts)
+      || !sameStringList(facts.selectedToolSetNames, selectedSets)
+      || !sameStringList(facts.selectedToolNames, definitionNames)
+      || assembly.tools.some((tool) => typeof assembly.handlers.get(tool.name) !== 'function')
+      || assembly.handlers.size !== assembly.tools.length
+      || [...assembly.handlers.keys()].some((name) => !definitionNames.includes(name))
+    ) return undefined;
+
+    const contract: DirectReplayContract = Object.freeze({
+      audit: contractAudit(snapshots, facts),
+    });
+    directReplayContracts.set(contract, {
+      consumed: false,
+      assemblyPolicyVersion: DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION,
+      selectedToolSetNames: selectedSetSnapshot,
+      selectedToolSetsAreCurrent: () => sameStringList(
+        selectedSetSnapshot,
+        options.selectedToolSetNames ?? [],
+      ),
+      noProviderToolsAreCurrent: () => options.disableServerTools === true,
+      facts,
+      factSnapshot: snapshotFacts(facts),
+      definitionSnapshots: snapshots,
+      handlerSlots: new Map(assembly.tools.map((tool) => [
+        tool.name,
+        assembly.handlers.get(tool.name)!,
+      ])),
+      sourceRegistriesAreCurrent: () => !hasDuplicateNames(this.tools)
+        && !hasDuplicateNames(requestTools?.tools ?? [])
+        && sameDefinitionSnapshots(globalSnapshots, this.tools)
+        && sameDefinitionSnapshots(requestSnapshots, requestTools?.tools ?? []),
+      assembleCurrent: () => {
+        const allowedToolNames = options.allowedToolNames
+          ? new Set(options.allowedToolNames)
+          : null;
+        return assembleAddieRequestTools(
+          this.tools,
+          this.toolHandlers,
+          requestTools,
+          options,
+          allowedToolNames,
+        );
+      },
+    });
+    return contract;
+  }
+
+  /**
    * Copy the registered tool surface into a provider-isolated client. This is
    * deliberately not a production selector: alternate providers remain
    * blocked by the operational guards in both message entry points.
@@ -1317,7 +1707,11 @@ export class AddieClaudeClient {
   /** Production entry point using the same executor and action guards as Sonnet. */
   forkForGeminiDirect(provider: ModelProvider): AddieClaudeClient {
     if (provider.id !== 'google') throw new Error('Gemini Direct requires the Google provider');
-    const fork = this.forkForIsolatedProvider(GOOGLE_ROUTER_MODEL, { provider });
+    // Retain the channel's health controller across turns and provider forks.
+    const fork = new AddieClaudeClient('', GOOGLE_ROUTER_MODEL, this.providerHealth, { provider });
+    fork.tools = [...this.tools];
+    fork.toolHandlers = new Map(this.toolHandlers);
+    fork.webSearchEnabled = false;
     fork.productionGeminiDirect = true;
     return fork;
   }
@@ -1325,7 +1719,7 @@ export class AddieClaudeClient {
   private assertProductionProvider(model: string, options?: ProcessMessageOptions): void {
     if (isIsolatedExecution(options) || this.modelProvider.id === 'anthropic') return;
     if (this.productionGeminiDirect && model === GOOGLE_ROUTER_MODEL
-      && options?.directToolSession && options.allowedToolNames && options.costScope) return;
+      && options?.directToolSession && options.allowedToolNames && (options.costScope || options.uncapped)) return;
     throw new Error('Alternate Addie model providers are restricted to isolated execution');
   }
 
@@ -1340,11 +1734,25 @@ export class AddieClaudeClient {
     };
   }
 
-  private invocationSystemBlocks(blocks: ModelSystemBlock[], tools: ModelToolDefinition[], options?: ProcessMessageOptions) {
-    if (!options?.directToolSession) return blocks;
-    const current = this.buildSystemBlocks(tools.map(tool => tool.name), options.directToolSession.selectedToolSetNames(), options.requestContext);
-    // Retain any history-trimming warning appended during initial assembly.
-    return [...current, ...blocks.slice(current.length)];
+  private invocationSystemBlocks(
+    blocks: ModelSystemBlock[],
+    tools: ModelToolDefinition[],
+    options?: ProcessMessageOptions,
+    finalAnswerOnly = false,
+  ) {
+    let invocationBlocks = blocks;
+    if (options?.directToolSession) {
+      const current = this.buildSystemBlocks(
+        tools.map(tool => tool.name),
+        options.directToolSession.selectedToolSetNames(),
+        options.requestContext,
+      );
+      // Retain any history-trimming warning appended during initial assembly.
+      invocationBlocks = [...current, ...blocks.slice(current.length)];
+    }
+    return finalAnswerOnly
+      ? [...invocationBlocks, { text: FINAL_ANSWER_OPPORTUNITY_INSTRUCTION }]
+      : invocationBlocks;
   }
 
   /** Assemble the shared prompt, tool surface, history, and attachments for either delivery mode. */
@@ -1373,6 +1781,16 @@ export class AddieClaudeClient {
     );
     const allTools = assembledTools.tools;
     const allHandlers = assembledTools.handlers;
+    const directReplayContract = options?.directReplayContractFacts
+      ? this.mintDirectReplayContract(
+          requestTools,
+          options,
+          options.directReplayContractFacts,
+          assembledTools,
+          requestWebSearchEnabled,
+        )
+      : undefined;
+    if (directReplayContract) options?.onDirectReplayContract?.(directReplayContract);
 
     const promptStart = Date.now();
     const systemBlocks = this.buildSystemBlocks(
@@ -1439,7 +1857,10 @@ export class AddieClaudeClient {
       )
       : maxOutputTokens;
     const controls = this.productionGeminiDirect && effectiveModel === GOOGLE_ROUTER_MODEL
-      ? { maxOutputTokens: safeMaxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, reasoning: { effort: 'low' as const } }
+      ? {
+          maxOutputTokens: safeMaxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+          reasoning: { effort: 'low' as const },
+        }
       : addieModelOutputControls(effectiveModel, safeMaxOutputTokens);
     return {
       model: effectiveModel,
@@ -1614,21 +2035,31 @@ export class AddieClaudeClient {
       modelTools,
       requestWebSearchEnabled,
     } = prepared;
+    const toolExecutorOptions = {
+      executionMode: options?.executionMode ?? 'production',
+      policy: githubIssueCreationExecutionPolicy(
+        githubIssueCreationRequested,
+        this.executionPolicy(options),
+      ),
+      reserveSideEffect: options?.reserveSideEffect,
+      notificationContext: {
+        slackUserId: options?.slackUserId,
+        userDisplayName: options?.userDisplayName,
+        threadId: options?.threadId,
+      },
+    } satisfies Parameters<typeof createAddieToolExecutor>[2];
     const executeToolCall = createAddieToolExecutor(
       [...toolsByName.values()],
       allHandlers,
+      toolExecutorOptions,
+    );
+    const rejectFinalAnswerToolCall = createAddieToolExecutor(
+      [],
+      new Map(),
       {
-        executionMode: options?.executionMode ?? 'production',
-        policy: githubIssueCreationExecutionPolicy(
-          githubIssueCreationRequested,
-          this.executionPolicy(options),
-        ),
-        reserveSideEffect: options?.reserveSideEffect,
-        notificationContext: {
-          slackUserId: options?.slackUserId,
-          userDisplayName: options?.userDisplayName,
-          threadId: options?.threadId,
-        },
+        ...toolExecutorOptions,
+        expectedEmptySurface: 'final_answer_boundary',
+        onExpectedBoundaryRejection: () => options?.onTerminalBoundaryEvent?.('final_answer_rejected_call'),
       },
     );
     systemPromptMs = prepared.systemPromptMs;
@@ -1671,8 +2102,10 @@ export class AddieClaudeClient {
     }
     let iteration = 0;
     let hasExecutedCustomTool = false;
+    let hasSuccessfulToolProgress = false;
     let activeModel = effectiveModel;
     let modelFallbackReason: ModelFallbackReason | null = null;
+    let finalAnswerOnly = false;
 
     while (modelLoop.hasRemaining) {
       const activeTurn = modelLoop.beginNext();
@@ -1683,7 +2116,7 @@ export class AddieClaudeClient {
       let response!: ModelResponse;
       let reusedEmptyResponse = false;
       const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
-      const invocationTools = recoveryInvocation.toolsAllowed
+      const invocationTools = !finalAnswerOnly && recoveryInvocation.toolsAllowed
         ? modelTools.filter(tool => !options?.directToolSession
           || options.directToolSession.visibleToolNames().has(tool.name)) : [];
       let invocationAttempt = 0;
@@ -1692,7 +2125,7 @@ export class AddieClaudeClient {
         invocationAttempt++;
         const modelRequest = this.buildModelRequest(
           model,
-          this.invocationSystemBlocks(systemBlocks, invocationTools, options),
+          this.invocationSystemBlocks(systemBlocks, invocationTools, options, finalAnswerOnly),
           invocationTools,
           modelMessages,
           recoveryInvocation.toolsAllowed && requestWebSearchEnabled,
@@ -1726,7 +2159,7 @@ export class AddieClaudeClient {
         // Replay and shadow are exactly-once paid experiments. A timeout can
         // occur after provider acceptance, so neither our outer retry helper
         // nor the provider SDK may submit the request again.
-        response = isExactlyOnceExecution(options) || recoveryInvocation.requiresExactlyOnce
+        response = isExactlyOnceExecution(options) || this.productionGeminiDirect || recoveryInvocation.requiresExactlyOnce
           ? await invokeProvider(true)
           : await withRetry(
             () => invokeProvider(false),
@@ -1856,6 +2289,7 @@ export class AddieClaudeClient {
         logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
       }
       const acceptedTurnText = turn.textBlocks.map((block) => block.text).join('\n\n');
+      const toolExecutionStartIndex = toolExecutions.length;
 
       let turnDecision: AddieAcceptedTurnDecision | undefined;
       for await (const event of orchestrateAcceptedAddieTurn({
@@ -1864,7 +2298,7 @@ export class AddieClaudeClient {
         executionMode: options?.executionMode ?? 'production',
         messages: modelMessages,
         ledger: executionLedger,
-        execute: executeToolCall,
+        execute: finalAnswerOnly ? rejectFinalAnswerToolCall : executeToolCall,
         emptyResponseRecovery: {
           loop: modelLoop,
           deliverableText: stripBannedRituals(acceptedTurnText.trim()),
@@ -1900,6 +2334,36 @@ export class AddieClaudeClient {
       if (!turnDecision) throw new Error('Accepted model turn produced no orchestration decision');
 
       if (turnDecision.disposition.type === 'continue') {
+        const madeSuccessfulToolProgress = toolExecutions
+          .slice(toolExecutionStartIndex)
+          .some(execution => !execution.is_error);
+        hasSuccessfulToolProgress ||= madeSuccessfulToolProgress;
+        const boundaryDecision = grantGeminiDirectBoundaryOpportunity({
+          enabled: this.productionGeminiDirect,
+          loop: modelLoop,
+          finalAnswerOnly,
+          madeSuccessfulToolProgress:
+            turnDecision.disposition.reason === 'execute_tools' && madeSuccessfulToolProgress,
+          hasSuccessfulToolProgress,
+          processingMs: totalLlmMs + toolExecutions.reduce(
+            (sum, execution) => sum + execution.duration_ms,
+            0,
+          ),
+        });
+        if (boundaryDecision === 'final_answer') {
+          finalAnswerOnly = true;
+          options?.onTerminalBoundaryEvent?.('final_answer_opportunity');
+          logger.info(
+            { iteration, event: 'addie_final_answer_opportunity' },
+            'Addie: Granting one tool-disabled final response after useful tool progress',
+          );
+        } else if (boundaryDecision === 'progress') {
+          options?.onTerminalBoundaryEvent?.('progress_extension');
+          logger.info(
+            { iteration, event: 'addie_tool_progress_extension' },
+            'Addie: Extending bounded Gemini tool loop after new useful progress',
+          );
+        }
         if (
           turnDecision.disposition.reason === 'continue'
           || turnDecision.disposition.reason === 'continue_provider_tools'
@@ -1932,6 +2396,7 @@ export class AddieClaudeClient {
           kind: 'provider',
           disposition: 'truncated',
           userMessage,
+          conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
           githubIssueCreationRequested,
           clientRequestId: options?.clientRequestId,
           githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -1957,6 +2422,7 @@ export class AddieClaudeClient {
         logger.error(
           {
             event: 'addie_response_truncated',
+            truncationSource: 'provider_output_limit',
             source: 'processMessage',
             stopReason: response.providerFinishReason,
             iteration,
@@ -1984,6 +2450,7 @@ export class AddieClaudeClient {
           kind: 'provider',
           disposition: 'complete',
           userMessage,
+          conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
           githubIssueCreationRequested,
           clientRequestId: options?.clientRequestId,
           githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2016,6 +2483,7 @@ export class AddieClaudeClient {
           logger.error(
             {
               event: 'addie_response_truncated',
+              truncationSource: 'local_character_limit',
               source: 'processMessage',
               stopReason: response.providerFinishReason,
               iteration,
@@ -2046,6 +2514,7 @@ export class AddieClaudeClient {
     const terminal = buildTerminalAddieResponse({
       kind: 'max_iterations',
       userMessage,
+      conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
       githubIssueCreationRequested,
       clientRequestId: options?.clientRequestId,
       githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2240,7 +2709,7 @@ export class AddieClaudeClient {
       logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie Stream: Using precision model for billing/financial query');
     }
 
-    const executeToolCall = createAddieToolExecutor([...toolsByName.values()], allHandlers, {
+    const toolExecutorOptions = {
       executionMode: options?.executionMode ?? 'production',
       policy: githubIssueCreationExecutionPolicy(
         githubIssueCreationRequested,
@@ -2252,7 +2721,21 @@ export class AddieClaudeClient {
         userDisplayName: options?.userDisplayName,
         threadId: options?.threadId,
       },
-    });
+    } satisfies Parameters<typeof createAddieToolExecutor>[2];
+    const executeToolCall = createAddieToolExecutor(
+      [...toolsByName.values()],
+      allHandlers,
+      toolExecutorOptions,
+    );
+    const rejectFinalAnswerToolCall = createAddieToolExecutor(
+      [],
+      new Map(),
+      {
+        ...toolExecutorOptions,
+        expectedEmptySurface: 'final_answer_boundary',
+        onExpectedBoundaryRejection: () => options?.onTerminalBoundaryEvent?.('final_answer_rejected_call'),
+      },
+    );
 
     if (messageTurnsResult.wasTrimmed) {
       logger.info(
@@ -2269,6 +2752,8 @@ export class AddieClaudeClient {
     let lastProviderModel: string | undefined;
     let activeModel = effectiveModel;
     let modelFallbackReason: ModelFallbackReason | null = null;
+    let hasSuccessfulToolProgress = false;
+    let finalAnswerOnly = false;
 
       while (modelLoop.hasRemaining) {
         const activeTurn = modelLoop.beginNext();
@@ -2293,12 +2778,12 @@ export class AddieClaudeClient {
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
           const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
-          const invocationTools = recoveryInvocation.toolsAllowed
+          const invocationTools = !finalAnswerOnly && recoveryInvocation.toolsAllowed
             ? modelTools.filter(tool => !options?.directToolSession
               || options.directToolSession.visibleToolNames().has(tool.name)) : [];
           const modelRequest = this.buildModelRequest(
             activeModel,
-            this.invocationSystemBlocks(systemBlocks, invocationTools, options),
+            this.invocationSystemBlocks(systemBlocks, invocationTools, options, finalAnswerOnly),
             invocationTools,
             modelMessages,
             false,
@@ -2579,6 +3064,7 @@ export class AddieClaudeClient {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
         }
         const acceptedTurnText = turn.textBlocks.map((block) => block.text).join('\n\n');
+        const toolExecutionStartIndex = toolExecutions.length;
 
         let turnDecision: AddieAcceptedTurnDecision | undefined;
         for await (const event of orchestrateAcceptedAddieTurn({
@@ -2587,7 +3073,7 @@ export class AddieClaudeClient {
           executionMode: options?.executionMode ?? 'production',
           messages: modelMessages,
           ledger: executionLedger,
-          execute: executeToolCall,
+          execute: finalAnswerOnly ? rejectFinalAnswerToolCall : executeToolCall,
           emptyResponseRecovery: {
             loop: modelLoop,
             deliverableText: stripBannedRituals(acceptedTurnText),
@@ -2665,6 +3151,36 @@ export class AddieClaudeClient {
 
         const iterationText = turnDecision.text;
         if (turnDecision.disposition.type === 'continue') {
+          const madeSuccessfulToolProgress = toolExecutions
+            .slice(toolExecutionStartIndex)
+            .some(execution => !execution.is_error);
+          hasSuccessfulToolProgress ||= madeSuccessfulToolProgress;
+          const boundaryDecision = grantGeminiDirectBoundaryOpportunity({
+            enabled: this.productionGeminiDirect,
+            loop: modelLoop,
+            finalAnswerOnly,
+            madeSuccessfulToolProgress:
+              turnDecision.disposition.reason === 'execute_tools' && madeSuccessfulToolProgress,
+            hasSuccessfulToolProgress,
+            processingMs: totalLlmMs + toolExecutions.reduce(
+              (sum, execution) => sum + execution.duration_ms,
+              0,
+            ),
+          });
+          if (boundaryDecision === 'final_answer') {
+            finalAnswerOnly = true;
+            options?.onTerminalBoundaryEvent?.('final_answer_opportunity');
+            logger.info(
+              { iteration, event: 'addie_final_answer_opportunity' },
+              'Addie Stream: Granting one tool-disabled final response after useful tool progress',
+            );
+          } else if (boundaryDecision === 'progress') {
+            options?.onTerminalBoundaryEvent?.('progress_extension');
+            logger.info(
+              { iteration, event: 'addie_tool_progress_extension' },
+              'Addie Stream: Extending bounded Gemini tool loop after new useful progress',
+            );
+          }
           if (
             turnDecision.disposition.reason === 'continue'
             || turnDecision.disposition.reason === 'continue_provider_tools'
@@ -2700,6 +3216,7 @@ export class AddieClaudeClient {
             kind: 'provider',
             disposition: 'truncated',
             userMessage,
+            conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
             githubIssueCreationRequested,
             clientRequestId: options?.clientRequestId,
             githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2726,6 +3243,7 @@ export class AddieClaudeClient {
           logger.error(
             {
               event: 'addie_response_truncated',
+              truncationSource: 'provider_output_limit',
               source: 'processMessageStream',
               stopReason: currentResponse.providerFinishReason,
               iteration,
@@ -2755,6 +3273,7 @@ export class AddieClaudeClient {
             kind: 'provider',
             disposition: 'complete',
             userMessage,
+            conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
             githubIssueCreationRequested,
             clientRequestId: options?.clientRequestId,
             githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
@@ -2786,6 +3305,7 @@ export class AddieClaudeClient {
             logger.error(
               {
                 event: 'addie_response_truncated',
+                truncationSource: 'local_character_limit',
                 source: 'processMessageStream',
                 stopReason: currentResponse.providerFinishReason,
                 iteration,
@@ -2814,6 +3334,7 @@ export class AddieClaudeClient {
       const terminal = buildTerminalAddieResponse({
         kind: 'max_iterations',
         userMessage,
+        conversationContext: outcomeClaimContext([userMessage, ...(threadContext ?? []).map(entry => entry.text)], options?.requestContext),
         githubIssueCreationRequested,
         clientRequestId: options?.clientRequestId,
         githubIssueRetryReceipts: options?.githubIssueRetryReceipts,

@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.2/enums/outcome-target-cost-strength.json",
+  "title": "Outcome Target Cost Strength",
+  "description": "Strength of an outcome_target cost_per: the BiddingPolicy.cost_per strength vocabulary, kept identical to it by test. A distinct schema gives generated SDKs a distinct type instead of a second, colliding Strength.",
+  "type": "string",
+  "enum": [
+    "cap",
+    "target"
+  ],
+  "enumDescriptions": {
+    "cap": "Optimize for an average at or below the amount, accepting underdelivery when necessary.",
+    "target": "Optimize around the amount while balancing volume and spend."
+  }
+}

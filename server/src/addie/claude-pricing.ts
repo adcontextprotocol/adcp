@@ -34,12 +34,15 @@ const PRICING_PER_MILLION_TOKENS: Record<string, ModelRates> = {
   'claude-opus-4-7': { inputUsd: 5, outputUsd: 25, cacheCreationUsd: 6.25, cacheReadUsd: 0.5 },
   'claude-opus-4-8': { inputUsd: 5, outputUsd: 25, cacheCreationUsd: 6.25, cacheReadUsd: 0.5 },
   'claude-opus-5': { inputUsd: 5, outputUsd: 25, cacheCreationUsd: 6.25, cacheReadUsd: 0.5 },
+  'claude-opus-5-5': { inputUsd: 4, outputUsd: 20, cacheCreationUsd: 5, cacheReadUsd: 0.2 },
   // Claude Sonnet — balanced tier (most Addie calls). Anthropic pricing
   // checked 2026-09-05: Sonnet 5 uses its exact public standard rate,
   // including the 5-minute cache-write rate.
   'claude-sonnet-4-5': { inputUsd: 3, outputUsd: 15, cacheCreationUsd: 3.75, cacheReadUsd: 0.3 },
   'claude-sonnet-4-6': { inputUsd: 3, outputUsd: 15, cacheCreationUsd: 3.75, cacheReadUsd: 0.3 },
   'claude-sonnet-5': { inputUsd: 2, outputUsd: 10, cacheCreationUsd: 2.5, cacheReadUsd: 0.2 },
+  // Sonnet 5.5 keeps Sonnet 5's standard rates (checked 2026-10-01).
+  'claude-sonnet-5-5': { inputUsd: 2, outputUsd: 10, cacheCreationUsd: 2.5, cacheReadUsd: 0.2 },
   // Claude Haiku 4.x — fast / cheap tier (routing, classification)
   'claude-haiku-4-5': { inputUsd: 1, outputUsd: 5, cacheCreationUsd: 1.25, cacheReadUsd: 0.1 },
 };

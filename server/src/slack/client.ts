@@ -14,6 +14,7 @@ import type {
   SlackChannel,
   SlackPaginatedResponse,
   SlackBlockMessage,
+  SlackFile,
 } from './types.js';
 
 const logger = createLogger('slack-client');
@@ -1022,6 +1023,7 @@ export interface SlackThreadMessage {
   thread_ts?: string;
   reply_count?: number;
   parent_user_id?: string;
+  files?: SlackFile[];
 }
 
 /**
@@ -1347,6 +1349,7 @@ export interface SlackHistoryMessage {
   ts: string;
   thread_ts?: string;
   subtype?: string;
+  files?: SlackFile[];
   reply_count?: number;  // Number of replies in thread (for parent messages)
 }
 

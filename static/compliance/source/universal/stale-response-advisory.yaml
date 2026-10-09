@@ -4,6 +4,9 @@ title: "STALE_RESPONSE advisory-success wire placement"
 category: stale_response_advisory
 summary: "Validates that STALE_RESPONSE rides in errors[] on a populated success response with transport success preserved, and that STALE_RESPONSE is absent on healthy upstream responses."
 track: error_handling
+requires:
+  - controller
+
 required_tools:
   - get_products
 
@@ -44,10 +47,34 @@ caller:
   example: "Compliance test harness"
 
 prerequisites:
+  controller_seeding: true
   description: |
     Phase 2 (stale-cache forcing) requires comply_test_controller with
     force_upstream_unavailable support. Phase 3 (non-emission guard) runs for all agents.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_3fed734a64af"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-stale_response_advisory-cfb1001d"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_b0595ab81ea4"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-stale_response_advisory-cfb1001d"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -185,6 +212,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-stale_response_advisory-cfb1001d"
             sandbox: true
           context:
             correlation_id: "stale_response_advisory--stale_response_wire_placement"
@@ -275,6 +304,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-stale_response_advisory-cfb1001d"
           context:
             correlation_id: "stale_response_advisory--no_stale_on_healthy"
         validations:

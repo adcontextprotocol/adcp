@@ -26,6 +26,21 @@ vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
   isWebUserAAOAdmin: (...args: unknown[]) => mocks.isWebUserAAOAdmin(...args),
 }));
 
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>();
+  const checkMembership = (...args: unknown[]) => mocks.isWebUserAAOAdmin(...args);
+  const resolve = async (principal: any, email?: string | null) => {
+    const id = typeof principal === 'string' ? principal : principal.authWorkosUserId ?? principal.id;
+    return actual.decideAAOAdminAccess(await checkMembership(id), typeof principal === 'string' ? email : principal.email);
+  };
+  return {
+    ...actual,
+    isWebUserAAOAdmin: checkMembership,
+    resolveWebUserAAOAdminAccess: resolve,
+    isAuthenticatedUserAAOAdmin: async (principal: any) => (await resolve(principal)).isAdmin,
+  };
+});
+
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/middleware/auth.js')>();
 

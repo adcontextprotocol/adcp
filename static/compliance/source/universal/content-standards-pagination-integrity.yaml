@@ -4,6 +4,9 @@ title: "Pagination cursor integrity — list_content_standards"
 category: schema_validation
 summary: "Validates the cursor↔has_more invariant by walking a paginated list_content_standards response from a continuation page to a terminal page."
 track: core
+requires:
+  - controller
+
 required_tools:
   - list_content_standards
 
@@ -49,7 +52,29 @@ prerequisites:
     content standards, so this storyboard uses the create-then-list pattern to
     keep itself self-contained without extending the seed taxonomy.
   test_kit: "test-kits/acme-outdoor.yaml"
-  controller_seeding: false
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_f0227f0048fa"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-pagination_integrity_content_standar-5d853181"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_fb32d49a8d27"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-pagination_integrity_content_standar-5d853181"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -114,6 +139,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_content_standar-5d853181"
           scope:
             languages_any: ["en"]
             channels_any: ["display"]
@@ -150,6 +177,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_content_standar-5d853181"
           scope:
             languages_any: ["es"]
             channels_any: ["olv"]
@@ -186,6 +215,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_content_standar-5d853181"
           scope:
             languages_any: ["fr"]
             channels_any: ["ctv"]
@@ -245,6 +276,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_content_standar-5d853181"
           pagination:
             max_results: 2
 
@@ -296,6 +329,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-pagination_integrity_content_standar-5d853181"
           pagination:
             cursor: "$context.next_cursor"
             max_results: 2

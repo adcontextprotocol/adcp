@@ -279,6 +279,8 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
     'protocols/media-buy/scenarios/get_products_async.yaml:$context.submitted_products_idempotency_key',
     'protocols/media-buy/scenarios/proposal_finalize.yaml:$context.finalize_idempotency_key',
     'protocols/media-buy/scenarios/typed_proposal_negotiation.yaml:$context.finalize_idempotency_key',
+    'protocols/creative/scenarios/creative_features_idempotency.yaml:$context.sync_replay_key',
+    'protocols/creative/scenarios/creative_features_idempotency.yaml:$context.async_replay_key',
     'specialisms/buyer-activation/index.yaml:$generate:uuid_v4#buyer_activation_retry_first',
   ]);
 
@@ -713,6 +715,20 @@ function main() {
     process.exit(1);
   }
 
+  // Buyer-fixture lifecycle-tools lint: a buyer storyboard's fixture publisher
+  // may only advertise compact lifecycle tools the fixture-publisher contract
+  // serves (universal/buyer-fixture-publisher.yaml > authoring_rules).
+  // Advertising a tool with no handler sends a correctly-gating buyer to a
+  // tool the publisher cannot answer. adcontextprotocol/adcp#7749.
+  try {
+    execSync('node scripts/lint-storyboard-buyer-fixture-lifecycle-tools.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Packaged-reference lint: authored storyboards may only point at files that
   // ship in the versioned compliance tree. This catches source-tree-only
   // references before they produce protocol tarballs that SDKs cannot load.
@@ -793,11 +809,37 @@ function main() {
     process.exit(1);
   }
 
+  // Controller-requires lint: storyboards that seed through
+  // comply_test_controller (prerequisites.controller_seeding: true) MUST
+  // declare requires: [controller] so a seller without a controller gets one
+  // storyboard-level requirement_unmet skip, not per-step
+  // missing_test_controller grades. adcontextprotocol/adcp#7858.
+  try {
+    execSync('node scripts/lint-storyboard-controller-requires.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Upstream-traffic path lint: identifier_paths use a small portable
   // request-payload-relative grammar so runners don't diverge on JSONPath
   // variants, numeric indexes, or explicit roots. adcontextprotocol/adcp#5073.
   try {
     execSync('node scripts/lint-storyboard-upstream-traffic-paths.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // $generate phase-scope lint: the runner scopes `$generate:<kind>#<alias>`
+  // values to one phase, so an alias reused in a later phase silently mints a
+  // different ID. Cross-phase values must travel through context_outputs.
+  try {
+    execSync('node scripts/lint-storyboard-generate-phase-scope.cjs', {
       cwd: path.join(__dirname, '..'),
       stdio: 'inherit',
     });

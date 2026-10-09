@@ -55,6 +55,7 @@ vi.mock('../../src/db/org-filters.js', () => ({
 }));
 
 import { formatMemberContextForPrompt, MemberContext } from '../../src/addie/member-context.js';
+import { enforceOutcomeClaims, outcomeClaimContext } from '../../src/addie/outcome-claims.js';
 
 /**
  * Member Context Unit Tests
@@ -87,6 +88,11 @@ describe('formatMemberContextForPrompt', () => {
     expect(result).toContain('Use only the tool names shown there');
     expect(result).not.toContain('`get_schema`');
     expect(result).not.toContain('everything in ALWAYS_AVAILABLE');
+    // Guest capability boilerplate mentions certification but is not a lesson.
+    expect(result).toContain('certification progression');
+    const conversation = outcomeClaimContext(['How is my Q4 campaign?'], result ?? '');
+    const response = 'Your Q4 campaign is complete.';
+    expect(enforceOutcomeClaims(response, [], conversation).text).toBe(response);
   });
 
   it('should include user name from workos_user', () => {

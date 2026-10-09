@@ -589,6 +589,7 @@ export const CERTIFICATION_LEARNING_TOOLS = [
   "check_credentials",
   "find_membership_products",
   "call_adcp_task",
+  "call_adcp_get_products",
 ] as const;
 
 /** Placement assessment and specialist capstone workflow. */
@@ -602,6 +603,7 @@ export const CERTIFICATION_ASSESSMENT_TOOLS = [
   "check_credentials",
   "find_membership_products",
   "call_adcp_task",
+  "call_adcp_get_products",
 ] as const;
 
 /** Calendar lookup, RSVP, and invitation attendance workflow. */
@@ -798,6 +800,7 @@ export const ADCP_OPERATION_DOMAIN_TOOL_SETS = {
   adcp_task_operations: [
     "ask_about_adcp_task",
     "call_adcp_task",
+    "call_adcp_get_products",
     "get_adcp_capabilities",
   ],
   adcp_agent_management: [
@@ -815,6 +818,7 @@ export const ADCP_AGENT_MANAGEMENT_TOOLS = ADCP_OPERATION_DOMAIN_TOOL_SETS.adcp_
 export const ADCP_OPERATIONS_TOOLS = [
   "ask_about_adcp_task",
   "call_adcp_task",
+  "call_adcp_get_products",
   "get_adcp_capabilities",
   "save_agent",
   "list_saved_agents",

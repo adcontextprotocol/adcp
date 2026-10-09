@@ -266,9 +266,9 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(workflow, /sales_storyboards:\n\s+name: Storyboards \(current \/sales\)/);
   assert.match(workflow, /needs: sales_storyboard_orchestrators/);
   assert.match(workflow, /ORCHESTRATOR_RESULT: \$\{\{ needs\.sales_storyboard_orchestrators\.result \}\}/);
-  assert.match(workflow, /MIN_CLEAN: 133/);
-  assert.match(workflow, /MIN_PASSED: 632/);
-  assert.match(matrixRunner, /"sales:133:632"/);
+  assert.match(workflow, /MIN_CLEAN: 135/);
+  assert.match(workflow, /MIN_PASSED: 646/);
+  assert.match(matrixRunner, /"sales:135:646"/);
   assert.match(workflow, /Training agent · current \/sales/);
   assert.match(workflow, /echo "failed=\$\{failed_sum\}"/);
   assert.match(workflow, /echo "not_applicable=\$\{not_applicable_sum\}"/);
@@ -276,7 +276,7 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(matrixRunner, /--shard-count 8 --max-parallel 2 --timeout-ms 180000/);
   assert.match(matrixRunner, /orchestrator_failure=1/);
   assert.match(workflow, /wholesale_feed_products_scope_isolation/);
-  assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:7:0/);
+  assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:8:0/);
 });
 
 test('creative-builder uses bounded isolated children in local and CI matrices', () => {
@@ -300,19 +300,18 @@ test('creative-builder uses bounded isolated children in local and CI matrices',
 test('current training-agent floors are ratcheted and mirrored by local and CI runners', () => {
   const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
   const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
-  // governance and brand dropped one passing step each when
-  // canonical_format_validate_input stopped listing comply_test_controller in
-  // required_tools: both tenants expose the controller but not validate_input,
-  // so the storyboard is no longer selected for them and the single step it
-  // contributed is gone. Deliberate de-ratchet, not a regression — the
-  // clean-storyboard floors are untouched.
+  // The CTV and premium-display validate_input gates previously admitted
+  // controller-only /brand and /governance: 14 + 18 product seeds passed while
+  // every validator check skipped. The live tool-catalog drift test replays
+  // both gates and proves that exact loss. Subtract only those 32 setup passes;
+  // pin all clean floors, other tenants, and the frozen 3.0 floors below.
   const baselines = [
     ['signals', 45, 80],
-    ['sales', 133, 632],
-    ['governance', 47, 160],
+    ['sales', 135, 646],
+    ['governance', 47, 160 - (14 + 18)],
     ['creative', 49, 209],
     ['creative-builder', 50, 184],
-    ['brand', 45, 115],
+    ['brand', 45, 115 - (14 + 18)],
     ['si', 42, 50],
   ];
 

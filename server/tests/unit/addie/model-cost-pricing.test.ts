@@ -19,3 +19,24 @@ describe('live Luna router pricing', () => {
     expect(resolveModelCostPricing('openai', model)).toBeNull();
   });
 });
+
+describe('live Gemini 3.7 implicit-cache pricing', () => {
+  const price = resolveModelCostPricing('google', 'gemini-3.7-flash')!;
+
+  it('prices cache reads as a discounted subset of input and includes thinking in output', () => {
+    expect(price.estimateCostMicros({
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      cacheReadTokens: 1_000_000,
+      reasoningTokens: 250_000,
+    })).toBe(3_825_000);
+  });
+
+  it('does not require a cache-write receipt for an implicit cache hit', () => {
+    expect(price.estimateCostMicros({
+      inputTokens: 10,
+      outputTokens: 0,
+      cacheReadTokens: 7,
+    })).toBe(3);
+  });
+});

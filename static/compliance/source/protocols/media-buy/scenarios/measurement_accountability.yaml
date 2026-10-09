@@ -1,9 +1,12 @@
 id: media_buy_seller/measurement_accountability
-version: "1.0.0"
+version: "1.0.1"
 title: "End-to-end metric accountability through the media buy lifecycle"
 category: media_buy_seller
 summary: "Buyer requires specific reporting metrics at discovery; seller filters products to those that can deliver; delivery report exposes any gaps via missing_metrics."
 track: reporting
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy
@@ -57,13 +60,21 @@ prerequisites:
 fixtures:
   products:
     - product_id: "ctv_premium_completed_views"
-      delivery_type: "guaranteed"
+      # Non-guaranteed so sales-non-guaranteed-only sellers can run this scenario
+      # (#7754). Fixed-price because discovery filters on is_fixed_price and the
+      # create sends no bid. available_metrics matches the required_metrics filter.
+      delivery_type: "non_guaranteed"
       channels: ["ctv"]
       format_options:
         - format_option_id: "video_15s"
           format_kind: "video_hosted"
           params:
             duration_ms_exact: 15000
+      reporting_capabilities:
+        available_metrics:
+          - impressions
+          - completed_views
+          - spend
   pricing_options:
     - product_id: "ctv_premium_completed_views"
       pricing_option_id: "cpm_standard"

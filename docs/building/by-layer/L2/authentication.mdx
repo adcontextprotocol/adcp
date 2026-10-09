@@ -5,21 +5,21 @@ description: "AdCP authentication guide: public vs authenticated operations, sta
 ---
 
 
-AdCP uses a tiered authentication model where some operations are publicly accessible while others require authentication.
+AdCP uses a tiered authentication model where capability discovery is public, catalog discovery may be public, and protected reads and mutations require authentication.
 
 ## When Authentication is Required
 
 ### Public Operations (No Authentication Required)
 
-These operations work without credentials to enable discovery and evaluation:
+This operation works without credentials to bootstrap discovery:
 
 - **`get_adcp_capabilities`** - Discover agent capabilities, portfolio, and supported features
-- **`get_adcp_capabilities`** - Browse public creative capabilities
-- **`get_products`** - Discover inventory (returns limited results without auth)
 
 **Rationale**: Publishers want potential buyers to discover their capabilities before establishing a business relationship.
 
-**Important**: Unauthenticated `get_products` may return:
+Product and signal discovery are seller-variable. Read `media_buy.anonymous_discovery` before calling `list_products` or `get_products` in discovery mode, and read `signals.anonymous_discovery` before calling `get_signals`. `true` means the call may succeed anonymously; `false` means credentials are required; absence means unspecified legacy behavior and the caller handles `AUTH_MISSING` if an anonymous probe is rejected.
+
+An anonymous discovery response is authoritative only for that anonymous request. It may contain:
 - Partial catalog (standard products only)
 - No pricing information or CPM details
 - No custom product offerings
@@ -27,9 +27,8 @@ These operations work without credentials to enable discovery and evaluation:
 
 ### Authenticated Operations (Credentials Required)
 
-These operations require valid credentials:
+Every mutation and every read of private or account-scoped state requires valid credentials. Examples include:
 
-- **`get_products`** (full access) - Complete catalog with pricing and custom products
 - **`create_media_buy`** - Create advertising campaigns
 - **`update_media_buy`** - Modify existing campaigns
 - **`sync_creatives`** - Upload creative assets
@@ -41,19 +40,19 @@ These operations require valid credentials:
 
 ## Authentication Method
 
-AdCP supports three authentication mechanisms for authenticated operations. The choice depends on the operation's risk class and the AdCP version in use:
+AdCP supports three authentication mechanisms for authenticated operations. Which one an endpoint accepts for an operation is set by its advertised security contract, including `request_signing.required_for` on `get_adcp_capabilities`. The canonical rules and the [transport migration timeline](/docs/building/by-layer/L1/security#transport-migration-timeline) live in the implementation security reference:
 
-| Mechanism | 3.0 (current) | 3.1+ | Notes |
-|---|---|---|---|
-| **RFC 9421 request signing** | RECOMMENDED for all authenticated operations | **REQUIRED** for mutating / financial operations | Asymmetric, body-bound, replay-resistant. See [RFC 9421 request signing](/docs/building/by-layer/L1/security#request-signing). |
-| **Mutual TLS (mTLS)** | Permitted for any operation | Permitted as an alternative to 9421 | Transport-layer identity; recommended when the deployment already terminates mTLS at the edge. |
-| **Static Authorization credentials (Bearer or Basic)** | Permitted; effective baseline for 3.0 | **PROHIBITED for mutating / financial operations**; permitted for read / discovery only | Shared-secret transport. Bearer is the canonical example; HTTP Basic is also acceptable when sent over TLS and validated on every protected request. Documented sunset for mutating ops — see the [known limitation](/docs/reference/known-limitations). |
+| Mechanism | 3.0 and 3.1 | 3.2 | 4.0 | Notes |
+|---|---|---|---|---|
+| **RFC 9421 request signing** | Optional and capability-advertised. | Still optional. When signing is used, every accepted signature on a request with a body covers `content-digest`. | Required for spend-committing operations. | Asymmetric, body-bound, replay-resistant. See [RFC 9421 request signing](/docs/building/by-layer/L1/security#request-signing). |
+| **Mutual TLS (mTLS)** | Permitted for any operation | Permitted for any operation | Permitted; 4.0 still requires signatures on spend-committing operations | Transport-layer identity; recommended when the deployment already terminates mTLS at the edge. |
+| **Static Authorization credentials (Bearer or Basic)** | Permitted unless the endpoint lists the operation in `request_signing.required_for` | Same as 3.0/3.1 | Not sufficient on its own for spend-committing operations | Shared-secret transport. Bearer is the canonical example; HTTP Basic is also acceptable when sent over TLS and validated on every protected request. See the [known limitation](/docs/reference/known-limitations#authentication-and-identity). |
 
 <Warning>
-  **3.0 mutating-operation floor.** Until 3.1 lands, static Authorization-header credentials over TLS are the effective floor for mutating operations. Operators handling spend commitments SHOULD ship RFC 9421 request signing before the 3.1 deprecation date to avoid a forced cutover.
+  **Mutating-operation floor in 3.x.** Throughout 3.x, static Authorization-header credentials over TLS remain acceptable for mutating operations unless the endpoint's capability declaration lists the operation in `request_signing.required_for`. Buyers follow the live declaration rather than assuming the protocol version alone determines the mechanism. Operators handling spend commitments should ship RFC 9421 request signing before 4.0, when signing becomes required for spend-committing operations.
 </Warning>
 
-### Why bearer tokens are prohibited for financial operations
+### Why signed requests matter for financial operations
 
 A bearer token authenticates whoever presents it. Any party that obtains the token (a leaked log line, a compromised proxy, a captured request, a misconfigured relay) can originate spend commitments indistinguishable from the legitimate agent's, and the seller cannot tell the difference after the fact. For read and discovery operations that risk is bounded; for operations that move money it is not.
 
@@ -64,9 +63,9 @@ Signed requests replace possession of a string with proof of possession of a pri
 - **Replay resistance.** The ±60 s timestamp window and nonce prevent a captured request from being resubmitted as a new transaction.
 - **Accountability.** Both parties can prove after the fact who originated a transaction and exactly what was requested. That audit anchor is what lowers fraud and dispute cost in financial workflows; with a shared secret, origination is unprovable once the token may have leaked.
 
-This is why the 3.1+ conformance floor prohibits static credentials for mutating and financial operations while continuing to permit them for read and discovery. Key discovery, covered components, and the full verifier checklist are defined in the [implementation security reference](/docs/building/by-layer/L1/security#request-signing); build on those (or a reference SDK) rather than hand-rolling the cryptography.
+This is why AdCP 4.0 requires signing for spend-committing operations, and why 3.x endpoints can opt in early by listing operations in `request_signing.required_for`. Key discovery, covered components, and the full verifier checklist are defined in the [implementation security reference](/docs/building/by-layer/L1/security#request-signing); build on those (or a reference SDK) rather than hand-rolling the cryptography.
 
-### Static Authorization credentials (3.0 baseline)
+### Static Authorization credentials
 
 ```
 Authorization: Bearer <token>
@@ -83,9 +82,9 @@ Implementations MUST enforce TLS 1.2+ on all static-credential-authenticated end
 
 The credential MUST be carried in the `Authorization` request header. Sellers MUST NOT require non-canonical aliases (e.g. `x-adcp-auth`, which appeared in some early MCP-only deployments) and MUST NOT advertise them as the supported header in agent cards, capability responses, or documentation. A seller MAY accept such an alias as a transitional input while it phases out an existing adopter's integration, but `Authorization: Bearer` or `Authorization: Basic` MUST also be accepted on the same endpoint. Buyer agents and SDKs SHOULD emit `Authorization: Bearer` unless a seller explicitly provisions Basic credentials; SDK examples and docstrings MUST NOT show alias headers as the canonical form.
 
-### RFC 9421 request signing (recommended; required for mutating ops in 3.1+)
+### RFC 9421 request signing (optional in 3.x; required for spend-committing ops in 4.0)
 
-Signed requests bind `@method`, `@target-uri`, `@authority`, `content-type`, and `content-digest` under an `Ed25519`, `ecdsa-p256-sha256`, or `rsa-pss-sha512` signature with a ±60 s timestamp window and ≥128-bit nonce. The full verifier checklist, key-discovery rules (`brand.json` → `agents[]` → `jwks_uri`), and rotation semantics are defined in the [implementation security reference](/docs/building/by-layer/L1/security#request-signing). Capability discovery via `get_adcp_capabilities.request_signing.supported` lets clients detect whether a seller enforces signing before sending a mutating call.
+Signed requests bind `@method`, `@target-uri`, `@authority`, `content-type`, and `content-digest` under an `Ed25519`, `ecdsa-p256-sha256`, or `rsa-pss-sha512` signature with a ±60 s timestamp window and ≥128-bit nonce. The full verifier checklist, key-discovery rules (`brand.json` → `agents[]` → `jwks_uri`), and rotation semantics are defined in the [implementation security reference](/docs/building/by-layer/L1/security#request-signing). Capability discovery via `get_adcp_capabilities.request_signing` (`supported`, `required_for`, `covers_content_digest`) lets clients detect whether a seller verifies or requires signing before sending a mutating call. On an endpoint that advertises a 3.2 release, signatures use the 3.2 profile (RFC 8941 padded Base64 with mandatory `content-digest` coverage) regardless of the request's `adcp_version`; see [mixed-version request signing](/docs/reference/migration/3-1-to-3-2#mixed-version-request-signing).
 
 ### mTLS
 

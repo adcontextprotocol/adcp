@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   revokeAAOAdminMembership: vi.fn(),
   getWorkingGroupById: vi.fn(),
   getWorkingGroupBySlug: vi.fn(),
+  getWorkingGroupIdBySlug: vi.fn(),
   isMember: vi.fn(),
   updateWorkingGroup: vi.fn(),
   removeMembership: vi.fn(),
@@ -56,7 +57,9 @@ vi.mock('../../src/db/org-filters.js', () => ({
 vi.mock('../../src/db/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/db/client.js')>()),
   getPool: () => ({ query: mocks.poolQuery }),
+  queryWithTimeout: mocks.poolQuery,
 }));
+
 
 vi.mock('../../src/addie/mcp/admin-tools.js', async () => {
   const { isWebUserAAOAdmin } = await import(
@@ -80,6 +83,7 @@ vi.mock('../../src/db/working-group-db.js', () => ({
     revokeAAOAdminMembership = mocks.revokeAAOAdminMembership;
     getWorkingGroupById = mocks.getWorkingGroupById;
     getWorkingGroupBySlug = mocks.getWorkingGroupBySlug;
+    getWorkingGroupIdBySlug = mocks.getWorkingGroupIdBySlug;
     isMember = mocks.isMember;
     updateWorkingGroup = mocks.updateWorkingGroup;
     removeMembership = mocks.removeMembership;
@@ -108,7 +112,7 @@ function validatedTenantKey(permission: 'admin:*' | 'admin:read') {
   return {
     apiKey: {
       id: `key_${permission}`,
-      owner: { id: 'org_tenant' },
+      owner: { type: 'organization', id: 'org_tenant' },
       name: 'Tenant admin key',
       permissions: [permission],
     },
@@ -134,11 +138,21 @@ describe('working-group real global-admin boundary', () => {
         ? { id: 'wg_aao_admin', slug: 'aao-admin' }
         : null),
     );
+    mocks.getWorkingGroupIdBySlug.mockResolvedValue('wg_aao_admin');
     mocks.isMember.mockResolvedValue(true);
     mocks.poolQuery.mockImplementation((sql: string) => {
-      if (sql.includes('FROM users')) {
+      if (sql.includes('pg_catalog.pg_is_in_recovery()')) {
         return Promise.resolve({
-          rows: [{ first_name: 'SSO', last_name: 'Admin' }],
+          rows: [{
+            in_recovery: false, terminal_marker: false, primary_count: '1',
+            authenticated_user_id: 'user_sso_admin',
+            canonical_user_id: 'user_sso_admin',
+            identity_id: 'identity_sso_admin',
+            binding_version: 'binding_sso_admin',
+            authorization_epoch: '0',
+            email: 'sso-admin@example.test', email_verified: true,
+            first_name: 'SSO', last_name: 'Admin', grant_id: null,
+          }],
           rowCount: 1,
         });
       }
@@ -231,7 +245,7 @@ describe('working-group real global-admin boundary', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual([]);
-    expect(mocks.getWorkingGroupBySlug).toHaveBeenCalledWith('aao-admin');
+    expect(mocks.getWorkingGroupIdBySlug).toHaveBeenCalledWith('aao-admin');
     expect(mocks.isMember).toHaveBeenCalledWith(
       'wg_aao_admin',
       'user_sso_admin',

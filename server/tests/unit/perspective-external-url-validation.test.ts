@@ -28,6 +28,21 @@ vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
   isWebUserAAOAdmin: (...args: unknown[]) => mocks.isAdmin(...args),
 }));
 
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>();
+  const checkMembership = (...args: unknown[]) => mocks.isAdmin(...args);
+  const resolve = async (principal: any, email?: string | null) => {
+    const id = typeof principal === 'string' ? principal : principal.authWorkosUserId ?? principal.id;
+    return actual.decideAAOAdminAccess(await checkMembership(id), typeof principal === 'string' ? email : principal.email);
+  };
+  return {
+    ...actual,
+    isWebUserAAOAdmin: checkMembership,
+    resolveWebUserAAOAdminAccess: resolve,
+    isAuthenticatedUserAAOAdmin: async (principal: any) => (await resolve(principal)).isAdmin,
+  };
+});
+
 vi.mock('../../src/slack/client.js', () => ({
   sendChannelMessage: vi.fn().mockResolvedValue(undefined),
 }));
@@ -296,4 +311,15 @@ describe('perspective external URL persistence validation', () => {
     const update = mocks.poolQuery.mock.calls.find(([sql]) => String(sql).includes('UPDATE perspectives SET'));
     expect(update?.[1]?.[0]).toBe(CANONICAL_URL);
   });
+});
+
+
+it('returns a typed membership denial before any content database write', async () => {
+  const { checkContentSubmissionTier } = await import('../../src/services/membership-tiers.js');
+  vi.mocked(checkContentSubmissionTier).mockResolvedValueOnce(false);
+  mocks.poolQuery.mockClear();
+  const result = await proposeContentForUser({ id: 'user_dayo' }, { title: 'Campaign notes', content: 'A short draft.' });
+  expect(result).toMatchObject({ success: false, error_code: 'MEMBERSHIP_REQUIRED' });
+  expect(result.error).toContain('/dashboard/membership');
+  expect(mocks.poolQuery).not.toHaveBeenCalled();
 });

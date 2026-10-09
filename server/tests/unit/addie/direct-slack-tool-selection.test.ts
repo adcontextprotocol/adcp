@@ -1,9 +1,85 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AddieTool } from '../../../src/addie/types.js';
 import { handleAppMention, selectRoutedDirectSlackTools } from '../../../src/addie/bolt-app.js';
+import { AAOAdminLookupUnavailableError } from '../../../src/addie/admin-status-lookup.js';
 import {
   PUBLIC_MENTION_READ_ONLY_TOOL_NAMES,
 } from '../../../src/addie/slack-tool-selection.js';
+import { ModelConfig } from '../../../src/config/models.js';
+
+afterEach(() => vi.unstubAllEnvs());
+
+describe('Slack response provider integration', () => {
+  it('passes current uploads and earlier file-only messages to the response model', async () => {
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', 'sonnet');
+    const processMessage = vi.fn().mockResolvedValue({ text: 'I can see the upload.', tools_used: [], tool_executions: [] });
+    const currentUrl = 'https://files.slack.com/files-pri/T_TEST-F_CURRENT/adagents.json';
+    const previousUrl = 'https://files.slack.com/files-pri/T_TEST-F_PREVIOUS/notes.txt';
+    const selectRoutedTools = vi.fn().mockResolvedValue({
+      tools: { tools: [], handlers: new Map() }, allowedToolNames: ['read_slack_file'],
+      selectedToolSets: ['community_discussions'], isAAOAdmin: false,
+    });
+    await handleAppMention({
+      event: { channel: 'C_PRIVATE', ts: '2', thread_ts: '1', user: 'U_TEST', text: '<@B_ADDIE>',
+        files: [{ id: 'F_CURRENT', name: 'adagents.json', url_private: currentUrl }] },
+      context: { botUserId: 'B_ADDIE' }, say: vi.fn(),
+    } as never, {
+      claudeClient: { processMessage, getRegisteredTools: () => ['read_slack_file'] } as never,
+      resolveChannelContext: vi.fn().mockResolvedValue({ viewing_channel_is_private: true }),
+      getThreadReplies: vi.fn().mockResolvedValue([{ ts: '1', text: '', files: [
+        { id: 'F_PREVIOUS', name: 'notes.txt', url_private: previousUrl },
+      ] }]),
+      getMemberContext: vi.fn().mockResolvedValue(null),
+      buildRequestContext: vi.fn().mockResolvedValue({ requestContext: 'Trusted context', memberContext: null }),
+      getThreadService: vi.fn(() => ({
+        getOrCreateThread: vi.fn().mockResolvedValue({ thread_id: 'thread-1' }),
+        getThreadMessages: vi.fn().mockResolvedValue([]), addMessage: vi.fn(),
+      }) as never),
+      selectRoutedTools,
+      buildCurrentChannelCostOptions: vi.fn().mockResolvedValue({}), logInteraction: vi.fn(),
+    });
+    expect(processMessage).toHaveBeenCalledOnce();
+    expect(processMessage.mock.calls[0][0]).toContain(currentUrl);
+    expect(processMessage.mock.calls[0][4].requestContext).toContain(previousUrl);
+    expect(selectRoutedTools.mock.calls[0][6].threadMessages.join('\n')).toContain('notes.txt');
+  });
+
+  it.each([
+    ['gemini', false], ['gemini', true], ['sonnet', false], ['sonnet', true],
+  ] as const)('uses %s for mentions (thread=%s) while preserving routing authority and delivery', async (provider, inThread) => {
+    vi.stubEnv('ADDIE_RESPONSE_PROVIDER', provider); vi.stubEnv('GEMINI_API_KEY', 'unused');
+    const model = provider === 'gemini' ? 'gemini-3.7-flash' : ModelConfig.primary;
+    const model_execution = { source: 'provider', requested_provider: provider === 'gemini' ? 'google' : 'anthropic',
+      requested_model: model, provider: provider === 'gemini' ? 'google' : 'anthropic', model, model_resolution: 'exact', fallback_reason: null };
+    const answer = { text: 'Slack answer.', tools_used: [], tool_executions: [], model_execution };
+    const sonnet = vi.fn().mockResolvedValue(answer);
+    const gemini = vi.fn().mockResolvedValue(answer);
+    const say = vi.fn(); const addMessage = vi.fn(); const audit = vi.fn();
+    await handleAppMention({ event: { channel: 'C_PRIVATE', ts: '2', ...(inThread && { thread_ts: '1' }), user: 'U_TEST', text: '<@B_ADDIE> help' },
+      context: { botUserId: 'B_ADDIE' }, say } as never, {
+      claudeClient: { processMessage: sonnet, getRegisteredTools: () => ['search_docs'],
+        forkForGeminiDirect: () => ({ processMessage: gemini }) } as never,
+      resolveChannelContext: vi.fn().mockResolvedValue({ viewing_channel_name: 'wg-test', viewing_channel_is_private: true }),
+      getChannelHistory: vi.fn().mockResolvedValue({ messages: [], has_more: false }),
+      getThreadReplies: vi.fn().mockResolvedValue([]), getMemberContext: vi.fn().mockResolvedValue(null),
+      buildRequestContext: vi.fn().mockResolvedValue({ requestContext: 'Trusted context', memberContext: null }),
+      getThreadService: vi.fn(() => ({ getOrCreateThread: vi.fn().mockResolvedValue({ thread_id: 'thread-1' }),
+        getThreadMessages: vi.fn().mockResolvedValue([]), addMessage }) as never),
+      selectRoutedTools: vi.fn().mockResolvedValue({ tools: { tools: [], handlers: new Map() },
+        allowedToolNames: ['search_docs'], selectedToolSets: ['knowledge'], requiresPrecision: true, requiresDepth: true, isAAOAdmin: false }),
+      buildCurrentChannelCostOptions: vi.fn().mockResolvedValue({ costScope: { userId: 'slack:U_TEST', tier: 'anonymous' } }),
+      logInteraction: audit,
+    });
+    const selected = provider === 'gemini' ? gemini : sonnet;
+    expect(selected).toHaveBeenCalledOnce();
+    expect(provider === 'gemini' ? sonnet : gemini).not.toHaveBeenCalled();
+    expect(selected.mock.calls[0][4]).toMatchObject({ modelOverride: model, allowedToolNames: ['search_docs'],
+      selectedToolSetNames: ['knowledge'], costScope: { userId: 'slack:U_TEST', tier: 'anonymous' }, reserveSideEffect: expect.any(Function) });
+    expect(say).toHaveBeenCalledWith({ text: 'Slack answer.', thread_ts: inThread ? '1' : '2' });
+    expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_execution }));
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ model_execution }));
+  });
+});
 
 const tools: AddieTool[] = [
   { name: 'search_docs', description: 'Search docs', input_schema: { type: 'object', properties: {} } },
@@ -202,6 +278,51 @@ describe('direct Slack Addie response tool routing', () => {
     const modelDispatch = vi.fn();
     const responseDelivery = vi.fn();
     const selectRoutedTools = vi.fn().mockRejectedValue(new Error('router unavailable'));
+    const buildCurrentChannelCostOptions = vi.fn();
+    const logInteraction = vi.fn();
+    const threadService = {
+      getOrCreateThread: vi.fn().mockResolvedValue({ thread_id: 'thread-1' }),
+      getThreadMessages: vi.fn().mockResolvedValue([]),
+      addMessage: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await handleAppMention({
+      event: { channel: 'C_PRIVATE', ts: '1', user: 'U_TEST', text: '<@B_ADDIE> help' },
+      context: { botUserId: 'B_ADDIE' },
+      say: responseDelivery,
+    } as never, {
+      claudeClient: { processMessage: modelDispatch } as never,
+      resolveChannelContext: vi.fn().mockResolvedValue({
+        viewing_channel_name: 'private-test',
+        viewing_channel_is_private: true,
+      }),
+      getChannelHistory: vi.fn().mockResolvedValue({ messages: [], has_more: false }),
+      getMemberContext: vi.fn().mockResolvedValue(null),
+      buildRequestContext: vi.fn().mockResolvedValue({
+        requestContext: 'test request context',
+        memberContext: null,
+        activeCertificationKind: undefined,
+      }),
+      getThreadService: vi.fn(() => threadService as never),
+      selectRoutedTools,
+      buildCurrentChannelCostOptions,
+      logInteraction,
+    });
+
+    expect(selectRoutedTools).toHaveBeenCalledOnce();
+    expect(modelDispatch).not.toHaveBeenCalled();
+    expect(buildCurrentChannelCostOptions).not.toHaveBeenCalled();
+    expect(logInteraction).not.toHaveBeenCalled();
+    expect(responseDelivery).toHaveBeenCalledWith({
+      text: "I'm sorry, I can't process that request right now. Please try again.",
+      thread_ts: '1',
+    });
+  });
+
+  it('reports an admin-status outage with retry guidance and no model dispatch', async () => {
+    const modelDispatch = vi.fn();
+    const responseDelivery = vi.fn();
+    const selectRoutedTools = vi.fn().mockRejectedValue(new AAOAdminLookupUnavailableError());
     const buildCurrentChannelCostOptions = vi.fn();
     const logInteraction = vi.fn();
     const threadService = {

@@ -163,7 +163,7 @@ describe('Addie response truncation (#4431)', () => {
     mocks.recordCost.mockReset().mockResolvedValue(undefined);
   });
 
-  it('applies the 10k cap at the last complete sentence with the canonical suffix', () => {
+  it('applies the high application cap at the last complete sentence with the canonical suffix', () => {
     const completeSentence = `${'A'.repeat(MAX_OUTPUT_LENGTH - 100)}.`;
     const unfinishedTail = ` ${'B'.repeat(250)}`;
 
@@ -171,8 +171,9 @@ describe('Addie response truncation (#4431)', () => {
 
     expect(result.sanitized).toBe(`${completeSentence}\n\n${OUTPUT_TRUNCATION_SUFFIX}`);
     expect(result.sanitized).not.toContain('B');
-    expect(result.flagged).toBe(true);
+    expect(result.flagged).toBe(false);
     expect(result.reason).toBe('Output truncated due to length');
+    expect(result.truncated).toBe(true);
   });
 
   it('returns only the continuation suffix when no token boundary is safe', () => {
@@ -234,7 +235,12 @@ describe('Addie response truncation (#4431)', () => {
     );
 
     expect(response.text).toBe(expectedTruncation);
+    expect(response.flagged).toBe(false);
     expect(response.flag_reason).toBe(`Response truncated: ${stopReason}`);
+    expect(response.output_truncation).toMatchObject({
+      source: 'provider_output_limit',
+      provider_reason: stopReason,
+    });
     expect(response.model_execution).toEqual({
       source: 'provider',
       requested_provider: 'anthropic',
@@ -277,7 +283,12 @@ describe('Addie response truncation (#4431)', () => {
 
     expect(emittedText).toBe(expectedTruncation);
     expect(done?.response.text).toBe(emittedText);
+    expect(done?.response.flagged).toBe(false);
     expect(done?.response.flag_reason).toBe(`Response truncated: ${stopReason}`);
+    expect(done?.response.output_truncation).toMatchObject({
+      source: 'provider_output_limit',
+      provider_reason: stopReason,
+    });
     expect(done?.response.model_execution).toEqual({
       source: 'provider',
       requested_provider: 'anthropic',
@@ -360,6 +371,7 @@ describe('Addie response truncation (#4431)', () => {
       tool_executions: response.tool_executions,
       flagged: response.flagged,
       flag_reason: response.flag_reason,
+      output_truncation: response.output_truncation,
       active_rule_ids: response.active_rule_ids,
       config_version_id: response.config_version_id,
       model_execution: response.model_execution,
@@ -369,7 +381,7 @@ describe('Addie response truncation (#4431)', () => {
     expect(commonTerminalFields(streaming!)).toEqual(commonTerminalFields(nonStreaming));
   });
 
-  it('does not treat an under-10k alphanumeric ending as a truncation sentinel', async () => {
+  it('does not treat an under-cap alphanumeric ending as a truncation sentinel', async () => {
     const completeText = 'A complete sentence. A final sentence without punctuation';
     mocks.streamMessage.mockReturnValueOnce(streamFor(
       message('end_turn', completeText),
@@ -400,7 +412,7 @@ describe('Addie response truncation (#4431)', () => {
     expect(done?.response.text).not.toContain(OUTPUT_TRUNCATION_SUFFIX);
   });
 
-  it('applies the local 10k cap on a normal non-streaming completion', async () => {
+  it('applies the local application cap on a normal non-streaming completion', async () => {
     const sentence = `${'A'.repeat(MAX_OUTPUT_LENGTH - 100)}.`;
     const raw = `${sentence} ${'B'.repeat(250)}.`;
     mocks.createMessage.mockResolvedValueOnce(message('end_turn', raw));
@@ -416,11 +428,17 @@ describe('Addie response truncation (#4431)', () => {
 
     expect(response.text).toBe(`${sentence}\n\n${OUTPUT_TRUNCATION_SUFFIX}`);
     expect(response.text.length).toBeLessThanOrEqual(MAX_OUTPUT_LENGTH);
+    expect(response.flagged).toBe(false);
     expect(response.flag_reason).toBe('Output truncated due to length');
+    expect(response.output_truncation).toMatchObject({
+      source: 'local_character_limit',
+      original_length: raw.length,
+      delivered_length: response.text.length,
+    });
     expect(mocks.createMessage).toHaveBeenCalledOnce();
   });
 
-  it('applies the local 10k cap before normal streaming delivery', async () => {
+  it('applies the local application cap before normal streaming delivery', async () => {
     const sentence = `${'A'.repeat(MAX_OUTPUT_LENGTH - 100)}.`;
     const raw = `${sentence} ${'B'.repeat(250)}.`;
     mocks.streamMessage.mockReturnValueOnce(streamFor(message('end_turn', raw), [raw]));
@@ -441,7 +459,13 @@ describe('Addie response truncation (#4431)', () => {
     expect(textEvents).toEqual([{ type: 'text', text: `${sentence}\n\n${OUTPUT_TRUNCATION_SUFFIX}` }]);
     expect(done?.response.text).toBe(textEvents[0].text);
     expect(textEvents[0].text.length).toBeLessThanOrEqual(MAX_OUTPUT_LENGTH);
+    expect(done?.response.flagged).toBe(false);
     expect(done?.response.flag_reason).toBe('Output truncated due to length');
+    expect(done?.response.output_truncation).toMatchObject({
+      source: 'local_character_limit',
+      original_length: raw.length,
+      delivered_length: textEvents[0].text.length,
+    });
   });
 
   it('keeps tool-transition separators inside the cap without duplication or retry', async () => {

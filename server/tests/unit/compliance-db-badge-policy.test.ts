@@ -87,6 +87,11 @@ describe('ComplianceDatabase badge opt-out policy', () => {
         null,
         null,
         false,
+        'legacy',
+        null,
+        null,
+        null,
+        '0',
       ],
     );
     expect(client.release).toHaveBeenCalledOnce();
@@ -196,7 +201,10 @@ describe('ComplianceDatabase badge opt-out policy', () => {
 
     expect(client.query).toHaveBeenCalledWith(
       expect.stringContaining('badge_requalification_generation'),
-      ['https://agent.example/mcp', 'media-buy', '3.1', 'Compliance failed', '7'],
+      [
+        'https://agent.example/mcp', 'media-buy', '3.1', 'Compliance failed', '7',
+        null, null, null, null, null, false,
+      ],
     );
   });
 

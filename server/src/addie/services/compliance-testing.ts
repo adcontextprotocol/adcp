@@ -1,4 +1,5 @@
 import { complianceRunProvenance, type ComplianceRunProvenance } from '../../compliance/run-provenance.js';
+import { createHostedWebhookReceiverLease } from '../../services/hosted-webhook-receiver.js';
 /**
  * Compliance testing — thin adapter over @adcp/sdk's compliance module.
  *
@@ -21,6 +22,7 @@ import {
   type TrackResult,
   type AdvisoryObservation,
   type SampleBrief,
+  type TestOptions,
 } from '@adcp/sdk/testing';
 import {
   hostedComplianceTarget,
@@ -39,6 +41,9 @@ import {
 import { classifyComplianceStep } from '../../compliance/step-disposition.js';
 import { createLogger } from '../../logger.js';
 import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
+import { createHostedRouteStoryboard } from '../../compliance/hosted-route-storyboard.js';
+import { getTestKitForStoryboard } from '../../services/storyboards.js';
+import { redactHostedGovernanceSecrets } from '../../compliance/hosted-multi-agent-routing.js';
 
 import type {
   TrackSummaryEntry,
@@ -53,6 +58,16 @@ import type {
 
 const logger = createLogger('addie-compliance-testing');
 export const HOSTED_TARGET_DISCOVERY_TIMEOUT_MS = 30_000;
+
+/** Pin selected targets; bootstrap discovery must not inherit the SDK's version. */
+export function hostedCapabilityDiscoveryOptions(
+  options: TestOptions,
+  target?: HostedComplianceTarget,
+): TestOptions {
+  return withSdkSafeTransport(target
+    ? withHostedTestOptions({ ...options, versionEnvelope: 'auto' }, target)
+    : { ...options, adcpVersion: undefined, versionEnvelope: 'major-only' });
+}
 
 export interface ComplianceTargetSelection {
   target: HostedComplianceTarget;
@@ -221,6 +236,7 @@ export type {
 async function hostedAuthDefaultsForRun(
   agentUrl: string,
   options: ComplyOptions,
+  target: HostedComplianceTarget,
 ): Promise<{ probeTask?: string; apiKey?: string }> {
   const hasOperatorTransportAuth = options.auth?.type === 'bearer' || options.auth?.type === 'basic';
   const shouldInferStaticFixture =
@@ -230,7 +246,7 @@ async function hostedAuthDefaultsForRun(
   }
 
   try {
-    const discovery = await discoverCapabilitiesWithDeadline(agentUrl, options);
+    const discovery = await discoverCapabilitiesWithDeadline(agentUrl, withHostedTestOptions(options, target));
     const apiKey = shouldInferStaticFixture
       ? hostedStaticApiKeyForProfile(discovery.profile)
       : undefined;
@@ -250,18 +266,73 @@ export async function comply(
   target: HostedComplianceTarget,
 ): Promise<ComplianceResult> {
   const safeOptions = withSdkSafeTransport(options);
-  const authDefaults = await hostedAuthDefaultsForRun(agentUrl, safeOptions);
-  const result = await sdkComply(
-    agentUrl,
-    withSdkSafeTransport(
-      withHostedComplianceRunOptions(safeOptions, target, authDefaults.probeTask, authDefaults.apiKey),
-    ),
-  );
+  const authDefaults = await hostedAuthDefaultsForRun(agentUrl, safeOptions, target);
+  // Per-storyboard routing (@adcp/sdk ComplyOptions.routeStoryboard): the
+  // multi-agent governance storyboards (#7758) and live-mode test-kit
+  // storyboards (#7772). A caller-supplied hook wins so tests can inject one.
+  // Credentials minted for routed runs are collected and scrubbed from the
+  // result before anyone stores, renders, or logs it.
+  const mintedSecrets = new Set<string>();
+  const routeStoryboard = options.routeStoryboard ?? createHostedRouteStoryboard({
+    ...(options.auth && { auth: options.auth }),
+    ...(options.protocol && { protocol: options.protocol }),
+    resolveTestKit: storyboardId => getTestKitForStoryboard(storyboardId, hostedComplianceOptions(target)),
+    secrets: mintedSecrets,
+  });
+  // Current 3.1 grading treats outbound webhook coverage as conditional. The
+  // public receiver is opt-in while the versioned mandatory profile is being
+  // prepared; if ingress is unavailable, retain the current grading contract
+  // and log the platform gap rather than attributing it to the seller.
+  let receiverLease;
+  if (process.env.HOSTED_COMPLIANCE_WEBHOOK_RECEIVER_ENABLED === 'true' && !safeOptions.webhook_receiver) {
+    try {
+      receiverLease = await createHostedWebhookReceiverLease();
+    } catch (error) {
+      logger.warn({ err: error, agentUrl }, 'Hosted webhook receiver unavailable; webhook storyboards may be not applicable');
+    }
+  }
+  let rawResult: ComplianceResult;
+  try {
+    rawResult = await sdkComply(
+      agentUrl,
+      withSdkSafeTransport(
+        withHostedComplianceRunOptions({
+          ...safeOptions,
+          routeStoryboard,
+          ...(receiverLease ? { webhook_receiver: receiverLease.options } : {}),
+        }, target, authDefaults.probeTask, authDefaults.apiKey),
+      ),
+    );
+  } finally {
+    await receiverLease?.release();
+  }
+  const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { hosted_provenance: ComplianceRunProvenance }).hosted_provenance =
     complianceRunProvenance(result, options);
   (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
   return result;
+}
+
+export async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
+  error: unknown,
+  agentUrl: string,
+  auth: ComplyOptions['auth'] | undefined,
+  target: HostedComplianceTarget,
+): Promise<CapabilityResolutionErrorInfo | undefined> {
+  const initial = classifyCapabilityResolutionError(error);
+  if (initial?.kind !== 'specialism_parent_protocol_missing') return initial;
+
+  try {
+    const caps = await discoverCapabilitiesWithDeadline(
+      agentUrl,
+      withHostedTestOptions({ ...(auth && { auth }) }, target),
+    );
+    return classifyCapabilityResolutionError(error, caps.profile?.supported_protocols ?? []) ?? initial;
+  } catch (probeError) {
+    logger.warn({ probeError, agentUrl }, 'Could not reprobe capabilities after capability-resolution error');
+    return initial;
+  }
 }
 
 export function loadComplianceIndex(target: HostedComplianceTarget, options: ComplyOptions = {}) {
@@ -302,9 +373,7 @@ export async function selectComplianceTargetForAgentSelection(
     // gets a chance to report supported_versions.
     const discovery = await discoverCapabilitiesWithDeadline(
       agentUrl,
-      compatibleSeededTarget
-        ? withHostedTestOptions(options, compatibleSeededTarget)
-        : options,
+      hostedCapabilityDiscoveryOptions(options, compatibleSeededTarget),
     );
     const target = mode === 'canonical'
       ? selectCanonicalHostedComplianceTargetForProfile(discovery.profile, fallback)
@@ -1207,6 +1276,90 @@ const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
   'brand-rights': { protocol: 'brand', storyboard_id: 'brand_rights' },
 };
 
+/**
+ * Version of the machine-readable badge eligibility criteria exposed by the
+ * registry compliance endpoint. Bump whenever blocker vocabulary or
+ * evaluation semantics change.
+ */
+export const ELIGIBILITY_CRITERIA_VERSION = '2026-08' as const;
+
+export type PublicEligibilityBlockerCode =
+  | 'no_declared_specialisms'
+  | 'storyboards_failing'
+  | 'storyboards_partial'
+  | 'storyboards_untested';
+
+export interface PublicComplianceEligibility {
+  criteria_version: typeof ELIGIBILITY_CRITERIA_VERSION;
+  blockers: Array<{ code: 'no_declared_specialisms' }>;
+  roles: Partial<Record<BadgeRole, {
+    eligible: boolean;
+    blockers: Array<{ code: Exclude<PublicEligibilityBlockerCode, 'no_declared_specialisms'> }>;
+  }>>;
+}
+
+interface EligibilityStoryboardStatusEntry {
+  storyboard_id: string;
+  status: string;
+  steps_total: number;
+}
+
+/**
+ * Project public, remediation-oriented badge blockers from the raw latest-run
+ * storyboard rows. This is intentionally independent from
+ * deriveVerificationStatus: badge issuance keeps its existing partial/failing
+ * collapse, while this projection preserves each public blocker bucket.
+ */
+export function derivePublicComplianceEligibility(
+  declaredSpecialisms: string[],
+  storyboardStatuses: EligibilityStoryboardStatusEntry[],
+): PublicComplianceEligibility {
+  const statusMap = new Map(storyboardStatuses.map(status => [status.storyboard_id, status]));
+  const specialismsByRole = new Map<BadgeRole, string[]>();
+
+  for (const specialism of declaredSpecialisms.filter(isStableSpecialism)) {
+    const info = SPECIALISM_CATALOG[specialism];
+    if (!info) continue;
+    const roleSpecialisms = specialismsByRole.get(info.protocol) ?? [];
+    roleSpecialisms.push(specialism);
+    specialismsByRole.set(info.protocol, roleSpecialisms);
+  }
+  const blockers: PublicComplianceEligibility['blockers'] = specialismsByRole.size === 0
+    ? [{ code: 'no_declared_specialisms' }]
+    : [];
+
+  const roles: PublicComplianceEligibility['roles'] = {};
+  for (const [role, specialisms] of specialismsByRole) {
+    const roleBlockers = new Set<Exclude<PublicEligibilityBlockerCode, 'no_declared_specialisms'>>();
+    for (const specialism of specialisms) {
+      const storyboardId = SPECIALISM_CATALOG[specialism]?.storyboard_id;
+      const status = storyboardId ? statusMap.get(storyboardId) : undefined;
+      if (!status || status.steps_total === 0 || status.status === 'untested') {
+        roleBlockers.add('storyboards_untested');
+      } else if (status.status === 'partial') {
+        roleBlockers.add('storyboards_partial');
+      } else if (status.status === 'failing') {
+        roleBlockers.add('storyboards_failing');
+      } else if (status.status !== 'passing') {
+        // Fail closed if a future or malformed status reaches this projection.
+        roleBlockers.add('storyboards_untested');
+      }
+    }
+    roles[role] = {
+      eligible: roleBlockers.size === 0,
+      blockers: (['storyboards_failing', 'storyboards_partial', 'storyboards_untested'] as const)
+        .filter(code => roleBlockers.has(code))
+        .map(code => ({ code })),
+    };
+  }
+
+  return {
+    criteria_version: ELIGIBILITY_CRITERIA_VERSION,
+    blockers,
+    roles,
+  };
+}
+
 export interface VerificationResult {
   verified: boolean;
   roles: Array<{
@@ -1376,6 +1529,7 @@ export function complianceResultToDbInput(
     requested_compliance_target: (result as ComplianceResult & { requested_compliance_target?: string })
       .requested_compliance_target ?? null,
     adcp_version: result.adcp_version ?? null,
+    runner_capability_version: result.summary.runner_capability_version ?? null,
     lifecycle_stage: lifecycleStage,
     overall_status,
     headline: result.summary.headline,

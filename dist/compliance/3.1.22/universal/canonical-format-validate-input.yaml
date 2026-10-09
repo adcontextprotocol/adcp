@@ -1,0 +1,643 @@
+id: canonical_format_validate_input
+version: "1.0.0"
+title: "Canonical format validate_input"
+category: schema_validation
+summary: "Validates 3.1 canonical-format dry-run semantics: structural pass/fail across canonical slots and unvalidatable_nondeterministic for seeded products."
+track: creative
+introduced_in: "3.1"
+required_tools:
+  - validate_input
+  - comply_test_controller
+
+requires:
+  - controller
+
+narrative: |
+  AdCP 3.1 adds `validate_input` so buyers can dry-run a v2 creative
+  manifest against canonical formats and product-specific format declarations
+  before committing to `sync_creatives` or `build_creative`.
+
+  The result discriminator is the conformance contract. Predictable inputs
+  return either `validated_pass` or `validated_fail` with violations. Products
+  whose production pipeline declares `synthesis_nondeterministic: true` return
+  `unvalidatable_nondeterministic` instead of pretending a pre-flight verdict
+  is knowable.
+
+agent:
+  interaction_model: creative
+  capabilities:
+    - validates_canonical_formats
+  examples:
+    - "Creative agents that accept canonical v2 manifests"
+    - "Sales agents that pre-flight product-local format_options"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The runner seeds a product with a nondeterministic `video_hosted`
+    declaration so the product-target branch can verify the third
+    `validate_input` result kind.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "validate_input_nondeterministic_video"
+      name: "Validate Input Nondeterministic Video"
+      description: "Seeded product whose generative video pipeline cannot be predictively validated."
+      publisher_properties:
+        - publisher_domain: "outdoormagazine.example"
+          selection_type: "all"
+      channels: ["olv"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "video_hosted"
+          format_option_id: "validate_input_video_brief"
+          display_name: "Validate Input Video Brief"
+          params:
+            synthesis_nondeterministic: true
+            asset_source: "agent_synthesized"
+            slots:
+              - asset_group_id: "creative_brief"
+                asset_type: "brief"
+                required: true
+      pricing_options:
+        - pricing_option_id: "validate_input_video_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 18
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "clicks", "spend"]
+        date_range_support: "date_range"
+
+phases:
+  - id: canonical_positive_paths
+    title: "Canonical positive paths"
+    narrative: |
+      Each canonical target receives a minimal manifest satisfying that
+      canonical's required slot declarations. Algorithmic composition
+      canonicals still return structural `validated_pass`; they are not
+      `unvalidatable_nondeterministic` unless synthesis itself is declared
+      nondeterministic on a product declaration.
+
+    steps:
+      - id: validate_image
+        title: "Validate image manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "image"
+            assets:
+              image_main:
+                asset_type: "image"
+                url: "https://cdn.acme.example/creative/mrec.png"
+                width: 300
+                height: 250
+          targets:
+            - kind: "canonical"
+              id: "image"
+        validations:
+          - check: response_schema
+            description: "Response matches validate-input-response.json schema"
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Complete image manifest passes structural validation"
+
+      - id: validate_html5
+        title: "Validate HTML5 manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "html5"
+            assets:
+              html5_bundle:
+                asset_type: "zip"
+                url: "https://cdn.acme.example/creative/banner.zip"
+          targets:
+            - kind: "canonical"
+              id: "html5"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Complete HTML5 manifest passes structural validation"
+
+      - id: validate_display_tag
+        title: "Validate display tag manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "display_tag"
+            assets:
+              tag_url:
+                asset_type: "url"
+                url: "https://tags.acme.example/display.js?click={CLICK_URL}"
+          targets:
+            - kind: "canonical"
+              id: "display_tag"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Complete display tag manifest passes structural validation"
+
+      - id: validate_image_carousel
+        title: "Validate image carousel manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "image_carousel"
+            assets:
+              cards:
+                - asset_type: "card"
+                  media:
+                    asset_type: "image"
+                    url: "https://cdn.acme.example/creative/card-1.png"
+                    width: 1080
+                    height: 1080
+                  headline: "Trail jackets"
+                - asset_type: "card"
+                  media:
+                    asset_type: "image"
+                    url: "https://cdn.acme.example/creative/card-2.png"
+                    width: 1080
+                    height: 1080
+                  headline: "Weekend packs"
+          targets:
+            - kind: "canonical"
+              id: "image_carousel"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Carousel manifest with two cards passes structural validation"
+
+      - id: validate_video_hosted
+        title: "Validate hosted video manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "video_hosted"
+            assets:
+              video_main:
+                asset_type: "video"
+                url: "https://cdn.acme.example/creative/spot.mp4"
+                width: 1920
+                height: 1080
+                duration_ms: 30000
+          targets:
+            - kind: "canonical"
+              id: "video_hosted"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Hosted video manifest passes structural validation"
+
+      - id: validate_video_vast
+        title: "Validate VAST manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "video_vast"
+            assets:
+              vast_tag:
+                asset_type: "vast"
+                delivery_type: "url"
+                url: "https://vast.acme.example/tag.xml"
+          targets:
+            - kind: "canonical"
+              id: "video_vast"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "VAST manifest passes structural validation"
+
+      - id: validate_audio_hosted
+        title: "Validate hosted audio manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "audio_hosted"
+            assets:
+              audio_main:
+                asset_type: "audio"
+                url: "https://cdn.acme.example/creative/audio.mp3"
+                duration_ms: 30000
+          targets:
+            - kind: "canonical"
+              id: "audio_hosted"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Hosted audio manifest passes structural validation"
+
+      - id: validate_audio_daast
+        title: "Validate DAAST manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "audio_daast"
+            assets:
+              daast_tag:
+                asset_type: "daast"
+                delivery_type: "url"
+                url: "https://daast.acme.example/tag.xml"
+          targets:
+            - kind: "canonical"
+              id: "audio_daast"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "DAAST manifest passes structural validation"
+
+      - id: validate_sponsored_placement
+        title: "Validate sponsored placement manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "sponsored_placement"
+            assets:
+              source_catalog:
+                asset_type: "catalog"
+                type: "product"
+                items:
+                  - sku: "ACME-TRAIL-001"
+                    name: "Trail jacket"
+          targets:
+            - kind: "canonical"
+              id: "sponsored_placement"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Sponsored placement manifest passes structural validation"
+
+      - id: validate_native_in_feed
+        title: "Validate native in-feed manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "native_in_feed"
+            assets:
+              title:
+                asset_type: "text"
+                content: "Gear for every trail"
+              advertiser_name:
+                asset_type: "text"
+                content: "Acme Outdoor"
+              landing_page_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/trails"
+          targets:
+            - kind: "canonical"
+              id: "native_in_feed"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Native in-feed manifest passes structural validation"
+
+      - id: validate_responsive_creative
+        title: "Validate responsive creative manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "responsive_creative"
+            assets:
+              headlines:
+                - asset_type: "text"
+                  content: "Trail gear"
+                - asset_type: "text"
+                  content: "Pack light"
+                - asset_type: "text"
+                  content: "Summit-ready"
+              descriptions:
+                - asset_type: "text"
+                  content: "Durable equipment for weekend trips."
+                - asset_type: "text"
+                  content: "Shop fictional outdoor essentials."
+              logo:
+                asset_type: "image"
+                url: "https://cdn.acme.example/creative/logo.png"
+                width: 512
+                height: 512
+              landing_page_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/responsive"
+          targets:
+            - kind: "canonical"
+              id: "responsive_creative"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Algorithmic composition still receives a structural pass/fail verdict"
+
+      - id: validate_agent_placement
+        title: "Validate agent placement manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "agent_placement"
+            brand:
+              domain: "acmeoutdoor.example"
+            assets:
+              landing_page_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/agent-placement"
+          targets:
+            - kind: "canonical"
+              id: "agent_placement"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Agent placement manifest passes structural validation"
+
+  - id: canonical_negative_paths
+    title: "Canonical negative paths"
+    narrative: |
+      Predictable canonical targets return `validated_fail` when required
+      slots are missing or typed incorrectly. The response carries structured
+      `violations[]` so buyers can correct the manifest.
+
+    steps:
+      - id: validate_image_missing_required_slot
+        title: "Reject image manifest missing image_main"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "image"
+            assets:
+              headline:
+                asset_type: "text"
+                content: "No image supplied"
+          targets:
+            - kind: "canonical"
+              id: "image"
+        validations:
+          - check: response_schema
+            description: "Failure response still matches validate-input-response.json"
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "Predictable canonical validation returns a failing verdict"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "required_slot"
+            description: "Failure explains that the required canonical slot is absent"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "assets.image_main"
+            description: "Violation points at the missing manifest slot"
+
+      - id: validate_responsive_creative_missing_logo
+        title: "Reject responsive creative manifest missing logo"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: false
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          brand:
+            domain: "acmeoutdoor.example"
+          manifest:
+            format_kind: "responsive_creative"
+            assets:
+              headlines:
+                - asset_type: "text"
+                  content: "Trail gear"
+                - asset_type: "text"
+                  content: "Pack light"
+                - asset_type: "text"
+                  content: "Summit-ready"
+              descriptions:
+                - asset_type: "text"
+                  content: "Durable equipment for weekend trips."
+                - asset_type: "text"
+                  content: "Shop fictional outdoor essentials."
+              landing_page_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/responsive"
+          targets:
+            - kind: "canonical"
+              id: "responsive_creative"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "Responsive creative rejects a manifest without the required logo slot"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "required_slot"
+            description: "Failure explains that the required logo slot is absent"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "assets.logo"
+            description: "Violation points at the missing logo slot"
+
+  - id: product_nondeterministic_paths
+    title: "Product nondeterministic paths"
+    narrative: |
+      Product-specific declarations can carry `synthesis_nondeterministic:
+      true`. Those are not structural failures; they are unvalidatable before
+      the generation pipeline runs.
+
+    steps:
+      - id: validate_seeded_nondeterministic_product_missing_brief
+        title: "Reject seeded product manifest missing required brief"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "video_hosted"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "validate_input_video_brief"
+            assets: {}
+          targets:
+            - kind: "product"
+              id: "validate_input_nondeterministic_video"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "Missing deterministic inputs fail before nondeterminism is reported"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "required_slot"
+            description: "Failure explains that the required product slot is absent"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "assets.creative_brief"
+            description: "Violation points at the missing brief slot"
+
+      - id: validate_seeded_nondeterministic_product
+        title: "Return unvalidatable_nondeterministic for seeded product"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.1-beta.5"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "video_hosted"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "validate_input_video_brief"
+            assets:
+              creative_brief:
+                asset_type: "brief"
+                name: "Acme Outdoor Launch Video"
+                objective: "awareness"
+                tone: "Cinematic and energetic"
+                audience: "Outdoor enthusiasts planning weekend trips"
+                territory: "Trail-ready gear for every forecast"
+                messaging:
+                  headline: "Ready for the next trail"
+                  cta: "Explore the collection"
+          targets:
+            - kind: "product"
+              id: "validate_input_nondeterministic_video"
+        validations:
+          - check: response_schema
+            description: "Response matches validate-input-response.json schema"
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "unvalidatable_nondeterministic"
+            description: "Nondeterministic synthesis is surfaced as its own result kind"

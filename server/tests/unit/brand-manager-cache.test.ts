@@ -10,7 +10,7 @@ vi.mock('../../src/utils/url-security.js', async (importOriginal) => {
 
 import { BrandManager } from '../../src/brand-manager.js';
 import { safeFetchAxiosLike } from '../../src/utils/url-security.js';
-import { BRAND_MANAGER_CACHE_TTL_SECONDS } from '../../src/services/brand-resolution-cache-policy.js';
+import { BRAND_JSON_MAX_RESPONSE_BYTES, BRAND_MANAGER_CACHE_TTL_SECONDS } from '../../src/services/brand-resolution-cache-policy.js';
 
 const mockedSafeFetch = vi.mocked(safeFetchAxiosLike);
 
@@ -79,7 +79,7 @@ describe('BrandManager caching', () => {
       expect(mockedSafeFetch).toHaveBeenCalledWith(
         'https://acme.com/.well-known/brand.json',
         expect.objectContaining({
-          maxResponseBytes: 256 * 1024,
+          maxResponseBytes: BRAND_JSON_MAX_RESPONSE_BYTES,
           maxRedirects: 3,
           redirectHostPolicy: 'original-host-and-www',
         }),
@@ -918,7 +918,7 @@ describe('BrandManager caching', () => {
         3,
         pointer.authoritative_location,
         expect.objectContaining({
-          maxResponseBytes: 256 * 1024,
+          maxResponseBytes: BRAND_JSON_MAX_RESPONSE_BYTES,
           maxRedirects: 0,
         }),
       );
@@ -947,7 +947,7 @@ describe('BrandManager caching', () => {
         2,
         'https://cdn.example/custom/brand.json',
         expect.objectContaining({
-          maxResponseBytes: 256 * 1024,
+          maxResponseBytes: BRAND_JSON_MAX_RESPONSE_BYTES,
           maxRedirects: 0,
         })
       );

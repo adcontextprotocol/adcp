@@ -1,0 +1,290 @@
+id: get_products_pagination_integrity
+version: "1.0.0"
+title: "get_products wholesale pagination cursor integrity"
+category: schema_validation
+summary: "Validates get_products wholesale-mode pagination by walking a seeded product feed from continuation to terminal, while documenting that brief/refine pagination caps returned products in curated results."
+track: media_buy
+requires_capability:
+  path: media_buy.buying_modes
+  contains: "wholesale"
+
+required_tools:
+  - get_products
+
+requires:
+  - controller
+
+narrative: |
+  `get_products` accepts the standard cursor pagination envelope in all
+  buying modes, but those modes do not mean the same thing. In `brief` mode,
+  pagination bounds the seller's curated answer to the brief. In `refine`
+  mode, pagination bounds the refined result set implied by `refine[]` and
+  filters. Neither mode turns the result into an exhaustive catalog feed.
+
+  `wholesale` mode is the catalog-feed surface. This storyboard seeds two
+  products that share a unique compliance-test format, queries wholesale mode
+  with that format filter and `max_results: 1`, then follows the returned
+  cursor. Page 1 MUST be non-terminal (`has_more=true` with a cursor) and
+  capped to one row. Page 2 MUST be terminal (`has_more=false` with no stale
+  cursor) because the other seeded product is the only remaining item in the
+  filtered feed.
+
+  This storyboard grades the deterministic wholesale feed behavior only.
+  `brief` and `refine` calls may legitimately return async Submitted
+  envelopes when curation requires more time, so this universal runtime check
+  does not force those modes through a synchronous product-response arm just
+  to observe a cap. Their pagination semantics remain defined by the
+  get_products request/response schemas and task reference: pagination bounds
+  the curated/refined products but does not create an exhaustive catalog walk.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - exposes_wholesale_feed
+  examples:
+    - "Any media-buy seller that exposes get_products with compliance-test seeding"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The runner seeds two products under a unique format identifier so
+    wholesale pagination can be exercised against a deterministic filtered
+    feed.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "get_products_pagination_product_1"
+      name: "Get Products Pagination Test Product 1"
+      description: "Compliance fixture for get_products pagination integrity."
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      publisher_properties:
+        - publisher_domain: "acmeoutdoor.example"
+      format_ids:
+        - agent_url: "https://compliance.adcontextprotocol.org"
+          id: "get_products_pagination_integrity_display"
+    - product_id: "get_products_pagination_product_2"
+      name: "Get Products Pagination Test Product 2"
+      description: "Compliance fixture for get_products pagination integrity."
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      publisher_properties:
+        - publisher_domain: "acmeoutdoor.example"
+      format_ids:
+        - agent_url: "https://compliance.adcontextprotocol.org"
+          id: "get_products_pagination_integrity_display"
+  pricing_options:
+    - product_id: "get_products_pagination_product_1"
+      pricing_option_id: "get_products_pagination_pricing_1"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.0
+    - product_id: "get_products_pagination_product_2"
+      pricing_option_id: "get_products_pagination_pricing_2"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.0
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Confirm the agent supports media buying before exercising get_products.
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares media_buy in supported_protocols
+          before driving get_products pagination.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols.
+
+        sample_request:
+          context:
+            correlation_id: "get_products_pagination_integrity--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "get_products_pagination_integrity--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: wholesale_pagination_walk
+    title: "Walk wholesale pages"
+    narrative: |
+      With two products seeded under the unique test format and
+      `max_results: 1`, the first wholesale call MUST return a continuation
+      page. The runner captures the cursor and follows it using the same
+      result-defining request context, adding only the cursor.
+
+    steps:
+      - id: wholesale_first_page
+        title: "Request the first wholesale page"
+        narrative: |
+          The buyer asks for up to one wholesale-feed product matching the
+          unique test format. Two fixtures match, so the response must be
+          non-terminal and capped to one product.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: get_products_pagination_integrity
+        stateful: true
+        context_outputs:
+          - name: products_next_cursor
+            path: "pagination.cursor"
+        expected: |
+          Return one product matching the requested format with:
+          - pagination.has_more = true
+          - pagination.cursor present
+
+        sample_request:
+          buying_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          filters:
+            format_ids:
+              - agent_url: "https://compliance.adcontextprotocol.org"
+                id: "get_products_pagination_integrity_display"
+          pagination:
+            max_results: 1
+
+          context:
+            correlation_id: "get_products_pagination_integrity--wholesale_first_page"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "A seeded product is present"
+          - check: field_value
+            path: "products[0].product_id"
+            allowed_values:
+              - "get_products_pagination_product_1"
+              - "get_products_pagination_product_2"
+            description: "The returned product is one of the seeded pagination fixtures"
+          - check: field_contains
+            path: "products[0].format_ids[*]"
+            value:
+              agent_url: "https://compliance.adcontextprotocol.org"
+              id: "get_products_pagination_integrity_display"
+            description: "The returned product satisfies the requested test format filter"
+          - check: field_absent
+            path: "products[1].product_id"
+            description: "max_results=1 caps the first page to one product"
+          - check: field_value
+            path: "pagination.has_more"
+            value: true
+            description: "Two fixtures seeded with max_results=1 means the first page is non-terminal"
+          - check: field_present
+            path: "pagination.cursor"
+            description: "has_more=true requires a cursor so the caller can continue"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [2]
+            description: "If volunteered, total_count must equal the seeded filtered set size"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "get_products_pagination_integrity--wholesale_first_page"
+            description: "Context correlation_id returned unchanged"
+
+      - id: wholesale_terminal_page
+        title: "Follow the wholesale cursor"
+        narrative: |
+          The buyer follows the captured cursor with the same result-defining
+          wholesale request context. One seeded product remains, so the
+          response must be terminal and must not carry a stale cursor.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: get_products_pagination_integrity
+        stateful: true
+        expected: |
+          Return the remaining product with:
+          - pagination.has_more = false
+          - pagination.cursor absent or null
+
+        sample_request:
+          buying_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          filters:
+            format_ids:
+              - agent_url: "https://compliance.adcontextprotocol.org"
+                id: "get_products_pagination_integrity_display"
+          pagination:
+            cursor: "$context.products_next_cursor"
+            max_results: 1
+
+          context:
+            correlation_id: "get_products_pagination_integrity--wholesale_terminal_page"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "The remaining seeded product is present"
+          - check: field_value
+            path: "products[0].product_id"
+            allowed_values:
+              - "get_products_pagination_product_1"
+              - "get_products_pagination_product_2"
+            description: "The terminal-page product is one of the seeded pagination fixtures"
+          - check: field_contains
+            path: "products[0].format_ids[*]"
+            value:
+              agent_url: "https://compliance.adcontextprotocol.org"
+              id: "get_products_pagination_integrity_display"
+            description: "The terminal-page product satisfies the requested test format filter"
+          - check: field_absent
+            path: "products[1].product_id"
+            description: "Only one seeded product remains after the first page"
+          - check: field_value
+            path: "pagination.has_more"
+            value: false
+            description: "The seeded filtered set is exhausted after following the cursor"
+          - check: field_value_or_absent
+            path: "pagination.cursor"
+            allowed_values: [null]
+            description: "Terminal page must omit cursor; null is accepted for clients that explicitly clear it"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [2]
+            description: "If volunteered, total_count must stay stable across pages"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "get_products_pagination_integrity--wholesale_terminal_page"
+            description: "Context correlation_id returned unchanged"

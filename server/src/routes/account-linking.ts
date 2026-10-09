@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { query, getPool } from '../db/client.js';
-import { mergeUsers } from '../db/user-merge-db.js';
+import { refuseIdentityConsolidation } from './identity-mutation-containment.js';
 import { sendEmailLinkVerification } from '../notifications/email.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
@@ -215,7 +215,7 @@ export function createAccountLinkingRouter(): Router {
   });
 
   // PUT /api/me/linked-emails/primary — swap a linked alias to be the primary email
-  router.put('/primary', requireAuth, verifyExecuteLimiter, async (req: Request, res: Response) => {
+  router.put('/primary', requireAuth, refuseIdentityConsolidation, verifyExecuteLimiter, async (req: Request, res: Response) => {
     try {
       const userId = req.user!.id;
       const { email } = req.body;

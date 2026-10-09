@@ -66,7 +66,7 @@ Do not flatten task errors and negotiation outcomes into one exception type.
 |---|---|---|---|
 | Task-level error | Malformed payload, more than 25 refinements, duplicate source IDs, count above 10 or `max_alternatives`, explicitly unsupported dimension, unauthorized source | No sibling may mutate | Correct the whole request and retry with a new key. |
 | Per-proposal outcome | `revised`, `partial`, `unable`, `finalized` | One ordered result per source; revision outcomes are independent | Verify the typed result, then select, revise, finalize, or decline. |
-| Atomic finalize outcome | `finalized`, `hold_unavailable`, `batch_aborted` | Every hold is created or none are | Retry the exact batch only for an exact replay; otherwise form a new request. |
+| Atomic finalize outcome | `finalized`, `hold_unavailable`, `definition_changed`, `batch_aborted` | Every hold is created or none are | Retry the exact batch only for an exact replay; otherwise form a new request. |
 
 `constraint_unsatisfiable` means the seller accepted the dimension but did not satisfy it. `unsupported_dimension` is used per proposal only when capabilities were unknown; an explicitly omitted dimension is a task-level `UNSUPPORTED_FEATURE`. `commercially_declined` applies only to `ask`, never to a typed constraint.
 
@@ -330,6 +330,7 @@ For every returned proposal:
 5. Verify any `targeting_resolution.brief_targeting` against the hard targeting in `ask`, and review every sparse product `targeting_resolution.modifications` departure before selecting that configured product.
 6. On `partial`, enforce the partial invariant: every requirement absent from the unsatisfied sets still passes.
 7. Treat `reason`, `description`, `suggestions`, and `ask` as non-contractual prose.
+8. Keep `commercial_terms.definition_pins[]`. A matching `terms_digest` proves the terms are unchanged, not that the third-party definitions they name are; finalize and acceptance re-verify the pins.
 
 Digest uniqueness alone is not enough for alternatives. Verify that `commercial_terms` are distinct after canonicalization; a seller cannot create fake diversity by changing only IDs, names, descriptions, or digest strings.
 
@@ -356,7 +357,7 @@ Finalization changes no terms:
 }
 ```
 
-A finalize batch contains only finalize entries. The seller preflights every source and creates every hold or none. `hold_unavailable` identifies the source that could not be reserved; otherwise eligible siblings use `batch_aborted`.
+A finalize batch contains only finalize entries. The seller preflights every source and creates every hold or none. `hold_unavailable` identifies the source that could not be reserved and `definition_changed` the source whose pinned definition drifted; otherwise eligible siblings use `batch_aborted`.
 
 The successful result is singular and committed; its commercial terms and digest are unchanged:
 
@@ -415,7 +416,7 @@ Accept the returned committed proposal and its exact digest before `expires_at`:
 }
 ```
 
-The seller atomically verifies the proposal ID, digest, hold expiry, authorization, and any base MediaBuy revision. Expired holds return `PROPOSAL_EXPIRED`; the buyer requests and finalizes fresh terms rather than retrying acceptance against a lapsed hold.
+The seller atomically verifies the proposal ID, digest, hold expiry, authorization, and any base MediaBuy revision. Expired holds return `PROPOSAL_EXPIRED`; the buyer requests and finalizes fresh terms rather than retrying acceptance against a lapsed hold. If a pinned third-party definition changed after the hold was taken, acceptance returns `REFERENCE_DEFINITION_CHANGED` before mutation even though the digest verifies; finalizing a draft over a changed definition returns `unable` with `reason_code: "definition_changed"` and `drifted_pins[]`. In both cases the buyer revises to re-pin, reviews the changed definition, and finalizes again. See [Definition pins](/docs/media-buy/specification#definition-pins).
 
 ### 6. Amend, cancel, or decline
 
@@ -519,7 +520,7 @@ For revision batches:
 2. Build candidate `commercial_terms` without mutating the source.
 3. Evaluate every typed constraint and product action against every candidate.
 4. Classify the ordered result as `revised`, `partial`, or `unable`.
-5. Generate new proposal IDs, set `parent_proposal_id`, compute JCS digests, and validate the full response.
+5. Resolve every covered third-party definition (publisher-catalog format options and placements, `adagents.json` collections, data-provider signals), write `commercial_terms.definition_pins[]` in canonical order, generate new proposal IDs, set `parent_proposal_id`, compute JCS digests, and validate the full response.
 6. Commit staged successors only after response validation succeeds.
 
 For `partial`, include every failed constraint key and failed product action. Every unlisted requirement must pass for every returned draft. `constraint_unsatisfiable` takes precedence when it coexists with an alternatives shortfall or uninterpreted prose.
@@ -534,7 +535,7 @@ Record the authenticated buyer, source IDs, successor IDs, idempotency fingerpri
 
 The canonical compliance scenario is `media_buy_seller/typed_proposal_negotiation`. It exercises capability gating, satisfied and unsatisfied constraints, alternatives, immutable lineage, finalize atomicity, exact replay, acceptance, amendment, cancellation, double-finalize rejection, and multi-source ordering.
 
-The deterministic training profiles expose the exact `3.2-rc.1` proposal-negotiation wire contract. The ordinary `/sales/mcp` route remains the backward-compatible ask-only seller. Use the [public test token](/docs/quickstart#setup) with `https://test-agent.adcontextprotocol.org` and one of these capability-distinct routes:
+The deterministic training profiles expose the AdCP 3.2 proposal-negotiation wire contract. The ordinary `/sales/mcp` route remains the backward-compatible ask-only seller. Use the [public test token](/docs/quickstart#setup) with `https://test-agent.adcontextprotocol.org` and one of these capability-distinct routes:
 
 | Profile | Route | Deterministic behavior |
 | --- | --- | --- |
@@ -542,7 +543,7 @@ The deterministic training profiles expose the exact `3.2-rc.1` proposal-negotia
 | Constrained seller | `/sales/profiles/constrained-seller/mcp` | USD floors, product conflicts, and at most two available alternatives |
 | Finalization failure | `/sales/profiles/finalization-failure/mcp` | `hold_unavailable` plus `batch_aborted` siblings with no committed successors |
 
-Pin the release candidate exactly on every call. A stable `3.2` selector intentionally negotiates to the seller's stable compatibility response instead of silently opting into prerelease behavior. SDK `14.0.0-rc.35` accepts `wireAdcpVersion: "3.2-rc.1"` on its single- and multi-agent client configuration; raw calls remain useful for inspecting the exact envelope as below.
+Pin `adcp_version: "3.2"` on every call. Calls that omit the pin or pin an earlier release get the backward-compatible response. `@adcp/sdk` 14.x accepts `wireAdcpVersion: "3.2"` on its single- and multi-agent client configuration; raw calls remain useful for inspecting the exact envelope as below.
 
 ### Try the lifecycle with Addie or Sage
 
@@ -556,7 +557,7 @@ conversation and paste:
 
 > Walk me through the AdCP 3.2 proposal lifecycle against
 > `https://test-agent.adcontextprotocol.org/sales/profiles/constrained-seller/mcp`.
-> Pin `adcp_version` to `3.2-rc.1` and send `adcp_major_version: 3`. First
+> Pin `adcp_version` to `3.2` and send `adcp_major_version: 3`. First
 > inspect capabilities, then request a draft for `acmeoutdoor.example`, ask for
 > three alternatives under a USD 50,000 ceiling, and help me interpret the
 > structured counteroffer. Stop before finalizing the hold, and stop again
@@ -611,14 +612,14 @@ async function callTool(id, name, args) {
 }
 
 const version = {
-  adcp_version: '3.2-rc.1',
+  adcp_version: '3.2',
   adcp_major_version: 3,
 };
 const nonce = crypto.randomUUID();
 
 const capabilities = await callTool(1, 'get_adcp_capabilities', version);
 if (
-  capabilities.adcp_version !== '3.2-rc.1'
+  capabilities.adcp_version !== '3.2'
   || capabilities.media_buy?.supports_proposals !== true
   || !capabilities.media_buy?.lifecycle_tools?.includes('refine_proposals')
 ) {
@@ -690,6 +691,7 @@ Keep the following boundaries in your adapter:
 - [ ] Reuse a key only for the exact same request; use a new key for changed payloads.
 - [ ] Stage successors and validate responses before commit.
 - [ ] Create finalize holds atomically and enforce expiry during acceptance.
+- [ ] Pin covered third-party definitions on every draft and revision, verify the pins before taking a hold, and re-verify them before `accept_proposal` mutates state.
 - [ ] Fork accepted snapshots for amendments and negotiated cancellation.
 - [ ] Fence `ask`, authorize every source, rate-limit probing, and avoid sensitive logs.
 - [ ] Run the typed proposal negotiation storyboard against the implementation.

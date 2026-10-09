@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.5/core/targeting-unknown-age-eligibility-constraint.json",
+  "title": "Targeting Unknown Age Eligibility Constraint",
+  "description": "Unknown-age delivery cannot satisfy a minimum-age eligibility policy. When demographic audience targeting and age_restriction are both present, include_unknown must be false.",
+  "if": {
+    "required": [
+      "demographics",
+      "age_restriction"
+    ]
+  },
+  "then": {
+    "properties": {
+      "demographics": {
+        "properties": {
+          "age": {
+            "properties": {
+              "include_unknown": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

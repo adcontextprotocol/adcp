@@ -149,14 +149,14 @@ How to expose delivery data, measurement signals, and optimization levers throug
   <Card title="get_media_buy_delivery task" icon="chart-line" href="/docs/media-buy/task-reference/get_media_buy_delivery">
     Delivery metrics: impressions, spend, completion rates, and performance data.
   </Card>
-  <Card title="Implementing reporting.core" icon="clock-rotate-left" href="/docs/media-buy/reporting-core-implementation-guide">
-    Make expected periods, missing reports, recovery, and responsibility machine-checkable.
+  <Card title="Reporting Core obligation lifecycle" icon="clock-rotate-left" href="/docs/media-buy/reporting-core-implementation-guide#lifecycle-at-a-glance">
+    See exactly when obligations exist and how `expected_at` is derived.
   </Card>
   <Card title="get_reporting_status task" icon="list-check" href="/docs/media-buy/task-reference/get_reporting_status">
     Project obligations, immutable revisions, health, and retained reporting history.
   </Card>
-  <Card title="Optimization and reporting" icon="chart-mixed" href="/docs/media-buy/media-buys/optimization-reporting">
-    How buyer agents use delivery data for campaign optimization.
+  <Card title="Broadcast measurement windows" icon="chart-mixed" href="/docs/media-buy/media-buys/optimization-reporting#measurement-maturation-windows">
+    Follow the declared Live/C3/C7 progression and its delivery fields.
   </Card>
   <Card title="Signals overview" icon="signal" href="/docs/signals/overview">
     The signals protocol: audience segments, contextual signals, measurement data.
@@ -196,11 +196,62 @@ How to expose delivery data, measurement signals, and optimization levers throug
 - **Seller-side governance** — when a buyer account has `governance_agents` (synced via [`sync_governance`](/docs/accounts/tasks/sync_governance)), call `check_governance` with `governance_context` + `purchase_type` + `planned_delivery` before confirming media buys
 - **Planned delivery** — describe what you will actually deliver; the governance agent validates it against the buyer's plan
 
+### Exact B3 reporting references
+
+#### Broadcast C3/C7 windows
+
+C3 and C7 are common broadcast window IDs, not protocol-defined deadlines.
+The seller's product is authoritative: read each entry in
+`reporting_capabilities.measurement_windows[]`, especially `window_id`,
+`duration_days`, `expected_availability_days`, and `is_guarantee_basis`.
+`duration_days` describes accumulation; `expected_availability_days` also
+includes vendor processing. Do not infer availability from the string `c3` or
+`c7` alone.
+
+The exact delivery progression is documented in
+[Measurement maturation windows](/docs/media-buy/media-buys/optimization-reporting#measurement-maturation-windows).
+Read `by_package[].measurement_window`, `supersedes_window`, `is_final`, and
+`finalized_at`; a wider window uses `notification_type: "window_update"`.
+The guarantee basis is the product's declared window, not automatically C7.
+
+#### Reporting-obligation lifecycle
+
+The configuration generation creates the reporting clock; accepting a media
+buy does not. The seller commits an obligation independently of report data at
+`period.end`, before its first revision, and exposes it in the first ledger
+snapshot strictly after that boundary. Both sides derive:
+
+```text
+expected_at = resolved period.end + schedule.delivery_sla
+```
+
+This is the existing rule in
+[Reporting Core: Lifecycle at a glance](/docs/media-buy/reporting-core-implementation-guide#lifecycle-at-a-glance)
+and [get_reporting_status: Reliability model](/docs/media-buy/task-reference/get_reporting_status#reliability-model).
+The latter is also the field-level reference for `reporting_obligation_id`,
+the immutable configuration identity (`delivery_config_id` plus
+`delivery_config_version`), `report_definition_id`, `period`, `expected_at`,
+`schedule`, `health`, `production_status`, `revision_count`, and `issues[]`.
+
+Before `expected_at`, an obligation with no revision is `waiting`. Once due,
+it is `delayed` only while the seller's advertised
+`automated_recovery_window_seconds` is running, then becomes
+`action_required`. A published zero-row revision is a report;
+`production_status: "published"` and `revision_count` distinguish it from a
+missing revision. `get_reporting_status` is authoritative; reporting
+notifications are optional wake-ups.
+
 ### Exercises
 
 Given sample Context Match and Identity Match responses, determine which packages the publisher activates and what targeting key-values to set.
 
-**Broadcast delivery reporting:** Given a broadcast product with `measurement_windows: [{window_id: "c3"}, {window_id: "c7"}]`, a buyer calls `get_media_buy_delivery` two days after the flight date. Describe what data is available in each window, why the `c7` window is still incomplete, and how the seller should represent delivery to avoid the buyer misreading partial data as underdelivery.
+**Broadcast delivery reporting:** Given a broadcast product that declares C3
+and C7 entries with explicit `duration_days`, `expected_availability_days`,
+and `is_guarantee_basis`, inspect a provisional delivery row with
+`measurement_window: "c3"` and `is_final: false`. Use the product's declared
+timing—not the window names—to explain what is available, whether C7 is due,
+and how a later `window_update` should supersede C3 without making the
+provisional row look like underdelivery.
 
 **Reliable reporting (10–15 minutes):** Run
 `reporting_core_lifecycle_probe` against the sales sandbox. Save the complete

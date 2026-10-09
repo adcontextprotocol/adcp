@@ -5,6 +5,9 @@ title: "Read-tool idempotency_key envelope tolerance"
 category: idempotency
 summary: "Validates that read-only AdCP tasks and the 3.x get_products compatibility facade tolerate an optional idempotency_key without claiming read-response replay."
 track: core
+requires:
+  - controller
+
 required_tools: []  # protocol-level baseline; read-tool probes gate themselves per step
 
 narrative: |
@@ -37,10 +40,34 @@ caller:
   example: "Compliance test harness"
 
 prerequisites:
+  controller_seeding: true
   description: |
     No special seed state is required. Tool-specific read probes are skipped
     when the agent does not advertise the corresponding tool.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_44aa0cd2db69"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-read_tool_idempotency-1d54d28c"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_08fb8da6d624"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-read_tool_idempotency-1d54d28c"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: read_requests_accept_idempotency_key
@@ -119,6 +146,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-read_tool_idempotency-1d54d28c"
           context:
             correlation_id: "read_tool_idempotency--get_products_with_key"
           ext:
@@ -201,7 +230,6 @@ phases:
 
         sample_request:
           idempotency_key: "$generate:uuid_v4#read_tools_3_1_list_formats"
-          type: "display"
           pagination:
             max_results: 10
           context:
@@ -247,6 +275,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-read_tool_idempotency-1d54d28c"
           include_snapshot: false
           pagination:
             max_results: 10

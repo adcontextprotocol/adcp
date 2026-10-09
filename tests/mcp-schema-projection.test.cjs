@@ -3,6 +3,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -10,6 +11,8 @@ const AjvDraft07 = require('ajv');
 const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
 const yaml = require('js-yaml');
+const semver = require('semver');
+const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 const {
   normalizeSubstitutions,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
@@ -33,6 +36,7 @@ const {
   measureSchema,
   projectDraft07Node,
   projectMcpDiscoveryInputSchema,
+  projectSourceSchema,
   pruneUnusedRootDefinitions,
   selectRuntimeToolNames,
   stripPresentationAnnotations,
@@ -45,6 +49,15 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
+// The generated profiles describe the active surface of the package's release
+// line. Before the line's GA (x.y.0-rc.N) that is the x.y.0 surface the tool
+// manifest declares via added_in; once the line has a stable release it is the
+// released package version itself (3.2 GA ships as 3.2.1 because 3.2.0 is
+// permanently withdrawn; see RELEASING.md).
+const PACKAGE_VERSION = require('../package.json').version;
+const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
+  ? `${semver.major(PACKAGE_VERSION)}.${semver.minor(PACKAGE_VERSION)}.0`
+  : PACKAGE_VERSION;
 // Macro occurrence contracts and representation-set resolution add shared,
 // structurally enforced graphs to media-buy tasks. The 3.2 tracker contract
 // adds one seller-bound destination contract to build_creative; keep that
@@ -65,16 +78,39 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // measured media-buy context to 417.25 KiB. Request-only targeting and product
 // purchase inputs add explicit nullable command wrappers while retaining strict
 // response definitions, bringing the prompt view to ~429 KiB and bounded here
-// at 440 KiB.
+// at 440 KiB. The viewable_rate optimization goal adds viewability standard and
+// vendor fields plus one conditional to the canonical goal carried by
+// control_media_buy and buy_products (~1.3 KiB each), bounded at 442 KiB.
+// outcome_target.cost_per adds amount/currency/strength in two schemas of its
+// own (core/outcome-target-cost-per.json and
+// enums/outcome-target-cost-strength.json) that keep generated SDK type names
+// from colliding with BiddingPolicy's CostPer and Strength. It is embedded in
+// list_products, request_proposals, and refine_proposals (~0.5 KiB each),
+// measured at 452,953 bytes (442.3 KiB) and bounded at 443 KiB. The
+// outcome_target vendor_metric goal branch (vendor BrandKey plus metric_id,
+// ~0.3 KiB) reaches the same three tasks, bounded at 444 KiB. Experimental
+// minute-resolution dayparts add the start_time/end_time pair, its one-of-two
+// exclusion, and the time_granularity requirement to the shared daypart
+// graph carried by every targeting-bearing task (+2,087 bytes measured,
+// 443.3 → 445.4 KiB), bounded at 446 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 440,
+  'media-buy': 446,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product
 // targeting contract. The test below still compiles both dialects and executes
-// every collected storyboard fixture.
-const PARITY_COMPILE_LIMIT = 1_250_000;
+// every collected storyboard fixture. The viewable_rate optimization goal and
+// supported_viewability_standards capability add ~1.8 KB to the
+// comply_test_controller request, which already sat at 1_249_930 bytes.
+// Experimental Product.execution_requirements (#7763) reaches it through the
+// seeded Product and brings it to ~1_260_400 bytes. DOOH placement location and
+// inventory summary fields (#7416) bring it to ~1_267_800 bytes; the headroom
+// covers the additive 3.3 Product fields still in review. The 3.3 broadcast
+// TV, daypart and execution-readiness additions bring it to ~1_282_300 bytes.
+// Further growth should be met by hoisting shared definitions out of the
+// seeded Product (#8041), not by another bump.
+const PARITY_COMPILE_LIMIT = 1_300_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -122,6 +158,35 @@ function createValidator(AjvClass) {
   addFormats(ajv);
   return ajv;
 }
+
+test('complete reporting summary vectors agree across canonical, bundled, and MCP profiles', async t => {
+  const schemaPath = 'media-buy/get-reporting-status-response.json';
+  const variants = [
+    [schemaPath, AjvDraft07],
+    [`bundled/${schemaPath}`, AjvDraft07],
+    [`mcp/${MCP_PROTOCOL_VERSION}/${schemaPath}`, Ajv2020],
+    [`mcp/${MCP_PROTOCOL_VERSION}/profiles/production/${schemaPath}`, Ajv2020],
+    [`mcp/${MCP_PROTOCOL_VERSION}/profiles/media-buy/${schemaPath}`, Ajv2020],
+  ];
+  for (const [relativePath, AjvClass] of variants) {
+    await t.test(relativePath, async () => {
+      const ajv = new AjvClass({
+        strict: false,
+        allErrors: true,
+        loadSchema: async uri => {
+          const prefix = 'https://adcontextprotocol.org/schemas/latest/';
+          assert.ok(uri.startsWith(prefix), `Unexpected generated reference: ${uri}`);
+          return readJson(path.join(LATEST_DIR, uri.slice(prefix.length)));
+        },
+      });
+      addFormats(ajv);
+      const validate = await ajv.compileAsync(readJson(path.join(LATEST_DIR, relativePath)));
+      for (const { name, valid, response } of reportingSummaryCases()) {
+        assert.equal(validate(response), valid, `${name}: ${JSON.stringify(validate.errors)}`);
+      }
+    });
+  }
+});
 
 function walkYamlFiles(directory) {
   const files = [];
@@ -684,6 +749,62 @@ test('compact bundling reuses external schemas and keeps local refs resolvable',
   assert.ok(assertLocalRefsResolve(projectDraft07Node(compact)) > 0);
 });
 
+test('MCP compound schemas preserve canonical embedded identities offline', () => {
+  const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-mcp-identities-'));
+  try {
+    const childPath = path.join(sourceDir, 'core', 'child.json');
+    const rootPath = path.join(sourceDir, 'media-buy', 'identity-response.json');
+    fs.mkdirSync(path.dirname(childPath), { recursive: true });
+    fs.mkdirSync(path.dirname(rootPath), { recursive: true });
+    fs.writeFileSync(childPath, JSON.stringify({
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/core/child.json',
+      type: 'object',
+      definitions: {
+        Name: { type: 'string', minLength: 1 },
+      },
+      properties: {
+        name: { $ref: '#/definitions/Name' },
+      },
+      required: ['name'],
+    }));
+    fs.writeFileSync(rootPath, JSON.stringify({
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/media-buy/identity-response.json',
+      type: 'object',
+      properties: {
+        child: { $ref: '/schemas/core/child.json' },
+      },
+      required: ['child'],
+    }));
+
+    for (const annotationMode of ['full', 'structural']) {
+      const projection = projectSourceSchema(
+        readJson(rootPath),
+        rootPath,
+        sourceDir,
+        '3.2.1',
+        'media-buy/identity-response.json',
+        annotationMode,
+      );
+      const child = projection.$defs['external:core/child.json'];
+      assert.equal(
+        child.$id,
+        'https://adcontextprotocol.org/schemas/3.2.1/core/child.json',
+        annotationMode,
+      );
+      assert.deepEqual(collectExternalRefs(projection), [], annotationMode);
+      assert.ok(assertLocalRefsResolve(projection) >= 2, annotationMode);
+
+      const validate = createValidator(Ajv2020).compile(projection);
+      assert.equal(validate({ child: { name: 'preserved' } }), true, annotationMode);
+      assert.equal(validate({ child: { name: '' } }), false, annotationMode);
+    }
+  } finally {
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+  }
+});
+
 test('compact lifecycle routes every operational control and declares cross-item invariants', () => {
   const routedActions = readJson(path.join(SOURCE_DIR, 'core', 'canonical-media-buy-action.json'));
   const controlActions = new Set(routedActions.oneOf
@@ -1018,7 +1139,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   for (const [relativePath, { bytes, fixtures, sourceSchema }] of paritySchemas) {
     assert.ok(
       bytes <= PARITY_COMPILE_LIMIT,
-      `${relativePath} example-bearing schema exceeds parity compile limit`
+      `${relativePath} example-bearing schema exceeds parity compile limit (${bytes} > ${PARITY_COMPILE_LIMIT} bytes)`
     );
     const sourcePath = path.join(SOURCE_DIR, relativePath);
     const compactSource = compactDraft07Schema(sourceSchema, sourcePath, SOURCE_DIR);
@@ -1094,7 +1215,7 @@ test('generated production profile exposes the active 3.2 surface without compli
   const profile = readJson(path.join(PRODUCTION_PROFILE_DIR, 'manifest.json'));
 
   assert.equal(profile.profile, 'production');
-  assert.equal(profile.surface_version, '3.2.0');
+  assert.equal(profile.surface_version, ACTIVE_SURFACE_VERSION);
   assert.equal(profile.annotation_mode, 'structural');
   assert.equal(profile.complete_discovery_projection, '../../manifest.json');
   assert.equal(profile.canonical_wire_manifest, '../../../../manifest.json');
@@ -1248,7 +1369,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
 
     assert.equal(profile.profile, profileName);
     assert.equal(profile.profile_kind, 'active-role-catalog');
-    assert.equal(profile.surface_version, '3.2.0');
+    assert.equal(profile.surface_version, ACTIVE_SURFACE_VERSION);
     assert.equal(profile.compatibility_scope, 'active-3.2-only');
     assert.equal(profile.annotation_mode, 'structural');
     assert.deepEqual(profile.schema_fields, ['inputSchema', 'outputSchema']);
@@ -1325,7 +1446,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
   const mediaBuyTools = new Set(MCP_ROLE_PROFILE_TOOLS['media-buy']);
   const activeMediaBuyTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'media-buy')
-    .filter(([, tool]) => !tool.deprecated_in || tool.deprecated_in > '3.2.0')
+    .filter(([, tool]) => !tool.deprecated_in || semver.gt(tool.deprecated_in, ACTIVE_SURFACE_VERSION))
     .map(([toolName]) => toolName)
     .filter(toolName => toolName !== 'build_creative');
   for (const toolName of activeMediaBuyTools) assert.ok(mediaBuyTools.has(toolName), toolName);
@@ -1343,7 +1464,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
   const creativeTools = new Set(MCP_ROLE_PROFILE_TOOLS.creative);
   const activeCreativeTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'creative')
-    .filter(([, tool]) => !tool.deprecated_in || tool.deprecated_in > '3.2.0')
+    .filter(([, tool]) => !tool.deprecated_in || semver.gt(tool.deprecated_in, ACTIVE_SURFACE_VERSION))
     .map(([toolName]) => toolName);
   for (const toolName of activeCreativeTools) assert.ok(creativeTools.has(toolName), toolName);
   assert.ok(creativeTools.has('build_creative'));

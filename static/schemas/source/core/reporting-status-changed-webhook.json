@@ -105,6 +105,9 @@
       }
     }
   ],
+  "x-adcp-validation": {
+    "waived_mismatch_transition": "When an exact bilateral CONSUMER_STATUS_MISMATCH waiver removes the last impairment and restores underlying seller health, this is a recovery health transition. A seller advertising reporting.status_changed MUST fire it after the recovered projection is readable, with health set to healthy or complete, previous_health set to delayed or action_required, and issue_ids empty or absent. If another impairment keeps health unchanged, no reporting.status_changed fire is required; polling get_reporting_status remains authoritative."
+  },
   "additionalProperties": false,
   "examples": [
     {

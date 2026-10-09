@@ -17,7 +17,6 @@ describe('Addie web organization selection client', () => {
     expect(chatHtml).toContain('authFetch(`/api/me/addie-home?format=html${orgParam}`)');
   });
 
-  it('forwards the selected organization in chat stream requests', () => {
-    expect(chatHtml).toContain('organization_id: getSelectedOrganizationId(),');
-  });
+  // Stream request forwarding and null/empty omission are exercised through
+  // the browser in chat-request-errors.test.ts.
 });

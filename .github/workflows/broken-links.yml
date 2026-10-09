@@ -77,13 +77,31 @@ jobs:
     - name: Schema link convention (autofix with `npm run fix:schema-links`)
       run: npm run lint:schema-links
 
+    # The stable maintenance branch follows the docs.json default (3.1 ->
+    # 3.1.x; after the 3.2 GA flip, 3.2 -> 3.2.x). Right after a minor GA the
+    # new line has no maintenance branch yet and main is its stable surface,
+    # so the comparison is required only once the branch exists.
     - name: Fetch stable docs release surface
-      run: git fetch --depth=1 origin +3.1.x:refs/remotes/origin/3.1.x
+      id: stable-docs-ref
+      run: |
+        LINE=$(node -e 'const v = require("./docs.json").navigation.versions; process.stdout.write(String((v.find((e) => e.default) || v[0]).version))')
+        if ! [[ "$LINE" =~ ^[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::docs.json default version must be a stable X.Y line"
+          exit 1
+        fi
+        BRANCH="${LINE}.x"
+        if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+          git fetch --depth=1 origin "+${BRANCH}:refs/remotes/origin/${BRANCH}"
+          echo "require=1" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::No ${BRANCH} maintenance branch yet; main is the ${LINE} stable docs surface."
+          echo "require=0" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Validate Mintlify navigation and locally indexable pages
       run: npm run test:docs-nav
       env:
-        REQUIRE_STABLE_DOCS_REF: '1'
+        REQUIRE_STABLE_DOCS_REF: ${{ steps.stable-docs-ref.outputs.require }}
 
     - name: Check browser-facing Agentic Advertising links
       # Pull requests are not deployed to the production domains. Checking

@@ -7,8 +7,7 @@
  *   - bumping is monotonic per credential
  *   - a CASCADE delete moves the fingerprint (so callers must compare for
  *     inequality, not ordering)
- *   - mergeUsers bumps both credentials inside its own transaction
- *   - a failed mergeUsers leaves the fingerprint untouched
+ *   - refused generic merges and promotions leave fingerprints untouched
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -21,6 +20,7 @@ import {
 } from '../../src/db/authorization-epoch-db.js';
 import { mergeUsers } from '../../src/db/user-merge-db.js';
 import { promoteSecondaryIfPrimaryDeleted } from '../../src/db/identity-db.js';
+import { deleteIdentityCredential } from '../../src/services/identity-credential-deletion.js';
 
 const TEST_USER_PREFIX = 'user_authz_epoch_test_';
 
@@ -37,11 +37,13 @@ describe('Authorization epoch (migration 565)', () => {
 
   afterAll(async () => {
     await pool.query(`DELETE FROM users WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
+    await pool.query(`DELETE FROM registry_audit_log WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
     await closeDatabase();
   });
 
   beforeEach(async () => {
     await pool.query(`DELETE FROM users WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
+    await pool.query(`DELETE FROM registry_audit_log WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
   });
 
   async function insertUser(suffix: string): Promise<string> {
@@ -68,10 +70,10 @@ describe('Authorization epoch (migration 565)', () => {
     const userId = await insertUser('monotonic');
 
     await bumpAuthorizationEpochs(pool, [userId]);
-    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:1`);
+    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:epoch:1`);
 
     await bumpAuthorizationEpochs(pool, [userId]);
-    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:2`);
+    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:epoch:2`);
   });
 
   it('ignores credentials with no users row instead of failing the transaction', async () => {
@@ -79,7 +81,7 @@ describe('Authorization epoch (migration 565)', () => {
 
     await bumpAuthorizationEpochs(pool, [userId, `${TEST_USER_PREFIX}absent`]);
 
-    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:1`);
+    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:epoch:1`);
   });
 
   it('changes the fingerprint when a bumped credential is deleted', async () => {
@@ -94,54 +96,64 @@ describe('Authorization epoch (migration 565)', () => {
     expect(after).toBe('');
   });
 
-  it('bumps both credentials when mergeUsers binds them to one identity', async () => {
+  it('retains a deletion fingerprint for an epoch-0 credential after users-row cascade', async () => {
+    const userId = await insertUser('epoch_zero_confirmed_delete');
+    expect(await getAuthorizationFingerprint([userId])).toBe('');
+
+    await expect(deleteIdentityCredential(userId, 'workos_webhook'))
+      .resolves.toMatchObject({ deleted: true });
+
+    expect(await getAuthorizationFingerprint([userId]))
+      .toMatch(new RegExp(`^${userId}:deleted:[0-9a-f-]+$`));
+  });
+
+  it('preserves both fingerprints when generic merging is refused', async () => {
     const primaryId = await insertUser('merge_primary');
     const secondaryId = await insertUser('merge_secondary');
+    await bumpAuthorizationEpochs(pool, [primaryId, secondaryId]);
+    const before = await getAuthorizationFingerprint([primaryId, secondaryId]);
 
-    await mergeUsers(primaryId, secondaryId, primaryId);
+    await expect(mergeUsers(primaryId, secondaryId, primaryId)).rejects.toMatchObject({
+      code: 'identity_mutation_disabled',
+    });
 
-    expect(await getAuthorizationFingerprint([primaryId])).toBe(`${primaryId}:1`);
-    expect(await getAuthorizationFingerprint([secondaryId])).toBe(`${secondaryId}:1`);
+    expect(await getAuthorizationFingerprint([primaryId, secondaryId])).toBe(before);
   });
 
-  it('bumps both credentials when the primary is deleted and a secondary is promoted', async () => {
-    const primaryId = await insertUser('promote_primary');
-    const secondaryId = await insertUser('promote_secondary');
-    await mergeUsers(primaryId, secondaryId, primaryId);
-
-    const promoted = await promoteSecondaryIfPrimaryDeleted(primaryId);
-
-    expect(promoted).toEqual({ promotedUserId: secondaryId });
-    expect(await getAuthorizationFingerprint([primaryId])).toBe(`${primaryId}:2`);
-    expect(await getAuthorizationFingerprint([secondaryId])).toBe(`${secondaryId}:2`);
-  });
-
-  it('bumps every bound credential on promotion, not just the successor', async () => {
-    // Three credentials on one identity. Deleting the primary promotes the
-    // longest-bound secondary; the third credential's canonical routing moves
-    // to that successor too, so its sessions must be revalidated as well.
+  it('preserves every bound fingerprint when automatic promotion is refused', async () => {
     const primaryId = await insertUser('fanout_primary');
     const successorId = await insertUser('fanout_successor');
     const bystanderId = await insertUser('fanout_bystander');
-    await mergeUsers(primaryId, successorId, primaryId);
-    await mergeUsers(primaryId, bystanderId, primaryId);
+    const credentials = [primaryId, successorId, bystanderId];
+    // Model a historical multi-credential identity without invoking the
+    // disabled generic merge as test setup.
+    const original = await pool.query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = ANY($1)`,
+      [[successorId, bystanderId]],
+    );
+    await pool.query(
+      `UPDATE identity_workos_users
+          SET identity_id = (SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1),
+              is_primary = FALSE
+        WHERE workos_user_id = ANY($2)`,
+      [primaryId, [successorId, bystanderId]],
+    );
+    await pool.query(`DELETE FROM identities WHERE id = ANY($1)`, [original.rows.map((row) => row.identity_id)]);
+    await bumpAuthorizationEpochs(pool, credentials);
+    const before = await getAuthorizationFingerprint(credentials);
 
-    const bystanderBefore = await getAuthorizationFingerprint([bystanderId]);
+    await expect(promoteSecondaryIfPrimaryDeleted(primaryId)).rejects.toMatchObject({
+      code: 'identity_mutation_disabled',
+    });
 
-    const promoted = await promoteSecondaryIfPrimaryDeleted(primaryId);
-
-    expect(promoted).toEqual({ promotedUserId: successorId });
-    expect(await getAuthorizationFingerprint([bystanderId])).not.toBe(bystanderBefore);
+    expect(await getAuthorizationFingerprint(credentials)).toBe(before);
   });
 
-  it('leaves the fingerprint untouched when mergeUsers rolls back', async () => {
-    const secondaryId = await insertUser('rollback_secondary');
-    const missingPrimaryId = `${TEST_USER_PREFIX}rollback_missing_primary`;
-
-    await expect(mergeUsers(missingPrimaryId, secondaryId, secondaryId)).rejects.toThrow(
-      'Primary user does not exist'
-    );
-
+  it('refuses before checking for a missing primary or changing the fingerprint', async () => {
+    const secondaryId = await insertUser('missing_secondary');
+    await expect(mergeUsers(`${TEST_USER_PREFIX}missing_primary`, secondaryId, secondaryId)).rejects.toMatchObject({
+      code: 'identity_mutation_disabled',
+    });
     expect(await getAuthorizationFingerprint([secondaryId])).toBe('');
   });
 });

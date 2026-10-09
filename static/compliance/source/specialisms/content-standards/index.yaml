@@ -5,6 +5,9 @@ protocol: governance
 category: content_standards
 summary: "Define creative quality rules, calibrate content against them, and validate that delivered ads met the standards."
 track: governance
+requires:
+  - controller
+
 required_tools:
   - list_content_standards
 
@@ -53,6 +56,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_133e56e4afaf"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-content_standards-5c6128f1"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_f46c25201985"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-content_standards-5c6128f1"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   media_buys:
     - media_buy_id: "content_standards_artifacts_mb_1"
       status: "active"
@@ -131,6 +155,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-content_standards-5c6128f1"
           scope:
             languages_any: ["en"]
             description: "Acme Outdoor creative quality standards"
@@ -194,6 +220,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-content_standards-5c6128f1"
 
           context:
             correlation_id: "content_standards--list_content_standards"
@@ -233,6 +261,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-content_standards-5c6128f1"
           standards_id: "$context.content_standards_id"
 
           context:
@@ -279,6 +309,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-content_standards-5c6128f1"
           standards_id: "$context.content_standards_id"
           policies:
             - policy_id: no_violent_imagery
@@ -344,6 +376,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-content_standards-5c6128f1"
           standards_id: "$context.content_standards_id"
           artifact:
             property_rid: "test-publisher.example"
@@ -395,6 +429,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-content_standards-5c6128f1"
           standards_id: "$context.content_standards_id"
           artifact:
             property_rid: "test-publisher.example"
@@ -445,6 +481,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-content_standards-5c6128f1"
           standards_id: "$context.content_standards_id"
           policies:
             - policy_id: no_violent_imagery
@@ -496,6 +534,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-content_standards-5c6128f1"
           standards_id: "$context.content_standards_id"
           artifact:
             property_rid: "test-publisher.example"
@@ -556,6 +596,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-content_standards-5c6128f1"
           standards_id: "$context.content_standards_id"
           records:
             - record_id: "delivery_display_001"
@@ -600,7 +642,8 @@ phases:
     title: "Optional creative feature extraction"
     narrative: |
       Governance agents that implement `get_creative_features` can evaluate a
-      concrete creative manifest and return schema-valid scored features.
+      concrete creative manifest and return either schema-valid scored features
+      or a submitted acknowledgement for later polling.
 
     steps:
       - id: get_creative_features
@@ -611,10 +654,12 @@ phases:
         doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_feature_extraction
         requires_tool: get_creative_features
-        stateful: false
+        stateful: true
         expected: |
-          Return a schema-valid results array for the submitted manifest.
+          Accept the evaluation with a stable provider evaluation identity. The
+          response may contain terminal results or a submitted task handle.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#content_standards_creative_feature_extraction_get_creative_features"
           creative_manifest:
             creative_id: "content_standards_feature_test"
             format_id:
@@ -635,8 +680,8 @@ phases:
           - check: response_schema
             description: "Response matches get-creative-features-response.json schema"
           - check: field_present
-            path: "results"
-            description: "Response includes evaluated feature results"
+            path: "evaluation_id"
+            description: "Response identifies the accepted provider evaluation"
           - check: field_value
             path: "context.correlation_id"
             value: "content_standards--get_creative_features"

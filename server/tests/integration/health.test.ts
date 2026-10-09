@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { HTTPServer } from "../../src/http.js";
-import { healthCheck } from "../../src/db/client.js";
+import { healthCheck, type HealthCheckDiagnostics } from "../../src/db/client.js";
 import { logger } from "../../src/logger.js";
 import { notifySystemError } from "../../src/addie/error-notifier.js";
 import request from "supertest";
@@ -47,6 +47,18 @@ vi.mock("../../src/addie/error-notifier.js", async () => {
 describe("Health Endpoint Integration", () => {
   let server: HTTPServer;
   let app: any;
+
+  function healthDiagnostics(totalMs: number): HealthCheckDiagnostics {
+    return {
+      timeout_ms: 5000,
+      attempts: 1,
+      connect_ms: 0,
+      query_ms: totalMs,
+      cleanup_ms: 0,
+      total_ms: totalMs,
+      pool: { max: 8, total: 8, idle: 0, waiting: 2, saturated: true },
+    };
+  }
 
   beforeAll(async () => {
     server = new HTTPServer();
@@ -95,6 +107,55 @@ describe("Health Endpoint Integration", () => {
 
       expect(response.body.registry.mode).toBe("database");
       expect(response.body.registry.using_database).toBe(true);
+    });
+
+    it("keeps diagnostics internal and logs successful checks at the slow boundary", async () => {
+      const healthCheckMock = vi.mocked(healthCheck);
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
+      const fast = healthDiagnostics(999);
+      const slow = healthDiagnostics(1000);
+      healthCheckMock.mockResolvedValueOnce(fast).mockResolvedValueOnce(slow);
+
+      const fastResponse = await request(app).get("/health").expect(200);
+      expect(JSON.stringify(fastResponse.body)).not.toContain("connect_ms");
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "Database health check slow",
+      );
+
+      const slowResponse = await request(app).get("/health").expect(200);
+      expect(JSON.stringify(slowResponse.body)).not.toContain("connect_ms");
+      expect(warnSpy).toHaveBeenCalledWith(
+        { health: slow },
+        "Database health check slow",
+      );
+      vi.restoreAllMocks();
+    });
+
+    it("logs failure diagnostics without exposing them in the health response", async () => {
+      const healthCheckMock = vi.mocked(healthCheck);
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
+      const diagnostics = healthDiagnostics(5000);
+      const failure = new Error("health check query timed out") as Error & {
+        healthCheckDiagnostics?: HealthCheckDiagnostics;
+      };
+      failure.healthCheckDiagnostics = diagnostics;
+      healthCheckMock.mockRejectedValueOnce(failure);
+
+      const response = await request(app).get("/health").expect(503);
+      expect(JSON.stringify(response.body)).not.toContain("connect_ms");
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          err: failure,
+          health: diagnostics,
+          consecutiveFailures: 1,
+        }),
+        "Database health check failed (transient, not yet alerting)",
+      );
+
+      healthCheckMock.mockResolvedValueOnce(healthDiagnostics(10));
+      await request(app).get("/health").expect(200);
+      vi.restoreAllMocks();
     });
 
     it("alerts once for a sustained database outage and reports recovery", async () => {

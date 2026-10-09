@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../src/middleware/auth.js', () => ({
   requireGlobalAdmin: [
     (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-      req.user = { id: 'admin_1', email: 'admin@example.test' } as never;
+      req.user = { id: 'admin_1', email: 'admin@example.test', authWorkosUserId: req.get('X-Test-Authenticated-Credential') } as never;
       if (req.get('X-Test-Omit-Admin-Mechanism') !== 'true') {
         req.adminAccessMechanism = 'break_glass_admin_email';
       }
@@ -94,6 +94,14 @@ describe('AAO site-admin mutation routes', () => {
       reason: 'Offboarding',
     }));
     expect(mocks.invalidate).toHaveBeenCalledOnce();
+  });
+
+  it.each(['grant', 'revoke'])('attributes %s to the exact authenticated credential', async (operation) => {
+    const response = await request(createApp()).post(`/api/admin/aao-admin/${operation}`)
+      .set('X-Test-Authenticated-Credential', 'user_authenticated_admin')
+      .send({ workos_user_id: 'user_target', reason: 'Coverage rotation' });
+    expect(response.status).toBe(operation === 'grant' ? 201 : 200);
+    expect(operation === 'grant' ? mocks.grant : mocks.revoke).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: 'user_authenticated_admin' }));
   });
 
   it('does not clear a cache entry when no active membership was revoked', async () => {

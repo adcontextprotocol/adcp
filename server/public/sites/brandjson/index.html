@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>brand.json: publish your brand identity for AI agents</title>
+  <meta name="description" content="brand.json is an open standard for publishing your brand identity at /.well-known/brand.json, so AI agents can find your name, logos, colors, and voice.">
+  <link rel="canonical" href="https://brandjson.org/">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/sites/standard-site.css">
+</head>
+<body>
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
+  <header class="std-hero">
+    <h1>brand.json</h1>
+    <p>An open standard for publishing your brand identity where AI agents can find it: one file at <code>/.well-known/brand.json</code>.</p>
+    <div class="std-actions">
+      <a class="btn btn-primary" href="/builder">Build or check your brand.json</a>
+      <a class="btn btn-secondary-on-dark" href="/spec">Read the specification</a>
+    </div>
+  </header>
+
+  <main class="std-main">
+    <h2>What it is</h2>
+    <p>brand.json tells agents who your brand is and how it wants to be represented: names, logos, colors, fonts, tone, visual guidelines, and the properties you own. Agents read it the same way crawlers read <code>robots.txt</code>: from a well-known location on your own domain.</p>
+
+    <h2>Who hosts it</h2>
+    <div class="std-cards">
+      <div class="std-card">
+        <h3>You</h3>
+        <p>Recommended. Put the file at <code>https://yourdomain/.well-known/brand.json</code>. The builder generates it and checks it once it's live.</p>
+      </div>
+      <div class="std-card">
+        <h3>Your agency or platform</h3>
+        <p>They host the full file; you publish a small pointer on your domain with <code>authoritative_location</code>.</p>
+      </div>
+      <div class="std-card">
+        <h3>A hosting service</h3>
+        <p>AgenticAdvertising.org can host it for you. Your domain still publishes the pointer, so you stay in control.</p>
+      </div>
+    </div>
+
+    <h2>A minimal example</h2>
+<pre>{
+  "$schema": "https://brandjson.org/schemas/v3/brand.json",
+  "house": { "domain": "acme.example", "name": "Acme Corp" },
+  "brands": [
+    {
+      "id": "acme",
+      "names": [{ "en": "Acme" }],
+      "logos": [{ "url": "https://acme.example/logo.svg" }],
+      "colors": { "primary": "#1A4D8F" }
+    }
+  ]
+}</pre>
+
+    <h2>Schema</h2>
+    <p>Validate against <a href="/schemas/v3/brand.json"><code>https://brandjson.org/schemas/v3/brand.json</code></a>. The standard's agent and trust fields are moving to a separate record, <a href="https://trustjson.org">trust.json</a>, so brand.json can stay focused on identity.</p>
+  </main>
+
+  <div id="adcp-footer"></div>
+</body>
+</html>

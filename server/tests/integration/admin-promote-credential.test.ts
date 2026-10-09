@@ -1,12 +1,4 @@
-/**
- * Admin "promote credential to primary" integration test.
- *
- * Exercises POST /api/admin/users/:userId/credentials/:credentialId/promote.
- * The new primary should:
- *   - hold all app-state previously on the old primary (org_memberships, etc.)
- *   - have is_primary = TRUE; the old primary, FALSE
- *   - record an audit row
- */
+/** Identity promotion containment preserves both privilege directions. */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
@@ -18,8 +10,10 @@ vi.hoisted(() => {
   process.env.WORKOS_COOKIE_PASSWORD ??= 'test-cookie-password-at-least-32-chars-long';
 });
 
+const provider = vi.hoisted(() => ({ getUser: vi.fn(), createUser: vi.fn(), updateUser: vi.fn(), deleteUser: vi.fn() }));
+
 vi.mock('../../src/auth/workos-client.js', () => {
-  const mockUserManagement = { getUser: vi.fn(), createUser: vi.fn(), deleteUser: vi.fn() };
+  const mockUserManagement = provider;
   const mockWorkos = { userManagement: mockUserManagement };
   return { workos: mockWorkos, getWorkos: () => mockWorkos };
 });
@@ -34,10 +28,6 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
       emailVerified: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      // Tests can set X-Test-Admin-Identity header to simulate an admin
-      // who is bound to the same identity as the target — exercises the
-      // self-promote guard.
-      identityId: req.headers['x-test-admin-identity'] || undefined,
     };
     next();
   };
@@ -59,9 +49,12 @@ vi.mock('../../src/middleware/csrf.js', () => ({
   csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { HTTPServer } from '../../src/http.js';
+import express from 'express';
+import { handleEmailLinkVerification } from '../../src/routes/account-linking.js';
+import { createAdminUsersRouter } from '../../src/routes/admin/users.js';
+import { stopAuthTimers } from '../../src/middleware/auth.js';
 
 const HOST_USER_ID = 'user_test_promote_host';
 const TARGET_USER_ID = 'user_test_promote_target';
@@ -69,7 +62,6 @@ const HOST_ORG_ID = 'org_test_promote_host';
 const TARGET_ORG_ID = 'org_test_promote_target';
 
 describe('admin promote credential to primary', () => {
-  let server: HTTPServer;
   let app: any;
   let pool: Pool;
 
@@ -78,19 +70,23 @@ describe('admin promote credential to primary', () => {
       connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
     });
     await runMigrations();
-    server = new HTTPServer();
-    await server.start(0);
-    app = server.app;
+    // Isolate the verification route's durable limiter across repeated runs.
+    await pool.query(`DELETE FROM rate_limit_hits WHERE key LIKE 'verify-email-exec:%'`);
+    app = express();
+    app.use(express.json());
+    app.use('/api/admin/users', createAdminUsersRouter());
+    handleEmailLinkVerification(app);
   }, 60000);
 
   afterAll(async () => {
     await cleanup();
-    await server?.stop();
+    stopAuthTimers();
     await closeDatabase();
   });
 
   beforeEach(async () => {
     await cleanup();
+    vi.clearAllMocks();
     // Insert two users; trigger creates a singleton identity for each
     await pool.query(
       `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
@@ -123,299 +119,117 @@ describe('admin promote credential to primary', () => {
     );
   }
 
-  /**
-   * Replicates the Ahmed shape: a host with one org, a bound target with
-   * its own org, target gets promoted to primary; both orgs end up on
-   * target's workos_user_id.
-   */
-  async function setupBoundPair() {
-    // Host has Host Org
+  async function snapshotAuthority() {
+    const snapshot = await Promise.all([
+      pool.query(`SELECT * FROM users WHERE workos_user_id IN ($1, $2) ORDER BY workos_user_id`, [HOST_USER_ID, TARGET_USER_ID]),
+      pool.query(`SELECT * FROM identity_workos_users WHERE workos_user_id IN ($1, $2) ORDER BY workos_user_id`, [HOST_USER_ID, TARGET_USER_ID]),
+      pool.query(`SELECT * FROM organization_memberships WHERE workos_user_id IN ($1, $2) ORDER BY workos_user_id, workos_organization_id`, [HOST_USER_ID, TARGET_USER_ID]),
+      pool.query(`SELECT * FROM organizations WHERE workos_organization_id IN ($1, $2) ORDER BY workos_organization_id`, [HOST_ORG_ID, TARGET_ORG_ID]),
+    ]);
+    return snapshot.map(result => result.rows);
+  }
+
+  // Seed an existing linked identity directly. Containment must not require a
+  // destructive merge to succeed as part of test preparation.
+  async function setupBoundPair(hostRole: string, targetRole: string) {
     await pool.query(
       `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at)
-       VALUES ($1, $2, 'host@test.example', 'admin', NOW(), NOW())`,
-      [HOST_USER_ID, HOST_ORG_ID]
+       VALUES ($1, $3, 'host@test.example', $4, NOW(), NOW()),
+              ($2, $3, 'target@test.example', $5, NOW(), NOW())`,
+      [HOST_USER_ID, TARGET_USER_ID, HOST_ORG_ID, hostRole, targetRole],
     );
-    // Target has Target Org
     await pool.query(
-      `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at)
-       VALUES ($1, $2, 'target@test.example', 'admin', NOW(), NOW())`,
-      [TARGET_USER_ID, TARGET_ORG_ID]
+      `UPDATE users SET primary_organization_id = $1 WHERE workos_user_id = $2`,
+      [HOST_ORG_ID, HOST_USER_ID],
     );
-    // Bind target as non-primary under host's identity (mergeUsers does this);
-    // mergeUsers also moves target's data to host, so we set it up by hand
-    // post-bind to keep target_org membership on the target's workos_user_id.
-    await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials`)
-      .send({ workos_user_id: TARGET_USER_ID, consolidate: true })
-      .expect(201);
-    // After bind, target_org_membership was moved to HOST_USER_ID. Move it
-    // back to TARGET_USER_ID to simulate the post-resync Ahmed state where
-    // an org membership lands on the non-primary credential (because WorkOS
-    // org_membership webhook routed it to that user_id).
     await pool.query(
-      `UPDATE organization_memberships SET workos_user_id = $1
-        WHERE workos_organization_id = $2`,
-      [TARGET_USER_ID, TARGET_ORG_ID]
+      `UPDATE users SET primary_organization_id = $1 WHERE workos_user_id = $2`,
+      [TARGET_ORG_ID, TARGET_USER_ID],
+    );
+    await pool.query(
+      `UPDATE identity_workos_users SET identity_id = (
+         SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1
+       ), is_primary = FALSE WHERE workos_user_id = $2`,
+      [HOST_USER_ID, TARGET_USER_ID],
     );
   }
 
-  it('promotes the target credential and moves the old primary\'s app-state forward', async () => {
-    await setupBoundPair();
-
-    const response = await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
-      .expect(200);
-
-    expect(response.body).toMatchObject({
-      promoted: true,
-      previous_primary_id: HOST_USER_ID,
-      new_primary_id: TARGET_USER_ID,
-    });
-
-    // is_primary swapped
-    const bindings = await pool.query<{ workos_user_id: string; is_primary: boolean }>(
-      `SELECT workos_user_id, is_primary FROM identity_workos_users
-        WHERE workos_user_id IN ($1, $2)
-        ORDER BY is_primary DESC`,
-      [HOST_USER_ID, TARGET_USER_ID]
-    );
-    expect(bindings.rows).toHaveLength(2);
-    expect(bindings.rows.find(r => r.workos_user_id === TARGET_USER_ID)?.is_primary).toBe(true);
-    expect(bindings.rows.find(r => r.workos_user_id === HOST_USER_ID)?.is_primary).toBe(false);
-
-    // Both orgs now on TARGET_USER_ID (host's app-state moved forward;
-    // target's stayed since it was already there)
-    const memberships = await pool.query<{ workos_user_id: string }>(
-      `SELECT workos_user_id FROM organization_memberships
-        WHERE workos_organization_id IN ($1, $2)
-        ORDER BY workos_organization_id`,
-      [HOST_ORG_ID, TARGET_ORG_ID]
-    );
-    expect(memberships.rows).toHaveLength(2);
-    expect(memberships.rows.every(r => r.workos_user_id === TARGET_USER_ID)).toBe(true);
+  it.each([
+    ['admin', 'member'],
+    ['member', 'admin'],
+  ])('preserves %s primary and %s target authority through concurrent promotion, consolidation and replay', async (hostRole, targetRole) => {
+    await setupBoundPair(hostRole, targetRole);
+    const before = await snapshotAuthority();
+    const calls = [
+      `/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`,
+      `/api/admin/users/${TARGET_USER_ID}/credentials/${HOST_USER_ID}/promote`,
+      `/api/admin/users/${HOST_USER_ID}/credentials`,
+      `/api/admin/users/${TARGET_USER_ID}/credentials`,
+    ];
+    const invoke = (path: string, consolidate: boolean) => request(app).post(path)
+      .send({ workos_user_id: path.includes(HOST_USER_ID) ? TARGET_USER_ID : HOST_USER_ID, consolidate })
+      .expect(409)
+      .expect(({ body }) => expect(body.error).toBe('identity_mutation_disabled'));
+    await Promise.all(calls.flatMap(path => [invoke(path, false), invoke(path, true)]));
+    for (const path of calls) await invoke(path, true);
+    expect(await snapshotAuthority()).toEqual(before);
+    for (const mock of Object.values(provider)) expect(mock).not.toHaveBeenCalled();
   });
 
-  /**
-   * Both credentials hold a membership in the same organization. The
-   * consolidation deletes the outgoing primary's row, so the endpoint must
-   * refuse without stated intent.
-   */
-  async function setupOverlappingPair() {
-    await setupBoundPair();
-    // Give the target its own membership in the host's org, so promoting
-    // would delete the host's row for that org rather than move it.
+  it.each([
+    [HOST_USER_ID, TARGET_USER_ID],
+    [TARGET_USER_ID, HOST_USER_ID],
+  ])('refuses an in-flight member merge token from %s to %s and its replay', async (primaryId, targetId) => {
+    await setupBoundPair('admin', 'member');
+    const token = `containment-${primaryId}-${targetId}`;
     await pool.query(
-      `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at)
-       VALUES ($1, $2, 'target@test.example', 'member', NOW(), NOW())`,
-      [TARGET_USER_ID, HOST_ORG_ID]
+      `INSERT INTO email_link_tokens (token, primary_workos_user_id, target_email, target_workos_user_id, expires_at)
+       VALUES ($1, $2, 'target@test.example', $3, NOW() + INTERVAL '1 hour')`,
+      [token, primaryId, targetId],
     );
-  }
-
-  it('409s rather than silently deleting a membership the target already holds', async () => {
-    await setupOverlappingPair();
-
-    const response = await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
-      .expect(409);
-
-    expect(response.body).toMatchObject({
-      consolidate_confirmation_required: true,
-      superseded_organization_ids: [HOST_ORG_ID],
-      superseded_working_group_ids: [],
-    });
-
-    // Nothing moved: the host is still primary and still holds its row.
-    const bindings = await pool.query<{ is_primary: boolean }>(
-      `SELECT is_primary FROM identity_workos_users WHERE workos_user_id = $1`,
-      [HOST_USER_ID]
-    );
-    expect(bindings.rows[0].is_primary).toBe(true);
+    const before = await snapshotAuthority();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await request(app).post('/verify-email-link')
+        .type('form').send({ token, consolidate: true }).expect(200);
+      expect(response.text).toContain('Verification Failed');
+      expect(await snapshotAuthority()).toEqual(before);
+    }
+    expect((await pool.query(`SELECT status FROM email_link_tokens WHERE token = $1`, [token])).rows)
+      .toEqual([{ status: 'revoked' }]);
+    expect((await pool.query(`SELECT 1 FROM user_email_aliases WHERE workos_user_id IN ($1, $2)`, [HOST_USER_ID, TARGET_USER_ID])).rows)
+      .toEqual([]);
+    for (const mock of Object.values(provider)) expect(mock).not.toHaveBeenCalled();
   });
 
-  it('promotes once the caller confirms the consolidation', async () => {
-    await setupOverlappingPair();
+  it('preserves bare alias verification without moving authority or calling WorkOS', async () => {
+    await setupBoundPair('admin', 'member');
+    const token = 'containment-bare-alias';
+    await pool.query(
+      `INSERT INTO email_link_tokens (token, primary_workos_user_id, target_email, expires_at)
+       VALUES ($1, $2, 'alias@test.example', NOW() + INTERVAL '1 hour')`,
+      [token, HOST_USER_ID],
+    );
+    const before = await snapshotAuthority();
+    const response = await request(app).post('/verify-email-link')
+      .type('form').send({ token }).expect(200);
+    expect(response.text).toContain('<title>Email Linked');
+    expect(await snapshotAuthority()).toEqual(before);
+    expect((await pool.query(`SELECT email FROM user_email_aliases WHERE workos_user_id = $1`, [HOST_USER_ID])).rows)
+      .toEqual([{ email: 'alias@test.example' }]);
+    for (const mock of Object.values(provider)) expect(mock).not.toHaveBeenCalled();
+  });
 
+  it('refuses promotion without a current primary even for a static admin API key', async () => {
+    await setupBoundPair('admin', 'member');
+    await pool.query(`UPDATE identity_workos_users SET is_primary = FALSE WHERE workos_user_id = $1`, [HOST_USER_ID]);
+    const before = await snapshotAuthority();
     await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
-      .send({ consolidate: true })
-      .expect(200);
-
-    const bindings = await pool.query<{ workos_user_id: string; is_primary: boolean }>(
-      `SELECT workos_user_id, is_primary FROM identity_workos_users
-        WHERE workos_user_id IN ($1, $2)`,
-      [HOST_USER_ID, TARGET_USER_ID]
-    );
-    expect(bindings.rows.find(r => r.workos_user_id === TARGET_USER_ID)?.is_primary).toBe(true);
-  });
-
-  it('requires an identity-bearing admin to confirm destructive promotion', async () => {
-    await setupOverlappingPair();
-
-    const response = await request(app)
       .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
       .set('X-Test-Admin-Access-Mechanism', 'static_admin_api_key')
       .send({ consolidate: true })
-      .expect(403);
-    expect(response.body.error).toBe('identity_bearing_admin_required');
-  });
-
-  it('promotes without confirmation when the memberships do not overlap', async () => {
-    await setupBoundPair();
-
-    await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
-      .expect(200);
-  });
-
-  it('blocks promotion away from a corporate primary after a personal credential was bound', async () => {
-    await pool.query(
-      `UPDATE organizations
-          SET is_personal = false, membership_tier = 'company_standard', subscription_status = 'active'
-        WHERE workos_organization_id = $1`,
-      [HOST_ORG_ID],
-    );
-    await pool.query(
-      `UPDATE organizations
-          SET is_personal = true, membership_tier = 'individual_professional', subscription_status = 'active'
-        WHERE workos_organization_id = $1`,
-      [TARGET_ORG_ID],
-    );
-    await pool.query(
-      `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at)
-       VALUES ($1, $2, 'host@test.example', 'member', NOW(), NOW()),
-              ($3, $4, 'target@test.example', 'member', NOW(), NOW())`,
-      [HOST_USER_ID, HOST_ORG_ID, TARGET_USER_ID, TARGET_ORG_ID],
-    );
-
-    // This is the supported direction: the corporate credential remains
-    // primary when the personal credential is bound.
-    await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials`)
-      .send({ workos_user_id: TARGET_USER_ID, consolidate: true })
-      .expect(201);
-
-    const response = await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
-      .expect(409);
-    expect(response.body).toMatchObject({
-      error: 'corporate_membership_primary_required',
-      corporate_memberships: [{
-        workos_organization_id: HOST_ORG_ID,
-        membership_tier: 'company_standard',
-      }],
-    });
-
-    const [corporateMembership, bindings] = await Promise.all([
-      pool.query(
-        `SELECT workos_user_id FROM organization_memberships
-          WHERE workos_organization_id = $1`,
-        [HOST_ORG_ID],
-      ),
-      pool.query<{ workos_user_id: string; is_primary: boolean }>(
-        `SELECT workos_user_id, is_primary FROM identity_workos_users
-          WHERE workos_user_id IN ($1, $2)`,
-        [HOST_USER_ID, TARGET_USER_ID],
-      ),
-    ]);
-    expect(corporateMembership.rows).toEqual([{ workos_user_id: HOST_USER_ID }]);
-    expect(bindings.rows.find((row) => row.workos_user_id === HOST_USER_ID)?.is_primary).toBe(true);
-    expect(bindings.rows.find((row) => row.workos_user_id === TARGET_USER_ID)?.is_primary).toBe(false);
-  });
-
-  it('writes a promote_credential_to_primary audit row', async () => {
-    await setupBoundPair();
-    await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
-      .expect(200);
-
-    const audit = await pool.query<{ details: any }>(
-      `SELECT details FROM registry_audit_log
-        WHERE action = 'promote_credential_to_primary' AND resource_id = $1
-        ORDER BY created_at DESC LIMIT 1`,
-      [TARGET_USER_ID]
-    );
-    expect(audit.rows).toHaveLength(1);
-    expect(audit.rows[0].details).toMatchObject({
-      previous_primary_id: HOST_USER_ID,
-      new_primary_id: TARGET_USER_ID,
-    });
-  });
-
-  it('is idempotent: promoting an already-primary credential returns 200 with no change', async () => {
-    // Promote target so it's the primary
-    await setupBoundPair();
-    await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
-      .expect(200);
-
-    // Calling again on the same credential should be a no-op
-    const response = await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
-      .expect(200);
-    expect(response.body.promoted).toBe(true);
-    expect(response.body.message).toMatch(/already primary/i);
-
-    // Bindings unchanged
-    const bindings = await pool.query<{ workos_user_id: string; is_primary: boolean }>(
-      `SELECT workos_user_id, is_primary FROM identity_workos_users
-        WHERE workos_user_id IN ($1, $2)`,
-      [HOST_USER_ID, TARGET_USER_ID]
-    );
-    expect(bindings.rows.find(r => r.workos_user_id === TARGET_USER_ID)?.is_primary).toBe(true);
-  });
-
-  it('400s when the credentialId in the URL matches the host id', async () => {
-    const response = await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${HOST_USER_ID}/promote`)
-      .expect(400);
-    expect(response.body.error).toMatch(/must differ/i);
-  });
-
-  it('404s when the credential is not bound to the host\'s identity', async () => {
-    // Target is its own singleton identity, not bound to host
-    const response = await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
-      .expect(404);
-    expect(response.body.error).toMatch(/not bound/i);
-  });
-
-  it('refuses when the admin is signed in as a member of the target identity', async () => {
-    await setupBoundPair();
-
-    // Find the host's identity id
-    const identityRow = await pool.query<{ identity_id: string }>(
-      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
-      [HOST_USER_ID]
-    );
-    const hostIdentityId = identityRow.rows[0].identity_id;
-
-    // Simulate an admin whose identityId == host's identityId via the test
-    // header the auth mock reads.
-    const response = await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
-      .set('X-Test-Admin-Identity', hostIdentityId)
-      .expect(409);
-    expect(response.body.error).toMatch(/own credential/i);
-  });
-
-  it('repairs an orphan-no-primary state by setting the target as primary directly', async () => {
-    await setupBoundPair();
-    // Manually break the primary so the identity has no current primary
-    await pool.query(
-      `UPDATE identity_workos_users SET is_primary = FALSE WHERE workos_user_id = $1`,
-      [HOST_USER_ID]
-    );
-
-    const response = await request(app)
-      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
-      .expect(200);
-    expect(response.body.message).toMatch(/no current primary|invariant repaired/i);
-
-    const bindings = await pool.query<{ workos_user_id: string; is_primary: boolean }>(
-      `SELECT workos_user_id, is_primary FROM identity_workos_users
-        WHERE workos_user_id IN ($1, $2)`,
-      [HOST_USER_ID, TARGET_USER_ID]
-    );
-    expect(bindings.rows.find(r => r.workos_user_id === TARGET_USER_ID)?.is_primary).toBe(true);
+      .expect(409)
+      .expect(({ body }) => expect(body.error).toBe('identity_mutation_disabled'));
+    expect(await snapshotAuthority()).toEqual(before);
+    for (const mock of Object.values(provider)) expect(mock).not.toHaveBeenCalled();
   });
 });

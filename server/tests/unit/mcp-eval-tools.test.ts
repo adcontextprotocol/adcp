@@ -41,6 +41,7 @@ import {
   createStatelessToolHandlers,
 } from '../../src/mcp/exposed-tools.js';
 import { MEMBER_TOOLS, createMemberToolHandlers } from '../../src/addie/mcp/member-tools.js';
+import { SCHEMA_TOOLS } from '../../src/addie/mcp/schema-tools.js';
 import type { MemberContext } from '../../src/addie/member-context.js';
 
 afterEach(() => {
@@ -258,9 +259,9 @@ describe('AGENT_CONTEXT_TOOL_DEFINITIONS', () => {
 });
 
 describe('SCHEMA_TOOL_DEFINITIONS', () => {
-  const EXPECTED = ['validate_json', 'get_schema'];
+  const EXPECTED = ['validate_json', 'get_schema', 'validate_json_file', 'open_json_validator', 'validate_json_upload'];
 
-  it('exports exactly the 2 schema tools', () => {
+  it('exports exactly the 5 schema tools', () => {
     const names = SCHEMA_TOOL_DEFINITIONS.map((t) => t.name);
     expect(names).toEqual(expect.arrayContaining(EXPECTED));
     expect(names).toHaveLength(EXPECTED.length);
@@ -269,6 +270,18 @@ describe('SCHEMA_TOOL_DEFINITIONS', () => {
   it('validate_json requires json parameter', () => {
     const tool = SCHEMA_TOOL_DEFINITIONS.find((t) => t.name === 'validate_json');
     expect(tool!.inputSchema.required).toContain('json');
+  });
+
+  it('adds an optional upload integrity guard without mutating the internal tool contract', () => {
+    const internal = SCHEMA_TOOLS.find((t) => t.name === 'validate_json')!;
+    const external = SCHEMA_TOOL_DEFINITIONS.find((t) => t.name === 'validate_json')!;
+    const schema = external.inputSchema as { properties: Record<string, { type: string }>; required: string[] };
+    expect(schema.properties.expected_json_sha256.type).toBe('string');
+    expect(schema.required).not.toContain('expected_json_sha256');
+    expect(external.inputSchema).not.toBe(internal.input_schema);
+    expect(internal.input_schema.properties).not.toHaveProperty('expected_json_sha256');
+    expect(external.description).toContain('Do not manually reconstruct');
+    expect(internal.description).not.toContain('local attachment');
   });
 
   it('get_schema requires schema_path parameter', () => {
@@ -289,8 +302,8 @@ describe('PROPERTY_TOOL_DEFINITIONS', () => {
 });
 
 describe('ALL_EXPOSED_TOOL_DEFINITIONS', () => {
-  it('combines all tool groups (4 eval + 3 context + 2 schema + 1 property = 10)', () => {
-    expect(ALL_EXPOSED_TOOL_DEFINITIONS).toHaveLength(10);
+  it('combines all tool groups (4 eval + 3 context + 5 schema + 1 property = 13)', () => {
+    expect(ALL_EXPOSED_TOOL_DEFINITIONS).toHaveLength(13);
   });
 
   it('has no duplicate tool names', () => {
@@ -423,7 +436,12 @@ describe('createMemberToolHandler', () => {
     );
   });
 
-  it('save_agent includes the selected organization name and id in Addie output', async () => {
+  it.each([
+    { configureAuthInDashboard: false, existing: false, listingFails: false },
+    { configureAuthInDashboard: true, existing: false, listingFails: false },
+    { configureAuthInDashboard: true, existing: true, listingFails: false },
+    { configureAuthInDashboard: true, existing: false, listingFails: true },
+  ])('save_agent registry write and credential handoff: %j', async ({ configureAuthInDashboard, existing, listingFails }) => {
     mockWorkosMemberships([
       { userId: 'user_123', organizationId: 'org_123', status: 'active' },
     ]);
@@ -432,7 +450,8 @@ describe('createMemberToolHandler', () => {
       verified_domain: 'example.com',
       agent_hostname: 'agent.example.com',
     });
-    vi.spyOn(AgentContextDatabase.prototype, 'getByOrgAndUrl').mockResolvedValueOnce(null);
+    vi.spyOn(AgentContextDatabase.prototype, 'getByOrgAndUrl').mockResolvedValueOnce(existing ? savedAgentContext({ has_oauth_client_credentials: true }) : null);
+    vi.spyOn(AgentContextDatabase.prototype, 'getById').mockResolvedValueOnce(savedAgentContext({ has_oauth_client_credentials: existing }));
     vi.spyOn(AgentContextDatabase.prototype, 'create').mockResolvedValueOnce(savedAgentContext());
     vi.spyOn(MemberDatabase.prototype, 'getProfileByOrgId').mockResolvedValueOnce({
       id: 'profile_123',
@@ -441,7 +460,10 @@ describe('createMemberToolHandler', () => {
       slug: 'example-org',
       agents: [],
     } as any);
-    vi.spyOn(MemberDatabase.prototype, 'updateProfile').mockResolvedValueOnce({} as any);
+    const profileWrite = vi.spyOn(MemberDatabase.prototype, 'updateProfile').mockResolvedValue({} as any);
+    if (listingFails) profileWrite.mockRejectedValueOnce(new Error('write unavailable'));
+    const saveToken = vi.spyOn(AgentContextDatabase.prototype, 'saveAuthToken');
+    const saveOAuth = vi.spyOn(AgentContextDatabase.prototype, 'saveOAuthClientCredentials');
     vi.spyOn(clientDb, 'query').mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
 
     const memberContext = {
@@ -465,9 +487,40 @@ describe('createMemberToolHandler', () => {
     const result = await handlers.get('save_agent')!({
       agent_url: 'https://agent.example.com/mcp',
       type: 'sales',
+      configure_auth_in_dashboard: configureAuthInDashboard,
     });
 
+    expect(saveToken).not.toHaveBeenCalled();
+    expect(saveOAuth).not.toHaveBeenCalled();
+    expect(profileWrite).toHaveBeenCalledWith('profile_123', expect.objectContaining({ agents: expect.arrayContaining([expect.objectContaining({ visibility: 'members_only', type: 'sales' })]) }));
+    if (listingFails) {
+      expect(result).toContain('Error: Agent connection details were saved, but the registry listing could not be saved.');
+      expect(result).not.toContain('Complete authentication securely');
+      return;
+    }
+    if (configureAuthInDashboard) {
+      expect(result).toContain('/dashboard/agents?org=org_123');
+      expect(result).toContain('OAuth client credentials (machine-to-machine)');
+      expect(result).toContain('did not verify authentication');
+      expect(result).toContain('Do not paste secrets into chat');
+    }
     expect(result).toContain('**Organization:** <untrusted_proposer_input>Example Org</untrusted_proposer_input> (org_123)');
+  });
+
+  it.each(['auth_token', 'auth_type', 'oauth_client_credentials'])('rejects credential submission with dashboard handoff: %s', async field => {
+    const create = vi.spyOn(AgentContextDatabase.prototype, 'create');
+    const verify = vi.spyOn(hostnameVerification, 'verifyAgentHostname');
+    const handlers = createMemberToolHandlers({
+      is_mapped: true, is_member: false, slack_linked: false,
+      workos_user: { workos_user_id: 'user_123', email: 'user@example.com' },
+    } as MemberContext);
+    const result = await handlers.get('save_agent')!({
+      agent_url: 'https://agent.example.com/mcp', type: 'sales',
+      configure_auth_in_dashboard: true, [field]: 'test-value',
+    });
+    expect(result).toContain('Error: configure_auth_in_dashboard cannot be combined with credentials');
+    expect(create).not.toHaveBeenCalled();
+    expect(verify).not.toHaveBeenCalled();
   });
 
   it('save_agent rejects conflicting explicit organization selectors', async () => {
@@ -717,9 +770,24 @@ describe('createMemberToolHandler', () => {
 });
 
 describe('createStatelessToolHandlers', () => {
+  it('rejects altered source JSON through the external MCP handler before schema fetching', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const handler = createStatelessToolHandlers().get('validate_json')!;
+      // SHA-256 of canonical {}, supplied before the argument was altered.
+      await expect(handler({ json: { extra: true }, expected_json_sha256: '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a' }))
+        .rejects.toThrow('JSON integrity mismatch');
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('returns handlers for schema and property tools', () => {
     const handlers = createStatelessToolHandlers();
     expect(handlers.has('validate_json')).toBe(true);
+    expect(handlers.has('validate_json_file')).toBe(true);
     expect(handlers.has('get_schema')).toBe(true);
     expect(handlers.has('validate_adagents')).toBe(true);
   });

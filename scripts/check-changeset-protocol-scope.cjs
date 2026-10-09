@@ -27,7 +27,8 @@ const PROTOCOL_SCOPED_PATHS = [
   /^dist\/protocol\/[^/]+[.]tgz(?:[.](?:sha256|sig|crt))?$/,
   /^scripts\/(?:build-schemas|build-compliance|build-protocol-tarball|sign-protocol-tarball|update-schema-versions|verify-version-sync|patch-3-0-compat-bundle)[.](?:cjs|mjs|sh)$/,
   /^scripts\/run-storyboards-(?:[^/]+[.]sh|isolated[.]mjs)$/,
-  /^[.]github\/workflows\/(?:release|training-agent-storyboards)[.]yml$/,
+  // Publication orchestration is operational; protocol generators above remain scoped.
+  /^[.]github\/workflows\/training-agent-storyboards[.]yml$/,
 ];
 
 const CHANGESET_POLICY_CODE_PATHS = new Set([
@@ -38,6 +39,7 @@ const CHANGESET_POLICY_CODE_PATHS = new Set([
 
 const CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS = new Set([
   ...CHANGESET_POLICY_CODE_PATHS,
+  '.github/workflows/release.yml',
   '.agents/playbook.md',
   '.agents/routines/context-refresh-prompt.md',
   '.agents/routines/triage-prompt.md',
@@ -48,6 +50,7 @@ const CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS = new Set([
   '.agents/shortcuts/prep-for-pr.md',
   'docs/reference/changelog.mdx',
   'docs/spec-guidelines.md',
+  'tests/release-workflow-immutability.test.cjs',
 ]);
 
 function normalizePath(filePath) {
@@ -93,12 +96,18 @@ function isProtocolScopedPath(filePath) {
   return PROTOCOL_SCOPED_PATHS.some(pattern => pattern.test(normalized));
 }
 
+function isStoryboardBranchRegistrationOnly(headContent, baseContent) {
+  const oldBranches = "branches: [main, '3.1.x', '3.0.x']";
+  const newBranches = "branches: [main, '3.2.x', '3.1.x', '3.0.x']";
+  return baseContent.split(oldBranches).length === 3
+    && headContent === baseContent.replaceAll(oldBranches, newBranches);
+}
+
 function isCiInstallOnlyChange(change, readFileAtHead, readFileAtBase) {
   // This workflow also controls compliance execution, so keep its default
   // protocol classification. Only the exact CI install substitution is exempt.
   if (change.status !== 'M' || change.paths?.length !== 1 ||
       change.paths[0] !== '.github/workflows/training-agent-storyboards.yml') return false;
-  if (!readFileAtHead || !readFileAtBase) return false;
   try {
     const head = readFileAtHead(change.paths[0]);
     const base = readFileAtBase(change.paths[0]);
@@ -111,9 +120,26 @@ function isCiInstallOnlyChange(change, readFileAtHead, readFileAtBase) {
   }
 }
 
-function hasProtocolScopedChanges(changes, readFileAtHead, readFileAtBase) {
-  return changes.some(change => (change.paths || []).some(isProtocolScopedPath) &&
-    !isCiInstallOnlyChange(change, readFileAtHead, readFileAtBase));
+function isProtocolScopedChange(change, readFileAtHead, readFileAtBase) {
+  return (change.paths || []).some(filePath => {
+    if (!isProtocolScopedPath(filePath)) return false;
+    if (normalizePath(filePath) === '.github/workflows/training-agent-storyboards.yml'
+      && change.status === 'M') {
+      if (isCiInstallOnlyChange(change, readFileAtHead, readFileAtBase)) return false;
+      try {
+        if (isStoryboardBranchRegistrationOnly(
+          readFileAtHead(filePath), readFileAtBase(filePath)
+        )) return false;
+      } catch {
+        // Unreadable content keeps the default protocol classification.
+      }
+    }
+    return true;
+  });
+}
+
+function hasProtocolScopedChanges(changes, readFileAtHead = () => '', readFileAtBase = () => '') {
+  return changes.some(change => isProtocolScopedChange(change, readFileAtHead, readFileAtBase));
 }
 
 function isChangesetMaintenancePath(filePath) {
@@ -237,10 +263,8 @@ function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileA
   const protocolScopedFiles = [];
 
   for (const change of changes) {
-    for (const filePath of change.paths || []) {
-      if (isProtocolScopedPath(filePath) && !isCiInstallOnlyChange(change, readFileAtHead, readFileAtBase)) {
-        protocolScopedFiles.push(filePath);
-      }
+    if (isProtocolScopedChange(change, readFileAtHead, readFileAtBase)) {
+      protocolScopedFiles.push(...change.paths.filter(isProtocolScopedPath));
     }
 
     const headPath = changedPathForHead(change);
@@ -366,6 +390,7 @@ module.exports = {
   findChangesetProtocolScopeViolations,
   formatViolationMessage,
   hasProtocolScopedChanges,
+  isStoryboardBranchRegistrationOnly,
   isChangesetBumpDowngradeOrRemoval,
   isChangesetBumpEscalation,
   isChangesetClassificationMaintenance,

@@ -5,6 +5,8 @@ title: "Seller declares owner-sold channel carriage and enforces collection sele
 category: media_buy_seller
 summary: "Verifies an owner-sold channel product combines host property scope with the owner's canonical collection selector, that buyer collection selection requires explicit collection_ids, and that unknown or mismatched collection selectors are rejected rather than silently substituted."
 track: media_buy
+requires:
+  - controller
 
 required_tools:
   - get_products
@@ -63,6 +65,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_bd866a1fee90"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_owner_sold_channel_-f9c89a59"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "retro_news_owner_sold"
       delivery_type: "non_guaranteed"
@@ -119,6 +132,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_owner_sold_channel_-f9c89a59"
             sandbox: true
           filters:
             channels: ["ctv"]
@@ -183,6 +198,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_owner_sold_channel_-f9c89a59"
             sandbox: true
           idempotency_key: "$generate:uuid_v4#owner_sold_channel_carriage_accept"
           start_time: "asap"
@@ -250,6 +267,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_owner_sold_channel_-f9c89a59"
             sandbox: true
           idempotency_key: "$generate:uuid_v4#owner_sold_channel_carriage_bulk_form_reject"
           start_time: "asap"
@@ -293,6 +312,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_owner_sold_channel_-f9c89a59"
             sandbox: true
           idempotency_key: "$generate:uuid_v4#owner_sold_channel_carriage_unknown_id_reject"
           start_time: "asap"
@@ -335,6 +356,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_owner_sold_channel_-f9c89a59"
             sandbox: true
           idempotency_key: "$generate:uuid_v4#owner_sold_channel_carriage_mismatched_domain_reject"
           start_time: "asap"

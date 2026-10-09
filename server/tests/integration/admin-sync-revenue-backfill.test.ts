@@ -25,8 +25,15 @@ vi.mock('../../src/middleware/csrf.js', () => ({
 const mocks = vi.hoisted(() => {
   const FAKE_INVOICE = {
     id: 'in_backfill_test_001',
+    status: 'paid',
+    amount_due: 250000,
     amount_paid: 250000,
     currency: 'usd',
+    number: 'TEST-001',
+    hosted_invoice_url: null,
+    invoice_pdf: null,
+    customer_email: null,
+    due_date: null,
     billing_reason: 'subscription_create',
     subscription: 'sub_backfill_test_001',
     payment_intent: 'pi_backfill_test_001',
@@ -49,8 +56,14 @@ const mocks = vi.hoisted(() => {
     },
   };
 
-  async function* fakeInvoiceIterator(items: unknown[]) {
-    for (const item of items) yield item;
+  function fakeInvoicePage(items: unknown[]) {
+    return {
+      data: items,
+      has_more: false,
+      async *[Symbol.asyncIterator]() {
+        for (const item of items) yield item;
+      },
+    };
   }
 
   // Shared sub fixture used by both customers.retrieve (legacy callsites)
@@ -80,7 +93,7 @@ const mocks = vi.hoisted(() => {
   return {
     FAKE_INVOICE,
     FAKE_SUB,
-    mockInvoicesList: vi.fn().mockImplementation(() => fakeInvoiceIterator([FAKE_INVOICE])),
+    mockInvoicesList: vi.fn().mockImplementation(() => fakeInvoicePage([FAKE_INVOICE])),
     mockCustomersRetrieve: vi.fn().mockResolvedValue({
       id: 'cus_test_backfill',
       deleted: false,
@@ -155,6 +168,8 @@ describe('POST /api/admin/accounts/:orgId/sync — revenue_events backfill', () 
 
   afterAll(async () => {
     await pool.query('DELETE FROM revenue_events WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM org_invoices WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM admin_billing_reconciliation_events WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await server?.stop();
     await closeDatabase();
@@ -162,7 +177,13 @@ describe('POST /api/admin/accounts/:orgId/sync — revenue_events backfill', () 
 
   beforeEach(async () => {
     await pool.query('DELETE FROM revenue_events WHERE workos_organization_id = $1', [TEST_ORG_ID]);
-    mockInvoicesList.mockImplementation(async function* () { yield FAKE_INVOICE; });
+    await pool.query('DELETE FROM org_invoices WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM admin_billing_reconciliation_events WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    mockInvoicesList.mockImplementation(() => ({
+      data: [FAKE_INVOICE],
+      has_more: false,
+      async *[Symbol.asyncIterator]() { yield FAKE_INVOICE; },
+    }));
   });
 
   it('inserts a revenue_events row for a missed invoice and returns revenue_events_synced: 1', async () => {
@@ -171,6 +192,7 @@ describe('POST /api/admin/accounts/:orgId/sync — revenue_events backfill', () 
       .expect(200);
 
     expect(response.body.revenue_events_synced).toBe(1);
+    expect(response.body.invoices_synced).toBe(1);
 
     const rows = await pool.query(
       'SELECT * FROM revenue_events WHERE workos_organization_id = $1',
@@ -180,6 +202,25 @@ describe('POST /api/admin/accounts/:orgId/sync — revenue_events backfill', () 
     expect(rows.rows[0].stripe_invoice_id).toBe(FAKE_INVOICE.id);
     expect(Number(rows.rows[0].amount_paid)).toBe(FAKE_INVOICE.amount_paid);
     expect(rows.rows[0].revenue_type).toBe('subscription_initial');
+
+    const invoiceRows = await pool.query(
+      'SELECT status, amount_paid FROM org_invoices WHERE stripe_invoice_id = $1',
+      [FAKE_INVOICE.id],
+    );
+    expect(invoiceRows.rows[0]).toMatchObject({ status: 'paid', amount_paid: FAKE_INVOICE.amount_paid });
+
+    const auditRows = await pool.query(
+      `SELECT action, resource_type, resource_id, outcome
+         FROM admin_billing_reconciliation_events
+        WHERE workos_organization_id = $1`,
+      [TEST_ORG_ID],
+    );
+    expect(auditRows.rows[0]).toMatchObject({
+      action: 'refresh',
+      resource_type: 'stripe_customer',
+      resource_id: TEST_CUSTOMER_ID,
+      outcome: 'success',
+    });
   });
 
   it('is idempotent — running sync twice does not duplicate revenue_events rows', async () => {
@@ -189,7 +230,11 @@ describe('POST /api/admin/accounts/:orgId/sync — revenue_events backfill', () 
     expect(first.body.revenue_events_synced).toBe(1);
 
     // Reset mock to return same invoice again
-    mockInvoicesList.mockImplementation(async function* () { yield FAKE_INVOICE; });
+    mockInvoicesList.mockImplementation(() => ({
+      data: [FAKE_INVOICE],
+      has_more: false,
+      async *[Symbol.asyncIterator]() { yield FAKE_INVOICE; },
+    }));
 
     const second = await request(app)
       .post(`/api/admin/accounts/${TEST_ORG_ID}/sync`)
@@ -224,7 +269,11 @@ describe('POST /api/admin/accounts/:orgId/sync — revenue_events backfill', () 
   });
 
   it('returns 0 when the customer has no paid invoices', async () => {
-    mockInvoicesList.mockImplementation(async function* () { /* no invoices */ });
+    mockInvoicesList.mockImplementation(() => ({
+      data: [],
+      has_more: false,
+      async *[Symbol.asyncIterator]() { /* no invoices */ },
+    }));
 
     const response = await request(app)
       .post(`/api/admin/accounts/${TEST_ORG_ID}/sync`)

@@ -427,6 +427,26 @@
         },
         "required": ["supported_protocols"]
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "anonymous_discovery": { "const": true }
+            },
+            "required": ["anonymous_discovery"]
+          },
+          "account": {
+            "properties": {
+              "required_for_products": { "const": true }
+            },
+            "required": ["required_for_products"]
+          }
+        },
+        "required": ["media_buy", "account"]
+      },
+      "then": false
     }
   ],
   "properties": {
@@ -466,13 +486,65 @@
             "3.1.0-beta.3+sha.a1b2c3d"
           ]
         },
+        "implementation": {
+          "type": "object",
+          "description": "Optional, self-reported AdCP SDK identity and integration metadata, introduced in 3.3. Omission means SDK use is unknown. An empty sdks array explicitly reports no AdCP SDK use. This metadata is advisory: it does not establish SDK approval, prove deployed code execution, change capability obligations, or justify skipping conformance checks without independently trusted evidence covering this endpoint and integration. Buyers MUST NOT use it for version negotiation.",
+          "properties": {
+            "sdks": {
+              "type": "array",
+              "description": "AdCP SDKs actually used by this deployment, including build-time type imports. Merely installing an SDK or using its outbound client does not establish server-side component coverage. Multiple entries support mixed SDK integrations. Forks and modified builds should identify their own package or build version rather than claiming an unmodified upstream release.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^\\S+$",
+                    "description": "SDK package identifier in its package ecosystem, including publisher or module scope where applicable. Approval is determined by the buyer's trusted catalog, not by the seller.",
+                    "examples": ["@adcp/sdk", "adcp", "github.com/adcontextprotocol/adcp-go"]
+                  },
+                  "version": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^\\S+$",
+                    "description": "Exact resolved SDK package version, including any prerelease or build identifier. Use the package ecosystem's version syntax, not a version range or moving registry tag. Independent of the AdCP wire version and the seller's build_version.",
+                    "examples": ["15.3.0", "15.3.0-beta.1", "4.0.0rc1", "v1.2.0"]
+                  },
+                  "components": {
+                    "type": "array",
+                    "description": "Server-side components supplied by this SDK across the advertised task paths where each component applies. types covers build-time AdCP type imports; schema_validation covers enforced runtime validation of requests and final serialized responses against the SDK's unmodified AdCP schema constraints; request-only, warning-only, or logging-only validation does not qualify; transport covers inbound protocol framing, dispatch, and response serialization; authentication covers caller authentication; signing covers message signing and signature verification; lifecycle covers domain state-transition enforcement and asynchronous task lifecycle handling; idempotency covers mutating-request replay protection; webhooks covers notification envelopes, delivery, and retries. List only components actually integrated, not everything the SDK package offers. Omitted components have no claimed SDK coverage; omission does not mean the feature is unsupported or necessarily custom. Each listed component requires all of its applicable responsibilities across those task paths; inapplicable responsibilities do not require implementation. If SDK coverage varies across task paths, omit the component from this agent-wide declaration. An empty components array reports SDK use without claiming agent-wide coverage, for example when SDK signing is used on only some routes. Wrappers and model subclasses may claim schema_validation only when the SDK's unmodified protocol checks remain enforced on requests and final serialized responses after any transformations.",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "types",
+                        "schema_validation",
+                        "transport",
+                        "authentication",
+                        "signing",
+                        "lifecycle",
+                        "idempotency",
+                        "webhooks"
+                      ]
+                    },
+                    "uniqueItems": true
+                  }
+                },
+                "required": ["name", "version", "components"],
+                "additionalProperties": false
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": ["sdks"],
+          "additionalProperties": false
+        },
         "idempotency": {
           "type": "object",
           "description": "Idempotency semantics for mutating requests. Sellers MUST declare whether they honor idempotency_key replay protection so buyers can reason about safe retry behavior. Modeled as a discriminated union on the supported boolean so that code generators produce two named types (IdempotencySupported, IdempotencyUnsupported) with the replay_ttl_seconds invariant enforced at the type level — draft-07 if/then would be dropped by most generators (openapi-typescript, zod-to-json-schema, datamodel-code-generator pre-0.25, quicktype). Clients MUST NOT assume a default — a seller without this declaration is non-compliant and should be treated as unsafe for retry-sensitive operations.",
           "oneOf": [
             {
               "title": "IdempotencySupported",
-              "description": "Seller honors idempotency_key replay protection on mutating requests. Replays within replay_ttl_seconds return the cached response (or IDEMPOTENCY_CONFLICT on payload divergence); replays past the window return IDEMPOTENCY_EXPIRED when the seller can still distinguish 'seen and evicted' from 'never seen'.",
+              "description": "Seller honors idempotency_key replay protection on mutating requests. Replays within replay_ttl_seconds return the cached response (or IDEMPOTENCY_CONFLICT on payload divergence); a completed key record MUST remain available until at least committed_at + replay_ttl_seconds independently of the lifecycle of any resource the request created. If the mutation committed but its affected resource was independently deleted or purged before the canonical success response could be durably recorded, exact replays return COMMITTED_RESOURCE_PURGED without re-executing the mutation. Ambiguous in-flight outcomes retain their claims until reconciled and MUST NOT be released on a handler or downstream timeout. Replays past the completed entry's window return IDEMPOTENCY_EXPIRED when the seller can still distinguish 'seen and evicted' from 'never seen'.",
               "properties": {
                 "supported": {
                   "const": true,
@@ -480,13 +552,13 @@
                 },
                 "replay_ttl_seconds": {
                   "type": "integer",
-                  "description": "How long the seller retains a canonical response for an idempotency_key. Within this window, a replay with the same key + equivalent canonical payload returns the cached response; a replay with a different canonical payload returns IDEMPOTENCY_CONFLICT; a replay past the window returns IDEMPOTENCY_EXPIRED when the seller can still distinguish 'seen and evicted' from 'never seen'. Minimum 3600 (1h); recommended 86400 (24h). Maximum 604800 (7 days) — longer windows force buyers to retain secret keys at rest for extended periods and grow the seller's cache table without bounded benefit.",
+                  "description": "How long the seller retains a canonical response or committed-outcome tombstone for an idempotency_key, measured from the successful mutation's durable commit time. The completed key record and canonical request hash MUST remain available until at least committed_at + this interval, independently of the lifecycle of any resource the request created; a UNIQUE idempotency_key column on the resource row alone does not satisfy this contract. Within this window, a replay with the same key + equivalent canonical payload returns the cached response, or COMMITTED_RESOURCE_PURGED when the mutation committed but the affected resource was independently deleted or purged before the canonical success response could be durably recorded; a replay with a different canonical payload returns IDEMPOTENCY_CONFLICT. An unresolved in-flight or reconciliation-required claim is retained regardless of this completed-entry clock. A replay past a completed entry's window returns IDEMPOTENCY_EXPIRED when the seller can still distinguish 'seen and evicted' from 'never seen'. Minimum 3600 (1h); recommended 86400 (24h). Maximum 604800 (7 days) — longer windows force buyers to retain secret keys at rest for extended periods and grow the seller's cache table without bounded benefit.",
                   "minimum": 3600,
                   "maximum": 604800
                 },
                 "in_flight_max_seconds": {
                   "type": "integer",
-                  "description": "Maximum lifetime in seconds of an in-flight idempotency row before the seller releases it per L1/security.mdx rule 9 (treat the in-flight attempt as failed if the handler does not complete within this bound). Buyer SDKs use this value to compute a retry budget when they see `IDEMPOTENCY_IN_FLIGHT` — cap individual retry waits at this value rather than the much-wider `replay_ttl_seconds` ceiling. Optional in 3.1 (additive declaration); SDKs that don't see the field fall back to rule 9's order-of-magnitude SHOULD heuristic. Required when `supported: true` in 4.0. MUST be no greater than `replay_ttl_seconds` (a bound larger than the replay window is vacuous — any retry past the TTL hits IDEMPOTENCY_EXPIRED regardless of in-flight state); validators MUST enforce this cross-field constraint at the test layer since JSON Schema cannot express field-relative bounds. A buyer that observes top-level `error.retry_after` exceeding this value MAY treat that as a seller bug — the in-flight row cannot legitimately outlive the bound the seller declared.",
+                  "description": "Maximum active execution lease in seconds before the seller stops or replaces the original handler and transitions the durable idempotency claim to reconciliation-required per L1/security.mdx rule 9. Expiry does not release or evict an unresolved claim and never permits reinvocation while commit state is ambiguous. Buyer SDKs use this value to cap an individual retry wait when they see `IDEMPOTENCY_IN_FLIGHT`, rather than using the much wider `replay_ttl_seconds` ceiling; it is not a deadline after which they may mint a fresh key. Optional in 3.1 (additive declaration); SDKs that don't see the field fall back to rule 9's order-of-magnitude SHOULD heuristic. Required when `supported: true` in 4.0. MUST be no greater than `replay_ttl_seconds`; validators MUST enforce this cross-field constraint at the test layer since JSON Schema cannot express field-relative bounds. A buyer that observes top-level `error.retry_after` exceeding this value MAY treat that as a seller bug for an actively executing attempt.",
                   "minimum": 1,
                   "maximum": 604800
                 },
@@ -956,7 +1028,7 @@
       "properties": {
         "require_operator_auth": {
           "type": "boolean",
-          "description": "Whether the seller requires operator-level credentials. This declares who must authenticate; it does not by itself declare whether OAuth is used, whether list_accounts is exposed, or which sync_accounts modes are supported. When true, operators authenticate independently with the seller and account-scoped calls use seller/storefront-assigned account_id values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose list_accounts and buyers MUST resolve an explicit account_id before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton; a seller MAY omit list_accounts only when it provides the same explicit account_id through another declared path or out-of-band onboarding. When false (default, buyer-declared accounts), the seller trusts the agent's identity claims and account-scoped calls use the advertiser natural key: brand + operator + optional operator_unit, fixed currency, optional buyer-selected account timezone, and sandbox. operator_unit.id is owned by the operator and is distinct from the seller's account_id. The seller normally provisions through sync_accounts, but MAY lazily provision on the first account-scoped request when billing and other required settings are unambiguous from capabilities or onboarding defaults. A lazy-provisioning seller MUST keep accepting the natural key and MUST expose list_accounts for recovery; if buyer input is needed before use, the seller MUST expose sync_accounts.",
+          "description": "Whether the seller requires operator-level credentials. This declares who must authenticate; it does not by itself declare whether OAuth is used, whether list_accounts is exposed, or which sync_accounts modes are supported. When true, operators authenticate independently with the seller and account-scoped calls use seller/storefront-assigned account_id values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose list_accounts and buyers MUST resolve an explicit account_id before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton; a seller MAY omit list_accounts only when it provides the same explicit account_id through another declared path or out-of-band onboarding. When false (default, buyer-declared accounts), the seller trusts the agent's identity claims and account-scoped calls use the advertiser natural key: brand + operator + optional operator_unit, fixed currency, optional buyer-selected account timezone, and sandbox. operator_unit.id is owned by the operator and is distinct from the seller's account_id. The seller normally provisions through sync_accounts, but MAY lazily provision on the first provisioning task (one that commits spend or creates account-owned resources, such as create_media_buy) when billing and other required settings are unambiguous from capabilities or onboarding defaults. Discovery and negotiation tasks MUST NOT provision; on them, a natural key that is not yet provisioned returns ACCOUNT_NOT_FOUND unless a lazy-provisioning seller answers for the account it would create. See /docs/accounts/overview#account-references-before-provisioning. A lazy-provisioning seller MUST keep accepting the natural key and MUST expose list_accounts for recovery; if buyer input is needed before use, the seller MUST expose sync_accounts.",
           "default": false
         },
         "authorization_endpoint": {
@@ -987,7 +1059,7 @@
         },
         "required_for_products": {
           "type": "boolean",
-          "description": "Whether an account reference is required for get_products. When true, the buyer must establish an account before browsing products. When false (default), the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller.",
+          "description": "Whether an account reference is required for get_products. When true, the buyer must establish an account before browsing products. When false (default), the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. Before an account is provisioned, the buyer omits account rather than sending a natural key that does not resolve yet. See /docs/accounts/overview#account-references-before-provisioning.",
           "default": false
         },
         "account_financials": {
@@ -1070,7 +1142,8 @@
         },
         "change_feed": {
           "type": "object",
-          "description": "Whether the seller exposes a durable, ordered feed of material changes to authoritative account-scoped state. This is distinct from webhook_activity transport diagnostics and from current-state reads. Sellers claiming support MUST retain changes for at least 90 days after recording and MUST produce records regardless of whether a mutation originated through AdCP, a seller surface, another authorized principal, seller automation, or a connected platform within declared coverage.",
+          "x-status": "experimental",
+          "description": "Whether the seller exposes a durable, ordered feed of material changes to authoritative account-scoped state. This is distinct from webhook_activity transport diagnostics and from current-state reads. Sellers claiming support MUST retain changes for at least 90 days after recording and MUST produce records regardless of whether a mutation originated through AdCP, a seller surface, another authorized principal, seller automation, or a connected platform within declared coverage. Experimental in 3.2 (RFC #6810): sellers advertising supported: true MUST list account.change_feed in experimental_features.",
           "oneOf": [
             {
               "title": "AccountChangeFeedSupported",
@@ -1185,6 +1258,11 @@
       "type": "object",
       "description": "Media-buy protocol capabilities. Expected when media_buy is in supported_protocols. Sellers declaring media_buy should also include account with supported_billing.",
       "properties": {
+        "anonymous_discovery": {
+          "type": "boolean",
+          "description": "Whether this seller accepts product discovery without caller credentials. This applies to list_products and to get_products in brief or wholesale mode; it does not apply to proposal refinement or finalization, purchasing, account-scoped reads, or mutations. true means an anonymous discovery request can produce a successful response, but the response may be a public subset and may differ from results for an authenticated principal or selected account. false means these discovery calls require an authenticated principal. Absence means unspecified legacy behavior, so callers probe and handle AUTH_MISSING. A valid authenticated request is never rejected merely because credentials were supplied. true is inconsistent with account.required_for_products=true because an anonymous caller cannot select protected account context.",
+          "x-added-in": "3.2.0"
+        },
         "acceptance_policy_discovery": {
           "type": "object",
           "description": "Registry-backed seller acceptance-policy discovery. Presence means the seller publishes a versioned catalog; it does not claim that the seller evaluates acceptance_context during discovery. Discovery is advisory, exact task responses remain authoritative, and absent capability means support is unknown rather than unrestricted acceptance.",
@@ -1331,7 +1409,7 @@
         "outcome_target": {
           "type": "boolean",
           "default": false,
-          "description": "Whether this seller supports reverse-forecast planning: parsing criteria.outcome_target (a compact goal — a forecastable-metric delivery metric or an event-type conversion event — plus a desired volume) and solving for budget, answering with total_budget_guidance on proposals and forecasts whose points carry the goal's key in metrics. false or absent means support is unknown: buyers SHOULD express outcome goals in brief prose instead, and sellers reject a structured outcome_target with UNSUPPORTED_FEATURE rather than silently ignoring it.",
+          "description": "Whether this seller supports reverse-forecast planning: parsing criteria.outcome_target (a compact goal — a forecastable-metric delivery metric, an event-type conversion event, or a vendor_metric — plus a desired volume, a cost_per target, or both) and planning against it, answering with total_budget_guidance and forecasts whose points carry the goal's key in metrics, or its (vendor, metric_id) in vendor_metric_values[] for a vendor_metric goal; see outcome-target.json for cost_per answers and rejections. This flag does not distinguish sellers that plan cost_per or vendor_metric goals; buyers rely on the negotiated adcp_version together with features.bidding_policy, conversion_tracking.supported_targets, and vendor_metric_optimization. false or absent means support is unknown: buyers SHOULD express outcome goals in brief prose instead, and sellers reject a structured outcome_target on proposal requests with UNSUPPORTED_FEATURE rather than silently ignoring it (list_products ignores it for every seller).",
           "x-added-in": "3.2.0"
         },
         "governance_aware": {
@@ -1424,6 +1502,15 @@
           "allOf": [
             { "$ref": "/schemas/core/media-buy-features.json" },
             {
+              "if": { "required": ["catalog_ingestion"] },
+              "then": {
+                "required": ["catalog_management"],
+                "properties": {
+                  "catalog_management": { "type": "boolean", "const": true }
+                }
+              }
+            },
+            {
               "if": {
                 "required": ["catalog_item_availability_updates"],
                 "properties": {
@@ -1434,6 +1521,48 @@
                 "required": ["catalog_management"],
                 "properties": {
                   "catalog_management": { "const": true }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": ["seller_optimized_package_budgets"],
+                "properties": {
+                  "seller_optimized_package_budgets": { "const": true }
+                }
+              },
+              "then": {
+                "required": ["seller_optimized_budget"],
+                "properties": {
+                  "seller_optimized_budget": { "const": true }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": ["seller_optimized_min_spend_targets"],
+                "properties": {
+                  "seller_optimized_min_spend_targets": { "const": true }
+                }
+              },
+              "then": {
+                "required": ["seller_optimized_budget"],
+                "properties": {
+                  "seller_optimized_budget": { "const": true }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": ["seller_optimized_package_pacing"],
+                "properties": {
+                  "seller_optimized_package_pacing": { "const": true }
+                }
+              },
+              "then": {
+                "required": ["seller_optimized_budget"],
+                "properties": {
+                  "seller_optimized_budget": { "const": true }
                 }
               }
             }
@@ -1814,6 +1943,7 @@
               "views",
               "completed_views",
               "viewed_seconds",
+              "viewable_rate",
               "attention_seconds",
               "attention_score",
               "engagements",
@@ -1865,7 +1995,7 @@
             },
             "supported_targets": {
               "type": "array",
-              "description": "Event-goal target kinds this seller can compute against. Buyers should only submit event-kind optimization goals whose target.kind is listed here — sellers MUST reject goals with unlisted target kinds. When omitted, only target-less event goals (maximize conversion count within budget) are guaranteed; sellers MAY accept specific target kinds but buyers should not rely on it. Named to parallel `metric_optimization.supported_targets` at the product level — same concept (which target kinds are supported), one at seller-capability granularity and one at product granularity.",
+              "description": "Event-goal target kinds this seller can compute against. Buyers should only submit event-kind optimization goals whose target.kind is listed here — sellers MUST reject goals with unlisted target kinds. cost_per also declares that the seller binds criteria.outcome_target.cost_per to an event goal; buyers do not rely on event-goal cost targets without it. When omitted, only target-less event goals (maximize conversion count within budget) are guaranteed; sellers MAY accept specific target kinds but buyers should not rely on it. Named to parallel `metric_optimization.supported_targets` at the product level — same concept (which target kinds are supported), one at seller-capability granularity and one at product granularity.",
               "items": {
                 "type": "string",
                 "enum": ["cost_per", "per_ad_spend", "maximize_value"]
@@ -2112,6 +2242,11 @@
       "type": "object",
       "description": "Signals protocol capabilities. Only present if signals is in supported_protocols.",
       "properties": {
+        "anonymous_discovery": {
+          "type": "boolean",
+          "description": "Whether this agent accepts get_signals discovery without caller credentials in brief or wholesale mode. true means an anonymous discovery request can produce a successful response, but the response may be a public subset and may differ from results for an authenticated principal or selected account. false means get_signals requires an authenticated principal. Absence means unspecified legacy behavior, so callers probe and handle AUTH_MISSING. A valid authenticated request is never rejected merely because credentials were supplied.",
+          "x-added-in": "3.2.0"
+        },
         "data_provider_domains": {
           "type": "array",
           "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.",
@@ -2187,6 +2322,10 @@
           "minimum": 1,
           "maximum": 365,
           "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (buyer_agent, seller_agent, account_id) and spans all spend-commit task types. Upper bound 365 represents a one-year trailing window (fiscal-year alignment with grace); governance agents needing longer scopes negotiate via operator sign-off, not this capability. No schema default: absence of this field indicates the governance agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). A declared value of 30 is a common starting point but is not implied by omission. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push."
+        },
+        "supports_budget_periods": {
+          "type": "boolean",
+          "description": "Whether this governance agent accepts `plans[].budget.periods[]` on sync_plans and enforces it on check_governance: deriving the containing period for dated actions, denying straddling or over-period commitments, and returning `budget_period_id`. When false or absent, buyers MUST NOT rely on period limits being enforced and SHOULD NOT send `budget.periods`; an agent that does not implement the field cannot honor a time-partitioned budget."
         },
         "property_features": {
           "type": "array",
@@ -2722,7 +2861,7 @@
         },
         "required_for": {
           "type": "array",
-          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Every operation listed MUST also appear in `supported_for`; see `x-adcp-validation`.",
+          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. A transport-specific rename of an operation is not a valid entry (MCP tools and the AdCP A2A profile use the operation name verbatim, so those names coincide with it) — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Over MCP the verifier matches the tools/call params.name; over A2A it matches the skill of the sole DataPart of the message (SendMessage, SendStreamingMessage, message/send, message/stream, and the HTTP+JSON and gRPC equivalents). The A2A profile uses the AdCP operation name verbatim as skill, so that is the same name space. A request that does not resolve to exactly one operation is rejected with request_body_malformed; see docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Every operation listed MUST also appear in `supported_for`; see `x-adcp-validation`.",
           "items": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9_]*$"
@@ -2730,7 +2869,7 @@
           "default": [],
           "x-adcp-validation": {
             "subset_of": "request_signing.supported_for",
-            "spec": "docs/building/implementation/security.mdx#signed-requests-transport-layer"
+            "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
           }
         },
         "warn_for": {
@@ -2744,7 +2883,7 @@
           "x-adcp-validation": {
             "disjoint_with": "request_signing.required_for",
             "subset_of": "request_signing.supported_for",
-            "spec": "docs/building/implementation/security.mdx#signed-requests-transport-layer"
+            "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
           }
         },
         "supported_for": {
@@ -2799,6 +2938,19 @@
             "subset_of": "request_signing.protocol_methods_supported_for",
             "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
           }
+        },
+        "operation_sources": {
+          "type": "array",
+          "description": "Transport bindings from which this verifier resolves the AdCP operation name it matches against supported_for, warn_for, and required_for. 'mcp_tools_call' resolves from the decoded params.name of a JSON-RPC tools/call request. 'a2a_invocation_skill' resolves from the decoded skill of the sole DataPart of an A2A message (SendMessage, SendStreamingMessage, message/send, message/stream, and the HTTP+JSON and gRPC equivalents), and commits the verifier to the fail-closed and skill-to-handler binding rules and the hardening clauses in docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a for every A2A version and binding the endpoint serves. A verifier MUST list a source only if it implements that source's rules and passes its conformance vectors, including the hardening tier, and a present array MUST list every source the verifier supports. Absent means a verifier that has not declared this: a counterparty MUST NOT infer that required_for is enforced over A2A. The field is self-attested and informational; buyers SHOULD sign any operation listed in required_for regardless of it. It never changes the protocol_methods_* namespace, which matches the JSON-RPC method only.",
+          "items": {
+            "type": "string",
+            "enum": ["mcp_tools_call", "a2a_invocation_skill"]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "x-adcp-validation": {
+            "spec": "docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a"
+          }
         }
       },
       "required": ["supported"]
@@ -2842,13 +2994,13 @@
                 ]
               }
             },
-            "spec": "docs/building/implementation/webhooks.mdx"
+            "spec": "docs/building/by-layer/L3/webhooks.mdx"
           }
         },
         "profile": {
           "type": "string",
           "enum": ["adcp/webhook-signing/v1"],
-          "description": "Identifier of the webhook-signing profile version the agent emits. Value MUST match the `tag=` parameter emitted in the RFC 9421 `Signature-Input` header (see docs/building/implementation/webhooks.mdx) so receivers can statically validate the declared profile against the on-wire tag. Closed enum; future profile revisions will extend this enum in a follow-up schema bump."
+          "description": "Identifier of the webhook-signing profile version the agent emits. Value MUST match the `tag=` parameter emitted in the RFC 9421 `Signature-Input` header (see docs/building/by-layer/L3/webhooks.mdx) so receivers can statically validate the declared profile against the on-wire tag. Closed enum; future profile revisions will extend this enum in a follow-up schema bump."
         },
         "algorithms": {
           "type": "array",
@@ -2919,12 +3071,12 @@
               "any_item_matches_pattern": "^4\\."
             },
             "verifier_constraints": {
-              "agent_url_match": "byte_equal",
+              "agent_url_match": "canonical",
               "origin_binding": "etld1_or_authorized_operators",
               "key_origins_consistency": "mandatory_when_signing"
             },
             "distinct_from": "sponsored_intelligence.brand_url",
-            "spec": "docs/building/implementation/security.mdx#discovering-an-agents-signing-keys-via-brand_json_url"
+            "spec": "docs/building/by-layer/L1/security.mdx#discovering-an-agents-signing-keys-via-brand_json_url"
           }
         },
         "per_principal_key_isolation": {
@@ -2934,7 +3086,7 @@
         },
         "key_origins": {
           "type": "object",
-          "description": "Map of signing-key surface/purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. Every entry listed MUST have a corresponding signing posture declared elsewhere — `request_signing` requires non-empty `request_signing.supported_for`/`required_for`/`protocol_methods_supported_for`/`protocol_methods_required_for`; `webhook_signing` requires `webhook_signing.supported === true` and names the webhook delivery surface, not a required live `adcp_use: \"webhook-signing\"` key purpose — otherwise the consistency check at signature-verification time has nothing to anchor against. See `x-adcp-validation` and docs/building/implementation/security.mdx §Origin separation.",
+          "description": "Map of signing-key surface/purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. Every entry listed MUST have a corresponding signing posture declared elsewhere — `request_signing` requires non-empty `request_signing.supported_for`/`required_for`/`protocol_methods_supported_for`/`protocol_methods_required_for`; `webhook_signing` requires `webhook_signing.supported === true` and names the webhook delivery surface, not a required live `adcp_use: \"webhook-signing\"` key purpose — otherwise the consistency check at signature-verification time has nothing to anchor against. See `x-adcp-validation` and docs/building/by-layer/L1/security.mdx §Origin separation.",
           "properties": {
             "governance_signing": {
               "type": "string",
@@ -2967,12 +3119,12 @@
                 "tmp_signing": "trusted_match.surfaces non-empty (TMP participation)"
               }
             },
-            "spec": "docs/building/implementation/security.mdx#origin-separation"
+            "spec": "docs/building/by-layer/L1/security.mdx#agent-key-publication"
           }
         },
         "compromise_notification": {
           "type": "object",
-          "description": "Whether this agent emits the `identity.compromise_notification` webhook event on key revocation due to known or suspected compromise (as opposed to scheduled rotation). Subscribers use this to bound the window between compromise detected and verifiers converging on revocation. See docs/building/implementation/webhooks.mdx §identity.compromise_notification.",
+          "description": "Whether this agent emits the `identity.compromise_notification` webhook event on key revocation due to known or suspected compromise (as opposed to scheduled rotation). Subscribers use this to bound the window between compromise detected and verifiers converging on revocation. See docs/building/by-layer/L3/webhooks.mdx §identity.compromise_notification.",
           "properties": {
             "emits": {
               "type": "boolean",

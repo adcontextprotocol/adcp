@@ -4,7 +4,12 @@ import { WorkOS } from '@workos-inc/node';
 import { Resend } from 'resend';
 import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
-import { requireAuth, requireGlobalAdmin, optionalAuth, isDevModeEnabled } from '../middleware/auth.js';
+import {
+  requireAuth,
+  requireGlobalAdmin,
+  optionalAuth,
+  isDevModeEnabled,
+} from '../middleware/auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
 import * as certDb from '../db/certification-db.js';
 import { query } from '../db/client.js';
@@ -1294,6 +1299,7 @@ export function createCertificationRouters() {
     let auditContext: {
       adminUserId: string;
       reason: string;
+      staticAdminDetails: Record<string, string>;
     } | null = null;
     try {
       if (!userId || userId.length > 255 || !credentialId || credentialId.length > 50) {
@@ -1312,7 +1318,8 @@ export function createCertificationRouters() {
         return res.status(401).json({ error: 'Global admin identity is required' });
       }
       const adminUserId = req.user?.id || 'static-admin-api-key';
-      auditContext = { adminUserId, reason };
+      const staticAdminDetails = { ...req.staticAdminAuditDetails };
+      auditContext = { adminUserId, reason, staticAdminDetails };
 
       const credential = await certDb.getCredential(credentialId);
       if (!credential) {
@@ -1346,6 +1353,7 @@ export function createCertificationRouters() {
         reason,
         eventType: 'started',
         details: {
+          ...staticAdminDetails,
           before: {
             certifier_credential_id: awarded.certifier_credential_id,
             certifier_public_id: awarded.certifier_public_id,
@@ -1366,6 +1374,7 @@ export function createCertificationRouters() {
           reason,
           eventType: 'succeeded',
           details: {
+            ...staticAdminDetails,
             outcome: result.outcome,
             email_delivery: result.emailDelivery,
             after: {
@@ -1408,7 +1417,10 @@ export function createCertificationRouters() {
             adminUserId: auditContext.adminUserId,
             reason: auditContext.reason,
             eventType: 'failed',
-            details: { error_type: error instanceof Error ? error.constructor.name : 'UnknownError' },
+            details: {
+              ...auditContext.staticAdminDetails,
+              error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
+            },
           });
         } catch (auditError) {
           logger.error({ error: auditError, operationId }, 'Failed to append credential recovery failure audit event');
@@ -1472,7 +1484,15 @@ export function createCertificationRouters() {
         action: 'cancel' | 'complete';
         scores?: Record<string, number>;
         reason: string;
+        teaching_checkpoint_id?: string;
       };
+      const teachingCheckpointId = typeof req.body?.teaching_checkpoint_id === 'string'
+        ? req.body.teaching_checkpoint_id.trim()
+        : '';
+      const adminUserId = req.user?.id;
+      if (!adminUserId) {
+        return res.status(401).json({ error: 'Admin user identity is required' });
+      }
 
       if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
         return res.status(400).json({ error: 'reason is required' });
@@ -1497,8 +1517,13 @@ export function createCertificationRouters() {
 
       if (action === 'cancel') {
         try {
-          const updated = await certDb.cancelAttempt(attemptId, reason.trim());
-          return res.json({ attempt: updated });
+          const resolved = await certDb.adminResolveAttempt({
+            attemptId,
+            action: 'cancel',
+            adminUserId,
+            reason: reason.trim(),
+          });
+          return res.json(resolved);
         } catch (err) {
           if (err instanceof Error && err.message.includes('not in_progress')) {
             return res.status(409).json({ error: 'Attempt is no longer in_progress' });
@@ -1556,24 +1581,63 @@ export function createCertificationRouters() {
         return res.status(400).json({ error: 'Score values must be between 0 and 100' });
       }
 
-      const overallScore = Math.round(
-        scoreValues.reduce((sum, s) => sum + s, 0) / scoreValues.length
-      );
-      const passing = scoreValues.every(s => s >= 70) && overallScore >= 70;
-
-      if (passing && attempt.module_id) {
-        const module = await certDb.getModule(attempt.module_id);
-        if (!module) {
-          return res.status(409).json({ error: 'Attempt module was not found' });
-        }
-        if (!module.is_free && !(await certDb.hasEffectiveMembershipForUser(attempt.workos_user_id))) {
-          return res.status(409).json({ error: 'Active membership is required to complete this paid attempt' });
-        }
+      if (!isUuid(teachingCheckpointId)) {
+        return res.status(400).json({ error: 'teaching_checkpoint_id must be a valid UUID' });
       }
+      const moduleId = await resolveCapstoneModuleIdForAttempt(attempt);
+      if (!moduleId) {
+        return res.status(409).json({ error: 'Attempt has no capstone module to reconcile' });
+      }
+      if (!attempt.addie_thread_id) {
+        return res.status(409).json({ error: 'Attempt has no Addie thread to bind evidence' });
+      }
+      const module = await certDb.getModule(moduleId);
+      if (!module) {
+        return res.status(409).json({ error: 'Attempt module was not found' });
+      }
+      if (!module.is_free && !(await certDb.hasEffectiveMembershipForUser(attempt.workos_user_id))) {
+        return res.status(409).json({ error: 'Active membership is required to complete this paid attempt' });
+      }
+      const scoreResult = validateModuleCompletionScores(effectiveScores, module.assessment_criteria);
+      if (typeof scoreResult === 'string') {
+        return res.status(422).json({ error: scoreResult });
+      }
+      const checkpoint = await certDb.getTeachingCheckpointForAttempt({
+        checkpointId: teachingCheckpointId,
+        userId: attempt.workos_user_id,
+        moduleId,
+        threadId: attempt.addie_thread_id,
+      });
+      if (!checkpoint) {
+        return res.status(409).json({
+          error: 'Teaching checkpoint does not match this learner, module, and attempt thread',
+        });
+      }
+      const consistencyError = validatePreliminaryScoreConsistency(effectiveScores, checkpoint);
+      if (consistencyError) {
+        return res.status(409).json({ error: consistencyError });
+      }
+      const demoError = checkRequiredDemonstrations(module, checkpoint);
+      if (demoError) {
+        return res.status(409).json({ error: demoError });
+      }
+
+      const overallScore = Math.round(scoreResult.weightedAvg);
+      const passing = true;
 
       let updated;
       try {
-        updated = await certDb.adminCompleteAttempt(attemptId, effectiveScores, overallScore, passing, reason.trim());
+        updated = await certDb.adminResolveAttempt({
+          attemptId,
+          action: 'complete',
+          adminUserId,
+          reason: reason.trim(),
+          scores: effectiveScores,
+          overallScore,
+          passing,
+          moduleId,
+          teachingCheckpointId: checkpoint.id,
+        });
       } catch (err) {
         if (err instanceof Error && err.message.includes('not in_progress')) {
           return res.status(409).json({ error: 'Attempt can no longer be completed' });
@@ -1583,22 +1647,22 @@ export function createCertificationRouters() {
 
       // If passing, also mark the module as completed and check credentials
       const warnings: string[] = [];
-      if (passing && updated.module_id) {
+      if (passing && updated.attempt.module_id) {
         try {
-          await certDb.completeModule(updated.workos_user_id, updated.module_id, effectiveScores);
+          await certDb.completeModule(updated.attempt.workos_user_id, updated.attempt.module_id, effectiveScores);
         } catch (modError) {
           warnings.push('Module completion failed — run backfill');
-          logger.error({ error: modError, attemptId, moduleId: updated.module_id }, 'Failed to mark module complete after admin resolve');
+          logger.error({ error: modError, attemptId, moduleId: updated.attempt.module_id }, 'Failed to mark module complete after admin resolve');
         }
         try {
-          await certDb.checkAndAwardCredentials(updated.workos_user_id);
+          await certDb.checkAndAwardCredentials(updated.attempt.workos_user_id);
         } catch (credError) {
           warnings.push('Credential check failed — run backfill');
           logger.error({ error: credError, attemptId }, 'Failed to check credentials after admin resolve');
         }
       }
 
-      return res.json({ attempt: updated, ...(warnings.length > 0 && { warnings }) });
+      return res.json({ ...updated, ...(warnings.length > 0 && { warnings }) });
     } catch (error) {
       logger.error({ error, attemptId: req.params.attemptId }, 'Failed to resolve stuck attempt');
       res.status(500).json({ error: 'Internal server error' });

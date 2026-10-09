@@ -192,13 +192,13 @@ test('parent flow carries the correct complete natural AccountRef through each t
   const buyerLifecycle = doc.phases.filter(phase => phase.id.startsWith('buyer_selected_') && phase.id !== 'buyer_selected_account_setup');
   const defaultAccount = {
     brand: { domain: 'acmeoutdoor.example' },
-    operator: 'pinnacle-agency.example',
+    operator: 'media-buy-lifecycle.pinnacle-agency.example',
     sandbox: true,
   };
   const buyerAccount = { ...defaultAccount, timezone: '$context.account_timezone' };
 
-  assert.deepEqual(accountRefsIn(defaultLifecycle), Array(5).fill(defaultAccount));
-  assert.deepEqual(accountRefsIn(buyerLifecycle), Array(5).fill(buyerAccount));
+  assert.deepEqual(accountRefsIn(defaultLifecycle), Array(4).fill(defaultAccount));
+  assert.deepEqual(accountRefsIn(buyerLifecycle), Array(4).fill(buyerAccount));
   assert.doesNotMatch(JSON.stringify(doc), /\$context\.account_id/);
   assert.equal(doc.phases.flatMap(phase => phase.steps).some(candidate => candidate.task === 'list_accounts'), false);
 });

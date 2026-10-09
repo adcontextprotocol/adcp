@@ -59,6 +59,21 @@ vi.mock('../../src/addie/mcp/admin-tools.js', async (importOriginal) => {
   };
 });
 
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>();
+  const checkMembership = (...args: unknown[]) => mocks.isWebUserAAOAdmin(...args);
+  const resolve = async (principal: any, email?: string | null) => {
+    const id = typeof principal === 'string' ? principal : principal.authWorkosUserId ?? principal.id;
+    return actual.decideAAOAdminAccess(await checkMembership(id), typeof principal === 'string' ? email : principal.email);
+  };
+  return {
+    ...actual,
+    isWebUserAAOAdmin: checkMembership,
+    resolveWebUserAAOAdminAccess: resolve,
+    isAuthenticatedUserAAOAdmin: async (principal: any) => (await resolve(principal)).isAdmin,
+  };
+});
+
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<typeof import('../../src/middleware/auth.js')>(
     '../../src/middleware/auth.js',
@@ -75,6 +90,9 @@ vi.mock('../../src/middleware/auth.js', async () => {
   };
 });
 
+// Server shutdown imports telemetry lazily. Load its dependencies before the
+// teardown deadline so cold module transforms do not time out this route test.
+import '../../src/utils/otel-logs.js';
 import { HTTPServer } from '../../src/http.js';
 
 describe('perspective asset cache privacy', () => {
@@ -102,7 +120,13 @@ describe('perspective asset cache privacy', () => {
     [true, undefined, 'public, max-age=0, must-revalidate'],
     [false, 'draft-author', 'private, no-store'],
   ])('sets visibility-aware asset caching when is_public=%s', async (isPublic, userId, expected) => {
-    mocks.query.mockResolvedValueOnce({ rows: [{ id: 'perspective-1', is_public: isPublic }] });
+    // HTTP startup also queries the database while indexing knowledge sources.
+    // Keep the asset lookup fixture tied to its SQL rather than call ordering.
+    mocks.query.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('AS is_public')
+        ? [{ id: 'perspective-1', is_public: isPublic }]
+        : [],
+    }));
     mocks.getAssetData.mockResolvedValueOnce({
       file_data: Buffer.from('asset bytes'),
       file_mime_type: 'image/png',

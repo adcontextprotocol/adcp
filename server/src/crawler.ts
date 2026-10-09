@@ -1,5 +1,5 @@
 import type { Agent, FederatedAgent, ResolvedBrand } from "./types.js";
-import type { Client } from "pg";
+import type { Client, PoolClient } from "pg";
 import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/sdk";
 import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
@@ -8,6 +8,8 @@ import { AdAgentsManager, type AdAgentsValidationResult } from "./adagents-manag
 import { BrandManager, type BrandValidationResult, type HousePortfolioVariant } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
 import {
+  AdagentsManifestProvenanceError,
+  AdagentsManifestRollbackError,
   PublisherCrawlLeaseLostError,
   PublisherDatabase,
   adagentsChangedFields,
@@ -15,6 +17,7 @@ import {
   type AdagentsManifest,
   type AdagentsAuthorizedAgent,
 } from "./db/publisher-db.js";
+import { SupplyPathAuthorityChangeUnconfirmedError } from './services/supply-path-authority-state.js';
 import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
@@ -31,12 +34,13 @@ import {
   type AgentInventoryProfilesDatabase,
   type ProfileUpsertInput,
 } from "./db/agent-inventory-profiles-db.js";
-import { getDedicatedClient, query, withDatabaseDeadline } from "./db/client.js";
+import { getClient, getDedicatedClient, query, withDatabaseDeadline } from "./db/client.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import { verifyHostedPropertyOrigin } from "./services/hosted-property-origin-verifier.js";
 import { insertTypeReclassification } from "./db/type-reclassification-log-db.js";
 import { resolveUserAgentAuth } from "./routes/helpers/resolve-user-agent-auth.js";
 import { adaptAuthForSdk, type SdkAuth } from "./services/sdk-auth-adapter.js";
+import { isComplianceRefreshAccessFailure, type ComplianceRefreshAuthorizationGuard } from "./services/compliance-refresh-authorization.js";
 import {
   PublisherCrawlRequestsDatabase,
   type CreatePublisherCrawlRequestInput,
@@ -1235,14 +1239,13 @@ export class CrawlerService {
         try {
           const validation = await this.adAgentsManager.validateDomain(pubConfig.domain);
           assertExecutionLock();
-          processedDomains.add(pubConfig.domain);
 
           if (validation.valid && validation.raw_data?.authorized_agents) {
             const agentCount = validation.raw_data.authorized_agents.length;
             const propCount = validation.raw_data.properties?.length || 0;
             log.debug({ domain: pubConfig.domain, agentCount, propCount }, 'Domain crawled');
 
-            await this.cacheAdagentsManifest(
+            const cachePersisted = await this.cacheAdagentsManifest(
               pubConfig.domain,
               validation.raw_data as AdagentsManifest,
               {
@@ -1253,6 +1256,10 @@ export class CrawlerService {
                 managerDomain: validation.manager_domain,
               },
             );
+            if (!cachePersisted) {
+              continue;
+            }
+            processedDomains.add(pubConfig.domain);
 
             // Record agents
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
@@ -1327,18 +1334,20 @@ export class CrawlerService {
           // Check if domain has valid adagents.json
           const validation = await this.adAgentsManager.validateDomain(domain);
           assertExecutionLock();
-          await this.federatedIndex.recordPublisherFromAgent(
-            domain,
-            agent.url,
-            validation.valid
-          );
+          if (!validation.valid || !validation.raw_data?.authorized_agents) {
+            await this.federatedIndex.recordPublisherFromAgent(domain, agent.url, false);
+            continue;
+          }
+          // A prior successful cache admission is the only reason a processed
+          // domain may accept another agent claim without repeating the write.
+          if (processedDomains.has(domain)) {
+            await this.federatedIndex.recordPublisherFromAgent(domain, agent.url, true);
+            continue;
+          }
 
           // If valid and not already processed, record agents and properties from adagents.json
-          if (validation.valid && validation.raw_data?.authorized_agents && !processedDomains.has(domain)) {
-            await this.federatedIndex.markPublisherHasValidAdagents(domain);
-            processedDomains.add(domain);
-
-            await this.cacheAdagentsManifest(
+          {
+            const cachePersisted = await this.cacheAdagentsManifest(
               domain,
               validation.raw_data as AdagentsManifest,
               {
@@ -1349,6 +1358,10 @@ export class CrawlerService {
                 managerDomain: validation.manager_domain,
               },
             );
+            if (!cachePersisted) continue;
+            await this.federatedIndex.recordPublisherFromAgent(domain, agent.url, true);
+            await this.federatedIndex.markPublisherHasValidAdagents(domain);
+            processedDomains.add(domain);
 
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
               assertExecutionLock();
@@ -1399,22 +1412,27 @@ export class CrawlerService {
           try {
             const validation = await this.adAgentsManager.validateDomain(domain);
             assertExecutionLock();
-            // Always write the agent_claim row so this discovered agent's authorization
-            // edge is recorded even when the domain was already processed by step 1/2.
-            await this.federatedIndex.recordPublisherFromAgent(domain, da.agent_url, validation.valid);
-            if (processedDomains.has(domain)) continue;
+            if (!validation.valid || !validation.raw_data?.authorized_agents) {
+              await this.federatedIndex.recordPublisherFromAgent(domain, da.agent_url, false);
+              continue;
+            }
+            if (processedDomains.has(domain)) {
+              await this.federatedIndex.recordPublisherFromAgent(domain, da.agent_url, true);
+              continue;
+            }
 
-            if (validation.valid && validation.raw_data?.authorized_agents) {
-              await this.federatedIndex.markPublisherHasValidAdagents(domain);
-              processedDomains.add(domain);
-
-              await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest, {
+            {
+              const cachePersisted = await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest, {
                 statusCode: validation.status_code,
                 responseBytes: validation.response_bytes,
                 resolvedUrl: validation.resolved_url,
                 discoveryMethod: validation.discovery_method,
                 managerDomain: validation.manager_domain,
               });
+              if (!cachePersisted) continue;
+              await this.federatedIndex.recordPublisherFromAgent(domain, da.agent_url, true);
+              await this.federatedIndex.markPublisherHasValidAdagents(domain);
+              processedDomains.add(domain);
 
               for (const authorizedAgent of validation.raw_data.authorized_agents) {
                 assertExecutionLock();
@@ -1730,7 +1748,11 @@ export class CrawlerService {
    * route handler maps that to a 502 so the user sees why the refresh
    * couldn't happen (timeout, DNS, OAuth wall, etc).
    */
-  async refreshSingleAgent(agentUrl: string, options: { auth?: SdkAuth; ownerOrgId?: string } = {}): Promise<{
+  async refreshSingleAgent(agentUrl: string, options: {
+    auth?: SdkAuth;
+    ownerOrgId?: string;
+    authorization?: ComplianceRefreshAuthorizationGuard;
+  } = {}): Promise<{
     online: boolean;
     tools_count: number | null;
     response_time_ms: number | null;
@@ -1741,7 +1763,7 @@ export class CrawlerService {
     error?: string;
   }> {
     const PROBE_TIMEOUT_MS = 10000;
-    const { auth, ownerOrgId } = options;
+    const { auth, ownerOrgId, authorization } = options;
 
     const pausedUrls = await this.getPausedAgentUrls();
     if (pausedUrls.has(agentUrl)) {
@@ -1775,12 +1797,17 @@ export class CrawlerService {
     // with no saved owner auth would still read the shared 15-minute
     // capability/health cache and keep reporting a fixed-then-redeployed
     // issue as unresolved (#5777).
+    await authorization?.checkpoint();
     const profile = await Promise.race([
-      this.capabilityDiscovery.discoverCapabilities(agent, auth, true),
+      this.capabilityDiscovery.discoverCapabilities(agent, auth, true, authorization?.checkpoint),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Probe timeout')), PROBE_TIMEOUT_MS)
       ),
     ]);
+    await authorization?.checkpoint();
+    if (authorization && profile.agent_url !== agentUrl) {
+      throw Object.assign(new Error('Capability profile did not match the refresh target'), { code: 'probe_failed' });
+    }
 
     const inferredType = this.capabilityDiscovery.inferTypeFromProfile(profile);
     const effectiveType = knownType || inferredType;
@@ -1788,31 +1815,29 @@ export class CrawlerService {
 
     const [health, stats] = await Promise.all([
       Promise.race([
-        this.healthChecker.checkHealth(agentForHealth, auth, true),
+        this.healthChecker.checkHealth(agentForHealth, auth, true, authorization?.checkpoint),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Health timeout')), PROBE_TIMEOUT_MS)
         ),
-      ]).catch((err): import('./types.js').AgentHealth => ({
-        online: false,
-        checked_at: new Date().toISOString(),
-        error: err instanceof Error ? err.message : 'health check failed',
-      })),
+      ]).catch((err): import('./types.js').AgentHealth => {
+        if (isComplianceRefreshAccessFailure(err)) throw err;
+        return {
+          online: false,
+          checked_at: new Date().toISOString(),
+          error: err instanceof Error ? err.message : 'health check failed',
+        };
+      }),
       Promise.race([
-        this.healthChecker.getStats(agentForHealth, auth, true),
+        this.healthChecker.getStats(agentForHealth, auth, true, authorization?.checkpoint),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Stats timeout')), PROBE_TIMEOUT_MS)
         ),
-      ]).catch((): import('./types.js').AgentStats => ({})),
+      ]).catch((err): import('./types.js').AgentStats => {
+        if (isComplianceRefreshAccessFailure(err)) throw err;
+        return {};
+      }),
     ]);
-
-    await Promise.all([
-      this.snapshotDb.upsertCapabilities(
-        profile,
-        inferredType === 'unknown' ? null : inferredType,
-        { trackUnknownProbe: !knownType },
-      ),
-      this.snapshotDb.upsertHealth(agentUrl, health, stats),
-    ]);
+    await authorization?.checkpoint();
 
     // Same type-promotion policy as refreshAgentSnapshots: promote when
     // stored is unknown; log disagreement without auto-flipping (see #3538).
@@ -1820,27 +1845,52 @@ export class CrawlerService {
     const isDisagreement =
       !!knownType && inferredType !== 'unknown' && knownType !== inferredType;
 
-    if (isDisagreement) {
-      log.warn(
-        { url: agentUrl, knownType, inferredType },
-        'Agent type disagreement: stored vs probed. Run backfill to reconcile.'
-      );
-      await insertTypeReclassification({
-        agentUrl,
-        oldType: knownType ?? null,
-        newType: inferredType,
-        source: 'crawler_promote',
-        notes: { decision: 'logged_only_no_promote', triggered_by: 'manual_refresh' },
-      });
-    }
-
-    let typePromoted = false;
-    if (canPromote) {
-      await this.federatedIndex.updateAgentMetadata(agentUrl, {
-        agent_type: inferredType,
-        protocol: profile.protocol,
-      });
-      typePromoted = true;
+    const writeSnapshotsAndType = async (client?: PoolClient) => {
+      await Promise.all([
+        this.snapshotDb.upsertCapabilities(
+          profile,
+          inferredType === 'unknown' ? null : inferredType,
+          { trackUnknownProbe: !knownType, ...(client ? { client } : {}) },
+        ),
+        this.snapshotDb.upsertHealth(agentUrl, health, stats, client),
+      ]);
+      if (isDisagreement) {
+        log.warn(
+          { url: agentUrl, knownType, inferredType },
+          'Agent type disagreement: stored vs probed. Run backfill to reconcile.'
+        );
+        await insertTypeReclassification({
+          agentUrl,
+          oldType: knownType ?? null,
+          newType: inferredType,
+          source: 'crawler_promote',
+          notes: { decision: 'logged_only_no_promote', triggered_by: 'manual_refresh' },
+        }, client);
+      }
+      if (canPromote) {
+        await this.federatedIndex.updateAgentMetadata(agentUrl, {
+          agent_type: inferredType,
+          protocol: profile.protocol,
+        }, client);
+      }
+    };
+    if (authorization) {
+      // Keep authorization locks and every mutation on the same connection.
+      // Losing this transaction cannot leave a detached writer committing.
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        await authorization.beforeWrite(client, agentUrl);
+        await writeSnapshotsAndType(client);
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    } else {
+      await writeSnapshotsAndType();
     }
 
     return {
@@ -1848,7 +1898,7 @@ export class CrawlerService {
       tools_count: health.tools_count ?? null,
       response_time_ms: health.response_time_ms ?? null,
       inferred_type: inferredType,
-      type_promoted: typePromoted,
+      type_promoted: canPromote,
       oauth_required: profile.oauth_required ?? false,
       checked_at: health.checked_at,
       error: health.error,
@@ -1915,6 +1965,11 @@ export class CrawlerService {
     } catch (err) {
       if (err instanceof CrawlExecutionLockLostError) throw err;
       if (err instanceof PublisherCrawlLeaseLostError) throw err;
+      // Security admission failures must stop every caller before any legacy
+      // or federated projection outside the cache transaction can run.
+      if (err instanceof SupplyPathAuthorityChangeUnconfirmedError) throw err;
+      if (err instanceof AdagentsManifestProvenanceError) throw err;
+      if (err instanceof AdagentsManifestRollbackError) throw err;
       log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
       return false;
     }
@@ -3506,7 +3561,7 @@ export class CrawlerService {
       return false;
     }
 
-    await this.cacheAdagentsManifest(
+    const cachePersisted = await this.cacheAdagentsManifest(
       domain,
       validation.raw_data as AdagentsManifest,
       {
@@ -3519,6 +3574,7 @@ export class CrawlerService {
         eventSource: 'catalog_crawl',
       },
     );
+    if (!cachePersisted) return false;
 
     for (const authorizedAgent of validation.raw_data.authorized_agents) {
       assertExecutionLock();

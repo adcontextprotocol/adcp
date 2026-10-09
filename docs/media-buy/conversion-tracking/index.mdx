@@ -485,6 +485,19 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 }
 ```
 
+**Minimum viewability** (at least 70% of measurable impressions viewable under the MRC standard, as measured by a named vendor):
+
+```json
+{
+  "kind": "metric",
+  "metric": "viewable_rate",
+  "standard": "mrc",
+  "vendor": { "domain": "acmeverify.example" },
+  "target": { "kind": "threshold_rate", "value": 0.7 },
+  "priority": 2
+}
+```
+
 **Minimum attention from a specific vendor** (the `attention_seconds` / `attention_score` enum values on `kind: "metric"` are deprecated — vendor-attested metrics use `kind: "vendor_metric"` instead, which binds the goal to a specific measurement vendor):
 
 ```json
@@ -522,6 +535,8 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 |-------|------|----------|-------------|
 | `kind` | `"metric"` | Yes | Discriminator |
 | `metric` | string | Yes | Seller-native metric (see metrics table below) |
+| `standard` | `"mrc"` \| `"groupm"` | Conditional | Viewability standard the goal is judged against. Required when metric is `viewable_rate`; optional for `viewed_seconds` (the seller's default standard applies when omitted); rejected for other metrics. Must be listed in `metric_optimization.supported_viewability_standards` when the product declares that list. |
+| `vendor` | BrandRef | No | Measurement vendor whose viewability measurement judges a `viewable_rate` or `viewed_seconds` goal; rejected for other metrics. The canonical 3.2 goal shape carries the BrandKey projection (`domain`, `brand_id`, `countries`). When omitted, the seller's default viewability measurement for the package applies. Sellers MUST reject a vendor they cannot optimize against rather than substituting another vendor's measurement. |
 | `view_duration_seconds` | number | No | Minimum video view duration (in seconds) that qualifies as a `completed_views` event. Only applicable when metric is `completed_views`. When omitted, the seller uses their platform default. Must be a value listed in the product's `metric_optimization.supported_view_durations` — sellers reject unsupported values. |
 | `target.kind` | `"cost_per"` \| `"threshold_rate"` | No | Target type. When omitted, the seller maximizes metric volume within budget. |
 | `target.value` | number | Yes (if target set) | Cost per metric unit in buy currency, or minimum per-impression value |
@@ -532,9 +547,10 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 | Metric | Unit | `threshold_rate` example | Description |
 |---|---|---|---|
 | `clicks` | count/impression | 0.001 (0.1% CTR) | Link clicks, swipe-throughs, CTA taps that navigate away |
-| `views` | count/impression | 0.70 (70% viewability) | Viewable impressions |
+| `views` | count/impression | — | Content views counted at the billable view threshold, as defined by delivery-metrics `views` (the quantity CPV bills on). For a viewability rate target, use `viewable_rate`, which names the standard and vendor. |
 | `completed_views` | count/impression | 0.85 (85% VCR) | Video or audio completions. Use `view_duration_seconds` to control the qualifying threshold (e.g., 2s, 6s, 15s). |
-| `viewed_seconds` | seconds/impression | 3.0 (3s in view) | Time in view per impression. Reported via `viewability.viewed_seconds`; governed by the viewability `standard` (MRC threshold). |
+| `viewed_seconds` | seconds/impression | 3.0 (3s in view) | Time in view per impression. Reported via `viewability.viewed_seconds`; governed by the viewability `standard`. Optionally set `standard` and `vendor` on the goal; otherwise the seller's default viewability measurement applies. |
+| `viewable_rate` | proportion (0–1) | 0.70 (70% MRC viewable) | Viewable impressions / measurable impressions under the goal's `standard`, optionally judged by the goal's `vendor`. Requires `standard`; accepts only `threshold_rate` targets, and `threshold_rate.value` MUST NOT exceed 1. Same leaf identity reported as `viewability.viewable_rate`. See [viewability goals and performance standards](#viewability-goals-and-performance-standards). |
 | `attention_seconds` | seconds/impression | — | **Deprecated** — has no industry-graduated definition. Use `kind: "vendor_metric"` with `vendor` + `metric_id: "attention_seconds"` instead. |
 | `attention_score` | score/impression | — | **Deprecated** — has no industry-graduated definition. Use `kind: "vendor_metric"` with `vendor` + `metric_id: "attention_score"` instead. |
 | `engagements` | count/impression | — | Direct interaction beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps on CTV, companion banner interactions on audio |
@@ -542,6 +558,14 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 | `saves` | count/impression | — | Saves, bookmarks, playlist adds, pins — signals of intent to return |
 | `profile_visits` | count/impression | — | Visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks (use `clicks` for that). |
 | `reach` | unique entities/window | — | Unique audience reach within a frequency window. Requires `reach_unit` (e.g., `households`, `individuals`). Use `target_frequency` to set the frequency band for optimization. |
+
+#### Viewability goals and performance standards
+
+A `viewable_rate` goal and a `viewability` entry in the package's `performance_standards` are complementary. The performance standard is a pass/fail commitment the seller is held to; the goal tells the optimizer what to steer toward. A package can carry both — for example a 60% MRC standard and a 70% MRC goal.
+
+When both are present for the same `standard`, buyers SHOULD NOT set the goal's `threshold_rate.value` below the performance standard's `threshold`. A lower goal never relaxes the standard: sellers MUST continue to evaluate the performance standard at its own threshold, and SHOULD treat the effective optimization floor as the higher of the two values.
+
+Sellers that accept a `viewable_rate` goal SHOULD report `viewability` (or the `viewable_rate` leaf) for the package under the goal's `standard` and `vendor`, so the buyer can check the goal against delivery.
 
 ### kind: vendor_metric
 
@@ -603,7 +627,7 @@ All target kinds across the three goal kinds:
 | Max clicks | Maximize clicks within budget | `kind: "metric"`, `metric: "clicks"`, no target |
 | Target cost per click | Specific cost per click | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "cost_per", value: 2.0 }` |
 | Target CTR | Minimum click-through rate | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "threshold_rate", value: 0.001 }` |
-| Target viewability | Minimum viewability rate | `kind: "metric"`, `metric: "views"` + `target: { kind: "threshold_rate", value: 0.70 }` |
+| Target viewability | Minimum viewability rate under a named standard | `kind: "metric"`, `metric: "viewable_rate"`, `standard: "mrc"` + `target: { kind: "threshold_rate", value: 0.70 }` (optionally `vendor`) |
 | Target attention (vendor-bound) | Minimum attention from a specific vendor | `kind: "vendor_metric"`, `vendor: { domain: "adelaidemetrics.com" }`, `metric_id: "attention_score"` + `target: { kind: "threshold_rate", value: 70 }` |
 | Target brand lift (vendor-bound) | Maximize awareness lift from a specific panel provider | `kind: "vendor_metric"`, `vendor: { domain: "kantar.com" }`, `metric_id: "awareness_lift"`, no target (maximize) |
 | Target VCR | Minimum video completion rate | `kind: "metric"`, `metric: "completed_views"` + `target: { kind: "threshold_rate", value: 0.85 }` |
@@ -727,6 +751,7 @@ For GRP-based buys, use [CPP pricing](/docs/media-buy/advanced-topics/pricing-mo
 1. **Check product support** — The product must declare `metric_optimization` with the desired metric in `supported_metrics`. No event source or conversion tracking setup is required.
 2. **Check target support** — If setting a target, verify the target kind is listed in `metric_optimization.supported_targets`.
 3. **Check view durations** — If using `completed_views` with `view_duration_seconds`, verify the value is listed in `metric_optimization.supported_view_durations`.
+4. **Check viewability standards** — If using `viewable_rate`, verify the goal's `standard` is listed in `metric_optimization.supported_viewability_standards` when the product declares it.
 
 **For event goals** (`kind: "event"`):
 

@@ -2,9 +2,15 @@
 
 Run `node .github/scripts/npm-ci.mjs` from the repository root on Linux x64.
 It executes ordinary `npm ci` and permits **one retry only** when exit 1 and
-the contiguous npm stderr block identify the exact C2PA 0.9.4 release download,
-Rust fallback, and missing workspace manifest. Other versions, platforms,
-partial signatures, additional npm error codes/paths, and signals do not retry.
+the contiguous npm stderr block identify the exact release download of the C2PA
+version locked in the root `package-lock.json` (`packages["node_modules/@contentauth/c2pa-node"].version`),
+the Rust fallback, and the missing workspace manifest. The release URL and
+filename are built from that one exact `x.y.z` version. A missing, unreadable,
+malformed or non-exact (range, prerelease, leading-zero) lockfile version fails
+closed: no retry, and npm's original exit status is preserved. Other versions
+(including a stderr version that differs from the lock, or a URL whose tag and
+filename disagree), platforms, partial signatures, additional npm error
+codes/paths, and signals do not retry.
 A second failure remains a job failure with its own exit status or signal.
 Before the sole retry, wait a uniformly randomized integer delay of 1,000–5,000
 milliseconds. Cancellation aborts that wait and prevents the second install.
@@ -18,8 +24,11 @@ on 2026-09-14. The same release installed in other jobs of that run, and
 Upstream returns false on a non-2xx download without logging the HTTP status;
 the fallback then fails because the published Cargo manifest inherits workspace
 fields without a workspace root. The logs cannot establish the exact HTTP code.
-Keep the match narrow; reassess/remove this workaround when upstream fixes the
-installer or the locked version changes. This is not a general npm retry policy.
+The published 0.9.7 and 0.9.9 Cargo manifests still inherit workspace fields,
+so the underlying fallback bug is not fixed upstream; the matcher follows the
+locked version instead of a hardcoded one. Keep the match narrow; reassess/remove
+this workaround when upstream fixes the installer. This is not a general npm
+retry policy.
 
 Both attempts stream stdout/stderr live, with backpressure, and retain separate
 complete files in a unique `adcp-npm-ci-*` directory under `RUNNER_TEMP` (or the
@@ -33,9 +42,9 @@ must not be uploaded as public artifacts. They live until runner cleanup.
 SIGINT/SIGTERM/SIGHUP are forwarded to npm's process group, including lifecycle
 children, and the wrapper preserves signal termination even if npm traps it.
 
-The helper covers 11 root installs: Build Check (4 job definitions), migration
-smoke (2), training storyboards (2), broken links, schema PR bundle construction,
-and the untrusted runtime-attestation build. Existing workflow gates, environment
+The helper covers 12 root installs: Build Check (4 job definitions), migration
+smoke (2), training storyboards (2), broken links, external smoke, schema PR
+bundle construction, and the untrusted runtime-attestation build. Existing workflow gates, environment
 variables, permissions and timeouts remain in force. `release.yml` and
 `deploy.yml` stay outside this CI-only change, including release verification.
 The separate `apps/web` and checked-out `sdk` packages are excluded, as is the
@@ -53,5 +62,7 @@ No protocol changeset is appropriate for this operational change. The scope
 check exempts only the exact install-command substitution in the otherwise
 protocol-scoped storyboard workflow; any other edit there remains scoped.
 
-Draft #7511 owns external-smoke isolation; Draft #7514 owns PostgreSQL test
-barriers. This helper only addresses their shared dependency-install failure.
+External smoke isolation has landed on `main`; its install step adopts this
+helper with its `PUPPETEER_SKIP_DOWNLOAD` environment and permissions unchanged.
+Draft #7514 owns PostgreSQL test barriers. This helper only addresses the shared
+dependency-install failure.

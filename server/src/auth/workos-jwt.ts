@@ -7,10 +7,53 @@
  * token issued by the MCP OAuth flow works across both surfaces.
  */
 
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import {
+  createRemoteJWKSet,
+  decodeProtectedHeader,
+  errors,
+  jwtVerify,
+  type JWTPayload,
+  type JWTVerifyGetKey,
+} from 'jose';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('workos-jwt');
+
+/** Only token/claim failures prove invalidity; key-service and unknown failures do not. */
+export function isInvalidWorkOSJWTError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && [
+    'ERR_JWT_EXPIRED', 'ERR_JWT_INVALID', 'ERR_JWT_CLAIM_VALIDATION_FAILED',
+    'ERR_JWS_INVALID', 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED',
+    'ERR_JWKS_NO_MATCHING_KEY',
+    'ERR_JOSE_ALG_NOT_ALLOWED', 'ERR_JOSE_NOT_SUPPORTED',
+    'ERR_WORKOS_TOKEN_INVALID_HEADER', 'ERR_WORKOS_TOKEN_INVALID_KID',
+  ].includes(code);
+}
+
+export class WorkOSJWTUnavailableError extends Error {
+  readonly status = 503;
+
+  constructor() {
+    super('Bearer authentication temporarily unavailable');
+    this.name = 'WorkOSJWTUnavailableError';
+  }
+}
+
+/** Key-service failures can share JOSE codes with malformed token failures. */
+export function unavailableJWTKeyService(resolver: JWTVerifyGetKey): JWTVerifyGetKey {
+  return async (header, token) => {
+    try {
+      return await resolver(header, token);
+    } catch (error) {
+      // A healthy JWKS that does not contain the selected kid definitively
+      // rejects this credential; only key-service failures are unavailable.
+      if (error instanceof errors.JWKSNoMatchingKey) throw error;
+      throw new WorkOSJWTUnavailableError();
+    }
+  };
+}
 
 /**
  * Read `WORKOS_CLIENT_ID` at call time rather than at module import.
@@ -90,17 +133,35 @@ export function looksLikeJWT(token: string): boolean {
  * signature verification against our shared JWKS.
  */
 export async function verifyWorkOSJWT(token: string): Promise<VerifiedWorkOSToken> {
+  let protectedHeader: ReturnType<typeof decodeProtectedHeader>;
+  try {
+    protectedHeader = decodeProtectedHeader(token);
+  } catch (cause) {
+    throw Object.assign(new Error('Token protected header is malformed'), {
+      code: 'ERR_WORKOS_TOKEN_INVALID_HEADER',
+      cause,
+    });
+  }
+  if (protectedHeader.kid !== undefined && typeof protectedHeader.kid !== 'string') {
+    throw Object.assign(new Error('Token key id must be a string'), { code: 'ERR_WORKOS_TOKEN_INVALID_KID' });
+  }
   const jwksInstance = getJWKS();
 
-  const { payload } = await jwtVerify(token, jwksInstance);
+  const { payload } = await jwtVerify(token,
+    typeof jwksInstance === 'function' ? unavailableJWTKeyService(jwksInstance) : jwksInstance,
+    // WorkOS user-management tokens use RS256. Reject unsupported token
+    // algorithms before consulting a key service whose failure means 503.
+    { algorithms: ['RS256'] },
+  );
 
   const azp = typeof payload.azp === 'string' ? payload.azp : undefined;
   const clientIdClaim =
     typeof payload.client_id === 'string' ? payload.client_id : undefined;
   const applicationId = azp ?? clientIdClaim;
   if (!applicationId || applicationId !== workosClientId()) {
-    throw new Error(
+    throw new errors.JWTClaimValidationFailed(
       `Token application id ("${applicationId ?? 'missing'}") does not match this application`,
+      payload, azp ? 'azp' : 'client_id', applicationId ? 'mismatch' : 'missing',
     );
   }
 

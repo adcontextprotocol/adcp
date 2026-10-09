@@ -750,6 +750,17 @@ describe("MediaBuy frequency cap refinement", () => {
     expect(terms.frequency_cap).toBeUndefined();
   });
 
+  it("treats remove_media_buy_frequency_cap as a typed control when an ask accompanies it", () => {
+    const refinement = {
+      proposal_id: "proposal_source_0001",
+      action: "revise",
+      remove_media_buy_frequency_cap: true,
+      ask: "Remove the frequency cap; reach is unrestricted.",
+    } as unknown as ProposalRefinement;
+    const terms = termsOf(evaluate(refinement, { source: cappedSource(), productForPurchase }));
+    expect(terms.frequency_cap).toBeUndefined();
+  });
+
   it("replaces the root cap through criteria.media_buy_frequency_cap", () => {
     const replacement = { ...ROOT_CAP, max_impressions: 5 };
     const refinement = {

@@ -61,6 +61,37 @@ async function select(
 }
 
 describe('authenticated web Addie tool routing', () => {
+  it.each([routerFor(['knowledge']), null])('keeps registration executable through intake even when the router drifts or is absent', async router => {
+    const names = getToolsForSets(['adcp_agent_management', 'knowledge'], false, false);
+    const save = vi.fn(async () => 'Saved registration');
+    const selected = await selectRoutedWebTools({
+      message: 'Agent URL: https://sales.streamhaus.example/mcp\nAuth: OAuth client credentials',
+      memberContext: null, threadId: 'thread-1', isAAOAdmin: false,
+      activeAgentRegistration: true, router,
+      requestTools: {
+        tools: [{ name: 'save_agent', description: 'Register', input_schema: { type: 'object', properties: {} } }],
+        handlers: new Map([['save_agent', save]]),
+      },
+      globalToolNames: names.filter(name => name !== 'save_agent'),
+    });
+    expect(selected.selectedToolSets).toEqual(['adcp_agent_management', 'knowledge']);
+    expect(selected.allowedToolNames).toContain('save_agent');
+    await selected.requestTools.handlers.get('save_agent')!({});
+    expect(save).toHaveBeenCalledOnce();
+    expect(selected.allowedToolNames).not.toContain('resolve_escalation');
+  });
+
+  it('does not grant a missing registration handler through the intake overlay', async () => {
+    const selected = await selectRoutedWebTools({
+      message: 'Register my agent', memberContext: null, threadId: 'thread-1', isAAOAdmin: false,
+      activeAgentRegistration: true, router: routerFor(['knowledge']),
+      requestTools: { tools: [], handlers: new Map() },
+      globalToolNames: getToolsForSets(['adcp_agent_management', 'knowledge'], false, false).filter(name => name !== 'save_agent'),
+    });
+    expect(selected.allowedToolNames).not.toContain('save_agent');
+    expect(selected.selectedToolSets).not.toContain('adcp_agent_management');
+  });
+
   it.each([
     ['learning', 'get_learner_progress', {}, ['checkpoint_teaching_progress', 'complete_certification_module']],
     ['assessment', 'test_out_modules', { module_ids: ['A1', 'A2', 'A3'] }, ['test_out_modules']],
@@ -74,7 +105,7 @@ describe('authenticated web Addie tool routing', () => {
     const names = getToolsForSets([`certification_${kind}`, 'knowledge', 'illustrations'], false, false);
     const selected = await selectRoutedWebTools({
       message: 'Here are my answers', memberContext: null, threadId: 'thread-1', isAAOAdmin: false,
-      activeCertificationKind: context.kind, router: routerFor(['knowledge']),
+      activeCertificationKind: context.kind, activeAgentRegistration: true, router: routerFor(['knowledge']),
       requestTools: {
         tools: required.map(name => ({ name, description: name, input_schema: { type: 'object', properties: {} } })),
         handlers: new Map(required.map(name => [name, vi.fn(async () => 'Saved')])),

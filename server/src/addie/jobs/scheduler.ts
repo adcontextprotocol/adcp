@@ -47,10 +47,26 @@ export interface JobConfig<TOptions = Record<string, unknown>, TResult = unknown
   initialDelay?: TimeInterval;
 
   /** The async function to execute */
-  runner: (options: TOptions) => Promise<TResult>;
+  runner:
+    | ((options: TOptions) => Promise<TResult>)
+    | ((options: TOptions, context: JobExecutionContext) => Promise<TResult>);
+
+  /**
+   * Pass the scheduler's execution context as the runner's second argument.
+   * Opt-in avoids colliding with existing runners whose second argument is a
+   * test/dependency-injection seam rather than scheduler context.
+   */
+  passExecutionContext?: boolean;
 
   /** Options to pass to the runner */
   options?: TOptions;
+
+  /**
+   * Maximum execution time before the scheduler aborts the run and releases
+   * its global concurrency slot. Jobs should pass context.signal to bounded
+   * network or model calls so timed-out work can stop cooperatively.
+   */
+  executionTimeoutMs?: number;
 
   /** Only run during these business hours (ET timezone) */
   businessHours?: BusinessHoursConstraint;
@@ -66,6 +82,19 @@ export interface JobConfig<TOptions = Record<string, unknown>, TResult = unknown
    * If not provided, always logs at debug level.
    */
   shouldLogResult?: (result: TResult) => boolean;
+
+  /**
+   * Return the bounded, non-sensitive portion of a result that operators need
+   * after logs have rolled over or the runner has returned.
+   */
+  statusResult?: (result: TResult) => unknown;
+
+  /** Treat a completed-but-unhealthy result as a scheduler failure. */
+  validateResult?: (result: TResult) => void;
+}
+
+export interface JobExecutionContext {
+  signal: AbortSignal;
 }
 
 /**
@@ -80,6 +109,7 @@ interface RunningJob {
   lastDurationMs: number | null;
   lastError: string | null;
   lastMemoryProfile: JobMemoryProfile | null;
+  lastResult: unknown | null;
 }
 
 export interface JobMemorySnapshot {
@@ -134,8 +164,27 @@ export interface JobStatus {
   lastDurationMs: number | null;
   lastError: string | null;
   lastMemoryProfile: JobMemoryProfile | null;
+  lastResult: unknown | null;
   consecutiveFailures: number;
+  executionTimeoutMs: number | null;
   businessHours?: BusinessHoursConstraint;
+}
+
+export interface JobPoolStatus {
+  activeJobs: number;
+  queuedJobs: number;
+  maxConcurrency: number;
+  activeJobDetails: Array<{ name: string; startedAt: string }>;
+  queuedJobDetails: Array<{ name: string; queuedAt: string }>;
+}
+
+interface QueuedJob {
+  name: string;
+  queuedAt: Date;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+  signal: AbortSignal;
+  onAbort: () => void;
 }
 
 /**
@@ -200,24 +249,43 @@ export class JobScheduler {
 
   private static readonly MAX_CONCURRENCY = 5;
   private activeJobs = 0;
-  private waitQueue: Array<() => void> = [];
+  private activeJobDetails = new Map<string, Date>();
+  private waitQueue: QueuedJob[] = [];
 
-  private acquireSlot(): Promise<void> {
+  private acquireSlot(name: string, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
     if (this.activeJobs < JobScheduler.MAX_CONCURRENCY) {
       this.activeJobs++;
+      this.activeJobDetails.set(name, new Date());
       return Promise.resolve();
     }
-    return new Promise<void>((resolve) => {
-      this.waitQueue.push(resolve);
+    return new Promise<void>((resolve, reject) => {
+      const entry: QueuedJob = {
+        name,
+        queuedAt: new Date(),
+        resolve,
+        reject,
+        signal,
+        onAbort: () => {
+          const index = this.waitQueue.indexOf(entry);
+          if (index !== -1) this.waitQueue.splice(index, 1);
+          reject(signal.reason ?? new Error(`${name} aborted while waiting for a scheduler slot`));
+        },
+      };
+      signal.addEventListener('abort', entry.onAbort, { once: true });
+      this.waitQueue.push(entry);
     });
   }
 
-  private releaseSlot(): void {
+  private releaseSlot(name: string): void {
+    this.activeJobDetails.delete(name);
     const next = this.waitQueue.shift();
     if (next) {
       // Transfer this job's slot to the queued job. activeJobs already counts
       // the slot, so do not increment it again or the scheduler can jam.
-      next();
+      next.signal.removeEventListener('abort', next.onAbort);
+      this.activeJobDetails.set(next.name, new Date());
+      next.resolve();
     } else {
       this.activeJobs--;
     }
@@ -259,6 +327,7 @@ export class JobScheduler {
       lastDurationMs: null,
       lastError: null,
       lastMemoryProfile: null,
+      lastResult: null,
     };
 
     const runJob = async () => {
@@ -277,11 +346,42 @@ export class JobScheduler {
       }
 
       job.executing = true;
-      await this.acquireSlot();
       const startTime = Date.now();
       const memoryBefore = memorySnapshot();
+      const abortController = new AbortController();
+      let executionTimeoutId: NodeJS.Timeout | null = null;
+      let acquiredSlot = false;
       try {
-        const result = await config.runner(config.options ?? ({} as never));
+        const execute = async () => {
+          await this.acquireSlot(name, abortController.signal);
+          acquiredSlot = true;
+          const options = config.options ?? ({} as never);
+          return config.passExecutionContext
+            ? (config.runner as (
+              options: unknown,
+              context: JobExecutionContext,
+            ) => Promise<unknown>)(options, { signal: abortController.signal })
+            : (config.runner as (options: unknown) => Promise<unknown>)(options);
+        };
+        const executionPromise = execute();
+        const result = config.executionTimeoutMs === undefined
+          ? await executionPromise
+          : await Promise.race([
+              executionPromise,
+              new Promise<never>((_resolve, reject) => {
+                executionTimeoutId = setTimeout(() => {
+                  const timeoutError = new Error(
+                    `${config.description} timed out after ${config.executionTimeoutMs}ms`,
+                  );
+                  abortController.abort(timeoutError);
+                  reject(timeoutError);
+                }, config.executionTimeoutMs);
+                executionTimeoutId.unref();
+              }),
+            ]);
+
+        job.lastResult = config.statusResult?.(result) ?? null;
+        config.validateResult?.(result);
 
         // Reset consecutive failure count on success
         this.consecutiveFailures.delete(name);
@@ -314,6 +414,9 @@ export class JobScheduler {
           });
         }
       } finally {
+        if (executionTimeoutId) {
+          clearTimeout(executionTimeoutId);
+        }
         const durationMs = Date.now() - startTime;
         const profile = memoryProfile(memoryBefore, memorySnapshot());
         job.lastMemoryProfile = profile;
@@ -330,7 +433,7 @@ export class JobScheduler {
           },
           'Scheduled job memory profile',
         );
-        this.releaseSlot();
+        if (acquiredSlot) this.releaseSlot(name);
       }
     };
 
@@ -432,11 +535,30 @@ export class JobScheduler {
         lastDurationMs: job?.lastDurationMs ?? null,
         lastError: job?.lastError ?? null,
         lastMemoryProfile: job?.lastMemoryProfile ?? null,
+        lastResult: job?.lastResult ?? null,
         consecutiveFailures: this.consecutiveFailures.get(name) ?? 0,
+        executionTimeoutMs: config.executionTimeoutMs ?? null,
         businessHours: config.businessHours,
       });
     }
     return statuses;
+  }
+
+  /** Get the shared scheduler pool state for operational diagnostics. */
+  getPoolStatus(): JobPoolStatus {
+    return {
+      activeJobs: this.activeJobs,
+      queuedJobs: this.waitQueue.length,
+      maxConcurrency: JobScheduler.MAX_CONCURRENCY,
+      activeJobDetails: Array.from(this.activeJobDetails, ([name, startedAt]) => ({
+        name,
+        startedAt: startedAt.toISOString(),
+      })),
+      queuedJobDetails: this.waitQueue.map(({ name, queuedAt }) => ({
+        name,
+        queuedAt: queuedAt.toISOString(),
+      })),
+    };
   }
 }
 

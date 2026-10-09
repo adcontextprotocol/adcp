@@ -415,11 +415,24 @@ Only use `patch`/`minor`/`major` when the change affects the published AdCP prot
 
 ### Release lines
 
-AdCP runs two active release lines:
+AdCP runs two active release lines until `v3.2.1` is tagged, and three after:
+
+Until `v3.2.1` is tagged:
 
 - **`3.1.x`** → stable maintenance patches (`3.1.4`, `3.1.5`, …)
-- **`main`** → the next minor, which must use Changesets beta pre mode
-  (`.changeset/pre.json`) to produce `3.2.0-beta.N`
+- **`main`** → the 3.2 line, in Changesets RC pre mode
+  (`.changeset/pre.json`) until the reviewed GA pre-exit, whose Version
+  Packages cut produces `3.2.1` (`3.2.0` is withdrawn)
+
+After 3.2 GA (`.agents/shortcuts/cut-minor-ga.md` Phase 10):
+
+- **`3.2.x`** → stable maintenance patches (`3.2.2`, `3.2.3`, …), created from
+  the `v3.2.1` Version Packages merge
+- **`main`** → 3.3, back in Changesets **beta** pre mode the same day
+- **`3.1.x`** → security and critical fixes for a maintainer-decided window
+
+The cherry-pick and forward-merge rules below name `3.1.x`; after GA they apply
+to `3.2.x` in the same way (`forward-merge-3.2.yml`).
 
 Branch naming follows `<major>.<minor>.x` to match the existing `2.6.x` precedent. No `release/` prefix.
 
@@ -503,15 +516,22 @@ bis test.)
 
 These are version-level concerns. Security fixes ship as out-of-band advisories or in the next minor.
 
+**Security errata exception.** A confirmed security fix may ship in a patch, alongside its advisory, when:
+1. the spec contradicts itself, or is ambiguous, about whether a security control applies;
+2. the fix resolves it toward the fail-closed reading another normative passage already requires; and
+3. the signature format, covered components, algorithms and wire shapes stay unchanged.
+
+The only implementations that fail the corrected text are the vulnerable ones, so the "any conformant implementation already satisfies it" test above is waived for this case. New fields or capability markers that come with the fix still ship in the next minor. Example: #7820 (GHSA-2pm6-6mc8-8xcm). `security.mdx` said `required_for` matched only MCP `tools/call`, but the A2A profile required the same signing rules over A2A. The A2A operation-resolution fix shipped as 3.2.3 errata; the new `operation_sources` marker shipped in 3.3.
+
 If unsure, default to no changeset and discuss whether the change belongs on
 `3.1.x` at all. New protocol surface stays on `main` for 3.2.
 
-#### Pre mode (beta releases)
+#### Pre mode (prereleases)
 
-When present, `.changeset/pre.json` puts `main` in **beta pre mode**. During
-3.2 development, every Version Packages cut must produce `3.2.0-beta.N`,
-never stable `3.2.0`. Enter pre mode before accepting 3.2 release changes, in
-a reviewed PR:
+During the beta phase, `.changeset/pre.json` put `main` in **beta pre mode**,
+so each Version Packages cut produced `3.2.0-beta.N`. The current file uses
+`"tag": "rc"` and produces `3.2.0-rc.N`; the stable cut (shipped as `3.2.1`
+over the withdrawn `3.2.0`) requires the reviewed pre-mode exit below. The original beta entry procedure was:
 
 ```bash
 npx changeset pre enter beta
@@ -550,7 +570,9 @@ git add -A && git commit -m "chore(release): exit pre mode for 3.2 stable cut"
 
 Do not exit pre mode until the 3.2 freeze and GA checklist are explicitly
 approved. The next Version Packages cut after the exit PR produces stable
-`3.2.0`.
+`3.2.1`: the reviewed `.changeset/withdrawn-release.json` marker skips the
+permanently withdrawn `3.2.0` (see `RELEASING.md`). Follow
+`.agents/shortcuts/cut-minor-ga.md`.
 
 #### App-token convention
 
@@ -561,8 +583,9 @@ Two Apps, two trust surfaces: release machinery uses the release App above; the 
 #### Runbooks
 
 - `.agents/shortcuts/cut-patch.md` — cutting a `3.1.X` patch
-- `RELEASING.md` — current `3.2.0-beta.N` pre-mode operation and release verification
+- `RELEASING.md` — current 3.2 RC pre-mode operation, the withdrawn-`3.2.0` skip, and release verification
 - `.agents/shortcuts/cut-beta.md` — active 3.2 beta.0 → SDKs → beta.1 runbook
+- `.agents/shortcuts/cut-minor-ga.md` — ordered 3.2 GA (`3.2.1`) runbook
 - `.agents/shortcuts/cut-major.md` — cutting a major (4.0 when its time comes)
 
 ### Addie Code Version
@@ -581,14 +604,26 @@ This creates a new Addie config version, allowing performance comparison before/
 ## Deployment
 
 Production deploys to **Fly.io** (not Vercel). Migrations run automatically on startup.
+Before the first deployment to a fresh database, or staging/disaster recovery,
+complete the [database bootstrap prerequisite](../docs/runbooks/training-agent-gcs-reporting.md#database-bootstrap-prerequisite).
+Migration 620 requires its namespace even with GCS reporting disabled. Verify
+an existing namespace's owner and installation authority; preserve its state.
 - Deploy logs: `fly logs -a <app-name>`
 - SSH access: `fly ssh console -a <app-name>`
 
 ## Local Development
 
 **Always use Docker for local testing:**
+
+Start PostgreSQL and complete the required
+[local bootstrap](../docs/runbooks/training-agent-gcs-reporting.md#local-bootstrap)
+before starting the app's auto-migrations. Do this for a new volume and after
+every reset; the reporting feature flag does not skip migration 620.
+
 ```bash
-docker compose up --build  # Start postgres + app with auto-migrations
+docker compose up -d --wait postgres
+# Complete the linked local bootstrap before the next command.
+docker compose up --build  # Start app with auto-migrations after bootstrap
 docker compose down -v     # Reset database
 ```
 
@@ -662,7 +697,7 @@ Visual formats use `renders` array with structured dimensions:
 
 ### Useful Commands
 ```bash
-docker compose up --build  # Local dev server (preferred)
+docker compose up --build  # Local dev server, after required database bootstrap
 npm run build              # Build TypeScript
 npm test                   # Run tests
 npm run lint               # Lint
@@ -844,6 +879,13 @@ Before creating or updating a PR, always:
 3. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
 4. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
 5. **Run `gh pr checks {PR_NUMBER}`** to verify all CI passes before requesting review.
+6. **Apply the completion invariant before declaring the task/PR done or
+   merging** — no review comment, inline comment, conversation thread,
+   requested change, CodeQL/security annotation, or required check may remain
+   open. Respond where appropriate, implement or explicitly resolve every
+   item, and re-request review after material changes. Verify the exact final
+   head has no unresolved threads or comments and that every required check is
+   green. Never silently dismiss comments merely to make the count zero.
 
 ## Triage Routine — Manual Nudge
 

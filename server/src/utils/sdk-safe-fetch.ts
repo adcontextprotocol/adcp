@@ -1,4 +1,4 @@
-import { safeFetch } from './url-security.js';
+import { isNetworkPolicyRefusal, safeFetch } from './url-security.js';
 
 const SDK_MAX_REQUEST_BYTES = 10 * 1024 * 1024;
 export const MCP_ACCEPT_HEADER = 'application/json, text/event-stream';
@@ -10,6 +10,82 @@ const SENSITIVE_REDIRECT_HEADERS = [
 ] as const;
 
 type SafeFetchImpl = typeof safeFetch;
+
+export const ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE = 'ADDIE_TRANSIENT_TRANSPORT_FAILURE';
+const TRANSIENT_TRANSPORT_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EPIPE',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+const TRANSIENT_HTTP_STATUSES = new Set([429, 502, 503, 504]);
+
+interface TransientTransportMetadata {
+  code?: string;
+  status?: number;
+  retryAfterMs?: number;
+}
+
+/**
+ * A private marker that survives @adcp/sdk's conversion of thrown transport
+ * failures into `TaskResult { success: false }`. The SDK projects `data` into
+ * `adcpError`; callers must require this exact private code before retrying so
+ * seller protocol/application failures are never mistaken for transport loss.
+ */
+export class AddieTransientTransportError extends Error {
+  readonly code = ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE;
+  readonly data: {
+    adcp_error: {
+      code: typeof ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE;
+      message: string;
+      recovery: 'transient';
+      retry_after?: number;
+    };
+  };
+
+  constructor(readonly metadata: TransientTransportMetadata = {}) {
+    super('Transient outbound AdCP transport failure');
+    this.name = 'AddieTransientTransportError';
+    this.data = {
+      adcp_error: {
+        code: ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
+        message: 'The outbound AdCP transport is temporarily unavailable.',
+        recovery: 'transient',
+        ...(metadata.retryAfterMs !== undefined && {
+          retry_after: metadata.retryAfterMs / 1_000,
+        }),
+      },
+    };
+  }
+}
+
+function readTransientTransportMetadata(error: unknown): TransientTransportMetadata | null {
+  if (isNetworkPolicyRefusal(error)) return null;
+  let current: unknown = error;
+  for (let depth = 0; depth < 6 && current && typeof current === 'object'; depth += 1) {
+    const candidate = current as Record<string, unknown>;
+    const code = typeof candidate.code === 'string' ? candidate.code.toUpperCase() : undefined;
+    const status = typeof candidate.status === 'number'
+      ? candidate.status
+      : typeof candidate.statusCode === 'number' ? candidate.statusCode : undefined;
+    if ((code && TRANSIENT_TRANSPORT_CODES.has(code)) || (status && TRANSIENT_HTTP_STATUSES.has(status))) {
+      return { code, status };
+    }
+    current = candidate.cause;
+  }
+  return null;
+}
+
+function retryAfterMs(response: Response): number | undefined {
+  const raw = response.headers.get('retry-after');
+  if (raw === null || !/^\d+(?:\.\d+)?$/.test(raw)) return undefined;
+  const milliseconds = Number(raw) * 1_000;
+  return Number.isFinite(milliseconds) && milliseconds >= 0 ? milliseconds : undefined;
+}
 
 export interface SdkTransportOptions {
   maxResponseBytes?: number;
@@ -72,14 +148,29 @@ export function createSdkSafeFetch(safeFetchImpl: SafeFetchImpl = safeFetch): ty
 
     const carriesSensitiveHeaders = SENSITIVE_REDIRECT_HEADERS.some(header => request.headers.has(header));
 
-    return safeFetchImpl(request.url, {
-      method,
-      headers: Object.fromEntries(request.headers.entries()),
-      ...(body && { body }),
-      maxRequestBytes: SDK_MAX_REQUEST_BYTES,
-      ...((method === 'POST' || carriesSensitiveHeaders) && { maxRedirects: 0 }),
-      signal: request.signal,
-    });
+    let response: Response;
+    try {
+      response = await safeFetchImpl(request.url, {
+        method,
+        headers: Object.fromEntries(request.headers.entries()),
+        ...(body && { body }),
+        maxRequestBytes: SDK_MAX_REQUEST_BYTES,
+        ...((method === 'POST' || carriesSensitiveHeaders) && { maxRedirects: 0 }),
+        signal: request.signal,
+      });
+    } catch (error) {
+      const transient = readTransientTransportMetadata(error);
+      if (transient) throw new AddieTransientTransportError(transient);
+      throw error;
+    }
+
+    if (TRANSIENT_HTTP_STATUSES.has(response.status)) {
+      throw new AddieTransientTransportError({
+        status: response.status,
+        retryAfterMs: retryAfterMs(response),
+      });
+    }
+    return response;
   };
 }
 

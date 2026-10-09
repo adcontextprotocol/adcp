@@ -101,6 +101,11 @@
       },
       "minItems": 1
     },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "deprecated": true,
+      "description": "**DEPRECATED with `list_creative_formats` in 3.2. Removed at 4.0.** Use `get_products` with `account`; each `Product.format_options[]` lists the formats this seller can deliver for that account. *Legacy 3.x behavior:* scopes the returned formats to this account. Sellers that keep account-specific format catalogs (including sandbox accounts) return that account's formats; sellers with a single catalog MAY ignore this field."
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"
     },

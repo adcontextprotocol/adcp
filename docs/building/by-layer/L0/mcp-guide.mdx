@@ -185,7 +185,7 @@ The SDK handles polling, cancellation, TTL cleanup, and `_meta` injection for `t
 If you use `McpServer` instead of `Server`, register task-capable tools with `server.experimental.tasks.registerToolTask()` — the higher-level API enforces this for tools that declare `taskSupport`.
 
 :::warning Production task isolation
-`InMemoryTaskStore` does not scope tasks by session — any client that knows a task ID can read, cancel, or list it. For production, implement a `TaskStore` that filters by `sessionId` on every operation. Also clamp client-provided TTL values server-side and enforce rate limits on task creation.
+`InMemoryTaskStore` does not provide principal/account isolation — any client that knows a task ID can read, cancel, or list it. For production, bind every task to the authenticated principal and account at creation, then filter reads, lists, results, and cancellation by those authoritative values on every operation. `sessionId` may be retained only as secondary transport metadata; it MUST NOT grant, deny, or redirect task access because `Mcp-Session-Id` is unsigned. Also clamp client-provided TTL values server-side and enforce rate limits on task creation.
 :::
 
 ### Server Capabilities

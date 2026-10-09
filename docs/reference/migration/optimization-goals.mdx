@@ -40,13 +40,17 @@ Every goal has a `kind` discriminator:
 }
 ```
 
-Supported metrics: `clicks`, `views`, `completed_views`, `viewed_seconds`, `engagements`, `follows`, `saves`, `profile_visits`, `reach`. `attention_seconds` and `attention_score` are accepted but **deprecated** (slated for removal at next major) — use `kind: "vendor_metric"` with an explicit vendor binding instead.
+Supported metrics: `clicks`, `views`, `completed_views`, `viewed_seconds`, `viewable_rate` (requires `standard`; optional `vendor`), `engagements`, `follows`, `saves`, `profile_visits`, `reach`. `attention_seconds` and `attention_score` are accepted but **deprecated** (slated for removal at next major) — use `kind: "vendor_metric"` with an explicit vendor binding instead.
 
 **How these surface in delivery:** `viewed_seconds` is reported via `viewability.viewed_seconds` (the same `standard` threshold governs both `viewable_rate` and `viewed_seconds`). Vendor-attested metrics — attention, panel-based brand lift, emissions, retail-media partner metrics — flow through the `kind: "vendor_metric"` goal kind on the optimization side and `vendor_metric_values[]` on the delivery side, keyed on `(vendor, metric_id)`. See [`kind: vendor_metric`](/docs/media-buy/conversion-tracking/#kind-vendor_metric) for the goal shape and the three-precondition rejection rule.
 
 Target types:
 - `cost_per` — Target cost per metric unit (e.g., $2.50 CPC)
 - `threshold_rate` — Target rate threshold (e.g., 0.02 for 2% CTR)
+
+`viewable_rate` accepts only `threshold_rate` targets, with a value from 0 to 1.
+
+**Vendor shape on legacy and canonical goals.** The legacy goal shape (`core/optimization-goal.json`) carries `vendor` as a `BrandRef`. The canonical 3.2 shape (`core/canonical-optimization-goal.json`) carries it as a `BrandKey`. This applies both to `viewable_rate` and `viewed_seconds` metric goals and to `vendor_metric` goals. When converting a legacy goal to the canonical shape, keep only `domain`, `brand_id`, and `countries`, and drop the other `BrandRef` fields (`industries`, `data_subject_contestation`, `brand_kit_override`). They don't identify a measurement vendor, and the canonical shape rejects them.
 
 ### Event goals
 
@@ -157,6 +161,7 @@ Products declare optimization support via `metric_optimization`:
 - `supported_metrics` — Which metrics the product can optimize for
 - `supported_reach_units` — Required when `reach` is in supported_metrics
 - `supported_view_durations` — Seconds for `completed_views` metric
+- `supported_viewability_standards` — Viewability standards (`mrc`, `groupm`) for `viewable_rate` goals
 - `supported_targets` — Target kinds available. When omitted, only target-less goals (maximize volume) are allowed
 - `max_optimization_goals` — Maximum number of goals per package
 

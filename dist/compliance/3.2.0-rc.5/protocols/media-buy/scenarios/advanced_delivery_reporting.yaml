@@ -1,0 +1,257 @@
+id: media_buy_seller/advanced_delivery_reporting
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Seller narrows metrics and reports delivery by canonical format"
+category: media_buy_seller
+summary: "Verifies requested-metric narrowing, time-threshold video views, negotiated format breakdowns, truncation disclosure, and applied-sort echoes."
+track: reporting
+
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buy_delivery
+  - comply_test_controller
+
+narrative: |
+  AdCP 3.2 lets a buyer keep large delivery payloads focused with
+  requested_metrics and negotiate a canonical format breakdown on the GET
+  path. Narrowing never removes impressions or spend, and it never changes the
+  metric used to sort breakdown rows. A seller returning by_format must say
+  whether rows were truncated and echo the sort it actually applied.
+
+  Time-based video views are an array because the threshold and clock basis are
+  part of each measurement. They are not interchangeable with completion
+  quartiles or average viewed_seconds. This scenario proves those distinctions
+  with deterministic simulated delivery rather than validating only the JSON
+  shapes.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - reports_delivery
+  examples:
+    - "A video seller with payload narrowing and format-grain reporting"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds a video product that declares time_based_views and
+    supports_format_breakdown. The scenario creates a buy, injects known
+    delivery, and asks for only time_based_views plus the always-present
+    impressions and spend metrics.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "advanced_reporting_video"
+      delivery_type: "guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "advanced_reporting_image"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
+        - format_option_id: "advanced_reporting_video_15s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 15000
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 0
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend", "clicks", "time_based_views"]
+        supports_format_breakdown: true
+        date_range_support: "date_range"
+  pricing_options:
+    - product_id: "advanced_reporting_video"
+      pricing_option_id: "advanced_reporting_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 10.0
+
+phases:
+  - id: setup
+    title: "Create a format-reportable video buy"
+    steps:
+      - id: sync_account
+        title: "Establish the buyer account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#advanced_delivery_reporting_sync_account"
+        validations:
+          - check: response_schema
+            description: "Account response matches the protocol schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "The seller assigns an account identity"
+
+      - id: discover_product
+        title: "Discover the reporting-capable product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["olv"]
+            required_metrics: ["time_based_views"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - name: advanced_product_id
+            path: "products[0].product_id"
+          - name: advanced_pricing_option_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Discovery response matches the protocol schema"
+          - check: field_value
+            path: "products[0].reporting_capabilities.supports_format_breakdown"
+            allowed_values: [true]
+            description: "The product explicitly advertises format-grain reporting"
+          - check: field_contains
+            path: "products[0].reporting_capabilities.available_metrics[*]"
+            value: "time_based_views"
+            description: "The product explicitly advertises time-threshold views"
+
+      - id: create_buy
+        title: "Create the video buy"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.advanced_product_id"
+              pricing_option_id: "$context.advanced_pricing_option_id"
+              budget: 1000
+          idempotency_key: "$generate:uuid_v4#advanced_delivery_reporting_create_buy"
+        context_outputs:
+          - name: advanced_media_buy_id
+            path: "media_buy_id"
+          - name: advanced_package_id
+            path: "packages[0].package_id"
+        validations:
+          - check: response_schema
+            description: "Create response matches the protocol schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "The seller assigns a media-buy identity"
+
+  - id: report
+    title: "Inject and retrieve advanced delivery"
+    steps:
+      - id: simulate_delivery
+        title: "Inject deterministic delivery"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.advanced_media_buy_id"
+            impressions: 1001
+            clicks: 101
+            reported_spend:
+              amount: 100.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "The controller accepts the deterministic delivery fixture"
+
+      - id: get_narrowed_format_delivery
+        title: "Request narrowed metrics and a sorted format breakdown"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids: ["$context.advanced_media_buy_id"]
+          requested_metrics: ["time_based_views"]
+          reporting_dimensions:
+            format:
+              limit: 1
+              sort_by: "impressions"
+              sort_direction: "asc"
+        validations:
+          - check: response_schema
+            description: "Advanced delivery response matches the 3.2 schema"
+          - check: field_equals_context
+            path: "media_buy_deliveries[0].media_buy_id"
+            context_key: "advanced_media_buy_id"
+            description: "The response belongs to the requested media buy"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.impressions"
+            description: "Impressions remain present under requested_metrics narrowing"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.spend"
+            description: "Spend remains present under requested_metrics narrowing"
+          - check: field_absent
+            path: "media_buy_deliveries[0].totals.clicks"
+            description: "Unrequested clicks are omitted from totals"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.time_based_views[0].threshold_seconds"
+            allowed_values: [2]
+            description: "The first disclosed time threshold is two seconds"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.time_based_views[0].basis"
+            allowed_values: ["play_time"]
+            description: "The threshold explicitly identifies its playback clock basis"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_format_truncated"
+            allowed_values: [true]
+            description: "The seller discloses that the one-row limit truncated the format set"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_format_sorted_by"
+            allowed_values: ["impressions"]
+            description: "The response echoes the metric actually used for sorting"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_format_sort_direction"
+            allowed_values: ["asc"]
+            description: "The response echoes the applied ascending direction"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_format[0].format_kind"
+            allowed_values: ["video_hosted"]
+            description: "Ascending delivery returns the lower-volume canonical format first"
+          - check: field_absent
+            path: "media_buy_deliveries[0].by_package[0].by_format[0].clicks"
+            description: "Metric narrowing applies to nested format rows too"

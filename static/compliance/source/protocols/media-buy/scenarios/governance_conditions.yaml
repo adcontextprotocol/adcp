@@ -6,6 +6,7 @@ summary: "Verifies that conditions are a non-authorizing intent counterproposal 
 track: media_buy
 requires:
   - multi_agent
+  - controller
 default_agent: sales
 required_tools:
   - sync_plans
@@ -46,6 +47,13 @@ narrative: |
   `report_plan_outcome`; it does not require the seller to echo governance
   conditions or authorization context in its response.
 
+# Buyer brand and intent caller (adcp#7758). The buyer brand
+# hosted-grader.adcontextprotocol.org publishes a real brand.json listing the
+# sandbox governance agent, so a seller can complete the brand.json issuer
+# cross-check and key discovery for governance_context. Hosted grading
+# authenticates to the governance agent as the fixed buyer agent
+# https://hosted-grader.adcontextprotocol.org/buyer, the intent caller below.
+# See test-kits/hosted-grader.yaml for how a seller maps its grading credential.
 context:
   governance_agent_url: "https://test-agent.adcontextprotocol.org"
   seller_agent_url: "https://seller.example.com"
@@ -69,7 +77,7 @@ prerequisites:
     and outcome reporting. The sales agent supports governance registration,
     media-buy creation, and media-buy readback. Override `seller_agent_url` in
     the initial context with the exact sales-agent endpoint used by the runner.
-  test_kit: "test-kits/acme-outdoor.yaml"
+  test_kit: "test-kits/hosted-grader.yaml"
   controller_seeding: true
 
 fixtures:
@@ -111,7 +119,7 @@ phases:
           plans:
             - plan_id: "comply-gov-conditions-plan"
               brand:
-                domain: "acmeoutdoor.example"
+                domain: "hosted-grader.adcontextprotocol.org"
               objectives: "Q2 CTV campaign with weekly reporting"
               budget:
                 total: 100000
@@ -148,11 +156,11 @@ phases:
         doc_ref: "/accounts/tasks/sync_accounts"
         stateful: true
         expected: |
-          Return an active account for Acme Outdoor and Pinnacle Agency.
+          Return an active account for the hosted-grader test brand and Pinnacle Agency.
         sample_request:
           accounts:
             - brand:
-                domain: "acmeoutdoor.example"
+                domain: "hosted-grader.adcontextprotocol.org"
               operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
@@ -178,7 +186,7 @@ phases:
           accounts:
             - account:
                 brand:
-                  domain: "acmeoutdoor.example"
+                  domain: "hosted-grader.adcontextprotocol.org"
                 operator: "pinnacle-agency.example"
               governance_agents:
                 - url: "$context.governance_agent_url"
@@ -210,13 +218,18 @@ phases:
           brief: "CTV inventory on outdoor lifestyle content. $25K budget, adults 25-54, US."
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "hosted-grader.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
         context_outputs:
           - name: product_id
             path: "products[0].product_id"
           - name: pricing_option_id
             path: "products[0].pricing_options[0].pricing_option_id"
+          # $generate aliases are phase-scoped; the intent checks and the
+          # governed create_media_buy read the exact request's key through
+          # context so the authorized payload matches the executed one.
+          - name: governance_conditions_create_media_buy_key
+            generate: uuid_v4
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -247,7 +260,7 @@ phases:
           mutation is authorized.
         sample_request:
           plan_id: "$context.plan_id"
-          caller: "https://pinnacle-agency.example"
+          caller: "https://hosted-grader.adcontextprotocol.org/buyer"
           target_agent: "$context.seller_agent_url"
           tool: "create_media_buy"
           purchase_type: "media_buy"
@@ -256,10 +269,10 @@ phases:
             currency: "USD"
           payload:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "hosted-grader.adcontextprotocol.org"
             account:
               brand:
-                domain: "acmeoutdoor.example"
+                domain: "hosted-grader.adcontextprotocol.org"
               operator: "pinnacle-agency.example"
             total_budget:
               amount: 25000
@@ -270,7 +283,7 @@ phases:
               - product_id: "$context.product_id"
                 budget: 25000
                 pricing_option_id: "$context.pricing_option_id"
-            idempotency_key: "$generate:uuid_v4#governance_conditions_create_media_buy"
+            idempotency_key: "$context.governance_conditions_create_media_buy_key"
         context_outputs:
           - name: consultation_context
             path: "consultation_context"
@@ -318,7 +331,7 @@ phases:
           conditions response, returns the authorization context and expiry.
         sample_request:
           plan_id: "$context.plan_id"
-          caller: "https://pinnacle-agency.example"
+          caller: "https://hosted-grader.adcontextprotocol.org/buyer"
           target_agent: "$context.seller_agent_url"
           tool: "create_media_buy"
           purchase_type: "media_buy"
@@ -328,10 +341,10 @@ phases:
             currency: "USD"
           payload:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "hosted-grader.adcontextprotocol.org"
             account:
               brand:
-                domain: "acmeoutdoor.example"
+                domain: "hosted-grader.adcontextprotocol.org"
               operator: "pinnacle-agency.example"
             total_budget:
               amount: 25000
@@ -342,7 +355,7 @@ phases:
               - product_id: "$context.product_id"
                 budget: 25000
                 pricing_option_id: "$context.pricing_option_id"
-            idempotency_key: "$generate:uuid_v4#governance_conditions_create_media_buy"
+            idempotency_key: "$context.governance_conditions_create_media_buy_key"
             ext:
               governance_policy_acknowledgements:
                 - "ctv_weekly_reporting"
@@ -399,10 +412,10 @@ phases:
           governance conditions or governance_context.
         sample_request:
           brand:
-            domain: "acmeoutdoor.example"
+            domain: "hosted-grader.adcontextprotocol.org"
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "hosted-grader.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
           total_budget:
             amount: 25000
@@ -413,7 +426,7 @@ phases:
             - product_id: "$context.product_id"
               budget: 25000
               pricing_option_id: "$context.pricing_option_id"
-          idempotency_key: "$generate:uuid_v4#governance_conditions_create_media_buy"
+          idempotency_key: "$context.governance_conditions_create_media_buy_key"
           ext:
             governance_policy_acknowledgements:
               - "ctv_weekly_reporting"
@@ -449,7 +462,7 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "hosted-grader.adcontextprotocol.org"
             operator: "pinnacle-agency.example"
           media_buy_ids:
             - "$context.media_buy_id"

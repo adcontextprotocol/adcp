@@ -72,7 +72,7 @@ describe('certification API-key membership gate', () => {
     mocks.createValidation.mockResolvedValue({
       apiKey: {
         id: 'key_123',
-        owner: { id: 'org_free_tier' },
+        owner: { type: 'organization', id: 'org_free_tier' },
         name: 'Free tier API key',
         permissions: [],
       },

@@ -6,6 +6,8 @@ import { normalizeIdentifier } from '../services/identifier-normalization.js';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 import { createLogger } from '../logger.js';
 import type { PoolClient } from 'pg';
+import { PostgresStateStore } from '@adcp/sdk/server';
+import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js';
 
 const log = createLogger('publisher-db');
 const ADAGENTS_CACHE_LOCK_TIMEOUT_MS = 5_000;
@@ -159,6 +161,27 @@ export class PublisherCrawlLeaseLostError extends Error {
     super('Publisher crawl request lease is no longer current');
     this.name = 'PublisherCrawlLeaseLostError';
   }
+}
+
+export class AdagentsManifestRollbackError extends Error {
+  constructor() {
+    super('Refreshed adagents.json last_updated is older than the cached manifest');
+    this.name = 'AdagentsManifestRollbackError';
+  }
+}
+
+export class AdagentsManifestProvenanceError extends Error {
+  constructor() {
+    super('Refreshed adagents.json provenance is incomplete or not authoritative');
+    this.name = 'AdagentsManifestProvenanceError';
+  }
+}
+
+function manifestUpdatedAt(manifest: AdagentsManifest | null): number | null {
+  const value = manifest?.last_updated;
+  if (typeof value !== 'string') return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export interface RecordAdagentsValidationFailureInput {
@@ -1051,10 +1074,14 @@ export class PublisherDatabase {
             AND (
               caa.publisher_domain = $1
               OR caa.property_rid IN (
-                SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                SELECT property_rid FROM catalog_properties
+                 WHERE created_by = $2
+                   AND created_by LIKE 'adagents_json:%'
               )
               OR (caa.property_id_slug IS NOT NULL AND caa.property_rid IN (
-                SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                SELECT property_rid FROM catalog_properties
+                 WHERE created_by = $2
+                   AND created_by LIKE 'adagents_json:%'
               ))
             )`,
         [domain, adagentsCreatedBy(domain)],
@@ -1095,12 +1122,15 @@ export class PublisherDatabase {
         `DELETE FROM catalog_identifiers ci
           USING catalog_properties cp
          WHERE ci.property_rid = cp.property_rid
-           AND cp.created_by = $1`,
+           AND cp.created_by = $1
+           AND cp.created_by LIKE 'adagents_json:%'`,
         [adagentsCreatedBy(domain)],
       );
 
       await client.query(
-        `DELETE FROM catalog_properties WHERE created_by = $1`,
+        `DELETE FROM catalog_properties
+          WHERE created_by = $1
+            AND created_by LIKE 'adagents_json:%'`,
         [adagentsCreatedBy(domain)],
       );
 
@@ -1159,11 +1189,17 @@ export class PublisherDatabase {
         );
         if (lease.rowCount !== 1) throw new PublisherCrawlLeaseLostError();
       }
-      const previousResult = await client.query<{ adagents_json: AdagentsManifest | null }>(
-        `SELECT adagents_json FROM publishers WHERE domain = $1 FOR UPDATE`,
+      const previousResult = await client.query<{
+        adagents_json: AdagentsManifest | null;
+        supply_path_provenance: { discovery_method?: string } | null;
+      }>(
+        `SELECT adagents_json, supply_path_provenance FROM publishers WHERE domain = $1 FOR UPDATE`,
         [domain],
       );
       const previousManifest = previousResult.rows[0]?.adagents_json ?? null;
+      const previousDiscoveryMethod = previousResult.rows[0]?.supply_path_provenance?.discovery_method;
+      const previousAuthorityAdmitted = previousDiscoveryMethod === 'direct' ||
+        previousDiscoveryMethod === 'authoritative_location';
 
       // Normalize array fields before caching. The validator only enforces
       // `authorized_agents` shape, so a publisher serving a JSON-valid file
@@ -1178,6 +1214,32 @@ export class PublisherDatabase {
           ? input.manifest.authorized_agents
           : [],
       };
+      const resolvedUrlForProvenance = typeof input.resolvedUrl === 'string' && input.resolvedUrl.length <= 8192
+        ? input.resolvedUrl
+        : null;
+      const isAuthorityRefresh = input.discoveryMethod === 'direct' || input.discoveryMethod === 'authoritative_location';
+      if (isAuthorityRefresh) {
+        if (resolvedUrlForProvenance === null) throw new AdagentsManifestProvenanceError();
+        // Migration 597 deliberately leaves historical cache rows without
+        // provenance. They are not an admitted rollback baseline and must not
+        // block their first authority-bound refresh.
+        const previousUpdatedAt = previousAuthorityAdmitted ? manifestUpdatedAt(previousManifest) : null;
+        const candidateUpdatedAt = manifestUpdatedAt(safeManifest);
+        if (previousUpdatedAt !== null && (candidateUpdatedAt === null || candidateUpdatedAt < previousUpdatedAt)) {
+          throw new AdagentsManifestRollbackError();
+        }
+        // Bind pin admission to the same transaction that adopts the manifest
+        // and projects its catalog authorizations. A pointer swap throws here,
+        // before any cache/catalog mutation; later failures roll the pin back.
+        const admitted = await supplyPathSnapshotEvidence(domain, {
+          manifest: safeManifest,
+          resolvedUrl: resolvedUrlForProvenance,
+          discoveryMethod: input.discoveryMethod ?? null,
+          fetchedAt: new Date(),
+          expiresAt: input.expiresAt ?? null,
+        }, new PostgresStateStore(client));
+        if (admitted.manifest === null) throw new AdagentsManifestProvenanceError();
+      }
       const changedFields = adagentsChangedFields(previousManifest, safeManifest);
       const writePublisherRevisionEvent = async (): Promise<void> => {
         if (!input.eventsDb || changedFields.length === 0) return;
@@ -1230,10 +1292,12 @@ export class PublisherDatabase {
         `INSERT INTO publishers
            (domain, adagents_json, source_type, last_validated, expires_at,
             last_http_status, last_response_bytes, resolved_url,
-            discovery_method, manager_domain)
-         VALUES ($1, $2::jsonb, 'adagents_json', NOW(), $3, $4, $5, $6, $7, $8)
+            discovery_method, manager_domain, supply_path_provenance)
+         VALUES ($1, $2::jsonb, 'adagents_json', NOW(), $3, $4, $5, $6, $7, $8,
+           CASE WHEN $9::text IS NOT NULL THEN jsonb_build_object('resolved_url', $9::text, 'discovery_method', $7::text, 'fetched_at', NOW(), 'expires_at', $3::timestamptz) ELSE NULL END)
          ON CONFLICT (domain) DO UPDATE SET
            adagents_json = EXCLUDED.adagents_json,
+           supply_path_provenance = EXCLUDED.supply_path_provenance,
            source_type = 'adagents_json',
            last_validated = NOW(),
            expires_at = EXCLUDED.expires_at,
@@ -1254,6 +1318,7 @@ export class PublisherDatabase {
           truncateResolvedUrl(input.resolvedUrl),
           input.discoveryMethod ?? null,
           input.managerDomain ?? null,
+          resolvedUrlForProvenance,
         ]
       );
 
@@ -1288,10 +1353,14 @@ export class PublisherDatabase {
               AND (
                 caa.publisher_domain = $1
                 OR caa.property_rid IN (
-                  SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                  SELECT property_rid FROM catalog_properties
+                   WHERE created_by = $2
+                     AND created_by LIKE 'adagents_json:%'
                 )
                 OR (caa.property_id_slug IS NOT NULL AND caa.property_rid IN (
-                  SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                  SELECT property_rid FROM catalog_properties
+                   WHERE created_by = $2
+                     AND created_by LIKE 'adagents_json:%'
                 ))
               )`,
           [domain, adagentsCreatedBy(domain)],
@@ -1441,10 +1510,14 @@ export class PublisherDatabase {
             AND (
               caa.publisher_domain = $1
               OR caa.property_rid IN (
-                SELECT property_rid FROM catalog_properties WHERE created_by = $3
+                SELECT property_rid FROM catalog_properties
+                 WHERE created_by = $3
+                   AND created_by LIKE 'adagents_json:%'
               )
               OR (caa.property_id_slug IS NOT NULL AND caa.property_rid IN (
-                SELECT property_rid FROM catalog_properties WHERE created_by = $3
+                SELECT property_rid FROM catalog_properties
+                 WHERE created_by = $3
+                   AND created_by LIKE 'adagents_json:%'
               ))
             )`,
         [domain, currentCanonical, adagentsCreatedBy(domain)],
@@ -1490,6 +1563,26 @@ export class PublisherDatabase {
     } finally {
       client.release();
     }
+  }
+
+  /** Manifest-bound successful-fetch provenance; last-attempt diagnostics are never authority evidence. */
+  async getSupplyPathSnapshot(domain: string): Promise<import('../services/supply-path-snapshot.js').SupplyPathSnapshot> {
+    const result = await query<{
+      adagents_json: AdagentsManifest | null;
+      supply_path_provenance: { resolved_url?: string; discovery_method?: string; fetched_at?: string; expires_at?: string } | null;
+    }>(
+      "SELECT CASE WHEN source_type = 'adagents_json' THEN adagents_json ELSE NULL END AS adagents_json, supply_path_provenance FROM publishers WHERE domain = $1 LIMIT 1",
+      [canonicalizePublisherDomain(domain)],
+    );
+    const row = result.rows[0];
+    const provenance = row?.supply_path_provenance;
+    return {
+      manifest: provenance ? row?.adagents_json ?? null : null,
+      resolvedUrl: provenance?.resolved_url ?? null,
+      discoveryMethod: provenance?.discovery_method ?? null,
+      fetchedAt: provenance?.fetched_at ? new Date(provenance.fetched_at) : null,
+      expiresAt: provenance?.expires_at ? new Date(provenance.expires_at) : null,
+    };
   }
 
   /**
@@ -1915,6 +2008,9 @@ export class PublisherDatabase {
     }
 
     // Resolve the set of (property_rid OR publisher-wide) targets for this entry.
+    // Keep the literal LIKE predicate on each catalog query below. Equality to
+    // adagentsCreatedBy(...) implies it at runtime, but PostgreSQL needs the
+    // partial-index predicate in the SQL to use idx_catalog_properties_adagents_lookup.
     const targets: Array<{ propertyRid: string | null; slug: string | null }> = [];
 
     if (variant === 'property_ids') {
@@ -1925,7 +2021,9 @@ export class PublisherDatabase {
       const rows = await client.query<{ property_rid: string; property_id: string }>(
         `SELECT property_rid, property_id
            FROM catalog_properties
-          WHERE created_by = $1 AND property_id = ANY($2)`,
+          WHERE created_by = $1
+            AND created_by LIKE 'adagents_json:%'
+            AND property_id = ANY($2)`,
         [adagentsCreatedBy(publisherDomain), slugs]
       );
       for (const row of rows.rows) {
@@ -1954,7 +2052,9 @@ export class PublisherDatabase {
         const rows = await client.query<{ property_rid: string; property_id: string }>(
           `SELECT property_rid, property_id
              FROM catalog_properties
-            WHERE created_by = $1 AND property_id = ANY($2)`,
+            WHERE created_by = $1
+              AND created_by LIKE 'adagents_json:%'
+              AND property_id = ANY($2)`,
           [adagentsCreatedBy(publisherDomain), slugs]
         );
         for (const row of rows.rows) {
@@ -2005,7 +2105,8 @@ export class PublisherDatabase {
           const rows = await client.query<{ property_rid: string; property_id: string | null }>(
             `SELECT property_rid, property_id
                FROM catalog_properties
-              WHERE created_by = $1`,
+              WHERE created_by = $1
+                AND created_by LIKE 'adagents_json:%'`,
             [adagentsCreatedBy(publisherDomain)]
           );
           for (const row of rows.rows) {
@@ -2019,7 +2120,9 @@ export class PublisherDatabase {
           const rows = await client.query<{ property_rid: string; property_id: string }>(
             `SELECT property_rid, property_id
                FROM catalog_properties
-              WHERE created_by = $1 AND property_id = ANY($2)`,
+              WHERE created_by = $1
+                AND created_by LIKE 'adagents_json:%'
+                AND property_id = ANY($2)`,
             [adagentsCreatedBy(publisherDomain), slugs]
           );
           for (const row of rows.rows) {
@@ -2040,6 +2143,7 @@ export class PublisherDatabase {
                      ELSE '[]'::jsonb END
               ) AS prop
               WHERE cp.created_by = $2
+                AND cp.created_by LIKE 'adagents_json:%'
                 AND cp.property_id IS NOT NULL
                 AND prop->>'property_id' = cp.property_id
                 AND LOWER(REGEXP_REPLACE(

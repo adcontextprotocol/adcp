@@ -109,12 +109,25 @@ describe("admin add-users", () => {
       [TARGET_ORG_ID, SOURCE_ORG_ID]
     );
     await pool.query(
+      "DELETE FROM identities WHERE id IN (SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1)",
+      [USER_ID]
+    );
+    await pool.query("DELETE FROM users WHERE workos_user_id = $1", [USER_ID]);
+    await pool.query(
       "DELETE FROM organizations WHERE workos_organization_id IN ($1, $2)",
       [TARGET_ORG_ID, SOURCE_ORG_ID]
     );
   }
 
   async function seedSourceMembership() {
+    await pool.query(
+      `INSERT INTO users (
+         workos_user_id, email, first_name, last_name, email_verified,
+         workos_created_at, workos_updated_at, created_at, updated_at,
+         primary_organization_id
+       ) VALUES ($1, 'user@example.test', 'Ada', 'Admin', TRUE, NOW(), NOW(), NOW(), NOW(), $2)`,
+      [USER_ID, SOURCE_ORG_ID]
+    );
     await pool.query(
       `INSERT INTO organization_memberships
        (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, role, seat_type, created_at, updated_at, synced_at)

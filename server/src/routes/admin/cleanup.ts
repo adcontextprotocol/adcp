@@ -11,9 +11,9 @@ import {
   isCleanupConfigured,
 } from "../../services/prospect-cleanup.js";
 import { isLushaConfigured } from "../../services/lusha.js";
-import { mergeOrganizations, previewMerge, StripeCustomerResolution } from "../../db/org-merge-db.js";
+import { previewMerge } from "../../db/org-merge-db.js";
+import { organizationMergeUnavailableBody } from "../../db/org-merge-containment.js";
 import { getPool } from "../../db/client.js";
-import { getWorkos } from "../../auth/workos-client.js";
 
 const logger = createLogger("admin-cleanup");
 
@@ -267,96 +267,31 @@ export function setupCleanupRoutes(apiRouter: Router): void {
     }
   );
 
-  // POST /api/admin/cleanup/merge - Execute organization merge
-  apiRouter.post("/cleanup/merge", ...requireGlobalAdmin, async (req, res) => {
-    // Pull org ids out before the try-block so the 500 catch path can
-    // log them. Without this, an error thrown inside the try (where the
-    // destructure used to live) leaves the catch with no idea which
-    // pair was being merged — admins running curl get a bare "Internal
-    // server error" with no diagnostic context.
-    const { primary_org_id, secondary_org_id, stripe_customer_resolution } = req.body;
-
-    if (!primary_org_id || !secondary_org_id) {
-      return res.status(400).json({
-        error: "Missing parameters",
-        message: "Both 'primary_org_id' and 'secondary_org_id' are required",
-      });
-    }
-
-    try {
-
-      // Validate stripe_customer_resolution if provided
-      const validResolutions: StripeCustomerResolution[] = ['keep_primary', 'use_secondary', 'keep_both_unlinked'];
-      if (stripe_customer_resolution && !validResolutions.includes(stripe_customer_resolution)) {
-        return res.status(400).json({
-          error: "Invalid stripe_customer_resolution",
-          message: `Must be one of: ${validResolutions.join(', ')}`,
-        });
-      }
-
-      const user = (req as any).user;
-      const userId = user?.id || "unknown";
-
-      logger.info(
-        { primary_org_id, secondary_org_id, userId, stripe_customer_resolution },
-        "Executing organization merge"
-      );
-
-      const result = await mergeOrganizations(
-        primary_org_id,
-        secondary_org_id,
-        userId,
-        getWorkos(),
-        stripe_customer_resolution ? { stripeCustomerResolution: stripe_customer_resolution } : undefined
-      );
-
-      logger.info(
-        {
-          primary_org_id,
-          secondary_org_id,
-          tables_merged: result.tables_merged.length,
-          stripe_customer_action: result.stripe_customer_action,
-        },
-        "Organization merge completed"
-      );
-
-      res.json(result);
-    } catch (error) {
-      logger.error(
-        {
-          err: error,
-          errMessage: error instanceof Error ? error.message : String(error),
-          errName: error instanceof Error ? error.name : undefined,
-          errStack: error instanceof Error ? error.stack : undefined,
-          errCause: error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined,
-          primary_org_id,
-          secondary_org_id,
-        },
-        "Error executing merge",
-      );
-
-      // Return 400 for validation errors (e.g., personal workspace merge attempts, Stripe conflicts)
-      if (error instanceof Error && (
-        error.message.startsWith('Cannot merge personal workspaces') ||
-        error.message.startsWith('Both organizations have Stripe customers')
-      )) {
-        return res.status(400).json({
-          error: error.message.startsWith('Cannot merge personal workspaces')
-            ? 'Cannot merge personal workspaces'
-            : 'Organization merge conflict',
-        });
-      }
-
-      // 500 path: surface the underlying message in `details` so admins
-      // running merges via curl don't have to dig through Fly logs to
-      // see whether the merge rolled back or which step failed. (May
-      // 2026: Media.net-2 cleanup returned a bare "Internal server
-      // error" with no log entry visible from the caller side, hiding
-      // the real cause for ~30min.)
-      res.status(500).json({
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
+  // POST /api/admin/cleanup/merge - CONTAINED (#6827)
+  //
+  // Merge deletes the secondary organization: local row removed inside the
+  // transaction, commit, then a best-effort provider delete whose failure was
+  // downgraded to a warning. Same split provider/local state the deletion
+  // containment closed, so execution is unavailable on the same terms.
+  //
+  // Administrative authority is deliberately UNCHANGED — requireGlobalAdmin
+  // still authenticates and authorizes, unlike the contained deletion routes,
+  // because nothing here needs to run before authentication. The refusal is
+  // returned before the body is validated and before any merge-specific
+  // database transaction, WorkOS membership write, provider organization
+  // deletion, Stripe operation, audit row, cache invalidation or notification.
+  // mergeOrganizations refuses again at the shared service boundary.
+  //
+  // GET /cleanup/preview-merge above is untouched: previewMerge is read-only.
+  apiRouter.post("/cleanup/merge", ...requireGlobalAdmin, (req, res) => {
+    // This is the only contained merge surface that has an authenticated,
+    // authorized actor in hand, so it is the one that can record who is still
+    // trying. That is the demand signal for re-enabling, and the signal worth
+    // having if an operator then reaches for a manual substitute.
+    logger.warn(
+      { userId: (req as { user?: { id?: string } }).user?.id },
+      "Refused contained organization merge request",
+    );
+    res.status(503).json(organizationMergeUnavailableBody());
   });
 }

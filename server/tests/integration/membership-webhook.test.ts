@@ -37,11 +37,19 @@ describe('Membership webhook DB operations', () => {
       connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
     });
     await runMigrations();
+    await pool.query(
+      `INSERT INTO users (workos_user_id, email, created_at, updated_at)
+       VALUES ($1, 'one@membership.test', NOW(), NOW()),
+              ($2, 'two@membership.test', NOW(), NOW())
+       ON CONFLICT (workos_user_id) DO NOTHING`,
+      [TEST_USER_1, TEST_USER_2],
+    );
   }, 60000);
 
   afterAll(async () => {
     await pool.query('DELETE FROM invitation_seat_types WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM users WHERE workos_user_id = ANY($1)', [[TEST_USER_1, TEST_USER_2]]);
     await closeDatabase();
   });
 
@@ -267,8 +275,8 @@ describe('Membership webhook DB operations', () => {
       expect(updateOrganizationMembership).not.toHaveBeenCalled();
     });
 
-    it('promotes to owner in WorkOS first when the org has no other admin/owner', async () => {
-      const { client, updateOrganizationMembership } = makeWorkos({
+    it('defers ownerless promotion when the org has no other admin/owner', async () => {
+      const { client, updateOrganizationMembership, listOrganizationMemberships } = makeWorkos({
         memberships: [{ userId: TEST_USER_1, role: { slug: 'member' } }],
       });
 
@@ -280,12 +288,13 @@ describe('Membership webhook DB operations', () => {
         incomingRole: 'member',
       });
 
-      expect(result).toEqual({ role: 'owner', promoted: true });
-      expect(updateOrganizationMembership).toHaveBeenCalledWith('om_target', { roleSlug: 'owner' });
+      expect(result).toEqual({ role: 'member', promoted: false });
+      expect(listOrganizationMemberships).not.toHaveBeenCalled();
+      expect(updateOrganizationMembership).not.toHaveBeenCalled();
     });
 
     it('leaves role as member when another admin already exists in WorkOS', async () => {
-      const { client, updateOrganizationMembership } = makeWorkos({
+      const { client, updateOrganizationMembership, listOrganizationMemberships } = makeWorkos({
         memberships: [
           { userId: TEST_USER_2, role: { slug: 'admin' } },
           { userId: TEST_USER_1, role: { slug: 'member' } },
@@ -301,11 +310,12 @@ describe('Membership webhook DB operations', () => {
       });
 
       expect(result).toEqual({ role: 'member', promoted: false });
+      expect(listOrganizationMemberships).not.toHaveBeenCalled();
       expect(updateOrganizationMembership).not.toHaveBeenCalled();
     });
 
-    it('falls back to member when the WorkOS update fails (no drift)', async () => {
-      const { client } = makeWorkos({
+    it('does not attempt an owner update even when the client would fail', async () => {
+      const { client, updateOrganizationMembership } = makeWorkos({
         memberships: [{ userId: TEST_USER_1, role: { slug: 'member' } }],
         updateFails: true,
       });
@@ -320,11 +330,12 @@ describe('Membership webhook DB operations', () => {
 
       expect(result.role).toBe('member');
       expect(result.promoted).toBe(false);
-      expect(result.promotionError).toBeDefined();
+      expect(result.promotionError).toBeUndefined();
+      expect(updateOrganizationMembership).not.toHaveBeenCalled();
     });
 
-    it('falls back to member when WorkOS membership list fails (refuses to promote blind)', async () => {
-      const { client, updateOrganizationMembership } = makeWorkos({
+    it('does not list provider memberships while promotion is deferred', async () => {
+      const { client, updateOrganizationMembership, listOrganizationMemberships } = makeWorkos({
         memberships: [],
         listFails: true,
       });
@@ -339,7 +350,8 @@ describe('Membership webhook DB operations', () => {
 
       expect(result.role).toBe('member');
       expect(result.promoted).toBe(false);
-      expect(result.promotionError).toBeDefined();
+      expect(result.promotionError).toBeUndefined();
+      expect(listOrganizationMemberships).not.toHaveBeenCalled();
       expect(updateOrganizationMembership).not.toHaveBeenCalled();
     });
   });
@@ -547,24 +559,17 @@ describe('Membership webhook DB operations', () => {
       );
     }
 
-    it('always creates membership as member; upsert path handles auto-promotion atomically', async () => {
+    it('defers automatic direct-domain provider authority without an intent journal', async () => {
       await seedOrgWithVerifiedDomain('autolink.com');
       const workos = makeWorkOSMock();
 
       const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
 
-      expect(result).not.toBeNull();
-      expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
-      expect(result!.organizationName).toBe('AutoLink Corp');
-      expect(result!.role).toBe('member');
-      expect(workos.userManagement.createOrganizationMembership).toHaveBeenCalledWith({
-        userId: AUTOLINK_USER,
-        organizationId: TEST_AUTOLINK_ORG_ID,
-        roleSlug: 'member',
-      });
+      expect(result).toBeNull();
+      expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
     });
 
-    it('still creates as member when org already has an admin', async () => {
+    it('defers automatic provider authority even when the org already has an admin', async () => {
       await seedOrgWithVerifiedDomain('autolink.com');
       await pool.query(
         `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, seat_type, created_at, updated_at, synced_at)
@@ -575,10 +580,8 @@ describe('Membership webhook DB operations', () => {
 
       const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
 
-      expect(result).not.toBeNull();
-      expect(workos.userManagement.createOrganizationMembership).toHaveBeenCalledWith(
-        expect.objectContaining({ roleSlug: 'member' }),
-      );
+      expect(result).toBeNull();
+      expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
     });
 
     it('returns null when no matching verified domain exists', async () => {
@@ -623,13 +626,13 @@ describe('Membership webhook DB operations', () => {
       expect(result).toBeNull();
     });
 
-    it('handles membership_already_exists gracefully', async () => {
+    it('does not call WorkOS even when an already-exists response would have been safe to retry', async () => {
       await seedOrgWithVerifiedDomain('autolink.com');
       const workos = makeWorkOSMock({ shouldFail: true, errorCode: 'organization_membership_already_exists' });
 
       const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
-      expect(result).not.toBeNull();
-      expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
+      expect(result).toBeNull();
+      expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
     });
 
     it('returns null on other WorkOS errors', async () => {
@@ -676,7 +679,7 @@ describe('Membership webhook DB operations', () => {
       expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
     });
 
-    it('still creates membership when user has memberships in OTHER orgs (the Triton case)', async () => {
+    it('defers automatic authority when the user has memberships in other orgs', async () => {
       await seedOrgWithVerifiedDomain('autolink.com');
       // Seed an unrelated personal org membership for the user.
       await pool.query(
@@ -689,14 +692,8 @@ describe('Membership webhook DB operations', () => {
 
       const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
 
-      expect(result).not.toBeNull();
-      expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
-      expect(workos.userManagement.createOrganizationMembership).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: AUTOLINK_USER,
-          organizationId: TEST_AUTOLINK_ORG_ID,
-        }),
-      );
+      expect(result).toBeNull();
+      expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
 
       // Cleanup the personal-org seed
       await pool.query(
@@ -704,12 +701,12 @@ describe('Membership webhook DB operations', () => {
       );
     });
 
-    it('stages provisioning_source=verified_domain so the webhook can record it', async () => {
+    it('does not stage a membership when automatic provider authority is deferred', async () => {
       await seedOrgWithVerifiedDomain('autolink.com');
       const workos = makeWorkOSMock();
 
       const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, 'matt@autolink.com');
-      expect(result).not.toBeNull();
+      expect(result).toBeNull();
 
       // The staging row should now exist for the org+email pair so the
       // organization_membership.created webhook can consume it.
@@ -718,9 +715,7 @@ describe('Membership webhook DB operations', () => {
          WHERE workos_organization_id = $1 AND lower(email) = lower($2)`,
         [TEST_AUTOLINK_ORG_ID, 'matt@autolink.com'],
       );
-      expect(staged.rows[0]).toBeDefined();
-      expect(staged.rows[0].seat_type).toBe('community_only');
-      expect(staged.rows[0].source).toBe('verified_domain');
+      expect(staged.rows).toEqual([]);
     });
 
     // ─────────────────────────────────────────────────────────────────
@@ -776,19 +771,14 @@ describe('Membership webhook DB operations', () => {
         await clearBrandHierarchy();
       });
 
-      it('links @child.com user to parent when org has opted into hierarchical auto-provisioning', async () => {
+      it('defers hierarchical provider authority even when the org opted in', async () => {
         await seedBrandHierarchy();
         const workos = makeWorkOSMock();
 
         const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
 
-        expect(result).not.toBeNull();
-        expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
-        expect(workos.userManagement.createOrganizationMembership).toHaveBeenCalledWith({
-          userId: AUTOLINK_USER,
-          organizationId: TEST_AUTOLINK_ORG_ID,
-          roleSlug: 'member',
-        });
+        expect(result).toBeNull();
+        expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
       });
 
       it('does NOT auto-link via hierarchy by default (auto_provision_brand_hierarchy_children = false)', async () => {
@@ -830,7 +820,7 @@ describe('Membership webhook DB operations', () => {
         expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
       });
 
-      it('honors direct auto-provisioning opt-out independently for direct matches', async () => {
+      it('defers hierarchy authority independently of the direct-domain flag', async () => {
         // Direct=false (opt-out), hierarchy=true. A user matching the
         // child via hierarchy still gets in.
         await seedBrandHierarchy();
@@ -841,9 +831,9 @@ describe('Membership webhook DB operations', () => {
         );
         const workos = makeWorkOSMock();
 
-        // Hierarchical match still works.
         const inheritedResult = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
-        expect(inheritedResult).not.toBeNull();
+        expect(inheritedResult).toBeNull();
+        expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
       });
 
       it('short-circuits when the user is already in the resolved parent org', async () => {
@@ -893,7 +883,7 @@ describe('Membership webhook DB operations', () => {
         await pool.query('DELETE FROM users WHERE workos_user_id = $1', [AUTOLINK_USER]);
       });
 
-      it('cohort: still auto-links a NEW user (created after flag flip) via hierarchy', async () => {
+      it('cohort: defers a new user created after the hierarchy flag flip', async () => {
         await seedBrandHierarchy({ hierarchyOptIn: false }); // start opted out
         // Flip flag at T0 (sets enabled_at = NOW()).
         await pool.query(
@@ -912,13 +902,13 @@ describe('Membership webhook DB operations', () => {
         const workos = makeWorkOSMock();
         const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
 
-        expect(result).not.toBeNull();
-        expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
+        expect(result).toBeNull();
+        expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
 
         await pool.query('DELETE FROM users WHERE workos_user_id = $1', [AUTOLINK_USER]);
       });
 
-      it('cohort: auto-links when no users row exists yet (just-created via webhook)', async () => {
+      it('cohort: does not treat a missing user row as permission to auto-link', async () => {
         // Webhook race: autoLink fires before user.created webhook lands the
         // local users row. Don't block on a missing row — treat as new joiner.
         await seedBrandHierarchy(); // hierarchyOptIn defaults to true
@@ -929,11 +919,11 @@ describe('Membership webhook DB operations', () => {
 
         const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
 
-        expect(result).not.toBeNull();
-        expect(result!.organizationId).toBe(TEST_AUTOLINK_ORG_ID);
+        expect(result).toBeNull();
+        expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
       });
 
-      it('prefers a direct verified-domain match over a hierarchical one when both exist', async () => {
+      it('does not choose a direct or hierarchical target while automatic writes are deferred', async () => {
         // Direct match wins: even if the brand registry says child→parent,
         // an explicit organization_domains row on the child takes priority.
         await seedBrandHierarchy();
@@ -955,8 +945,8 @@ describe('Membership webhook DB operations', () => {
         const workos = makeWorkOSMock();
         const result = await autoLinkByVerifiedDomain(workos, AUTOLINK_USER, `mike@${CHILD_DOMAIN}`);
 
-        expect(result).not.toBeNull();
-        expect(result!.organizationId).toBe(DIRECT_ORG);
+        expect(result).toBeNull();
+        expect(workos.userManagement.createOrganizationMembership).not.toHaveBeenCalled();
 
         // Cleanup
         await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1', [DIRECT_ORG]);

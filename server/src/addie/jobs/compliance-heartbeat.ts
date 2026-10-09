@@ -1,5 +1,6 @@
 import { complianceRunProvenance } from '../../compliance/run-provenance.js';
 import { isAuthoritativeComplianceRun } from '../../compliance/run-publication.js';
+import { withStoryboardSkipDetails } from '../../compliance/storyboard-skip-details.js';
 /**
  * Compliance Heartbeat Job
  *
@@ -23,8 +24,11 @@ import {
   type ComplianceResult,
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
-import { query, withDatabaseDeadline } from '../../db/client.js';
-import { ComplianceRefreshRequestsDatabase } from '../../db/compliance-refresh-requests-db.js';
+import { query } from '../../db/client.js';
+import {
+  ComplianceRefreshRequestsDatabase,
+  COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT,
+} from '../../db/compliance-refresh-requests-db.js';
 import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
@@ -32,7 +36,6 @@ import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
-import { getVerificationProfileShadowRollout } from '../../db/system-settings-db.js';
 import {
   pruneVerificationProfileShadowAssessments,
   recordVerificationProfileShadowAssessment,
@@ -41,8 +44,11 @@ import {
   deriveVerificationProfileShadowAssessment,
   VERIFICATION_PROFILE_SHADOW_POLICY_VERSION,
 } from '../../services/verification-profile-shadow.js';
+import { deriveVerificationProfileRoleAssessments } from '../../services/verification-profile-assessment.js';
 import {
   hostedComplianceTarget,
+  HOSTED_COMPLIANCE_OVERRUN_MS,
+  HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
 } from '../../services/hosted-compliance-version.js';
 
@@ -53,13 +59,46 @@ const fallbackComplianceTarget = hostedComplianceTarget();
 
 interface HeartbeatOptions {
   limit?: number;
+  /** Include the bounded admin status snapshot used by the scheduled worker. */
+  includeOperationalDiagnostics?: boolean;
 }
 
-interface HeartbeatResult {
+export interface HeartbeatResult {
   checked: number;
   passed: number;
   failed: number;
   skipped: number;
+  diagnostics?: {
+    eligibleBacklog: number;
+    selectedAgents: string[];
+    runsRecorded: number;
+    skipReasons: HeartbeatSkipReasons;
+    requestedComplianceTarget: string;
+    complianceBundleVersion: string;
+    sdkVersion: string;
+  };
+}
+
+/**
+ * An inconclusive target or audit-only run is a completed per-agent attempt,
+ * not a worker failure. Escalate only when every selected agent was blocked by
+ * setup, execution-fence, or persistence errors before any run could be recorded.
+ */
+export function assertComplianceHeartbeatOperationalProgress(result: HeartbeatResult): void {
+  const diagnostics = result.diagnostics;
+  if (!diagnostics || diagnostics.selectedAgents.length === 0 || result.checked > 0 || diagnostics.runsRecorded > 0) {
+    return;
+  }
+
+  const { skipReasons } = diagnostics;
+  const blockedByWorker = skipReasons.pre_target_error + skipReasons.execution_fence_lost + skipReasons.agent_error;
+  if (blockedByWorker !== diagnostics.selectedAgents.length) return;
+
+  throw new Error(
+    `Compliance heartbeat could not process any of ${diagnostics.selectedAgents.length} selected agents`
+    + ` (backlog=${diagnostics.eligibleBacklog}, runs_recorded=${diagnostics.runsRecorded},`
+    + ` skips=${JSON.stringify(skipReasons)})`,
+  );
 }
 
 interface HeartbeatSkipReasons {
@@ -88,8 +127,12 @@ async function pruneShadowLedgerBestEffort(): Promise<void> {
   }
 }
 
-export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}): Promise<HeartbeatResult> {
-  const limit = options.limit ?? 10;
+export async function runComplianceHeartbeatJob(
+  options: HeartbeatOptions = {},
+  signal?: AbortSignal,
+): Promise<HeartbeatResult> {
+  signal?.throwIfAborted();
+  const limit = options.limit ?? 6;
   const result: HeartbeatResult = { checked: 0, passed: 0, failed: 0, skipped: 0 };
   const skipReasons: HeartbeatSkipReasons = {
     execution_fence_busy: 0,
@@ -112,43 +155,51 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   );
   const batchStartedAt = Date.now();
   const pendingShadowAssessments: PendingShadowAssessment[] = [];
+  let runsRecorded = 0;
 
-  // Mark agents as in-progress to prevent concurrent pickup by overlapping runs.
-  // Agents are processed serially, so the lock must outlive the worst-case batch
-  // runtime — otherwise an agent late in the loop has its lock expire before the
-  // loop reaches it and an overlapping run re-picks it (duplicate assessment,
-  // double badge fan-out). Worst case is batchSize × the full-comply budget, plus
-  // headroom for per-agent target selection. Scheduling lives in registry
-  // metadata; the public last_checked_at always describes authoritative evidence.
-  // A mid-loop crash re-queues the agent after this TTL.
-  const urls = agentsDue.map(a => a.agent_url);
+  // Mark selected agents in progress before concurrent processing. The lock
+  // covers the worst-case number of waves, including target discovery, so an
+  // overlapping worker cannot select agents awaiting a local suite slot.
+  const selectedUrls = agentsDue.map(a => a.agent_url);
   // Each agent has two bounded capability pre-discoveries: target selection,
   // then hosted auth defaults inside comply(). Account for both explicitly so
   // the lock remains valid for the documented worst case.
-  if (urls.length > 0) {
-    const perAgentBudgetMs = HOSTED_FULL_COMPLIANCE_TIMEOUT_MS + (2 * HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
-    const lockSeconds = urls.length * (perAgentBudgetMs / 1000) + 300;
-    await query(
+  const perAgentBudgetMs = HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS
+    + HOSTED_COMPLIANCE_OVERRUN_MS + (2 * HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
+  const waves = Math.ceil(selectedUrls.length / COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT);
+  const lockUntil = new Date(Date.now() + waves * perAgentBudgetMs + 300_000);
+  let claimedUrls = new Set<string>();
+  if (selectedUrls.length > 0) {
+    const claimed = await query<{ agent_url: string }>(
       `INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
-       SELECT unnest($1::text[]), NOW() + make_interval(secs => $2)
-       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NOW() + make_interval(secs => $2)`,
-      [urls, lockSeconds],
+       SELECT unnest($1::text[]), $2::timestamptz
+       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = EXCLUDED.next_compliance_check_at
+       WHERE agent_registry_metadata.next_compliance_check_at IS NULL
+          OR agent_registry_metadata.next_compliance_check_at < NOW()
+       RETURNING agent_url`,
+      [selectedUrls, lockUntil],
     );
+    claimedUrls = new Set(claimed.rows.map(row => row.agent_url));
   }
+  const claimedAgents = agentsDue.filter(agent => claimedUrls.has(agent.agent_url));
+  const urls = claimedAgents.map(agent => agent.agent_url);
 
-  for (const agent of agentsDue) {
-    const executionFence = await complianceRefreshDb.acquireAgentExecutionFence(agent.agent_url);
+  const processAgent = async (agent: (typeof agentsDue)[number]): Promise<void> => {
+    signal?.throwIfAborted();
+    const executionFence = await complianceRefreshDb.acquireHeartbeatExecutionFence(agent.agent_url);
     if (!executionFence) {
-      await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+      await complianceDb.deferComplianceCheckAfterContention(agent.agent_url, lockUntil);
       result.skipped++;
       skipReasons.execution_fence_busy++;
       logger.debug(
         { agentUrl: agent.agent_url },
         'Compliance heartbeat skipped because another full suite is running',
       );
-      continue;
+      return;
     }
     const startTime = Date.now();
+    let assessmentTimeoutMs = HOSTED_FULL_COMPLIANCE_TIMEOUT_MS;
+    let credentialOrgId: string | null = null;
     const assertExecutionFence = () => {
       if (!executionFence.isValid()) {
         throw Object.assign(new Error('Compliance heartbeat execution fence was lost'), {
@@ -163,7 +214,15 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       source: 'default',
     };
     try {
-      const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
+      const previousAttempt = await complianceDb.getLatestComplianceAttempt(agent.agent_url, null);
+      if (previousAttempt?.completeness === 'timed_out'
+        || (previousAttempt?.completeness === 'complete'
+          && (previousAttempt.total_duration_ms ?? 0) >= HOSTED_FULL_COMPLIANCE_TIMEOUT_MS * 0.8)) {
+        assessmentTimeoutMs = HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS;
+      }
+      const auth = await complianceDb.resolveOwnerAuth(agent.agent_url, undefined, orgId => {
+        credentialOrgId = orgId;
+      });
       const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `heartbeat:${agent.agent_url}` });
 
       // adcp#6632 / adcp-client#2639 — distribute coverage across
@@ -174,12 +233,14 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       // applies the offset modulo the runnable count and ignores the option
       // when it predates 2639 — safe across SDK versions.
       const storyboardStartOffset = await complianceDb.countComplianceRuns(agent.agent_url);
+      const hardDeadline = AbortSignal.timeout(assessmentTimeoutMs + HOSTED_COMPLIANCE_OVERRUN_MS);
       const complyOptions: ComplyOptions & { storyboard_start_offset?: number } = {
         test_session_id: `heartbeat-${Date.now()}`,
-        timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
+        timeout_ms: assessmentTimeoutMs,
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
         storyboard_start_offset: storyboardStartOffset,
+        signal: signal ? AbortSignal.any([signal, hardDeadline]) : hardDeadline,
       };
       const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(agent.agent_url);
 
@@ -195,10 +256,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           { agentUrl: agent.agent_url, seededSupportedVersions },
           'Compliance heartbeat skipped because no trustworthy target could be selected',
         );
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
         result.skipped++;
         skipReasons.target_unconfirmed++;
-        continue;
+        return;
       }
       runTarget = runTargetSelection.target;
       assertExecutionFence();
@@ -213,10 +274,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           },
           'Compliance heartbeat skipped because the completed run superseded its selected target',
         );
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
         result.skipped++;
         skipReasons.target_superseded++;
-        continue;
+        return;
       }
 
       logOutboundRequest({
@@ -227,24 +288,34 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         success: true,
       });
 
-      const dbInput = complianceResultToDbInput(
+      const dbInput = withStoryboardSkipDetails(complianceResultToDbInput(
         complianceResult,
         agent.agent_url,
         agent.lifecycle_stage as LifecycleStage,
         'heartbeat',
-      );
+      ), complianceResult);
       dbInput.dry_run = false;
+      dbInput.triggered_org_id = credentialOrgId;
+      if (isAuthoritativeComplianceRun(dbInput)) {
+        dbInput.grading_profile_assessments = deriveVerificationProfileRoleAssessments({
+          result: complianceResult,
+          lifecycleStage: agent.lifecycle_stage as LifecycleStage,
+          requestedComplianceTarget: dbInput.requested_compliance_target,
+          storyboardStatuses: dbInput.storyboard_statuses ?? [],
+        });
+      }
       assertExecutionFence();
       const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+      runsRecorded++;
       assertExecutionFence();
 
       if (!isAuthoritativeComplianceRun(dbInput)) {
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
         result.skipped++;
         skipReasons.audit_only++;
         logger.info({ agentUrl: agent.agent_url, runId: run.id, completeness: dbInput.completeness },
           'Recorded audit-only compliance evidence; authoritative grade and badges preserved');
-        continue;
+        return;
       }
 
       result.checked++;
@@ -321,6 +392,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             complianceDb,
             agentUrl: agent.agent_url,
             supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+            sourceRunId: run.id,
           });
           assertExecutionFence();
           if (badgeResult.revoked.length > 0) {
@@ -357,6 +429,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         );
       }
     } catch (error) {
+      // A scheduler timeout is a batch-level cancellation, not evidence about
+      // the current agent. Let the job fail after the finally block releases
+      // its execution fence instead of recording a false agent failure and
+      // continuing through the rest of the batch with an aborted transport.
+      signal?.throwIfAborted();
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
       if (error && typeof error === 'object' && 'code' in error && error.code === 'execution_fence_lost') {
@@ -367,7 +444,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
         result.skipped++;
         skipReasons.execution_fence_lost++;
-        continue;
+        return;
       }
 
       // Errors before a compatible target is selected are infrastructure or
@@ -390,7 +467,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         }
         result.skipped++;
         skipReasons.pre_target_error++;
-        continue;
+        return;
       }
 
       const isAgentTimeout = /timed?\s*out/i.test(errorMessage);
@@ -407,7 +484,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       let observationSeverity: 'warning' | 'error';
       let observationMessage: string;
       if (isAgentTimeout) {
-        headline = `Timed out: assessment did not complete within ${HOSTED_FULL_COMPLIANCE_TIMEOUT_MS / 1000}s`;
+        headline = `Timed out: assessment did not complete within ${assessmentTimeoutMs / 1000}s`;
         observationCategory = 'connectivity';
         observationSeverity = 'warning';
         observationMessage = headline;
@@ -452,6 +529,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           agent_url: agent.agent_url,
           requested_compliance_target: runTarget.requested,
           adcp_version: runTarget.version,
+          runner_capability_version: LIBRARY_VERSION,
           lifecycle_stage: agent.lifecycle_stage as LifecycleStage,
           overall_status: 'failing',
           headline,
@@ -462,14 +540,16 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           tracks_partial: 0,
           observations_json: [{ category: observationCategory, severity: observationSeverity, message: observationMessage }],
           triggered_by: 'heartbeat',
+          triggered_org_id: credentialOrgId,
           dry_run: false,
           completeness: 'not_completed',
           provenance_json: complianceRunProvenance({ adcp_version: runTarget.version, agent_profile: {} as ComplianceResult['agent_profile'] }),
           is_authoritative: false,
           replace_storyboard_statuses: true,
         });
+        runsRecorded++;
 
-        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
       } catch (recordError) {
         // Fence loss during failure recording must be handled here directly:
         // we are already inside catch (error), so re-throwing would escape the
@@ -484,7 +564,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
           result.skipped++;
           skipReasons.execution_fence_lost++;
-          continue;
+          return;
         }
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }
@@ -494,11 +574,47 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     } finally {
       await executionFence.release();
     }
-  }
+  };
 
-  // Shadow persistence is deliberately outside the public heartbeat loop.
-  // Re-check the audited switch with a short deadline before every write so a
-  // disable or automatic expiry takes effect within an already-running batch.
+  let nextAgentIndex = 0;
+  const failures: unknown[] = [];
+  const runWorker = async (): Promise<void> => {
+    while (nextAgentIndex < claimedAgents.length && failures.length === 0 && !signal?.aborted) {
+      const agent = claimedAgents[nextAgentIndex++];
+      try {
+        await processAgent(agent);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+  };
+  const toMb = (bytes: number) => Math.round(bytes / 1024 / 1024);
+  const initialMemory = process.memoryUsage();
+  const peakMemory = { rssMb: toMb(initialMemory.rss), heapUsedMb: toMb(initialMemory.heapUsed) };
+  const sampleMemory = () => {
+    const current = process.memoryUsage();
+    peakMemory.rssMb = Math.max(peakMemory.rssMb, toMb(current.rss));
+    peakMemory.heapUsedMb = Math.max(peakMemory.heapUsedMb, toMb(current.heapUsed));
+  };
+  const memorySampler = setInterval(sampleMemory, 5_000);
+  memorySampler.unref();
+  try {
+    await Promise.all(Array.from(
+      { length: Math.min(COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT, claimedAgents.length) },
+      runWorker,
+    ));
+  } finally {
+    clearInterval(memorySampler);
+    sampleMemory();
+  }
+  if (failures.length > 0) {
+    logger.warn({ peakMemory, selectedCount: claimedAgents.length }, 'Compliance heartbeat batch stopped before completion');
+    throw failures[0];
+  }
+  signal?.throwIfAborted();
+
+  // Comparison persistence is deliberately outside the public heartbeat loop.
+  // It reuses the completed run and has no agent traffic or badge side effects.
   const publicProcessingDurationMs = Date.now() - batchStartedAt;
   const shadowFlushStartedAt = Date.now();
   const shadowStats = {
@@ -507,34 +623,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     recorded: 0,
     disabled: 0,
     errors: 0,
-    setting_errors: 0,
     total_write_latency_ms: 0,
     max_write_latency_ms: 0,
   };
   for (const pending of pendingShadowAssessments) {
-    let enabled = false;
-    try {
-      enabled = (await withDatabaseDeadline(
-        Date.now() + 500,
-        () => getVerificationProfileShadowRollout(),
-        // Expiry is an audited compare-and-set write when the 72-hour window
-        // elapses, so this bounded operation cannot use a read-only transaction.
-        { readOnly: false },
-      )).enabled;
-    } catch (settingError) {
-      shadowStats.setting_errors++;
-      shadowStats.errors++;
-      logger.error(
-        { settingError, agentUrl: pending.agentUrl },
-        'Verification profile shadow setting could not be read; collection remains disabled',
-      );
-      continue;
-    }
-    if (!enabled) {
-      shadowStats.disabled++;
-      continue;
-    }
-
     shadowStats.attempted++;
     const writeStartedAt = Date.now();
     try {
@@ -569,15 +661,14 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     }
   }
   // Emit one aggregate health record for every scheduled heartbeat, including
-  // empty queues and disabled collection. That makes a frozen pre-rollout
-  // baseline and the collection window comparable without exposing endpoints.
+  // empty queues, without exposing endpoint URLs.
   logger.info(
     {
       publicProcessingDurationMs,
       shadowFlushDurationMs: Date.now() - shadowFlushStartedAt,
       queue: {
         eligibleBacklog,
-        selectedCount: agentsDue.length,
+        selectedCount: claimedAgents.length,
         batchLimit: limit,
       },
       inputs: {
@@ -587,12 +678,25 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         complianceCacheVersion: fallbackComplianceTarget.version,
       },
       outcomes: result,
+      peakMemory,
       skipReasons,
       shadow: shadowStats,
     },
     'Compliance heartbeat shadow flush completed after public processing',
   );
   await pruneShadowLedgerBestEffort();
+
+  if (options.includeOperationalDiagnostics) {
+    result.diagnostics = {
+      eligibleBacklog,
+      selectedAgents: urls,
+      runsRecorded,
+      skipReasons: { ...skipReasons },
+      requestedComplianceTarget: fallbackComplianceTarget.requested,
+      complianceBundleVersion: fallbackComplianceTarget.version,
+      sdkVersion: LIBRARY_VERSION,
+    };
+  }
 
   return result;
 }
