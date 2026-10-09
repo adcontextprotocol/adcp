@@ -136,8 +136,8 @@ if [[ "$latest_only" -eq 1 && ( "$skip_latest" -eq 1 || -n "$release_version" ) 
   echo "--latest-only cannot be combined with versioned publication." >&2
   exit 2
 fi
-if [[ -n "$release_version" && ( ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ || "$skip_latest" -ne 1 || "$build_latest" -eq 1 ) ]]; then
-  echo "--version requires exact semver, --skip-latest, and committed artifacts." >&2
+if [[ -n "$release_version" && ( ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ || "$skip_latest" -ne 1 || "$build_latest" -eq 1 || "$apply_cors" -eq 1 ) ]]; then
+  echo "--version requires exact semver, --skip-latest, committed artifacts, and no bucket policy changes." >&2
   exit 2
 fi
 if [[ "$dry_run" -eq 0 && "$latest_only" -eq 0 && -z "$release_version" ]]; then
@@ -218,7 +218,12 @@ fence_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-release-state.
 if [[ "$dry_run" -eq 0 ]]; then
   node "$fence_script" current
   if [[ -n "$release_version" ]]; then
+    node "$fence_script" committed "$release_version"
+    node "$fence_script" approval
     node "$fence_script" published "$release_version"
+    # Readback is sequential: a previously compared local file may change.
+    # Revalidate the complete committed surface before enumerating R2 writes.
+    node "$fence_script" committed "$release_version"
   fi
 fi
 
@@ -270,15 +275,43 @@ run_cmd() {
 
 # R2 writes are atomic per object, not per bundle. Compare every existing
 # object byte-for-byte; conditional creation closes the head/put overwrite race.
+# Only this private original-Git body is read after the full committed preflight;
+# concurrent working-tree writes cannot change the bytes supplied to AWS.
+immutable_tmpdir=""
+immutable_lists_dir=""
+cleanup_immutable_body() {
+  if [[ -n "$immutable_tmpdir" ]]; then rm -rf -- "$immutable_tmpdir"; fi
+}
+cleanup_immutable_publication() {
+  cleanup_immutable_body
+  if [[ -n "$immutable_lists_dir" ]]; then rm -rf -- "$immutable_lists_dir"; fi
+}
+verify_immutable_body() {
+  if [[ ! -f "$1" || -L "$1" || "$(stat -c '%a' "$1")" != 600 || "$(sha256sum "$1" | cut -d ' ' -f1)" != "$2" ]]; then
+    echo 'Private immutable publication body changed; refusing object mutation.' >&2
+    exit 1
+  fi
+}
 put_immutable() {
   local source="$1" key="$2" cache_control="$3" content_type="$4"
-  local existing head_error
-  existing="$(mktemp)"
-  head_error="$(mktemp)"
+  local existing head_error body_digest
+  immutable_tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/adcp-immutable-body.XXXXXX")"
+  trap cleanup_immutable_publication EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  existing="$immutable_tmpdir/existing"
+  head_error="$immutable_tmpdir/head-error"
+  # One exact original blob read per object; no per-object tree/API enumeration.
+  # Missing/unapproved paths and unsupported tree objects fail before AWS calls.
+  (umask 077; git cat-file blob "${RELEASE_SHA}:${source}" > "$immutable_tmpdir/body")
+  source="$immutable_tmpdir/body"
+  body_digest="$(sha256sum "$source" | cut -d ' ' -f1)"
+  verify_immutable_body "$source" "$body_digest"
   node "$fence_script" current
   if aws s3api head-object --bucket "$bucket" --key "$key" \
       --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" --no-cli-pager >/dev/null 2>"$head_error"; then
     aws s3 cp "s3://${bucket}/${key}" "$existing" "${common_aws_args[@]}"
+    verify_immutable_body "$source" "$body_digest"
     if ! cmp -s "$source" "$existing"; then
       echo "Immutable object differs: $key; refusing overwrite." >&2
       rm -f "$existing" "$head_error"
@@ -291,18 +324,33 @@ put_immutable() {
       exit 1
     fi
     node "$fence_script" current
+    verify_immutable_body "$source" "$body_digest"
     aws s3api put-object --bucket "$bucket" --key "$key" --body "$source" \
       --if-none-match '*' --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
       --no-cli-pager --cache-control "$cache_control" --content-type "$content_type" >/dev/null
   fi
-  rm -f "$existing" "$head_error"
+  cleanup_immutable_body
+  immutable_tmpdir=""
   node "$fence_script" current
 }
 
 publish_filtered() {
   local root="$1" prefix="$2" cache_control="$3" content_type="$4"
   shift 4
-  local file relative pattern
+  local file relative pattern file_list
+  if [[ -z "$immutable_lists_dir" ]]; then
+    immutable_lists_dir="$(mktemp -d "${TMPDIR:-/tmp}/adcp-immutable-list.XXXXXX")"
+    trap cleanup_immutable_publication EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+  fi
+  file_list="$immutable_lists_dir/$(printf '%s' "$root" | sha256sum | cut -d ' ' -f1).list"
+  if [[ ! -f "$file_list" ]]; then
+    # One successful original-tree enumeration per surface, cached across MIME
+    # filters. Mutable index additions/removals cannot alter publication scope.
+    (umask 077; git ls-tree -r -z --name-only "$RELEASE_SHA" -- "$root" > "$file_list")
+    [[ -s "$file_list" ]] || { echo "Empty original publication surface: $root" >&2; exit 1; }
+  fi
   while IFS= read -r -d '' file; do
     [[ -f "$file" && ! -L "$file" ]] || { echo "Missing or symlinked artifact: $file" >&2; exit 1; }
     relative="${file#"$root"/}"
@@ -314,7 +362,7 @@ publish_filtered() {
         break
       fi
     done
-  done < <(git ls-files -z -- "$root")
+  done < "$file_list"
 }
 
 sync_filtered() {
@@ -447,6 +495,10 @@ immutable_cache="public, max-age=31536000, immutable"
 revalidate_cache="public, no-cache, must-revalidate"
 
 if [[ "$latest_only" -eq 0 ]]; then
+if [[ -n "$release_version" ]]; then
+  # Exact version scope must not disappear from mutable directory discovery.
+  sync_schema_tree "dist/schemas/$release_version" "schemas/$release_version" "$immutable_cache"
+else
 for schema_dir in dist/schemas/*; do
   if [[ ! -d "$schema_dir" ]]; then
     continue
@@ -457,6 +509,7 @@ for schema_dir in dist/schemas/*; do
   fi
   sync_schema_tree "$schema_dir" "schemas/$schema_version" "$immutable_cache"
 done
+fi
 fi
 if [[ "$skip_latest" -eq 0 ]]; then
   if [[ "$latest_only" -eq 0 && -f dist/schemas/index.json ]]; then

@@ -39,13 +39,13 @@ describe('uploaded adagents.json validation', () => {
     const result = await handlers.read_slack_file({ file_url: fileUrl, file_name: 'adagents.json' });
     expect(result).toContain('Complete uploaded adagents.json schema validation');
     expect(result).toContain('✅ **Valid!**');
-    expect(result).toContain('validates successfully against https://adcontextprotocol.org/schemas/3.2.2/adagents.json');
+    expect(result).toContain('validates successfully against https://adcontextprotocol.org/schemas/3.2.3/adagents.json');
     expect(result).toContain(`${Buffer.byteLength(uploadedText)} bytes checked`);
     expect(result).toContain('agent endpoint reachability and live publisher authorization were not checked');
     expect(result).not.toContain('Source integrity: unverified');
     expect(result).not.toContain('[Content truncated');
     expect(result.length).toBeLessThan(10_000);
-    expect(schemaRequests).toContain('/schemas/3.2.2/adagents.json');
+    expect(schemaRequests).toContain('/schemas/3.2.3/adagents.json');
     expect(fetch).toHaveBeenCalledWith(fileUrl, expect.objectContaining({ headers: { Authorization: 'Bearer test-bot-token' } }));
   });
 

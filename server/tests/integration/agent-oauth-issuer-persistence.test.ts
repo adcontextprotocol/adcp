@@ -15,8 +15,8 @@ if (!['localhost', '127.0.0.1', '[::1]'].includes(databaseUrl.hostname)) {
   throw new Error('OAuth issuer persistence tests require a disposable loopback PostgreSQL fixture');
 }
 const admin = new Pool({ connectionString, max: 2, connectionTimeoutMillis: 5000 });
-const migration = readFileSync(new URL('../../src/db/migrations/617_agent_oauth_issuer_bindings.sql', import.meta.url), 'utf8');
-const ownerGenerationMigration = readFileSync(new URL('../../src/db/migrations/618_agent_oauth_owner_generation.sql', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../../src/db/migrations/618_agent_oauth_issuer_bindings.sql', import.meta.url), 'utf8');
+const ownerGenerationMigration = readFileSync(new URL('../../src/db/migrations/619_agent_oauth_owner_generation.sql', import.meta.url), 'utf8');
 const ORG = 'org_oauth_issuer_synthetic';
 const AGENT_URL = 'https://seller.example.test/mcp';
 const TOKEN_ISSUER = 'https://tokens.example.test/tenant';
