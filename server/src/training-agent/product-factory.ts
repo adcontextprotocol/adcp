@@ -511,9 +511,21 @@ interface ProductTemplate {
   channels: string[];
   deliveryType: 'guaranteed' | 'non_guaranteed';
   pricingFilter?: (t: PricingTemplate) => boolean;
+  /** Collection sold as this product's only collection (see `ShowDefinition.offer`). */
+  show?: ShowDefinition;
 }
 
 function productTemplatesForPublisher(pub: PublisherProfile): ProductTemplate[] {
+  if (pub.productPerShow) {
+    return (pub.shows ?? []).flatMap(show => show.offer ? [{
+      suffix: show.offer.productSuffix,
+      name: show.offer.name,
+      description: show.offer.description,
+      channels: show.channels,
+      deliveryType: 'guaranteed' as const,
+      show,
+    }] : []);
+  }
   const templates: ProductTemplate[] = [];
 
   // Group by delivery type and channel combinations that make sense
@@ -646,12 +658,15 @@ function buildProduct(
   agentUrl: string,
 ): CatalogProduct {
   const productId = `${pub.id}_${template.suffix}`;
+  const offer = template.show?.offer;
   const pricingTemplates = template.pricingFilter
     ? pub.pricingTemplates.filter(template.pricingFilter)
     : pub.pricingTemplates;
 
   // Fall back to all pricing if filter yields nothing
-  const effectivePricing = pricingTemplates.length > 0 ? pricingTemplates : pub.pricingTemplates;
+  const effectivePricing = offer
+    ? [offer.pricing]
+    : pricingTemplates.length > 0 ? pricingTemplates : pub.pricingTemplates;
 
   // Build metric optimization for non-guaranteed products
   type SupportedMetric = NonNullable<Product['metric_optimization']>['supported_metrics'][number];
@@ -691,7 +706,23 @@ function buildProduct(
   const impressionsPer1k = Math.round(1000 / baseCpm * 1000);
   const currency = effectivePricing[0]?.currency || 'USD';
 
-  if (template.deliveryType === 'guaranteed') {
+  if (offer) {
+    // A flat fee prices a slot, not impressions: forecast the slot's expected
+    // views, which for a sponsored video are also its impressions.
+    const expectedViews = { low: offer.estimatedViews.low, mid: offer.estimatedViews.mid, high: offer.estimatedViews.high };
+    forecast = {
+      points: [{
+        metrics: {
+          impressions: expectedViews,
+          views: expectedViews,
+          spend: { mid: offer.pricing.fixedPrice },
+        },
+      }],
+      forecast_range_unit: 'availability',
+      method: 'guaranteed',
+      currency,
+    } as unknown as Product['forecast'];
+  } else if (template.deliveryType === 'guaranteed') {
     // Availability forecast — total inventory available, no budget input.
     // Cast needed until @adcp/sdk types are regenerated with optional budget
     // and the 'availability' forecast_range_unit value.
@@ -751,9 +782,9 @@ function buildProduct(
   let installments: Product['installments'];
   let collectionTargetingAllowed: boolean | undefined;
   if (pub.shows?.length) {
-    const matchingShows = pub.shows.filter(s =>
-      s.channels.some(c => template.channels.includes(c)),
-    );
+    const matchingShows = template.show
+      ? [template.show]
+      : pub.shows.filter(s => s.channels.some(c => template.channels.includes(c)));
     if (matchingShows.length > 0) {
       collectionSelectors = [{
         publisher_domain: pub.domain,
@@ -776,6 +807,19 @@ function buildProduct(
             status: normalizeInstallmentStatus(ep.status),
             scheduled_at: ep.scheduledAt,
             duration_seconds: ep.durationSeconds,
+            ...(ep.deadlines && {
+              deadlines: {
+                ...(ep.deadlines.bookingDeadline && { booking_deadline: ep.deadlines.bookingDeadline }),
+                ...(ep.deadlines.cancellationDeadline && { cancellation_deadline: ep.deadlines.cancellationDeadline }),
+                ...(ep.deadlines.materialDeadlines?.length && {
+                  material_deadlines: ep.deadlines.materialDeadlines.map(m => ({
+                    stage: m.stage,
+                    due_at: m.dueAt,
+                    ...(m.label && { label: m.label }),
+                  })) as NonNullable<NonNullable<Installment['deadlines']>['material_deadlines']>,
+                }),
+              },
+            }),
           };
           builtInstallments.push(installment);
         }
@@ -800,7 +844,9 @@ function buildProduct(
     product_id: productId,
     name: template.name,
     description: template.description,
-    publisher_properties: publisherPropertySelectors(pub, template.channels) as Product['publisher_properties'],
+    publisher_properties: (offer
+      ? [{ publisher_domain: pub.domain, selection_type: 'by_id' as const, property_ids: [offer.propertyId] }]
+      : publisherPropertySelectors(pub, template.channels)) as Product['publisher_properties'],
     channels: template.channels as MediaChannel[],
     format_ids: formatIds,
     ...(formatOptions.length > 0 ? { format_options: formatOptions as Product['format_options'] } : {}),
@@ -853,6 +899,7 @@ function buildProduct(
     ...(exclusivity && { exclusivity }),
     ...(installments && { installments }),
     ...(collectionTargetingAllowed && { collection_targeting_allowed: collectionTargetingAllowed }),
+    ...(offer && { audience_evidence: structuredClone(offer.audienceEvidence) as unknown as Product['audience_evidence'] }),
   };
 
   // Every catalog product can join one counter shared across a MediaBuy so
@@ -879,7 +926,9 @@ function buildProduct(
   // Populate inline product cards from the product's own data.
   const primaryPricing = effectivePricing[0];
   const primaryAssetType = inferPrimaryAssetType(template.channels);
-  const image = productCardImage(pub);
+  const image = offer
+    ? { ...productCardImage(pub)!, url: offer.heroImageUrl, alt_text: `${template.name} preview` }
+    : productCardImage(pub);
   const priceLabel = productCardPriceLabel(primaryPricing);
   const specifications = [
     { label: 'Publisher', value: pub.name },
@@ -904,6 +953,21 @@ function buildProduct(
     specifications,
     ...(priceLabel && { price_label: priceLabel }),
     cta_label: 'View details',
+    // `role: other` until the schema carries a dedicated sample-content role.
+    ...(offer && {
+      reference_assets: offer.sampleContent.map(sample => ({
+        role: 'other' as const,
+        role_label: 'Sample content',
+        asset: {
+          asset_type: 'video' as const,
+          url: sample.url,
+          width: sample.width,
+          height: sample.height,
+          duration_ms: sample.durationMs,
+        },
+        description: sample.title,
+      })),
+    }),
   };
 
   return {
@@ -918,6 +982,7 @@ function buildShowObject(show: ShowDefinition): ShowResponse {
   return {
     show_id: show.showId,
     name: show.name,
+    ...(show.kind && { kind: show.kind }),
     genre: show.genre,
     cadence: show.cadence,
     status: show.status,
@@ -981,6 +1046,9 @@ interface ProposalDefinition {
   description: string;
   briefAlignment: string;
   budgetGuidance: { min: number; recommended: number; currency: string };
+  /** Delivery estimate shown on the proposal card. Required when the products
+   * are not priced per thousand impressions, where it cannot be derived. */
+  estimatedDeliveryText?: string;
   /** Product suffix → allocation percentage. Must sum to 100. */
   allocations: Array<{
     productSuffix: string;
@@ -990,6 +1058,21 @@ interface ProposalDefinition {
 }
 
 const PROPOSAL_DEFINITIONS: ProposalDefinition[] = [
+  {
+    publisherId: 'creatorloop',
+    proposalId: 'creatorloop_everyday_lifestyle',
+    name: 'CreatorLoop Everyday Lifestyle Creators',
+    description: 'Four lifestyle creators across YouTube and TikTok for sponsored video integrations, guaranteed slots priced at each creator flat rate, up to two per creator.',
+    briefAlignment: 'Answers a creator brief for an everyday-lifestyle audience of adults 18-44. Each creator is its own product, so a buyer can drop any creator before finalizing.',
+    budgetGuidance: { min: 24000, recommended: 48000, currency: 'USD' },
+    estimatedDeliveryText: 'Est. 2.9M-5.7M video views',
+    allocations: [
+      { productSuffix: 'creator_juniper_vale', percentage: 27, rationale: 'Food and weeknight cooking on YouTube; broad 25-34 reach with a majority-female audience' },
+      { productSuffix: 'creator_priya_halden', percentage: 20, rationale: 'Home and DIY on TikTok; strong 25-34 skew and the lowest flat rate in the set' },
+      { productSuffix: 'creator_nadia_ferro', percentage: 22, rationale: 'Fitness and wellness on TikTok; the youngest audience in the set' },
+      { productSuffix: 'creator_odette_moreau', percentage: 31, rationale: 'Fashion and lifestyle on TikTok; highest views per slot among the lifestyle creators' },
+    ],
+  },
   {
     publisherId: 'pinnacle_news',
     proposalId: 'pinnacle_cross_channel',
@@ -1095,7 +1178,7 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
     });
 
     // Estimate total delivery from budget and pricing
-    const totalImpressions = def.budgetGuidance.recommended
+    const totalImpressions = def.budgetGuidance.recommended && !def.estimatedDeliveryText
       ? Math.round(proposalAllocations.reduce((sum, a) => {
           const cp = catalog.find(c => c.product.product_id === a.product_id);
           const firstPricing = cp?.product.pricing_options[0] as { fixed_price?: number; floor_price?: number } | undefined;
@@ -1104,9 +1187,9 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
         }, 0))
       : undefined;
 
-    const estimatedDeliveryText = totalImpressions
+    const estimatedDeliveryText = def.estimatedDeliveryText ?? (totalImpressions
       ? `Est. ${totalImpressions >= 1_000_000 ? `${(totalImpressions / 1_000_000).toFixed(1)}M` : `${Math.round(totalImpressions / 1000)}K`} impressions`
-      : undefined;
+      : undefined);
 
     const proposalCardAssets: Record<string, { content?: string; url?: string }> = {
       proposal_name: { content: def.name },
