@@ -35,8 +35,8 @@ export type ResolvedOwnerAuth =
   | { type: 'basic'; username: string; password: string }
   | {
       type: 'oauth';
-      tokens: { access_token: string; refresh_token: string; expires_at?: string };
-      client?: { client_id: string; client_secret?: string };
+      tokens: { access_token: string; refresh_token: string; expires_at?: string; issuer?: string };
+      client?: { client_id: string; client_secret?: string; issuer?: string };
     }
   | {
       /**
@@ -1972,9 +1972,9 @@ export class ComplianceDatabase {
                 ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type,
                 ac.oauth_access_token_encrypted, ac.oauth_access_token_iv,
                 ac.oauth_refresh_token_encrypted, ac.oauth_refresh_token_iv,
-                ac.oauth_token_expires_at,
+                ac.oauth_token_expires_at, ac.oauth_token_issuer,
                 ac.oauth_client_id,
-                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv,
+                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv, ac.oauth_client_issuer,
                 ac.oauth_cc_token_endpoint, ac.oauth_cc_client_id,
                 ac.oauth_cc_client_secret_encrypted, ac.oauth_cc_client_secret_iv,
                 ac.oauth_cc_scope, ac.oauth_cc_resource, ac.oauth_cc_audience, ac.oauth_cc_auth_method
@@ -2036,9 +2036,10 @@ export class ComplianceDatabase {
           return resolved({ type: 'bearer', token: accessToken });
         }
 
-        const tokens: { access_token: string; refresh_token: string; expires_at?: string } = {
+        const tokens: Extract<ResolvedOwnerAuth, { type: 'oauth' }>['tokens'] = {
           access_token: accessToken,
           refresh_token: refreshToken,
+          ...(row.oauth_token_issuer != null && { issuer: row.oauth_token_issuer }),
         };
         if (row.oauth_token_expires_at) {
           tokens.expires_at = new Date(row.oauth_token_expires_at).toISOString();
@@ -2046,7 +2047,10 @@ export class ComplianceDatabase {
 
         const oauth: Extract<ResolvedOwnerAuth, { type: 'oauth' }> = { type: 'oauth', tokens };
         if (row.oauth_client_id) {
-          const client: { client_id: string; client_secret?: string } = { client_id: row.oauth_client_id };
+          const client: NonNullable<Extract<ResolvedOwnerAuth, { type: 'oauth' }>['client']> = {
+            client_id: row.oauth_client_id,
+            ...(row.oauth_client_issuer != null && { issuer: row.oauth_client_issuer }),
+          };
           if (row.oauth_client_secret_encrypted && row.oauth_client_secret_iv) {
             client.client_secret = decryptToken(
               row.oauth_client_secret_encrypted,

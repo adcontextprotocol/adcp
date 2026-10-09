@@ -39,6 +39,7 @@ import { createLogger } from '../../logger.js';
 import { safeFetchAxiosLike } from '../../utils/url-security.js';
 import { AAO_UA_VALIDATOR } from '../../config/user-agents.js';
 import { query } from '../../db/client.js';
+import { BRAND_JSON_MAX_RESPONSE_BYTES } from '../../services/brand-resolution-cache-policy.js';
 
 const logger = createLogger('brand-canonical-tools');
 
@@ -349,13 +350,6 @@ export interface AddBrandRefResult {
   errors?: string[];
 }
 
-/**
- * Bound on a single brand.json response body. brand.json files are well
- * under 100KB in practice; 256KB gives headroom for richly-annotated
- * portfolios without letting a hostile host stream gigabytes into the
- * worker.
- */
-const BRAND_JSON_MAX_BYTES = 256 * 1024;
 const BRAND_JSON_TIMEOUT_MS = 10_000;
 
 async function fetchBrandJsonUrl(
@@ -372,7 +366,7 @@ async function fetchBrandJsonUrl(
       maxRedirects,
       redirectHostPolicy,
       timeoutMs: BRAND_JSON_TIMEOUT_MS,
-      maxResponseBytes: BRAND_JSON_MAX_BYTES,
+      maxResponseBytes: BRAND_JSON_MAX_RESPONSE_BYTES,
     });
     if (response.status < 200 || response.status >= 300) {
       return { ok: false, error: `HTTP ${response.status} fetching ${url}` };

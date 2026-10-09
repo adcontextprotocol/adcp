@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/media-buy-delivery-webhook-result.json",
   "title": "Media Buy Delivery Webhook Result",
-  "description": "Payload-only delivery report result carried under core/mcp-webhook-payload.json result for task_type media_buy_delivery. This is not a top-level webhook POST body and does not include protocol envelope fields such as task_id or status.",
+  "description": "Payload-only delivery report result carried under core/mcp-webhook-payload.json result for task_type media_buy_delivery. This is not a top-level webhook POST body and does not include protocol envelope fields such as task_id or status. `aggregated_totals` is API-only (`get_media_buy_delivery`) and MUST NOT appear in this payload; see webhooks.mdx.",
   "x-adcp-validation": {
     "verifier_constraints": {
       "row_currency_consistency": "When media_buy_deliveries[].currency is present, every present by_package[].currency MUST equal it",

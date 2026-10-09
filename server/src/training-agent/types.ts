@@ -157,6 +157,12 @@ export const TRAINING_BIDDING_POLICY_CAPABILITY = {
   },
 } as const;
 
+/** Event-goal target kinds the training agent binds, advertised as
+ * media_buy.conversion_tracking.supported_targets on 3.1+ responses. cost_per
+ * is the criteria.outcome_target cost target the planner binds to an event
+ * source; the planner rejects an event-goal cost target when it is absent. */
+export const TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS = ['cost_per'] as const;
+
 /** Reliable Reporting 1.0 is available only from its matching RC.1 candidate. */
 export function supportsReliableReporting(servedVersion: string | undefined): boolean {
   return atLeastAdcpVersion(servedVersion, RELIABLE_REPORTING_ADCP_VERSION);
@@ -314,6 +320,10 @@ export interface PublisherProfile {
   measurementProvider: string;
   measurementNotes: string;
   properties: PropertyDefinition[];
+  /** Products over this publisher's properties let a buyer select a subset
+   * through `targeting_overlay.property_list`. Exclusion is honoured on every
+   * product regardless. */
+  propertyListTargeting?: boolean;
   /** Optional: catalog types this publisher supports */
   catalogTypes?: string[];
   reportingFrequencies: string[];
@@ -427,6 +437,10 @@ export interface ComplyDeliveryAccumulator {
   plays?: number;
   /** Latest DOOH delivery detail block injected by simulate_delivery. */
   doohMetrics?: Record<string, unknown>;
+  /** Property-grain rows injected by simulate_delivery; echoed verbatim as by_property. */
+  propertyDelivery?: Array<Record<string, unknown>>;
+  /** Installment x property rows injected by simulate_delivery; echoed verbatim as by_installment_property. */
+  installmentPropertyDelivery?: Array<Record<string, unknown>>;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
   conversionValue?: number;
@@ -589,6 +603,9 @@ export interface SessionState {
   /** Caller-scoped agent-level capability-change subscribers. Values retain
    * write-only credentials; read responses redact them. */
   agentNotificationConfigs: Map<string, Record<string, unknown>>;
+  /** Caller-scoped principal documents (reporting destinations, declarations)
+   * keyed by the stable caller key. See principal.ts. */
+  principalConfigurations: Map<string, Record<string, unknown>>;
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
   signalActivations: Map<string, SignalActivationState>;
@@ -597,6 +614,10 @@ export interface SessionState {
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
   governanceAdjustments: Map<string, GovernanceAdjustmentState>;
   propertyLists: Map<string, PropertyListState>;
+  /** Buyer property lists this seller fetched for targeting, keyed by
+   * agent_url, list_id, and a fingerprint of the supplied credential. Entries
+   * are reused only until their `cache_valid_until`. */
+  propertyListCache: Map<string, PropertyListCacheEntry>;
   collectionLists: Map<string, CollectionListState>;
   contentStandards: Map<string, ContentStandardsState>;
   rightsGrants: Map<string, RightsGrantState>;
@@ -884,6 +905,9 @@ export interface PackageState {
    * package. Kept alongside the effective targeting so create/update/read
    * surfaces cannot drift after a configured product is selected. */
   targetingResolution?: Record<string, unknown>;
+  /** Effective inventory after buyer property lists, recomputed whenever
+   * the package's targeting is created or replaced. */
+  propertyListApplication?: PackagePropertyApplication;
   context?: Record<string, unknown>;
   legacyOmitProductId?: boolean;
   /** Buyer-declared optimization goals carried through from create_media_buy.
@@ -922,8 +946,26 @@ export interface ListReference {
   auth_token?: string;
 }
 
+/** A buyer property list as the seller resolved it from the list agent. */
+export interface PropertyListCacheEntry {
+  identifiers: Array<{ type: string; value: string }>;
+  /** When the list agent resolved the snapshot (copied from its response). */
+  resolvedAt: string;
+  /** Re-fetch at or after this instant. */
+  cacheValidUntil: string;
+}
+
+/** Seller-computed result of applying buyer property lists to one package. */
+export interface PackagePropertyApplication {
+  /** Product properties that remain eligible after every list. */
+  effectiveProperties: Array<{ publisher_domain: string; property_id: string }>;
+  /** One `inventory-list-application` receipt per effective list reference. */
+  listApplications: Array<Record<string, unknown>>;
+}
+
 export interface PackageTargeting {
   property_list?: ListReference;
+  property_list_exclude?: ListReference;
   collection_list?: ListReference;
   collection_list_exclude?: ListReference;
   audience_include?: string[];
@@ -1021,6 +1063,20 @@ export interface GovernanceDelegation {
   expiresAt?: string;
 }
 
+/** One `budget.periods[]` entry: a half-open `[start, end)` window with its own amount. */
+export interface GovernanceBudgetPeriod {
+  budgetPeriodId: string;
+  start: string;
+  end: string;
+  amount: number;
+}
+
+/** Resolved flight of a dated governed action, as half-open `[start, end)`. */
+export interface GovernanceActionFlight {
+  start: string;
+  end: string;
+}
+
 export interface GovernancePlanState {
   planId: string;
   /** Authenticated buyer agent that synchronized and owns this plan. */
@@ -1037,6 +1093,8 @@ export interface GovernancePlanState {
     accountingMode: 'gross_commitment' | 'verified_net_cost';
     perSellerMaxPct?: number;
     allocations?: Record<string, { amount?: number; maxPct?: number }>;
+    /** Time partition of the budget, sorted by start. Absent when the plan has no periods. */
+    periods?: GovernanceBudgetPeriod[];
   };
   humanReviewRequired: boolean;
   humanReviewAutoFlippedBy: string[];
@@ -1124,6 +1182,12 @@ export interface GovernanceCheckState {
   /** Budget approved from the governance agent's own evaluated input. */
   authorizedBudget?: number;
   authorizedCurrency?: string;
+  /** Flight the approved action was evaluated against; recorded on the ledger at settlement. */
+  authorizedFlight?: GovernanceActionFlight;
+  /** Budget period derived for this check; echoed as `budget_period_id`. */
+  budgetPeriodId?: string;
+  /** media_buy_id this check was bound to (modification payload or planned_delivery). */
+  mediaBuyId?: string;
   phase?: string;
   findings: GovernanceFinding[];
   conditions?: GovernanceCondition[];
@@ -1183,6 +1247,10 @@ export interface GovernanceOutcomeState {
   sellerReference?: string;
   outcomeType: 'completed' | 'failed' | 'delivery';
   committedBudget: number;
+  /** Flight of the settled action; places its commitment in a budget period. */
+  flight?: GovernanceActionFlight;
+  /** media_buy_id the settled action was bound to, when a check carried one. */
+  mediaBuyId?: string;
   /** Caller-reported amount retained for reconciliation, never ledger authority. */
   reportedCommittedBudget?: number;
   idempotencyKey?: string;

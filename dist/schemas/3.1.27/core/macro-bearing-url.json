@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.27/core/macro-bearing-url.json",
+  "title": "Macro-bearing URL",
+  "description": "Backward-compatible URL value that preserves the existing uri-template branch (including deep links, protocol-relative references, and RFC 6570 host variables) while additionally accepting absolute HTTP(S) URLs with byte-preserved ad-server macro delimiters, including %%...%%, [...] and ${...}. This schema accepts macro spellings without assigning substitution semantics; the existing format and integration contracts determine how they are resolved.",
+  "type": "string",
+  "anyOf": [
+    {
+      "format": "uri-template"
+    },
+    {
+      "format": "uri",
+      "pattern": "^https?://(?:[A-Za-z0-9._~!$&'()*+,;=:%-]+@)?(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:.]+\\])(?::[0-9]{1,5})?(?:[/?#]|$)"
+    },
+    {
+      "pattern": "^https?://(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:.]+\\])(?::[0-9]{1,5})?(?:[/?#](?:[^%\\s\\u0000-\\u001F\\u007F\"<>`\\\\]|%[0-9A-Fa-f]{2}|%%[A-Za-z0-9_.:-]+%%)*)?$"
+    }
+  ]
+}

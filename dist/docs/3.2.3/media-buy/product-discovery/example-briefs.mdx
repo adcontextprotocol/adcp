@@ -1,0 +1,161 @@
+---
+sidebar_label: Example discovery requests
+title: Example campaign discovery requests
+description: "Worked examples showing how buyer agents decompose natural-language campaign requests into briefs, filters, targeting overlays, and future targeting support."
+"og:title": "AdCP — Example campaign discovery requests"
+---
+
+The examples below start with what a human says, then show the structured
+`request_proposals` request an agent should send. The goal is not to make the brief
+verbose. Preserve campaign meaning in prose and move exact values into typed
+fields.
+
+## Local service launch
+
+### Human request
+
+> Help Acme Home Services drive appointment calls from homeowners in Colorado
+> during October. We have $8,000 and only want display inventory priced in USD.
+
+### AdCP request
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441101",
+  "brand": { "domain": "acmehome.example" },
+  "brief": "Drive appointment calls from homeowners who may need urgent or planned home repairs. Favor trusted local and home-improvement contexts.",
+  "criteria": {
+    "offer_filters": {
+      "channels": ["display"],
+      "pricing_currencies": ["USD"],
+      "start_date": "2027-10-01",
+      "end_date": "2027-10-31",
+      "budget_range": { "max": 8000, "currency": "USD" }
+    },
+    "targeting_overlay": {
+      "geo_regions": ["US-CO"]
+    }
+  }
+}
+```
+
+The seller interprets “homeowners” and contextual fit. It does not infer the
+state, channel, currency, dates, or budget.
+
+## Multi-country B2B campaign
+
+### Human request
+
+> Pinnacle Cloud wants qualified leads from technical leaders at growing
+> businesses in the US, Canada, UK, and Germany. We need display or online
+> video, USD or EUR pricing, and completed-view reporting where video is used.
+
+### AdCP request
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441102",
+  "brand": { "domain": "pinnaclecloud.example" },
+  "brief": "Generate qualified leads from technical leaders modernizing multi-cloud infrastructure. Favor trusted technology, security, and business contexts.",
+  "criteria": {
+    "offer_filters": {
+      "channels": ["display", "olv"],
+      "pricing_currencies": ["USD", "EUR"],
+      "required_metrics": ["completed_views"]
+    },
+    "targeting_overlay": {
+      "geo_countries": ["US", "CA", "GB", "DE"]
+    }
+  }
+}
+```
+
+The brief carries job-function meaning because AdCP does not impose one global
+taxonomy for “technical leader.” Geography and product requirements are exact.
+
+## Known country, cities selected later
+
+### Human request
+
+> Nova Meals is launching nationally to parents ages 25–44. After we compare
+> forecasts, our planners will choose separate DMAs and placements for each
+> package. We do not want one product returned per city.
+
+### AdCP request
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441103",
+  "brand": { "domain": "novameals.example" },
+  "brief": "Launch a premium family meal service to time-pressed parents. Favor trusted family, food, and lifestyle contexts.",
+  "criteria": {
+    "targeting_overlay": {
+      "geo_countries": ["US"],
+      "demographics": {
+        "age": { "min": 25, "max": 44, "include_unknown": false }
+      }
+    },
+    "required_overlay_support": {
+      "geo_metros": { "systems": ["nielsen_dma"] },
+      "placement_selection": true
+    }
+  }
+}
+```
+
+`targeting_overlay` is applied now and participates in every returned forecast.
+`required_overlay_support` filters to products that let packages select DMAs
+and placements later. It does not create a product or package per value.
+
+## Hard prose fallback
+
+Structured-first authoring is a SHOULD, not permission for sellers to ignore
+prose. If a buyer sends:
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441104",
+  "brand": { "domain": "acmeoutdoor.example" },
+  "brief": "Hard requirements: US delivery only and ages 25–44. Favor outdoor enthusiasts."
+}
+```
+
+the seller still applies the hard constraints and, because they affect product
+eligibility, pricing, and forecasting, must confirm the structured interpretation
+in `targeting_resolution.brief_targeting`. The buyer should not infer
+confirmation from a missing resolution.
+
+Legacy callers can express the same decomposition through `get_products` with
+`buying_mode: "brief"`, top-level `filters`, `targeting_overlay`, and
+`required_overlay_support`. The split tasks are preferred because they make
+the listing, proposal, and refinement lifecycle explicit.
+
+## Practice
+
+Decompose this request before revealing the answer:
+
+> Acme Audio has $75,000 for a six-week US podcast launch. Only USD pricing.
+> We need completion reporting, want music and technology enthusiasts, and will
+> choose individual shows after reviewing the publisher's recommendations.
+
+<Accordion title="Show one valid decomposition">
+
+- Brief: launch context plus music and technology enthusiast intent.
+- Offer filters: podcast channel, USD currency, six-week dates, $75,000 budget, and
+  required completion metric.
+- Targeting overlay: US.
+- Required overlay support: placement or collection selection later, depending
+  on how the seller models public shows.
+
+</Accordion>
+
+## Review every response
+
+Before purchase:
+
+1. Confirm offer filters excluded ineligible offers.
+2. Confirm forecast and price reflect the structured overlay.
+3. Verify `overlay_support` covers every later-selectable requirement.
+4. Review `targeting_resolution.modifications` and any `brief_targeting`.
+5. Accept a configured product only when its complete targeting resolution is
+   acceptable.

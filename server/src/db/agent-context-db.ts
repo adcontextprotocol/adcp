@@ -55,12 +55,16 @@ export interface OAuthTokens {
   access_token: string;
   refresh_token?: string;
   expires_at?: Date;
+  /** Validated issuing authorization server; absent on historical grants. */
+  issuer?: string;
 }
 
 export interface OAuthClient {
   client_id: string;
   client_secret?: string;
   registered_redirect_uri?: string;
+  /** Authorization server that registered this client, independently of tokens. */
+  issuer?: string;
 }
 
 /**
@@ -666,9 +670,9 @@ export class AgentContextDatabase {
       `SELECT id, updated_at::text AS evaluation_generation, auth_type, auth_token_encrypted, auth_token_iv,
               oauth_access_token_encrypted, oauth_access_token_iv,
               oauth_refresh_token_encrypted, oauth_refresh_token_iv,
-              oauth_token_expires_at, oauth_client_id,
+              oauth_token_expires_at, oauth_token_issuer, oauth_client_id,
               oauth_client_secret_encrypted, oauth_client_secret_iv,
-              oauth_registered_redirect_uri,
+              oauth_registered_redirect_uri, oauth_client_issuer,
               oauth_cc_token_endpoint, oauth_cc_client_id,
               oauth_cc_client_secret_encrypted, oauth_cc_client_secret_iv,
               oauth_cc_scope, oauth_cc_resource, oauth_cc_audience,
@@ -708,10 +712,12 @@ export class AgentContextDatabase {
             access_token: accessToken,
             refresh_token: decryptToken(row.oauth_refresh_token_encrypted, row.oauth_refresh_token_iv, organizationId),
             ...(row.oauth_token_expires_at && { expires_at: new Date(row.oauth_token_expires_at).toISOString() }),
+            ...(row.oauth_token_issuer != null && { issuer: row.oauth_token_issuer }),
           },
           ...(row.oauth_client_id && {
             client: {
               client_id: row.oauth_client_id,
+              ...(row.oauth_client_issuer != null && { issuer: row.oauth_client_issuer }),
               ...(row.oauth_client_secret_encrypted && row.oauth_client_secret_iv && {
                 client_secret: decryptToken(row.oauth_client_secret_encrypted, row.oauth_client_secret_iv, organizationId),
               }),
@@ -778,14 +784,16 @@ export class AgentContextDatabase {
          oauth_refresh_token_encrypted = $3,
          oauth_refresh_token_iv = $4,
          oauth_token_expires_at = $5,
+         oauth_token_issuer = $6,
          updated_at = NOW()
-       WHERE id = $6`,
+       WHERE id = $7`,
       [
         accessEncrypted.encrypted,
         accessEncrypted.iv,
         refreshEncrypted,
         refreshIv,
         tokens.expires_at || null,
+        tokens.issuer ?? null,
         id,
       ]
     );
@@ -802,7 +810,8 @@ export class AgentContextDatabase {
         oauth_access_token_iv,
         oauth_refresh_token_encrypted,
         oauth_refresh_token_iv,
-        oauth_token_expires_at
+        oauth_token_expires_at,
+        oauth_token_issuer
        FROM agent_contexts
        WHERE id = $1`,
       [id]
@@ -814,6 +823,7 @@ export class AgentContextDatabase {
     }
 
     const tokens: OAuthTokens = {
+      ...(row.oauth_token_issuer != null && { issuer: row.oauth_token_issuer }),
       access_token: decryptToken(
         row.oauth_access_token_encrypted,
         row.oauth_access_token_iv,
@@ -848,7 +858,8 @@ export class AgentContextDatabase {
         oauth_access_token_iv,
         oauth_refresh_token_encrypted,
         oauth_refresh_token_iv,
-        oauth_token_expires_at
+        oauth_token_expires_at,
+        oauth_token_issuer
        FROM agent_contexts
        WHERE organization_id = $1 AND agent_url = $2`,
       [organizationId, canonicalUrl]
@@ -860,6 +871,7 @@ export class AgentContextDatabase {
     }
 
     const tokens: OAuthTokens = {
+      ...(row.oauth_token_issuer != null && { issuer: row.oauth_token_issuer }),
       access_token: decryptToken(
         row.oauth_access_token_encrypted,
         row.oauth_access_token_iv,
@@ -921,9 +933,10 @@ export class AgentContextDatabase {
          oauth_client_secret_encrypted = $2,
          oauth_client_secret_iv = $3,
          oauth_registered_redirect_uri = $4,
+         oauth_client_issuer = $5,
          updated_at = NOW()
-       WHERE id = $5`,
-      [client.client_id, secretEncrypted, secretIv, client.registered_redirect_uri || null, id]
+       WHERE id = $6`,
+      [client.client_id, secretEncrypted, secretIv, client.registered_redirect_uri || null, client.issuer ?? null, id]
     );
   }
 
@@ -937,7 +950,8 @@ export class AgentContextDatabase {
         oauth_client_id,
         oauth_client_secret_encrypted,
         oauth_client_secret_iv,
-        oauth_registered_redirect_uri
+        oauth_registered_redirect_uri,
+        oauth_client_issuer
        FROM agent_contexts
        WHERE id = $1`,
       [id]
@@ -950,6 +964,7 @@ export class AgentContextDatabase {
 
     const client: OAuthClient = {
       client_id: row.oauth_client_id,
+      ...(row.oauth_client_issuer != null && { issuer: row.oauth_client_issuer }),
       registered_redirect_uri: row.oauth_registered_redirect_uri || undefined,
     };
 
@@ -976,10 +991,13 @@ export class AgentContextDatabase {
          oauth_refresh_token_encrypted = NULL,
          oauth_refresh_token_iv = NULL,
          oauth_token_expires_at = NULL,
+         oauth_token_issuer = NULL,
          oauth_client_id = NULL,
          oauth_client_secret_encrypted = NULL,
          oauth_client_secret_iv = NULL,
          oauth_registered_redirect_uri = NULL,
+         oauth_client_issuer = NULL,
+         oauth_owner_generation = oauth_owner_generation + 1,
          updated_at = NOW()
        WHERE id = $1`,
       [id]
@@ -998,11 +1016,14 @@ export class AgentContextDatabase {
          oauth_client_secret_encrypted = NULL,
          oauth_client_secret_iv = NULL,
          oauth_registered_redirect_uri = NULL,
+         oauth_client_issuer = NULL,
          oauth_access_token_encrypted = NULL,
          oauth_access_token_iv = NULL,
          oauth_refresh_token_encrypted = NULL,
          oauth_refresh_token_iv = NULL,
          oauth_token_expires_at = NULL,
+         oauth_token_issuer = NULL,
+         oauth_owner_generation = oauth_owner_generation + 1,
          updated_at = NOW()
        WHERE id = $1`,
       [id]

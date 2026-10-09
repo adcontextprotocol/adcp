@@ -20,6 +20,7 @@ import {
   type BrandRelationshipDeclaration,
 } from './db/brand-relationship-db.js';
 import {
+  BRAND_JSON_MAX_RESPONSE_BYTES,
   BRAND_MANAGER_CACHE_TTL_SECONDS,
   brandManagerResolutionTtlMs,
 } from './services/brand-resolution-cache-policy.js';
@@ -131,7 +132,6 @@ export type BrandJson =
 
 const LEGACY_BRAND_SCHEMA = 'https://schemas.adcontextprotocol.org/brand/v1/brand.json';
 const CURRENT_BRAND_SCHEMA = 'https://adcontextprotocol.org/schemas/v3/brand.json';
-const BRAND_JSON_MAX_RESPONSE_BYTES = 256 * 1024;
 // Initial /.well-known/brand.json discovery permits only HTTPS redirects
 // between the originally requested hostname and its exact www counterpart,
 // with SSRF validation repeated per hop. Keep this HTTP budget separate from
