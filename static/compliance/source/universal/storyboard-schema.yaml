@@ -176,11 +176,15 @@
 #                    ("skip the whole storyboard if the capability is absent").
 #                    Storyboards may declare both: the gate fires first, and
 #                    controller_seeding takes effect only if the gate passes.
-#                    Declaring controller_seeding: true without requires:
-#                    [controller] is also valid — mid-run, individual steps
-#                    grade missing_test_controller if the agent lacks the
-#                    tool; requires: [controller] coalesces that into a single
-#                    whole-storyboard skip at load time instead.
+#                    A storyboard that declares prerequisites.controller_seeding:
+#                    true MUST also declare requires: [controller] (enforced by
+#                    tests/lint-storyboard-controller-requires.test.cjs). The
+#                    gate coalesces what would otherwise be a
+#                    missing_test_controller grade on every seeded step into a
+#                    single whole-storyboard requirement_unmet skip at load
+#                    time. Whether a given class of seller is expected to
+#                    implement comply_test_controller is a separate policy
+#                    question — see docs/building/by-layer/L3/comply-test-controller.mdx.
 #                    Mid-run transient loss: if the load-phase gate passes
 #                    (the agent advertised comply_test_controller at load
 #                    time) but the tool becomes unavailable mid-run, the

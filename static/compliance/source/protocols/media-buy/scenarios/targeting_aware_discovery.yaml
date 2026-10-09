@@ -4,6 +4,9 @@ title: "Seller resolves targeting during discovery and persists inventory select
 category: media_buy_seller
 summary: "Verifies targeting-scoped discovery forecasts, future overlay support, sparse configured-product modifications, opaque product acceptance, and inventory targeting across create/update/readback."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.2"
 
 required_tools:

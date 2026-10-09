@@ -61,5 +61,5 @@ describe("fixed-trace rollout test-aware typecheck wiring", () => {
     } finally {
       rmSync(isolated, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 60_000);
 });

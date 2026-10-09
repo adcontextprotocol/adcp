@@ -4,6 +4,9 @@ title: "Billing finality delivery and usage reporting"
 category: media_buy_seller
 summary: "Verifies that 3.1 billing-grade delivery rows distinguish provisional from final numbers and that report_usage accepts final usage records with finality metadata."
 track: reporting
+requires:
+  - controller
+
 introduced_in: "3.1"
 required_tools:
   - sync_accounts

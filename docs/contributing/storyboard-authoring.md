@@ -108,6 +108,8 @@ Declare fixtures at the storyboard root. Set `prerequisites.controller_seeding: 
 
 ```yaml
 id: sales_non_guaranteed
+requires:
+  - controller
 prerequisites:
   controller_seeding: true
   description: "Requires a seeded product and approved creative."
@@ -137,6 +139,8 @@ phases:
 ```
 
 The runner injects a fixtures phase that calls `comply_test_controller` with `scenario: seed_product`, `scenario: seed_pricing_option`, and `scenario: seed_creative` (in foreign-key order) before running `place_buy`. An agent that implements the seed scenarios passes out of the box; an agent that returns `UNKNOWN_SCENARIO` on the seeds causes the storyboard to grade as `not_applicable`, not failed — implementers don't get penalized for missing sandbox-only surface.
+
+**A storyboard with `prerequisites.controller_seeding: true` MUST also declare `requires: [controller]`.** Without it, a seller that has no test controller is graded `missing_test_controller` on every seeded step instead of one storyboard-level `requirement_unmet` skip (capability gates still evaluate first, so a seller that never claimed the capability gets `not_applicable`). `tests/lint-storyboard-controller-requires.test.cjs` enforces this.
 
 When a vendor-metric storyboard needs a deterministic external `measurement.metrics[]` snapshot, add an explicit `comply_test_controller` step with `scenario: seed_measurement_catalog`. Use `measurement_catalogs[]` inside a product fixture only as a compatibility fallback when the same storyboard also needs to carry the seller's product-level capability fields.
 
