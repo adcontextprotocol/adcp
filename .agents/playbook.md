@@ -119,13 +119,16 @@ When running expert agents against documentation changes, test both:
 Conceptual reviews miss workflow gaps. Workflow reviews miss framing errors. Run both.
 
 ### Discriminated Union Error Handling
-Always check for errors before accessing success fields:
+Dispatch on the presence of the success payload, not on `errors`. Some
+success branches (for example `build_creative`) carry non-terminal advisory
+`errors[]` beside the payload, so `if (result.errors)` misreads them as failure:
 ```javascript
 const result = await agent.syncCreatives({...});
-if (result.errors) {
-  console.error('Failed:', result.errors);
-} else {
+if (result.creatives) {
   console.log(`Success: ${result.creatives.length} items`);
+  if (result.errors) console.warn('Advisories:', result.errors);
+} else {
+  console.error('Failed:', result.errors);
 }
 ```
 

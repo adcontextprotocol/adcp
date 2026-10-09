@@ -152,7 +152,8 @@
         },
         "errors": {
           "type": "array",
-          "description": "Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `RIGHTS_CHANNEL_VIOLATION` notice when a requested output targets a channel outside a rights entry's `channels` restriction. Terminal failures use the BuildCreativeError shape, not this field. Presence of `errors` alongside a manifest does not mean the build failed.",
+          "x-added-in": "3.3.0",
+          "description": "Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `RIGHTS_CHANNEL_VIOLATION` notice when a requested output targets a channel outside a rights entry's `channels` / `excluded_channels` restriction. Terminal failures use the BuildCreativeError shape, not this field. Dispatch on manifest presence, not on `errors`: when `creative_manifest` or `creative_manifests` is present the build succeeded and `errors` is advisory only.",
           "items": { "$ref": "/schemas/core/error.json" }
         },
         "context": {
@@ -296,7 +297,8 @@
         },
         "errors": {
           "type": "array",
-          "description": "Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `RIGHTS_CHANNEL_VIOLATION` notice when a requested output targets a channel outside a rights entry's `channels` restriction. Terminal failures use the BuildCreativeError shape, not this field. Presence of `errors` alongside a manifest does not mean the build failed.",
+          "x-added-in": "3.3.0",
+          "description": "Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `RIGHTS_CHANNEL_VIOLATION` notice when a requested output targets a channel outside a rights entry's `channels` / `excluded_channels` restriction. Terminal failures use the BuildCreativeError shape, not this field. Dispatch on manifest presence, not on `errors`: when `creative_manifest` or `creative_manifests` is present the build succeeded and `errors` is advisory only.",
           "items": { "$ref": "/schemas/core/error.json" }
         },
         "context": {
