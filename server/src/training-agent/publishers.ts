@@ -7,6 +7,7 @@
  */
 
 import type { PublisherProfile, ShowDefinition } from './types.js';
+import { CREATOR_PUBLISHER } from './creators.js';
 
 export const PUBLISHERS: PublisherProfile[] = [
   {
@@ -756,4 +757,5 @@ export const PUBLISHERS: PublisherProfile[] = [
       },
     ],
   },
+  CREATOR_PUBLISHER,
 ];

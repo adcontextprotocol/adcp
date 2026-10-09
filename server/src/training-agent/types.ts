@@ -19,6 +19,10 @@ type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' 
 export const TALENT_ROLES = ['host', 'guest', 'creator', 'cast', 'narrator', 'producer', 'correspondent', 'commentator', 'analyst'] as const;
 export type TalentRole = typeof TALENT_ROLES[number];
 
+/** Matches the collection-kind.json enum in static/schemas/source/enums/ */
+export const COLLECTION_KINDS = ['series', 'publication', 'event_series', 'rotation', 'channel'] as const;
+export type CollectionKind = typeof COLLECTION_KINDS[number];
+
 /** First wire release that carries the get_products business-rejection arm. */
 export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 
@@ -284,9 +288,51 @@ export interface ShowLimitedSeries {
   ends?: string;
 }
 
+/** Material submission stage on an installment (`deadlines.material_deadlines`). */
+export interface EpisodeMaterialDeadline {
+  stage: string;
+  dueAt: string;
+  label?: string;
+}
+
+/**
+ * Sellable offer a collection carries when the publisher sells it as its own
+ * product (one product per collection, e.g. a creator-marketplace channel)
+ * rather than bundling it into channel-level products.
+ */
+export interface ShowOfferDefinition {
+  /** Product id suffix; the product id is `${publisher.id}_${productSuffix}`. */
+  productSuffix: string;
+  name: string;
+  description: string;
+  /** Flat price for one booked installment. */
+  pricing: PricingTemplate;
+  /** Publisher property the offer is sold on. */
+  propertyId: string;
+  heroImageUrl: string;
+  /** Video samples surfaced as product-card reference assets. */
+  sampleContent: Array<{
+    title: string;
+    url: string;
+    width: number;
+    height: number;
+    durationMs: number;
+  }>;
+  /** Complete core/audience-evidence.json objects. */
+  audienceEvidence: Array<Record<string, unknown>>;
+  /** Expected views per installment (forecast low/mid/high). */
+  estimatedViews: { low: number; mid: number; high: number };
+}
+
 export interface ShowDefinition {
   showId: string;
   name: string;
+  /** Collection kind; absent means `series`. */
+  kind?: CollectionKind;
+  /** Primary language (BCP 47). */
+  language?: string;
+  /** When present, the publisher sells this collection as its own product. */
+  offer?: ShowOfferDefinition;
   genre: string[];
   cadence: string;
   status: string;
@@ -306,6 +352,13 @@ export interface ShowDefinition {
     scheduledAt?: string;
     durationSeconds?: number;
     special?: ShowSpecial;
+    /** When a tentative installment's data should be re-queried. */
+    validUntil?: string;
+    deadlines?: {
+      bookingDeadline?: string;
+      cancellationDeadline?: string;
+      materialDeadlines?: EpisodeMaterialDeadline[];
+    };
   }>;
 }
 
@@ -343,6 +396,9 @@ export interface PublisherProfile {
   };
   /** Optional: shows this publisher carries */
   shows?: ShowDefinition[];
+  /** Sell each show that declares an `offer` as its own product instead of
+   * generating channel-level products from `channels`/`deliveryTypes`. */
+  productPerShow?: boolean;
   /** Hero image URL for product and proposal cards */
   heroImageUrl?: string;
   /** Audience summary for product cards */
@@ -401,12 +457,14 @@ export interface CatalogProduct {
 export interface ShowResponse {
   show_id: string;
   name: string;
+  kind?: CollectionKind;
   genre: string[];
   cadence: string;
   status: string;
   description?: string;
   content_rating?: Array<{ system: string; rating: string }>;
   talent?: Array<{ name: string; role: TalentRole }>;
+  language?: string;
   distribution?: Array<{
     publisher_domain: string;
     identifiers: Array<{ type: string; value: string }>;
