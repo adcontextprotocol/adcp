@@ -15,7 +15,7 @@
     },
     "brand_ref": {
       "$ref": "/schemas/core/brand-ref.json",
-      "description": "Typed link to this person's brand in brand.json, for example a rights-holder brand with right_type talent. When brand_ref and brand_url are both present they MUST identify the same brand, and brand_ref wins.",
+      "description": "Experimental (media_buy.collection_cards). Typed link to this person's brand in brand.json, for example a rights-holder brand with right_type talent. When brand_ref and brand_url are both present they MUST identify the same brand (brand_url's host equals brand_ref.domain), and brand_ref wins. Only domain and brand_id are read here; other brand_ref fields are ignored.",
       "x-status": "experimental",
       "x-added-in": "3.3.0"
     },

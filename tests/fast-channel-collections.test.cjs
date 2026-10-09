@@ -207,3 +207,22 @@ test('product card reference assets accept the sample_content role', async () =>
     description: 'Sizzle reel for the show this product runs in',
   }), true, JSON.stringify(validate.errors, null, 2));
 });
+
+test('sample_content role takes a url or video asset but not a published_post', async () => {
+  const validate = await compile('/schemas/core/product-card-reference-asset.json');
+  const video = { role: 'sample_content', asset: { asset_type: 'video', url: 'https://cdn.example.com/sizzle.mp4', width: 1920, height: 1080 } };
+  assert.equal(validate(video), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(validate({ role: 'sample_content', asset: { asset_type: 'published_post', post_url: 'https://video.example.com/watch/1' } }), false);
+});
+
+test('collection card fields reject malformed entries and the registry lists the feature id', async () => {
+  const validate = await compile('/schemas/core/collection.json');
+  const base = { collection_id: 'retro_news', name: 'Acme Retro News' };
+  assert.equal(validate({ ...base, images: [{ asset_type: 'video', url: 'https://cdn.example.com/a.mp4' }] }), false);
+  assert.equal(validate({ ...base, sample_content: [{ asset_type: 'published_post' }] }), false);
+  assert.equal(validate({ ...base, talent: [{ role: 'host', name: 'Jordan Vega', brand_ref: { domain: 'jordanvega.example.com', bogus: true } }] }), false);
+  const role = await compile('/schemas/core/product-card-reference-asset.json');
+  assert.equal(role({ role: 'bogus_role', asset: { asset_type: 'url', url: 'https://example.com' } }), false);
+  const registry = fs.readFileSync(path.join(__dirname, '../docs/reference/experimental-status.mdx'), 'utf8');
+  assert.ok(registry.includes('`media_buy.collection_cards`'));
+});

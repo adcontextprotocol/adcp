@@ -1168,7 +1168,7 @@ This is distinct from `hero_image` and `carousel_images`, which are display-orie
 
 Each asset uses the canonical asset types (`image`, `video`, `markdown`, `url`) — the same primitives used throughout AdCP creative schemas.
 
-Collection objects reach buyers only through `adagents.json`; `get_products` and proposals carry collection selectors. The in-band card for a show or creator in a proposal is therefore `product_card_detailed`, and the `sample_content` role is how a seller attaches samples to it. A seller that emits the `sample_content` role on products MUST list `media_buy.collection_cards` in `experimental_features`. See [collection cards](/docs/media-buy/product-discovery/collections-and-installments#collection-cards-experimental).
+Within the buying flow, collection objects reach buyers only through `adagents.json`; `get_products` and proposals carry collection selectors. The in-band card for a show or creator in a proposal is therefore `product_card_detailed`, and the `sample_content` role is how a seller attaches samples to it, as a `url` asset (or `video` for a hosted sizzle reel). A seller that emits the `sample_content` role on products MUST list `media_buy.collection_cards` in `experimental_features`. See [collection cards](/docs/media-buy/product-discovery/collections-and-installments#collection-cards-experimental).
 
 ## Proposals
 
