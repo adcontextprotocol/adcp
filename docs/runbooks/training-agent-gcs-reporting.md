@@ -244,6 +244,87 @@ two hours, status/resource retention is 31 days, and revocation is advertised
 within five minutes. Measure these promises under the actual Fly/GCP/IAM
 conditions before enabling accounts.
 
+## Buyer sign-in
+
+An existing organization API key can authenticate the buyer. When no key is
+available, the opt-in WorkOS Connect path authenticates a person who currently
+has an owner/admin role in the configured canary organization. The reporting
+account remains owned by the organization. API-key creation remains unavailable
+until its separate membership/provider fence is implemented.
+
+Before enabling sign-in, configure the exact resource indicator
+`https://test-agent.adcontextprotocol.org/sales/mcp` in production WorkOS Connect.
+Use an explicitly registered **public OAuth client with PKCE** and redirect URI
+`http://127.0.0.1:8765/callback`, or a supported public dynamic registration
+configuration. Request `openid profile email offline_access`. Do not repurpose
+an existing confidential client or make this an environment-wide default
+resource. Confirm the actual AuthKit issuer's discovery and `/oauth2/jwks`
+endpoints are reachable from the buyer runtime. See [WorkOS MCP authentication](https://workos.com/docs/authkit/mcp).
+
+Deploy the reviewed change with these application settings:
+
+```bash
+TRAINING_BUYER_OAUTH_ENABLED=true
+TRAINING_BUYER_OAUTH_ISSUER=https://YOUR-PRODUCTION-AUTHKIT-DOMAIN
+TRAINING_BUYER_OAUTH_ORGANIZATION_ID=org_REPLACEWITHACTUALID
+# Default: https://test-agent.adcontextprotocol.org/sales/mcp
+TRAINING_BUYER_OAUTH_RESOURCE=https://test-agent.adcontextprotocol.org/sales/mcp
+```
+
+The organization must match `TRAINING_REPORTING_GCS_CANARY_PRINCIPAL` when that
+setting is present. Partial configuration fails startup when enabled. The canonical sales
+MCP endpoint and its private reporting REST routes accept the new credential;
+other tenants and profile/strict aliases retain their existing authentication.
+Protected-resource discovery is served at
+`/.well-known/oauth-protected-resource/sales/mcp` and advertised in the sign-in
+challenge. This setting does not enable GCS delivery.
+
+The server pins issuer, audience, signing algorithm and required user claims.
+It checks the exact authenticated credential's fresh primary-database grants,
+identity binding and epoch, platform bans, and current direct WorkOS membership.
+Linked credentials' grants confer no authority. It rechecks local state after
+the provider lookup and limits OAuth requests to 60 per minute per IP.
+Invalid tokens return 401, denied access returns 403 and unavailable authority
+returns 503. The signed-in actor is retained in trusted request auth context.
+
+WorkOS consent revocation is distinct from membership or local credential
+revocation. This implementation uses signed access tokens with a maximum
+one-hour lifetime and age; it does not promise immediate consent revocation
+through token introspection. A membership, grant or local deletion change is
+checked on the next request. An operation already admitted may complete;
+provider checks are not an atomic lease over external membership mutations.
+
+Store OAuth credentials outside the synced repository. Start sign-in with the
+trusted issuer and the public client ID; omit the client option only when
+public dynamic registration is enabled:
+
+```bash
+node scripts/training-buyer-login.mjs start \
+  --file /tmp/training-buyer-private/oauth.json \
+  --issuer https://YOUR-PRODUCTION-AUTHKIT-DOMAIN \
+  --client-id client_YOUR_PUBLIC_BUYER
+node scripts/training-buyer-login.mjs finish \
+  --file /tmp/training-buyer-private/oauth.json
+```
+
+Open the printed authorization URL on your Mac and select the canary
+organization. The redirect's loopback listener is not running on your Mac, so
+the browser may report a connection failure. Copy the full callback URL from
+its address bar into `finish`'s stdin, then end input. It validates the saved
+state, exact callback origin/path and PKCE before spending the authorization
+code. It verifies access through the official MCP client after exchange.
+Callback URLs and credentials must not go into shell arguments, logs, evidence
+or synced files. The state file is owner-only (0600), updated atomically and
+locked against concurrent buyer processes. After a crash, confirm no buyer
+process remains before removing its adjacent `.lock` file. Start a fresh login
+with a new private file after expiry or denial.
+
+Set `TRAINING_BUYER_OAUTH_FILE` to the saved file for buyer verification. The
+buyer serializes MCP and REST operations through one session and persists
+rotated refresh tokens. Google reader credentials and buyer PostgreSQL state
+remain separate. A real WorkOS sign-in, correct sales audience, organization
+selection, refresh and revocation must be qualified before live delivery.
+
 ## Authenticated provisioning and saved buyer pins
 
 The private control plane is under `/sales/reporting`, behind the existing
@@ -306,7 +387,7 @@ binding digests, inspects GCS bytes and private contracts, and submits an
 earned receipt. The buyer credential file must be a keyless `external_account`
 configuration for the dedicated reader identity.
 
-Set `TRAINING_BUYER_TOKEN`, `TRAINING_BUYER_GCS_CREDENTIALS_FILE` and
+Set exactly one of `TRAINING_BUYER_OAUTH_FILE` or `TRAINING_BUYER_TOKEN`, plus `TRAINING_BUYER_GCS_CREDENTIALS_FILE` and
 `TRAINING_BUYER_DATABASE_URL` privately; none are written to evidence. The existing training agent exposes MCP; use
 the same buyer state across process restarts. `--init` installs buyer persistence once:
 
@@ -399,6 +480,22 @@ npx vitest run --config server/vitest.config.ts \
   tests/unit/training-gcs-reporting-routes.test.ts \
   tests/unit/training-gcs-reporting-tools.test.ts
 ```
+
+Buyer sign-in has separate JWT, authorization, PKCE/state, refresh and private
+storage tests. Its optional integration fixture requires the dedicated local
+`training_buyer_auth_tests` database and creates/removes only its test tables:
+
+```bash
+npx vitest run --config server/vitest.config.ts \
+  tests/unit/training-buyer-oauth.test.ts tests/unit/training-buyer-login.test.ts
+TRAINING_BUYER_AUTH_TEST_DATABASE_URL=postgresql://adcp:localdev@127.0.0.1:<port>/training_buyer_auth_tests \
+  npx vitest run --config server/vitest.config.ts \
+  tests/integration/training-buyer-oauth-postgres.test.ts
+```
+
+That fixture uses real primary PostgreSQL and HTTP MCP with controlled signed
+Connect tokens and modeled provider membership. It cannot qualify a real
+WorkOS login or deployed GCS canary.
 
 The integration suite exercises shared PostgreSQL authority, migration replay,
 private provisioning/isolation, scoped durable source replay, missing-source

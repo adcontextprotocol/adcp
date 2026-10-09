@@ -90,6 +90,9 @@ vi.mock('../../src/middleware/auth.js', async () => {
   };
 });
 
+// Server shutdown imports telemetry lazily. Load its dependencies before the
+// teardown deadline so cold module transforms do not time out this route test.
+import '../../src/utils/otel-logs.js';
 import { HTTPServer } from '../../src/http.js';
 
 describe('perspective asset cache privacy', () => {

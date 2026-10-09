@@ -7,6 +7,7 @@ import { Storage } from '@google-cloud/storage';
 import { SingleAgentClient, canonicalize, closeMCPConnections } from '@adcp/sdk';
 import { createGcsReportingResourceReaderV1, createGcsReportingReferenceResolverV1 } from '@adcp/sdk/reporting/gcs';
 import { createPostgresReportingConsumerRuntimeV1, reconcileReporting } from '@adcp/sdk/reporting/consumer';
+import { openBuyerAuthFile, createBuyerOAuthSession } from './training-buyer-auth.mjs';
 
 /** Uses buyer-owned credentials/state and saved grants, never producer echoes. */
 export async function verifyTrainingGcsBuyer({ grant, expected, storage, client, persistence, consumerScope, authorize }) {
@@ -55,7 +56,7 @@ async function main() {
     command: { type: 'string', default: 'verify' }, agent: { type: 'string', default: 'https://test-agent.adcontextprotocol.org/sales' },
   } });
   if (values.help) {
-    console.log('node scripts/training-gcs-buyer.mjs --provisioning <saved-private-grant.json> --day YYYY-MM-DD --evidence <file> [--init] [--command verify|replay|revoked-404]\nUses the training agent MCP endpoint. Requires TRAINING_BUYER_TOKEN, TRAINING_BUYER_GCS_CREDENTIALS_FILE (keyless external_account), and TRAINING_BUYER_DATABASE_URL (buyer-owned; verify only).');
+    console.log('node scripts/training-gcs-buyer.mjs --provisioning <saved-private-grant.json> --day YYYY-MM-DD --evidence <file> [--init] [--command verify|replay|revoked-404]\nUses the training agent MCP endpoint. Requires exactly one of TRAINING_BUYER_OAUTH_FILE or TRAINING_BUYER_TOKEN, plus TRAINING_BUYER_GCS_CREDENTIALS_FILE (keyless external_account), and TRAINING_BUYER_DATABASE_URL (buyer-owned; verify only).');
     return;
   }
   if (!values.provisioning || !values.evidence || !['verify', 'replay', 'revoked-404'].includes(values.command)
@@ -75,32 +76,38 @@ async function main() {
     return;
   }
   const url = new URL(values.agent);
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !process.env.TRAINING_BUYER_TOKEN) throw new Error('Authenticated HTTPS agent is required.');
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
+    || !!process.env.TRAINING_BUYER_TOKEN === !!process.env.TRAINING_BUYER_OAUTH_FILE) throw new Error('Authenticated HTTPS agent requires exactly one buyer credential.');
   const base = url.href.replace(/\/$/, '');
-  const authorize = async () => {
-    const response = await fetch(`${base}/reporting/destinations/${encodeURIComponent(grant.account_id)}/${encodeURIComponent(grant.destination_ref)}`, {
-      headers: { Authorization: `Bearer ${process.env.TRAINING_BUYER_TOKEN}` }, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) return false;
-    const current = await response.json();
-    return canonicalize(current.grant) === canonicalize(grant);
-  };
-  if (!await authorize()) throw new Error('Saved grant is no longer authorized.');
-  const agent = new SingleAgentClient({ id: 'training-gcs-buyer', name: 'Private training GCS buyer', agent_uri: base,
-    protocol: 'mcp', auth_token: process.env.TRAINING_BUYER_TOKEN }, { adcpVersion: '3.2.1', wireAdcpVersion: '3.2' });
-  const receiptBatches = [];
-  const statusBatches = [];
-  const call = async (tool, params, options) => {
-    if (tool === 'sync_reporting_receipts') receiptBatches.push(structuredClone(params));
-    if (tool === 'sync_reporting_status') statusBatches.push(structuredClone(params));
-    const result = await agent.executeTask(tool, params, undefined, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
-    if (!result.success || result.status !== 'completed' || result.data?.errors?.length) throw new Error('Buyer protocol operation failed.');
-    return result.data;
-  };
-  const client = { getReportingStatus: (p, o) => call('get_reporting_status', p, o), getMediaBuyDelivery: (p, o) => call('get_media_buy_delivery', p, o),
-    syncReportingReceipts: (p, o) => call('sync_reporting_receipts', p, o), syncReportingStatus: (p, o) => call('sync_reporting_status', p, o) };
+  let oauthFile;
   let pool;
   try {
+    oauthFile = process.env.TRAINING_BUYER_OAUTH_FILE ? await openBuyerAuthFile(process.env.TRAINING_BUYER_OAUTH_FILE) : undefined;
+    const oauth = oauthFile ? createBuyerOAuthSession(oauthFile, base) : undefined;
+    const authorize = async () => {
+      const response = await (oauth?.fetch ?? fetch)(`${base}/reporting/destinations/${encodeURIComponent(grant.account_id)}/${encodeURIComponent(grant.destination_ref)}`, {
+        ...(oauth ? {} : { headers: { Authorization: `Bearer ${process.env.TRAINING_BUYER_TOKEN}` } }),
+        cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) return false;
+      const current = await response.json();
+      return canonicalize(current.grant) === canonicalize(grant);
+    };
+    if (!await authorize()) throw new Error('Saved grant is no longer authorized.');
+    const agent = oauth ? undefined : new SingleAgentClient({ id: 'training-gcs-buyer', name: 'Private training GCS buyer', agent_uri: base,
+      protocol: 'mcp', auth_token: process.env.TRAINING_BUYER_TOKEN }, { adcpVersion: '3.2.1', wireAdcpVersion: '3.2' });
+    const receiptBatches = [];
+    const statusBatches = [];
+    const call = async (tool, params, options) => {
+      if (tool === 'sync_reporting_receipts') receiptBatches.push(structuredClone(params));
+      if (tool === 'sync_reporting_status') statusBatches.push(structuredClone(params));
+      if (oauth) return oauth.call(tool, params, options);
+      const result = await agent.executeTask(tool, params, undefined, { signal: options?.signal ?? AbortSignal.timeout(30_000) });
+      if (!result.success || result.status !== 'completed' || result.data?.errors?.length) throw new Error('Buyer protocol operation failed.');
+      return result.data;
+    };
+    const client = { getReportingStatus: (p, o) => call('get_reporting_status', p, o), getMediaBuyDelivery: (p, o) => call('get_media_buy_delivery', p, o),
+      syncReportingReceipts: (p, o) => call('sync_reporting_receipts', p, o), syncReportingStatus: (p, o) => call('sync_reporting_status', p, o) };
     if (values.command === 'replay') {
       const evidence = JSON.parse(await readFile(values.evidence, 'utf8'));
       if (canonicalize(evidence.grant) !== canonicalize(grant)) throw new Error('Evidence belongs to another saved grant.');
@@ -133,7 +140,7 @@ async function main() {
     await writeFile(values.evidence, JSON.stringify(evidence, null, 2) + '\n', { mode: 0o600 });
     if (!result.definitive || result.failedConsumerStatuses.length) throw new Error('Buyer verification is not definitive; inspect retained evidence and repair by authenticated polling.');
     console.log(JSON.stringify({ definitive: true, receipts: result.submittedReceipts.length, evidence: values.evidence }));
-  } finally { await pool?.end(); await closeMCPConnections(); }
+  } finally { await pool?.end(); await oauthFile?.close(); await closeMCPConnections(); }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
