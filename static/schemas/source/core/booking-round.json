@@ -24,7 +24,7 @@
     "request_deadline": {
       "type": "string",
       "format": "date-time",
-      "description": "Soft close of the request round (ISO 8601). A request received after this is governed by late_requests."
+      "description": "Soft close of the request round (ISO 8601). A request received after this is governed by late_request_handling."
     },
     "booking_deadline": {
       "type": "string",
@@ -36,13 +36,13 @@
       "format": "date-time",
       "description": "When the seller expects to confirm requests in this round (ISO 8601). An estimate, not a commitment. A submitted create_media_buy response for a request in this round SHOULD carry this as its expected_confirmation_at."
     },
-    "late_requests": {
+    "late_request_handling": {
       "$ref": "/schemas/enums/late-request-handling.json",
       "description": "Treatment of a request received after request_deadline and before booking_deadline."
     },
     "late_request_pricing_option_id": {
       "type": "string",
-      "description": "Pricing option on the same product that prices an accepted late request, with the late rate in its own binding price (so it stays inside terms_digest). 3.4 candidate: a round-keyed price_adjustments dimension (#7659 / #7955). Not meaningful when late_requests is rejected.",
+      "description": "Pricing option on the same product that prices an accepted late request, with the late rate in its own binding price (so it stays inside terms_digest). 3.4 candidate: a round-keyed price_adjustments dimension (#7659 / #7955). Not meaningful when late_request_handling is rejected.",
       "x-entity": "product_pricing_option"
     },
     "ext": {
@@ -56,12 +56,12 @@
   ],
   "if": {
     "properties": {
-      "late_requests": {
+      "late_request_handling": {
         "const": "rejected"
       }
     },
     "required": [
-      "late_requests"
+      "late_request_handling"
     ]
   },
   "then": {

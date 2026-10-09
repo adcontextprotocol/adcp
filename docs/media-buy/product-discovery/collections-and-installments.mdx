@@ -520,7 +520,7 @@ Installment deadlines describe one installment. Some scheduled media is booked i
 | `request_deadline` | datetime | Soft close of the request round. Required. |
 | `booking_deadline` | datetime | Hard close, same meaning as on an installment. Optional. |
 | `expected_confirmation_at` | datetime | When the seller expects to confirm requests received in the round. An estimate, not a commitment. |
-| `late_requests` | enum | `accepted`, `accepted_without_guarantee`, or `rejected`: treatment of a request after `request_deadline` |
+| `late_request_handling` | enum | `accepted`, `accepted_without_guarantee`, or `rejected`: treatment of a request after `request_deadline` |
 | `late_request_pricing_option_id` | string | Pricing option on the same product that prices an accepted late request |
 
 Ordering: `opens_at` < `request_deadline` ≤ `booking_deadline`, and `request_deadline` ≤ `expected_confirmation_at`. A round's `booking_deadline` MUST NOT be later than the `booking_deadline` of any installment it covers; rounds describe soft closes and the calendar, and hard closes stay with the installment (or `deadline_policy`). Round semantics apply only to a request whose flight falls inside one `covers` window.
@@ -536,7 +536,7 @@ When a seller answers `create_media_buy` with a `submitted` response for a reque
   "request_deadline": "2026-10-09T17:00:00+02:00",
   "booking_deadline": "2026-10-28T17:00:00+01:00",
   "expected_confirmation_at": "2026-10-23T12:00:00+02:00",
-  "late_requests": "accepted_without_guarantee",
+  "late_request_handling": "accepted_without_guarantee",
   "late_request_pricing_option_id": "cpp_late_booking"
 }
 ```
