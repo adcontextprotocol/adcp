@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const YAML = require('yaml');
 
-const { runStoryboard } = require('@adcp/sdk/testing');
+const { parseStoryboard, runStoryboard } = require('@adcp/sdk/testing');
 
 const mediaBuyScenariosPath = path.join(
   __dirname,
@@ -1201,4 +1201,105 @@ test('storyboard capability gates use the schema shape the runner evaluates', ()
   };
   walk(sourceRoot);
   assert.deepEqual(problems, []);
+});
+
+// Execute the source baseline through the installed runner, including its response
+// schemas and upstream checks. Capability differences must not strand the buy ID.
+async function runNonGuaranteedLifecycle({ status, hasCreativeLibrary, pacingStatus = status, upstream = true, badContext = false }) {
+  const storyboard = parseStoryboard(fs.readFileSync(path.join(
+    __dirname, '..', 'static', 'compliance', 'source', 'specialisms', 'sales-non-guaranteed', 'index.yaml'
+  ), 'utf8'));
+  const phases = storyboard.phases.filter(phase => ['create_buy', 'monitor_pacing', 'adjust_bids'].includes(phase.id));
+  const tools = ['get_adcp_capabilities', 'get_products', 'create_media_buy', 'get_media_buys', 'update_media_buy', 'comply_test_controller'];
+  const requests = [];
+  const packages = [
+    { package_id: 'package-first', product_id: 'product-first', pricing_option_id: 'pricing-first', bid_price: 2, budget: 10000 },
+    { package_id: 'package-second', product_id: 'product-second', pricing_option_id: 'pricing-second', bid_price: 3, budget: 15000 },
+  ];
+  const confirmedAt = '2026-01-01T00:00:00Z';
+  const result = await runStoryboard('https://seller.example/mcp', {
+    ...storyboard, prerequisites: undefined, fixtures: undefined, fixture_resolution: undefined, phases,
+  }, {
+    _profile: { tools, raw_capabilities: { creative: { has_creative_library: hasCreativeLibrary } } },
+    _controllerCapabilities: { detected: true, scenarios: ['query_upstream_traffic'] },
+    agentTools: tools,
+    context: {
+      first_product_id: 'product-first', second_product_id: 'product-second',
+      first_pricing_option_id: 'pricing-first', second_pricing_option_id: 'pricing-second',
+      first_bid_price: 2, second_bid_price: 3,
+      first_updated_bid_price: 4, second_updated_bid_price: 5,
+    },
+    _client: {
+      resetContext() {},
+      async createMediaBuy(request) {
+        requests.push({ task: 'create_media_buy', request });
+        return { success: true, data: {
+          media_buy_id: 'buy-lifecycle', media_buy_status: status, confirmed_at: confirmedAt,
+          revision: 1, packages, context: badContext ? { correlation_id: 'wrong' } : request.context,
+        } };
+      },
+      async getMediaBuys(request) {
+        requests.push({ task: 'get_media_buys', request });
+        return { success: true, data: {
+          media_buys: [{ media_buy_id: 'buy-lifecycle', status: pacingStatus, confirmed_at: confirmedAt,
+            revision: 1, currency: 'USD', total_budget: 25000, packages }], context: request.context,
+        } };
+      },
+      async updateMediaBuy(request) {
+        requests.push({ task: 'update_media_buy', request });
+        return { success: true, data: {
+          media_buy_id: request.media_buy_id, media_buy_status: status, revision: 2,
+          affected_packages: packages.map((pkg, index) => ({ ...pkg, ...request.packages[index] })),
+          context: request.context,
+        } };
+      },
+      async executeTask(task, request) {
+        assert.equal(task, 'comply_test_controller');
+        assert.equal(request.scenario, 'query_upstream_traffic');
+        return { success: true, data: { success: true, recorded_calls: upstream ? [{
+          timestamp: new Date().toISOString(), endpoint: 'POST https://auction.example/campaigns',
+        }] : [] } };
+      },
+    },
+  });
+  return { result, requests, steps: result.phases.flatMap(phase => phase.steps) };
+}
+
+for (const [status, hasCreativeLibrary] of [['active', false], ['pending_creatives', true]]) {
+  test(`non-guaranteed ${status} buy reaches pacing and bid updates`, async () => {
+    const { result, requests, steps } = await runNonGuaranteedLifecycle({ status, hasCreativeLibrary });
+    assert.equal(result.overall_passed, true, JSON.stringify(steps));
+    assert.equal(steps.length, 3);
+    assert.ok(steps.every(step => step.passed && !step.skipped), JSON.stringify(steps));
+    assert.deepEqual(requests.map(entry => entry.task), ['create_media_buy', 'get_media_buys', 'update_media_buy']);
+    assert.deepEqual(requests[1].request.media_buy_ids, ['buy-lifecycle']);
+    assert.equal(requests[2].request.media_buy_id, 'buy-lifecycle');
+    assert.deepEqual(requests[2].request.packages.map(pkg => pkg.package_id), ['package-first', 'package-second']);
+    const upstreamChecks = steps.flatMap(step => step.validations).filter(check => check.check === 'upstream_traffic');
+    assert.equal(upstreamChecks.length, 2);
+    assert.ok(upstreamChecks.every(check => check.passed && !check.not_applicable));
+  });
+}
+
+test('non-guaranteed lifecycle checks reject other states at creation and pacing', async () => {
+  for (const status of ['pending_approval', 'rejected', 'canceled', 'completed']) {
+    const created = await runNonGuaranteedLifecycle({ status, hasCreativeLibrary: false });
+    assert.equal(created.steps[0].passed, false, status);
+    assert.ok(created.steps[0].validations.some(check => check.path === 'media_buy_status' && !check.passed), status);
+    const paced = await runNonGuaranteedLifecycle({ status: 'active', pacingStatus: status, hasCreativeLibrary: false });
+    const pacing = paced.steps.find(step => step.step_id === 'get_media_buys_pacing');
+    assert.equal(pacing.passed, false, status);
+    assert.ok(pacing.validations.some(check => check.path === 'media_buys[0].status' && !check.passed), status);
+  }
+});
+
+test('accepting active does not bypass context echoes or upstream side effects', async () => {
+  for (const override of [{ upstream: false }, { badContext: true }]) {
+    const { result, steps } = await runNonGuaranteedLifecycle({ status: 'active', hasCreativeLibrary: false, ...override });
+    assert.equal(result.overall_passed, false);
+    assert.equal(steps[0].passed, false);
+    assert.ok(steps[0].validations.some(check => !check.passed && (
+      override.badContext ? check.path === 'context.correlation_id' : check.check === 'upstream_traffic'
+    )), JSON.stringify(steps[0].validations));
+  }
 });
