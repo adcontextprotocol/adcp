@@ -71,7 +71,7 @@ For an installment scheduled at **09:00 UTC on Monday, October 12, 2026**, the b
 
 ## Delivery evidence and circulation
 
-Print has no impression event. What a buyer reconciles against an insertion order is proof that the insertion ran, where it ran, and the circulation it ran against. A seller reports these on the existing `by_installment` breakdown of [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery), one row per issue, using the optional `print_metrics` object that every `by_installment` row inherits from `delivery-metrics.json`. `print_metrics` is [experimental](/docs/reference/experimental-status) in AdCP 3.3.
+Print has no impression event. What a buyer reconciles against an insertion order is proof that the insertion ran, where it ran, and the circulation it ran against. A seller reports these on the existing `by_installment` breakdown of [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery), one row per issue, using the optional `print_metrics` object that every `by_installment` row inherits from `delivery-metrics.json`. `print_metrics` is [experimental](/docs/reference/experimental-status) in AdCP 3.3 under the feature id `media_buy.offline_delivery_metrics`, which also covers `ooh_metrics`. A seller that reports it declares that id in `experimental_features`.
 
 | Field | Meaning |
 |-------|---------|
