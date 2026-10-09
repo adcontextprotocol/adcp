@@ -126,11 +126,11 @@ Components are independent; lifecycle handling does not imply SDK authentication
 | Component | What the deployed agent uses from the SDK |
 |---|---|
 | `types` | Build-time AdCP type imports. These may be erased before runtime. |
-| `schema_validation` | Runtime validation of AdCP payloads. |
+| `schema_validation` | Runtime validation of AdCP payloads. Claim only when the SDK enforces rejection of invalid payloads, not when validation is advisory or warning-only. |
 | `transport` | Inbound protocol framing, dispatch, and response serialization. |
 | `authentication` | Caller authentication. Account authorization remains a separate obligation. |
-| `signing` | Message signing and signature verification. |
-| `lifecycle` | Domain state-transition enforcement and asynchronous task lifecycle handling. |
+| `signing` | Message signing and signature verification. Claim only when the SDK supplies both behaviors across the applicable advertised task paths. |
+| `lifecycle` | Domain state-transition enforcement and asynchronous task lifecycle handling. Claim only when the SDK supplies both behaviors across the applicable advertised task paths. |
 | `idempotency` | Mutating-request replay protection. |
 | `webhooks` | Notification envelopes, delivery, and retries. |
 
@@ -164,6 +164,14 @@ The following example uses a hypothetical SDK version to show a types-and-valida
 **Using the report.** This metadata is self-reported and advisory. Buyers MUST NOT use it for version negotiation. Recognizing an approved package and version in a trusted catalog is useful for triage, but does not prove the deployed server executes that code. Signing this response authenticates the reporting agent; it does not attest code execution. The metadata does not change any [conformance obligations](/docs/building/verification/conformance).
 
 Buyers should reduce check depth only when independently trusted evidence covers the relevant endpoint, SDK version, and integrated components. Such evidence can support reusing results for covered components while deeper checks focus on custom or uncovered behavior; basic endpoint checks still apply. SDK version or integration changes should trigger reassessment of reused evidence. This field does not introduce an SDK approval catalog, certification inheritance policy, or new attestation format.
+
+When evaluating a seller's SDK report:
+
+- **Unknown, absent, or partial component coverage with no applicable verification** — identify the uncovered components and recommend an AgenticAdvertising.org compliance assessment before relying on the seller. Example: "Additional verification recommended. This seller reports SDK types and validation, but does not report SDK coverage for lifecycle or idempotency. Check current compliance status before purchasing."
+- **Full applicable coverage with no verification** — surface the reported integration and note that it is self-reported and unverified. Example: "SDK integration reported; compliance verification pending."
+- **Current, applicable AgenticAdvertising.org verification** — show the verified scope and grading profile, regardless of whether the implementation uses an SDK.
+
+"Full applicable" means every component relevant to the seller's advertised task paths is covered — not mechanically all eight. Omitted components mean no claimed coverage; buyer messaging should say "does not report SDK coverage for X," not "uses a custom implementation for X." A self-reported full component list cannot independently clear the partial-coverage path; reducing scrutiny requires independently trusted evidence covering the endpoint, AdCP version, and the specific components.
 
 #### idempotency
 
