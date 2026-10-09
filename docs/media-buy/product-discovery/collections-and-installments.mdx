@@ -57,7 +57,7 @@ A collection is a persistent, publisher-controlled content program that produces
 | `talent` | array | No | Hosts, recurring cast, creators. Each entry has `role`, `name`, and optional `brand_url` linking to [brand.json](/docs/brand-protocol/brand-json). |
 | `special` | object | No | When present, this collection is a special — content anchored to a real-world event or occasion. See [specials and limited series](#specials-and-limited-series). |
 | `limited_series` | object | No | When present, this collection is a limited series — a bounded run with a defined arc and end date. See [specials and limited series](#specials-and-limited-series). |
-| `distribution` | array | No | Where this collection is distributed, with host `property_ids`, identifiers, or both per publisher. For `channel` collections this is the carriage map, not proof of sales authorization. |
+| `distribution` | array | No | Where this collection is distributed, with host `property_ids`, identifiers, or both per publisher, and an optional experimental `followers` count. For `channel` collections this is the carriage map, not proof of sales authorization. |
 | `deadline_policy` | object | No | Default deadline rules for installments. Agents compute absolute deadlines from `scheduled_at` minus `lead_days`. Episodes with explicit `deadlines` override. See [deadline policy](#deadline-policy). |
 | `related_collections` | array | No | Relationships to other collections: `spinoff`, `companion`, `sequel`, `prequel`, `crossover`. Each entry has `collection_id` + `relationship`. References are scoped to the same publisher's `adagents.json`. Symmetric types (`companion`, `crossover`) do not require both collections to declare. |
 
@@ -1086,6 +1086,100 @@ Collections SHOULD include at least one platform-independent identifier when ava
 </CodeGroup>
 
 Available podcast types: `apple_podcast_id`, `spotify_collection_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_channel_handle`, `youtube_channel_url`, `youtube_playlist_id`, `amazon_title_id`, `platform_channel_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`. For YouTube channels, `youtube_channel_id` is the preferred canonical identifier; handles and URLs are aliases for discovery and matching when the channel ID is not yet resolved.
+
+## Creator and show cards (experimental)
+
+A buyer comparing creators or shows wants a card: how many followers, who watches, how many views a typical installment gets. Each fact has one home, and no collection-level `audience_stats` object exists.
+
+| Card fact | Where it goes |
+|-----------|---------------|
+| Follower or subscriber count | `distribution[].followers` on the collection (below) |
+| Audience composition | Product `audience_evidence[]` as `seller_declared` evidence (below) |
+| Average views per installment | The product or proposal forecast's `views` metric (a projection for the proposed buy; see below) |
+| Topics | `genre[]` with `genre_taxonomy`, and `installment.topics[]` |
+
+Collection objects reach a buyer through the publisher's [adagents.json](/docs/governance/property/adagents), not inline in `get_products`. Composition and views are inline on the product. The follower count is not: it is on the collection the product's `collections` selector resolves to, so a buyer ranking creators on it needs one `adagents.json` fetch per publisher.
+
+### Follower counts
+
+`distribution[].followers` is the platform-reported follower or subscriber count for the collection on that `publisher_domain`. It reuses [`audience-size`](https://adcontextprotocol.org/schemas/latest/core/audience-size.json), so it carries a range, a `precision`, and an `as_of`:
+
+```json
+{
+  "publisher_domain": "videoplatform.example",
+  "identifiers": [{ "type": "youtube_channel_id", "value": "UCexample123456" }],
+  "followers": {
+    "lower_bound": 1230000,
+    "upper_bound": 1239999,
+    "precision": "approximate",
+    "as_of": "2026-09-01T00:00:00Z"
+  }
+}
+```
+
+- Use `precision: "approximate"` when the platform rounds publicly, as video platforms do with subscriber counts: a displayed "1.23M" is the interval 1,230,000 to 1,239,999. Use `exact` only when the platform reports an exact count, in which case `lower_bound` equals `upper_bound`.
+- `as_of` is the time the platform's count was read. Buyers comparing two creators compare `as_of` first.
+- The value counts accounts, not de-duplicated people, even though `audience-size` is worded for people. A person who follows the same creator on two platforms is counted twice, so buyers MUST NOT sum `followers` across `distribution` entries or treat it as reach.
+- Display and comparison only. It is not a targeting predicate and does not size a buyable audience.
+
+A seller that serves or relays collection objects carrying `followers` MUST list `media_buy.collection_cards` in `experimental_features` on `get_adcp_capabilities`. A publisher authoring the field directly in `adagents.json` has no capabilities response; the field is experimental either way. See [experimental status](/docs/reference/experimental-status).
+
+### Audience composition
+
+Creator audience composition is product-level [audience evidence](/docs/media-buy/product-discovery/media-products#audience-evidence). No new field is needed. A creator's own analytics are a platform report, so declare them with:
+
+- `evidence_type: "seller_declared"`. Independent verification is carried by `attestation_refs`, never inferred from this value.
+- `methodology: "observed"`.
+- `provider` set to the platform's brand reference. It names the source of the numbers, not an attester: creator analytics are usually private to the creator and the platform has not verified this snapshot unless an `attestation_ref` says so.
+- a `baseline` naming the platform's viewer population.
+
+This evidence says that 62% of the channel's viewers are 18 to 24 years old:
+
+```json
+[
+  {
+    "evidence_id": "evidence_nova_viewers_age",
+    "snapshot_id": "evidence_snapshot_2026_09",
+    "version": "2026-09",
+    "content_digest": "sha256:c4d95c77ea3c9056db1611fad6708170a0a7747111e8a200199fed26f658f6fc",
+    "audience": {
+      "dimension": "age",
+      "range": {
+        "min": 18,
+        "max": 24
+      }
+    },
+    "relationship": "composition",
+    "value": 0.62,
+    "unit": "fraction",
+    "baseline": {
+      "system": "https://platform.example/audiences",
+      "population_id": "platform_viewers",
+      "version": "2026-09",
+      "description": "All viewers of the platform's channels in the measurement window"
+    },
+    "evidence_type": "seller_declared",
+    "methodology": "observed",
+    "subject_type": "individual",
+    "provider": {
+      "domain": "videoplatform.example"
+    },
+    "measurement_window": {
+      "start": "2026-08-01",
+      "end": "2026-08-31"
+    },
+    "last_updated": "2026-09-02T00:00:00Z"
+  }
+]
+```
+
+As with all audience evidence, this is population-level planning information. It is not a targeting predicate and not proof about any impression. Only the `age` dimension has a built-in vocabulary today, so a gender split currently needs a provider-defined HTTPS URI with a `taxonomy`; a canonical `gender` dimension is proposed but not yet defined. `audience_evidence` is built for immutable, digest-pinned snapshots, so a marketplace emitting it per creator should limit it to the few dimensions a card needs.
+
+Evidence is not delivery reporting. `by_demographic` in `get_media_buy_delivery` reports what a buy delivered; it does not carry a creator's pre-purchase audience.
+
+### Average views per installment
+
+Report it as the `views` metric in the product's forecast, or in the proposal's forecast when the seller is answering a brief. The forecast already carries ranges, so a creator whose recent videos vary widely can say so. This is the seller's projection for the proposed buy, not a trailing average of past videos, and the forecast has no per-installment unit; state the basis in the product description until the WG decides whether a trailing-window metric is needed.
 
 ## Ad inventory
 
