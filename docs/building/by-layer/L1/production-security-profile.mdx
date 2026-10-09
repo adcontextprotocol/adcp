@@ -1,0 +1,127 @@
+---
+title: Production security profile
+sidebarTitle: Production security profile
+description: "The adcp-prod-security-3.3 profile: an optional, capability-advertised commitment to enforce signing, revocation freshness, acts-for checks, and spend ceilings on spend-committing operations."
+"og:title": "AdCP — Production security profile"
+---
+
+**Status**: Proposed for AdCP 3.3. Requirements marked **[WG]** await a working-group decision on [#7066](https://github.com/adcontextprotocol/adcp/issues/7066) and may change before the profile is registered.
+
+`adcp-prod-security-3.3` is a named profile an endpoint can advertise in [`security_profiles`](/docs/protocol/get_adcp_capabilities#security_profiles). It is stronger than the 3.x baseline, it can be tested, and it adds no obligation for an endpoint that does not advertise it. In 4.0, signing for spend-committing operations becomes a universal requirement (see [Transport migration timeline](/docs/building/by-layer/L1/security#transport-migration-timeline)); this profile lets endpoints adopt that floor and the controls around it early.
+
+Advertising the id is a commitment to **enforce** the profile, not to support it. An endpoint that advertises it and still accepts an unsigned spend-committing request gives buyers a trust signal with no cryptographic guarantee behind it.
+
+## Scope of the claim
+
+- The claim covers the whole endpoint: every tenant and every transport that serves a spend-committing operation. A multi-tenant platform where one tenant still authenticates with a bearer token alone does not meet it. Serve those tenants from another endpoint.
+- Only an agent that verifies inbound requests and serves `get_adcp_capabilities` can advertise it. A buyer-only agent advertises nothing. A seller judges its conformance by what it verifies on each request, as in [Counterparty rules](#counterparty-rules).
+- The claim is self-asserted until a registry verifies it. Verification is outside this profile.
+- The profile is defined over properties of a signed request, not over one signing profile. See [Signing profiles](#signing-profiles).
+
+## Spend-committing operations
+
+The profile uses one closed list. An endpoint applies each requirement to every operation below that it supports, and to any other operation it chooses to list in `request_signing.required_for`:
+
+`create_media_buy`, `buy_products`, `accept_proposal`, `update_media_buy`, `control_media_buy`, `acquire_rights`, `update_rights`, `activate_signal`.
+
+Adding an operation to this list creates a new profile id.
+
+## Admission preconditions
+
+An endpoint advertises the profile only while all of these hold. Each uses an existing optional field, so no endpoint that omits `security_profiles` is affected.
+
+| # | Precondition |
+|---|---|
+| A1 | `request_signing.supported` is `true` and `covers_content_digest` is `"required"`. |
+| A2 | `request_signing.required_for` and `supported_for` include every spend-committing operation the endpoint supports. |
+| A3 | `identity.brand_json_url` is present, so verifiers can resolve the endpoint's own keys. |
+| A4 | `idempotency.supported` is `true`. |
+| A5 | `webhook_signing.supported` is `true` and `legacy_hmac_fallback` is `false` if the endpoint emits webhooks. |
+| A6 | `request_signing.operation_sources` is present and lists every source the endpoint resolves operations from. It includes `a2a_invocation_skill` if the endpoint serves any spend-committing operation over A2A, and `mcp_tools_call` if it does so over MCP. Without the A2A marker, a counterparty cannot infer that `required_for` is enforced over A2A. |
+
+A precondition that stops holding withdraws the claim. The endpoint removes the id from `security_profiles` in the same change.
+
+## Requirements
+
+Each requirement applies to the spend-committing operations above.
+
+| # | Requirement |
+|---|---|
+| P1 | **Signature required.** An unsigned request is rejected with `request_signature_required`. Over A2A, the hardening clauses of [Operation resolution over A2A](/docs/building/by-layer/L1/security#operation-resolution-over-a2a) are MUST from 3.3 and apply here: strict parse before classification, Part shape, and task continuation binding. |
+| P2 | **No unsigned fallback.** A bearer token, API key, OAuth token, or mTLS identity is never enough on its own. A seller MAY still use one to select the principal alongside a valid signature. P1 and P2 are the opt-in to the **Strict** posture in [Composition with fallback authenticators](/docs/building/by-layer/L1/security#composition-with-fallback-authenticators), through its "stop accepting" branch. The per-caller flag branch does not meet the profile, because the claim covers every caller on the endpoint. |
+| P3 | **Revocation freshness [WG: 15 minutes].** See [Revocation freshness](#revocation-freshness). |
+| P4 | **Acts-for.** The canonical signed-Agent identity, and nothing asserted in the body or an unsigned header, maps to a seller-side principal. When independent authentication also selects a principal, the two MUST be the same principal. The endpoint then checks that the principal may act for the operator of the request's `account` (the `operator` in a natural-key reference, or the operator bound to an `account_id` at provisioning), using its onboarding record and the House Portfolio `authorized_operators[]` check that already applies. Operator-published grants ([#6033](https://github.com/adcontextprotocol/adcp/issues/6033)) are not part of 3.3. Authority is not transitive and is single-hop: a relay that re-signs a request is the signer, and the endpoint MUST NOT infer authority for an upstream agent named only in the body. A failed check rejects with `PERMISSION_DENIED`, subject to the cross-tenant onboarding-oracle clamp in [error handling](/docs/building/by-layer/L3/error-handling). |
+| P5 | **Governance binding.** If the endpoint accepts `sync_governance`, it treats that operation like a spend-committing one for P1 and P2, and declares non-empty `adcp.governance_enforcement` acceptance criteria that it enforces. A governance agent outside them is rejected with `GOVERNANCE_AGENT_NOT_ACCEPTED`, so a stolen signing key cannot bind the attacker's own governance agent. An empty or accept-all list does not meet P5. |
+| P6 | **Spend-velocity ceiling [WG: deny by default].** See [Spend-velocity ceiling](#spend-velocity-ceiling). |
+| P7 | **Least privilege.** The endpoint enforces task and field scopes from the account's `authorization` object (`SCOPE_INSUFFICIENT`, `FIELD_NOT_PERMITTED`). |
+| P8 | **Outbound fetch safety.** Every fetch of a buyer-supplied URL (webhook URL, `brand_json_url`, `jwks_uri`, capabilities) follows [Webhook URL validation](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf). The principal-bound allowlist contract for asset and artifact retrieval ([#5669](https://github.com/adcontextprotocol/adcp/issues/5669)) is not part of this profile. |
+
+### Revocation freshness
+
+A compromised but validly signed buyer is bounded by how fast the endpoint learns of the revocation. The 3.2 baseline polls a signer's revocation list at its declared `next_update` (1 to 30 minutes) and tolerates a further 4× that interval before it fails closed, which allows about 150 minutes. Under this profile, with T = 15 minutes **[WG]**:
+
+1. The verifier polls the signer's signed revocation list at an interval of at most T/3, whatever the signer declares in `next_update`. Conditional requests keep this cheap.
+2. A spend-committing request is rejected with `request_signature_revocation_stale` if the verifier's last successful refresh is older than T. A refresh counts only if the response was fetched over validated TLS, and a `304` counts on that condition. There is no grace multiplier. At T/3 polling, two failed fetches in a row are tolerated and a third halts spend.
+3. The verifier keeps every revocation it has seen, rejects a list whose `updated` is older than the newest it accepted, and rejects a list whose `updated` is more than 60 seconds in the future. A rolled-back copy cannot un-revoke a key, and a future-dated list cannot freeze a signer.
+4. A signer that serves no signed revocation list cannot be verified for spend. A buyer that wants to transact spend with a profile endpoint publishes one. The list is a static file and the signer's `next_update` cadence is not constrained.
+
+The end-to-end bound is the signer's publication delay plus T. The endpoint can also suspend a principal at once (`AGENT_SUSPENDED`), which takes effect on the next request and does not wait for a list.
+
+### Spend-velocity ceiling
+
+Revocation does not help when the signer is intact but its agent was manipulated, for example by a prompt injection that leads it to buy. The ceiling bounds that loss.
+
+- The endpoint configures a ceiling on cumulative spend-committing commitments per **principal**, where the principal is the seller's mapping of the canonical signed-Agent identity. It sums across all of the principal's accounts. It is keyed by neither `keyid`, account, nor transport session, so a key rotation, a new account, or a new MCP session cannot reset it. If one agent is onboarded under more than one principal, the lowest applicable ceiling applies to the spend it signs.
+- Only operations that commit or raise spend count against the ceiling and can be rejected for exceeding it. A pause, a cancellation, or a budget reduction is never blocked by it, so a tripped agent can still stop its own spend.
+- Deny by default. A principal with no configured ceiling cannot commit spend, and the request is rejected with `PERMISSION_DENIED`.
+- The value and the window are deployment-defined and are not declared in capabilities. A seller SHOULD state them to the buyer at onboarding, and a seller whose buyers span many advertisers sets the ceiling for that spread.
+- A request that would exceed the ceiling is rejected with `AGENT_SUSPENDED`. The trip is an automatic suspension of the agent's commercial relationship, and it holds until the seller's operator lifts it. The code is not retryable, so an agent does not loop on a halted budget. A key thief can use up the remaining headroom before the trip, and the profile accepts that: the ceiling bounds the loss and does not prevent it.
+
+## Counterparty rules
+
+A seller that advertises the profile rejects, on spend-committing operations, anything it can verify as non-conforming:
+
+| Condition | Result |
+|---|---|
+| No signature | `request_signature_required` (P1, P2) |
+| Signature fails any verifier check | The matching `request_signature_*` code |
+| Key revoked, or the revocation view is stale | `request_signature_key_revoked`, `request_signature_revocation_stale` (P3) |
+| Signer maps to no principal, or the principal may not act for the operator | `PERMISSION_DENIED` (P4) |
+| Principal has no ceiling | `PERMISSION_DENIED` (P6) |
+| Principal has reached its ceiling | `AGENT_SUSPENDED` (P6) |
+
+This list is the whole of what the advertisement obliges a seller to impose on counterparties. Practices a counterparty keeps on its own side, such as those in [Practices outside the profile id](#practices-outside-the-profile-id), cannot be enforced on it, so the profile does not claim to.
+
+## Downgrade rules
+
+A seller's capabilities are fetched over TLS and describe the seller only. These rules keep a buyer from silently falling back.
+
+1. **Required profile.** A buyer configured to require `adcp-prod-security-3.3` for a counterparty MUST NOT send that counterparty a spend-committing call unless the counterparty's current capabilities list it. It refuses the call. It does not warn and continue, and it does not retry with a bearer token.
+2. **Observed then absent.** A buyer that has seen the id from a counterparty and later sees it absent, or sees an admission precondition become false, refuses spend-committing calls to that counterparty and alerts an operator. It lifts the refusal only on an operator's explicit re-pin. "Absent" means two consecutive successfully fetched, validated responses that lack it. A fetch error or a stale cache never counts. The observation is keyed by the counterparty's canonical agent URL, is stored durably so a restart does not clear it, and a changed URL is a new counterparty that needs its own pin. A seller that retires an id lists its successor beside it for an overlap period, so operators re-pin deliberately.
+3. **Misdeclaration.** These rules defend against removal, not against a counterparty that declares the id falsely. A buyer cannot observe that a seller disabled its bearer fallback. That gap closes only with registry verification or storyboard grading, which is outside this profile.
+
+## Signing profiles
+
+P1 to P3 and P6 are written over properties, so the profile does not depend on which signing profile an endpoint advertises. A signing profile qualifies when its text guarantees all of:
+
+- the signature covers a digest of the request body;
+- every signed request carries a per-signer unique nonce and the verifier rejects a repeat within the signature's lifetime;
+- a verified key resolves, through the verifier's own records, to exactly one seller-bound principal;
+- the verifier can check that key against a signed revocation list.
+
+The AdCP RFC 9421 profile (`adcp/request-signing/v1`) meets these. Another profile, such as a Web Bot Auth profile ([#7878](https://github.com/adcontextprotocol/adcp/issues/7878)), qualifies once its own text states that it does. The Web Bot Auth profile as drafted in #7894 does not yet: its identity is an origin, and it meets the third property only through an explicit seller-side binding of that origin to one principal, which its text would have to adopt.
+
+## Practices outside the profile id
+
+These controls matter, and none can be graded from outside the endpoint. They are SHOULD-level in 3.3, are **not** covered by the id, and several become universal requirements in 4.0:
+
+- **Context fencing.** Treat free text and tool responses from a counterparty as data. Delimit them from instructions before they reach an LLM context window, bound their length, and give them no authority to call tools or move money. A valid signature authenticates the sender, not the content.
+- **Deterministic spend authorization.** Run ceilings, acts-for checks, and governance thresholds in ordinary code. An LLM never holds the signing key and never decides whether a limit applies.
+- **Governance gate.** Require a valid `governance_context` token for spend above a deployment-defined threshold. The token binds the amount, task, and payload hash, so a stolen signing key alone does not authorize the spend.
+- **Audit.** Retain and correlate the events listed in [Required log events](/docs/building/by-layer/L1/security#required-log-events).
+- **Anomaly and rate limits.** Limit proposal probing, hold squatting, and spend changes.
+- **Credential lifetimes.** Keep any bearer token used to select a principal to 1 hour or less, and to 15 minutes or less above the deployment's material spend threshold.
+
+## Not in this profile
+
+A universal signing requirement, normative rate-limit enforcement, a publisher-side requirement that agents hold the profile, and multi-hop signature chains are not part of `adcp-prod-security-3.3`. They are 4.0 or later work.

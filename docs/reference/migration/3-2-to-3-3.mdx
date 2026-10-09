@@ -58,6 +58,7 @@ Request signing, webhook signing, governance JWS `iss`, designated-task response
 - Agent URLs match by canonical URL on every surface. Webhook discovery and governance `iss` no longer compare byte for byte, and the schema's `agent_url_match` verifier constraint is now `canonical`. Two `agents[]` entries that match canonically are ambiguous only if they differ in `type` or in resolved JWKS source; entries that agree on both count once.
 - Governance buyer identity for signed requests is the exact operator record that agent resolution selected, and `iss` must match exactly one governance-typed entry.
 - Cached or onboarding mappings must be confirmed against the agent's `brand_json_url` and re-confirmed within the brand.json cache lifetime.
+- Client-only signers (experimental, `security.client_only_signers`): the onboarding record replaces `identity.brand_json_url`; the matched entry MUST carry an explicit `jwks_uri`.
 
 TMP keeps its own publisher-key model. Verifiers take the publishers that apply from their own record of the media buy, never from the payload.
 
