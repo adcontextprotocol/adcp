@@ -14,7 +14,8 @@ dissent: product review preferred a dedicated error code (Option B in the PR des
 For AdCP 3.3, `core/error.json` gains an optional, open-typed
 `mutation_outcome` (`not_applied`, `unknown`, `applied`). It is independent of
 `code` and `recovery`. Sellers declaring 3.3 or later in `supported_versions`
-MUST set `unknown` (or `applied`) on the error for a fenced idempotency claim,
+SHOULD set `unknown` (or `applied`) on the error for a fenced idempotency claim
+(a MUST from 3.4),
 MUST NOT emit `unknown` without a fence, and MUST NOT set `not_applied` without
 pre-commit evidence: a failure raised before the claim row was inserted and
 before any write, or a typed rejection from validation that runs strictly before

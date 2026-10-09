@@ -617,9 +617,11 @@ function isRetryable(error, knownRecoveryByCode) {
 
 For an async task the claim exists from submit, so only (b) can apply to a failure after submit.
 
-**Seller obligations (sellers declaring AdCP 3.3 or later in `supported_versions`; earlier sellers MAY emit the field on the same terms).**
+**Worked example of (b).** [`REFERENCE_DEFINITION_CHANGED`](/docs/building/verification/compliance-catalog#error-code-reference-definition-changed) is pre-commit by construction: [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) re-verifies every definition pin before mutating any state, so no MediaBuy is created or amended. A seller returning it SHOULD set `mutation_outcome: "not_applied"`. A `SERVICE_UNAVAILABLE` from the same task because a pinned document could not be fetched is a different case and follows the rules above for its own failure point.
 
-1. A seller that fences the idempotency claim rather than releasing it ([Request Safety → Idempotency](/docs/building/by-layer/L1/security#idempotency), rules 3 and 9) MUST set `mutation_outcome: "unknown"` on the error it returns, or `applied` when it holds committed evidence.
+**Seller obligations (sellers declaring AdCP 3.3 or later in `supported_versions`; earlier sellers MAY emit the field on the same terms).** Emitting `unknown` on a fenced claim is a SHOULD in 3.3 and becomes a MUST in 3.4, the same two-step cadence used for other hardening rules; the prohibitions below apply from 3.3.
+
+1. A seller that fences the idempotency claim rather than releasing it ([Request Safety → Idempotency](/docs/building/by-layer/L1/security#idempotency), rules 3 and 9) SHOULD set `mutation_outcome: "unknown"` on the error it returns, or `applied` when it holds committed evidence. From 3.4 this is a MUST.
 2. A seller MUST NOT emit `unknown` or `applied` unless the claim is fenced, or the seller otherwise guarantees that a same-key resend cannot run the mutation again. Otherwise the advice to resend with the same key is a trap.
 3. A seller MUST NOT set `not_applied` without pre-commit evidence, and MUST NOT set `not_applied` on `COMMITTED_RESOURCE_PURGED`.
 4. A seller SHOULD set `not_applied` on definitive pre-commit failures of state-changing requests, and SHOULD set `applied` on `COMMITTED_RESOURCE_PURGED`. Elsewhere `applied` is a MAY, and only with durable committed evidence.

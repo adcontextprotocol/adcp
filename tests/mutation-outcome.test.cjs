@@ -93,6 +93,11 @@ test('buyer decision vectors', () => {
   }
 });
 
+test('REFERENCE_DEFINITION_CHANGED is documented as a pre-commit rejection', () => {
+  const description = schema('enums/error-code.json').enumDescriptions.REFERENCE_DEFINITION_CHANGED;
+  assert.match(description, /mutation_outcome to not_applied/);
+});
+
 test('normative docs define pre-commit evidence and the async no-re-plan rule', () => {
   const errorHandling = fs.readFileSync(
     path.join(ROOT, 'docs/building/by-layer/L3/error-handling.mdx'),
@@ -105,6 +110,8 @@ test('normative docs define pre-commit evidence and the async no-re-plan rule', 
   assert.match(errorHandling, /whole request envelope/);
   assert.match(errorHandling, /async task that ends in `failed`/);
   assert.match(errorHandling, /MUST NOT emit `unknown` or `applied` unless the claim is fenced/);
+  assert.match(errorHandling, /SHOULD in 3\.3 and becomes a MUST in 3\.4/);
+  assert.match(errorHandling, /REFERENCE_DEFINITION_CHANGED/);
   assert.match(security, /mutation_outcome/);
   assert.match(security, /async task that ends in `failed`/);
 });
