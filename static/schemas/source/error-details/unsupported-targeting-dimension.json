@@ -47,9 +47,9 @@
       "package_index": 0
     },
     {
-      "unsupported_dimension": "signal_targeting",
+      "unsupported_dimension": "age_band",
       "deprecated": true,
-      "replacement_dimension": "signal_targeting_groups"
+      "replacement_dimension": "demographics"
     }
   ]
 }

@@ -87,19 +87,19 @@ A seller MUST NOT silently drop a targeting dimension it does not support for th
 ```json
 {
   "code": "UNSUPPORTED_FEATURE",
-  "message": "signal_targeting is no longer supported; use signal_targeting_groups",
+  "message": "age_band is no longer supported; use demographics",
   "recovery": "correctable",
-  "field": "packages[0].targeting_overlay.signal_targeting",
+  "field": "packages[0].targeting_overlay.age_band",
   "details": {
-    "unsupported_dimension": "signal_targeting",
+    "unsupported_dimension": "age_band",
     "deprecated": true,
-    "replacement_dimension": "signal_targeting_groups",
-    "supported_dimensions": ["signal_targeting_groups", "geo_metros"]
+    "replacement_dimension": "demographics",
+    "supported_dimensions": ["demographics", "geo_metros"]
   }
 }
 ```
 
-`unsupported_dimension` is the only required detail. `deprecated: true` marks a dimension that was accepted before and has since been removed (it is now rejected, not merely discouraged), and `replacement_dimension` names its successor. `supported_dimensions` echoes only what the caller could already read from `get_adcp_capabilities` or the product's `overlay_support`. `product_id` and `package_index` locate the rejection in multi-package requests. A buyer that sees `replacement_dimension` translates the value and resubmits; the seller never remaps it on the buyer's behalf.
+`age_band` is an illustrative removed dimension, not a field in the current schema. `unsupported_dimension` is the only required detail. `deprecated: true` marks a dimension that was accepted before and has since been removed (it is now rejected, not merely discouraged), and `replacement_dimension` names its successor. `supported_dimensions` echoes only what the caller could already read from `get_adcp_capabilities` or the product's `overlay_support`. `product_id` and `package_index` locate the rejection in multi-package requests. A buyer that sees `replacement_dimension` translates the value and resubmits; the seller never remaps it on the buyer's behalf.
 
 ## Daypart timezone semantics
 
