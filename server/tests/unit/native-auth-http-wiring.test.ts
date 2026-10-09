@@ -520,10 +520,40 @@ describe('native OAuth HTTPServer wiring', () => {
     }
     expect(mocks.listOrganizationMemberships.mock.calls.every(([input]) => input.userId === id)).toBe(true);
     const writes = mocks.query.mock.calls.filter(([sql]) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql));
-    // Ordinary login may upsert the authenticating user. Alias detection must
-    // never synthesize the duplicate or mutate either credential's authority.
-    expect(writes.every(([sql, params]) => sql.trimStart().startsWith('INSERT INTO users ') && params[0] === id)).toBe(true);
-    expect(mocks.query.mock.calls.some(([sql]) => sql.includes('FROM users u') && sql.includes('user_email_aliases'))).toBe(true);
+    // Ordinary login may upsert only the authenticating user; the sole other
+    // write is the ID-only support audit. Alias detection must never synthesize
+    // the duplicate or mutate either credential's authority.
+    const isUserUpsert = (sql: string, params: unknown[]) =>
+      sql.trimStart().startsWith('INSERT INTO users ') && params[0] === id;
+    const isAliasAudit = (sql: string, params: unknown[]) =>
+      sql.includes('INSERT INTO registry_audit_log') && sql.includes("'google_alias_detected'")
+      && params.length === 3 && params[0] === id && params[1] === otherId
+      && params[2] === JSON.stringify({ outcome: 'support_review_required' });
+    expect(writes.every(([sql, params]) => isUserUpsert(sql, params) || isAliasAudit(sql, params))).toBe(true);
+    expect(writes.filter(([sql, params]) => isAliasAudit(sql, params))).toHaveLength(responses.length);
+    expect(writes.filter(([sql, params]) => isUserUpsert(sql, params)).length).toBeGreaterThan(0);
+    const aliasLookups = mocks.query.mock.calls.filter(([sql]) =>
+      sql.trimStart().startsWith('SELECT u.workos_user_id, u.email FROM users u') && sql.includes('NOT EXISTS'));
+    expect(aliasLookups).toHaveLength(responses.length);
+    expect(aliasLookups.every(([sql]) => sql.includes('user_email_aliases'))).toBe(true);
+    // The only alias-table access outside the local query is the exact
+    // claimed-email read, parameterized by the provider candidate's email.
+    const claimedReads = mocks.query.mock.calls.filter(([sql]) =>
+      sql === 'SELECT 1 FROM user_email_aliases WHERE LOWER(email) = LOWER($1) LIMIT 1');
+    const otherAliasQueries = mocks.query.mock.calls.filter(([sql]) =>
+      sql.includes('user_email_aliases') && !aliasLookups.some(([s]) => s === sql)
+      && !claimedReads.some(([s]) => s === sql));
+    expect(otherAliasQueries).toHaveLength(0);
+    // Local matches never reach the provider; provider matches always do.
+    if (location === 'local') {
+      expect(mocks.listUsers).not.toHaveBeenCalled();
+      expect(claimedReads).toHaveLength(0);
+    } else {
+      expect(mocks.listUsers).toHaveBeenCalled();
+      expect(claimedReads.length).toBeGreaterThanOrEqual(responses.length);
+      expect(claimedReads.every(([, params]) => params.length === 1 && params[0] === otherEmail)).toBe(true);
+    }
+    expect(JSON.stringify(writes.filter(([sql, params]) => isAliasAudit(sql, params)))).not.toContain('@');
   });
 
 });
