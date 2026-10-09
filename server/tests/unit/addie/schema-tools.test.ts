@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
+import canonicalize from 'canonicalize';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, it, expect, vi } from 'vitest';
@@ -130,7 +132,12 @@ describe('schema version selection', () => {
     }
 
     const getSchema = SCHEMA_TOOLS.find((tool) => tool.name === 'get_schema');
-    expect(getSchema?.input_schema.properties.version.description).toContain('stable 3.1');
+    // The hand-written default in the tool description must name the docs
+    // default that DEFAULT_SCHEMA_VERSION actually resolves to.
+    for (const toolName of ['validate_json', 'get_schema', 'list_schemas']) {
+      const tool = SCHEMA_TOOLS.find((candidate) => candidate.name === toolName);
+      expect(tool?.input_schema.properties.version.description).toContain(`stable ${DEFAULT_SCHEMA_VERSION}`);
+    }
   });
 });
 
@@ -166,6 +173,72 @@ const indexFixture = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('inline JSON source integrity', () => {
+  const original = {
+    $schema: 'https://adcontextprotocol.org/schemas/3.2.1/adagents.json',
+    ext: { reproduction_padding: Array(500).fill('x'.repeat(60)) },
+    authoritative_location: 'https://publisher.example.com/adagents.json',
+  };
+  const sourceHash = createHash('sha256').update(canonicalize(original)!).digest('hex');
+  const validator = () => createSchemaToolHandlers().get('validate_json')!;
+
+  it.each([510, 650])('rejects the browser-observed reconstruction of 500 entries as %i before fetching a schema', async (count) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const reconstructed = { ...original, ext: { reproduction_padding: Array(count).fill('x'.repeat(60)) } };
+    await expect(validator()({ json: reconstructed, expected_json_sha256: sourceHash }))
+      .rejects.toThrow('JSON integrity mismatch');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts original parsed content despite whitespace and object key order changes', async () => {
+    const source = '{\n"ext":{"label":"café","b":[3,2,1],"a":1},"authoritative_location":"https://publisher.example.com/adagents.json"\n}';
+    const expectedCanonical = '{"authoritative_location":"https://publisher.example.com/adagents.json","ext":{"a":1,"b":[3,2,1],"label":"café"}}';
+    const expected = createHash('sha256').update(expectedCanonical, 'utf8').digest('hex');
+    const parsed = JSON.parse(source);
+    const received = { authoritative_location: parsed.authoritative_location, ext: { a: 1, b: parsed.ext.b, label: parsed.ext.label } };
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ type: 'object' }) })));
+    const result = await validator()({ json: received, schema_path: 'core/integrity-unchanged.json', expected_json_sha256: expected.toUpperCase() });
+    expect(result).toMatch(/^✅ \*\*Valid!\*\* The JSON validates successfully against /);
+    expect(result).toContain(`client-provided RFC 8785 SHA-256 (${expected})`);
+    expect(result).toContain("not the original file's bytes or provenance");
+  });
+
+  it.each(['', 'a'.repeat(63), 'g'.repeat(64), 123, null])('rejects malformed source checksums: %s', async (expected) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(validator()({ json: original, expected_json_sha256: expected }))
+      .rejects.toThrow('64-character hexadecimal SHA-256');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects raw-file SHA-256 rather than mistaking it for a parsed JSON checksum', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const rawHash = createHash('sha256').update(JSON.stringify(original, null, 2) + '\n').digest('hex');
+    await expect(validator()({ json: original, expected_json_sha256: rawHash }))
+      .rejects.toThrow('JSON integrity mismatch');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([{ value: Infinity }, { value: '\ud800' }])('fails closed if guarded JSON cannot be canonicalized: %j', async (json) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(validator()({ json, expected_json_sha256: sourceHash }))
+      .rejects.toThrow('No source integrity or schema validation was confirmed');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, { required: ['missing'] }])('preserves checksum-free callers while marking both schema outcomes as source-unverified: %j', async (schema) => {
+    const schemaPath = schema.required ? 'core/integrity-legacy-invalid.json' : 'core/integrity-legacy-valid.json';
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ type: 'object', ...schema }) })));
+    const result = await validator()({ json: {}, schema_path: schemaPath });
+    expect(result).toMatch(schema.required ? /^❌ \*\*Invalid\.\*\*/ : /^✅ \*\*Valid!\*\*/);
+    expect(result).toContain('Source integrity: unverified');
+    expect(result).toContain('Only the supplied JSON object was validated');
+  });
 });
 
 describe('schema handler version resolution', () => {

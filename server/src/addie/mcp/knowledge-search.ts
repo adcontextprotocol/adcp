@@ -316,7 +316,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Protocol docs version. Omission means stable 3.1; use 3.2 for the current preview. Explicit channel and exact frozen snapshot selectors are also accepted.',
+          description: 'Protocol docs version. Omission means stable 3.2; pass 3.1 or 3.0 for an earlier stable release. Explicit channel and exact frozen snapshot selectors are also accepted.',
         },
         limit: {
           type: 'integer',
@@ -343,7 +343,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Optional protocol version for legacy unversioned IDs. Omission means stable 3.1; use 3.2 for the current preview.',
+          description: 'Optional protocol version for legacy unversioned IDs. Omission means stable 3.2.',
         },
       },
       required: ['doc_id'],

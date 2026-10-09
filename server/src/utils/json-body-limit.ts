@@ -1,5 +1,6 @@
 const SMALL_BODY_JSON_ROUTES = new Set([
   '/api/brands/resolve/bulk',
+  '/api/json/validate-upload', // File bytes must arrive as bounded multipart input.
   // Native OAuth v2 carries only fixed-size state, PKCE, and grant fields.
   '/auth/native/start',
   '/auth/native/token',

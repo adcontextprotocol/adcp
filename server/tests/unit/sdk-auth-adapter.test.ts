@@ -43,10 +43,12 @@ describe('agentConfigAuthFields', () => {
         access_token: 'fresh-access-token',
         refresh_token: 'refresh-token',
         expires_at: '2030-01-01T00:00:00.000Z',
+        issuer: 'https://tokens.example.test/tenant',
       },
       client: {
         client_id: 'client-id',
         client_secret: 'client-secret',
+        issuer: 'https://registration.example.test/tenant',
       },
     };
 

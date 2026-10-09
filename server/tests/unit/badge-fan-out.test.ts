@@ -518,4 +518,24 @@ describe('runBadgeFanOut', () => {
       message: 'Badge state could not be updated',
     });
   });
+
+  it.each(['authorization_revoked', 'authorization_unavailable', 'authorization_provenance_missing', 'lease_lost'])(
+    'preserves %s and stops badge fan-out immediately', async (code) => {
+      queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1 } as never);
+      const db = makeDb({ latestStatuses: [status('sales_broadcast_tv', 'passing')] });
+      const accessFailure = Object.assign(new Error('Refresh access changed'), { code });
+      vi.mocked(db.upsertBadge).mockRejectedValueOnce(accessFailure);
+
+      await expect(runBadgeFanOut({
+        complianceDb: db,
+        agentUrl: 'https://example.com/mcp',
+        declaredSpecialisms: ['sales-broadcast-tv'],
+        adcpVersions: ['3.0', '3.1'],
+        throwOnFailure: true,
+      })).rejects.toBe(accessFailure);
+
+      expect(db.upsertBadge).toHaveBeenCalledOnce();
+      expect(db.completeBadgeRequalification).not.toHaveBeenCalled();
+    },
+  );
 });

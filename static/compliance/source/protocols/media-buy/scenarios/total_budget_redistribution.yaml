@@ -4,6 +4,8 @@ title: "Atomic media-buy total budget redistribution"
 category: media_buy_seller
 summary: "Verifies that a fixed media-buy total_budget update proportionally rescales active packages, returns auditable package state, and rejects competing package patches atomically."
 track: media_buy
+requires:
+  - controller
 
 required_tools:
   - sync_accounts

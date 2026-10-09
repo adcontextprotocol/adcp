@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": patch
+---
+
+Compliance storyboards that seed fixtures through `comply_test_controller` (`prerequisites.controller_seeding: true`) now declare `requires: [controller]`. A seller without a test controller receives one storyboard-level `requirement_unmet` skip naming `controller`, not a `missing_test_controller` grade on every seeded step; a controller that disappears mid-run still grades per step. The sweep adds the gate to 128 storyboards without changing step logic (a seller with no controller now skips each such storyboard as a whole, including steps that did not need seeding, instead of running those steps and grading the seeded ones per step), and a new lint (`lint-storyboard-controller-requires`, wired into the compliance build) fails if a storyboard seeds through the controller without the gate. The conformance docs now state the policy: reference sellers SHOULD implement `comply_test_controller`; translator and adapter sellers that front platforms which cannot seed state are not expected to.

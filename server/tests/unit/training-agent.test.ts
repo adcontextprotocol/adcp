@@ -79,6 +79,7 @@ import {
   supportsSellerGovernanceDiscovery,
   TRAINING_AGENT_CURRENT_ADCP_RELEASE,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
   TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS,
   type TrainingContext,
 } from '../../src/training-agent/types.js';
@@ -130,6 +131,9 @@ const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
 const CURRENT_ADCP_VERSION = TRAINING_AGENT_CURRENT_ADCP_VERSION;
 // Highest advertised 3.x release: the release line of the current bundle.
 const CURRENT_ADCP_RELEASE = TRAINING_AGENT_CURRENT_ADCP_RELEASE;
+// Exact 3.2 prerelease pin still served after GA. Unlike the "3.2" release
+// pin, it never downshifts onto an older release.
+const EXACT_3_2_PRERELEASE_PIN = TRAINING_AGENT_RETAINED_RC_ADCP_VERSION;
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
 
@@ -1802,6 +1806,7 @@ describe('createTrainingAgentServer', () => {
     const currentCaps = currentResult as Record<string, any>;
     expect(currentCaps.experimental_features).toContain('media_buy.audience_activation');
     expect(currentCaps.experimental_features).toContain('media_buy.product_identity');
+    expect(currentCaps.experimental_features).toContain('media_buy.daypart_granularity');
     expect(currentCaps.media_buy.audience_targeting.supported_activation_methods).toEqual([
       { pattern: 'sync_audiences' },
       { pattern: 'dataset_query', vendor: { domain: 'data-cloud.example' } },
@@ -1820,6 +1825,7 @@ describe('createTrainingAgentServer', () => {
     const legacyCaps = legacyResult as Record<string, any>;
     expect(legacyCaps.experimental_features ?? []).not.toContain('media_buy.audience_activation');
     expect(legacyCaps.experimental_features ?? []).not.toContain('media_buy.product_identity');
+    expect(legacyCaps.experimental_features ?? []).not.toContain('media_buy.daypart_granularity');
     expect(legacyCaps.media_buy.audience_targeting).not.toHaveProperty('supported_activation_methods');
   });
 
@@ -3190,11 +3196,16 @@ describe('validate_input handler', () => {
       servedVersion: '3.1-rc.15',
     });
     expect(resolveServedAdcpVersionForTool(toolName, {
-      adcp_version: CURRENT_ADCP_VERSION,
+      adcp_version: EXACT_3_2_PRERELEASE_PIN,
     }, ['3.0', '3.1-rc.15'])).toMatchObject({
       ok: false,
       field: 'adcp_version',
     });
+    // The GA release pin downshifts to the highest stable release offered,
+    // never onto a prerelease.
+    expect(resolveServedAdcpVersionForTool(toolName, {
+      adcp_version: CURRENT_ADCP_RELEASE,
+    }, ['3.0', '3.1-rc.15'])).toEqual({ ok: true, servedVersion: '3.0' });
   });
 
   it('serves in-process validate_input calls on the same version contract', async () => {
@@ -18119,9 +18130,10 @@ describe('get_adcp_capabilities handler', () => {
     const legacyServer = createTrainingAgentServer({
       mode: 'open', strict: true, digestMode: 'required', legacySigningProfile: true,
     });
-    const [{ result: caps }, pinned, major] = await Promise.all([
+    const [{ result: caps }, pinned, release, major] = await Promise.all([
       simulateCallTool(legacyServer, 'get_adcp_capabilities', {}),
-      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_version: EXACT_3_2_PRERELEASE_PIN }),
+      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_RELEASE }),
       simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_major_version: 3 }),
     ]);
 
@@ -18131,6 +18143,9 @@ describe('get_adcp_capabilities handler', () => {
     expect(versions.some(version => version.startsWith('3.2'))).toBe(false);
     expect(pinned.isError).toBe(true);
     expect(pinned.result).toMatchObject({ code: 'VERSION_UNSUPPORTED' });
+    // A "3.2" release pin is never served at 3.2 here; it downshifts to 3.1.
+    expect(release.isError).not.toBe(true);
+    expect(release.result.adcp_version).toBe('3.1');
     expect(major.result.adcp_version).toBe('3.1');
   });
 
@@ -18138,9 +18153,17 @@ describe('get_adcp_capabilities handler', () => {
     const eitherServer = createTrainingAgentServer({ mode: 'open', strict: true });
     const forbiddenServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'forbidden' });
     const requiredServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
-    const [{ result: either, isError: eitherError }, { result: forbidden, isError: forbiddenError }, required] = await Promise.all([
-      simulateCallTool(eitherServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
-      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+    const [
+      { result: either, isError: eitherError },
+      { result: forbidden, isError: forbiddenError },
+      eitherRelease,
+      forbiddenRelease,
+      required,
+    ] = await Promise.all([
+      simulateCallTool(eitherServer, 'get_adcp_capabilities', { adcp_version: EXACT_3_2_PRERELEASE_PIN }),
+      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', { adcp_version: EXACT_3_2_PRERELEASE_PIN }),
+      simulateCallTool(eitherServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_RELEASE }),
+      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_RELEASE }),
       simulateCallTool(requiredServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
     ]);
 
@@ -18150,6 +18173,11 @@ describe('get_adcp_capabilities handler', () => {
     expect(forbiddenError).toBe(true);
     expect(forbidden).toMatchObject({ code: 'VERSION_UNSUPPORTED' });
     expect((forbidden.details as Record<string, unknown>).supported_versions as string[]).not.toContain(CURRENT_ADCP_VERSION);
+    // The "3.2" release pin downshifts to 3.1 on legacy signing profiles.
+    expect(eitherRelease.isError).not.toBe(true);
+    expect(eitherRelease.result.adcp_version).toBe('3.1');
+    expect(forbiddenRelease.isError).not.toBe(true);
+    expect(forbiddenRelease.result.adcp_version).toBe('3.1');
     expect(required.isError).not.toBe(true);
     expect(required.result.adcp_version).toBe(CURRENT_ADCP_VERSION);
   });
@@ -18911,13 +18939,21 @@ describe('MCP Tasks protocol', () => {
 
     for (const server of [eitherServer, forbiddenServer]) {
       await expect(
-        simulateGetTask(server, 'nonexistent-task-id', { adcp_version: CURRENT_ADCP_VERSION }),
+        simulateGetTask(server, 'nonexistent-task-id', { adcp_version: EXACT_3_2_PRERELEASE_PIN }),
       ).rejects.toMatchObject({
         code: -32602,
         data: {
           adcp_error: { code: 'VERSION_UNSUPPORTED', field: 'adcp_version' },
         },
       });
+      // The "3.2" release pin downshifts to 3.1 instead of failing negotiation.
+      const releaseError = await simulateGetTask(
+        server,
+        'nonexistent-task-id',
+        { adcp_version: CURRENT_ADCP_RELEASE },
+      ).catch((error: unknown) => error as { code?: number; data?: Record<string, unknown> });
+      expect(releaseError).toMatchObject({ code: -32602, data: { adcp_version: '3.1' } });
+      expect(releaseError.data?.adcp_error).toBeUndefined();
     }
 
     const requiredError = await simulateGetTask(
@@ -19162,6 +19198,194 @@ describe('proposal lifecycle', () => {
       );
       expect(returnedIds.every(proposalId => storedIds.has(proposalId))).toBe(true);
     });
+  });
+
+  it('builds a proposal from seeded fixture products when request_proposals has no explicit product_ids', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'fcap-fixture-proposal.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'fcap_video_q4',
+        fixture: {
+          delivery_type: 'guaranteed',
+          channels: ['olv'],
+          media_buy_support: {
+            frequency_cap: true,
+            frequency_cap_constraints: {
+              supported_per_units: ['individuals'],
+              max_impressions_constraints: { minimum: 1, maximum: 10 },
+              window_constraints: [{ unit: 'campaign', allowed_intervals: [1] }],
+            },
+          },
+          format_options: [{ format_option_id: 'video_30s', format_kind: 'video_hosted', params: { duration_ms_exact: 30000 } }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'fcap_video_q4',
+        pricing_option_id: 'cpm_video',
+        fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 28.0 },
+      },
+    });
+
+    const { result, isError } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'fcap-fixture-proposal-0001',
+      account,
+      brief: 'Premium video for a frequency-capped Q4 campaign.',
+      criteria: {
+        media_buy_frequency_cap: {
+          max_impressions: 3,
+          per: 'individuals',
+          window: { interval: 1, unit: 'campaign' },
+        },
+        required_media_buy_support: { frequency_cap: true },
+      },
+    });
+
+    expect(isError, JSON.stringify(result)).toBeFalsy();
+    expect(result.outcome).toBe('proposed');
+    const proposals = result.proposals as Array<Record<string, unknown>>;
+    expect(proposals.length).toBeGreaterThan(0);
+    const allocations = proposals[0].commercial_terms
+      ? (proposals[0].commercial_terms as Record<string, unknown>).purchases as Array<Record<string, unknown>>
+      : (proposals[0].allocations as Array<Record<string, unknown>>);
+    const productIds = allocations.map(entry => entry.product_id);
+    expect(productIds).toContain('fcap_video_q4');
+    expect(productIds.every(id => id === 'fcap_video_q4')).toBe(true);
+  });
+
+  it('rejects request_proposals when an explicit product_ids list mixes a seeded ID with an unknown one', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'mixed-product-ids-reject.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'seeded_known_product',
+        fixture: {
+          delivery_type: 'guaranteed',
+          channels: ['display'],
+          format_options: [{ format_option_id: 'display_300x250', format_kind: 'image', params: { width: 300, height: 250 } }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'seeded_known_product',
+        pricing_option_id: 'cpm_display',
+        fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 10.0 },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'mixed-product-ids-reject-0001',
+      account,
+      brief: 'Plan a campaign using the selected published offers.',
+      criteria: { product_ids: ['seeded_known_product', 'totally_unknown_product_id'] },
+    });
+
+    expect(result.outcome).toBe('rejected');
+  });
+
+  it('rejects a seeded-fixture proposal when the matching fixtures are priced in different currencies', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'mixed-currency-fixtures.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    for (const [productId, pricingOptionId, currency] of [
+      ['seeded_usd_podcast', 'cpm_usd', 'USD'],
+      ['seeded_eur_podcast', 'cpm_eur', 'EUR'],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            delivery_type: 'guaranteed',
+            channels: ['audio'],
+            format_options: [{ format_option_id: 'audio_30s', format_kind: 'audio', params: { duration_ms_exact: 30000 } }],
+          },
+        },
+      });
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency, floor_price: 15.0 },
+        },
+      });
+    }
+
+    const { result } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'mixed-currency-fixtures-0001',
+      account,
+      brief: 'podcast audio advertising',
+    });
+
+    expect(result.outcome).toBe('rejected');
+  });
+
+  it('does not mix non-seeded catalog products into a seeded-fixture proposal when request_proposals has no criteria', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'no-catalog-mixing.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'seeded_podcast_product',
+        fixture: {
+          delivery_type: 'guaranteed',
+          channels: ['audio'],
+          format_options: [{ format_option_id: 'audio_30s', format_kind: 'audio', params: { duration_ms_exact: 30000 } }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'seeded_podcast_product',
+        pricing_option_id: 'cpm_podcast',
+        fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 15.0 },
+      },
+    });
+
+    const { result, isError } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'no-catalog-mixing-0001',
+      account,
+      brief: 'podcast audio advertising',
+    });
+
+    expect(isError, JSON.stringify(result)).toBeFalsy();
+    const proposals = (result.proposals ?? []) as Array<Record<string, unknown>>;
+    for (const proposal of proposals) {
+      const allocations = proposal.commercial_terms
+        ? (proposal.commercial_terms as Record<string, unknown>).purchases as Array<Record<string, unknown>>
+        : (proposal.allocations as Array<Record<string, unknown>>);
+      for (const allocation of allocations ?? []) {
+        expect(allocation.product_id).toBe('seeded_podcast_product');
+      }
+    }
   });
 
   it('finalizes drafts into new held snapshots atomically without mutating their sources', async () => {
@@ -20004,6 +20228,179 @@ describe('proposal lifecycle', () => {
       }],
     }, DEFAULT_CTX));
     expect(supportedUpdate).not.toHaveProperty('errors');
+  });
+
+  it('rejects, never rounds, daypart clock times finer than the product time_granularity', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const pricingOptionId = 'daypart_granularity_cpm';
+    const products = {
+      daypart_granularity_hour: true as const,
+      daypart_granularity_hour_structured: { timezone_modes: ['inventory_local'] },
+      daypart_granularity_quarter: { timezone_modes: ['inventory_local'], time_granularity: 'quarter_hour' },
+      daypart_granularity_minute: { timezone_modes: ['inventory_local'], time_granularity: 'minute' },
+    };
+    for (const [productId, daypartSupport] of Object.entries(products)) {
+      const seeded = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            channels: ['display'],
+            delivery_type: 'non_guaranteed',
+            allowed_actions: [{ action: 'update_targeting', modes: ['self_serve'] }],
+            overlay_support: { daypart_targets: daypartSupport },
+          },
+        },
+      });
+      expect(seeded.result.success).toBe(true);
+      const pricing = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 8 },
+        },
+      });
+      expect(pricing.result.success).toBe(true);
+    }
+    const productIds = Object.keys(products);
+    const discover = async (criteria: Record<string, unknown>) => {
+      const result = await runWithSessionContext(() => handleGetProducts({
+        account,
+        buying_mode: 'brief',
+        brief: 'Linear daypart scheduling',
+        product_ids: productIds,
+        ...criteria,
+      }, DEFAULT_CTX));
+      return result as { products?: Array<{ product_id: string }>; errors?: Array<{ code: string; field?: string }> };
+    };
+    const ids = (result: { products?: Array<{ product_id: string }> }) =>
+      (result.products ?? []).map(product => product.product_id).sort();
+
+    // Buyer-required minimum granularity is ordered: finer support satisfies coarser.
+    expect(ids(await discover({
+      required_overlay_support: { daypart_targets: { time_granularity: 'hour' } },
+    }))).toEqual(productIds.slice().sort());
+    expect(ids(await discover({
+      required_overlay_support: { daypart_targets: { time_granularity: 'quarter_hour' } },
+    }))).toEqual(['daypart_granularity_minute', 'daypart_granularity_quarter']);
+    expect(ids(await discover({
+      required_overlay_support: { daypart_targets: { time_granularity: 'minute' } },
+    }))).toEqual(['daypart_granularity_minute']);
+    expect(ids(await discover({
+      required_overlay_support: {
+        daypart_targets: { timezone_modes: ['inventory_local'], time_granularity: 'quarter_hour' },
+      },
+    }))).toEqual(['daypart_granularity_minute', 'daypart_granularity_quarter']);
+
+    // Concrete discovery targeting is matched against the same declaration.
+    const primeTime = [{ days: ['monday', 'friday'], start_time: '19:30', end_time: '23:00' }];
+    const junction = [{ days: ['monday'], start_time: '20:28', end_time: '20:31' }];
+    const wholeHourClock = [{ days: ['monday'], start_time: '19:00', end_time: '23:00' }];
+    // Concrete overlays return configured product copies, so assert cardinality.
+    expect(ids(await discover({ targeting_overlay: { daypart_targets: primeTime } }))).toHaveLength(2);
+    expect(ids(await discover({ targeting_overlay: { daypart_targets: junction } }))).toHaveLength(1);
+    expect(ids(await discover({ targeting_overlay: { daypart_targets: wholeHourClock } })))
+      .toHaveLength(productIds.length);
+
+    // Malformed windows are INVALID_REQUEST, not a capability mismatch.
+    for (const [daypart, expectedField] of [
+      [{ days: ['monday'], start_hour: 19, end_hour: 23, start_time: '19:30', end_time: '23:00' }, ''],
+      [{ days: ['monday'], start_hour: 19, end_time: '23:00' }, ''],
+      [{ days: ['monday'], start_time: '19:30' }, '.end_time'],
+      [{ days: ['monday'], start_hour: 19 }, '.end_hour'],
+      [{ days: ['monday'], end_hour: 23 }, '.start_hour'],
+      [{ days: ['monday'], start_time: '19:30', end_time: '19:30' }, '.end_time'],
+      [{ days: ['monday'], start_time: '24:00', end_time: '23:00' }, '.start_time'],
+      [{ days: ['monday'], start_time: '19:60', end_time: '23:00' }, '.start_time'],
+    ] as const) {
+      const rejected = await discover({ targeting_overlay: { daypart_targets: [daypart] } });
+      expect(rejected).toMatchObject({
+        errors: [expect.objectContaining({
+          code: 'INVALID_REQUEST',
+          field: `targeting_overlay.daypart_targets[0]${expectedField}`,
+        })],
+      });
+    }
+
+    const baseCreate = {
+      account,
+      start_time: '2027-01-01T00:00:00Z',
+      end_time: '2027-01-31T00:00:00Z',
+    };
+    const createFor = (productId: string, daypart_targets: unknown) =>
+      runWithSessionContext(async () => {
+        const result = await handleCreateMediaBuy({
+          ...baseCreate,
+          packages: [{
+            product_id: productId,
+            pricing_option_id: pricingOptionId,
+            budget: 1_000,
+            targeting_overlay: { daypart_targets },
+          }],
+        }, DEFAULT_CTX);
+        await flushDirtySessions();
+        return result;
+      });
+
+    // Finer than declared: UNSUPPORTED_FEATURE, nothing created, nothing rounded.
+    for (const [productId, daypart] of [
+      ['daypart_granularity_hour', primeTime],
+      ['daypart_granularity_hour_structured', primeTime],
+      ['daypart_granularity_hour', junction],
+      ['daypart_granularity_quarter', junction],
+    ] as const) {
+      const rejected = await createFor(productId, daypart);
+      expect(rejected, productId).toMatchObject({
+        errors: [{
+          code: 'UNSUPPORTED_FEATURE',
+          field: 'packages[0].targeting_overlay.daypart_targets',
+        }],
+      });
+      expect(rejected).not.toHaveProperty('media_buy_id');
+    }
+    expect(await createFor('daypart_granularity_hour', [
+      { days: ['monday'], start_time: '19:30', end_hour: 23 },
+    ])).toMatchObject({
+      errors: [{ code: 'INVALID_REQUEST' }],
+    });
+
+    // Honored granularities (and HH:00 on an hour product) create the buy as sent.
+    const overnight = [{ days: ['friday', 'saturday'], start_time: '22:00', end_time: '02:00' }];
+    for (const [productId, daypart] of [
+      ['daypart_granularity_hour', wholeHourClock],
+      ['daypart_granularity_hour', overnight],
+      ['daypart_granularity_quarter', primeTime],
+      ['daypart_granularity_minute', junction],
+    ] as const) {
+      const created = await createFor(productId, daypart);
+      expect(created, productId).not.toHaveProperty('errors');
+      expect(created).toMatchObject({
+        media_buy_id: expect.any(String),
+        packages: [{ targeting_overlay: { daypart_targets: daypart } }],
+      });
+    }
+
+    // Update enforces the same declaration.
+    const quarterBuy = await createFor('daypart_granularity_quarter', primeTime);
+    const packageId = (quarterBuy.packages as Array<{ package_id: string }>)[0]!.package_id;
+    const update = (daypart_targets: unknown) => runWithSessionContext(() => handleUpdateMediaBuy({
+      account,
+      media_buy_id: quarterBuy.media_buy_id,
+      packages: [{ package_id: packageId, targeting_overlay: { daypart_targets } }],
+    }, DEFAULT_CTX));
+    expect(await update(junction)).toMatchObject({
+      errors: [{
+        code: 'UNSUPPORTED_FEATURE',
+        field: 'packages[0].targeting_overlay.daypart_targets',
+      }],
+    });
+    expect(await update([{ days: ['sunday'], start_time: '23:15', end_time: '01:45' }]))
+      .not.toHaveProperty('errors');
   });
 
   it('resolves 3.2 discovery targeting through configured-product purchase', async () => {
@@ -23810,7 +24207,8 @@ describe('AdCP protocol compliance', () => {
       : undefined;
 
     const targeting = {
-      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_allow_v1' },
+      // Property lists are fetched and applied; see
+      // training-agent-property-list-targeting.test.ts.
       collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_shows_v1' },
       seller_extension: { inventory_tier: 'premium' },
     };
@@ -23901,7 +24299,7 @@ describe('AdCP protocol compliance', () => {
       : undefined;
 
     const initialTargeting = {
-      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_v1' },
+      collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_v1' },
     };
     const created = await simulateCallTool(server, 'create_media_buy', {
       account,
@@ -23920,7 +24318,6 @@ describe('AdCP protocol compliance', () => {
     const packageId = (created.result.packages as Array<{ package_id: string }>)[0]!.package_id;
 
     const newTargeting = {
-      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_v2' },
       collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_v2' },
       seller_extension: { inventory_tier: 'standard' },
     };

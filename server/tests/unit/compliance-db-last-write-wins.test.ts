@@ -531,7 +531,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     expect(sql).toContain('observations_json');
     expect(sql).toContain('dry_run = FALSE');
     expect(sql).toContain('ORDER BY tested_at DESC');
-    expect(params).toEqual([AGENT_URL]);
+    expect(params).toEqual([AGENT_URL, null]);
   });
 
   it('getComplianceHistory excludes dry-run diagnostic rows by default', async () => {
@@ -560,6 +560,16 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     });
 
     await expect(db.getLatestObservations(AGENT_URL)).resolves.toEqual([]);
+  });
+
+  it('pins dashboard observations to the verdict run when another org publishes later', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ observations_json: [{ category: 'test', severity: 'warning', message: 'own run' }] }], rowCount: 1, fields: [] });
+
+    await db.getLatestObservations(AGENT_URL, RUN_ID);
+
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('id = $2::uuid');
+    expect(params).toEqual([AGENT_URL, RUN_ID]);
   });
 
   it('getStoryboardStatusCounts can gate merged rows against the latest run inside the same SQL statement', async () => {

@@ -1271,6 +1271,61 @@
     let currentFilter = '';
     let currentSearch = '';
     let currentMarket = '';
+    let initialVotingMembersPromise;
+
+    function normalizeMemberName(name) {
+      return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    function loadInitialVotingMembers() {
+      if (!initialVotingMembersPromise) {
+        initialVotingMembersPromise = fetch('/initial-voting-members.json')
+          .then(response => {
+            if (!response.ok) throw new Error('Failed to load initial voting members');
+            return response.json();
+          })
+          .then(data => data.members);
+      }
+      return initialVotingMembersPromise;
+    }
+
+    function includeInitialVotingMembers(profiles, initialMembers) {
+      // Preserve public profiles and add names formally admitted by the board.
+      // These entries do not create accounts, subscriptions, or access rights.
+      const profileNames = new Set(profiles.map(profile => normalizeMemberName(profile.display_name)));
+      const searchWords = currentSearch.toLowerCase().split(/\s+/).filter(word => word.length >= 2);
+      if (searchWords.length === 0 && currentSearch) searchWords.push(currentSearch.toLowerCase());
+
+      const additions = initialMembers.filter(member => {
+        // The consent supplies no service offerings or market information.
+        if (currentFilter || currentMarket) return false;
+        const names = [member.display_name, ...(member.aliases || [])];
+        if (names.some(name => profileNames.has(normalizeMemberName(name)))) return false;
+        return searchWords.length === 0 || searchWords.some(word =>
+          names.some(name => name.toLowerCase().includes(word))
+        );
+      }).map(member => ({ ...member, initial_voting_member: true }));
+
+      return [...profiles, ...additions].sort((a, b) =>
+        Number(Boolean(b.featured)) - Number(Boolean(a.featured)) ||
+        a.display_name.localeCompare(b.display_name)
+      );
+    }
+
+    function renderInitialVotingMemberCard(member) {
+      return `<div class="member-card preview">
+        <div class="member-card-header">
+          <div class="member-logo-placeholder">${escapeHtmlSafe(member.display_name.charAt(0))}</div>
+          <div class="member-info">
+            <div class="member-name">${escapeHtmlSafe(member.display_name)}</div>
+          </div>
+        </div>
+        <div class="member-card-body">
+          <div class="member-tagline">${escapeHtmlSafe(member.category)}</div>
+          <div class="member-description">Admitted as a voting member on August 6, 2026.</div>
+        </div>
+      </div>`;
+    }
 
     // offeringLabels is now in member-card.js
 
@@ -1338,14 +1393,26 @@
         if (currentFilter) params.set('offerings', currentFilter);
         if (currentMarket) params.set('markets', currentMarket);
 
-        const response = await fetch(`/api/members?${params}`);
-        if (!response.ok) throw new Error('Failed to load members');
-
-        const data = await response.json();
-        allMembers = data.members || [];
+        const [profilesResult, initialResult] = await Promise.allSettled([
+          fetch(`/api/members?${params}`).then(response => {
+            if (!response.ok) throw new Error('Failed to load members');
+            return response.json();
+          }),
+          loadInitialVotingMembers(),
+        ]);
+        if (profilesResult.status === 'rejected' && initialResult.status === 'rejected') {
+          throw new Error('Failed to load members');
+        }
+        const profiles = profilesResult.status === 'fulfilled' ? profilesResult.value.members || [] : [];
+        const initialMembers = initialResult.status === 'fulfilled' ? initialResult.value : [];
+        allMembers = includeInitialVotingMembers(profiles, initialMembers);
 
         document.getElementById('loading').style.display = 'none';
         renderMembers(allMembers);
+        if (profilesResult.status === 'rejected' || initialResult.status === 'rejected') {
+          document.getElementById('loading').textContent = 'Some member listings could not be loaded. Please refresh to try again.';
+          document.getElementById('loading').style.display = 'block';
+        }
       } catch (error) {
         console.error('Load members error:', error);
         document.getElementById('loading').textContent = 'Failed to load members';
@@ -1368,7 +1435,9 @@
       generalInquiry.style.display = 'block';
 
       // renderMemberCard is now in member-card.js
-      grid.innerHTML = members.map(member => renderMemberCard(member)).join('');
+      grid.innerHTML = members.map(member => member.initial_voting_member
+        ? renderInitialVotingMemberCard(member)
+        : renderMemberCard(member)).join('');
     }
 
     function handleSearch(event) {

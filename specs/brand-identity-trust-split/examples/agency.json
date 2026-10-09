@@ -1,0 +1,19 @@
+{
+  "$schema": "https://trustjson.org/schemas/v1/trust.json",
+  "last_updated": "2026-09-30T00:00:00Z",
+  "agents": [
+    {
+      "url": "https://agent.pinnacle-agency.example/adcp",
+      "roles": ["adcp:buying"],
+      "jwks_uri": "https://agent.pinnacle-agency.example/.well-known/jwks.json"
+    }
+  ],
+  "grants": [
+    {
+      "grantee": "buyhub.example",
+      "scopes": ["adcp:media_buying"],
+      "agents": [{ "url": "https://api.buyhub.example/adcp" }],
+      "valid_until": "2027-01-01T00:00:00Z"
+    }
+  ]
+}

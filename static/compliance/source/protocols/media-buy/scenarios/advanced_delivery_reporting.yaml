@@ -1,16 +1,22 @@
 id: media_buy_seller/advanced_delivery_reporting
-version: "1.0.1"
+version: "1.0.3"
 introduced_in: "3.2"
 title: "Seller narrows metrics and reports delivery by canonical format"
 category: media_buy_seller
 summary: "Verifies requested-metric narrowing, time-threshold video views, negotiated format breakdowns, truncation disclosure, and applied-sort echoes."
 track: reporting
+requires:
+  - controller
 
 required_tools:
   - get_products
   - create_media_buy
   - get_media_buy_delivery
   - comply_test_controller
+
+requires_capability:
+  path: media_buy.buying_modes
+  contains: wholesale
 
 narrative: |
   AdCP 3.2 lets a buyer keep large delivery payloads focused with
@@ -24,6 +30,9 @@ narrative: |
   quartiles or average viewed_seconds. This scenario proves those distinctions
   with deterministic simulated delivery rather than validating only the JSON
   shapes.
+
+  Discovery uses the opt-in wholesale buying mode. Sellers that do not
+  advertise wholesale support grade this scenario not_applicable.
 
 agent:
   interaction_model: media_buy_seller
@@ -94,6 +103,8 @@ phases:
             - brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "compliance-media_buy_seller_advanced_delivery_r-a37f01cb"
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#advanced_delivery_reporting_sync_account"
@@ -120,6 +131,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_advanced_delivery_r-a37f01cb"
         context_outputs:
           - name: advanced_product_id
             path: "products[0].product_id"
@@ -151,6 +164,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_advanced_delivery_r-a37f01cb"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -207,6 +222,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_advanced_delivery_r-a37f01cb"
           media_buy_ids: ["$context.advanced_media_buy_id"]
           requested_metrics: ["time_based_views"]
           reporting_dimensions:

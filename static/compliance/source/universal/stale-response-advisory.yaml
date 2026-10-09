@@ -4,6 +4,9 @@ title: "STALE_RESPONSE advisory-success wire placement"
 category: stale_response_advisory
 summary: "Validates that STALE_RESPONSE rides in errors[] on a populated success response with transport success preserved, and that STALE_RESPONSE is absent on healthy upstream responses."
 track: error_handling
+requires:
+  - controller
+
 required_tools:
   - get_products
 

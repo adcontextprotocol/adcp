@@ -37,7 +37,9 @@ import type {
   ResolveContext,
   SyncAccountsResultRow,
 } from '@adcp/sdk/server';
-import { handleSyncAccounts } from './account-handlers.js';
+import { AdcpError } from '@adcp/sdk/server';
+import { handleSyncAccounts, isNaturalAccountRefProvisioned } from './account-handlers.js';
+import type { CanonicalAccountRef } from './account-scope.js';
 import { pickFromInput } from './v6-input-helpers.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -135,4 +137,48 @@ export function isIdentitylessControllerRef(ref: unknown, toolName: string | und
   if (toolName !== 'comply_test_controller' || ref == null || typeof ref !== 'object' || Array.isArray(ref)) return false;
   const keys = Object.keys(ref);
   return keys.length === 1 && keys[0] === 'sandbox' && (ref as { sandbox?: unknown }).sandbox === true;
+}
+
+/**
+ * Discovery and negotiation tasks never provision an account (accounts
+ * overview, "Account references before provisioning"). The training agent
+ * exposes `sync_accounts`, so the lazy-provisioning exception does not apply:
+ * a natural key on one of these tasks must already be provisioned.
+ */
+const DISCOVERY_AND_NEGOTIATION_TOOLS: ReadonlySet<string> = new Set([
+  'get_products',
+  'list_products',
+  'get_signals',
+  'request_proposals',
+  'refine_proposals',
+  'decline_proposals',
+]);
+
+/**
+ * Reject a buyer-declared natural key that this principal never provisioned
+ * when it arrives on a discovery or negotiation task. Returning public results
+ * instead would claim rate-card pricing for an account that does not exist.
+ * `account_id` refs and every other task keep the synthetic-account posture.
+ */
+export async function assertDiscoveryAccountProvisioned(
+  canonical: CanonicalAccountRef,
+  toolName: string | undefined,
+  principal: string | undefined,
+): Promise<void> {
+  if (canonical.kind !== 'natural') return;
+  if (toolName === undefined || !DISCOVERY_AND_NEGOTIATION_TOOLS.has(toolName)) return;
+  const ref = {
+    brand: canonical.brand,
+    operator: canonical.operator,
+    ...(canonical.operator_unit && { operator_unit: canonical.operator_unit }),
+    ...(canonical.currency && { currency: canonical.currency }),
+    ...(canonical.timezone && { timezone: canonical.timezone }),
+    sandbox: canonical.sandbox,
+  };
+  if (await isNaturalAccountRefProvisioned(principal, ref)) return;
+  throw new AdcpError('ACCOUNT_NOT_FOUND', {
+    recovery: 'terminal',
+    field: 'account',
+    message: 'Account reference could not be resolved. Provision it with sync_accounts, or omit account for public discovery.',
+  });
 }

@@ -2164,6 +2164,21 @@
             showOrphanDecisionPrompt(conflictData);
             return; // caller will re-fire via the prompt buttons
           }
+          if (conflictData.code === 'domain_publishes_brand_json') {
+            // The domain's own brand.json is authoritative; an inline edit
+            // would be reverted on the next crawl. Point at the file instead.
+            errorEl.textContent = (conflictData.message || 'Your domain publishes its own brand.json.') + ' ';
+            if (typeof conflictData.builder_url === 'string' && conflictData.builder_url.indexOf('https://brandjson.org/') === 0) {
+              var builderLink = document.createElement('a');
+              builderLink.href = conflictData.builder_url;
+              builderLink.target = '_blank';
+              builderLink.rel = 'noopener';
+              builderLink.textContent = 'Open the brand.json builder';
+              errorEl.appendChild(builderLink);
+            }
+            errorEl.style.display = 'inline';
+            return;
+          }
           if (conflictData.code === 'cross_org_ownership') {
             // The domain is owned by another org. If the caller actually
             // controls DNS, surface the self-service DNS challenge inline

@@ -150,7 +150,7 @@
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Account for product lookup. Returns products with pricing specific to this account's rate card."
+      "description": "Account for product lookup. Returns products with pricing specific to this account's rate card. The account must already be provisioned: a reference that does not resolve returns ACCOUNT_NOT_FOUND rather than public products, and get_products never provisions an account (a lazy-provisioning seller MAY instead answer for the account it would create). Omit account (and send brand for discovery context) until sync_accounts succeeds. See /docs/accounts/overview#account-references-before-provisioning."
     },
     "preferred_delivery_types": {
       "type": "array",

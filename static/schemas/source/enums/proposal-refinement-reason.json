@@ -12,7 +12,8 @@
     "alternatives_unavailable",
     "source_unavailable",
     "hold_unavailable",
-    "batch_aborted"
+    "batch_aborted",
+    "definition_changed"
   ],
   "enumDescriptions": {
     "commercially_declined": "The seller understood terms requested through the free-text ask but declined to offer them. An unmet typed constraint or product change always uses constraint_unsatisfiable instead, whether the seller cannot or will not meet it.",
@@ -22,6 +23,7 @@
     "alternatives_unavailable": "The seller produced fewer distinct draft alternatives than requested.",
     "source_unavailable": "The source proposal was not found, visible, or eligible for revision by this caller.",
     "hold_unavailable": "The seller declined or failed to reserve inventory for this finalize, whether from sell-through since drafting or from hold policy such as a concurrent-hold cap.",
-    "batch_aborted": "This entry failed only because a sibling entry in the all-or-none finalize batch failed; the entry itself was otherwise eligible."
+    "batch_aborted": "This entry failed only because a sibling entry in the all-or-none finalize batch failed; the entry itself was otherwise eligible.",
+    "definition_changed": "At finalize, one or more third-party-published definitions pinned in the source proposal's commercial_terms.definition_pins[] no longer resolve to their pinned content_digest. Valid only on an unable result carrying drifted_pins[]; no hold is taken. The buyer refines the proposal to obtain fresh pins before finalizing again."
   }
 }

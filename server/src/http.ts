@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import DOMPurify from "isomorphic-dompurify";
 import { Marked } from "marked";
 import { csrfProtection } from "./middleware/csrf.js";
+import { restoreClientIp } from "./middleware/client-ip.js";
+import { createHostedWebhookReceiverRouter } from "./routes/hosted-webhook-receiver.js";
 import { chatRequestCorrelation } from "./middleware/chat-request-correlation.js";
 import { slowResponseTracker } from "./middleware/slow-response.js";
 import { requestMetrics } from "./middleware/request-metrics.js";
@@ -59,6 +61,7 @@ import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
 import { brandJsonCacheControl } from "./services/brand-resolution-cache-policy.js";
+import { createStaticAssetVersioner } from "./utils/static-asset-versions.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
@@ -171,6 +174,8 @@ import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createNetworkHealthApiRouter } from "./routes/network-health.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
+import { createBrandImportRouter } from "./routes/brand-import.js";
+import { createJsonValidationRouter } from "./routes/json-validation.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
@@ -191,7 +196,8 @@ import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notif
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
 import { AgentContextDatabase } from "./db/agent-context-db.js";
 import { getWebMemberContext } from "./addie/member-context.js";
-import { buildAgentOAuthAuthorizeUrl } from "./routes/helpers/agent-oauth-prompt.js";
+import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from "./routes/helpers/agent-oauth-prompt.js";
+import { isOAuthOwnerReauthorizationError } from "./routes/helpers/oauth-error-detection.js";
 import {
   buildNativeErrorRedirect,
   consumeNativePendingAuth,
@@ -1192,6 +1198,12 @@ function stripLegacyBrandContext(manifest: Record<string, unknown>): Record<stri
 
 export class HTTPServer {
   private app: express.Application;
+  /** Adds ?v=<content hash> to shared JS/CSS references so deploys bypass day-long caches. */
+  private versionStaticAssets = createStaticAssetVersioner(
+    process.env.NODE_ENV === 'production'
+      ? path.join(__dirname, "../server/public")
+      : path.join(__dirname, "../public"),
+  );
   private server: Server | null = null;
   private isWorker: boolean = false;
   private complianceRefreshQueue: ComplianceRefreshQueue | null = null;
@@ -1284,6 +1296,7 @@ export class HTTPServer {
     // Trust the first proxy (Fly.io) for accurate client IP detection
     // Required for express-rate-limit and other middleware that use req.ip
     this.app.set('trust proxy', 1);
+    this.app.use(restoreClientIp);
 
     // The hosted-grader buyer brand host serves only its brand.json and a
     // governance-only JWKS (adcp#7758). Mounted first so no app-wide route,
@@ -1334,6 +1347,11 @@ export class HTTPServer {
           return res.status(404).type('text/plain').send('Not found');
       }
     });
+
+    // Run-scoped callback URLs carry a bearer token in the path. Handle them
+    // before generic request telemetry (which records raw paths), JSON parsing,
+    // cookies, and CSRF. The relay emits no token-bearing request logs.
+    this.app.use('/api/compliance-receiver', createHostedWebhookReceiverRouter());
 
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);
@@ -1546,6 +1564,7 @@ export class HTTPServer {
         if (this.bridgeIfNeeded(req, res)) return;
 
         html = await this.injectHomepageMemberCount(html);
+        html = this.versionStaticAssets(html);
 
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
         const session = await getPageSession(req, res);
@@ -1763,6 +1782,7 @@ export class HTTPServer {
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
       html = await this.injectHomepageMemberCount(html);
+      html = this.versionStaticAssets(html);
       const configScript = getAppConfigScript(user) + standaloneSiteScript(res);
 
       // Inject before </head>
@@ -2099,6 +2119,10 @@ export class HTTPServer {
 
       return serveApprovedLogoAsset(domain, id, res);
     });
+
+    // Brand-book import for the brand.json builder (stateless, anonymous-capable)
+    this.app.use('/api', createBrandImportRouter());
+    this.app.use('/api', createJsonValidationRouter());
 
     // Mount brand logo routes (upload, list, review)
     this.app.use('/api', createBrandLogoRouter({ brandDb: this.brandDb, bansDb: this.bansDb }));
@@ -2767,6 +2791,7 @@ export class HTTPServer {
           ? path.join(__dirname, '../server/public/dashboard.html')
           : path.join(__dirname, '../public/dashboard.html');
         let html = await fs.readFile(dashboardPath, 'utf-8');
+        html = this.versionStaticAssets(html);
 
         // Replace template variables with environment values
         html = html
@@ -2807,6 +2832,7 @@ export class HTTPServer {
           ? path.join(__dirname, `../server/public/${filename}`)
           : path.join(__dirname, `../public/${filename}`);
         let html = await fs.readFile(pagePath, 'utf-8');
+        html = this.versionStaticAssets(html);
 
         // Replace template variables (for billing page with Stripe)
         html = html
@@ -3330,6 +3356,10 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'adagents-builder.html');
     });
 
+    this.app.get("/adagents/validator", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'json-validator-app.html');
+    });
+
     // Member Profile UI route - serve member-profile.html at /member-profile
     this.app.get("/member-profile", async (req, res) => {
       // Redirect to AAO for auth-requiring pages when on AdCP domain
@@ -3480,6 +3510,7 @@ export class HTTPServer {
         ? path.join(__dirname, '../server/public/perspectives/article.html')
         : path.join(__dirname, '../public/perspectives/article.html');
       let html = await fs.readFile(articlePath, 'utf-8');
+      html = this.versionStaticAssets(html);
       html = injectMetaTagsIntoHtml(html, {
         title: article.title,
         description: article.excerpt || article.subtitle || article.title,
@@ -9978,11 +10009,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       } catch (error) {
         // Auth-required is an expected agent state, not a system error. Log
         // at warn so it doesn't page #aao-errors via the pino → posthog hook.
-        if (error instanceof AuthenticationRequiredError) {
-          logger.warn({ url, hasOAuth: error.hasOAuth }, 'Agent requires authentication');
+        if (isOAuthRequiredError(error)) {
+          const hasOAuth = isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth);
+          logger.warn({ url, hasOAuth: hasOAuth }, 'Agent requires authentication');
 
           let oauth_authorize_url: string | undefined;
-          if (error.hasOAuth) {
+          if (hasOAuth) {
             const userId = req.user?.id;
             if (userId) {
               try {
@@ -9993,7 +10025,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                     url,
                     orgId,
                     new AgentContextDatabase(),
-                    { returnTo: '/profile/edit' },
+                    { returnTo: '/profile/edit', authorizationError: error },
                   );
                   if (authorizeUrl) oauth_authorize_url = authorizeUrl;
                 }
@@ -10005,10 +10037,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
           return res.status(401).json({
             error: 'authentication_required',
-            message: error.hasOAuth
+            message: hasOAuth
               ? 'This agent requires OAuth authorization.'
               : 'This agent requires authentication. Save an auth token to continue.',
-            needs_oauth: error.hasOAuth,
+            needs_oauth: hasOAuth,
             ...(oauth_authorize_url && { oauth_authorize_url }),
           });
         }

@@ -32,7 +32,7 @@ const CLAUDE_TRIAGING_LABEL = 'claude-triaging';
  *  clear-stuck-claude-triaging workflow already sweeps anything over 30
  *  minutes, so 1 hour here means "the sweep missed one too." */
 const CLAUDE_TRIAGING_STUCK_MS = 60 * 60_000;
-const BURNDOWN_MILESTONE_TITLE = '3.2.0';
+const BURNDOWN_MILESTONE_TITLE = '3.3.0';
 const CONTEXT_MILESTONE_TITLES = ['P0 Bugs', 'Spec Backlog', '4.0'];
 
 async function ghFetch(token: string, url: string): Promise<Response> {
@@ -264,7 +264,7 @@ async function buildWaitingOnWgQueue(token: string, repo: string): Promise<Waiti
   return { count: result.total_count, ageBuckets, items, viewAllUrl: issuesWebUrl(repo, qualifier) };
 }
 
-/** 3.2 burn-down: milestone progress plus a one-line context row of nearby
+/** Release burn-down: milestone progress plus a one-line context row of nearby
  *  milestones. Milestone open/closed counts come straight off the
  *  milestone object — no search needed. */
 async function buildBurnDownQueue(token: string, repo: string): Promise<BurnDownQueue> {

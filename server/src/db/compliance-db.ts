@@ -7,6 +7,7 @@ import { CatalogEventsDatabase } from './catalog-events-db.js';
 import { ComplianceRefreshLeaseLostError } from './compliance-refresh-requests-db.js';
 import { AgentQualityEvaluationLeaseLostError } from './agent-quality-evaluation-db.js';
 import type { VerificationProfileRoleAssessmentInput } from '../services/verification-profile-assessment.js';
+import { isComplianceRefreshAccessFailure, type ComplianceRefreshWriteGuard } from '../services/compliance-refresh-authorization.js';
 
 const logger = baseLogger.child({ module: 'compliance-db' });
 const catalogEventsDb = new CatalogEventsDatabase();
@@ -34,8 +35,8 @@ export type ResolvedOwnerAuth =
   | { type: 'basic'; username: string; password: string }
   | {
       type: 'oauth';
-      tokens: { access_token: string; refresh_token: string; expires_at?: string };
-      client?: { client_id: string; client_secret?: string };
+      tokens: { access_token: string; refresh_token: string; expires_at?: string; issuer?: string };
+      client?: { client_id: string; client_secret?: string; issuer?: string };
     }
   | {
       /**
@@ -170,6 +171,8 @@ export interface AgentComplianceStatus {
   last_run_id: string | null;
   /** triggered_by of the most recent non-dry-run in agent_compliance_runs */
   last_triggered_by: TriggeredBy | null;
+  /** Organization that authorized the run providing the current verdict. */
+  last_run_org_id?: string | null;
   /** tracks_json from the most recent non-dry-run, used for current-run UI details */
   track_details_json?: TrackSummaryEntry[] | null;
   provenance_json?: ComplianceRunProvenance | null;
@@ -379,6 +382,7 @@ interface BadgeGradingGuard {
 // =====================================================
 
 export class ComplianceDatabase {
+  constructor(private readonly beforeCanonicalWrite?: ComplianceRefreshWriteGuard) {}
 
   // ----- Registry Metadata -----
 
@@ -533,6 +537,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, agentUrl);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${agentUrl}`],
@@ -588,6 +593,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, agentUrl);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${agentUrl}`],
@@ -680,6 +686,7 @@ export class ComplianceDatabase {
         await client.query("SELECT set_config('lock_timeout', '2000ms', true)");
         await client.query("SELECT set_config('idle_in_transaction_session_timeout', '5000ms', true)");
       }
+      await this.beforeCanonicalWrite?.(client, input.agent_url);
 
       // Profile selection and authoritative evidence publication share this
       // lock. A selection can therefore only commit against the latest fully
@@ -952,15 +959,21 @@ export class ComplianceDatabase {
         tracksSummary[t.track] = t.status;
       }
 
-      // 4. Upsert the materialized status and capture transition
+      // 4. Upsert the materialized status and capture transition.
+      // Owner-initiated runs publish the verdict but leave the independent
+      // heartbeat schedule and pending requeues untouched (#7680).
       const statusResult = await client.query(
         `WITH schedule_next AS (
           INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
-          VALUES ($1, NOW() + INTERVAL '12 hours')
+          VALUES ($1, CASE WHEN $7 = 'owner_test' THEN NULL ELSE NOW() + INTERVAL '12 hours' END)
           ON CONFLICT (agent_url) DO UPDATE SET
             next_compliance_check_at = NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours),
             compliance_inconclusive_streak = 0,
             requeued_at = NULL
+          -- TriggeredBy constrains $7 at compile time. Adding a trigger opts it
+          -- into cadence advancement unless this predicate and the INSERT
+          -- CASE above are updated together.
+          WHERE $7 != 'owner_test'
         )
         INSERT INTO agent_compliance_status (
           agent_url, status, last_checked_at,
@@ -1017,6 +1030,7 @@ export class ComplianceDatabase {
           input.headline ?? null,
           input.requested_compliance_target ?? null,
           input.adcp_version ?? null,
+          input.triggered_by ?? 'heartbeat',
         ],
       );
 
@@ -1187,12 +1201,12 @@ export class ComplianceDatabase {
     const result = await query(
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
               r.id AS last_run_id,
-              r.triggered_by AS last_triggered_by,
+              r.triggered_by AS last_triggered_by, r.triggered_org_id AS last_run_org_id,
               r.tracks_json AS track_details_json, r.provenance_json
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT id, triggered_by, tracks_json, provenance_json FROM agent_compliance_runs
+         SELECT id, triggered_by, triggered_org_id, tracks_json, provenance_json FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false AND is_authoritative = true
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
@@ -1206,14 +1220,14 @@ export class ComplianceDatabase {
     const result = await query(
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
               r.id AS last_run_id,
-              r.triggered_by AS last_triggered_by,
+              r.triggered_by AS last_triggered_by, r.triggered_org_id AS last_run_org_id,
               r.tracks_json AS track_details_json, r.provenance_json,
               COALESCE(sb_counts.passing, 0)::int AS storyboards_passing,
               COALESCE(sb_counts.total, 0)::int AS storyboards_total
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT id, triggered_by, tracks_json, provenance_json FROM agent_compliance_runs
+         SELECT id, triggered_by, triggered_org_id, tracks_json, provenance_json FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false AND is_authoritative = true
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
@@ -1310,6 +1324,29 @@ export class ComplianceDatabase {
        WHERE agent_url = $1 AND ($2::uuid IS NULL OR id = $2::uuid)
        ORDER BY tested_at DESC LIMIT 1`,
       [agentUrl, runId ?? null],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /** Owner audit lookup. A URL can belong to several organizations. */
+  async getComplianceRunForOrg(agentUrl: string, orgId: string, runId?: string): Promise<ComplianceRun | null> {
+    const result = await query<ComplianceRun>(
+      `SELECT * FROM agent_compliance_runs
+       WHERE agent_url = $1 AND triggered_org_id = $2
+         AND ($3::uuid IS NULL OR id = $3::uuid)
+       ORDER BY tested_at DESC LIMIT 1`,
+      [agentUrl, orgId, runId ?? null],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /** Latest persisted assessment for an owner organization (null is operator-only). */
+  async getLatestComplianceAttempt(agentUrl: string, orgId: string | null): Promise<ComplianceRun | null> {
+    const result = await query<ComplianceRun>(
+      `SELECT * FROM agent_compliance_runs
+       WHERE agent_url = $1 AND ($2::text IS NULL OR triggered_org_id = $2) AND dry_run = FALSE
+       ORDER BY tested_at DESC LIMIT 1`,
+      [agentUrl, orgId],
     );
     return result.rows[0] ?? null;
   }
@@ -1489,6 +1526,18 @@ export class ComplianceDatabase {
     return (result.rowCount ?? 0) > 0;
   }
 
+  /** Retry soon after an execution fence or global suite slot is busy. */
+  async deferComplianceCheckAfterContention(agentUrl: string, expectedLockUntil: Date): Promise<boolean> {
+    const result = await query(
+      `UPDATE agent_registry_metadata
+       SET next_compliance_check_at = NOW() + INTERVAL '5 minutes'
+       WHERE agent_url = $1 AND next_compliance_check_at = $2::timestamptz
+         AND next_compliance_check_at > NOW()`,
+      [agentUrl, expectedLockUntil],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   /**
    * Return the notices_json array from the most recent non-dry-run compliance
    * run for the agent. Returns an empty array when no run exists or when the
@@ -1497,14 +1546,16 @@ export class ComplianceDatabase {
    * Forward-compat: unknown codes/severities are preserved verbatim — callers
    * MUST NOT validate or filter notice.code / notice.severity values.
    */
-  async getLatestNotices(agentUrl: string): Promise<NoticeEntry[]> {
+  async getLatestNotices(agentUrl: string, runId?: string | null): Promise<NoticeEntry[]> {
+    if (runId === null) return [];
     const result = await query(
       `SELECT notices_json
        FROM agent_compliance_runs
        WHERE agent_url = $1 AND dry_run = FALSE AND is_authoritative = TRUE
+         AND ($2::uuid IS NULL OR id = $2::uuid)
        ORDER BY tested_at DESC
        LIMIT 1`,
-      [agentUrl],
+      [agentUrl, runId ?? null],
     );
     const raw = result.rows[0]?.notices_json;
     if (!Array.isArray(raw)) return [];
@@ -1516,14 +1567,16 @@ export class ComplianceDatabase {
    * run. These are fresh per-run observations from the runner (for example
    * best-practice advisories); consumers must not merge them with older runs.
    */
-  async getLatestObservations(agentUrl: string): Promise<unknown[]> {
+  async getLatestObservations(agentUrl: string, runId?: string | null): Promise<unknown[]> {
+    if (runId === null) return [];
     const result = await query(
       `SELECT observations_json
        FROM agent_compliance_runs
        WHERE agent_url = $1 AND dry_run = FALSE AND is_authoritative = TRUE
+         AND ($2::uuid IS NULL OR id = $2::uuid)
        ORDER BY tested_at DESC
        LIMIT 1`,
-      [agentUrl],
+      [agentUrl, runId ?? null],
     );
     const raw = result.rows[0]?.observations_json;
     if (!Array.isArray(raw)) return [];
@@ -1702,6 +1755,7 @@ export class ComplianceDatabase {
     first_failure_validations_jsonb: unknown;
     skipped_steps: StoryboardSkippedStep[] | null;
     triggered_by: string | null;
+    run_org_id: string | null;
   }>> {
     const diagnosticsSelect = options.includeDiagnostics === false
       ? 'NULL::jsonb AS first_failure_validations_jsonb'
@@ -1731,14 +1785,15 @@ export class ComplianceDatabase {
          ORDER BY tested_at DESC
          LIMIT 1
        )
-       SELECT storyboard_id, requested_compliance_target, adcp_version, status, last_tested_at, last_passed_at, last_failed_at,
-              steps_passed, steps_total, failure_count, skipped_count,
-              first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
+       SELECT s.storyboard_id, s.requested_compliance_target, s.adcp_version, s.status, s.last_tested_at, s.last_passed_at, s.last_failed_at,
+              s.steps_passed, s.steps_total, s.failure_count, s.skipped_count,
+              s.first_failed_step_id, s.first_failed_step_title, s.first_failed_step_task, s.first_failure_message,
               ${diagnosticsSelect},
               -- Cheap denormalized column; owner gating happens in the serializer.
               s.skipped_steps_jsonb AS skipped_steps,
-              triggered_by
+              s.triggered_by, run_owner.triggered_org_id AS run_org_id
        FROM agent_storyboard_status s
+       LEFT JOIN agent_compliance_runs run_owner ON run_owner.id = s.run_id
        ${diagnosticsJoin}
        WHERE s.agent_url = $1
          AND ($2::uuid IS NULL OR s.run_id = $2::uuid)
@@ -1823,6 +1878,7 @@ export class ComplianceDatabase {
     first_failure_message: string | null;
     first_failure_validations_jsonb: unknown;
     skipped_steps: StoryboardSkippedStep[] | null;
+    run_org_id: string | null;
   }>>> {
     if (agentUrls.length === 0) return new Map();
 
@@ -1848,8 +1904,10 @@ export class ComplianceDatabase {
               s.steps_passed, s.steps_total, s.failure_count, s.skipped_count,
               s.first_failed_step_id, s.first_failed_step_title, s.first_failed_step_task, s.first_failure_message,
               first_failure_diag.failed_validations_jsonb AS first_failure_validations_jsonb,
-              s.skipped_steps_jsonb AS skipped_steps
+              s.skipped_steps_jsonb AS skipped_steps,
+              run_owner.triggered_org_id AS run_org_id
        FROM agent_storyboard_status s
+       LEFT JOIN agent_compliance_runs run_owner ON run_owner.id = s.run_id
        LEFT JOIN latest_run_flags lf ON lf.agent_url = s.agent_url
        LEFT JOIN LATERAL (
          SELECT d.failed_validations_jsonb
@@ -1880,6 +1938,7 @@ export class ComplianceDatabase {
       first_failed_step_task: string | null; first_failure_message: string | null;
       first_failure_validations_jsonb: unknown;
       skipped_steps: StoryboardSkippedStep[] | null;
+      run_org_id: string | null;
     }>>();
     for (const row of result.rows) {
       if (!map.has(row.agent_url)) map.set(row.agent_url, []);
@@ -1901,16 +1960,21 @@ export class ComplianceDatabase {
    * access token as a bearer so callers surface a clear 401 from the agent
    * rather than sending no Authorization header at all.
    */
-  async resolveOwnerAuth(agentUrl: string): Promise<ResolvedOwnerAuth | undefined> {
+  async resolveOwnerAuth(
+    agentUrl: string,
+    checkpoint?: () => Promise<void>,
+    onResolvedOrg?: (orgId: string) => void,
+  ): Promise<ResolvedOwnerAuth | undefined> {
     try {
+      await checkpoint?.();
       const result = await query(
         `SELECT ac.organization_id,
                 ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type,
                 ac.oauth_access_token_encrypted, ac.oauth_access_token_iv,
                 ac.oauth_refresh_token_encrypted, ac.oauth_refresh_token_iv,
-                ac.oauth_token_expires_at,
+                ac.oauth_token_expires_at, ac.oauth_token_issuer,
                 ac.oauth_client_id,
-                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv,
+                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv, ac.oauth_client_issuer,
                 ac.oauth_cc_token_endpoint, ac.oauth_cc_client_id,
                 ac.oauth_cc_client_secret_encrypted, ac.oauth_cc_client_secret_iv,
                 ac.oauth_cc_scope, ac.oauth_cc_resource, ac.oauth_cc_audience, ac.oauth_cc_auth_method
@@ -1933,8 +1997,13 @@ export class ComplianceDatabase {
         [agentUrl, JSON.stringify([{ url: agentUrl }])],
       );
 
+      await checkpoint?.();
       const row = result.rows[0];
       if (!row) return undefined;
+      const resolved = <T extends ResolvedOwnerAuth>(auth: T): T => {
+        onResolvedOrg?.(row.organization_id);
+        return auth;
+      };
 
       // Prefer static token when available
       if (row.auth_token_encrypted) {
@@ -1942,13 +2011,13 @@ export class ComplianceDatabase {
 
         if (row.auth_type === 'basic') {
           const basic = decodeBasicCredentials(token);
-          if (basic) return basic;
+          if (basic) return resolved(basic);
           logger.warn(
             { agentUrl, orgId: row.organization_id },
             'Ignoring malformed saved Basic auth credentials while resolving owner auth',
           );
         } else {
-          return { type: 'bearer', token };
+          return resolved({ type: 'bearer', token });
         }
       }
 
@@ -1964,12 +2033,13 @@ export class ComplianceDatabase {
           : undefined;
 
         if (!refreshToken) {
-          return { type: 'bearer', token: accessToken };
+          return resolved({ type: 'bearer', token: accessToken });
         }
 
-        const tokens: { access_token: string; refresh_token: string; expires_at?: string } = {
+        const tokens: Extract<ResolvedOwnerAuth, { type: 'oauth' }>['tokens'] = {
           access_token: accessToken,
           refresh_token: refreshToken,
+          ...(row.oauth_token_issuer != null && { issuer: row.oauth_token_issuer }),
         };
         if (row.oauth_token_expires_at) {
           tokens.expires_at = new Date(row.oauth_token_expires_at).toISOString();
@@ -1977,7 +2047,10 @@ export class ComplianceDatabase {
 
         const oauth: Extract<ResolvedOwnerAuth, { type: 'oauth' }> = { type: 'oauth', tokens };
         if (row.oauth_client_id) {
-          const client: { client_id: string; client_secret?: string } = { client_id: row.oauth_client_id };
+          const client: NonNullable<Extract<ResolvedOwnerAuth, { type: 'oauth' }>['client']> = {
+            client_id: row.oauth_client_id,
+            ...(row.oauth_client_issuer != null && { issuer: row.oauth_client_issuer }),
+          };
           if (row.oauth_client_secret_encrypted && row.oauth_client_secret_iv) {
             client.client_secret = decryptToken(
               row.oauth_client_secret_encrypted,
@@ -1987,7 +2060,7 @@ export class ComplianceDatabase {
           }
           oauth.client = client;
         }
-        return oauth;
+        return resolved(oauth);
       }
 
       if (
@@ -2041,11 +2114,12 @@ export class ComplianceDatabase {
             'Dropped unrecognized oauth_cc_auth_method from agent_context',
           );
         }
-        return { type: 'oauth_client_credentials', credentials };
+        return resolved({ type: 'oauth_client_credentials', credentials });
       }
 
       return undefined;
     } catch (error) {
+      if (isComplianceRefreshAccessFailure(error)) throw error;
       logger.warn({ err: error, agentUrl }, 'Could not resolve owner auth');
       return undefined;
     }
@@ -2077,6 +2151,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, badge.agent_url);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${badge.agent_url}`],
@@ -2279,10 +2354,11 @@ export class ComplianceDatabase {
     expectedGeneration?: string,
     gradingGuard?: BadgeGradingGuard,
   ): Promise<boolean> {
-    if (expectedGeneration !== undefined) {
+    if (expectedGeneration !== undefined || this.beforeCanonicalWrite) {
       const client = await getClient();
       try {
         await client.query('BEGIN');
+        await this.beforeCanonicalWrite?.(client, agentUrl);
         await client.query(
           'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
           [`verification-badge:${agentUrl}`],
@@ -2298,7 +2374,7 @@ export class ComplianceDatabase {
                verification_token = NULL, token_expires_at = NULL, updated_at = NOW()
            WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
              AND status IN ('active', 'degraded')
-             AND COALESCE((
+             AND ($5::bigint IS NULL OR COALESCE((
                SELECT badge_requalification_generation
                FROM agent_registry_metadata WHERE agent_url = $1
              ), 0) = $5::bigint
@@ -2393,6 +2469,7 @@ export class ComplianceDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await this.beforeCanonicalWrite?.(client, agentUrl);
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${agentUrl}`],
@@ -2542,10 +2619,11 @@ export class ComplianceDatabase {
     expectedGeneration?: string,
     gradingGuard?: BadgeGradingGuard,
   ): Promise<boolean> {
-    if (expectedGeneration !== undefined) {
+    if (expectedGeneration !== undefined || this.beforeCanonicalWrite) {
       const client = await getClient();
       try {
         await client.query('BEGIN');
+        await this.beforeCanonicalWrite?.(client, agentUrl);
         await client.query(
           'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
           [`verification-badge:${agentUrl}`],
@@ -2561,7 +2639,7 @@ export class ComplianceDatabase {
                verification_token = NULL, token_expires_at = NULL, updated_at = NOW()
            WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
              AND status = 'active'
-             AND COALESCE((
+             AND ($4::bigint IS NULL OR COALESCE((
                SELECT badge_requalification_generation
                FROM agent_registry_metadata WHERE agent_url = $1
              ), 0) = $4::bigint

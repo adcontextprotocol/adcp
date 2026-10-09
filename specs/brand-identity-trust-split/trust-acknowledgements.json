@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/trust/v1/trust-acknowledgements.json",
+  "title": "trust.json acknowledgements sub-document",
+  "description": "PROPOSAL (RFC #7809) — not published. Bulk acknowledgements referenced from trust.json acknowledgements_url, for organizations (e.g. ad networks and SSPs) that accept thousands of grants. Kept off the signature-verification fetch path. Every entry follows the trust.json acknowledgement rules: agent_url MUST be an agents[] entry in the referencing trust.json, and terms come only from the grantor's document. Removing an entry withdraws the acknowledgement; verifiers SHOULD apply the grant source's retention rules (for adcp:adagents, the revoked-publisher-domain retention) before treating a removal as permanent.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "last_updated": { "type": "string", "format": "date-time" },
+    "acknowledgements": {
+      "type": "array",
+      "items": { "$ref": "/schemas/trust/v1/trust.json#/definitions/acknowledgement" }
+    },
+    "next": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "Optional same-host URL of the next shard. Verifiers follow shards in order and stop at a configured limit."
+    }
+  },
+  "required": ["acknowledgements"],
+  "additionalProperties": false
+}
