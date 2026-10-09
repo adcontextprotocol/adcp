@@ -875,6 +875,12 @@ This is the first stable 3.2 release. `3.2.0` is a permanently withdrawn version
 - 7b5472f: Stop the universal `read_tool_idempotency` storyboard from sending the creative-agent-only `type` filter to `list_creative_formats`, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
 - e82f055: Tighten the unreleased `viewable_rate` optimization goal before 3.2.0-rc.7. The legacy goal shape now accepts only `threshold_rate` targets for `viewable_rate`, so a meaningless `cost_per` target is rejected rather than silently capped at 1. Viewability `standard` and `vendor` are now allowed on `viewed_seconds` goals too, which were already governed by the viewability standard, and both goal shapes reject those fields on other metrics. The migration guide documents the `BrandRef`-to-`BrandKey` vendor mapping when converting legacy goals to the canonical shape.
 
+## 3.1.27
+
+### Patch Changes
+
+- 21f694a: Backport macro-bearing URL validation from 3.2 to the 3.1 maintenance line so VAST, DAAST, URL, and tracker assets accept ordinary ad-server tokens such as `%%CACHEBUSTER%%`, `%%PATTERN:url%%`, and `%%CLICK_URL_UNESC%%` without pre-encoding their delimiters. Preserve all previously accepted URI-template values and existing substitution semantics. Fixes #7993.
+
 ## 3.1.26
 
 ### Patch Changes
