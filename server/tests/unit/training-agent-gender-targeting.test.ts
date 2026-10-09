@@ -105,6 +105,9 @@ describe('training seller core gender targeting', () => {
       revision: created.revision, packages: [{ package_id: packageId,
         targeting_overlay: { demographics: { age, gender: revisedGender } } }] });
     expect(changed, JSON.stringify(changed)).not.toHaveProperty('errors');
+    expect(changed.status).toBe('completed');
+    const updateValidation = validateSourceSchema('media-buy/update-media-buy-response.json', changed);
+    expect(updateValidation.valid, JSON.stringify(updateValidation.errors)).toBe(true);
     expect(changed.affected_packages[0]).toMatchObject({ targeting_overlay: { geo_countries: ['US'], demographics: { age, gender: revisedGender } },
       targeting_resolution: { demographics: { requested: { age, gender: revisedGender }, applied: { age, gender: revisedGender } } } });
     const genderOnly = await call('update_media_buy', { account, media_buy_id: created.media_buy_id,

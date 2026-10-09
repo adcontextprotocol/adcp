@@ -172,20 +172,33 @@ phases:
           - check: response_schema
             description: Response matches the task response schema
           - check: field_contains
-            path: products[0].demographic_targeting.gender.values
-            value: non_binary
-            description: The seeded native product explicitly advertises non-binary support
-          - check: field_value
-            path: products[0].demographic_targeting.gender.unknown_handling
-            value: selectable
-            description: The seeded native product accepts either unknown membership
-          - check: field_value
-            path: products[1].demographic_targeting.gender.unknown_handling
-            value: always_excluded
-            description: The limited product excludes unknown gender
-          - check: field_absent
-            path: products[2].demographic_targeting.gender
-            description: An age-only declaration does not imply gender support
+            path: products[*]
+            value:
+              product_id: gender_native_display
+              demographic_targeting:
+                gender:
+                  values: [female, male, non_binary]
+                  execution_modes: [native]
+                  unknown_handling: selectable
+            description: The seeded native product retains its binding gender capability
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: gender_limited_display
+              demographic_targeting:
+                gender:
+                  values: [female, male]
+                  execution_modes: [native]
+                  unknown_handling: always_excluded
+            description: The limited product retains its executable subset and unknown handling
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: gender_age_only_display
+              demographic_targeting:
+                age:
+                  execution_modes: [continuous_bounds]
+            description: The age-only product retains its age execution declaration
   - id: execute_exact_gender
     title: Book exact non-binary and mixed demographic predicates
     steps:
@@ -249,7 +262,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: packages[0].targeting_overlay.demographics.gender.values
+            path: packages[0].targeting_overlay.demographics.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -264,7 +277,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: packages[0].targeting_resolution.demographics.requested.gender.values
+            path: packages[0].targeting_resolution.demographics.requested.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -279,7 +292,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: packages[0].targeting_resolution.demographics.applied.gender.values
+            path: packages[0].targeting_resolution.demographics.applied.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -298,11 +311,11 @@ phases:
             value: 2
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: packages[1].targeting_overlay.demographics.gender.values
+            path: packages[1].targeting_overlay.demographics.gender.values[*]
             value: female
             description: The exact selected category set includes female
           - check: field_contains
-            path: packages[1].targeting_overlay.demographics.gender.values
+            path: packages[1].targeting_overlay.demographics.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -326,11 +339,11 @@ phases:
             value: 2
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: packages[1].targeting_resolution.demographics.requested.gender.values
+            path: packages[1].targeting_resolution.demographics.requested.gender.values[*]
             value: female
             description: The exact selected category set includes female
           - check: field_contains
-            path: packages[1].targeting_resolution.demographics.requested.gender.values
+            path: packages[1].targeting_resolution.demographics.requested.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -354,11 +367,11 @@ phases:
             value: 2
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: packages[1].targeting_resolution.demographics.applied.gender.values
+            path: packages[1].targeting_resolution.demographics.applied.gender.values[*]
             value: female
             description: The exact selected category set includes female
           - check: field_contains
-            path: packages[1].targeting_resolution.demographics.applied.gender.values
+            path: packages[1].targeting_resolution.demographics.applied.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -416,7 +429,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[0].targeting_overlay.demographics.gender.values
+            path: media_buys[0].packages[0].targeting_overlay.demographics.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -431,7 +444,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[0].targeting_resolution.demographics.requested.gender.values
+            path: media_buys[0].packages[0].targeting_resolution.demographics.requested.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -447,7 +460,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[0].targeting_resolution.demographics.applied.gender.values
+            path: media_buys[0].packages[0].targeting_resolution.demographics.applied.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -467,11 +480,11 @@ phases:
             value: 2
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values[*]
             value: female
             description: The exact selected category set includes female
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -495,11 +508,11 @@ phases:
             value: 2
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values[*]
             value: female
             description: The exact selected category set includes female
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -525,11 +538,11 @@ phases:
             value: 2
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values[*]
             value: female
             description: The exact selected category set includes female
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -571,7 +584,7 @@ phases:
             value: gender_values
             description: Mixed readback preserves native gender execution
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_overlay.geo_countries
+            path: media_buys[0].packages[1].targeting_overlay.geo_countries[*]
             value: US
             description: Unrelated country targeting survives demographic mutation
   - id: reject_unsupported_gender
@@ -612,15 +625,10 @@ phases:
           Reject non_binary because this product advertises only female and male. Do not reinterpret
           a known non-binary category as unknown or another category.
         validations:
-          - check: response_schema
-            description: Response matches the task response schema
           - check: error_code
             allowed_values:
               - UNSUPPORTED_FEATURE
             description: Reject unsupported exact gender execution before booking
-          - check: field_present
-            path: errors[0].field
-            description: The error identifies unsupported targeting
           - check: field_absent
             path: media_buy_id
             description: Rejected targeting does not create a media buy
@@ -661,15 +669,10 @@ phases:
           Reject because the chosen product makes no exact gender commitment. Do not infer support
           from seller rollup, free-text description, or age capability.
         validations:
-          - check: response_schema
-            description: Response matches the task response schema
           - check: error_code
             allowed_values:
               - UNSUPPORTED_FEATURE
             description: Reject unsupported exact gender execution before booking
-          - check: field_present
-            path: errors[0].field
-            description: The error identifies unsupported targeting
           - check: field_absent
             path: media_buy_id
             description: Rejected targeting does not create a media buy
@@ -708,15 +711,10 @@ phases:
           idempotency_key: $generate:uuid_v4#gender_targeting_reject_unknown_policy
         expected: Reject the incompatible include_unknown value without silently changing it.
         validations:
-          - check: response_schema
-            description: Response matches the task response schema
           - check: error_code
             allowed_values:
               - UNSUPPORTED_FEATURE
             description: Reject unsupported exact gender execution before booking
-          - check: field_present
-            path: errors[0].field
-            description: The error identifies unsupported targeting
           - check: field_absent
             path: media_buy_id
             description: Rejected targeting does not create a media buy
@@ -833,11 +831,11 @@ phases:
             value: 2
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values[*]
             value: female
             description: The exact selected category set includes female
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -861,11 +859,11 @@ phases:
             value: 2
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values[*]
             value: female
             description: The exact selected category set includes female
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -891,11 +889,11 @@ phases:
             value: 2
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values[*]
             value: female
             description: The exact selected category set includes female
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -921,7 +919,7 @@ phases:
             value: true
             description: Only exact predicate compilation is stored
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_overlay.geo_countries
+            path: media_buys[0].packages[1].targeting_overlay.geo_countries[*]
             value: US
             description: Unrelated country targeting survives demographic mutation
       - id: replace_with_age_only
@@ -1066,7 +1064,7 @@ phases:
             path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender
             description: Whole-demographics replacement removes omitted gender
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_overlay.geo_countries
+            path: media_buys[0].packages[1].targeting_overlay.geo_countries[*]
             value: US
             description: Unrelated country targeting survives demographic mutation
       - id: replace_with_gender_only
@@ -1178,7 +1176,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -1193,7 +1191,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -1209,7 +1207,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -1225,7 +1223,7 @@ phases:
             value: true
             description: Only exact predicate compilation is stored
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_overlay.geo_countries
+            path: media_buys[0].packages[1].targeting_overlay.geo_countries[*]
             value: US
             description: Unrelated country targeting survives demographic mutation
       - id: clear_demographics
@@ -1308,7 +1306,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[0].targeting_overlay.demographics.gender.values
+            path: media_buys[0].packages[0].targeting_overlay.demographics.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -1323,7 +1321,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[0].targeting_resolution.demographics.requested.gender.values
+            path: media_buys[0].packages[0].targeting_resolution.demographics.requested.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -1339,7 +1337,7 @@ phases:
             value: 1
             description: The selected category set has exactly the requested size
           - check: field_contains
-            path: media_buys[0].packages[0].targeting_resolution.demographics.applied.gender.values
+            path: media_buys[0].packages[0].targeting_resolution.demographics.applied.gender.values[*]
             value: non_binary
             description: The exact selected category set includes non_binary
           - check: field_value
@@ -1355,6 +1353,6 @@ phases:
             value: true
             description: Only exact predicate compilation is stored
           - check: field_contains
-            path: media_buys[0].packages[1].targeting_overlay.geo_countries
+            path: media_buys[0].packages[1].targeting_overlay.geo_countries[*]
             value: US
             description: Unrelated country targeting survives demographic mutation

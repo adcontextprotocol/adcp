@@ -24807,6 +24807,21 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         (handlerArgs as ToolArgs) || {},
         { ...ctx, servedAdcpVersion },
       ));
+      // The local 3.3 preview uses this raw MCP dispatcher rather than the
+      // deployed tenant adapter. Keep legacy lifecycle status out of the
+      // protocol envelope before publishing or caching the candidate result.
+      if (
+        ctx.developmentCoreGender
+        && coreGenderVersionSupported({ ...ctx, servedAdcpVersion })
+        && name === 'update_media_buy'
+        && isRecord(result)
+        && typeof result.media_buy_status === 'string'
+        && result.status === result.media_buy_status
+      ) {
+        const canonicalResult = { ...result };
+        delete canonicalResult.status;
+        result = canonicalResult;
+      }
       const responseVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion }, result);
       if (responseVersionError) result = { errors: [responseVersionError] };
       const resultObj = result as Record<string, unknown> & {
