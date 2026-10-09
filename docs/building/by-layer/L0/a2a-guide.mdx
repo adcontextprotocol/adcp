@@ -134,7 +134,7 @@ console.log(response.message);  // Human-readable summary
 
 ### Profile Invocation Messages
 
-A profile invocation contains exactly one authoritative DataPart with `{ skill, input }`. It may also contain advisory TextParts. Text never overrides the structured input:
+An activated profile invocation contains exactly one DataPart with `{ skill, input }`. A message with more than one DataPart, of any shape, MUST be rejected, not resolved by picking the first or last (see the [profile specification](/docs/building/by-layer/L0/a2a-profile-extension#invocation-message)). The response-side "last DataPart" rule never applies to inbound invocation messages. Advisory TextParts are allowed and never override the structured input:
 
 ```javascript
 // SDK-generated display label + authoritative structured invocation

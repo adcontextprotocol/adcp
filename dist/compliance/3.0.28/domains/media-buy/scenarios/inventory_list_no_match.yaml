@@ -1,0 +1,252 @@
+id: media_buy_seller/inventory_list_no_match
+version: "1.0.1"
+title: "Seller handles a property_list reference that matches zero inventory"
+category: media_buy_seller
+summary: "Verifies a seller preserves a no-match property list on an accepted buy or returns a structured error."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buys
+
+requires_capability:
+  path: "media_buy.features.property_list_filtering"
+  equals: true
+
+narrative: |
+  Not every buyer list matches every seller's inventory. A buyer may point at a
+  property_list of domains this seller does not carry. The seller must handle
+  that gracefully:
+
+  - Accept the buy and surface a zero-delivery expectation through reporting, OR
+  - Return an informative typed AdCP error on create_media_buy with findings the
+    buyer can act on.
+
+  What the seller must NOT do: crash, return a misleading non-zero forecast, or
+  silently drop the targeting and deliver against unintended inventory. Each of
+  those is a real failure mode we've seen in adapter integrations.
+
+  This scenario exercises the no-match path using the test kit's pre-populated
+  no_match_properties list.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_property_list_targeting
+  examples:
+    - "Sellers that validate inventory against buyer-supplied lists"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must resolve PropertyListReference against its own inventory and
+    report a truthful outcome when nothing matches.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discover
+    title: "Discover products"
+    steps:
+      - id: get_products_brief
+        title: "Discover products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products the seller carries.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Video inventory on outdoor lifestyle programming. Q3 flight."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "inventory_list_no_match--get_products_brief"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+
+  - id: no_match_accept_path
+    title: "Accept and preserve the no-match property list"
+    optional: true
+    branch_set:
+      id: property_list_no_match_handled
+      semantics: any_of
+    narrative: |
+      A seller may accept the buy when it preserves the property-list targeting
+      and its downstream reporting makes the zero-delivery expectation clear.
+      This is one of the two conformant outcomes in the 3.0 contract; the peer
+      branch covers structured rejection.
+
+    steps:
+      - id: create_buy_no_match_accept
+        title: "Accept create_media_buy against an empty intersection"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Accept the buy with a valid media-buy artifact. The seller remains
+          responsible for surfacing the zero-delivery expectation through its
+          reporting behavior.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "$generate:uuid_v4#inventory_list_no_match_accept"
+          start_time: "2099-07-01T00:00:00Z"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 10000
+              pricing_option_id: "$context.pricing_option_id"
+              targeting_overlay:
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_no_match_v1"
+          context:
+            correlation_id: "inventory_list_no_match--accept"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "no_match_media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Accepted response matches create-media-buy-response.json"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Accepted response returns a media_buy_id"
+          - check: field_present
+            path: "context"
+            description: "Accepted response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inventory_list_no_match--accept"
+            description: "Context correlation_id returned unchanged"
+
+      - id: get_buy_no_match_accept
+        title: "Confirm the accepted no-match targeting persisted"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        contributes: true
+        expected: |
+          Return the accepted buy with its no-match property-list reference
+          persisted on the package.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.no_match_media_buy_id"
+          context:
+            correlation_id: "inventory_list_no_match--get_accept"
+        validations:
+          - check: response_schema
+            description: "Readback matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.property_list.list_id"
+            value: "acme_outdoor_no_match_v1"
+            description: "Readback preserves the accepted no-match property-list targeting"
+
+  - id: no_match_reject_path
+    title: "Reject the no-match buy with a structured error"
+    optional: true
+    branch_set:
+      id: property_list_no_match_handled
+      semantics: any_of
+    narrative: |
+      A seller may instead reject the same well-formed request. This branch makes
+      that documented 3.0 outcome reachable by marking the error as expected and
+      requiring a typed AdCP error response with preserved correlation context.
+
+    steps:
+      - id: create_buy_no_match_reject
+        title: "Reject create_media_buy against an empty intersection"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        contributes: true
+        expected: |
+          Reject with a well-formed AdCP error explaining that the property list
+          matches no available inventory. The 3.0 contract does not mandate one
+          specific error code for this condition.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "$generate:uuid_v4#inventory_list_no_match_reject"
+          start_time: "2099-07-01T00:00:00Z"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 10000
+              pricing_option_id: "$context.pricing_option_id"
+              targeting_overlay:
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_no_match_v1"
+          context:
+            correlation_id: "inventory_list_no_match--reject"
+        validations:
+          - check: response_schema
+            description: "Rejected response matches create-media-buy-response.json"
+          - check: error_code
+            description: "Rejected response carries a typed AdCP error code"
+          - check: field_present
+            path: "context"
+            description: "Rejected response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inventory_list_no_match--reject"
+            description: "Context correlation_id returned unchanged"
+
+  - id: no_match_outcome_assertion
+    title: "Require one documented no-match outcome"
+    narrative: |
+      Synthetic assertion over the accept and reject branches. Either a valid
+      zero-delivery acceptance path or a structured rejection satisfies the 3.0
+      no-match contract.
+    steps:
+      - id: assert_property_list_no_match_handled
+        title: "Require handling from either branch"
+        task: assert_contribution
+        comply_scenario: create_media_buy
+        stateful: false
+        expected: |
+          At least one no-match outcome contributed
+          property_list_no_match_handled.
+        validations:
+          - check: any_of
+            allowed_values: ["property_list_no_match_handled"]
+            description: "Seller must either accept while preserving the targeting or return a structured rejection."

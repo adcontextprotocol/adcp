@@ -320,6 +320,10 @@ export interface PublisherProfile {
   measurementProvider: string;
   measurementNotes: string;
   properties: PropertyDefinition[];
+  /** Products over this publisher's properties let a buyer select a subset
+   * through `targeting_overlay.property_list`. Exclusion is honoured on every
+   * product regardless. */
+  propertyListTargeting?: boolean;
   /** Optional: catalog types this publisher supports */
   catalogTypes?: string[];
   reportingFrequencies: string[];
@@ -610,6 +614,10 @@ export interface SessionState {
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
   governanceAdjustments: Map<string, GovernanceAdjustmentState>;
   propertyLists: Map<string, PropertyListState>;
+  /** Buyer property lists this seller fetched for targeting, keyed by
+   * agent_url, list_id, and a fingerprint of the supplied credential. Entries
+   * are reused only until their `cache_valid_until`. */
+  propertyListCache: Map<string, PropertyListCacheEntry>;
   collectionLists: Map<string, CollectionListState>;
   contentStandards: Map<string, ContentStandardsState>;
   rightsGrants: Map<string, RightsGrantState>;
@@ -897,6 +905,9 @@ export interface PackageState {
    * package. Kept alongside the effective targeting so create/update/read
    * surfaces cannot drift after a configured product is selected. */
   targetingResolution?: Record<string, unknown>;
+  /** Effective inventory after buyer property lists, recomputed whenever
+   * the package's targeting is created or replaced. */
+  propertyListApplication?: PackagePropertyApplication;
   context?: Record<string, unknown>;
   legacyOmitProductId?: boolean;
   /** Buyer-declared optimization goals carried through from create_media_buy.
@@ -935,8 +946,26 @@ export interface ListReference {
   auth_token?: string;
 }
 
+/** A buyer property list as the seller resolved it from the list agent. */
+export interface PropertyListCacheEntry {
+  identifiers: Array<{ type: string; value: string }>;
+  /** When the list agent resolved the snapshot (copied from its response). */
+  resolvedAt: string;
+  /** Re-fetch at or after this instant. */
+  cacheValidUntil: string;
+}
+
+/** Seller-computed result of applying buyer property lists to one package. */
+export interface PackagePropertyApplication {
+  /** Product properties that remain eligible after every list. */
+  effectiveProperties: Array<{ publisher_domain: string; property_id: string }>;
+  /** One `inventory-list-application` receipt per effective list reference. */
+  listApplications: Array<Record<string, unknown>>;
+}
+
 export interface PackageTargeting {
   property_list?: ListReference;
+  property_list_exclude?: ListReference;
   collection_list?: ListReference;
   collection_list_exclude?: ListReference;
   audience_include?: string[];

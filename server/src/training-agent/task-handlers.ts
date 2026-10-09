@@ -2031,6 +2031,76 @@ function canonicalReportingTimezone(value: unknown): string | undefined {
   }
 }
 
+const DAYPART_CLOCK_TIME = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;
+const DAYPART_GRANULARITY_RANK = { hour: 0, quarter_hour: 1, minute: 2 } as const;
+type DaypartTimeGranularity = keyof typeof DAYPART_GRANULARITY_RANK;
+
+/** Shape errors for an entry's whole-hour vs HH:MM window fields, relative to
+ * the entry path. These are INVALID_REQUEST; capability matching never sees
+ * them. */
+function daypartWindowErrors(entry: Record<string, unknown>): Array<{ field: string; message: string }> {
+  const hasHour = entry.start_hour !== undefined || entry.end_hour !== undefined;
+  const hasTime = entry.start_time !== undefined || entry.end_time !== undefined;
+  if (hasHour && hasTime) {
+    return [{ field: '', message: 'start_hour/end_hour and start_time/end_time are mutually exclusive' }];
+  }
+  if (hasTime) {
+    const errors: Array<{ field: string; message: string }> = [];
+    for (const key of ['start_time', 'end_time'] as const) {
+      const clock = entry[key];
+      if (typeof clock !== 'string' || !DAYPART_CLOCK_TIME.test(clock)) {
+        errors.push({ field: `.${key}`, message: `${key}: must be a 24-hour HH:MM clock time` });
+      }
+    }
+    if (errors.length === 0 && entry.start_time === entry.end_time) {
+      errors.push({ field: '.end_time', message: 'end_time: must differ from start_time' });
+    }
+    return errors;
+  }
+  if (!hasHour) {
+    return [{ field: '', message: 'a window requires start_hour/end_hour or start_time/end_time' }];
+  }
+  const errors: Array<{ field: string; message: string }> = [];
+  for (const key of ['start_hour', 'end_hour'] as const) {
+    if (!Number.isInteger(entry[key])) {
+      errors.push({ field: `.${key}`, message: `${key}: required with its pair and must be an integer` });
+    }
+  }
+  return errors;
+}
+
+/** Finest granularity a validated entry needs. Whole-hour windows and HH:00
+ * clock times need hour; :15/:30/:45 need quarter_hour; anything else minute. */
+function daypartEntryGranularity(entry: Record<string, unknown>): DaypartTimeGranularity {
+  let needed: DaypartTimeGranularity = 'hour';
+  for (const key of ['start_time', 'end_time'] as const) {
+    const clock = entry[key];
+    if (typeof clock !== 'string') continue;
+    const minutes = Number(clock.slice(3));
+    if (minutes % 15 !== 0) return 'minute';
+    if (minutes !== 0) needed = 'quarter_hour';
+  }
+  return needed;
+}
+
+/** Granularity a support or requirement object names. Omission means hour; an
+ * unrecognized value is undefined so matching fails closed. */
+function daypartDeclaredGranularity(source: unknown): DaypartTimeGranularity | undefined {
+  if (!isRecord(source) || source.time_granularity === undefined) return 'hour';
+  return typeof source.time_granularity === 'string'
+    && Object.hasOwn(DAYPART_GRANULARITY_RANK, source.time_granularity)
+    ? source.time_granularity as DaypartTimeGranularity
+    : undefined;
+}
+
+/** True when the support object honors at least the required granularity. */
+function daypartGranularityAtLeast(support: unknown, requirement: unknown): boolean {
+  const supported = daypartDeclaredGranularity(support);
+  const required = daypartDeclaredGranularity(requirement);
+  return supported !== undefined && required !== undefined
+    && DAYPART_GRANULARITY_RANK[supported] >= DAYPART_GRANULARITY_RANK[required];
+}
+
 function validateDaypartTargets(value: unknown, pathLabel: string): TaskError[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length === 0) {
@@ -2058,11 +2128,18 @@ function validateDaypartTargets(value: unknown, pathLabel: string): TaskError[] 
         field: `${entryPath}.timezone`,
       });
     }
+    for (const windowError of daypartWindowErrors(entry)) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${entryPath}${windowError.field}: ${windowError.message}`,
+        field: `${entryPath}${windowError.field}`,
+      });
+    }
   }
   return errors;
 }
 
-function validateListRef(ref: unknown, pathLabel: string): { ref?: ListReference; error?: TaskError } {
+function validateListRef(ref: unknown, pathLabel: string, dialed = false): { ref?: ListReference; error?: TaskError } {
   if (ref === undefined || ref === null) return {};
   if (typeof ref !== 'object' || Array.isArray(ref)) {
     return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}: must be an object with agent_url and list_id`, field: pathLabel } };
@@ -2076,6 +2153,12 @@ function validateListRef(ref: unknown, pathLabel: string): { ref?: ListReference
   }
   if (!/^https?:\/\//i.test(agent_url)) {
     return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.agent_url: must use http:// or https://`, field: `${pathLabel}.agent_url` } };
+  }
+  // The agent URL is buyer-supplied and later dialed, so refuse private hosts
+  // before any fetch. This deployment's own governance tenant is allowed.
+  const hostRejection = dialed ? listAgentUrlRejection(agent_url) : undefined;
+  if (hostRejection) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.agent_url: ${hostRejection}`, field: `${pathLabel}.agent_url` } };
   }
   if (typeof list_id !== 'string' || list_id.length === 0 || list_id.length > MAX_ID_LEN) {
     return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.list_id: must be a non-empty string up to ${MAX_ID_LEN} chars`, field: `${pathLabel}.list_id` } };
@@ -2093,8 +2176,8 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   }
   const src = t as Record<string, unknown>;
   const errors: TaskError[] = [];
-  const pl = validateListRef(src.property_list, `${pathLabel}.property_list`);
-  const ple = validateListRef(src.property_list_exclude, `${pathLabel}.property_list_exclude`);
+  const pl = validateListRef(src.property_list, `${pathLabel}.property_list`, true);
+  const ple = validateListRef(src.property_list_exclude, `${pathLabel}.property_list_exclude`, true);
   const cl = validateListRef(src.collection_list, `${pathLabel}.collection_list`);
   const cle = validateListRef(src.collection_list_exclude, `${pathLabel}.collection_list_exclude`);
   const validateAudienceIds = (value: unknown, field: string): string[] | undefined => {
@@ -3129,6 +3212,7 @@ import {
   getSeededCreativeFormats,
 } from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
+import { applyPropertyListTargeting, listAgentUrlRejection, packageExtWithPropertyApplication } from './property-list-targeting.js';
 import {
   isMutatingTool,
   validateKeyFormat,
@@ -7634,7 +7718,11 @@ function overlaySupportContains(
   if (support === true) {
     if (capabilityField === 'daypart_targets' && isRecord(requirement)) {
       const modes = requirement.timezone_modes;
-      return Array.isArray(modes) && modes.every(mode => mode === 'inventory_local');
+      return (
+        Array.isArray(modes)
+          ? modes.every(mode => mode === 'inventory_local')
+          : modes === undefined && requirement.time_granularity !== undefined
+      ) && daypartDeclaredGranularity(requirement) === 'hour';
     }
     return true;
   }
@@ -7651,6 +7739,11 @@ function overlaySupportContains(
     // or a containing frequency_cap_support after seller-wide inheritance.
     if (field === 'frequency_cap_support') {
       return packageFrequencyCapRequirementMatches({ overlay_support: support }, requiredValue);
+    }
+    // Time granularity is ordered, not a subset: finer support satisfies a
+    // coarser requirement, and an omitted support value means hour.
+    if (capabilityField === 'daypart_targets' && field === 'time_granularity') {
+      return daypartGranularityAtLeast(support, requirement);
     }
     return support[field] !== undefined
       && overlaySupportContains(support[field], requiredValue, field);
@@ -7679,17 +7772,23 @@ function concreteTargetingSupported(field: string, support: unknown, value: unkn
     && (
       !Array.isArray(value)
       || value.length === 0
-      || value.some(entry => !isRecord(entry) || !isValidDaypartTimezone(entry.timezone))
+      || value.some(entry => (
+        !isRecord(entry)
+        || !isValidDaypartTimezone(entry.timezone)
+        || daypartWindowErrors(entry).length > 0
+      ))
     )
   ) {
-    // Input validation owns malformed and unknown-zone errors; capability
+    // Input validation owns malformed, mixed-form, and unknown-zone errors; capability
     // matching must not turn them into UNSUPPORTED_FEATURE.
     return true;
   }
   if (support === true) {
     if (field !== 'daypart_targets') return true;
     return Array.isArray(value) && value.every(entry => (
-      isRecord(entry) && (entry.timezone === undefined || entry.timezone === 'inventory_local')
+      isRecord(entry)
+      && (entry.timezone === undefined || entry.timezone === 'inventory_local')
+      && daypartEntryGranularity(entry) === 'hour'
     ));
   }
   if (!isRecord(support)) return false;
@@ -7760,8 +7859,14 @@ function concreteTargetingSupported(field: string, support: unknown, value: unkn
     }
     if (field === 'daypart_targets') {
       const timezoneModes = support.timezone_modes;
+      const supportedGranularity = daypartDeclaredGranularity(support);
       return Array.isArray(timezoneModes) && value.every(entry => {
         if (!isRecord(entry)) return false;
+        // Never round a clock time to a coarser boundary: reject instead.
+        if (
+          supportedGranularity === undefined
+          || DAYPART_GRANULARITY_RANK[daypartEntryGranularity(entry)] > DAYPART_GRANULARITY_RANK[supportedGranularity]
+        ) return false;
         const timezone = entry.timezone ?? 'inventory_local';
         if (typeof timezone !== 'string') return false;
         const mode = timezone === 'inventory_local' ? 'inventory_local' : 'iana';
@@ -11781,6 +11886,55 @@ async function handleGetProductsUnlocked(
             allocation_percentage: allocationPercentage,
             rationale: 'Selected explicitly by the compact lifecycle request.',
             pricing_option_id: product.pricing_options[0].pricing_option_id,
+          })) as Proposal['allocations'],
+        } as Proposal];
+      }
+    } else if (
+      proposals.length === 0
+      && !exactProductIds?.size
+      && seededProductIds(session).size > 0
+      && products.length > 0
+    ) {
+      // Brief/criteria-only request_proposals (no explicit product_ids) in a
+      // controller-seeded session. `products` is only guaranteed to be
+      // seeded-only when required_media_buy_support/media_buy_frequency_cap
+      // scoping ran in applyDiscoveryTargeting; a plain brief can still pull
+      // in real catalog products that scored well against keyword matching.
+      // Filter explicitly to seeded fixtures before building the proposal —
+      // mirrors the exactProductIds branch above, but for the criteria-driven
+      // path the typed-negotiation storyboards exercise (adcp#7796).
+      const seededIds = seededProductIds(session);
+      const fixtureProducts = products.filter(product => (
+        seededIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
+      ));
+      // One proposal carries one budget currency, so fixtures priced in
+      // different currencies cannot share it; leave proposals empty and let
+      // the existing rejection path answer.
+      const fixtureCurrencies = new Set(
+        fixtureProducts.map(product => product.pricing_options[0]?.currency ?? 'USD'),
+      );
+      if (fixtureProducts.length > 0 && fixtureCurrencies.size === 1) {
+        const allocationPercentage = 100 / fixtureProducts.length;
+        const sortedProductIds = fixtureProducts.map(product => product.product_id).sort();
+        proposals = [{
+          proposal_id: `fixture_match_${createHash('sha256').update(sortedProductIds.join('\0')).digest('hex').slice(0, 16)}`,
+          name: 'Fixture-matched product proposal',
+          description: 'Deterministic proposal generated from controller-seeded fixtures matching the requested criteria.',
+          brief_alignment: typeof brief === 'string'
+            ? brief
+            : 'Matches seeded fixtures satisfying the requested campaign criteria.',
+          total_budget_guidance: {
+            min: 1_000,
+            recommended: 1_000,
+            currency: fixtureProducts[0].pricing_options[0]?.currency ?? 'USD',
+          },
+          allocations: fixtureProducts.map(product => ({
+            product_id: product.product_id,
+            allocation_percentage: allocationPercentage,
+            rationale: 'Seeded fixture product matching the requested campaign criteria.',
+            ...(product.pricing_options[0] && {
+              pricing_option_id: product.pricing_options[0].pricing_option_id,
+            }),
           })) as Proposal['allocations'],
         } as Proposal];
       }
@@ -15827,6 +15981,21 @@ async function handleCreateMediaBuyUnlocked(
     if (targetingResult.errors.length) {
       errors.push(...targetingResult.errors);
     }
+    // Fetch and apply buyer property lists. Any failure rejects the whole
+    // create; a list is never partially applied or silently dropped.
+    let propertyListApplication: PackageState['propertyListApplication'];
+    if (targetingResult.errors.length === 0) {
+      const listOutcome = await applyPropertyListTargeting({
+        product,
+        targeting: targetingResult.targeting,
+        path: targetingPath,
+        session,
+        ctx,
+        account: req.account ?? ctx.resolvedAccount,
+      });
+      if ('error' in listOutcome) errors.push(listOutcome.error as TaskError);
+      else propertyListApplication = listOutcome.application;
+    }
     const requestedAssignmentRows = [
       ...(Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments : []),
       ...inlineCreativeAssignmentRows(pkg.creatives),
@@ -15931,6 +16100,7 @@ async function handleCreateMediaBuyUnlocked(
       creativeAssignmentDetails: requestedAssignmentRows.map(assignment => structuredClone(assignment)),
       targeting: targetingResult.targeting,
       ...(targetingResolution && { targetingResolution }),
+      ...(propertyListApplication && { propertyListApplication }),
       frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
       ...(isRecord(pkg.context) && { context: pkg.context }),
       ...(isRecord(pkg.measurement_terms) && { measurementTerms: structuredClone(pkg.measurement_terms) }),
@@ -16212,6 +16382,9 @@ async function handleCreateMediaBuyUnlocked(
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
       ...(pkg.context && { context: pkg.context }),
+      ...(pkg.propertyListApplication && {
+        ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
+      }),
       ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
       creative_assignments: pkg.creativeAssignmentDetails
         ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -16389,7 +16562,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             ...(pkg.audienceEvidenceRequirements && { audience_evidence_requirements: pkg.audienceEvidenceRequirements }),
             ...(pkg.audienceEvidencePins && { audience_evidence_pins: pkg.audienceEvidencePins }),
             ...(pkg.agencyEstimateNumber && { agency_estimate_number: pkg.agencyEstimateNumber }),
-            ...(pkg.ext && { ext: pkg.ext }),
+            ...((pkg.ext || pkg.propertyListApplication) && {
+              ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
+            }),
             ...(pkg.optimizationGoals && { optimization_goals: pkg.optimizationGoals }),
             ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
             ...(pkg.canceledAt && {
@@ -16500,7 +16675,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         );
       }
     }
-    if (!content) return { errors: [{ code: 'REPORTING_REVISION_NOT_FOUND', message: 'The requested reporting revision is unavailable.', field: 'reporting_revision_id' }] };
+    if (!content) return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'The requested reporting revision is unavailable.', field: 'reporting_revision_id' }] };
     const exactResponse = {
       reporting_period: content.revision.period,
       media_buy_deliveries: [],
@@ -18612,6 +18787,7 @@ async function handleUpdateMediaBuyUnlocked(
   }
 
   // Update packages
+  const propertyListApplications = new Map<string, PackageState['propertyListApplication']>();
   if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
 
@@ -18624,6 +18800,25 @@ async function handleUpdateMediaBuyUnlocked(
       const pkg = mb.packages.find(candidate => candidate.packageId === pkgId);
       if (!pkg) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}` }] };
+      }
+      // Replacing a package's targeting re-resolves its buyer property lists
+      // against the current list snapshot. Resolving before any mutation keeps
+      // the update atomic: an unresolvable list rejects the whole request.
+      const replacementTargeting = update.targeting_overlay ?? update.targeting;
+      if (replacementTargeting !== undefined) {
+        const listTargetingPath = `packages[${pkgId}].targeting_overlay`;
+        const listTargeting = validateTargeting(replacementTargeting, listTargetingPath);
+        if (listTargeting.errors.length) return { errors: listTargeting.errors };
+        const listOutcome = await applyPropertyListTargeting({
+          product: productMap.get(pkg.productId),
+          targeting: listTargeting.targeting,
+          path: listTargetingPath,
+          session,
+          ctx,
+          account: req.account ?? ctx.resolvedAccount,
+        });
+        if ('error' in listOutcome) return { errors: [listOutcome.error as TaskError] };
+        propertyListApplications.set(pkgId, listOutcome.application);
       }
       const assignments = (update as PackageUpdate & { creative_assignments?: LegacyCreativeAssignmentRow[] }).creative_assignments;
       const traffickingChanged = update.creatives !== undefined
@@ -18950,6 +19145,9 @@ async function handleUpdateMediaBuyUnlocked(
         }
         const before = pkg.targeting;
         pkg.targeting = targetingResult.targeting;
+        const listApplication = propertyListApplications.get(pkgId);
+        if (listApplication) pkg.propertyListApplication = listApplication;
+        else delete pkg.propertyListApplication;
         const changed = JSON.stringify(before ?? null) !== JSON.stringify(pkg.targeting ?? null);
         // A valid exact restatement is still an accepted package operation and
         // belongs in affected_packages even when it is state-idempotent.
@@ -19057,6 +19255,15 @@ async function handleUpdateMediaBuyUnlocked(
       if (targetingResult.errors.length) {
         return { errors: targetingResult.errors };
       }
+      const newPackageListOutcome = await applyPropertyListTargeting({
+        product,
+        targeting: targetingResult.targeting,
+        path: `new_packages[${i}].targeting_overlay`,
+        session,
+        ctx,
+        account: req.account ?? ctx.resolvedAccount,
+      });
+      if ('error' in newPackageListOutcome) return { errors: [newPackageListOutcome.error as TaskError] };
       const identityAbsenceCapError = identityAbsenceFrequencyCapError(
         product,
         targetingResult.targeting ?? {},
@@ -19149,6 +19356,7 @@ async function handleUpdateMediaBuyUnlocked(
         creativeAssignments: assignmentRows.flatMap(row => typeof row.creative_id === 'string' ? [row.creative_id] : []),
         creativeAssignmentDetails: assignmentRows.map(row => structuredClone(row)),
         targeting: targetingResult.targeting,
+        ...(newPackageListOutcome.application && { propertyListApplication: newPackageListOutcome.application }),
         frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
         context: npkg.context ? structuredClone(npkg.context) : undefined,
       };
@@ -19383,6 +19591,9 @@ async function handleUpdateMediaBuyUnlocked(
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
     ...(pkg.context && { context: pkg.context }),
+    ...(pkg.propertyListApplication && {
+      ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
+    }),
     ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
     creative_assignments: pkg.creativeAssignmentDetails
       ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -19545,7 +19756,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       : []),
     ...((ctx.tenantId === 'sales' || ctx.tenantId == null) ? ['measurement.core'] : []),
     ...(!isThreeZeroResponse && (ctx.tenantId === 'sales' || ctx.tenantId == null)
-      ? ['media_buy.audience_activation', 'media_buy.product_identity']
+      ? ['media_buy.audience_activation', 'media_buy.product_identity', 'media_buy.daypart_granularity']
       : []),
   ];
   const supportedCreativeFormats = includeThreeOneFields(ctx)
@@ -19706,6 +19917,14 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
           language: true,
           keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] },
           negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] },
+          // Seller-wide rollups. Product.overlay_support is authoritative:
+          // every product honours exclusion; only products whose property set
+          // a buyer can subdivide honour inclusion. The 3.0 capabilities
+          // schema predates these flags.
+          ...(!isThreeZeroResponse && {
+            property_list: true,
+            property_list_exclude: true,
+          }),
         },
         ...(includeThreeOneFields(ctx) && {
           creative_specs: {
