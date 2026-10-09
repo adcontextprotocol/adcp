@@ -1135,7 +1135,11 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   }
 
   assert.ok(localRefCount > 1_000, `expected broad local-ref coverage, saw ${localRefCount}`);
-  assert.ok(totalBytes < 20 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // Experimental list_proposals (media_buy.open_opportunities) must return
+  // complete proposal snapshots, so its response bundles the full canonical
+  // proposal graph, as request_proposals and refine_proposals already do
+  // (+277,684 bytes measured, 20,699,447 → 20,977,131), bounded at 21 MiB.
+  assert.ok(totalBytes < 21 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);
