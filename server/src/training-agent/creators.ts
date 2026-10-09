@@ -7,8 +7,9 @@
  * then a draft cut for review). Audience composition is declared by the
  * platform itself; see `audienceEvidence` for the evidence shape.
  *
- * Every date is relative to catalog build time so the slots stay bookable
- * however long the fixture has been deployed.
+ * Slot and deadline dates are relative to catalog build time so the slots stay
+ * bookable however long the fixture has been deployed. Audience evidence is an
+ * immutable snapshot, so its dates are fixed.
  */
 
 import { createHash } from 'node:crypto';
@@ -30,7 +31,7 @@ const GENDER_DIMENSION = `https://${PUBLISHER_DOMAIN}/dimensions/gender`;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SLOT_CADENCE_DAYS = 14;
-const FIRST_SLOT_LEAD_DAYS = 45;
+const FIRST_SLOT_LEAD_DAYS = 60;
 
 type Platform = 'youtube' | 'tiktok';
 
@@ -57,7 +58,7 @@ interface CreatorSeed {
 const SEEDS: CreatorSeed[] = [
   {
     slug: 'juniper_vale', creator: 'Juniper Vale', channelName: 'Juniper Vale Cooks', platform: 'youtube',
-    channelId: 'UCcl0juniperVale7Kq2mXa1w', genre: ['food', 'cooking'],
+    channelId: 'UCcl0juniperVale7Kq2mXa1', genre: ['food', 'cooking'],
     tagline: 'Weeknight dinners for people who hate washing up.',
     rate: 6500, views: [180_000, 240_000, 310_000], ageShares: [0.22, 0.38, 0.21], femaleShare: 0.64,
     sampleTitles: ['One-pan pasta, three ways', 'The 20-minute pantry challenge'],
@@ -65,7 +66,7 @@ const SEEDS: CreatorSeed[] = [
   },
   {
     slug: 'tobias_quill', creator: 'Tobias Quill', channelName: 'Quill Tech Teardown', platform: 'youtube',
-    channelId: 'UCcl0tobiasQuill9Hd4rTb3x', genre: ['technology', 'gadgets'],
+    channelId: 'UCcl0tobiasQuill9Hd4rTb3', genre: ['technology', 'gadgets'],
     tagline: 'Honest teardowns of the gadgets on your wish list.',
     rate: 9800, views: [310_000, 420_000, 560_000], ageShares: [0.24, 0.41, 0.2], femaleShare: 0.27,
     sampleTitles: ['Is the budget laptop actually good?', 'Five desk upgrades under $50'],
@@ -113,7 +114,7 @@ const SEEDS: CreatorSeed[] = [
   },
   {
     slug: 'lena_brightwater', creator: 'Lena Brightwater', channelName: 'Brightwater Beauty Lab', platform: 'youtube',
-    channelId: 'UCcl0lenaBrightw4Ye9sNm8t', genre: ['beauty', 'lifestyle'],
+    channelId: 'UCcl0lenaBrightw4Ye9sNm8', genre: ['beauty', 'lifestyle'],
     tagline: 'Ingredient-first skincare and low-effort makeup.',
     rate: 11000, views: [340_000, 470_000, 640_000], ageShares: [0.29, 0.4, 0.18], femaleShare: 0.86,
     sampleTitles: ['A five-product morning routine', 'Drugstore dupes, tested'],
@@ -179,7 +180,7 @@ function evidence(
     relationship: 'composition',
     value,
     unit: 'fraction',
-    baseline: EVIDENCE_BASELINE,
+    baseline: { ...EVIDENCE_BASELINE },
     evidence_type: 'seller_declared',
     methodology: 'declared',
     subject_type: 'individual',
@@ -225,12 +226,15 @@ function slots(seed: CreatorSeed): NonNullable<ShowDefinition['episodes']> {
       title: `${seed.channelName}: ${topic} (sponsored integration)`,
       // The last slot depends on the creator's content calendar.
       status: i === seed.slotTopics.length - 1 ? 'tentative' : 'scheduled',
+      validUntil: before(42),
       scheduledAt: iso(at),
       durationSeconds: seed.platform === 'tiktok' ? 60 : 720,
       deadlines: {
-        bookingDeadline: before(35),
-        cancellationDeadline: before(21),
-        // Chronological: talking points, then the approved script, then a draft cut.
+        // booking <= cancellation <= every material due date <= scheduled_at.
+        bookingDeadline: before(42),
+        cancellationDeadline: before(35),
+        // Seller-defined stages, in order: talking points, then the creator's
+        // script, then a draft cut for review.
         materialDeadlines: [
           { stage: 'talking_points', dueAt: before(28), label: 'Talking points and brand guidelines' },
           { stage: 'script', dueAt: before(14), label: 'Creator script for brand approval' },
@@ -243,10 +247,12 @@ function slots(seed: CreatorSeed): NonNullable<ShowDefinition['episodes']> {
 
 function creatorShow(seed: CreatorSeed): ShowDefinition {
   const platform = PLATFORM[seed.platform];
-  const description = `${seed.tagline} ${seed.platform === 'youtube' ? 'YouTube' : 'TikTok'} creator ${seed.creator}; sponsored ${platform.label} integrations.`;
+  const description = `${seed.tagline} ${seed.creator} publishes ${platform.label}; sponsored integrations are booked per video slot.`;
   return {
     showId: `creatorloop_channel_${seed.slug}`,
     name: seed.channelName,
+    // A creator's channel is a persistent programmed stream whose installments
+    // are its scheduled video slots.
     kind: 'channel',
     genre: seed.genre,
     cadence: 'weekly',
@@ -280,13 +286,16 @@ function creatorShow(seed: CreatorSeed): ShowDefinition {
   };
 }
 
+let showsCache: { day: number; shows: ShowDefinition[] } | undefined;
+
 export const CREATOR_PUBLISHER: PublisherProfile = {
   id: 'creatorloop',
   name: 'CreatorLoop',
   domain: PUBLISHER_DOMAIN,
-  description: 'Creator marketplace representing ten independent YouTube and TikTok channels for guaranteed sponsored-video integrations.',
+  description: 'Creator marketplace representing ten independent long-form and short-form video channels for guaranteed sponsored-video integrations.',
   heroImageUrl: 'https://picsum.photos/seed/creatorloop-marketplace/600/300',
-  audienceSummary: 'Adults 18-44, ten creator channels',
+  audienceSummary: 'Ten creator channels, audiences concentrated at 18-44',
+  // Pinned to the sum of the seeds' mid views; update with them.
   estimatedVolume: '~4M video views per sponsored slot across the roster',
   channels: ['influencer'],
   deliveryTypes: ['guaranteed'],
@@ -317,5 +326,11 @@ export const CREATOR_PUBLISHER: PublisherProfile = {
       tags: ['creator', 'video', 'short_form'],
     },
   ],
-  shows: SEEDS.map(creatorShow),
+  // Built lazily and cached per UTC day: slot dates are relative to now, so a
+  // long-running process must not serve slots frozen at module load.
+  get shows(): ShowDefinition[] {
+    const day = Math.floor(Date.now() / DAY_MS);
+    if (showsCache?.day !== day) showsCache = { day, shows: SEEDS.map(creatorShow) };
+    return showsCache.shows;
+  },
 };

@@ -352,6 +352,8 @@ export interface ShowDefinition {
     scheduledAt?: string;
     durationSeconds?: number;
     special?: ShowSpecial;
+    /** When a tentative installment's data should be re-queried. */
+    validUntil?: string;
     deadlines?: {
       bookingDeadline?: string;
       cancellationDeadline?: string;
@@ -462,6 +464,7 @@ export interface ShowResponse {
   description?: string;
   content_rating?: Array<{ system: string; rating: string }>;
   talent?: Array<{ name: string; role: TalentRole }>;
+  language?: string;
   distribution?: Array<{
     publisher_domain: string;
     identifiers: Array<{ type: string; value: string }>;

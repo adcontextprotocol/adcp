@@ -3105,6 +3105,7 @@ function resolveThreeZeroProposalAlias(proposals: Proposal[]): Proposal | undefi
 }
 
 import {
+  briefExcludesProduct,
   buildCatalog,
   buildProposals,
   TRAINING_AUDIENCE_ACTIVATION_METHODS,
@@ -11120,6 +11121,7 @@ async function handleGetProductsUnlocked(
     }
 
     const scored = products
+      .filter(p => !briefExcludesProduct(p.product_id, briefLower))
       .map(p => {
         const text = `${p.name} ${p.description} ${p.channels?.join(' ')}`.toLowerCase();
         const keywordScore = terms.filter(t => text.includes(t)).length;

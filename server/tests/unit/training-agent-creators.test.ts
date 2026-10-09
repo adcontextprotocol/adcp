@@ -82,7 +82,9 @@ describe('CreatorLoop creator marketplace fixtures', () => {
         const due = deadlines.material_deadlines.map((m: Row) => Date.parse(m.due_at));
         expect([...due].sort((a, b) => a - b)).toEqual(due);
         expect(due.at(-1)).toBeLessThan(scheduledAt);
-        expect(Date.parse(deadlines.booking_deadline)).toBeLessThan(due[0]);
+        // booking <= cancellation <= every material due date <= scheduled_at.
+        expect(Date.parse(deadlines.booking_deadline)).toBeLessThanOrEqual(Date.parse(deadlines.cancellation_deadline));
+        expect(Date.parse(deadlines.cancellation_deadline)).toBeLessThanOrEqual(due[0]);
       }
     }
   });
@@ -139,6 +141,34 @@ describe('CreatorLoop creator marketplace fixtures', () => {
   });
 });
 
+describe('CreatorLoop brief discovery', () => {
+  beforeEach(() => {
+    clearSessions();
+    invalidateCache();
+    clearIdempotencyCache();
+  });
+
+  const context: TrainingContext = { mode: 'open', tenantId: 'sales', principal: 'creator-brief-discovery' };
+  const productIdsFor = async (brief: string): Promise<string[]> => {
+    const result = await executeTrainingAgentTool('get_products', { buying_mode: 'brief', brief }, context);
+    expect(result.success, result.error).toBe(true);
+    return (result.data?.products as Array<{ product_id: string }>).map(p => p.product_id);
+  };
+
+  it('keeps creator products out of briefs that do not ask for creators', async () => {
+    for (const brief of ['Premium video for adults', 'influencer campaign', 'Outdoor lifestyle programming']) {
+      const ids = await productIdsFor(brief);
+      expect(ids.length, brief).toBeGreaterThan(0);
+      expect(ids.filter(id => id.startsWith('creatorloop_')), brief).toEqual([]);
+    }
+  });
+
+  it('returns creator products for a creator brief', async () => {
+    const ids = await productIdsFor('Sponsored creator videos for a lifestyle audience');
+    expect(ids.filter(id => id.startsWith('creatorloop_creator_')).length).toBeGreaterThanOrEqual(4);
+  });
+});
+
 describe('CreatorLoop proposal round trip', () => {
   beforeEach(() => {
     clearSessions();
@@ -160,7 +190,7 @@ describe('CreatorLoop proposal round trip', () => {
     const requested = await executeTrainingAgentTool('request_proposals', {
       idempotency_key: 'creator-request-proposals-0001',
       brand,
-      brief: 'Sponsored creator videos on YouTube and TikTok for a lifestyle audience of adults 18-44',
+      brief: 'Sponsored creator videos for a lifestyle audience skewing 18-44',
     }, context);
     expect(requested.success, requested.error).toBe(true);
     const proposals = requested.data?.proposals as CanonicalProposal[];

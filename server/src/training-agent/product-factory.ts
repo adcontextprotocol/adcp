@@ -713,8 +713,8 @@ function buildProduct(
     forecast = {
       points: [{
         metrics: {
-          impressions: expectedViews,
-          views: expectedViews,
+          impressions: { ...expectedViews },
+          views: { ...expectedViews },
           spend: { mid: offer.pricing.fixedPrice },
         },
       }],
@@ -807,6 +807,7 @@ function buildProduct(
             status: normalizeInstallmentStatus(ep.status),
             scheduled_at: ep.scheduledAt,
             duration_seconds: ep.durationSeconds,
+            ...(ep.validUntil && { valid_until: ep.validUntil }),
             ...(ep.deadlines && {
               deadlines: {
                 ...(ep.deadlines.bookingDeadline && { booking_deadline: ep.deadlines.bookingDeadline }),
@@ -876,12 +877,15 @@ function buildProduct(
         vendor_metrics: pub.vendorMetrics,
       }),
     } as NonNullable<Product['reporting_capabilities']>,
-    audience_activation: {
-      methods: structuredClone(TRAINING_AUDIENCE_ACTIVATION_METHODS) as unknown as Array<Record<string, unknown>>,
-      preferred_method: { pattern: 'sync_audiences' },
-      notes: 'Inline AdCP sync is preferred; dataset sharing requires bilateral account setup.',
-    },
-    overlay_support: {
+    // A sponsored video slot is not audience-targeted, geo-targeted, or capped.
+    ...(!offer && {
+      audience_activation: {
+        methods: structuredClone(TRAINING_AUDIENCE_ACTIVATION_METHODS) as unknown as Array<Record<string, unknown>>,
+        preferred_method: { pattern: 'sync_audiences' },
+        notes: 'Inline AdCP sync is preferred; dataset sharing requires bilateral account setup.',
+      },
+    }),
+    overlay_support: offer ? {} : {
       geo_countries: true,
       // Broad legacy package-cap promise within the seller-wide
       // media_buy.frequency_capping limits, including update support.
@@ -908,7 +912,7 @@ function buildProduct(
   // are inherited from media_buy.aggregate_frequency_capping. The published
   // SDK product type predates media_buy_support, so assign through the record
   // view; the wire value is schema-tested against the source product schema.
-  (product as unknown as Record<string, unknown>).media_buy_support = { frequency_cap: true };
+  if (!offer) (product as unknown as Record<string, unknown>).media_buy_support = { frequency_cap: true };
 
   // Property-list targeting: the seller applies an exclusion list to every
   // product, but only publishers that let a buyer subdivide a multi-property
@@ -927,7 +931,7 @@ function buildProduct(
   const primaryPricing = effectivePricing[0];
   const primaryAssetType = inferPrimaryAssetType(template.channels);
   const image = offer
-    ? { ...productCardImage(pub)!, url: offer.heroImageUrl, alt_text: `${template.name} preview` }
+    ? { asset_type: 'image' as const, url: offer.heroImageUrl, width: 600, height: 300, alt_text: `${template.name} preview` }
     : productCardImage(pub);
   const priceLabel = productCardPriceLabel(primaryPricing);
   const specifications = [
@@ -978,11 +982,30 @@ function buildProduct(
   };
 }
 
+/** Brief terms that ask for creator-marketplace inventory. */
+const CREATOR_BRIEF_TERMS = /\b(creators?|youtube|tiktok)\b/i;
+
+const CREATOR_OFFER_PRODUCT_IDS = new Set(
+  PUBLISHERS.flatMap(pub => pub.productPerShow
+    ? (pub.shows ?? []).flatMap(show => show.offer ? [`${pub.id}_${show.offer.productSuffix}`] : [])
+    : []),
+);
+
+/**
+ * Brief discovery keeps one-creator-per-product inventory out of briefs that
+ * do not ask for creators: its long descriptions would otherwise outrank the
+ * channel-level products on generic words such as "video".
+ */
+export function briefExcludesProduct(productId: string, brief: string): boolean {
+  return CREATOR_OFFER_PRODUCT_IDS.has(productId) && !CREATOR_BRIEF_TERMS.test(brief);
+}
+
 function buildShowObject(show: ShowDefinition): ShowResponse {
   return {
     show_id: show.showId,
     name: show.name,
     ...(show.kind && { kind: show.kind }),
+    ...(show.language && { language: show.language }),
     genre: show.genre,
     cadence: show.cadence,
     status: show.status,
@@ -1062,15 +1085,16 @@ const PROPOSAL_DEFINITIONS: ProposalDefinition[] = [
     publisherId: 'creatorloop',
     proposalId: 'creatorloop_everyday_lifestyle',
     name: 'CreatorLoop Everyday Lifestyle Creators',
-    description: 'Four lifestyle creators across YouTube and TikTok for sponsored video integrations, guaranteed slots priced at each creator flat rate, up to two per creator.',
-    briefAlignment: 'Answers a creator brief for an everyday-lifestyle audience of adults 18-44. Each creator is its own product, so a buyer can drop any creator before finalizing.',
+    description: 'Four lifestyle creators across long-form and short-form video for sponsored integrations, guaranteed slots priced at each creator flat rate, up to two per creator.',
+    briefAlignment: 'Answers a creator brief for an everyday-lifestyle audience skewing 18-44. Each creator is its own product, so a buyer can drop any creator before finalizing.',
     budgetGuidance: { min: 24000, recommended: 48000, currency: 'USD' },
+    // Pinned: twice the four creators' summed low and high views per slot.
     estimatedDeliveryText: 'Est. 2.9M-5.7M video views',
     allocations: [
-      { productSuffix: 'creator_juniper_vale', percentage: 27, rationale: 'Food and weeknight cooking on YouTube; broad 25-34 reach with a majority-female audience' },
-      { productSuffix: 'creator_priya_halden', percentage: 20, rationale: 'Home and DIY on TikTok; strong 25-34 skew and the lowest flat rate in the set' },
-      { productSuffix: 'creator_nadia_ferro', percentage: 22, rationale: 'Fitness and wellness on TikTok; the youngest audience in the set' },
-      { productSuffix: 'creator_odette_moreau', percentage: 31, rationale: 'Fashion and lifestyle on TikTok; highest views per slot among the lifestyle creators' },
+      { productSuffix: 'creator_juniper_vale', percentage: 27, rationale: 'Food and weeknight cooking in long-form video; broad 25-34 reach with a majority-female audience' },
+      { productSuffix: 'creator_priya_halden', percentage: 20, rationale: 'Home and DIY in short-form video; strong 25-34 skew and the lowest flat rate in the set' },
+      { productSuffix: 'creator_nadia_ferro', percentage: 22, rationale: 'Fitness and wellness in short-form video; the youngest audience of the four' },
+      { productSuffix: 'creator_odette_moreau', percentage: 31, rationale: 'Fashion and lifestyle in short-form video; about 620K expected views per slot' },
     ],
   },
   {
