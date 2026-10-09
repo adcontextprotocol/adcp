@@ -22,6 +22,9 @@ concurrency:
   # cancel-in-progress: false alone still permits only one pending run, so a
   # burst evicts pending checks for unrelated PRs. `queue: max` keeps up to
   # 100 pending runs so each PR's check still runs.
+  # GitHub added this option on 2026-05-07; older validators may not know it.
+  # https://github.blog/changelog/2026-05-07-github-actions-concurrency-groups-now-allow-larger-queues/
+  # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency#example-queueing-multiple-pending-runs
   queue: max
 
 jobs:
