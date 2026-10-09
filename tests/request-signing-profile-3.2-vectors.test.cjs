@@ -361,8 +361,9 @@ describe('AdCP 3.2 request-signing vectors verify independently', () => {
         base = vector.expected_signature_base;
         const wire = new URL(vector.request.url);
         assert.ok(/[^\x00-\x7f]/.test(vector.request.url.split('/')[2]), 'wire URL must carry a raw non-ASCII host');
-        assert.match(base, new RegExp(`^"@target-uri": https://${wire.hostname.replace(/\./g, '\\.')}${wire.pathname}$`, 'm'));
-        assert.match(base, new RegExp(`^"@authority": ${wire.hostname.replace(/\./g, '\\.')}$`, 'm'));
+        const baseLines = base.split('\n');
+        assert.ok(baseLines.includes(`"@target-uri": https://${wire.hostname}${wire.pathname}`), `${id} base must carry the A-label @target-uri`);
+        assert.ok(baseLines.includes(`"@authority": ${wire.hostname}`), `${id} base must carry the A-label @authority`);
       } else if (hasInput) {
         base = independentBase(vector);
         if (vector.expected_signature_base !== undefined) assert.equal(base, vector.expected_signature_base);
