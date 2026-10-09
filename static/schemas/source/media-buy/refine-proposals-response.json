@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/refine-proposals-response.json",
   "title": "Refine Proposals Response",
-  "description": "One ordered result per requested source proposal. Revision results may carry multiple immutable draft proposals when alternatives were requested; finalization remains one committed proposal per source. Products contains the compact canonical products needed to evaluate the resulting terms.",
+  "description": "One ordered result per requested source proposal. Revision results may carry multiple immutable draft proposals when alternatives were requested; finalization and hold extension each return one committed proposal per source. Products contains the compact canonical products needed to evaluate the resulting terms.",
   "type": "object",
   "anyOf": [
     {
@@ -20,7 +20,7 @@
     "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
     "results": {
       "type": "array",
-      "description": "Ordered results. If any result is finalized, every result MUST be finalized; a finalize batch either creates every requested hold or none. Every returned proposal carries parent_proposal_id equal to the result's source_proposal_id, making negotiation lineage reconstructible from the proposals alone.",
+      "description": "Ordered results. If any result is finalized, every result MUST be finalized; a finalize or extend_hold batch either succeeds for every entry or none. Every returned proposal carries parent_proposal_id equal to the result's source_proposal_id, making negotiation lineage reconstructible from the proposals alone.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -35,7 +35,8 @@
           },
           "outcome": {
             "type": "string",
-            "enum": ["revised", "partial", "finalized", "unable"]
+            "enum": ["revised", "partial", "finalized", "unable"],
+            "description": "finalized also reports a successful extend_hold: the proposal is the new committed successor whose parent_proposal_id is the extended source and whose expires_at is the later deadline."
           },
           "proposal": { "$ref": "/schemas/core/canonical-proposal.json" },
           "proposals": {

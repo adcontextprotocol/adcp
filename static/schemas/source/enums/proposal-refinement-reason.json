@@ -22,8 +22,8 @@
     "uninterpreted": "The seller could not interpret some or all of the free-text ask.",
     "alternatives_unavailable": "The seller produced fewer distinct draft alternatives than requested.",
     "source_unavailable": "The source proposal was not found, visible, or eligible for revision by this caller.",
-    "hold_unavailable": "The seller declined or failed to reserve inventory for this finalize, whether from sell-through since drafting or from hold policy such as a concurrent-hold cap.",
-    "batch_aborted": "This entry failed only because a sibling entry in the all-or-none finalize batch failed; the entry itself was otherwise eligible.",
+    "hold_unavailable": "The seller declined or failed to reserve inventory for this finalize, or declined to extend the hold on this extend_hold, whether from sell-through since drafting or hold policy such as a concurrent-hold cap or an extension limit. A failed extend_hold leaves the source proposal and its hold unchanged.",
+    "batch_aborted": "This entry failed only because a sibling entry in the all-or-none finalize or extend_hold batch failed; the entry itself was otherwise eligible.",
     "definition_changed": "At finalize, one or more third-party-published definitions pinned in the source proposal's commercial_terms.definition_pins[] no longer resolve to their pinned content_digest. Valid only on an unable result carrying drifted_pins[]; no hold is taken. The buyer refines the proposal to obtain fresh pins before finalizing again."
   }
 }

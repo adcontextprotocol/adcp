@@ -67,6 +67,7 @@ Do not flatten task errors and negotiation outcomes into one exception type.
 | Task-level error | Malformed payload, more than 25 refinements, duplicate source IDs, count above 10 or `max_alternatives`, explicitly unsupported dimension, unauthorized source | No sibling may mutate | Correct the whole request and retry with a new key. |
 | Per-proposal outcome | `revised`, `partial`, `unable`, `finalized` | One ordered result per source; revision outcomes are independent | Verify the typed result, then select, revise, finalize, or decline. |
 | Atomic finalize outcome | `finalized`, `hold_unavailable`, `definition_changed`, `batch_aborted` | Every hold is created or none are | Retry the exact batch only for an exact replay; otherwise form a new request. |
+| Atomic extend outcome (experimental) | `finalized` (the committed successor), `hold_unavailable`, `batch_aborted` | Every hold is extended or none are; a failed extension leaves the source and its hold unchanged | Accept the successor, or accept the unchanged source before its `expires_at`. |
 
 `constraint_unsatisfiable` means the seller accepted the dimension but did not satisfy it. `unsupported_dimension` is used per proposal only when capabilities were unknown; an explicitly omitted dimension is a task-level `UNSUPPORTED_FEATURE`. `commercially_declined` applies only to `ask`, never to a typed constraint.
 
