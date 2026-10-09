@@ -2190,7 +2190,7 @@
       {
         "language": "zh",
         "banner": {
-          "content": "中文覆盖简介、快速开始和第一次集成。任务参考、模式和迁移指南仍以英文为规范。",
+          "content": "中文覆盖简介、概念、快速开始、第一次集成和账户总览。任务参考、模式和迁移指南仍以英文为规范。",
           "dismissible": true
         },
         "navbar": {
@@ -2262,14 +2262,31 @@
             ]
           },
           {
+            "group": "概念",
+            "pages": [
+              "zh/dist/docs/3.2.3/protocol/architecture",
+              "zh/dist/docs/3.2.3/building/concepts/index",
+              "zh/dist/docs/3.2.3/building/concepts/protocol-comparison",
+              "zh/dist/docs/3.2.3/building/concepts/adcp-vs-openrtb",
+              "zh/dist/docs/3.2.3/building/concepts/how-agents-communicate",
+              "zh/dist/docs/3.2.3/building/concepts/security-model",
+              "zh/dist/docs/3.2.3/building/concepts/industry-landscape",
+              "zh/dist/docs/3.2.3/building/concepts/managing-response-size"
+            ]
+          },
+          {
             "group": "第一次集成",
             "pages": [
               "zh/dist/docs/3.2.3/building/index",
               "zh/dist/docs/3.2.3/building/schemas-and-sdks",
+              "zh/dist/docs/3.2.3/building/by-layer/L4/index",
               "zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk",
               "zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller",
               "zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent",
-              "zh/dist/docs/3.2.3/protocol/calling-an-agent"
+              "zh/dist/docs/3.2.3/building/by-layer/L4/migrate-from-hand-rolled",
+              "zh/dist/docs/3.2.3/protocol/calling-an-agent",
+              "zh/dist/docs/3.2.3/building/operating/operating-an-agent",
+              "zh/dist/docs/3.2.3/accounts/overview"
             ]
           }
         ]
@@ -4575,6 +4592,76 @@
     {
       "source": "/docs/zh/protocol/calling-an-agent",
       "destination": "/zh/dist/docs/3.2.3/protocol/calling-an-agent",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/protocol/architecture",
+      "destination": "/zh/dist/docs/3.2.3/protocol/architecture",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/concepts/index",
+      "destination": "/zh/dist/docs/3.2.3/building/concepts/index",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/concepts",
+      "destination": "/zh/dist/docs/3.2.3/building/concepts",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/concepts/protocol-comparison",
+      "destination": "/zh/dist/docs/3.2.3/building/concepts/protocol-comparison",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/concepts/adcp-vs-openrtb",
+      "destination": "/zh/dist/docs/3.2.3/building/concepts/adcp-vs-openrtb",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/concepts/how-agents-communicate",
+      "destination": "/zh/dist/docs/3.2.3/building/concepts/how-agents-communicate",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/concepts/security-model",
+      "destination": "/zh/dist/docs/3.2.3/building/concepts/security-model",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/concepts/industry-landscape",
+      "destination": "/zh/dist/docs/3.2.3/building/concepts/industry-landscape",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/concepts/managing-response-size",
+      "destination": "/zh/dist/docs/3.2.3/building/concepts/managing-response-size",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/by-layer/L4/index",
+      "destination": "/zh/dist/docs/3.2.3/building/by-layer/L4/index",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/by-layer/L4",
+      "destination": "/zh/dist/docs/3.2.3/building/by-layer/L4",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/by-layer/L4/migrate-from-hand-rolled",
+      "destination": "/zh/dist/docs/3.2.3/building/by-layer/L4/migrate-from-hand-rolled",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/building/operating/operating-an-agent",
+      "destination": "/zh/dist/docs/3.2.3/building/operating/operating-an-agent",
+      "permanent": false
+    },
+    {
+      "source": "/docs/zh/accounts/overview",
+      "destination": "/zh/dist/docs/3.2.3/accounts/overview",
       "permanent": false
     }
   ],

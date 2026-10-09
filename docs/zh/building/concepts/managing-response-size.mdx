@@ -1,0 +1,146 @@
+---
+title: 控制响应大小
+sidebarTitle: 控制响应大小
+description: "如何用提案规划、产品字段选择、分页、订阅源版本和客户端投影，把 AdCP 响应保持在调用方能消化的大小。"
+"og:title": "AdCP — 控制响应大小"
+---
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[Managing Response Size](/docs/building/concepts/managing-response-size)。没有中文译本的链接会打开英文规范页面。JSON 示例保持英文。
+</Info>
+
+买方代理调用 AdCP 卖方时，响应可能只是几份由卖方规划的提案，也可能是一份批发镜像，里面有详细的产品、信号和版位元数据。本页说明把这些响应控制在合适大小的手段，以及最重要的客户端投影。
+
+## 互操作的大小目标
+
+MCP 宿主和网关施加的响应上限各不相同，而且往往没有写进文档。对可分页的读取，以及其他提供字段投影的只读任务，AdCP 的生产方应当把每份序列化后的 MCP 响应保持在 **128 KiB（131,072 字节）** 或以下。这是互操作目标，不是允许客户端无界分配。客户端仍然应当执行[MCP 响应提取](/docs/building/by-layer/L0/mcp-response-extraction#size-limits)（英文）里描述的、流式 1 MiB 整条消息上限。
+
+对这些读取路径，使用任务的游标，减少请求的字段或拆分，或者在响应超过 128 KiB 之前返回更小的、模式合法的一页，并带上延续元数据。不要为模式没有定义部分响应的任务发明一份部分响应。
+
+不要为了满足 128 KiB 目标，把一次已经完成的变更变成错误。如果生产方在执行之前就能确定，无法在宿主限制内返回这次变更所要求的结果，它必须在产生副作用之前拒绝请求。副作用一旦发生，它必须返回模式合法的已提交结果，或任务定义的异步交接；不得仅仅为了大小目标而报告失败。
+
+`tools/list` 在 MCP 层可以按游标分页，尽管它不是 AdCP 任务。服务器应当给实时工具目录分页，使每一页保持在同样的 128 KiB 目标以下。需要完整目录的客户端必须跟随 `nextCursor`，直到它不再出现。按能力选择的工具注册，以及简短的 `x-tool-summary` 描述，会进一步缩小每一页。不要在一次会话的 `tools/list` 结果里发布完整的 AdCP 目录、响应模式或长篇参考文字。
+
+## 线路响应不等于模型上下文
+
+最重要的一点：**线路上的字节不是模型必须消化的东西。**
+
+AdCP 响应是结构化数据。MCP 响应以 `structuredContent` 到达，也就是客户端在任何模型看到之前就解析好的类型化 JSON。A2A 响应把一段人类可读的 `TextPart` 和一份权威的 `DataPart` 配在一起。两种情况下，写得好的客户端都会存下完整响应，在提示下一轮模型之前先投影或摘要。
+
+```
+卖方代理 → 结构化响应（完整数据）
+                    ↓
+客户端存下原始响应
+                    ↓
+客户端投影 / 摘要 → 模型上下文（精简）
+```
+
+如果你的代理把原始工具结果原样转进模型上下文，要改的是客户端，不是协议。存下响应，抽出模型做下一个决定需要的部分，以后需要细节时用 ID 引用已存的数据。
+
+<Warning>
+  **天真宿主。** 有些 MCP 宿主会把整块 `structuredContent` 原样放进模型上下文。如果你控制宿主，先投影再提示。如果你不控制，下面这些控制就是你对付过大上下文的主要手段。
+</Warning>
+
+## 需要策展时，请对方做计划
+
+当卖方应当把一份投放简报变成一小套可执行的计划时，使用 `request_proposals`：
+
+```json
+{
+  "adcp_version": "3.2",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442001",
+  "account": { "account_id": "account_123" },
+  "brand": { "domain": "acme-outdoor.example" },
+  "brief": "Build a concise premium-video plan for Acme Outdoor's Q4 launch. Prioritize completed views.",
+  "criteria": {
+    "offer_filters": { "channels": ["olv"] },
+    "targeting_overlay": { "geo_countries": ["US"] }
+  }
+}
+```
+
+卖方返回不可变的草案提案，而不是目录的一页。用类型化的 `refine_proposals` 请求收窄计划，不必重传整份源响应。
+
+买方想要已发布的报价，或维护一份批发镜像时，改用 `list_products`。镜像是订阅源同步的拓扑，不是更便宜的提案模式。
+
+## 用 `fields` 做轻量发现
+
+只需要已发布产品数据的一个子集时，给 `list_products` 传 `fields`：
+
+```json
+{
+  "adcp_version": "3.2",
+  "account": { "account_id": "account_123" },
+  "criteria": {
+    "offer_filters": { "channels": ["olv"] }
+  },
+  "fields": ["product_id", "name", "pricing_options"],
+  "max_results": 10
+}
+```
+
+这在下列情况有用：
+- 代理在扫描多个卖方，初次比较只需要 ID 和价格
+- 你想跳过沉重的字段，例如 `product_card`、`product_card_detailed`、`placements` 或信号元数据
+- 你在深入具体产品之前先做一份摘要视图
+
+没有 `fields` 时，卖方返回完整的产品对象，包括视觉卡片定义、版位规格，以及任何捆绑的信号元数据。对跨多个卖方的第一轮发现，那比你需要的数据多。
+
+## 用分页控制基数
+
+`list_products` 使用基于游标的分页：
+
+| 参数 | 说明 |
+|---|---|
+| `max_results` | 每页最多多少个产品 |
+| `cursor` | 上一份响应里的不透明游标 |
+
+响应：
+
+| 字段 | 说明 |
+|---|---|
+| `next_cursor` | 下一页的游标；最后一页省略 |
+| `feed_version` | 所选报价订阅源的不透明版本 |
+| `pricing_version` | 可选的、单独版本化的定价层 |
+| `cache_scope` | 版本描述的是公开层还是账户层 |
+
+把 `next_cursor` 传进下一次 `list_products` 请求。镜像把 `feed_version` 和它的 `cache_scope` 一起存下，并用账户级的产品 webhook 处理日常变更。带 `if_feed_version` 的条件读取用来修补缺口，或确认所选订阅源没有变化；它们不能代替一条健康的 webhook 流。
+
+## 投放上的截断标志
+
+[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)（英文规范）返回拆分数组（按地域、按创意、按天等），这些数组可能变得很大。每个拆分数组都有一个并列的布尔标志——`by_geo_truncated`、`by_creative_truncated` 等——告诉你返回的行是全集，还是只是前 N 条：
+
+| 标志值 | 含义 |
+|---|---|
+| `false` | 所有行都在 |
+| `true` | 返回的行之外还有更多 |
+
+标志为 `true` 时，返回的行按所应用的排序指标、按所应用的方向排序（默认降序，也就是最显著的拆分；`sort_direction: "asc"` 故意返回最不显著的，例如表现最差的），尾部被省略。响应对每个拆分回显实际使用的排序（`by_X_sorted_by` / `by_X_sort_direction`），所以回退到花费是看得见的。这是设计如此：投放拆分是为了优化决策，不是为了存档报告。如果需要完整数据集，使用卖方自己的报告 API。
+
+## 合在一起
+
+一次省 token 的 AdCP 集成遵循这个模式：
+
+1. **用 `request_proposals` 让卖方策展。** 请对方做计划，而不是下载一份订阅源，再让模型重新发现卖方的专业判断。
+2. **用类型化的 `refine_proposals`。** 把提案 ID 和变更带进下一轮，不要带上整份先前的响应。
+3. **在客户端存下原始响应。** 不要把完整的产品对象喂进模型上下文。抽出要紧的，其余做摘要。
+4. **给投放分页之前先读截断标志。** 如果 `by_geo_truncated: false`，你已经有了全部，不必再跟进调用。
+5. **把批发当作同步。** 用 `list_products` 引导，应用产品 webhook，用带版本的读取来修补。
+
+<CardGroup cols={2}>
+  <Card title="发现与规划" icon="magnifying-glass" href="/docs/media-buy/product-discovery/">
+    选择已发布报价、批发镜像，或由卖方规划的提案。此页为英文规范。
+  </Card>
+  <Card title="list_products 参考" icon="list" href="/docs/media-buy/task-reference/list_products">
+    字段选择、游标分页、订阅源版本和镜像修补。此页为英文规范。
+  </Card>
+  <Card title="投放报告" icon="chart-line" href="/docs/media-buy/task-reference/get_media_buy_delivery">
+    拆分数组、截断标志和排序语义。此页为英文规范。
+  </Card>
+  <Card title="代理如何通信" icon="arrows-left-right" href="/zh/dist/docs/3.2.3/building/concepts/how-agents-communicate">
+    MCP 与 A2A 传输，以及响应如何结构化。
+  </Card>
+  <Card title="媒体产品" icon="box" href="/docs/media-buy/product-discovery/media-products">
+    产品结构、`product_card` 与 `product_card_detailed`，以及渲染。此页为英文规范。
+  </Card>
+</CardGroup>

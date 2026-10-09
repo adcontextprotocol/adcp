@@ -46,16 +46,16 @@ flowchart TB
 
 <CardGroup cols={2}>
   <Card title="搭建代理" icon="server" href="/zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent">
-    服务端，并且有工程能力。把编程代理指向技能文件，2–8 分钟得到一个符合故事板的 AdCP 代理（只有协议层）。上线的完整范围见英文的[运营代理](/docs/building/operating/operating-an-agent)。
+    服务端，并且有工程能力。把编程代理指向技能文件，2–8 分钟得到一个符合故事板的 AdCP 代理（只有协议层）。上线的完整范围见[运营代理](/zh/dist/docs/3.2.3/building/operating/operating-an-agent)。
   </Card>
   <Card title="编写调用方" icon="phone" href="/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller">
     客户端。安装 SDK，写出调用，处理异步响应和错误，读入报告。范围是几周的处理胶水，不是几个月。
   </Card>
-  <Card title="运行现成代理" icon="cube" href="/docs/building/operating/operating-an-agent">
-    小团队，或没有工程能力。自托管 [Prebid SalesAgent](https://github.com/prebid/salesagent)，或与代为运行 AdCP 代理的托管平台合作。配置多于代码。此页为英文。
+  <Card title="运行现成代理" icon="cube" href="/zh/dist/docs/3.2.3/building/operating/operating-an-agent">
+    小团队，或没有工程能力。自托管 [Prebid SalesAgent](https://github.com/prebid/salesagent)，或与代为运行 AdCP 代理的托管平台合作。配置多于代码。
   </Card>
-  <Card title="从手写实现迁移" icon="code-merge" href="/docs/building/by-layer/L4/migrate-from-hand-rolled">
-    已经在 SDK 成熟之前跑着一个 AdCP 代理？一次换一层，带冲突模式、逐步回滚，以及能通过一致性检查的中间状态。此页为英文。
+  <Card title="从手写实现迁移" icon="code-merge" href="/zh/dist/docs/3.2.3/building/by-layer/L4/migrate-from-hand-rolled">
+    已经在 SDK 成熟之前跑着一个 AdCP 代理？一次换一层，带冲突模式、逐步回滚，以及能通过一致性检查的中间状态。
   </Card>
   <Card title="走到 L4 以下" icon="layer-group" href="/docs/building/cross-cutting/sdk-stack">
     把 SDK 移植到新语言、做专用代理网关，或接进已经拥有 L0–L2 的技术栈。按层的契约在 SDK 栈参考里。此页为英文。
@@ -63,6 +63,8 @@ flowchart TB
 </CardGroup>
 
 第一次构建之后：跑[验证你的代理](/docs/building/verification/validate-your-agent)（英文），对照故事板确认一致性，然后登记 [AgenticAdvertising.org Verified](/docs/building/verification/aao-verified) 信任标记（英文）。
+
+<a id="two-checks-before-you-start"></a>
 
 ## 开始前的两项检查
 
@@ -74,7 +76,7 @@ flowchart TB
 
 **2. 是不是已经有一个在 SDK 成熟之前写好的代理？**
 
-如果是：对照[今天的 SDK 覆盖](/docs/building/cross-cutting/sdk-stack#current-sdk-coverage)重新评估，而不是你记得的那个 SDK。都是英文。[3.0 的 L3 变更](/docs/building/cross-cutting/version-adaptation#what-changed-at-l3-in-3-0)写出新的下限；[迁移指南](/docs/building/by-layer/L4/migrate-from-hand-rolled)走一次换一层的路径。
+如果是：对照[今天的 SDK 覆盖](/docs/building/cross-cutting/sdk-stack#current-sdk-coverage)重新评估，而不是你记得的那个 SDK。覆盖矩阵和版本说明是英文。[3.0 的 L3 变更](/docs/building/cross-cutting/version-adaptation#what-changed-at-l3-in-3-0)写出新的下限；[迁移指南](/zh/dist/docs/3.2.3/building/by-layer/L4/migrate-from-hand-rolled)走一次换一层的路径。
 
 ## 每条实现都会碰到的事
 
@@ -83,11 +85,12 @@ flowchart TB
 - **[版本适配](/docs/building/cross-cutting/version-adaptation)**（英文）：按调用钉扎规范版本、跨 SDK 主版本共存导入、线路上的 `VERSION_UNSUPPORTED` 协商。
 - **[一致性](/docs/building/verification/conformance)**（英文）：每个代理都要达到的 L3 协议标准。
 - **[AgenticAdvertising.org Verified](/docs/building/verification/aao-verified)**（英文）：公开信任标记。故事板通过得到 `(Spec)`；观察到的真实流量得到 `(Live)`。
-- **[运营代理](/docs/building/operating/operating-an-agent)**（英文）：第一次上线之后的运行时问题。
+- **[运营代理](/zh/dist/docs/3.2.3/building/operating/operating-an-agent)**：第一次上线之后的运行时问题。
 
 ## 再往下
 
-- **[概念](/docs/building/concepts)**（英文）：AdCP 为什么存在、协议比较、安全模型、行业上下文。
+- **[概念](/zh/dist/docs/3.2.3/building/concepts)**：AdCP 为什么存在、协议比较、安全模型、行业上下文。
+- **[协议架构](/zh/dist/docs/3.2.3/protocol/architecture)**：身份层、交易域和横切治理如何拼在一起。
 - **[L0 — 线路与传输](/docs/building/by-layer/L0)**（英文）：MCP 与 A2A、模式校验、类型生成。
 - **[L2 — 认证与注册表](/docs/building/by-layer/L2)**（英文）：认证、多租户账户状态、主体范围。
 - **[L3 — 协议语义](/docs/building/by-layer/L3)**（英文）：任务生命周期、异步操作、webhook、错误处理。

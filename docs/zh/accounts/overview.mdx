@@ -1,0 +1,411 @@
+---
+title: 账户协议
+sidebarTitle: 总览
+description: "账户协议是所有 AdCP 供应商协议底下的商业层：计费对象、运营方授权、账户状态，以及交付之后的用量报告。"
+"og:title": "AdCP — 账户协议"
+---
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[Accounts Protocol](/docs/accounts/overview) 是规范文本。本页是阅读译本。任务参考、JSON 模式和开通演练仍是英文。两处不一致时，以英文为准。
+</Info>
+
+账户协议定义所有 AdCP 供应商协议底下的商业层。每一笔交易——一笔媒体购买、一条数据信号、一次内容标准检查——都发生在已经有商业关系的各方之间。账户协议建立这种关系，并提供消耗报告，让供应商能跟踪自己的服务被如何使用。
+
+## 商业模型
+
+每一笔 AdCP 交易底下有七个问题：
+
+| 问题 | 由谁回答 | 机制 |
+| --- | --- | --- |
+| 广告主是谁？ | 品牌注册表 | `brand.domain` 解析到 `brand.json` |
+| 谁代表品牌操作？ | 品牌注册表 | `brand.json` 里的 `authorized_operators` 声明谁可以代表品牌购买 |
+| 运营方如何认证？ | 卖方能力 | `require_operator_auth` 决定谁必须认证，以及期望哪种账户引用形状 |
+| 我在这个账户上被允许做什么？ | 调用方范围 | [`sync_accounts`](/docs/accounts/tasks/sync_accounts) 和 [`list_accounts`](/docs/accounts/tasks/list_accounts) 响应里、每个账户条目上的 `authorization` 对象，描述调用方代理的 `allowed_tasks`、`field_scopes`、`scope_name` 和 `read_only`。见下面的[调用方授权](#caller-authorization)。 |
+| 谁被计费？ | 账户条款 | 需要选择时，买方在 `sync_accounts` 里传入 `billing`：`operator`、`agent` 或 `advertiser`。惰性开通的卖方使用没有歧义的能力或接入默认值。 |
+| 货币在哪里选定？ | 卖方能力 | `supported_account_currency_modes` 声明 `currency` 是固定在广告主账户上、按媒体购买选择，还是两者都有。 |
+| 适用哪个日历时区？ | 账户能力 | `account.timezone` 声明卖方固定还是账户固定的行为。`Account.timezone` 是运营默认值；报告、计费或预算能力在使用另一套时钟时必须显式声明。 |
+| 消耗了什么？ | 用量报告 | `report_usage` 在交付之后告知供应商代理，他们的服务被如何使用 |
+
+卖方在 [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) 里通过 `require_operator_auth` 声明账户模型。该字段声明谁必须认证；它本身不声明是否使用 OAuth、是否暴露 `list_accounts`，或支持哪些 `sync_accounts` 模式。
+
+当 `require_operator_auth` 为 `true`（**账户 id 命名空间**）时，运营方独立认证，买方传递卖方分配的 `account_id`，因为规范的账户命名空间归卖方或上游平台所有。如果一份凭据可能访问一个以上账户，卖方必须暴露 [`list_accounts`](/docs/accounts/tasks/list_accounts)，买方必须在第一次按账户范围的请求之前解析出一个明确的 `account_id`。如果一份凭据只绑定恰好一个账户，卖方应当暴露返回该单例的 `list_accounts`，并且仅当同一个明确的 `account_id` 通过另一条已声明路径或带外接入提供时，才可以省略它。
+
+当 `require_operator_auth` 为 `false`（**买方声明的账户**）时，代理被信任，按账户范围的调用使用自然键（`brand` + `operator`）。大多数卖方通过 [`sync_accounts`](/docs/accounts/tasks/sync_accounts) 开通这些关系。卖方也可以在第一次开通任务上惰性开通，例如 `create_media_buy`，前提是计费和每一项其他必需设置都能从能力或已认证代理的接入默认值里无歧义地得出。发现任务从不开通；见[开通之前的账户引用](#account-references-before-provisioning)。惰性开通的卖方必须继续接受自然键，并且必须暴露 [`list_accounts`](/docs/accounts/tasks/list_accounts) 以便恢复。如果使用前需要买方输入，卖方必须暴露 `sync_accounts`。
+
+买方声明账户的完整工作流，从发现到人工设置、激活和第一次花费，见[开通卖方中介的账户](/docs/accounts/provisioning-walkthrough)（英文）。账户之前的常设、按调用方范围的设置（webhook、可复用的报告目的地和声明），见[把买方代理接到卖方](/docs/accounts/principal-registration-walkthrough)（英文）。
+
+一个**广告网络**可以同时使用两种模型——面向买方的一侧用买方声明的账户（网络被代理信任），对每个底层平台用账户 id 命名空间（网络作为运营方认证）。完整账户链见[赞助式智能指南——网络的账户模型](/docs/sponsored-intelligence/networks#account-model-for-networks)（英文）：`buyer agent → network (buyer-declared) → AI platform (account-id namespace)`。
+
+交付之后，编排器调用 [`report_usage`](/docs/accounts/tasks/report_usage)，告知供应商代理（信号、治理、创意）他们的服务被如何消耗。这不是结算——这是消耗报告，让供应商能跟踪已赚收入并核验账单。
+
+## 范围
+
+账户协议适用于所有供应商协议。编排器为每个供应商代理上的每一对品牌/运营方建立一次账户，并在与该代理的全部交互中复用同一个账户引用：
+
+| 供应商协议 | 账户引用用于 |
+| --- | --- |
+| 媒体购买 | 刊例、开票、活动归因 |
+| 信号 | 按账户的定价选项、激活、用量报告 |
+| 治理 | 内容标准计费 |
+| 创意 | 创意服务计费 |
+
+账户引用可以是卖方或店面分配的 `account_id`（卖方拥有的命名空间，通常 `require_operator_auth: true`），也可以是买方声明的广告主键——`brand` + `operator` + 可选的 `operator_unit`、`currency`、买方选择的 `timezone` 和 `sandbox`（`require_operator_auth: false`）。在这套词汇里，**品牌身份**是 BrandKey 投影（`domain`、可选的 `brand_id`、规范化后的 `countries[]`）；**运营方身份**是运营方域名加上可选的 `operator_unit.id`；**广告主账户身份**是完整自然键，包括固定货币、买方选择的账户时区和沙箱处置。可变的 `operator_unit.name` 和更宽的 BrandRef 覆盖不是身份。`operator_unit.id` 故意与卖方的 `account_id` 分开。对买方声明的账户，当前完整自然键 `AccountRef` 必须能经 `list_accounts` 往返，并在后续调用上保持有效，即使卖方也回显一个内部 `account_id`。在一次受能力门控的身份换键之后，原先的自然键被墓碑化，对已授权调用方返回 `ACCOUNT_MOVED`，而不是解析或开通另一个账户。细节见[账户引用](/docs/building/by-layer/L2/accounts-and-agents#account-references)（英文）。
+
+`billing` 命名的是卖方为这段账户关系开票的一方。它不是支付轨道，也不是结算选择器。AdCP 目前不标准化「按媒体购买在中介清算流和直接结算之间选择」；实现不得通过悄悄改变 `billing` 的含义来编码这个区分。
+
+<a id="account-references-before-provisioning"></a>
+
+## 开通之前的账户引用
+
+买方声明的自然键命名一个广告主账户。它并不创建账户。账户在 `sync_accounts` 返回它且没有 `action: "failed"` 时**开通**，或在惰性开通的卖方于开通任务上创建它时开通（见下）。在那之前，键不解析。在那之后，[账户状态](#operations-by-account-status)决定账户可以使用哪些任务。
+
+**只有开通任务才开通。** 惰性开通的卖方只在承诺花费或创建账户所拥有资源的任务上开通，例如 [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)、[`buy_products`](/docs/media-buy/task-reference/buy_products)、[`accept_proposal`](/docs/media-buy/task-reference/accept_proposal)、[`sync_creatives`](/docs/creative/task-reference/sync_creatives)、[`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs)、[`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) 或 [`activate_signal`](/docs/signals/tasks/activate_signal)。发现和协商任务，包括 [`get_products`](/docs/media-buy/task-reference/get_products)、[`list_products`](/docs/media-buy/task-reference/list_products)、[`get_signals`](/docs/signals/tasks/get_signals)、[`request_proposals`](/docs/media-buy/task-reference/request_proposals)、[`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) 和 [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals)，不得创建或激活账户，也不得代表账户接受卖方的默认条款。
+
+**未解析的账户是错误，不是回退。** 当请求携带的 `account` 无法解析时，卖方必须返回 `ACCOUNT_NOT_FOUND`，包括在 `account` 可选的任务上。它不得丢掉引用、改用公开结果来回答：账户请求上的 `cache_scope: "public"` 表示这个账户按刊例计价，而这是对一个不存在的账户所做的断言。一个例外：惰性开通、而不暴露 `sync_accounts` 的卖方，可以对它将在下一次开通任务上开通的完整自然键回答发现任务。它按该账户将会得到的设置来回答，仿佛账户已经存在，`cache_scope` 遵循该账户的通常规则，并且账户不会被创建。`list_accounts` 不同：它的 `account` 字段是过滤器，所以匹配不到任何东西的键返回空列表。
+
+**买方省略未开通的键。** 在账户开通、且其状态允许该任务之前，买方应当在发现任务上省略 `account`，并在任务接受顶层 `brand` 时发送它。卖方用公开视图回答（`cache_scope: "public"`）。当卖方声明 `account.required_for_products: true` 时，买方在调用 `get_products` 之前开通账户。打算接受提案的买方在 `request_proposals` 之前开通账户，并在那里发送它，这样提案就绑定到该账户。买方 SDK 应当按卖方代理跟踪卖方已经开通了哪些自然键，并默认应用这些规则，这样每个实现者不必各自重做。
+
+**账户错误描述的是设置，不是卖方健康。** `ACCOUNT_NOT_FOUND`、`ACCOUNT_SETUP_REQUIRED` 和 `ACCOUNT_PAYMENT_REQUIRED` 描述的是一个买方和一个卖方之间的关系。买方不应当把它们计入卖方的可用性或健康。要从自然键上的 `ACCOUNT_NOT_FOUND` 恢复，通过 `sync_accounts` 开通（或为公开发现省略 `account`）。对于 `account_id`，通过 `list_accounts` 核验它。
+
+**自然键仍然是引用。** 对买方声明的账户，买方在每次调用上都发送自然键。`sync_accounts` 返回的 `account_id` 是卖方用于关联和支持的句柄。卖方也可以接受它作为 `AccountRef`，但并不必须接受，买方不得假设它会接受。
+
+## 账户状态生命周期
+
+账户沿着一组已定义的状态前进。终态（`rejected`、`closed`）不允许进一步转换。
+
+```
+sync_accounts ──▶ pending_approval ──▶ active
+                       │                  │
+                       │ （卖方拒绝）     ├── （信用额度 / 资金耗尽）
+                       ▼                  │    ▼
+                   rejected（终态）       │  payment_required
+                                          │    │ （买方解决计费）
+                                          │    ▼
+                                          │  active
+                                          │
+                                          ├── （卖方暂停） ──▶ suspended
+                                          │                      │
+                                          │    （卖方重新激活） ◀─┤
+                                          │                      │
+                                          │                      └──▶ closed（终态）
+                                          │
+                                          └── （卖方或买方关闭） ──▶ closed（终态）
+```
+
+**转换规则：**
+
+- `pending_approval` → `active`：卖方在信用、合同或身份复核之后批准
+- `pending_approval` → `rejected`：卖方拒绝。终态——买方必须提交一份新的账户请求。
+- `active` → `payment_required`：信用额度达到或资金耗尽时自动发生
+- `payment_required` → `active`：买方解决未清余额时。卖方可以自动转换，也可以要求人工重新激活。
+- `active` → `suspended`：卖方发起（政策违规、账单争议、欺诈复核）。卖方必须通过 webhook 通知编排器。
+- `suspended` → `active`：卖方发起的重新激活
+- `suspended` → `closed`：卖方发起的永久关闭
+- `active` → `closed`：卖方或买方发起的永久关闭。终态。
+- 卖方必须拒绝终态账户上的操作，并返回 `ACCOUNT_NOT_FOUND` 或适当的错误
+
+<a id="operations-by-account-status"></a>
+
+### 按账户状态允许的操作
+
+账户状态是一道门，决定哪些任务被允许，如下所示。变更操作受到的限制最多。
+
+| 任务 | `active` | `pending_approval` | `payment_required` | `suspended` | `rejected` / `closed` |
+| --- | --- | --- | --- | --- | --- |
+| `list_accounts` | 是 | 是 | 是 | 是 | 是 |
+| `get_account_financials` | 是 | 是 | 是 | 是 | 否 |
+| `get_products` | 是 | 否 | 是 | 否 | 否 |
+| `create_media_buy` | 是 | 否 | 否 | 否 | 否 |
+| `update_media_buy` | 是 | 否 | 是 | 否 | 否 |
+| `get_media_buys` | 是 | 否 | 是 | 是 | 否 |
+| `sync_creatives` | 是 | 否 | 是 | 否 | 否 |
+| `sync_catalogs` | 是 | 否 | 是 | 否 | 否 |
+| `sync_event_sources` | 是 | 否 | 是 | 否 | 否 |
+| `report_usage` | 是 | 否 | 是 | 是 | 否 |
+
+- `payment_required` 阻止新的花费（`create_media_buy`），但允许管理已有购买并解决设置。卖方也应当在账户处于 `payment_required` 时拒绝 `update_media_buy` 里的 `new_packages`，因为增加套餐在功能上等同于新的花费。
+- `suspended` 允许对已有数据的只读访问，但阻止所有变更
+- 卖方必须对暂停账户上被阻止的操作返回 `ACCOUNT_SUSPENDED`，对需要付款的账户上被阻止的操作返回 `ACCOUNT_PAYMENT_REQUIRED`
+
+<a id="caller-authorization"></a>
+
+## 调用方授权
+
+不是每个能访问账户的调用方都有同样的授权。供应商代理可以给一个调用方代理完整范围，给另一个代理窄的「读取加更新」范围。认证确认调用方是他们所声称的身份；授权回答的是「这个调用方在这个账户上被允许做什么？」
+
+<Note>
+  **适用于每一个供应商协议。** 这里描述的授权机制是共享账户协议的一部分——它适用于每一个实现 `sync_accounts` / `list_accounts` 的代理：媒体购买销售代理、信号代理、治理代理、创意代理、品牌代理。信号代理区分激活与目录访问；治理代理区分审计读取与计划管理；创意代理区分资料库读取与上传。只有标准命名范围 `attestation_verifier` 是媒体购买协议专用的（它绑定 **AgenticAdvertising.org Verified (Live)** 限定词；英文写作 AAO Verified (Live)）。其余机制——`allowed_tasks`、`field_scopes`、`read_only`、带 `custom:` 前缀的范围——与具体协议无关。
+</Note>
+
+**模式**：[`/schemas/v3/core/account-authorization.json`](https://adcontextprotocol.org/schemas/v3/core/account-authorization.json)
+
+支持范围自省的供应商代理，在 [`sync_accounts`](/docs/accounts/tasks/sync_accounts) 和 [`list_accounts`](/docs/accounts/tasks/list_accounts) 响应的每个账户条目上附上一个 `authorization` 对象：
+
+```json
+{
+  "account_id": "acc_acme_compliance",
+  "name": "Acme c/o AAO Compliance",
+  "status": "active",
+  "billing": "operator",
+  "authorization": {
+    "allowed_tasks": [
+      "get_adcp_capabilities",
+      "get_products",
+      "get_media_buys",
+      "get_media_buy_delivery",
+      "list_creatives",
+      "update_media_buy"
+    ],
+    "field_scopes": {
+      "update_media_buy": ["reporting_webhook"]
+    },
+    "scope_name": "attestation_verifier",
+    "read_only": false
+  }
+}
+```
+
+### 字段
+
+| 字段 | 说明 |
+| --- | --- |
+| `allowed_tasks` | 调用方可以针对此账户调用的规范蛇形任务名。任务不在列表中必须读作「不允许」——调用未列出的任务返回 `SCOPE_INSUFFICIENT`。 |
+| `field_scopes` | 可选的、按任务列出的请求字段允许列表，调用方可以设置这些字段。键是任务名，值是字段路径。当某个任务出现在这里时，允许列表之外的任何字段都返回 `FIELD_NOT_PERMITTED`。隐式的框架字段始终允许，不必出现在允许列表里：带类型的实体引用（`account`、`media_buy_id`、`package_id`、`creative_id`、`signal_id`、`capability_id`、`format_option_ref`、已弃用的 `format_id`、`proposal_id`、`plan_id`、`session_id`），并发与幂等（`revision`、`idempotency_key`），买方侧关联（`buyer_ref`、`po_number`），模式标志（`dry_run`），分页（`pagination`、`cursor`、`max_results`），以及封套字段（`context`、`ext`、`adcp_major_version`、`push_notification_config`）。这份清单不是穷尽的：读取任务上任何其他带类型的实体 id 参数或塑造查询的字段，都应当当作框架字段。 |
+| `scope_name` | 可选的命名范围标识。只有 `attestation_verifier` 是标准化的（媒体购买专用，绑定 **AgenticAdvertising.org Verified (Live)** 限定词；英文写作 AAO Verified (Live)）。代理自定义的名字必须使用 `custom:` 前缀，这样标准值的拼写错误会在模式校验时失败，而不是被放行。 |
+| `read_only` | 便利标志。为 true 时，变更操作返回 `READ_ONLY_SCOPE`，无论该任务是否在 `allowed_tasks` 里。省略等同于 `false`。调用方不得仅从 `allowed_tasks` 推断只读。 |
+
+**AdCP 3.2 的紧凑产品工具。** 授权点名的是实际任务。一份 `get_products` 授权不会静默授权 `request_proposals`、`refine_proposals` 或 `decline_proposals`；卖方显式授予提案生命周期，并可以独立限定其紧凑的顶层字段。只读授权可以允许 `list_products`，但拒绝那三个具备变更能力的提案工具。
+
+### 出现与缺席的语义
+
+- **出现**：供应商代理断言，这个形状反映的是此刻、这个调用方、在这个账户上的强制执行。晚几秒可以接受；系统性偏离则不符合。
+- **在单个账户上缺席**：供应商代理没有告诉调用方他们在该账户上的范围。调用方退回到由错误驱动的发现（尝试任务，处理 RBAC 错误码）。
+- **在所有账户上缺席**：供应商代理不实现范围自省。调用方不得从缺席推断出访问权——供应商代理仍可能在本地强制范围，并在任何任务调用上返回 `SCOPE_INSUFFICIENT` / `READ_ONLY_SCOPE` / `FIELD_NOT_PERMITTED`。
+- **`authorization` 在 3.x 可选**。想避免破坏性变更的供应商代理可以推迟填充它。填充是严格增量的——它让调用方能预先避开否则要靠尝试才会发现的错误。
+
+声称 `attestation_verifier` 标准范围（媒体购买协议专用）的供应商代理**必须**填充 `authorization`——**AgenticAdvertising.org Verified (Live)** 证明流依赖核验所宣告的范围与强制执行一致。
+
+### 身份绑定、刷新节奏与一致性
+
+`authorization` 对象在读取时**隐式限定在 `(调用方身份, account_id)` 元组上**。同一个账户返回给另一个已认证调用方时，可以返回不同的 `authorization` 对象——这正是 RBAC 模型的意义。供应商代理必须从已认证请求解析调用方身份（而不是从任何客户端提供的字段），并且必须把返回的 `authorization` 绑定到那个已解析的身份。
+
+**刷新节奏。**
+
+- 调用方在针对一个账户的活跃使用中，应当至少每 **300 秒**通过 `sync_accounts` 或 `list_accounts`（按所持 `account` 过滤）重读一次 `authorization`。
+- 供应商代理必须在运营方发起的范围变更做出后 **300 秒内**，把该变更反映到 `sync_accounts` / `list_accounts` 响应中。每 300 秒轮询一次的合规调用方，至多在一个刷新周期内看到运营方的变更。
+- 供应商代理可以短暂缓存 `authorization` 对象，但不得超过 300 秒而不重新校验。
+- 300 秒是下限，不是目标——范围变更更频繁的供应商代理应当更快地呈现它们；运行 **AgenticAdvertising.org Verified (Live)** 证明的调用方应当按检查 7 的节奏探测（每个滚动窗口至少一次，再加上每一次观察到的范围变更）。
+
+**一致性。**
+
+对给定的 `(调用方身份, account_id)` 元组，刷新窗口内的顺序读取必须返回相同的 `authorization` 对象，运营方发起的范围变更除外。来自负载均衡或最终一致后端的闪烁——两次相隔 10 秒的读取因为打到不同副本而返回不同的 `allowed_tasks`——不符合。合规引擎和编程代理依赖范围稳定来跟踪状态；无法保证这一点的供应商代理必须省略 `authorization`，而不是不一致地填充它。
+
+这是上面「出现语义」里「系统性偏离则不符合」这一保证的具体形式——它可以核验：一致性检查可以在刷新窗口内、用同一身份把同一个账户读两次，并比较结果。
+
+### 刷新窗口内买方对 SCOPE_INSUFFICIENT 的响应
+
+单次 `SCOPE_INSUFFICIENT` 响应，在观察上无法区分两种原因：卖方副本尚未传播一份有效授权（短暂的基础设施现象，会自行解决），以及运营方合法地缩小了范围（持久的，必须呈现出来）。在把错误归类为需要运营方介入的确定 `correctable` 信号之前，买方可以用一小份有界重试预算来区分两者：
+
+- **重试预算：** 不超过 3 次，每次间隔 1–5 秒的抖动退避。这是消歧逻辑——在信任 `correctable` 分类之前，确认范围是否真的不足——不是对可纠正错误的恢复动作。
+- **不是 300 秒窗口：** 重试预算不是卖方的传播 SLA。买方不应当在每一次假阴性上都等满 300 秒；累计最多 15 秒的退避延迟，足以吸收典型的副本滞后。
+- **重试耗尽之后：** 买方必须把错误呈现出来。「呈现」的意思是：向调用层返回结构化错误（包括账户 ID、失败的任务，以及 `error.details.retry_count` 里已尝试的次数），并且确保失败在运营方可访问的渠道里可见——结构化日志、仪表板告警或通知。升级机制由实现定义；要求是错误不得被静默吞掉。
+
+当买方怀疑授权传播滞后（副本在写授权更新上滞后）时，`READ_ONLY_SCOPE` 遵循同样的有界重试逻辑。注意：如果写访问是最近被*吊销*的，陈旧副本可能接受一次本应被吊销范围拒绝的变更。如果有界重试成功，买方必须在把结果当作可靠之前重读 `authorization`——如果重读确认写访问已被吊销，买方必须向运营方呈现告警，把这次变更标为可能未经授权；他们不得静默把它当作正确结果接受。
+
+`FIELD_NOT_PERMITTED` 不遵循这个模式。代理自主的恢复路径——去掉不被允许的字段并重新提交——取代了重试考量。买方不得对 `FIELD_NOT_PERMITTED` 重试完全相同的失败请求；他们应当立即改正并重新提交。
+
+这些错误码上的规范重试例外条款，见[授权（RBAC）](/docs/building/by-layer/L3/error-handling#authorization-rbac)（英文）。
+
+<a id="standard-named-scope-attestation_verifier"></a>
+
+### 标准命名范围：`attestation_verifier`
+
+宣告 **AgenticAdvertising.org Verified (Live)** 就绪（跟踪于 [#2965](https://github.com/adcontextprotocol/adcp/issues/2965)；英文写作 AAO Verified (Live)）的媒体购买销售代理，必须支持由 `scope_name: "attestation_verifier"` 标识的命名范围，最低形状如下：
+
+- `allowed_tasks`（至少这些——供应商代理可以包含额外的只读任务）：
+  - `get_adcp_capabilities`
+  - `get_products`
+  - `get_media_buys`
+  - `get_media_buy_delivery`
+  - `list_creatives`
+  - `update_media_buy`
+- `field_scopes.update_media_buy`：`["reporting_webhook"]`
+- `read_only`：`false`
+
+这个范围故意省略 `create_media_buy`、`sync_creatives`，以及 `update_media_buy` 上所有承诺花费或修改定向的字段。它被窄地设计用于持续可观测性核验——合规引擎可以发现在投活动、读取库存和创意状态、附上核验报告 webhook 并读取投放，但不能预订库存、修改预算、更改投放日期、上传创意或取消任何东西。
+
+包含 `get_products` 和 `list_creatives`，是因为 **AgenticAdvertising.org Verified (Live)** 可观测性需要抽查卖方所声明的库存，以及活跃购买上的创意管道状态。
+
+`attestation_verifier` 是媒体购买协议专用的——它绑定 **AgenticAdvertising.org Verified (Live)** 限定词，而这是媒体购买流程（实时观察需要真实的广告投放）。信号、治理、创意或品牌代理的同等可观测性范围尚未标准化；在那之前，那些代理使用 `custom:` 范围。
+
+<Note>
+  **只有报告——跑生命周期是未来的范围。**
+  `attestation_verifier` 是 (Live) 的*报告*一半：引擎观察卖方已经投放的活动，读取投放，并附上核验 webhook。它故意不能创建活动、附加创意或修改预算。互补的*跑生命周期*角色——为 [#3046](https://github.com/adcontextprotocol/adcp/issues/3046) 所考虑的、由 AgenticAdvertising.org 运营的规范活动运行器，引擎通过卖方的线上代理端到端投放规范公益广告——需要更宽的写范围（`attestation_runner`，跟踪于 [#3561](https://github.com/adcontextprotocol/adcp/issues/3561)）。今天的存量接入（路径 B）只要求 `attestation_verifier`；运行器一侧的范围会和规范活动运行器本身一起点亮。
+</Note>
+
+### 其他供应商协议的自定义范围
+
+任何供应商代理都可以用 `custom:` 前缀定义自定义范围。买方不得从带此前缀的范围名假设任何语义——名字由代理定义，并在带外得知（文档、接入）。
+
+示例（未标准化——每个代理自己命名）：
+
+- **信号代理**：`custom:activation_only` — `allowed_tasks: [get_signals, activate_signal, get_adcp_capabilities]`，没有目录管理，没有跨账户元数据。
+- **治理代理**：`custom:audit_viewer` — `allowed_tasks: [get_plan_audit_logs, get_adcp_capabilities]`，`read_only: true`。适合被授予治理轨迹只读访问的监管者或外部审计员。
+- **创意代理**：`custom:library_reader` — `allowed_tasks: [get_adcp_capabilities, list_creatives]`，`read_only: true`。让不上传的买方（例如测量合作方）发现能力和资料库内容，而不改变它们。
+- **买方编排器网关账户上的测量代理**：`custom:measurement_feedback` — `allowed_tasks: [get_media_buy_delivery, provide_performance_feedback]`，`read_only: false`。这是第一个实验性网关层级里的固定任务。测量提供方不获得卖方账户授权。任务清单是规范的，所以不需要标准命名范围。
+- **品牌代理（权利）**：`custom:rights_viewer` — `allowed_tasks: [get_rights, get_brand_identity]`，`read_only: true`。发现，而没有清权特权。
+
+上面的出现/缺席语义、身份绑定、刷新节奏和一致性要求，在所有供应商协议上统一适用——填充 `custom:activation_only` 的信号代理，承担与填充 `attestation_verifier` 的媒体购买卖方相同的 300 秒刷新义务。
+
+### 先例
+
+这套自省模型——「调用方向强制执行授权的一方询问授权是什么」——在结构上类似 [RFC 7662 OAuth 2.0 Token Introspection](https://www.rfc-editor.org/rfc/rfc7662)，并针对 AdCP 的任务与字段授权模型做了专门化。把响应嵌进 sync/list，而不是拆成单独的任务，是因为账户发现和范围自省是同一个自然问题（「我有哪些账户，我能用它们做什么？」）——两者一起返回。
+
+## 交易生命周期
+
+```
+1. 发现卖方能力
+   get_adcp_capabilities → require_operator_auth, supported_billing
+
+2. 解析品牌身份
+   获取 brand.domain/.well-known/brand.json → 规范品牌（domain, brand_id）
+
+3. 核验运营方身份
+   检查 brand.json 里的 authorized_operators → 确认运营方被允许为该品牌购买
+
+4. 认证（如果需要）
+   当 require_operator_auth 为 true → 通过 authorization_endpoint 或带外取得运营方凭据
+
+5. 建立账户引用
+   账户 id 命名空间（require_operator_auth: true）：
+     list_accounts() → 找到该品牌/运营方已有的 account_id（上游管理）
+     或带外收到 account_id（卖方定义）
+   买方声明的账户（require_operator_auth: false）：
+     sync_accounts({ accounts: [{ brand, operator, billing, billing_entity? }] }) → 状态、计费条款
+     或当所有必需设置都无歧义时，在第一次按账户范围的任务上发送自然键
+     list_accounts() → 冷启动后恢复已确认的品牌/运营方账户（惰性开通所必需；否则应当暴露）
+
+6. 执行
+   协议任务使用账户引用，以应用正确的费率和条款
+   例：get_products(account: {...}), create_media_buy(account: {...})
+
+7. 报告用量
+   report_usage(usage: [{ account: {...}, operator_id, kind, vendor_cost, ... }])
+   在交付之后告知供应商代理，他们的服务被如何消耗
+```
+
+## 各方
+
+账户协议与四种当事方一起运作。计费层级、信任模型和已授权运营方的完整说明，见[账户与代理](/docs/building/by-layer/L2/accounts-and-agents)（英文）。
+
+| 当事方 | 角色 | 如何识别 |
+| --- | --- | --- |
+| 品牌 | 被广告的是谁的产品 | `brand.domain`，加上通过 brand.json 的可选 `brand.brand_id` / `brand.countries[]` |
+| 运营方 | 谁驱动购买 | 域名（例如 `pinnacle-media.com`） |
+| 代理 | 什么软件下达购买 | 已认证会话 |
+| 供应商代理 | 卖方的 AdCP 代理 | `agent_url` |
+
+## 任务
+
+**账户发现（规范）。** 每一个接受账户的代理都必须至少暴露 `list_accounts` 或 `sync_accounts` 之一。卖方定义的账户 id 命名空间，仅当账户 ID 由带外提供、且没有账户设置通过 AdCP 管理时，才可以两者都省略。买方声明账户的卖方通常暴露 `sync_accounts` 来建立关系，并且也应当暴露 `list_accounts` 以便冷启动恢复：无状态买方不能靠重放 `sync_accounts` 来重建丢失的广告主自然键。因此 `list_accounts` 返回再次组成引用所需的品牌、运营方，以及可选的运营方单元、货币和沙箱字段。买方声明账户的卖方，仅当它从完整自然键惰性开通、无需买方输入就能解析每一项必需设置、并且暴露 `list_accounts` 时，才可以省略 `sync_accounts`。对账户 id 命名空间，除非未来有明确能力声明账户 id 开通，`sync_accounts` 在 3.0.x 里只用于更新设置。见[按协议的必需任务](/docs/protocol/required-tasks#any-agent-accepting-accounts)（英文）。
+
+| 任务 | 目的 |
+| --- | --- |
+| [`sync_accounts`](/docs/accounts/tasks/sync_accounts) | 声明品牌/运营方对和计费；开通账户（买方声明的账户，`require_operator_auth: false`）；当卖方暴露设置更新模式时，可选地更新已有账户的设置 |
+| [`list_accounts`](/docs/accounts/tasks/list_accounts) | 在上游管理的命名空间里发现已有账户；冷启动后恢复已确认的买方声明账户；轮询待处理账户的状态 |
+| [`get_account_financials`](/docs/accounts/tasks/get_account_financials) | 查询由运营方计费的账户的花费、信用和发票状态 |
+| [`sync_governance`](/docs/accounts/tasks/sync_governance) | 把治理代理端点同步到账户，供卖方侧校验 |
+| [`report_usage`](/docs/accounts/tasks/report_usage) | 在交付之后告知供应商代理，他们的服务被如何消耗 |
+
+## 与品牌注册表的连接
+
+账户引用里的 `brand.domain` 不是任意标识——它是品牌的域名，可以解析到一份 `brand.json`，该文件声明品牌的规范身份、子品牌、已授权运营方和媒体资产。
+
+供应商代理可以对照品牌注册表核验买方的声称：如果编排器声称代表 `acme-corp.com`，供应商可以获取 `acme-corp.com/.well-known/brand.json`，以确认已授权运营方和品牌层级。这使账户协议难以被篡改——账户关系扎根于可公开核验的品牌身份。
+
+品牌身份解析如何工作，见[品牌协议](/docs/brand-protocol/index)（英文）。
+
+## 对手方核验
+
+广告里的每一段商业关系，都取决于你知道自己实际在和谁做生意。账户协议通过品牌注册表在协议层处理这一点。
+
+当编排器引用一个账户时，`brand.domain` 标识广告主。供应商代理可以获取 `brand.domain/.well-known/brand.json` 来核验：
+
+- **品牌身份**：这个品牌是不是他们所声称的？
+- **运营方授权**：请求里列出的运营方是否真的被授权代表该品牌购买？
+- **品牌层级**：这个集团组合包含哪些子品牌？
+
+这种核验扎根于可公开访问的、托管在 DNS 上的身份——不是买方代理所断言的，而是品牌自己所声明的。
+
+`pending_approval` 账户状态是人工复核发生的地方：信用检查、法律协议和身份核验。需要这些步骤的供应商代理返回一个 `setup.url`，让人在账户变为活跃之前完成流程。
+
+### 品牌注册表与回馈模式
+
+[AgenticAdvertising.org 品牌注册表](https://agenticadvertising.org)为尚未发布自己 `brand.json` 的品牌提供一层由社区维护的品牌身份。买方代理在账户设置之前解析品牌时，可以把数据作为正常工作流的副产品回馈给注册表——在不额外费力的情况下改善生态的身份覆盖。
+
+买方代理的建议模式使用三块积木（见 [#1166](https://github.com/adcontextprotocol/adcp/issues/1166)）：
+
+| 工具 | 目的 |
+| --- | --- |
+| `resolve_brand` | 检查注册表并获取 brand.json——若有则返回规范身份 |
+| `research_brand` | 通过 Brandfetch 丰富，并作为 `enriched` 自动保存到注册表 |
+| `save_brand` | 手工把一个品牌作为 `community` 贡献到注册表 |
+
+```javascript
+async function ensureBrand(domain) {
+  // 1. Check registry (brand.json or previously resolved)
+  const resolved = await resolveBrand(domain);
+
+  if (resolved.errors) {
+    // Resolution failed — brand unknown, proceed to enrich
+  } else if (
+    resolved.source === "brand_json" ||
+    resolved.source === "enriched"
+  ) {
+    // Authoritative or enriched data available — confirm with user, then use
+    return await confirmWithUser(resolved);
+  }
+  // source === 'community': registry has a placeholder, but enrich for richer data
+
+  // 2. Enrich via Brandfetch — auto-saves to registry as 'enriched'
+  const enriched = await researchBrand(domain);
+  if (enriched.errors) {
+    // Enrichment unavailable — fall back to community entry or prompt user to correct
+    return resolved ? await confirmWithUser(resolved) : null;
+  }
+
+  // 3. Confirm with user before using enriched data
+  // Enrichment is third-party — user confirmation catches errors and improves registry quality
+  return await confirmWithUser(enriched);
+}
+```
+
+`confirmWithUser` 是占位符，代表适合你的体验的任何确认机制——明确的提示、工作流界面里的复核步骤，或触发人工复核的低置信标志。确认步骤是改进循环能工作的原因：丰富数据来自第三方，不保证正确。在数据被用于在投活动之前由用户核验，才是注册表长期保持准确的原因。
+
+#### 来源权威
+
+注册表跟踪品牌数据从哪来。来源按权威从高到低：
+
+| 来源 | 含义 | 能否被覆盖？ |
+| --- | --- | --- |
+| `brand_json` | 品牌通过 `/.well-known/brand.json` 自行声明 | 否——返回 409 |
+| `enriched` | 第三方丰富（Brandfetch） | 仅更高权威可以 |
+| `community` | 由注册表成员手工贡献 | 是 |
+
+当代理调用 `save_brand` 或 `research_brand` 时，注册表应用合并逻辑：来自更高权威来源的已有字段被保留，只填上缺失字段。这尊重品牌已经声明的内容，同时补上缺口。
+
+如果注册表里该域名已经有近期的 `enriched` 数据，`research_brand` 会跳过再次丰富，以避免多余的 API 调用。
+
+任何品牌的完整编辑历史——谁贡献的、何时、摘要是什么——可以通过 [`GET /api/brands/history`](/docs/registry/index#activity-history) 查询（英文）。
+
+#### 媒体资产回馈
+
+同一模式适用于媒体方的媒体资产。当买方代理通过与销售代理的交互发现一家新的媒体方时，它可以通过 `POST /api/properties/save` 把该媒体资产回馈给注册表。这改善生态的媒体资产覆盖，方式与品牌回馈改善品牌覆盖相同。细节见[注册表 API——保存媒体资产](/docs/registry/index#save-property)（英文）。
+
+## 用量报告
+
+供应商代理（信号、治理、创意）不是活动执行的直接参与者——编排器把他们的服务当作媒体购买的输入。交付之后，`report_usage` 告诉这些供应商消耗了什么，以便他们跟踪已赚收入并核验账单。
+
+`report_usage` 由买方报告：编排器计算并报告消耗。每条记录自带 `account`、`operator_id` 和 `kind`（`"signal"`、`"content_standards"`、`"creative"`）。供应商代理用所报告的 `pricing_option_id` 核验应用了正确的费率。
+
+部分接受是有效的——单次请求可以跨越多个账户、运营方和活动。响应确认接受了多少条记录，以及哪些（如果有）未通过校验。
