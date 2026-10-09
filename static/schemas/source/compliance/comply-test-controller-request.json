@@ -1195,7 +1195,7 @@
             },
             "additionalProperties": true
           },
-          "description": "Installment rows for simulate_delivery on single-package buys; each MUST be a complete core/installment-delivery-metrics.json row, including installment_status and publication when set. Same replace, undated, and rejection rules as installment_property_delivery; sandbox sellers MUST build by_installment from exactly these rows."
+          "description": "Installment rows for simulate_delivery on single-package buys; each MUST be a complete core/installment-delivery-metrics.json row, including installment_status and publication when set; this item schema is loose, so sellers SHOULD validate each row against the full row schema. Same replace, undated, and rejection rules as installment_property_delivery; sandbox sellers MUST build by_installment from exactly these rows."
         },
         "conversions": {
           "type": "integer",
