@@ -121,7 +121,7 @@ resource.
 | Resource family | Authoritative current-state read | 3.2 requirement |
 | --- | --- | --- |
 | Account identity, status, authorization, billing configuration | `list_accounts` | Complete current state; source-neutral changes recorded. |
-| Account spend, credit, payment, invoices | `get_account_financials` | Complete when account financials and this resource type are advertised. |
+| Account spend, credit, payment, invoices | `get_account_financials` | Complete when account financials and the resource type are advertised. Resource types: `account_financials` (spend, credit, payment status; `resource_id` is the account id) and `invoice` (`resource_id` is the invoice id). |
 | Media buys and packages | `get_media_buys` | Every caller-visible account buy, including external creation and modification; buyers enumerate every status and page. |
 | Delivery and reporting | `get_media_buy_delivery` | Current results within declared parity; corrections, adjustment, and finality revisions recorded. Routine metric increments are excluded. |
 | Creative library | `list_creatives` | Every caller-visible creative regardless origin, with current content revision or digest and lifecycle state. |
