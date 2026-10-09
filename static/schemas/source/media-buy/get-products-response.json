@@ -385,6 +385,42 @@
       "type": "string",
       "description": "Opaque token representing the version of the pricing layer, including product pricing_options and nested signal_targeting_options pricing_options. When the seller supports independent pricing versioning, pricing_version changes when prices move but wholesale_feed_version changes only when structure/metadata moves. Same cache_scope keying as wholesale_feed_version. Sellers not separating these MAY omit pricing_version and use wholesale_feed_version for both."
     },
+    "execution_readiness": {
+      "type": "object",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (`media_buy.execution_readiness`). Whether the request's `account` can satisfy the `execution_requirements[]` of the products on this response, keyed by `product_id`. Present only when the request set `include_execution_readiness: true` and carried an authorized `account`. Advisory: `create_media_buy` revalidates. Not part of the cache layer: it does not change `cache_scope`, `wholesale_feed_version`, or `pricing_version`, buyers key it by (account, `version`) and MUST NOT cache it under the public key, sellers MUST NOT put it in wholesale feed webhooks and MUST omit it on `unchanged: true` responses. Covers only this response's products; merge pages by `product_id`. See the media-buy specification, 'Per-account execution readiness'.",
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Opaque token for the account's readiness state, independent of `wholesale_feed_version` and `pricing_version`. Compare for equality only. Equal versions MUST imply identical entries for any product present in both responses."
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the seller read the account's resources. Readiness may be stale by then; `create_media_buy` is authoritative."
+        },
+        "products": {
+          "type": "object",
+          "description": "Readiness keyed by `product_id`, for returned products that declare `execution_requirements`. A missing entry means not evaluated, not ready.",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "$ref": "/schemas/core/product-execution-readiness.json"
+          }
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "version",
+        "products"
+      ],
+      "additionalProperties": true
+    },
     "cache_scope": {
       "type": "string",
       "enum": [

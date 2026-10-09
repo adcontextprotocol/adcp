@@ -186,6 +186,12 @@
       "description": "DEPRECATED discovery-only property filter. On compact discovery tasks use criteria.offer_filters.property_list to preserve product eligibility. Use targeting_overlay.property_list only when the buyer intends a delivery constraint, or required_overlay_support.property_list for future selectability. A facade MUST NOT convert this discovery filter into delivery targeting.",
       "deprecated": true
     },
+    "include_execution_readiness": {
+      "type": "boolean",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (`media_buy.execution_readiness`). When true and `account` is present, a seller that lists `media_buy.execution_readiness` in `experimental_features` returns the response-level `execution_readiness` map for the products on the response. Opt-in because computing it can require reads on the seller's platform. Ignored when `account` is absent; an `account` that does not resolve still returns `ACCOUNT_NOT_FOUND`. Sellers that do not support it ignore the field. Default false."
+    },
     "fields": {
       "type": "array",
       "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed. product_id and name are always included. `format_ids` is a deprecated 3.x compatibility projection; new integrations request canonical `format_options`. Safety-critical request-specific fields override projection: Product.targeting_resolution and expires_at MUST be included whenever the seller returns modifications, overlay_support MUST be included when required_overlay_support was requested, media_buy_support MUST be included when required_media_buy_support or media_buy_frequency_cap was requested, list_applications MUST be included when a property or collection list is in the effective targeting, and audience_evidence_selections MUST be included when filters.audience_evidence_requirements affects eligibility or ranking. fields controls the optional audience_evidence payload, not either decision receipt. Response-level brief targeting confirmation is not a projected product field.",
