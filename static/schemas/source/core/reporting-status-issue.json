@@ -36,6 +36,7 @@
         "RESOURCE_EXPIRED",
         "READER_INCOMPATIBLE",
         "HISTORY_UNAVAILABLE",
+        "REVISION_UNREADABLE",
         "RECEIPT_REQUIRED",
         "RECEIPT_REJECTED",
         "ADJUSTMENT_RECEIPT_REQUIRED",
@@ -95,6 +96,14 @@
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
       "x-entity": "reporting_obligation"
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision",
+      "description": "Published revision this issue concerns. Required when code is REVISION_UNREADABLE."
     },
     "reporting_status_id": {
       "type": "string",
@@ -158,12 +167,24 @@
     {
       "if": { "properties": { "code": { "const": "CONSUMER_STATUS_MISMATCH" } }, "required": ["code"] },
       "then": { "required": ["opened_at", "reporting_status_id"] }
+    },
+    {
+      "if": { "properties": { "code": { "const": "REVISION_UNREADABLE" } }, "required": ["code"] },
+      "then": {
+        "properties": { "responsible_party": { "const": "seller" } },
+        "required": ["reporting_obligation_id", "reporting_revision_id"],
+        "oneOf": [
+          { "properties": { "severity": { "const": "delayed" }, "recommended_action": { "const": "wait_for_retry" } } },
+          { "properties": { "severity": { "const": "action_required" }, "recommended_action": { "const": "contact_seller" } } }
+        ]
+      }
     }
   ],
   "x-adcp-validation": {
     "issue_lifecycle": "issue_id identifies one logical condition. opened_at is fixed at first emission and MUST NOT advance while the same issue_id is re-emitted, even across ledger snapshots, health transitions, or a severity change from delayed to action_required. issue_state, when supported, moves only forward through open, acknowledged, and then resolved or waived; a recurrence after retirement receives a new issue_id and a new opened_at. external_ref is inert correlation text with no protocol meaning; a seller MUST NOT reuse one external_ref across callers on a caller-scoped issue, because that would leak the blast radius of a seller-side incident between tenants.",
     "consumer_mismatch_lifecycle": "resolved requires a superseding agreeing consumer statement or a seller projection that no longer conflicts. waived is terminal only when consumer and seller explicitly agree off-protocol to disregard the exact caller/account mismatch identified by issue_id, causing reporting_status_id, and diagnosed conflict; a seller MUST NOT act unilaterally. Waiver leaves the consumer statement unchanged and not seller evidence. The seller retains a private audit, retires the issue from issues[], and projects underlying seller health even while the immutable statement remains current and visible in consumer_statuses[]. A later statement or different conflict is evaluated independently and receives a new issue_id if conflicting. A health change fires the advertised reporting.status_changed recovery transition with issue_ids empty or absent; otherwise no health-transition notification is required and polling remains authoritative.",
-    "consumer_mismatch_escalation": "A CONSUMER_STATUS_MISMATCH issue MUST carry opened_at and the reporting_status_id that caused it. When the seller advertises consumer_mismatch_escalation_seconds, an open or acknowledged issue still unresolved at opened_at plus that window MUST be emitted at severity action_required with a recommended_action in the contact_ family — contact_buyer, contact_seller, or contact_provider — naming the diagnosed responsible_party, and the seller MUST advertise operations_contact so the named party is reachable. wait_for_retry MUST NOT survive the escalation boundary: an unattended mismatch is an escalation, not a retry. This escalation takes precedence over the stale-received grace window in get-reporting-status-response.json: when the two windows overlap, the escalation boundary wins and the issue is action_required even if the grace window has not closed. An issue already retired under consumer_mismatch_lifecycle is not subject to this rule, because it is no longer in issues[]."
+    "consumer_mismatch_escalation": "A CONSUMER_STATUS_MISMATCH issue MUST carry opened_at and the reporting_status_id that caused it. When the seller advertises consumer_mismatch_escalation_seconds, an open or acknowledged issue still unresolved at opened_at plus that window MUST be emitted at severity action_required with a recommended_action in the contact_ family — contact_buyer, contact_seller, or contact_provider — naming the diagnosed responsible_party, and the seller MUST advertise operations_contact so the named party is reachable. wait_for_retry MUST NOT survive the escalation boundary: an unattended mismatch is an escalation, not a retry. This escalation takes precedence over the stale-received grace window in get-reporting-status-response.json: when the two windows overlap, the escalation boundary wins and the issue is action_required even if the grace window has not closed. An issue already retired under consumer_mismatch_lifecycle is not subject to this rule, because it is no longer in issues[].",
+    "revision_unreadable": "REVISION_UNREADABLE means the seller cannot currently serve or verify the content of a published revision that it still owes through exact reads within status_retention_days. Examples: the stored rows are missing, or they no longer reproduce row_count, control_totals, and revision_content_sha256. PRODUCTION_FAILED does not apply, because the revision was produced and published. The issue names one affected reporting_obligation_id and the reporting_revision_id. When one revision serves several of the caller's obligations, the seller emits one issue per obligation. An affected obligation is neither healthy nor complete while the issue is open. The issue is delayed with wait_for_retry while automatic repair is in progress, and action_required with contact_seller once the seller cannot restore the content automatically. While the issue is open, an exact read of the revision by a caller authorized for it MUST return SERVICE_UNAVAILABLE. It MUST NOT return REFERENCE_NOT_FOUND, and it MUST NOT return rows that fail the binding. Unauthorized callers still receive the nondisclosing REFERENCE_NOT_FOUND. The revision's metadata stays listed in the ledger. The issue is retired when exact reads again return content that matches the committed binding, or when the revision's status_retention_days window ends. A seller MUST NOT retire it by serving different content under the same reporting_revision_id. Because an official revision cannot be superseded, an obligation whose official revision is lost does not become complete."
   },
   "additionalProperties": false
 }

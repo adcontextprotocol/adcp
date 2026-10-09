@@ -41,6 +41,12 @@ page is not verification. `pagination` is available only with
 When `account` is omitted, the seller searches all accounts accessible to the
 authenticated caller. Unknown and unauthorized revision/account combinations return
 the same nondisclosing [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) result.
+A revision the seller still owes within `status_retention_days` but cannot currently
+serve or verify — for example, its stored rows are missing or fail the binding —
+returns [`SERVICE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-service-unavailable)
+to an authorized caller, never `REFERENCE_NOT_FOUND`, and
+[`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) reports
+a `REVISION_UNREADABLE` issue for each affected obligation.
 
 **Request Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json)
 **Response Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)
@@ -696,6 +702,7 @@ asyncio.run(main())
 | [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |
 | [`UNSUPPORTED_GRANULARITY`](/docs/building/verification/compliance-catalog#error-code-unsupported-granularity) | Requested `time_granularity` is not in the product's `windowed_pull_granularities` | Re-issue with a granularity from `error.details.supported_granularities`, or omit `time_granularity` to fall back to cumulative date-range pulls. See [Windowed pull recovery](#windowed-pull-recovery). |
 | [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | Unknown or unauthorized `reporting_revision_id` + account combination (nondisclosing — expired, inaccessible, and absent revisions return the same response) | Verify the revision ID exists and is accessible to the authenticated account |
+| [`SERVICE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-service-unavailable) | A retained `reporting_revision_id` whose content cannot currently be served or verified | Retry within the standard retry budget; if the open revision issue in [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) says `contact_seller`, stop retrying and escalate |
 
 A valid query with no matching media buys succeeds with an empty `media_buy_deliveries` array.
 
