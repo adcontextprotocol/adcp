@@ -5,5 +5,13 @@
   "description": "Bounded submitted task envelope for refine_proposals when a complex revision requires upstream pricing or re-underwriting.",
   "allOf": [
     { "$ref": "/schemas/core/compact-task-submitted.json" }
-  ]
+  ],
+  "properties": {
+    "expected_confirmation_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-added-in": "3.3.0",
+      "description": "Optional estimate, on a submitted response to a finalize-only request, of when the seller expects to resolve the finalize, for example when a creator, host or talent must agree before the hold. Same semantics as on `create_media_buy`: an estimate, not a commitment or expiry; buyers SHOULD schedule a status check for it and MUST NOT treat a passed timestamp as failure. Sellers SHOULD NOT send it on revise requests."
+    }
+  }
 }

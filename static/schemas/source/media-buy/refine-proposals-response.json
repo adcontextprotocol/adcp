@@ -9,7 +9,10 @@
       "properties": { "status": { "type": "string", "const": "completed" } },
       "required": ["results", "products"],
       "not": {
-        "required": ["task_id"]
+        "anyOf": [
+          { "required": ["task_id"] },
+          { "required": ["expected_confirmation_at"] }
+        ]
       }
     },
     {
@@ -214,6 +217,12 @@
     "status": { "type": "string", "enum": ["completed", "submitted"] },
     "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
     "message": { "type": "string", "maxLength": 2000 },
+    "expected_confirmation_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-added-in": "3.3.0",
+      "description": "Optional estimate, on a submitted response to a finalize-only request, of when the seller expects to resolve the finalize, for example when a creator, host or talent must agree before the hold. Same semantics as on `create_media_buy`: an estimate, not a commitment or expiry; buyers SHOULD schedule a status check for it and MUST NOT treat a passed timestamp as failure. Sellers SHOULD NOT send it on revise requests."
+    },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" },
